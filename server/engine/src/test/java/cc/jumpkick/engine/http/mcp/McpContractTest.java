@@ -24,6 +24,18 @@ class McpContractTest {
                     + "\"success\":false,\"exitCode\":1,\"millis\":11,\"coord\":\"g:a\","
                     + "\"modules\":[{\"coord\":\"g:core\",\"success\":false}],"
                     + "\"diagnostics\":[{\"message\":\"err1\"}]}";
+    private static final String COMPILE_FAIL =
+            "{\"id\":\"r4\",\"buildNumber\":72,\"kind\":\"build\",\"dir\":\"/ws\",\"projectId\":\"p\","
+                    + "\"success\":false,\"exitCode\":1,\"millis\":12,\"coord\":\"g:a\","
+                    + "\"modules\":[{\"coord\":\"g:core\",\"success\":false}],"
+                    + "\"diagnostics\":["
+                    + "{\"severity\":\"error\",\"code\":\"javac\",\"dir\":\"/ws/core\","
+                    + "\"message\":\"/ws/A.java:1: error: cannot find symbol\\n  foo\\n  ^\"},"
+                    + "{\"severity\":\"error\",\"code\":\"javac\",\"dir\":\"/ws/core\","
+                    + "\"message\":\"/ws/A.java:1: error: cannot find symbol\\n  foo\\n  ^\"},"
+                    + "{\"severity\":\"error\",\"code\":\"javac\",\"dir\":\"/ws/core\","
+                    + "\"message\":\"/ws/B.java:2:5: error: ctor\\n  required: none\"}"
+                    + "]}";
     private static final String OK =
             "{\"id\":\"r3\",\"buildNumber\":69,\"kind\":\"test\",\"dir\":\"/other\",\"projectId\":\"q\","
                     + "\"success\":true,\"exitCode\":0,\"millis\":5,\"coord\":\"g:b\","
@@ -67,7 +79,7 @@ class McpContractTest {
                     16L << 30),
             jobs,
             dir -> Map.of("coord", "com.example:demo", "description", "hi"),
-            () -> List.of(FAIL_A, FAIL_B, FAIL_A, FAIL_B, FAIL_A, OK),
+            () -> List.of(COMPILE_FAIL, FAIL_A, FAIL_B, FAIL_A, FAIL_B, FAIL_A, OK),
             "0.12.0");
 
     @Test
@@ -76,7 +88,7 @@ class McpContractTest {
         assertThat(structured.get("type")).isEqualTo("history");
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> records = (List<Map<String, Object>>) structured.get("records");
-        assertThat(records).hasSize(6);
+        assertThat(records).hasSize(7);
         assertThat(records.getFirst()).containsKeys("id", "success", "diagnosticCount", "failedModules");
         assertThat(records.getFirst()).doesNotContainKey("diagnostics");
         String json = MiniJson.write(structured);
@@ -94,17 +106,29 @@ class McpContractTest {
         assertThat(((Number) page2.get("next")).intValue()).isEqualTo(4);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) page2.get("records");
-        assertThat(rows.getFirst().get("id")).isEqualTo("r1");
+        assertThat(rows.getFirst().get("id")).isEqualTo("r2");
     }
 
     @Test
     void bind_filters_history_without_dir() {
         call("jk_bind", "{\"dir\":\"/ws\"}");
         Map<String, Object> hist = call("jk_history", "{}");
-        assertThat(((Number) hist.get("totalMatched")).intValue()).isEqualTo(5);
+        assertThat(((Number) hist.get("totalMatched")).intValue()).isEqualTo(6);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> records = (List<Map<String, Object>>) hist.get("records");
         assertThat(records).allMatch(r -> "/ws".equals(r.get("dir")));
+    }
+
+    @Test
+    void diagnostics_unique_last_fail() {
+        Map<String, Object> d = call("jk_diagnostics", "{}");
+        assertThat(d.get("type")).isEqualTo("diagnostics");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) d.get("diagnostics");
+        assertThat(rows).hasSize(2);
+        assertThat(((Number) rows.getFirst().get("count")).intValue()).isEqualTo(2);
+        assertThat(rows.getFirst().get("file")).isEqualTo("/ws/A.java");
+        assertThat(MiniJson.write(d).length()).isLessThan(4_096);
     }
 
     @Test
@@ -112,6 +136,7 @@ class McpContractTest {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");
         assertThat(body).contains("jk_bind");
         assertThat(body).contains("jk_history");
+        assertThat(body).contains("jk_diagnostics");
     }
 
     @SuppressWarnings("unchecked")

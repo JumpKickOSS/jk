@@ -87,12 +87,12 @@ public final class McpHistoryViews {
         return raw instanceof Map<?, ?> m ? (Map<String, Object>) m : null;
     }
 
-    static String str(Map<String, Object> m, String k) {
+    public static String str(Map<String, Object> m, String k) {
         Object v = m.get(k);
         return v == null ? "" : String.valueOf(v);
     }
 
-    static long lng(Map<String, Object> m, String k) {
+    public static long lng(Map<String, Object> m, String k) {
         Object v = m.get(k);
         if (v instanceof Number n) return n.longValue();
         if (v == null) return 0;

@@ -165,7 +165,14 @@ public final class HttpEngineServer implements AutoCloseable {
         this.progressTokens = new ProgressTokenRegistry();
         // null when [mcp] enabled=false — dispatch 404s every /mcp path before reaching it.
         this.mcp = config.mcp().enabled()
-                ? new McpHandler(status, jobs, this::projectMap, () -> journal.rawRecords(200), version, progressTokens)
+                ? new McpHandler(
+                        status,
+                        jobs,
+                        this::projectMap,
+                        () -> journal.rawRecords(200),
+                        version,
+                        progressTokens,
+                        () -> this.liveRuns.get())
                 : null;
         this.historyApi = new HttpHistoryApi(journal, () -> this.liveRuns.get());
         this.projectApi = new HttpProjectApi(journal);

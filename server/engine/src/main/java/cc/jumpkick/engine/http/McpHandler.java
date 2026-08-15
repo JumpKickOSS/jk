@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.engine.http.mcp.McpDiagnostics;
 import cc.jumpkick.engine.http.mcp.McpEnvelope;
 import cc.jumpkick.engine.http.mcp.McpHistoryViews;
 import cc.jumpkick.engine.http.mcp.McpProjectCards;
@@ -42,6 +43,10 @@ public final class McpHandler {
     private final String version;
     private final ProgressTokenRegistry progressTokens;
     private final McpSession session = new McpSession();
+    private final Supplier<List<HttpLive.Run>> liveRuns;
+
+    /** Age after which a live job with no progress is marked stalled. */
+    static final long STALL_MS = 60_000;
 
     public McpHandler(
             Supplier<StatusSnapshot> status,
@@ -49,7 +54,7 @@ public final class McpHandler {
             Function<String, Map<String, Object>> projectLookup,
             Supplier<List<String>> historyRaw,
             String version) {
-        this(status, jobs, projectLookup, historyRaw, version, new ProgressTokenRegistry());
+        this(status, jobs, projectLookup, historyRaw, version, new ProgressTokenRegistry(), List::of);
     }
 
     public McpHandler(
@@ -59,12 +64,24 @@ public final class McpHandler {
             Supplier<List<String>> historyRaw,
             String version,
             ProgressTokenRegistry progressTokens) {
+        this(status, jobs, projectLookup, historyRaw, version, progressTokens, List::of);
+    }
+
+    public McpHandler(
+            Supplier<StatusSnapshot> status,
+            EngineHttpJobs jobs,
+            Function<String, Map<String, Object>> projectLookup,
+            Supplier<List<String>> historyRaw,
+            String version,
+            ProgressTokenRegistry progressTokens,
+            Supplier<List<HttpLive.Run>> liveRuns) {
         this.status = Objects.requireNonNull(status);
         this.jobs = Objects.requireNonNull(jobs);
         this.projectLookup = Objects.requireNonNull(projectLookup);
         this.historyRaw = Objects.requireNonNull(historyRaw);
         this.version = version == null ? "0" : version;
         this.progressTokens = progressTokens == null ? new ProgressTokenRegistry() : progressTokens;
+        this.liveRuns = liveRuns == null ? List::of : liveRuns;
     }
 
     /**
@@ -259,6 +276,25 @@ public final class McpHandler {
                         Map.of("type", "boolean", "description", "Only successful or only failed runs"),
                         "view",
                         Map.of("type", "string", "description", "summary (default) or full (raw journal — avoid)")))));
+        tools.add(tool(
+                "jk_diagnostics",
+                "Structured compiler/test failures for last-fail (default) or a history id. "
+                        + "Unique by file:line:col + first message line.",
+                objectSchema(Map.of(
+                        "run",
+                        Map.of("type", "string", "description", "last-fail (default) or history id"),
+                        "dir",
+                        Map.of("type", "string", "description", "Checkout filter (default: bound dir)"),
+                        "module",
+                        Map.of("type", "string", "description", "Filter by module dir substring"),
+                        "severity",
+                        Map.of("type", "string", "description", "error | warning"),
+                        "unique",
+                        Map.of("type", "boolean", "description", "Collapse duplicates (default true)"),
+                        "limit",
+                        Map.of("type", "integer", "description", "Max rows (default 20)"),
+                        "next",
+                        Map.of("type", "integer", "description", "Skip this many unique rows")))));
         return Map.of("tools", tools);
     }
 
@@ -281,6 +317,7 @@ public final class McpHandler {
             case "jk_bind" -> bindResult(args);
             case "jk_project" -> projectResult(args);
             case "jk_history" -> historyResult(args);
+            case "jk_diagnostics" -> diagnosticsResult(args);
             default -> throw new McpError(-32602, "unknown tool: " + name);
         };
     }
@@ -319,7 +356,45 @@ public final class McpHandler {
         fields.put("cores", s.cores());
         String bound = session.dir();
         if (bound != null) fields.put("boundDir", bound);
+        fields.put("jobs", liveJobRows());
+        Map<String, Object> last = lastFinished(bound);
+        if (last != null) fields.put("lastRun", last);
         return McpEnvelope.of("status", fields);
+    }
+
+    private List<Map<String, Object>> liveJobRows() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        long now = System.currentTimeMillis();
+        for (HttpLive.Run r : liveRuns.get()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("jid", r.requestId());
+            row.put("kind", r.kind());
+            row.put("dir", r.dir());
+            row.put("progress", Double.isNaN(r.progress()) ? null : r.progress());
+            long age = Math.max(0, now - r.startedAt());
+            row.put("lastEventAgeMs", age);
+            row.put("stalled", age >= STALL_MS && (Double.isNaN(r.progress()) || r.progress() < 100));
+            out.add(row);
+        }
+        return out;
+    }
+
+    private @org.jspecify.annotations.Nullable Map<String, Object> lastFinished(String boundDir) {
+        Map<String, Object> rec = McpDiagnostics.findRun(historyRaw.get(), "last-fail", boundDir);
+        if (rec == null) {
+            // any last run
+            List<String> raw = historyRaw.get();
+            if (raw == null || raw.isEmpty()) return null;
+            rec = parseRecord(raw.getFirst());
+        }
+        if (rec == null) return null;
+        Map<String, Object> sum = McpHistoryViews.summarize(rec);
+        Map<String, Object> one = new LinkedHashMap<>();
+        one.put("id", sum.get("id"));
+        one.put("success", sum.get("success"));
+        one.put("exitCode", sum.get("exitCode"));
+        one.put("failedModules", sum.get("failedModules"));
+        return one;
     }
 
     private Map<String, Object> jobPayload(
@@ -432,6 +507,57 @@ public final class McpHandler {
         String hint = truncated ? "jk_history next=" + next : null;
         String summary = page.size() + " of " + total + " runs";
         return ok(McpEnvelope.of("history", fields, truncated, next, hint), summary);
+    }
+
+    private Map<String, Object> diagnosticsResult(Map<String, Object> args) {
+        String dir = string(args.get("dir"));
+        if (dir == null || dir.isBlank()) dir = session.dir();
+        String run = string(args.get("run"));
+        Map<String, Object> rec = McpDiagnostics.findRun(historyRaw.get(), run, dir);
+        if (rec == null) {
+            Map<String, Object> empty = new LinkedHashMap<>();
+            empty.put("diagnostics", List.of());
+            empty.put("count", 0);
+            return ok(McpEnvelope.of("diagnostics", empty, false, null, "no matching failed run"), "0 diagnostics");
+        }
+        boolean unique = !Boolean.FALSE.equals(McpHistoryViews.parseBool(args.get("unique")));
+        String severity = string(args.get("severity"));
+        String module = string(args.get("module"));
+        List<Map<String, Object>> rows = McpDiagnostics.unique(McpDiagnostics.fromRecord(rec), unique);
+        if (severity != null && !severity.isBlank()) {
+            String sev = severity.toLowerCase();
+            rows = rows.stream()
+                    .filter(r -> sev.equalsIgnoreCase(String.valueOf(r.getOrDefault("severity", ""))))
+                    .toList();
+        }
+        if (module != null && !module.isBlank()) {
+            String needle = module.toLowerCase();
+            rows = rows.stream()
+                    .filter(r -> String.valueOf(r.getOrDefault("module", ""))
+                                    .toLowerCase()
+                                    .contains(needle)
+                            || String.valueOf(r.getOrDefault("file", ""))
+                                    .toLowerCase()
+                                    .contains(needle))
+                    .toList();
+        }
+        int limit = intArg(args.get("limit"), 20, 1, 200);
+        int skip = intArg(args.get("next"), 0, 0, Integer.MAX_VALUE);
+        int total = rows.size();
+        int from = Math.min(skip, total);
+        int to = Math.min(from + limit, total);
+        List<Map<String, Object>> page = new ArrayList<>(rows.subList(from, to));
+        boolean truncated = to < total;
+        Object next = truncated ? Integer.valueOf(to) : null;
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("run", McpHistoryViews.str(rec, "id"));
+        fields.put("diagnostics", page);
+        fields.put("count", page.size());
+        fields.put("totalMatched", total);
+        String hint = truncated ? "jk_diagnostics next=" + next : "jk_run kind=build wait=true to rebuild";
+        return ok(
+                McpEnvelope.of("diagnostics", fields, truncated, next, hint),
+                page.size() + " of " + total + " diagnostics");
     }
 
     @SuppressWarnings("unchecked")
