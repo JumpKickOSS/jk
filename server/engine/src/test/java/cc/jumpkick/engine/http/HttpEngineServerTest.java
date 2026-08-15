@@ -287,10 +287,14 @@ class HttpEngineServerTest {
         assertThat(shell).contains("integrity=\"sha384-");
         assertThat(shell).contains("crossorigin=\"anonymous\"");
         HttpResponse<String> js = get("/app.js");
-        assertThat(js.headers().firstValue("Content-Security-Policy"))
-                .contains("default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com; "
-                        + "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
-                        + "font-src https://fonts.gstatic.com data:; worker-src blob:");
+        // OptionalAssert#contains is equality, not substring — unwrap and check the directives
+        // (the full header also carries img-src and form-action; JK-2002).
+        String csp = js.headers().firstValue("Content-Security-Policy").orElseThrow();
+        assertThat(csp)
+                .startsWith("default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com; ")
+                .contains("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; ")
+                .contains("font-src https://fonts.gstatic.com data:; worker-src blob:")
+                .contains("form-action 'none'");
     }
 
     @Test
@@ -298,7 +302,10 @@ class HttpEngineServerTest {
         HttpResponse<String> resp = get("/classpath-only.txt");
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.body()).isEqualTo("from classpath\n");
-        assertThat(resp.headers().firstValue("ETag")).contains("\"jk-9.9.9-test\"");
+        // The classpath ETag carries a content stamp after the version (JK-2002).
+        assertThat(resp.headers().firstValue("ETag").orElseThrow())
+                .startsWith("\"jk-9.9.9-test")
+                .endsWith("\"");
         assertThat(resp.headers().firstValue("Cache-Control")).contains("max-age=3600");
     }
 
@@ -769,6 +776,29 @@ class HttpEngineServerTest {
     }
 
     @Test
+    void api_project_and_events_token_survive_malformed_percent_encoding() throws Exception {
+        // JK-1980: /api/project?project=%zz previously escaped the handler as a 500; a garbage
+        // access_token on /api/events must read as "no token" (401), never a 500.
+        String project = "GET /api/project?project=%zz HTTP/1.1\r\n"
+                + "Authorization: Bearer " + token() + "\r\n"
+                + "X-Jk-Engine-Epoch: " + SNAPSHOT.engineEpoch() + "\r\n"
+                + "Connection: close\r\n\r\n";
+        try (Socket socket = new Socket("127.0.0.1", port)) {
+            socket.getOutputStream().write(project.getBytes(UTF_8));
+            assertThat(new String(socket.getInputStream().readAllBytes(), UTF_8))
+                    .startsWith("HTTP/1.1 400");
+        }
+        String events = "GET /api/events?access_token=%zz HTTP/1.1\r\n" + "Connection: close\r\n\r\n";
+        try (Socket socket = new Socket("127.0.0.1", port)) {
+            socket.getOutputStream().write(events.getBytes(UTF_8));
+            // jdk.httpserver may reject the malformed URI itself (400) before dispatch; when it
+            // does dispatch, the garbage token reads as "no token" (401). Either way: never 5xx.
+            assertThat(new String(socket.getInputStream().readAllBytes(), UTF_8))
+                    .startsWith("HTTP/1.1 4");
+        }
+    }
+
+    @Test
     void api_project_files_and_file_are_identity_scoped() throws Exception {
         Path buildsDir = stateDir.resolve("file-builds");
         System.setProperty("jk.env.JK_BUILDS_DIR", buildsDir.toString());
@@ -946,10 +976,12 @@ class HttpEngineServerTest {
                     .isEqualTo(200);
             assertThat(pct.body()).contains("class APct");
 
-            // Double-encoded traversal must decode to a literal ".." segment and be rejected.
+            // Double-encoded traversal decodes ONCE to the literal filename "%2e%2e/jk.toml" —
+            // not a ".." segment — so the correct answer is "no such file" (404). Anything else
+            // would mean a second decode happened somewhere (JK-1943 / JK-2002).
             assertThat(get("/api/project/file?project=" + id + "&path=%252e%252e%2Fjk.toml")
                             .statusCode())
-                    .isEqualTo(400);
+                    .isEqualTo(404);
         } finally {
             System.clearProperty("jk.env.JK_BUILDS_DIR");
         }

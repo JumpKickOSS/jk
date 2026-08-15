@@ -106,7 +106,8 @@ final class HttpReadApi {
      */
     void handleLog(HttpExchange exchange) throws IOException {
         int requested = 120;
-        String param = HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "lines");
+        String param =
+                HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "lines");
         if (param != null) {
             try {
                 requested = Math.max(1, Math.min(400, Integer.parseInt(param)));
@@ -152,7 +153,8 @@ final class HttpReadApi {
      * {@code GET /api/fs?dir=…} — the workspace picker behind the dashboard's Browse button.
      */
     void handleFs(HttpExchange exchange) throws IOException {
-        String requested = HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "dir");
+        String requested =
+                HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "dir");
         Path dir;
         try {
             dir = requested == null || requested.isBlank()
@@ -202,7 +204,8 @@ final class HttpReadApi {
      * {@code GET /api/metrics[?dir=…]} — running build aggregates as a flat JSON array.
      */
     void handleMetrics(HttpExchange exchange) throws IOException {
-        String dirFilter = HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "dir");
+        String dirFilter =
+                HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "dir");
         StringBuilder body = new StringBuilder("[");
         for (cc.jumpkick.runtime.BuildMetrics.Entry e : metrics.get()) {
             if (dirFilter != null && !e.dir().isEmpty() && !e.dir().equals(dirFilter)) continue;

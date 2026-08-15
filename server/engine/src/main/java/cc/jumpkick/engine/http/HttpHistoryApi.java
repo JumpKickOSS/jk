@@ -291,8 +291,7 @@ final class HttpHistoryApi {
      */
     void handleHistoryArtifact(HttpExchange exchange) throws IOException {
         String query = exchange.getRequestURI().getRawQuery();
-        var artifact =
-                journal.artifact(
+        var artifact = journal.artifact(
                 HttpEngineServer.queryParamLenient(query, "id"), HttpEngineServer.queryParamLenient(query, "name"));
         if (artifact.isEmpty()) {
             HttpEngineServer.sendJson(
