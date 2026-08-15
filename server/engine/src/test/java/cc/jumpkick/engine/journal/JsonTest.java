@@ -50,7 +50,8 @@ class JsonTest {
                 "abc1234",
                 new BuildRecord.CacheBenefit(9000, 6000, 3, 4),
                 false,
-                new BuildRecord.Io(1_024, 8_388_608, 2_048, 4_096));
+                new BuildRecord.Io(1_024, 8_388_608, 2_048, 4_096),
+                42L);
 
         BuildRecord back = Json.read(Json.write(original));
 
@@ -88,6 +89,7 @@ class JsonTest {
         assertThat(back.io().remoteDown()).isEqualTo(8_388_608);
         assertThat(back.io().localUp()).isEqualTo(2_048);
         assertThat(back.io().localDown()).isEqualTo(4_096);
+        assertThat(back.requestId()).isEqualTo(42L);
     }
 
     @Test
@@ -115,7 +117,8 @@ class JsonTest {
                 null,
                 null,
                 false,
-                null);
+                null,
+                0L);
         BuildRecord back = Json.read(Json.write(original));
         assertThat(back.coord()).isNull();
         assertThat(back.tests()).isNull();

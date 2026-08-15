@@ -5,16 +5,15 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Engine request kinds that count as <strong>project builds</strong> for durable history, build
- * numbers, reliability, exclusive admission, and ETA metrics.
+ * Engine request kinds that count as <strong>project builds</strong> for build numbers,
+ * reliability, exclusive admission, ETA metrics, {@code jk history}, and the Web UI Activity
+ * feed.
  *
- * <p>Many other commands run as engine plans (and may appear on the live activity feed) but are
- * not builds: {@code lock}/{@code update}, {@code format}, {@code sync}, {@code audit}, {@code
- * publish}, {@code install}, tool/JDK provisioning, cache maintenance, import, etc. A full {@code
- * jk build} may <em>include</em> lock/format/ensure-JDK as steps; when those verbs run alone they
- * must not mint a history row or dilute reliability.
+ * <p>Every JobEnvelope job is journaled (MCP wait / {@code jk_history} need the row). Non-build
+ * kinds ({@code lock}, {@code format}, …) persist under {@code runs/j-…} with {@code
+ * buildNumber=0} so they do not increment {@code #N} or appear on Activity.
  *
- * <p><strong>Build-like (journaled):</strong>
+ * <p><strong>Build-like:</strong>
  *
  * <ul>
  *   <li>{@code build} — {@code jk build}, {@code jk assemble}, {@code jk verify}, rebuild half of
@@ -25,10 +24,9 @@ import java.util.Set;
  *   <li>{@code image} — {@code jk image}
  * </ul>
  *
- * <p><strong>Not build-like (examples):</strong> {@code lock}, {@code update}, {@code sync}, {@code
- * format}, {@code audit}, {@code publish}, {@code import}, {@code provision}, {@code install},
- * {@code git-fetch}, {@code script}, {@code tool}, {@code cache}. Client-local work ({@code jk
- * new}/{@code init}, {@code jk jdk install}, …) never hits this table.
+ * <p><strong>Not build-like (still journaled):</strong> {@code lock}, {@code update}, {@code
+ * format}, {@code clean}, {@code cache}, … Client-local work ({@code jk new}/{@code init}) never
+ * hits JobEnvelope.
  */
 public final class BuildHistoryKinds {
 

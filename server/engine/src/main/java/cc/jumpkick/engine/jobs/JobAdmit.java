@@ -35,10 +35,10 @@ public final class JobAdmit {
         long startedAt = host.nowMillis();
         String projectId = cc.jumpkick.runtime.ProjectIds.refresh(canonDir != null ? canonDir : dir);
         String journalId = null;
-        if (BuildHistoryKinds.isBuildLike(kind) && host.historyConfig().enabled() && buildNumber > 0) {
+        if (host.historyConfig().enabled() && canonDir != null && !canonDir.isBlank()) {
             journalId = host.journal()
                     .begin(BuildRecord.running(
-                            buildNumber, kind, dir, coord, projectId, startedAt, host.version(), trigger));
+                            buildNumber, kind, dir, coord, projectId, startedAt, host.version(), trigger, requestId));
         }
         InFlightBuilds.Hold candidate =
                 new InFlightBuilds.Hold(requestId, buildNumber, fp, kind, dir, coord, startedAt, journalId, trigger);

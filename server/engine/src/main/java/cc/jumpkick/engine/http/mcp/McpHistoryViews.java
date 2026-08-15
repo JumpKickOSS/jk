@@ -18,6 +18,8 @@ public final class McpHistoryViews {
         m.put("id", str(rec, "id"));
         m.put("buildNumber", lng(rec, "buildNumber"));
         m.put("kind", str(rec, "kind"));
+        long rid = lng(rec, "requestId");
+        if (rid > 0) m.put("requestId", rid);
         m.put("success", bool(rec, "success"));
         m.put("exitCode", lng(rec, "exitCode"));
         m.put("millis", lng(rec, "millis"));
@@ -103,7 +105,7 @@ public final class McpHistoryViews {
         }
     }
 
-    static boolean bool(Map<String, Object> m, String k) {
+    public static boolean bool(Map<String, Object> m, String k) {
         Object v = m.get(k);
         if (v instanceof Boolean b) return b;
         return v != null && "true".equalsIgnoreCase(String.valueOf(v));

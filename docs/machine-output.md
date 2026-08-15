@@ -168,7 +168,8 @@ MCP can be disabled machine-wide with `[mcp] enabled = false` in `~/.config/jk/c
 
 **Tools (agent catalog):** `jk_bind`, `jk_status`, `jk_project`, `jk_history` (summaries),
 `jk_diagnostics`, `jk_run` / `jk_job` (kinds: build|test|lock|update|format|native|image|assemble|compile|clean;
-aliases: `jk_build`, `jk_test`, `jk_lock`, `jk_cancel`),
+aliases: `jk_build`, `jk_test`, `jk_lock`, `jk_cancel`; `jk_history` lists every journaled kind,
+while the Web UI Activity feed stays build-like),
 `jk_why`, `jk_explain`, `jk_outdated`, `jk_deps`, `jk_workspace`, `jk_manifest`, `jk_config`,
 `jk_disk` (usage / clean / nuke with `confirm=true`), `jk_jdk` (list / install / uninstall),
 `jk_doctor`. Results use `structuredContent` plus a short `content` text summary.

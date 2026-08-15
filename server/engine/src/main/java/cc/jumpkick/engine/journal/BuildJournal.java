@@ -3,6 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.engine.BuildHistoryKinds;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -106,8 +107,18 @@ public final class BuildJournal {
                     ? record.finishedAt()
                     : (record.startedAt() > 0 ? record.startedAt() : System.currentTimeMillis());
             String timestamp = ID_TS.format(LocalDateTime.ofInstant(Instant.ofEpochMilli(stampMillis), ZoneOffset.UTC));
-            long n = record.buildNumber() > 0 ? record.buildNumber() : ProjectBuilds.allocateRunNumber(home);
-            String dirName = ProjectBuilds.runDirName(n);
+            long n = record.buildNumber();
+            String dirName;
+            if (n > 0) {
+                dirName = ProjectBuilds.runDirName(n);
+            } else if (BuildHistoryKinds.isBuildLike(record.kind())) {
+                n = ProjectBuilds.allocateRunNumber(home);
+                dirName = ProjectBuilds.runDirName(n);
+            } else {
+                // format/lock/… — persist, but do not bump the per-project #N sequence.
+                dirName = jobDirName(timestamp, record.requestId());
+                n = 0;
+            }
             Path target = home.resolve(ProjectBuilds.RUNS).resolve(dirName);
             Path tmp = home.resolve(ProjectBuilds.RUNS).resolve("." + dirName + ".tmp");
             deleteTreeQuietly(tmp);
@@ -129,7 +140,7 @@ public final class BuildJournal {
                     deleteTreeQuietly(target);
                 }
                 move(tmp, target);
-                if (!record.running() && !record.synthetic())
+                if (!record.running() && !record.synthetic() && BuildHistoryKinds.isBuildLike(record.kind()))
                     MetricsHarvest.get().request();
                 return dirName;
             } catch (IOException e) {
@@ -209,7 +220,7 @@ public final class BuildJournal {
             }
             deleteTreeQuietly(tmp);
             // Synthetic optimize/calibrate fixtures must not train host ETA aggregates.
-            if (!toWrite.synthetic()) {
+            if (!toWrite.synthetic() && BuildHistoryKinds.isBuildLike(toWrite.kind())) {
                 MetricsHarvest.get().request();
             }
             return true;
@@ -463,9 +474,12 @@ public final class BuildJournal {
                     r.commit(),
                     null,
                     false,
-                    r.io());
-            String locator = ProjectBuilds.runDirName(r.buildNumber());
-            if (complete(locator, done, Snapshot.NONE)) n++;
+                    r.io(),
+                    r.requestId());
+            String locator = r.buildNumber() > 0
+                    ? ProjectBuilds.runDirName(r.buildNumber())
+                    : (r.id() != null ? "j-" + r.id() : null);
+            if (locator != null && complete(locator, done, Snapshot.NONE)) n++;
         }
         return n;
     }
@@ -682,7 +696,21 @@ public final class BuildJournal {
             } catch (NumberFormatException ignored) {
             }
         }
+        if (isJobLocator(locator)) {
+            return ProjectBuilds.findRunDirByName(buildsRoot, locator);
+        }
         return Optional.empty();
+    }
+
+    /** Non-build journal dirs: {@code j-<timestamp>} (no run-number allocation). */
+    static String jobDirName(String timestamp, long requestId) {
+        String base = "j-" + timestamp;
+        if (requestId > 0) return base + "-" + requestId;
+        return base;
+    }
+
+    static boolean isJobLocator(String locator) {
+        return locator != null && locator.startsWith("j-") && locator.length() > 2;
     }
 
     private List<Path> entryDirs() {

@@ -57,6 +57,16 @@ const start = (id, dir, extra = {}) => ({
 });
 const finish = (id, data = {}) => ({ type: 'request-finish', data: { requestId: id, ...data } });
 
+test('request-start ignores format and lock (Activity is build-like only)', () => {
+  const cards = [];
+  foldEvent(cards, { type: 'request-start', data: { requestId: 1, kind: 'format', dir: '/w' } });
+  foldEvent(cards, { type: 'request-start', data: { requestId: 2, kind: 'lock', dir: '/w' } });
+  foldEvent(cards, start(3, '/w'));
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].id, 3);
+  assert.equal(cards[0].kind, 'build');
+});
+
 test('request-start opens a running card, newest first', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w/a'));

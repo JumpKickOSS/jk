@@ -18,6 +18,13 @@ export const MAX_DIAGNOSTICS = 12;
  */
 export const MAX_TEST_FAILURE_DIAGNOSTICS = 120;
 
+/** Same set as {@code BuildHistoryKinds} — Activity tracks builds, not format/lock/cache. */
+export const BUILD_LIKE_KINDS = new Set(['build', 'test', 'compile', 'native', 'image']);
+
+export function isBuildLikeKind(kind) {
+  return BUILD_LIKE_KINDS.has(kind);
+}
+
 /**
  * Fold one SSE event into the newest-first card list, mutating and returning it.
  * An event is `{type, data, at}` where `data` is the parsed flat JSON payload the engine
@@ -50,6 +57,7 @@ export function foldEvent(cards, event) {
   const d = event.data || {};
   switch (event.type) {
     case 'request-start': {
+      if (!isBuildLikeKind(d.kind || 'build')) break;
       // Engine startedAt (admission) beats client receipt time — late join / rehydrate must match TUI.
       const engineStart =
         typeof d.startedAt === 'number' && d.startedAt > 0 ? d.startedAt : null;

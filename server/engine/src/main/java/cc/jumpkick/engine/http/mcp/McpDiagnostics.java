@@ -49,8 +49,35 @@ public final class McpDiagnostics {
         for (String raw : historyRaw) {
             Map<String, Object> rec = parse(raw);
             if (rec == null) continue;
+            if (McpHistoryViews.bool(rec, "running")) continue;
             if (!McpHistoryViews.matches(rec, dir, null, lastFail ? Boolean.FALSE : null, null)) continue;
             if (!lastFail && !run.equals(McpHistoryViews.str(rec, "id"))) continue;
+            return rec;
+        }
+        return null;
+    }
+
+    /** Finished row whose {@code requestId} equals {@code jid}. */
+    public static @Nullable Map<String, Object> findByRequestId(List<String> historyRaw, long jid) {
+        if (historyRaw == null || jid <= 0) return null;
+        for (String raw : historyRaw) {
+            Map<String, Object> rec = parse(raw);
+            if (rec == null) continue;
+            if (McpHistoryViews.lng(rec, "requestId") != jid) continue;
+            if (McpHistoryViews.bool(rec, "running")) continue;
+            return rec;
+        }
+        return null;
+    }
+
+    /** Newest finished row for {@code dir} (any kind). */
+    public static @Nullable Map<String, Object> findNewest(List<String> historyRaw, @Nullable String dir) {
+        if (historyRaw == null) return null;
+        for (String raw : historyRaw) {
+            Map<String, Object> rec = parse(raw);
+            if (rec == null) continue;
+            if (McpHistoryViews.bool(rec, "running")) continue;
+            if (!McpHistoryViews.matches(rec, dir, null, null, null)) continue;
             return rec;
         }
         return null;

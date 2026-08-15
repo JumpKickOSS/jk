@@ -101,6 +101,7 @@ final class Json {
         o.put("trigger", r.trigger());
         o.put("commit", r.commit());
         o.put("running", r.running());
+        if (r.requestId() > 0) o.put("requestId", r.requestId());
 
         if (r.benefit() == null) {
             o.put("benefit", null);
@@ -233,7 +234,8 @@ final class Json {
                 str(o, "commit"),
                 benefit,
                 bool(o, "running"),
-                io);
+                io,
+                lng(o, "requestId"));
     }
 
     private static String str(Map<String, Object> o, String key) {

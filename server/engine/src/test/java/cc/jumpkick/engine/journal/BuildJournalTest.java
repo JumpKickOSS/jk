@@ -42,7 +42,53 @@ class BuildJournalTest {
                 null,
                 null,
                 false,
-                null);
+                null,
+                0L);
+    }
+
+    @Test
+    void format_job_is_journaled_without_a_build_number() {
+        BuildJournal j = new BuildJournal(dir);
+        BuildRecord run = BuildRecord.running(0, "format", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "web", 9L);
+        String locator = j.begin(run);
+        assertThat(locator).startsWith("j-");
+        assertThat(locator).contains("9");
+        assertThat(j.get(locator)).isPresent();
+        assertThat(j.get(locator).orElseThrow().kind()).isEqualTo("format");
+        assertThat(j.get(locator).orElseThrow().buildNumber()).isZero();
+        assertThat(j.get(locator).orElseThrow().requestId()).isEqualTo(9L);
+        BuildRecord done = new BuildRecord(
+                null,
+                0L,
+                BuildRecord.SCHEMA,
+                "format",
+                "/proj",
+                "g:a",
+                null,
+                1_700_000_000_000L,
+                1_700_000_000_080L,
+                80,
+                true,
+                false,
+                0,
+                "9.9",
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                "web",
+                null,
+                null,
+                false,
+                null,
+                9L);
+        assertThat(j.complete(locator, done, BuildJournal.Snapshot.NONE)).isTrue();
+        assertThat(j.get(locator).orElseThrow().running()).isFalse();
+        assertThat(j.get(locator).orElseThrow().success()).isTrue();
+        assertThat(j.get(locator).orElseThrow().requestId()).isEqualTo(9L);
+        // A later build still gets #1.
+        String buildLoc = j.append(record(1_700_000_000_200L, true, "g:a"), BuildJournal.Snapshot.NONE);
+        assertThat(buildLoc).isEqualTo("1");
     }
 
     @Test
@@ -318,6 +364,7 @@ class BuildJournalTest {
                 base.commit(),
                 base.benefit(),
                 base.running(),
-                base.io());
+                base.io(),
+                base.requestId());
     }
 }

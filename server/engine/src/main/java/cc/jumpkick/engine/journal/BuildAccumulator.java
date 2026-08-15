@@ -80,9 +80,12 @@ public final class BuildAccumulator {
     /** In-flight journal id from begin(); null when history disabled or non-journaled. */
     private final @Nullable String journalId;
 
+    /** Engine request id (MCP jid); 0 when unknown. */
+    private final long requestId;
+
     public BuildAccumulator(
             String kind, String dir, String coord, String trigger, ChromeTimeline timeline, boolean rebuild) {
-        this(kind, dir, coord, trigger, timeline, rebuild, 0L, null);
+        this(kind, dir, coord, trigger, timeline, rebuild, 0L, null, 0L);
     }
 
     public BuildAccumulator(
@@ -94,6 +97,19 @@ public final class BuildAccumulator {
             boolean rebuild,
             long buildNumber,
             String journalId) {
+        this(kind, dir, coord, trigger, timeline, rebuild, buildNumber, journalId, 0L);
+    }
+
+    public BuildAccumulator(
+            String kind,
+            String dir,
+            String coord,
+            String trigger,
+            ChromeTimeline timeline,
+            boolean rebuild,
+            long buildNumber,
+            String journalId,
+            long requestId) {
         this.kind = kind;
         this.dir = dir;
         this.coord = coord;
@@ -103,6 +119,7 @@ public final class BuildAccumulator {
         this.rebuild = rebuild;
         this.buildNumber = buildNumber;
         this.journalId = journalId;
+        this.requestId = requestId;
     }
 
     public boolean rebuild() {
@@ -529,7 +546,8 @@ public final class BuildAccumulator {
                 commit,
                 benefitRow,
                 false,
-                ioRow);
+                ioRow,
+                requestId);
     }
 
     private static boolean notBlank(String s) {

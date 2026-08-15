@@ -529,20 +529,45 @@ public final class McpHandler {
     }
 
     private @org.jspecify.annotations.Nullable Map<String, Object> lastFinished(String boundDir) {
-        Map<String, Object> rec = McpDiagnostics.findRun(historyRaw.get(), "last-fail", boundDir);
-        if (rec == null) {
-            // any last run
-            List<String> raw = historyRaw.get();
-            if (raw == null || raw.isEmpty()) return null;
-            rec = parseRecord(raw.getFirst());
+        return summarizeJob(McpDiagnostics.findNewest(historyRaw.get(), boundDir));
+    }
+
+    private @org.jspecify.annotations.Nullable Map<String, Object> finishedJob(long jid, String dir) {
+        Map<String, Object> rec = waitForJournal(jid);
+        if (rec == null) rec = McpDiagnostics.findNewest(historyRaw.get(), dir);
+        return summarizeJob(rec);
+    }
+
+    /**
+     * Journal write races live-run teardown (HTTP jobs unregister before {@code writeJournal}).
+     * Poll briefly for the finished row stamped with this jid.
+     */
+    private @org.jspecify.annotations.Nullable Map<String, Object> waitForJournal(long jid) {
+        long deadline = System.currentTimeMillis() + 1_000;
+        while (System.currentTimeMillis() < deadline) {
+            Map<String, Object> rec = McpDiagnostics.findByRequestId(historyRaw.get(), jid);
+            if (rec != null) return rec;
+            try {
+                Thread.sleep(25);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
         }
+        return McpDiagnostics.findByRequestId(historyRaw.get(), jid);
+    }
+
+    private static @org.jspecify.annotations.Nullable Map<String, Object> summarizeJob(
+            @org.jspecify.annotations.Nullable Map<String, Object> rec) {
         if (rec == null) return null;
         Map<String, Object> sum = McpHistoryViews.summarize(rec);
         Map<String, Object> one = new LinkedHashMap<>();
         one.put("id", sum.get("id"));
+        one.put("kind", sum.get("kind"));
         one.put("success", sum.get("success"));
         one.put("exitCode", sum.get("exitCode"));
         one.put("failedModules", sum.get("failedModules"));
+        if (sum.get("requestId") != null) one.put("requestId", sum.get("requestId"));
         return one;
     }
 
@@ -751,11 +776,12 @@ public final class McpHandler {
                     McpEnvelope.of("job", fields, false, null, "jk_job action=wait jid=" + jid),
                     "still running " + jid);
         }
-        Map<String, Object> last = lastFinished(resolveDir(args, false));
+        Map<String, Object> last = finishedJob(jid, resolveDir(args, false));
         if (last != null) {
             fields.put("result", last);
             if (Boolean.FALSE.equals(last.get("success"))) {
-                Map<String, Object> diags = diagnosticsResult(Map.of());
+                Object runId = last.get("id");
+                Map<String, Object> diags = diagnosticsResult(runId == null ? Map.of() : Map.of("run", runId));
                 @SuppressWarnings("unchecked")
                 Map<String, Object> env = (Map<String, Object>) diags.get("structuredContent");
                 if (env != null) fields.put("diagnostics", env.get("diagnostics"));

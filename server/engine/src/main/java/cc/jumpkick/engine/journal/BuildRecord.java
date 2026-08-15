@@ -40,7 +40,8 @@ public record BuildRecord(
         String commit,
         CacheBenefit benefit,
         boolean running,
-        Io io) {
+        Io io,
+        long requestId) {
 
     /**
      * The current on-disk schema version. Bumped to 2 when {@code buildNumber} — the durable,
@@ -82,7 +83,8 @@ public record BuildRecord(
                 commit,
                 benefit,
                 running,
-                io);
+                io,
+                requestId);
     }
 
     /** This record with its journal id set (begin path). */
@@ -110,7 +112,8 @@ public record BuildRecord(
                 commit,
                 benefit,
                 running,
-                io);
+                io,
+                requestId);
     }
 
     /**
@@ -157,7 +160,46 @@ public record BuildRecord(
                 null,
                 null,
                 true,
-                null);
+                null,
+                0L);
+    }
+
+    /** In-flight stub that records the engine {@code requestId} (MCP wait / job lookup). */
+    public static BuildRecord running(
+            long buildNumber,
+            String kind,
+            String dir,
+            String coord,
+            String projectId,
+            long startedAt,
+            String jkVersion,
+            String trigger,
+            long requestId) {
+        return new BuildRecord(
+                null,
+                buildNumber,
+                SCHEMA,
+                kind,
+                dir,
+                coord,
+                projectId,
+                startedAt,
+                0L,
+                0L,
+                false,
+                false,
+                0,
+                jkVersion,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                trigger,
+                null,
+                null,
+                true,
+                null,
+                requestId);
     }
 
     /** Aggregate test counts for the run, or {@code null} when no tests ran. */
