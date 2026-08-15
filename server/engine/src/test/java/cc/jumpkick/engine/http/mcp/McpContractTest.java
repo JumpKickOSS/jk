@@ -144,6 +144,24 @@ class McpContractTest {
         assertThat(body).contains("jk_bind");
         assertThat(body).contains("jk_history");
         assertThat(body).contains("jk_diagnostics");
+        assertThat(body).contains("jk_run");
+        assertThat(body).contains("jk_why");
+        assertThat(body).contains("jk_config");
+        assertThat(body).contains("jk_jdk");
+    }
+
+    @Test
+    void resources_list_is_nonempty() {
+        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/list\"}");
+        assertThat(body).contains("jk://session");
+        assertThat(body).contains("jk://disk");
+    }
+
+    @Test
+    void config_get_has_rows() {
+        Map<String, Object> c = call("jk_config", "{\"action\":\"get\"}");
+        assertThat(c.get("type")).isEqualTo("config");
+        assertThat(c.get("rows")).isInstanceOf(List.class);
     }
 
     @SuppressWarnings("unchecked")

@@ -4,7 +4,10 @@ package cc.jumpkick.engine.http;
 import cc.jumpkick.engine.http.mcp.McpDiagnostics;
 import cc.jumpkick.engine.http.mcp.McpEnvelope;
 import cc.jumpkick.engine.http.mcp.McpHistoryViews;
+import cc.jumpkick.engine.http.mcp.McpMachine;
+import cc.jumpkick.engine.http.mcp.McpManifest;
 import cc.jumpkick.engine.http.mcp.McpProjectCards;
+import cc.jumpkick.engine.http.mcp.McpReads;
 import cc.jumpkick.engine.http.mcp.McpSession;
 import cc.jumpkick.plugin.protocol.MiniJson;
 import cc.jumpkick.util.PathUtil;
@@ -48,6 +51,17 @@ public final class McpHandler {
 
     /** Age after which a live job with no progress is marked stalled. */
     static final long STALL_MS = 60_000;
+
+    static final String INSTRUCTIONS = "Bind first: jk_bind {dir}. "
+            + "Failing build / where is it failing → jk_diagnostics. "
+            + "Why dep X → jk_why. Slow / next-build ETA → jk_explain. "
+            + "Frozen / kill → jk_status then jk_job cancel. "
+            + "Run / test / lock → jk_run (wait defaults true). "
+            + "Add/remove deps → jk_deps. Git/path as workspace member → jk_workspace. "
+            + "java= → jk_manifest. Heap / nerd-font / CI → jk_config. "
+            + "Disk → jk_disk. Host health → jk_doctor. "
+            + "History is summaries only. Live progress: GET /mcp?requestId=N "
+            + "(Accept: text/event-stream).";
 
     public McpHandler(
             Supplier<StatusSnapshot> status,
@@ -141,8 +155,9 @@ public final class McpHandler {
                         case "ping" -> Map.of();
                         case "tools/list" -> toolsList();
                         case "tools/call" -> toolsCall(params);
-                        case "resources/list" -> Map.of("resources", List.of());
-                        case "prompts/list" -> Map.of("prompts", List.of());
+                        case "resources/list" -> resourcesList();
+                        case "resources/read" -> resourcesRead(params);
+                        case "prompts/list" -> promptsList();
                         default -> throw new McpError(-32601, "method not found: " + method);
                     };
             if (result == null) return null; // notification ack
@@ -172,15 +187,7 @@ public final class McpHandler {
         result.put("protocolVersion", PROTOCOL_VERSION);
         result.put("capabilities", caps);
         result.put("serverInfo", serverInfo);
-        result.put(
-                "instructions",
-                "JumpKick engine MCP. Prefer tools for multi-turn agent work. Live build progress: "
-                        + "GET /mcp with Accept: text/event-stream (notifications/jk/event); "
-                        + "each event params object carries aggregate progress (0–100 or null) plus "
-                        + "task/module/error fields aligned with CLI JSONL. "
-                        + "filter with ?requestId=N or ?progressToken=T (pass _meta.progressToken on "
-                        + "tools/call). Or GET /api/events (dashboard SSE). One-shot CLI: jk … "
-                        + "--output json. See docs/machine-output.md.");
+        result.put("instructions", INSTRUCTIONS);
         return result;
     }
 
@@ -335,6 +342,91 @@ public final class McpHandler {
                         Map.of("type", "integer"),
                         "timeout_s",
                         Map.of("type", "integer")))));
+        tools.add(tool(
+                "jk_why",
+                "Why a dependency is on the graph. query is group, artifact, or substring.",
+                objectSchema(
+                        Map.of(
+                                "query",
+                                Map.of("type", "string", "description", "group, artifact, or substring"),
+                                "dir",
+                                Map.of("type", "string")),
+                        List.of("query"))));
+        tools.add(tool(
+                "jk_explain",
+                "Forecast the next build: dirty modules and cache hits (jk explain).",
+                objectSchema(Map.of("dir", Map.of("type", "string")))));
+        tools.add(tool(
+                "jk_outdated",
+                "Declared deps newer than the lock (current / compatible / latest). Read-only.",
+                objectSchema(Map.of("dir", Map.of("type", "string")))));
+        tools.add(tool(
+                "jk_deps",
+                "Preview/apply surgical dependency edits (g:n:v). apply=false by default.",
+                objectSchema(Map.of(
+                        "action",
+                        Map.of("type", "string", "description", "add | remove"),
+                        "coords",
+                        Map.of("type", "array", "items", Map.of("type", "string")),
+                        "scope",
+                        Map.of("type", "string", "description", "main|test|runtime|provided|processor"),
+                        "apply",
+                        Map.of("type", "boolean"),
+                        "dir",
+                        Map.of("type", "string")))));
+        tools.add(tool(
+                "jk_workspace",
+                "Preview/apply workspace member add/remove. Distinct from jk_deps git.",
+                objectSchema(Map.of(
+                        "action",
+                        Map.of("type", "string", "description", "add_member | remove_member"),
+                        "path",
+                        Map.of("type", "string"),
+                        "apply",
+                        Map.of("type", "boolean"),
+                        "dir",
+                        Map.of("type", "string")))));
+        tools.add(tool(
+                "jk_manifest",
+                "Set whitelisted jk.toml keys. java=N is language level, not jdk=N.",
+                objectSchema(Map.of(
+                        "java",
+                        Map.of("type", "integer"),
+                        "apply",
+                        Map.of("type", "boolean"),
+                        "dir",
+                        Map.of("type", "string")))));
+        tools.add(tool(
+                "jk_config",
+                "get / set machine config, or apply_preset=ci.",
+                objectSchema(Map.of(
+                        "action",
+                        Map.of("type", "string", "description", "get | set | apply_preset"),
+                        "key",
+                        Map.of("type", "string", "description", "nerd-font | engine.max-heap-mb"),
+                        "value",
+                        Map.of("type", "string"),
+                        "preset",
+                        Map.of("type", "string", "description", "ci")))));
+        tools.add(tool(
+                "jk_disk",
+                "Cache vs store disk usage. clean/nuke require confirm=true (nuke cache only).",
+                objectSchema(Map.of(
+                        "action",
+                        Map.of("type", "string", "description", "usage | clean | nuke"),
+                        "confirm",
+                        Map.of("type", "boolean")))));
+        tools.add(tool(
+                "jk_jdk",
+                "List installed JDKs. install/update/uninstall still use jk jdk (JK-2022).",
+                objectSchema(Map.of(
+                        "action",
+                        Map.of("type", "string", "description", "list (default)"),
+                        "spec",
+                        Map.of("type", "string"),
+                        "confirm",
+                        Map.of("type", "boolean")))));
+        tools.add(tool("jk_doctor", "Host health snapshot (config + disk).", objectSchema(Map.of())));
         return Map.of("tools", tools);
     }
 
@@ -360,6 +452,16 @@ public final class McpHandler {
             case "jk_diagnostics" -> diagnosticsResult(args);
             case "jk_run" -> runResult(args, progressToken);
             case "jk_job" -> jobResult(args);
+            case "jk_why" -> whyResult(args);
+            case "jk_explain" -> explainResult(args);
+            case "jk_outdated" -> outdatedResult(args);
+            case "jk_deps" -> depsResult(args);
+            case "jk_workspace" -> workspaceResult(args);
+            case "jk_manifest" -> manifestResult(args);
+            case "jk_config" -> configResult(args);
+            case "jk_disk" -> diskResult(args);
+            case "jk_jdk" -> jdkResult(args);
+            case "jk_doctor" -> ok(McpEnvelope.of("doctor", McpMachine.doctor()), "doctor");
             default -> throw new McpError(-32602, "unknown tool: " + name);
         };
     }
@@ -732,6 +834,171 @@ public final class McpHandler {
             found = r.requestId();
         }
         return found;
+    }
+
+    private Map<String, Object> whyResult(Map<String, Object> args) {
+        String query = string(args.get("query"));
+        if (query == null || query.isBlank()) throw new McpError(-32602, "jk_why requires arguments.query");
+        String dir = resolveDir(args, true);
+        Map<String, Object> data = McpReads.why(dir, query);
+        String summary = data.containsKey("error") ? String.valueOf(data.get("error")) : "why " + query;
+        return ok(McpEnvelope.of("why", data), summary);
+    }
+
+    private Map<String, Object> explainResult(Map<String, Object> args) {
+        String dir = resolveDir(args, true);
+        Map<String, Object> data = McpReads.explain(dir);
+        Object dirty = data.getOrDefault("dirtyCount", data.get("error"));
+        return ok(McpEnvelope.of("explain", data), "explain dirty=" + dirty);
+    }
+
+    private Map<String, Object> outdatedResult(Map<String, Object> args) {
+        String dir = resolveDir(args, true);
+        Map<String, Object> data = McpReads.outdated(dir);
+        Object n = data.get("rows") instanceof List<?> l ? l.size() : data.get("error");
+        return ok(McpEnvelope.of("outdated", data), "outdated " + n);
+    }
+
+    private Map<String, Object> depsResult(Map<String, Object> args) {
+        String dir = resolveDir(args, true);
+        String action = string(args.get("action"));
+        if (action == null) action = "add";
+        List<String> coords = stringList(args.get("coords"));
+        boolean apply = Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("apply")));
+        Map<String, Object> data = McpManifest.deps(dir, action, coords, string(args.get("scope")), apply);
+        return ok(McpEnvelope.of("deps", data), apply ? "deps applied" : "deps preview");
+    }
+
+    private Map<String, Object> workspaceResult(Map<String, Object> args) {
+        String dir = resolveDir(args, true);
+        String action = string(args.get("action"));
+        if (action == null) action = "add_member";
+        String path = string(args.get("path"));
+        if (path == null || path.isBlank()) throw new McpError(-32602, "jk_workspace requires path");
+        boolean apply = Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("apply")));
+        Map<String, Object> data = McpManifest.workspace(dir, action, path, apply);
+        return ok(McpEnvelope.of("workspace", data), apply ? "workspace applied" : "workspace preview");
+    }
+
+    private Map<String, Object> manifestResult(Map<String, Object> args) {
+        String dir = resolveDir(args, true);
+        Object javaRaw = args.get("java");
+        if (!(javaRaw instanceof Number n)) throw new McpError(-32602, "jk_manifest requires java");
+        boolean apply = Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("apply")));
+        Map<String, Object> data = McpManifest.setJava(dir, n.intValue(), apply);
+        return ok(McpEnvelope.of("manifest", data), "java=" + n.intValue());
+    }
+
+    private Map<String, Object> configResult(Map<String, Object> args) {
+        String action = string(args.get("action"));
+        if (action == null || action.isBlank()) action = "get";
+        if ("apply_preset".equals(action) || "ci".equalsIgnoreCase(string(args.get("preset")))) {
+            return ok(McpEnvelope.of("config", McpMachine.applyCiPreset()), "ci preset");
+        }
+        if ("set".equals(action)) {
+            String key = string(args.get("key"));
+            String value = string(args.get("value"));
+            if (key == null) throw new McpError(-32602, "jk_config set requires key");
+            return ok(McpEnvelope.of("config", McpMachine.configSet(key, value)), "set " + key);
+        }
+        return ok(McpEnvelope.of("config", McpMachine.configGet()), "config");
+    }
+
+    private Map<String, Object> jdkResult(Map<String, Object> args) {
+        String action = string(args.get("action"));
+        if (action == null || action.isBlank() || "list".equals(action)) {
+            return ok(McpEnvelope.of("jdk", McpMachine.jdkList()), "jdk list");
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("error", "install/uninstall not executed from MCP yet — use jk jdk " + action);
+        return ok(McpEnvelope.of("jdk", m), "not implemented");
+    }
+
+    private Map<String, Object> diskResult(Map<String, Object> args) {
+        String action = string(args.get("action"));
+        if (action == null || action.isBlank() || "usage".equals(action)) {
+            return ok(McpEnvelope.of("disk", McpMachine.diskUsage()), "disk usage");
+        }
+        boolean confirm = Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("confirm")));
+        if (!confirm) {
+            Map<String, Object> preview = McpMachine.diskUsage();
+            preview.put("note", "pass confirm=true to " + action + " (cache tier only for nuke)");
+            return ok(McpEnvelope.of("disk", preview), "confirm required");
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("error", "clean/nuke not executed from MCP yet — use jk cache clean / jk cache nuke");
+        return ok(McpEnvelope.of("disk", m), "not implemented");
+    }
+
+    private static List<String> stringList(Object raw) {
+        if (!(raw instanceof List<?> list)) return List.of();
+        List<String> out = new ArrayList<>();
+        for (Object o : list) if (o != null) out.add(String.valueOf(o));
+        return out;
+    }
+
+    private static Map<String, Object> resourcesList() {
+        List<Map<String, Object>> rs = new ArrayList<>();
+        rs.add(resource("jk://session", "Bound dir + engine status"));
+        rs.add(resource("jk://project", "Project card"));
+        rs.add(resource("jk://runs/latest", "Latest history summary"));
+        rs.add(resource("jk://disk", "Cache and store usage"));
+        rs.add(resource("jk://config", "Effective machine config"));
+        return Map.of("resources", rs);
+    }
+
+    private Map<String, Object> resourcesRead(Map<String, Object> params) {
+        String uri = string(params.get("uri"));
+        if (uri == null) throw new McpError(-32602, "resources/read requires uri");
+        Map<String, Object> payload =
+                switch (uri) {
+                    case "jk://session" -> statusPayload();
+                    case "jk://project" -> {
+                        String dir = session.dir();
+                        if (dir == null) yield Map.of("error", "jk_bind first");
+                        yield McpProjectCards.card(dir, historyRaw.get());
+                    }
+                    case "jk://runs/latest" -> {
+                        List<String> raw = historyRaw.get();
+                        yield raw.isEmpty()
+                                ? Map.of("records", List.of())
+                                : Map.of("record", McpHistoryViews.summarize(parseRecord(raw.getFirst())));
+                    }
+                    case "jk://disk" -> McpMachine.diskUsage();
+                    case "jk://config" -> McpMachine.configGet();
+                    default -> throw new McpError(-32602, "unknown resource: " + uri);
+                };
+        Map<String, Object> text = new LinkedHashMap<>();
+        text.put("uri", uri);
+        text.put("mimeType", "application/json");
+        text.put("text", MiniJson.write(payload));
+        return Map.of("contents", List.of(text));
+    }
+
+    private static Map<String, Object> promptsList() {
+        List<Map<String, Object>> ps = new ArrayList<>();
+        ps.add(prompt("fix-failing-build", "jk_diagnostics then edit then jk_run kind=build wait=true"));
+        ps.add(prompt("recover-disk", "jk_disk usage then clean or nuke with confirm"));
+        ps.add(prompt("setup-ci", "jk_config apply_preset=ci"));
+        ps.add(prompt("upgrade-deps", "jk_outdated then jk_run kind=lock"));
+        ps.add(prompt("stall-or-cancel", "jk_status then jk_job cancel"));
+        return Map.of("prompts", ps);
+    }
+
+    private static Map<String, Object> resource(String uri, String description) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("uri", uri);
+        m.put("name", uri);
+        m.put("description", description);
+        m.put("mimeType", "application/json");
+        return m;
+    }
+
+    private static Map<String, Object> prompt(String name, String description) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("name", name);
+        m.put("description", description);
+        return m;
     }
 
     private static Long numberArg(Object raw) {

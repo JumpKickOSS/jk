@@ -166,8 +166,11 @@ Same HTTP server and lifecycle as the web UI:
 MCP can be disabled machine-wide with `[mcp] enabled = false` in `~/.config/jk/config.toml`
 (404s `/mcp`; web dashboard unaffected — `mcpUrl` reports `null`).
 
-**Tools:** `jk_status`, `jk_build`, `jk_test` (true test-only plans — no package), `jk_lock`
-(async → `requestId`), `jk_cancel`, `jk_project`, `jk_history`.
+**Tools (agent catalog):** `jk_bind`, `jk_status`, `jk_project`, `jk_history` (summaries),
+`jk_diagnostics`, `jk_run` / `jk_job` (aliases: `jk_build`, `jk_test`, `jk_lock`, `jk_cancel`),
+`jk_why`, `jk_explain`, `jk_outdated`, `jk_deps`, `jk_workspace`, `jk_manifest`, `jk_config`,
+`jk_disk`, `jk_doctor`. Results use `structuredContent` plus a short `content` text summary.
+Do not dump full journal records — start with `jk_diagnostics` for failures.
 
 **Live progress (MCP SSE):** `GET {httpUrl}/mcp` with `Accept: text/event-stream` and bearer
 token — Streamable-HTTP style. Each frame is `event: message` with JSON-RPC
@@ -199,23 +202,18 @@ curl -sSN -H "Authorization: Bearer $TOKEN" -H 'Accept: text/event-stream' \
 ## Agent recipe (recommended)
 
 ```bash
-# Live, parseable, no TUI scrape:
+# Multi-turn agents: MCP on the engine (jk engine status → MCP URL + token)
+#   1. jk_bind {dir}
+#   2. failures → jk_diagnostics (not raw jk_history)
+#   3. rebuild → jk_run kind=build wait=true
+# Live progress: GET /mcp?requestId=N Accept: text/event-stream
+
+# One-shot CLI (no MCP):
 jk test --output json --modules 'shared/*' 2>/dev/null
 # or: JK_OUTPUT=jsonl jk build
 
-# Multi-turn agents: MCP on the engine (jk engine status → MCP URL + token)
-# Live build progress: GET /mcp?requestId=N Accept: text/event-stream  (or GET /api/events)
-
-# Workspace build/test emit module-start / module-finish / workspace-* around step events.
-
-# Exit code still meaningful (0 ok, non-zero fail).
-# Parse stdout as JSONL; look for type=workspace-progress (whole-job %) or
-# type=buildplan-finish / error / task-finish (fine detail).
-
-# Offline / mid-run:
-#   target/.jk-cli/<latest>/details.jsonl   # tail -F during the run
-#   target/jk-chrome-profile.json
-#   <cache>/runs/*.jsonl   # EventLogListener copy of the stream
+# Offline / mid-run transcript:
+#   ~/.local/state/jk/builds/projects/<key>/runs/<id>/details.jsonl
 ```
 
 Do **not** set `TERM=dumb` and scrape wedges. Do **not** use verbose as the primary agent channel.
