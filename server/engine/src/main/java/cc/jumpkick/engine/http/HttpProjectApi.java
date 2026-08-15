@@ -558,6 +558,7 @@ final class HttpProjectApi {
         String path = cc.jumpkick.plugin.protocol.Jsonl.topStr(body, "path");
         String content = cc.jumpkick.plugin.protocol.Jsonl.topStr(body, "content");
         String etag = cc.jumpkick.plugin.protocol.Jsonl.topStr(body, "etag");
+        String encoding = cc.jumpkick.plugin.protocol.Jsonl.topStr(body, "encoding");
         if (projectId == null || projectId.isBlank()) {
             HttpEngineServer.sendJson(
                     exchange,
@@ -590,7 +591,7 @@ final class HttpProjectApi {
                             .toString());
             return;
         }
-        switch (WorkspaceFileAccess.write(root.get(), path, content, etag)) {
+        switch (WorkspaceFileAccess.write(root.get(), path, content, etag, encoding)) {
             case WorkspaceFileAccess.WriteResult.BadRequest bad ->
                 HttpEngineServer.sendJson(
                         exchange,

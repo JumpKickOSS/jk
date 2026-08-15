@@ -6,6 +6,7 @@ import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
@@ -393,15 +394,25 @@ final class WorkspaceFileAccess {
     }
 
     /**
-     * Replace a text-servable file's UTF-8 contents. Atomic temp+move in the same directory; does
-     * not create missing parents. Images and non-servable paths are not writable.
+     * Replace a text-servable file's contents. Atomic temp+move in the same directory; does not
+     * create missing parents. Images and non-servable paths are not writable.
      *
      * <p>When {@code expectedEtag} is non-blank, the current on-disk SHA-256 must match or the
      * write is rejected as {@link WriteResult.Conflict} (last-write-wins is opt-in by omitting
      * etag).
+     *
+     * <p>{@code encoding} is the charset the client read the file under ({@link ReadResult.Ok}'s
+     * {@code encoding} field, JK-1954): null/blank/{@code utf-8} writes UTF-8; {@code iso-8859-1}
+     * re-encodes to the original bytes so a save cannot silently transcode a Latin-1 file
+     * (JK-1972). Content that no longer fits the declared charset is rejected rather than
+     * transcoded.
      */
     static WriteResult write(
-            Path root, @Nullable String rawRel, @Nullable String content, @Nullable String expectedEtag) {
+            Path root,
+            @Nullable String rawRel,
+            @Nullable String content,
+            @Nullable String expectedEtag,
+            @Nullable String encoding) {
         if (rawRel == null || rawRel.isBlank()) return new WriteResult.BadRequest("missing \"path\"");
         if (content == null) return new WriteResult.BadRequest("missing \"content\"");
         String rel = normalizeRel(rawRel);
@@ -449,7 +460,29 @@ final class WorkspaceFileAccess {
                 return new WriteResult.Conflict(disk);
             }
         }
-        byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+        String charset = (encoding == null || encoding.isBlank())
+                ? "utf-8"
+                : encoding.trim().toLowerCase(Locale.ROOT);
+        byte[] bytes;
+        switch (charset) {
+            case "utf-8" -> bytes = content.getBytes(StandardCharsets.UTF_8);
+            case "iso-8859-1" -> {
+                try {
+                    ByteBuffer encoded = StandardCharsets.ISO_8859_1
+                            .newEncoder()
+                            .onMalformedInput(CodingErrorAction.REPORT)
+                            .onUnmappableCharacter(CodingErrorAction.REPORT)
+                            .encode(CharBuffer.wrap(content));
+                    bytes = new byte[encoded.remaining()];
+                    encoded.get(bytes);
+                } catch (CharacterCodingException e) {
+                    return new WriteResult.BadRequest("content contains characters not representable in iso-8859-1");
+                }
+            }
+            default -> {
+                return new WriteResult.BadRequest("unsupported encoding: " + charset);
+            }
+        }
         if (bytes.length > MAX_FILE_BYTES) {
             return new WriteResult.TooLarge(bytes.length, MAX_FILE_BYTES);
         }
@@ -480,9 +513,15 @@ final class WorkspaceFileAccess {
                 new WrittenBody(absRoot, rel, lang, bytes.length, countLines(content), etagOf(bytes)));
     }
 
-    /** Convenience overload — no concurrency token (last-write-wins). */
+    /** Convenience overload — UTF-8, no concurrency token (last-write-wins). */
     static WriteResult write(Path root, @Nullable String rawRel, @Nullable String content) {
-        return write(root, rawRel, content, null);
+        return write(root, rawRel, content, null, null);
+    }
+
+    /** Convenience overload — UTF-8. */
+    static WriteResult write(
+            Path root, @Nullable String rawRel, @Nullable String content, @Nullable String expectedEtag) {
+        return write(root, rawRel, content, expectedEtag, null);
     }
 
     /** Split on {@code \n}; drop the last empty segment from a trailing newline. */

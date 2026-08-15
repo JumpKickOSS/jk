@@ -266,6 +266,42 @@ class WorkspaceFileAccessTest {
     }
 
     @Test
+    void latin1_read_write_round_trip_preserves_bytes(@TempDir Path root) throws Exception {
+        // JK-1972: a save under the encoding the file was read with must re-encode to the
+        // original bytes, never silently transcode the file to UTF-8.
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        byte[] latin1 = "class Café { /* naïve — déjà vu */ }".getBytes(StandardCharsets.ISO_8859_1);
+        Files.write(root.resolve("src/Latin.java"), latin1);
+        var body = ((ReadResult.Ok) WorkspaceFileAccess.read(root, "src/Latin.java")).body();
+        assertThat(body.encoding()).isEqualTo("iso-8859-1");
+        var saved = WorkspaceFileAccess.write(root, "src/Latin.java", body.content(), body.etag(), body.encoding());
+        assertThat(saved).isInstanceOf(WorkspaceFileAccess.WriteResult.Ok.class);
+        assertThat(Files.readAllBytes(root.resolve("src/Latin.java"))).isEqualTo(latin1);
+        // Unchanged content ⇒ unchanged etag: the round trip is byte-exact, not just lossless.
+        assertThat(((WorkspaceFileAccess.WriteResult.Ok) saved).body().etag()).isEqualTo(body.etag());
+    }
+
+    @Test
+    void latin1_write_rejects_unrepresentable_and_unknown_encodings(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        Files.write(root.resolve("src/Latin.java"), "x".getBytes(StandardCharsets.ISO_8859_1));
+        var snowman = WorkspaceFileAccess.write(root, "src/Latin.java", "class ☃ {}", null, "iso-8859-1");
+        assertThat(snowman).isInstanceOf(WorkspaceFileAccess.WriteResult.BadRequest.class);
+        assertThat(((WorkspaceFileAccess.WriteResult.BadRequest) snowman).error())
+                .contains("iso-8859-1");
+        var unknown = WorkspaceFileAccess.write(root, "src/Latin.java", "x", null, "utf-16");
+        assertThat(unknown).isInstanceOf(WorkspaceFileAccess.WriteResult.BadRequest.class);
+        assertThat(((WorkspaceFileAccess.WriteResult.BadRequest) unknown).error())
+                .contains("unsupported encoding");
+        // Blank/utf-8 spellings keep the default path.
+        assertThat(WorkspaceFileAccess.write(root, "src/Latin.java", "y", null, "UTF-8"))
+                .isInstanceOf(WorkspaceFileAccess.WriteResult.Ok.class);
+        assertThat(Files.readString(root.resolve("src/Latin.java"))).isEqualTo("y");
+    }
+
+    @Test
     void nul_probe_marks_binary(@TempDir Path root) throws Exception {
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("src"));

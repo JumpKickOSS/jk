@@ -1406,6 +1406,11 @@ export const CodeView = {
           content,
         };
         if (this._etag) body.etag = this._etag;
+        // Echo the charset the file was decoded under so the engine re-encodes to the
+        // original bytes instead of silently transcoding a Latin-1 file to UTF-8 (JK-1972).
+        if (this.file && this.file.encoding && this.file.encoding !== 'utf-8') {
+          body.encoding = this.file.encoding;
+        }
         const resp = await put('/api/project/file', body);
         const nextEtag = (resp && resp.etag) || null;
         if (this.file) this.file = { ...this.file, content, etag: nextEtag };
@@ -1612,8 +1617,8 @@ export const CodeView = {
                 </div>
               </pre>
             </template>
-            <p v-if="file && !previewOpen && file.encoding && file.encoding !== 'utf-8' && file.encoding !== 'binary'" class="warn">
-              Not valid UTF-8 — decoded as {{ file.encoding }}</p>
+            <p v-if="file && file.encoding && file.encoding !== 'utf-8' && file.encoding !== 'binary'" class="warn">
+              Not valid UTF-8 — decoded as {{ file.encoding }}; saves keep this encoding</p>
           </div>
           <div v-show="previewVisible" class="code-preview">
             <p v-if="previewLoading && !previewHtml && !previewImageUrl" class="empty">Rendering preview…</p>
