@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 /**
  * Repository paths must name files Maven actually publishes. A packaging type is not an
  * extension: {@code test-jar} publishes as {@code -tests.jar}, so asking for {@code .test-jar}
- * 404s and the dependency silently drops off the classpath (JK-1601).
+ * 404s and the dependency silently drops off the classpath.
  */
 class MavenLayoutTest {
 

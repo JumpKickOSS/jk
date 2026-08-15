@@ -26,7 +26,7 @@ class DynamicSurfaceIoTest {
     @Test
     void older_and_newer_format_versions_still_read() {
         // v1: untagged members (unknown kind) — must keep reading. Newer-than-current versions
-        // read leniently too: unknown kinds are skipped, the rest is preserved (JK-1802).
+        // read leniently too: unknown kinds are skipped, the rest is preserved.
         String v1 = """
                 {"version": 1, "entries": [
                   {"kind":"REFLECTIVE_MEMBER","name":"com.example.A","origin":"t","members":["run"]}

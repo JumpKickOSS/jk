@@ -78,7 +78,7 @@ public final class RemainingWork {
             // Costs empty/zero but R0 > 0 (history-only seed): synthesize unit weights so
             // remaining() actually reports R0 and drains as modules complete. The old path kept
             // the zero-weight costs, remaining() filtered them all, and the clock bar pegged to
-            // 99% from the first tick while the countdown still showed R0 (JK-1814). With no
+            // 99% from the first tick while the countdown still showed R0. With no
             // module list at all, one synthetic blob holds R0 until the build finishes.
             List<ModuleWorkCost> synth = new ArrayList<>();
             for (ModuleWorkCost c : costs) {

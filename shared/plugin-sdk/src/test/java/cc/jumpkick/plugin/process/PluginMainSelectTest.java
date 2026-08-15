@@ -11,7 +11,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** JK-1413: two plugins on one worker classpath must be selectable by protocol prefix. */
+/** Two plugins on one worker classpath must be selectable by protocol prefix. */
 class PluginMainSelectTest {
 
     private record Fake(PluginManifest manifest) implements Plugin {

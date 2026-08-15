@@ -88,7 +88,7 @@ public final class VersionStore {
 
     /**
      * Drop AOT artifacts that do not belong to the live product version when a generation becomes
-     * primary (JK-1452). Names are {@code engine-<ver>-<key>.aot} and
+     * primary. Names are {@code engine-<ver>-<key>.aot} and
      * {@code <tool>-<ver>-<key>.aot}; anything without {@code -<keepVersion>-} before a 16-hex key
      * is deleted (including legacy unversioned worker names). The live version's caches are kept
      * so a respawn does not throw away a just-trained engine/worker AOT.

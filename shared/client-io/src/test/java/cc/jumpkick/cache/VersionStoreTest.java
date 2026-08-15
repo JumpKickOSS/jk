@@ -149,7 +149,7 @@ class VersionStoreTest {
         org.assertj.core.api.Assertions.assertThat(workerCache).exists();
     }
 
-    /** JK-1452: wipe drops other versions + legacy unversioned names; keeps live version. */
+    /** Wipe drops other versions + legacy unversioned names; keeps live version. */
     @Test
     void wipe_aot_directory_keeps_live_version_only(@TempDir Path home) throws Exception {
         Path aot = Files.createDirectories(home.resolve("aot"));

@@ -22,7 +22,7 @@ import java.util.Set;
  * <p>Only files with {@code nlink > 1} enter the seen-set at all (a single-link file cannot be
  * met twice), and the set itself is a primitive open-addressed long set — the previous
  * one-boxed-{@code fileKey}-per-file {@code HashSet} allocated tens of MB per cache-vitals walk
- * on a large store, every 60&nbsp;s while a dashboard tab was open (JK-1942). Platforms without
+ * on a large store, every 60&nbsp;s while a dashboard tab was open. Platforms without
  * the {@code unix:} attribute view (Windows) fall back to the old per-{@code fileKey} object set.
  */
 public final class DiskUsage {

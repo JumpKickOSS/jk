@@ -48,7 +48,7 @@ class JdkProgressLabelTest {
 
     @Test
     void percent_floors_so_100_means_complete() {
-        // JK-1951: 199/200 = 99.5 must display 99 — "100%" only when the last byte arrived.
+        // 199/200 = 99.5 must display 99 — "100%" only when the last byte arrived.
         assertThat(JdkProgressLabel.percent(199, 200)).isEqualTo(99);
         assertThat(JdkProgressLabel.percent(200, 200)).isEqualTo(100);
         assertThat(JdkProgressLabel.percent(1, 200)).isEqualTo(0);

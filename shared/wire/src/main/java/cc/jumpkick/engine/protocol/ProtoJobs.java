@@ -141,7 +141,7 @@ public final class ProtoJobs {
 
     /**
      * The client's {@code JK_PROGRESS_MODE} rides each request so the resident engine paints the
-     * requesting shell's mode, not whatever env the daemon happened to start with (JK-1816).
+     * requesting shell's mode, not whatever env the daemon happened to start with.
      * Emitted only when non-AUTO so older engines see an unchanged request.
      */
     static String progressModeJsonSuffix() {

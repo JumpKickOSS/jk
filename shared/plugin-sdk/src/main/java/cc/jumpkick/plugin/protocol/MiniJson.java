@@ -294,7 +294,7 @@ public final class MiniJson {
                     sb.append('\t');
                     break;
                 case 'u':
-                    // Explicit hex + bounds check (JK-1961 in Jsonl.appendEscape, same trap):
+                    // Explicit hex + bounds check (in Jsonl.appendEscape, same trap):
                     // Integer.parseInt accepts a leading sign, so a four-char run like "+123"
                     // would silently decode to U+0123, and a truncated escape at end of input
                     // threw StringIndexOutOfBoundsException. Jsonl keeps a malformed escape
