@@ -47,7 +47,7 @@ public final class BuildService {
     /**
      * As {@link #ensureWorkspaceLockFresh(Path, JkBuild, Path)} with the staleness answer already
      * computed — callers that just priced the re-lock for the ETA pass it in instead of
-     * re-hashing every manifest (JK-1359).
+     * re-hashing every manifest.
      */
     public static LockGuard ensureWorkspaceLockFresh(Path root, Path cache, boolean stale) {
         return WorkspaceLock.ensureWorkspaceLockFresh(root, cache, stale);
@@ -189,10 +189,8 @@ public final class BuildService {
     }
 
     /**
-     * ETA seed plus the cost assembly it was computed from — the single assembly both the estimate
-     * and the {@link WorkModel} consume (JK-1817: the model wiring used to re-run
-     * {@code etaCostsFromExplainPlan} unguarded, so an exception the estimate swallowed could fail
-     * the whole build over an estimate, and {@code --force} paid the per-module walk twice).
+     * ETA seed plus the cost assembly it was computed from — the single assembly both the
+     * estimate and the {@link WorkModel} consume.
      */
     public record EtaModel(long etaMs, List<EffortWeights.ModuleCost> costs, int concurrency, boolean serial) {
         static EtaModel empty() {
@@ -254,7 +252,7 @@ public final class BuildService {
 
     /**
      * Restrict an explain plan to the client's module selection so the ETA seed prices exactly
-     * the scheduled set (JK-1584). Edges are intersected with the selection; a hinted module
+     * the scheduled set. Edges are intersected with the selection; a hinted module
      * keeps its per-step cache verdicts, so a forecast-clean selected module contributes only
      * its cache-check cost — matching what scheduling will actually do.
      */

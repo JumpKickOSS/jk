@@ -95,7 +95,7 @@ class ModuleSelectionTest {
 
     @Test
     void path_selectors_resolve_without_parsing_member_manifests(@TempDir Path root) throws Exception {
-        // JK-1367: plain path/glob selectors take the cheap pass — a malformed member manifest
+        // plain path/glob selectors take the cheap pass — a malformed member manifest
         // must not matter (and N manifests are not parsed per resolve).
         writeWorkspace(root, List.of("api", "worker"));
         Files.writeString(root.resolve("api/jk.toml"), "this is [ not toml");
@@ -112,7 +112,7 @@ class ModuleSelectionTest {
 
     @Test
     void ambiguous_literal_fails_instead_of_fanning_out(@TempDir Path root) throws Exception {
-        // JK-1366: `cli` naming both clients/cli and tools/cli is a collision, not a two-module
+        // `cli` naming both clients/cli and tools/cli is a collision, not a two-module
         // build — only globs/braces fan out.
         writeWorkspace(root, List.of("clients/cli", "tools/cli"));
         JkBuild build = JkBuildParser.parse(root.resolve("jk.toml"));
@@ -133,7 +133,7 @@ class ModuleSelectionTest {
 
     @Test
     void unknown_selector_labels_are_deterministic(@TempDir Path root) throws Exception {
-        // JK-1367: the "known:" labels pick the first non-path alias in insertion order (the
+        // the "known:" labels pick the first non-path alias in insertion order (the
         // project name) — never a randomly iterated set member.
         writeWorkspaceNamed(root, List.of(new Mod("server/engine", "jk-engine")));
         JkBuild build = JkBuildParser.parse(root.resolve("jk.toml"));

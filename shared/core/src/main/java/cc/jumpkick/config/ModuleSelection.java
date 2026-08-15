@@ -50,7 +50,7 @@ public final class ModuleSelection {
     /**
      * One workspace (or single-project) unit: the relative path used to resolve the directory, plus
      * every alias {@code --modules} may use to select it. Alias order is insertion order (path,
-     * bare segment, project name, stripped name) so error labels are deterministic (JK-1367).
+     * bare segment, project name, stripped name) so error labels are deterministic.
      */
     record Candidate(String relPath, Set<String> aliases) {
         Candidate {
@@ -89,7 +89,7 @@ public final class ModuleSelection {
         Path root = entryDir.toAbsolutePath().normalize();
         boolean workspace = entryBuild.isWorkspaceRoot();
         // Path aliases first — parsing every member's jk.toml for name aliases is deferred until a
-        // token actually needs them, so plain path/glob selectors never pay N parses (JK-1367).
+        // token actually needs them, so plain path/glob selectors never pay N parses.
         List<Candidate> candidates = candidates(root, entryBuild, false);
         boolean namesLoaded = !workspace; // single-project aliases come from the parsed entry build
         List<String> tokens = expandSpec(modulesSpec);
@@ -114,7 +114,7 @@ public final class ModuleSelection {
                 return Result.fail("no module matched `" + token + "` (known: " + knownLabels(candidates) + ")");
             }
             // A literal token naming several modules is a collision (e.g. clients/cli vs
-            // tools/cli both answering to `cli`) — fan-out is for globs/braces only (JK-1366).
+            // tools/cli both answering to `cli`) — fan-out is for globs/braces only.
             if (!isGlob(t) && hits.size() > 1) {
                 return Result.fail("`" + token + "` is ambiguous — matches " + String.join(", ", hits)
                         + " (use the full path, a glob, or a brace list)");

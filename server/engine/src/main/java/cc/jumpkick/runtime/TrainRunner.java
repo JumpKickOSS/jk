@@ -199,7 +199,7 @@ public final class TrainRunner {
         sb.append("agent=native-image-agent\n");
         // The AOT cache is valid only for the exact JVM build that trained it, and a rejected
         // cache is silent at runtime — a JDK switch must therefore invalidate the outputs
-        // (JK-1763). The release file carries vendor+build identity.
+        // . The release file carries vendor+build identity.
         sb.append("jvm=").append(jvmIdentityToken(javaHome)).append('\n');
         if (Files.isRegularFile(lockFile)) {
             sb.append("lock=").append(Hashing.sha256Hex(lockFile)).append('\n');
@@ -281,7 +281,7 @@ public final class TrainRunner {
     /**
      * How to launch the app for observation. A thin jar has no {@code Class-Path} manifest, so
      * {@code java -jar} dies on the first dependency class and the agent records nothing — the
-     * user then gets pointed at their suite instead of the classpath (JK-1780). Order: a fat
+     * user then gets pointed at their suite instead of the classpath. Order: a fat
      * assembly jar if the build produced one; {@code -jar} for a self-contained main artifact
      * (Boot's launcher layout, or any jar carrying {@code Class-Path}); otherwise the lock's
      * runtime closure as an explicit {@code -cp}.
@@ -362,7 +362,7 @@ public final class TrainRunner {
                 new ProcessBuilder(create).redirectErrorStream(true).directory(moduleDir.toFile());
         Process p = pb2.start();
         // Drain the pipe: a chatty assembler fills the 64K buffer, stalls, gets force-killed at
-        // the timeout, and is then misreported as "did not produce a cache" (JK-1761).
+        // the timeout, and is then misreported as "did not produce a cache".
         StringBuilder createOut = new StringBuilder();
         Thread drain = Thread.ofVirtual().start(() -> {
             try (var in = p.inputReader()) {

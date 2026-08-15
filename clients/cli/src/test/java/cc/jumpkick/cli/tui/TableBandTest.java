@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1877: an emphasized (banded) row must paint its band background across the whole interior —
+ * an emphasized (banded) row must paint its band background across the whole interior —
  * including the alignment fill of cells shorter than their column. Padding with bare spaces shows
  * terminal-background stripes inside the band (`jk jdk list` active row).
  */
@@ -38,7 +38,7 @@ class TableBandTest {
 
     @Test
     void centered_column_centers_its_header_too() {
-        // JK-1888: headers sit over their data; a CENTER column's header must not stick left.
+        // headers sit over their data; a CENTER column's header must not stick left.
         Table t = new Table("T").columns(new Table.Column("V", Table.Align.CENTER), new Table.Column("Name"));
         t.row(Table.Row.data(RichText.plain("2525"), RichText.plain("temurin-wide-cell")));
         List<String> out = t.render(new RenderContext(Theme.active(), false, NerdFontCaps.NONE, 80, 0));
@@ -49,7 +49,7 @@ class TableBandTest {
 
     @Test
     void plain_context_headers_carry_no_sgr_even_under_an_ansi_global_theme() {
-        // JK-1889: headerCell must follow the render context like every other paint decision.
+        // headerCell must follow the render context like every other paint decision.
         Table t = new Table("T").columns("Name");
         t.row(Table.Row.data(RichText.plain("alpha")));
         List<String> out = t.render(new RenderContext(Theme.active(), false, NerdFontCaps.NONE, 80, 0));

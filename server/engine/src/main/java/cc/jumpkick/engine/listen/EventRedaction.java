@@ -35,7 +35,7 @@ public final class EventRedaction {
 
     /**
      * Redaction never breaks a build — but a silently-disabled security control must still be
-     * discoverable (JK-1965). One warning per engine run, on stderr (merged into the engine log
+     * discoverable. One warning per engine run, on stderr (merged into the engine log
      * by the spawn line).
      */
     private static final AtomicBoolean WARNED_FAIL_OPEN = new AtomicBoolean();
@@ -57,7 +57,7 @@ public final class EventRedaction {
     /**
      * The redactor for work rooted at {@code dir} (session working dir when blank). Building one
      * re-derives the env lookup — a workspace-root walk plus {@code .env} parsing — so per-line
-     * callers must hoist the result instead of calling {@link #redactEnv} per line (JK-1942).
+     * callers must hoist the result instead of calling {@link #redactEnv} per line.
      * Never null; throws only what {@link #redactEnv} already swallows.
      */
     public static cc.jumpkick.config.SecretRedactor redactorFor(@Nullable String dir) {
@@ -114,7 +114,7 @@ public final class EventRedaction {
 
     /**
      * Capture-time truncation can cut a secret mid-value, leaving a prefix the exact-substring
-     * pass cannot match (JK-1960). When {@code text} carries the capture marker, mask a dangling
+     * pass cannot match. When {@code text} carries the capture marker, mask a dangling
      * secret prefix at the cut point.
      */
     private static @Nullable String redactTruncationSeam(

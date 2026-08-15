@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Resolve a platform BOM {@link VersionSelector} to a concrete release version (JK-1544 / JK-1545).
+ * Resolve a platform BOM {@link VersionSelector} to a concrete release version.
  *
  * <p>Platform BOMs may use caret/tilde anchors (or exact pins) but not {@code latest}. The managed
  * catalog is loaded from the <em>resolved</em> BOM POM — so {@code version = "4"} must pick the
@@ -20,7 +20,7 @@ import java.util.Objects;
  * means "exact" or "caret floor" is the caller's convention, not this class's. {@code jk.toml}
  * dependencies are bare-is-caret ({@link VersionSelector#parseFloating}); {@code jk-plugin.toml}
  * tool coordinates are bare-is-exact ({@link VersionSelector#parse}) so a plugin author's literal
- * pin stays pinned (JK-1657).
+ * pin stays pinned.
  */
 public final class PlatformBomVersions {
 

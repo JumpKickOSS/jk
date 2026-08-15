@@ -150,7 +150,7 @@ class MavenPackageSourceExclusionTest {
     }
 
     /**
-     * JK-1704: two paths reach the same package, one under an exclusion and one not. Maven drops a
+     * two paths reach the same package, one under an exclusion and one not. Maven drops a
      * dependency only when EVERY path that reaches it excludes it, so leaf must survive on the
      * app → target edge. Ordering matters — app lists the excluding edge first, so a resolver that
      * accumulates exclusions per package sees the excluded view before the clean one.
@@ -452,7 +452,7 @@ class MavenPackageSourceExclusionTest {
     }
 
     /**
-     * JK-1787: one shared source serves the main → test → processor scope solves. A clean
+     * one shared source serves the main → test → processor scope solves. A clean
      * main-scope path collapses target's exclusion set to empty (intersection semantics); the
      * per-solve reset must keep that from bleeding into the test solve, where EVERY path
      * excludes leaf — otherwise the test graph over-includes it.
@@ -519,7 +519,7 @@ class MavenPackageSourceExclusionTest {
     }
 
     /**
-     * JK-1708: {@code <distributionManagement><relocation>} moves a coordinate. The stub carries no
+     * {@code <distributionManagement><relocation>} moves a coordinate. The stub carries no
      * classes and no dependencies, so anything that stops there resolves to nothing. Maven and
      * Gradle both render the stub with a single edge to its target; so does jk.
      */

@@ -27,7 +27,7 @@ class BuildLogicKtsHostTest {
         assertTrue(wrapped.contains("import java.nio.file.Files"));
         assertTrue(wrapped.contains("val projectDir: Path = Path.of("));
         assertTrue(wrapped.contains("val outDir: Path = Path.of("));
-        // No classesDir binding: outDir is the only surface the action cache replays (JK-1614).
+        // No classesDir binding: outDir is the only surface the action cache replays.
         assertFalse(wrapped.contains("classesDir"));
         assertTrue(wrapped.contains("Files.writeString(outDir.resolve(\"kts.txt\"), \"ok\")"));
         // Path import not duplicated
@@ -37,7 +37,7 @@ class BuildLogicKtsHostTest {
     /**
      * Kotlin's file order is @file: annotations, then imports, then declarations. The bindings are
      * declarations, so an import after a leading comment still has to be hoisted above them —
-     * this repo's own convention opens every file with an SPDX comment (JK-1605).
+     * this repo's own convention opens every file with an SPDX comment.
      */
     @Test
     void a_leading_comment_does_not_strand_the_imports_below_the_bindings(@TempDir Path dir) throws Exception {
@@ -58,7 +58,7 @@ class BuildLogicKtsHostTest {
     }
 
     /**
-     * A {@code /* ... *}{@code /} block comment is the same JK-1605 bug as a leading {@code //}
+     * A {@code /* ... *}{@code /} block comment is the same  bug as a leading {@code //}
      * line comment — a common license-header style, and it can span multiple lines.
      */
     @Test

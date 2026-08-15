@@ -76,7 +76,7 @@ class TableAppendTest {
 
     @Test
     void merge_carries_the_childs_own_sections_and_flags() {
-        // JK-1890: a.append(b) with matching columns must not silently drop b's appended
+        // a.append(b) with matching columns must not silently drop b's appended
         // section (or its warning/rowSeparators styling).
         Table child = new Table("").columns("A", "B").row("c1", "c2").warning(true);
         child.append(new Table("").columns("L").row("child-section-row"), Table.Append.SECTION);
@@ -92,7 +92,7 @@ class TableAppendTest {
     @Test
     void appending_a_wider_section_fails_loudly_not_with_aioobe_mid_render() {
         // A child with more columns than the parent cannot snap; snapSpans used to produce
-        // out-of-range span ends and the painter threw AIOOBE mid-render (JK-1886).
+        // out-of-range span ends and the painter threw AIOOBE mid-render.
         Table parent = new Table("T").columns("A", "B").row("a", "b");
         Table wider = new Table("").columns("W", "X", "Y", "Z").row("1", "2", "3", "4");
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> parent.append(wider, Table.Append.SECTION))
@@ -108,7 +108,7 @@ class TableAppendTest {
 
     @Test
     void section_child_span_rows_get_collapse_dividers_like_the_parent() {
-        // JK-1891: a full-span row inside a SECTION child needs the rail-collapse divider above
+        // a full-span row inside a SECTION child needs the rail-collapse divider above
         // it and a flat close beneath, exactly as the parent row loop renders spans.
         Table parent = new Table("T").columns("A", "B").row("a", "b");
         Table child = new Table("").columns("L", "V").row("l", "v");

@@ -131,7 +131,7 @@ public final class ImagePlans {
                             List<Path> releases = new ArrayList<>();
                             List<Path> snapshots = new ArrayList<>();
                             // Same lock as casJarNames (layout.moduleRoot()) — in a workspace
-                            // these can diverge, and jars then fall back to digest names (JK-1784).
+                            // these can diverge, and jars then fall back to digest names.
                             splitBootDependencyJars(layout.moduleRoot(), cache, releases, snapshots);
                             ctx.put(DEP_JARS, releases);
                             ctx.put(SNAPSHOT_JARS, snapshots);
@@ -371,7 +371,7 @@ public final class ImagePlans {
             if (classesDir != null) sw.layout(java.util.Map.of("classesDir", classesDir));
             // A packager that produced a complete runnable tree: ship that, not a lock-derived
             // classpath. Declared but missing is a hard error — falling back to the lock classpath
-            // is exactly the broken image JK-1722 fixed (Quarkus needs quarkus-run.jar, not
+            // is exactly the broken image  fixed (Quarkus needs quarkus-run.jar, not
             // Application on a 200-jar lock classpath).
             var shape = PluginBuild.shape(project, layout.moduleRoot());
             String appDir = shape.map(sh -> sh.appDir()).orElse("");
@@ -489,7 +489,7 @@ public final class ImagePlans {
      * Auto-detect the local container runtime by probing {@code docker} then {@code podman} on
      * {@code PATH}. Returns null when neither responds: sending a made-up {@code "docker"}
      * downstream made the trainer's carefully written no-runtime diagnostic unreachable — the
-     * plugin auto-detects (docker/podman/nerdctl) when nothing is configured (JK-1759).
+     * plugin auto-detects (docker/podman/nerdctl) when nothing is configured.
      */
     private static String detectDockerExecutable() {
         for (String candidate : new String[] {"docker", "podman"}) {
