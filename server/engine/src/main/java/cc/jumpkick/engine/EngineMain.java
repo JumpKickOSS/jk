@@ -104,7 +104,7 @@ public final class EngineMain {
      * <p>The trainer assembles to a <em>temp sibling</em>, promoted to the final path only on a
      * clean exit ({@link #promoteTrainedCache}). The watchdog kills an overrunning trainer with
      * {@link Runtime#halt}, so writing {@code -XX:AOTCacheOutput} straight to the final path could
-     * leave a partial/zero-byte file there — which the client would then map forever (JK-1430).
+     * leave a partial/zero-byte file there — which the client would then map forever.
      */
     private static Process spawnAotTrainer(String aotOut) {
         try {
@@ -136,7 +136,7 @@ public final class EngineMain {
     /** The sidecar command line; {@code tmpOut} — never the final cache path — receives the cache. */
     static List<String> aotTrainerCommand(String javaExe, String classpath, Path tmpOut) {
         // --enable-native-access must match the serving spawn line (EngineClient.spawn): JEP 514
-        // rejects mapping when dump-time and runtime property sets differ (JK-1399).
+        // rejects mapping when dump-time and runtime property sets differ.
         return List.of(
                 javaExe,
                 "-XX:+UseSerialGC",

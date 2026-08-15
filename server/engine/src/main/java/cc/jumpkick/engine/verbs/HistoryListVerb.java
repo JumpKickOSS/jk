@@ -44,8 +44,8 @@ public final class HistoryListVerb implements HostedVerb {
     public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             int limit = Math.max(1, Jsonl.intValue(requestLine, "limit", 200));
-            // Truncate in the journal (synthetic fixtures are already filtered there, JK-1390) rather
-            // than materialising every record on disk and then dropping most of them (JK-1481).
+            // Truncate in the journal (synthetic fixtures are already filtered there) rather
+            // than materialising every record on disk and then dropping most of them.
             // Oversample then keep only build-like kinds so lock/format/etc. never dilute history.
             List<BuildRecord> records = host.journal().list(Math.max(limit * 4, limit));
             int emitted = 0;

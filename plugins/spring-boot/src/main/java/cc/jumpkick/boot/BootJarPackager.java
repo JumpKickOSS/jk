@@ -185,7 +185,7 @@ public final class BootJarPackager {
      */
     /**
      * Clamp pre-1980 fixed times to 1980-02-01T00:00:00Z: DOS time cannot represent them, and
-     * preserving epoch 0 costs an 18-byte extended-timestamp extra field per entry (JK-1676).
+     * preserving epoch 0 costs an 18-byte extended-timestamp extra field per entry.
      */
     private static long dosSafe(long epochSeconds) {
         return Math.max(epochSeconds, 318_211_200L);
@@ -240,7 +240,7 @@ public final class BootJarPackager {
     private static void writeEntryStreaming(JarOutputStream jos, String name, InputStream in, long epochSeconds)
             throws IOException {
         // Take ownership of `in` before anything that can throw: it is already open at the call
-        // site, so a duplicate-entry putNextEntry would otherwise leak the descriptor (JK-1489).
+        // site, so a duplicate-entry putNextEntry would otherwise leak the descriptor.
         try (in) {
             JarEntry entry = new JarEntry(name);
             entry.setTimeLocal(LocalDateTime.ofEpochSecond(dosSafe(epochSeconds), 0, ZoneOffset.UTC));

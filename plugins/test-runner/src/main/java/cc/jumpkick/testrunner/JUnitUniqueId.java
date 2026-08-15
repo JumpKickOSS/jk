@@ -49,7 +49,7 @@ final class JUnitUniqueId {
         String template = "";
         // Invocation-ish segments compose in order — nested @TestFactory containers each carry an
         // index, and dropping the container index makes sibling dynamic tests with the same leaf
-        // index (#1/#2 vs #3/#2) label identically (JK-1904).
+        // index (#1/#2 vs #3/#2) label identically.
         StringBuilder invocation = new StringBuilder();
         for (org.junit.platform.engine.UniqueId.Segment s : uid.getSegments()) {
             switch (s.getType()) {
@@ -85,7 +85,7 @@ final class JUnitUniqueId {
 
     /**
      * Every invocation-ish segment's value in id order, {@code /}-joined — same composition rule
-     * as the platform-parsed path (JK-1904): nested dynamic containers keep their indices.
+     * as the platform-parsed path: nested dynamic containers keep their indices.
      */
     private static String invocationPath(String id) {
         StringBuilder sb = new StringBuilder();

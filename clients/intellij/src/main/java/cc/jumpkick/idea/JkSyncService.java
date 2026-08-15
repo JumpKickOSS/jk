@@ -12,10 +12,10 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * JumpKick Sync (JK-1511): lock/materialize via engine-backed CLI, apply project model by generating
+ * JumpKick Sync: lock/materialize via engine-backed CLI, apply project model by generating
  * IntelliJ files from the same engine {@code ide-model} as BSP, refresh BSP connection, reload VFS.
  *
- * <p>Architecture (decision JK-1510 option c): the plugin never loads engine jars. Structured model
+ * <p>The plugin never loads engine jars. Structured model
  * comes from {@code jk ide --print-model}; on-disk module mapping reuses {@code jk ide --idea}
  * (shared generator). BSP stays dual-path via {@code .bsp/jk.json}.
  */

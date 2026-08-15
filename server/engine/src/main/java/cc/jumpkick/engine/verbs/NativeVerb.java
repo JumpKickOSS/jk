@@ -117,7 +117,7 @@ public final class NativeVerb implements HostedVerb {
 
         var scopes = new LinkedHashMap<Path, JkBuild>();
         // Canonical (real-path) identities of the modules the CLIENT selected — engine-added
-        // prereqs are absent and build jar-only (JK-1361); null = no selection, all native-compile.
+        // prereqs are absent and build jar-only; null = no selection, all native-compile.
         Set<Path> selectedCanonical = null;
         if (root.isWorkspaceRoot()) {
             Map<Path, JkBuild> modulesByDir;
@@ -132,7 +132,7 @@ public final class NativeVerb implements HostedVerb {
             }
             // -m / --modules: keep selected modules + transitive build prereqs. Identities are the
             // graph's canonical (real) paths so symlinked checkouts do not silently drop prereqs,
-            // and an unresolvable graph fails the request instead of degrading (JK-1362).
+            // and an unresolvable graph fails the request instead of degrading.
             if (selectedDirs != null && !selectedDirs.isEmpty()) {
                 Set<Path> want = new LinkedHashSet<>();
                 for (Path p : selectedDirs) want.add(cc.jumpkick.runtime.BuildGraph.canonicalPath(p));

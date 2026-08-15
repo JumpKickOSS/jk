@@ -99,7 +99,7 @@ public final class PlannerTails {
             // Core planning parses the same file and has already reported an unreadable or
             // malformed jk.toml loudly; re-reporting here would double the diagnostic. Anything
             // else must propagate — swallowing it silently dropped -all.jar/-min.jar/native
-            // tails from the plan while the build still reported success (JK-1781).
+            // tails from the plan while the build still reported success.
         }
     }
     // ---- tail steps ----------------------------------------------------
@@ -171,7 +171,7 @@ public final class PlannerTails {
                     // requires edge) and publishes its stage, so the copy below is usually a
                     // no-op; when package-jar restored from cache there is nothing to reuse and
                     // this task stages for itself.
-                    //
+
                     // Declarations are re-derived rather than threaded in from the plan: this is
                     // a tail step assembled by appendDeclaredTails, which has no plugin context,
                     // and hoisting the lookup into plan construction would risk forking the
@@ -180,7 +180,7 @@ public final class PlannerTails {
                     List<Path> contributed =
                             existingContributedDirs(pluginDeclarationsFor(project, layout, cache), layout);
                     Path assemblyJar = layout.assemblyJar();
-                    // Module-scoped runtime closure (not the whole workspace lock) — JK-1345.
+                    // Module-scoped runtime closure (not the whole workspace lock).
                     List<Path> depJars = assemblyDependencyJars(layout.moduleRoot(), project, lockFile, cache);
                     // Packaging cache: the fat jar is a pure function of the main
                     // classes, the plugin-contributed dirs merged over them, the bundled

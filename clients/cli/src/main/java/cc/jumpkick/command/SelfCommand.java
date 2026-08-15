@@ -157,11 +157,11 @@ public final class SelfCommand extends GroupCommand {
             }
             VersionStore.Materialized m = VersionStore.current()
                     .materializeFromFiles(cc.jumpkick.cli.Jk.VERSION, JkStores.cas(JkDirs.cache()), engineJar, client);
-            // JK-1452: install lands a new version — drop other versions' AOT; keep this line's.
+            // install lands a new version — drop other versions' AOT; keep this line's.
             VersionStore.wipeAotDirectory(JkDirs.state().resolve("aot"), cc.jumpkick.cli.Jk.VERSION);
             Path distLib = distLibFor(client);
             if (distLib != null) {
-                // Dev dogfood (JK-1412): the client is a Gradle start script whose classpath is
+                // Dev dogfood: the client is a Gradle start script whose classpath is
                 // "$APP_HOME/../lib/*.jar". Alone in the store it cannot start — sync its dist
                 // jars beside it and repoint PATH entrypoints as symlinks (a hardlinked script
                 // resolves APP_HOME to the bin dir of the LINK and dies the same way).

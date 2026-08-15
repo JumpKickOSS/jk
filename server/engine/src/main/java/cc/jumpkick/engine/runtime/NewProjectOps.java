@@ -17,7 +17,7 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
- * Shared project creation used by {@code POST /api/projects} (JK-1193). Uses the same
+ * Shared project creation used by {@code POST /api/projects}. Uses the same
  * {@link NewScaffolder} / {@link Giter8LocalApply} path as {@code jk new} — no second scaffolder.
  */
 public final class NewProjectOps {
@@ -198,7 +198,7 @@ public final class NewProjectOps {
         Path p = parent.toAbsolutePath().normalize();
         // normalize() is textual, so a symlink satisfies the allowlist while the writes land
         // wherever it points — and java.io.tmpdir is world-writable, so an unprivileged local user
-        // can plant one. Compare resolved paths for anything that already exists (JK-1485).
+        // can plant one. Compare resolved paths for anything that already exists.
         if (allowed(realOrSelf(p), realOrSelf(home), realOrSelf(tmp)) && allowed(p, home, tmp)) {
             return;
         }

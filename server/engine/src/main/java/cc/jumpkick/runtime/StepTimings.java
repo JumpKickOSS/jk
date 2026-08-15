@@ -61,7 +61,7 @@ public final class StepTimings {
     }
 
     /**
-     * Legacy path marker — production rates hydrate from harvested metrics (JK-1377).
+     * Production rates hydrate from harvested metrics.
      * Hermetic tests still use isolated roots via {@link #file(Path)}.
      */
     public static Path defaultFile() {
@@ -231,7 +231,7 @@ public final class StepTimings {
     public static void record(Path rootOrCache, List<Sample> samples, double alpha, long nowMillis) {
         if (samples == null || samples.isEmpty()) return;
         Path f = file(rootOrCache);
-        // Production: per-run metrics.toml + harvest own durable rates (JK-1377).
+        // Production: per-run metrics.toml + harvest own durable rates.
         if (f.equals(defaultFile()) || isLiveBuildsTimings(f)) {
             return;
         }

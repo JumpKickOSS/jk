@@ -114,8 +114,7 @@ public final class ReleaseCommand implements CliCommand {
         // When --skip-native, drop every [native] always module from the default workspace
         // build — those modules demand native-image on every `jk build`, which is exactly what
         // skip-native is opting out of. Explicit -m still wins. An all-native workspace skips
-        // this step outright rather than falling back to the full build it opted out of
-        // (JK-1902).
+        // this step outright rather than falling back to the full build it opted out of.
         String buildModules = modulesSpec;
         boolean skipBuildStep = false;
         if (skipNative && (buildModules == null || buildModules.isBlank()) && root.isWorkspaceRoot()) {
@@ -332,7 +331,7 @@ public final class ReleaseCommand implements CliCommand {
 
     /**
      * Workspace module paths minus every {@code [native] always = true} module — not just the
-     * discovered CLI module — so {@code --skip-native} never re-enters any of them (JK-1902).
+     * discovered CLI module — so {@code --skip-native} never re-enters any of them.
      */
     static List<String> modulesWithoutNativeAlways(Path workspaceRoot, JkBuild root) {
         List<String> keep = new ArrayList<>();

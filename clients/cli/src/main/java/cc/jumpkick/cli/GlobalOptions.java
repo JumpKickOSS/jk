@@ -163,7 +163,7 @@ public final class GlobalOptions {
         // rebuild is CLI --redo only (not implied here from force; force is a separate flag).
         g.rebuild = in.isSet("redo") || cfg.rebuild().orElse(false);
         g.noAnsi = in.isSet("no-ansi") || cfg.noAnsiOr(false);
-        // Progress is independent of --no-ansi: plain multi-line chrome (JK-1379) still runs
+        // Progress is independent of --no-ansi: plain multi-line chrome still runs
         // unless --no-progress / quiet / json mute it.
         g.noProgress = in.isSet("no-progress") || cfg.noProgressOr(false);
         g.noOsc = in.isSet("no-osc") || cfg.noOscOr(false);
@@ -180,7 +180,7 @@ public final class GlobalOptions {
         // (applyCliOverrides already merged early argv; this covers flags after the subcommand.)
         JkConfig cliOverlay = new JkConfig(
                 Optional.empty(),
-                // offline + rebuild ride the overlay too (JK-1365): the engine reads them off the
+                // offline + rebuild ride the overlay too: the engine reads them off the
                 // session wire, and Jk.applyCliOverrides only catches exact tokens — a bundled
                 // `-rq` or abbreviated `--red` / `--offl` lands here, in the parsed Invocation.
                 g.offline ? Optional.of(true) : Optional.empty(),

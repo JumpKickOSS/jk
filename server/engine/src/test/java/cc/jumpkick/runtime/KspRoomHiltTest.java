@@ -40,7 +40,7 @@ class KspRoomHiltTest {
     @Test
     @Disabled("Same Hilt GeneratesRootInputPropagatedData failure as HiltTransformTest under "
             + "KSP; Room side is fine once Hilt processing completes. Disabled until the "
-            + "Android Hilt processor classpath is fixed — tracked as JK-1493 / JK-1672.")
+            + "Android Hilt processor classpath is fixed.")
     void room_and_hilt_generate_via_ksp_and_the_app_builds(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");

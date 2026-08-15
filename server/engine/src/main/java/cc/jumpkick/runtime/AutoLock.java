@@ -78,7 +78,7 @@ public final class AutoLock {
             ResolveObserver observer,
             Consumer<String> warn) {
         if (!isStale(dir, lockFile)) return null;
-        // Serialize per lock dir (JK-1356); a concurrent job may have freshened while we waited.
+        // Serialize per lock dir; a concurrent job may have freshened while we waited.
         synchronized (LockGate.monitorFor(lockFile.toAbsolutePath().normalize().getParent())) {
             if (!isStale(dir, lockFile)) {
                 try {
@@ -112,7 +112,7 @@ public final class AutoLock {
             Path scopeDir = scope.lockDir();
 
             // Digest captured before resolving: a manifest edit mid-re-lock must leave a lock
-            // that reads as stale (JK-1357).
+            // that reads as stale.
             String manifestsSha = cc.jumpkick.lock.LockManifestDigest.compute(scopeDir);
             Cas cas = JkStores.cas(cache);
             cc.jumpkick.repo.RepoGroup repos =

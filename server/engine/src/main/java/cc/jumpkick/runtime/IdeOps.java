@@ -413,8 +413,8 @@ public final class IdeOps {
             if (name != null && added.add(name)) result.add(new String[] {name, IdeWireModel.SCOPE_TEST});
         }
         // kind=tests edges: upgrade the existing row in place so generators expose sibling test
-        // output without ever emitting a second module entry for the same sibling (JK-1622 —
-        // Eclipse JDT rejects duplicate classpath entries).
+        // output without ever emitting a second module entry for the same sibling —
+        // Eclipse JDT rejects duplicate classpath entries.
         Set<String> testsKinds = new LinkedHashSet<>();
         for (Scope scope : EnumSet.of(Scope.TEST, Scope.TEST_DEV)) {
             for (Dependency d : module.dependencies().of(scope)) {
@@ -521,7 +521,7 @@ public final class IdeOps {
     /** Coordinates of all workspace siblings that this module could declare as deps. */
     /**
      * Lock rows are keyed by full package id ({@code g:a:type:classifier}) while sibling coords
-     * are plain {@code group:artifact} — a raw contains(name()) never matches (JK-1343).
+     * are plain {@code group:artifact} — a raw contains(name()) never matches.
      */
     static boolean isSibling(Set<String> siblingCoords, Lockfile.Artifact pkg) {
         return siblingCoords.contains(pkg.name())

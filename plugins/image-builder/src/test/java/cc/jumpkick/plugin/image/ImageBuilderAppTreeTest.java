@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1722: a packager-produced tree (Quarkus {@code quarkus-app/}) is the whole image application —
+ * A packager-produced tree (Quarkus {@code quarkus-app/}) is the whole image application —
  * entrypoint is {@code java -jar quarkus-run.jar}, not a lock-derived classpath + main class.
  */
 class ImageBuilderAppTreeTest {
@@ -86,7 +86,7 @@ class ImageBuilderAppTreeTest {
                 app,
                 "quarkus-run.jar");
 
-        // JK-1723: hasAppTree skips the Boot-only exploded-classes refusal; training uses
+        // hasAppTree skips the Boot-only exploded-classes refusal; training uses
         // settle+SIGTERM for any server, not a per-framework exit flag.
         assertThat(AotCacheTrainer.unsupportedReason(plan)).isNull();
     }
