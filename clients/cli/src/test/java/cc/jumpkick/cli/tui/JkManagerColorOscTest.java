@@ -60,4 +60,32 @@ class JkManagerColorOscTest {
         assertThat(unterminated).isZero();
         assertThat(openers).isGreaterThan(0); // the complete link sequences survived verbatim
     }
+
+    @Test
+    void truncate_inside_a_link_emits_a_synthetic_close_before_the_ellipsis() {
+        // JK-1974: the cut lands inside the linked label, so the input's own close is dropped —
+        // without a synthetic close the ellipsis, EL, and every later row join the hyperlink.
+        String linked = "go " + OSC_LINK_OPEN + "clickable label text" + OSC_LINK_CLOSE + " tail";
+        String cut = JkManagerColor.truncateVisible(linked, 8);
+        int open = cut.indexOf(OSC_LINK_OPEN);
+        assertThat(open).isNotNegative();
+        int close = cut.indexOf(OSC_LINK_CLOSE, open + OSC_LINK_OPEN.length());
+        assertThat(close).as("synthetic close after the open in %s", cut).isGreaterThan(open);
+        assertThat(cut.indexOf(JkManager.ELLIPSIS))
+                .as("ellipsis is outside the link")
+                .isGreaterThan(close);
+    }
+
+    @Test
+    void truncate_with_the_link_already_closed_adds_no_extra_close() {
+        String linked = OSC_LINK_OPEN + "ok" + OSC_LINK_CLOSE + " a very long tail that overflows";
+        String cut = JkManagerColor.truncateVisible(linked, 12);
+        int count = 0;
+        int idx = 0;
+        while ((idx = cut.indexOf(OSC_LINK_CLOSE, idx)) >= 0) {
+            count++;
+            idx += OSC_LINK_CLOSE.length();
+        }
+        assertThat(count).isEqualTo(1);
+    }
 }
