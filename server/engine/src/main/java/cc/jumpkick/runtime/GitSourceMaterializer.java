@@ -18,11 +18,14 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
 
 /**
  * Materializes a git dep into a per-commit {@code file://} Maven repo via {@link
  * SourceProjectBuilder} (compile/package only). PubGrub only sees a normal coordinate + repo URL.
  */
+@RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 public final class GitSourceMaterializer {
 
     /** Outcome: the published coordinate, the {@code file://} repo, and lock provenance. */
@@ -50,24 +53,6 @@ public final class GitSourceMaterializer {
                 javaHome,
                 jkVersion,
                 new ForgeGitCredentials());
-    }
-
-    /** Visible for tests — inject roots and credentials. */
-    GitSourceMaterializer(
-            Path gitRoot,
-            Path artifactsRoot,
-            Cas cas,
-            RepoGroup buildRepos,
-            Path javaHome,
-            String jkVersion,
-            ForgeGitCredentials credentials) {
-        this.gitRoot = gitRoot;
-        this.artifactsRoot = artifactsRoot;
-        this.cas = cas;
-        this.buildRepos = buildRepos;
-        this.javaHome = javaHome;
-        this.jkVersion = jkVersion;
-        this.credentials = credentials;
     }
 
     /**

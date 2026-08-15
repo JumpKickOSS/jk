@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 import java.util.function.Consumer;
+import lombok.RequiredArgsConstructor;
 
 /**
  * OAuth 2.0 Device Authorization Grant (RFC 8628) — the "copy this code into the browser" login
@@ -20,6 +21,7 @@ import java.util.function.Consumer;
  * drives the request → poll loop. Endpoint resolution is {@link ForgeKind}'s job; use {@link
  * #forHost} to wire the two together.
  */
+@RequiredArgsConstructor
 public final class DeviceFlow {
 
     /** Injectable sleep so tests don't wait real seconds between polls. */
@@ -41,24 +43,6 @@ public final class DeviceFlow {
 
     public DeviceFlow(Http http, URI deviceCodeUri, URI tokenUri, String providerName, String clientId, String scope) {
         this(http, deviceCodeUri, tokenUri, providerName, clientId, scope, REAL_SLEEP);
-    }
-
-    /** Visible for tests — inject a no-op {@link Sleeper}. */
-    public DeviceFlow(
-            Http http,
-            URI deviceCodeUri,
-            URI tokenUri,
-            String providerName,
-            String clientId,
-            String scope,
-            Sleeper sleeper) {
-        this.http = http;
-        this.deviceCodeUri = deviceCodeUri;
-        this.tokenUri = tokenUri;
-        this.providerName = providerName;
-        this.clientId = clientId;
-        this.scope = scope;
-        this.sleeper = sleeper;
     }
 
     /** Wire a flow for a concrete provider + host, sourcing endpoints from {@link ForgeKind}. */

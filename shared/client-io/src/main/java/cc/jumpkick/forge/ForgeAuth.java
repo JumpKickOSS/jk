@@ -3,11 +3,13 @@ package cc.jumpkick.forge;
 
 import java.util.Optional;
 import java.util.function.Function;
+import lombok.RequiredArgsConstructor;
 
 /**
  * Token for a {@code (provider, host)}: {@code JK_<KIND>_TOKEN} → ecosystem env → native CLI →
  * stored credential → interactive {@link DeviceFlow}. Env/CLI injected for tests.
  */
+@RequiredArgsConstructor
 public final class ForgeAuth {
 
     private final TokenStore store;
@@ -16,13 +18,6 @@ public final class ForgeAuth {
 
     public ForgeAuth() {
         this(new TokenStore(), System::getenv, CliTokenProbe.REAL);
-    }
-
-    /** Visible for tests — inject the store, env lookup, and CLI probe. */
-    public ForgeAuth(TokenStore store, Function<String, String> env, CliTokenProbe cliProbe) {
-        this.store = store;
-        this.env = env;
-        this.cliProbe = cliProbe;
     }
 
     /**
