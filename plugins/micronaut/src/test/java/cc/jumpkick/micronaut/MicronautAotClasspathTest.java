@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1665: the tool closure becomes both {@code --classpath} and the forked JVM's {@code -cp}, so
+ * The tool closure becomes both {@code --classpath} and the forked JVM's {@code -cp}, so
  * its order decides which copy of a duplicated class AOT sees. It has to be a function of the
  * contents, not of how the filesystem happens to enumerate them.
  */

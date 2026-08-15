@@ -57,9 +57,9 @@ class MavenImportRoundTripTest {
 
     @Test
     void compile_scope_tests_classifier_dep_round_trips() {
-        // The JK-1619 failure: `<classifier>tests</classifier>` in compile scope used to be
-        // stamped kind=tests, and the renderer wrote `kind = "tests"` under [dependencies],
-        // which JkBuildParser hard-rejects. Classifier alone no longer implies test-jar.
+        // `<classifier>tests</classifier>` in compile scope is not kind=tests; classifier
+        // alone does not imply test-jar. The renderer must not write `kind = "tests"` under
+        // [dependencies], which JkBuildParser hard-rejects.
         JkBuild imported = importPom(pom("compile", "tests", null));
         JkBuild reparsed = JkBuildParser.parse(JkBuildRenderer.render(imported));
         assertThat(reparsed.dependencies().of(Scope.MAIN))

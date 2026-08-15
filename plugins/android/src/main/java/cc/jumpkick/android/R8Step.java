@@ -40,7 +40,7 @@ final class R8Step {
         for (var entry : exec.runtimeEntries()) {
             if (entry.jar() != null) runtimeJars.add(entry.jar());
         }
-        // Program inputs are judged by extension too — alias extensionless CAS blobs (JK-1449).
+        // Program inputs are judged by extension too — alias extensionless CAS blobs.
         runtimeJars = JarInputs.jarSuffixed(exec, runtimeJars);
 
         // Keep-rule collection, baseline → aapt2 → consumer rules → the app's own files.
