@@ -369,7 +369,7 @@ class JkManagerTest {
     @Test
     void same_second_reanchor_overwrites_a_committed_zero() {
         // Snap-to-zero commits instantly; a residual raise in the SAME second must repaint
-        // instead of holding 0s and bouncing 0s → Ns at the next second (JK-1850).
+        // instead of holding 0s and bouncing 0s → Ns at the next second.
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdFont = NerdFontCaps.NONE;
         cm.setEtaEstimate(30_000);
@@ -385,9 +385,8 @@ class JkManagerTest {
 
     @Test
     void identical_residual_reemits_do_not_reanchor_the_countdown() {
-        // Preflight ticks force-emit the unchanged seed residual every ~500 ms; each emit used to
-        // reset the anchor, so the countdown displayed a constant R0 for the whole prepare window
-        // instead of the promised open-loop decay (JK-1843).
+        // Preflight ticks force-emit the unchanged seed residual every ~500 ms; identical
+        // re-emits must not reset the countdown anchor.
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdFont = NerdFontCaps.NONE;
         cm.setEtaEstimate(30_000); // R0 seed anchors residual at ~0 elapsed
@@ -444,7 +443,7 @@ class JkManagerTest {
     void provisional_lock_window_seed_is_replaced_by_the_real_forecast_seed() {
         // Stale-lock builds get a coarse provisional ETA before preflight. Preflight progress
         // events (clock strategy active, work model published) must NOT freeze it: the real
-        // post-forecast seed replaces it, and only execute activity locks (JK-1806).
+        // post-forecast seed replaces it, and only execute activity locks.
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdFont = NerdFontCaps.NONE;
         cm.setEtaEstimate(138_000); // provisional: lockEta + history prior
@@ -852,9 +851,8 @@ class JkManagerTest {
 
     @Test
     void paint_picks_up_terminal_resize_and_rewrites_truncated_rows() {
-        // Mid-build maximize: SIGWINCH clears TerminalSize's cache, but the live region used to
-        // keep the plan-start width and content-diff paint — so a static long test name stayed
-        // clipped until the message changed. Paint must re-read size and force a full rewrite.
+        // Mid-build maximize: SIGWINCH clears TerminalSize's cache. Paint must re-read size
+        // and force a full rewrite so a long test name is not left clipped.
         var savedProbe = TerminalSize.probe;
         try {
             TerminalSize.probe = () -> new int[] {24, 40};
@@ -902,7 +900,7 @@ class JkManagerTest {
 
     @Test
     void reflow_detection_is_env_driven_and_defaults_to_clipping() {
-        // JK-1989: overshooting the wipe on a clipping terminal destroys completed output, so
+        // overshooting the wipe on a clipping terminal destroys completed output, so
         // unknown terminals must read as clipping.
         Map<String, String> vte = Map.of("VTE_VERSION", "7802");
         assertThat(TerminalReflow.detect(vte::get)).isTrue();
@@ -917,7 +915,7 @@ class JkManagerTest {
 
     @Test
     void shrink_wipe_climbs_only_the_logical_rows_on_clipping_terminals() {
-        // JK-1989: on a clipping terminal the wipe must be exactly lastLines.size() rows —
+        // on a clipping terminal the wipe must be exactly lastLines.size() rows —
         // the reflow estimate overshoots into (and erases) completed output above the region.
         var savedProbe = TerminalSize.probe;
         try {
@@ -964,7 +962,7 @@ class JkManagerTest {
 
     @Test
     void write_above_after_a_shrink_wipes_with_post_resize_geometry() {
-        // JK-1990: writeAbove used pre-resize linesDrawn for its erase; the reflow-aware sync
+        // writeAbove used pre-resize linesDrawn for its erase; the reflow-aware sync
         // must run first so no orphan rows survive above the emitted line.
         var savedProbe = TerminalSize.probe;
         try {

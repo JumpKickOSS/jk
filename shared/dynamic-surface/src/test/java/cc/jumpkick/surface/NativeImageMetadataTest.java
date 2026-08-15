@@ -35,7 +35,7 @@ class NativeImageMetadataTest {
             assertThat(e.origin()).isEqualTo("library:http-netty");
         });
         assertThat(KeepRuleEmitter.emit(surface)).contains("*** consumerIndex;").doesNotContain("consumerIndex(...)");
-        // A recorded field access round-trips to a `fields` entry, not a guessed method (JK-1753).
+        // A recorded field access round-trips to a `fields` entry, not a guessed method.
         assertThat(ReachabilityMetadataEmitter.emit(surface))
                 .contains("\"fields\":[{\"name\":\"consumerIndex\"}]")
                 .doesNotContain("\"methods\"");
@@ -56,7 +56,7 @@ class NativeImageMetadataTest {
     @Test
     void the_unified_schema_reads_every_section() {
         // The real unified shapes: proxies are reflection entries with a map-shaped type, and
-        // resources are a flat glob array (JK-1752).
+        // resources are a flat glob array.
         String body = """
                 {
                   "reflection": [
@@ -72,7 +72,7 @@ class NativeImageMetadataTest {
 
         assertThat(surface.of(REFLECTIVE_TYPE)).extracting(Entry::name).containsExactly("com.acme.R");
         assertThat(surface.of(JNI_TYPE)).extracting(Entry::name).containsExactly("com.acme.N");
-        // One entry per proxy declaration, carrying the whole ordered list (JK-1799).
+        // One entry per proxy declaration, carrying the whole ordered list.
         assertThat(surface.of(PROXY_INTERFACE)).extracting(Entry::name).containsExactly("com.acme.I,com.acme.J");
         assertThat(surface.of(RESOURCE)).extracting(Entry::name).containsExactly("config/*.yml");
     }
@@ -81,7 +81,7 @@ class NativeImageMetadataTest {
     void a_multi_interface_proxy_round_trips_as_one_ordered_list() {
         // GraalVM matches proxy registrations by the exact ordered interface list; splitting
         // ["I","J"] into two single-interface registrations would never match the runtime
-        // Proxy.newProxyInstance lookup (JK-1799). Order is the declaration's, not sorted.
+        // Proxy.newProxyInstance lookup. Order is the declaration's, not sorted.
         String body = """
                 [{"interfaces":["com.acme.J","com.acme.I"]}]
                 """;
@@ -102,7 +102,7 @@ class NativeImageMetadataTest {
 
     @Test
     void the_legacy_reflection_proxies_section_is_still_read() {
-        // Files jk emitted before JK-1752 put proxies in a top-level "reflection-proxies" array
+        // Files jk emitted before  put proxies in a top-level "reflection-proxies" array
         // and resources under {"resources":{"includes":[...]}} — keep reading both.
         String body = """
                 {
@@ -138,7 +138,7 @@ class NativeImageMetadataTest {
     @Test
     void the_split_resource_schema_translates_literal_patterns_to_globs() {
         // Old-schema patterns are Java regexes; \Qapplication.yml\E re-emitted as a glob would
-        // match nothing, so literal regexes translate to the literal they quote (JK-1777).
+        // match nothing, so literal regexes translate to the literal they quote.
         String body = """
                 {"resources":{"includes":[{"pattern":"\\\\Qapplication.yml\\\\E"}]}}
                 """;
@@ -152,7 +152,7 @@ class NativeImageMetadataTest {
     @Test
     void untranslatable_patterns_ride_in_a_split_format_sidecar() {
         // `.properties$` has no exact glob form. It must not be emitted as a glob; it ships in a
-        // legacy split-format resource-config.json, which native-image still reads (JK-1777).
+        // legacy split-format resource-config.json, which native-image still reads.
         String body = """
                 {"resources":{"includes":[{"pattern":".*[.]properties$"}]}}
                 """;
@@ -172,7 +172,7 @@ class NativeImageMetadataTest {
     void resource_excludes_are_honored_and_re_emitted() {
         // A library's excludes are part of its declared surface: native-image merges includes
         // and excludes across config files and exclusion wins, so dropping them over-included
-        // resources the library asked to keep out (JK-1800). Glob excludes convert exactly.
+        // resources the library asked to keep out. Glob excludes convert exactly.
         String body = """
                 {"resources":{
                   "includes":[{"pattern":"\\\\Qapplication.yml\\\\E"}],
@@ -246,7 +246,7 @@ class NativeImageMetadataTest {
     @Test
     void jni_members_round_trip_into_the_jni_section() {
         // A jni-config entry naming members must not drift into the reflection section: the
-        // native image would then fail the JNI lookup the training run observed (JK-1779).
+        // native image would then fail the JNI lookup the training run observed.
         String body = """
                 [{"name":"com.acme.Native","methods":[{"name":"callback"}]}]
                 """;
@@ -267,7 +267,7 @@ class NativeImageMetadataTest {
 
     @Test
     void the_serialization_wrapper_form_is_unwrapped() {
-        // Newer tracing agents write a map root; the legacy form is a flat array (JK-1778).
+        // Newer tracing agents write a map root; the legacy form is a flat array.
         String body = """
                 {
                   "types": [{"name":"com.acme.S"}],
@@ -287,7 +287,7 @@ class NativeImageMetadataTest {
     @Test
     void custom_target_constructor_class_survives_the_round_trip() {
         // The declared deserialization constructor must reach the native image, and its class's
-        // constructors are invoked reflectively, so R8 keeps them too (JK-1801).
+        // constructors are invoked reflectively, so R8 keeps them too.
         String body = """
                 [{"name":"com.acme.S","customTargetConstructorClass":"com.acme.Base"}]
                 """;
@@ -311,7 +311,7 @@ class NativeImageMetadataTest {
     @Test
     void serialization_members_still_register_the_type_for_serialization() {
         // Serialization registration is per-type in GraalVM's schema; named members must not
-        // demote the entry out of the serialization section (JK-1779).
+        // demote the entry out of the serialization section.
         String body = """
                 [{"name":"com.acme.S","fields":[{"name":"state"}]}]
                 """;
@@ -329,7 +329,7 @@ class NativeImageMetadataTest {
     @Test
     void array_and_primitive_names_never_reach_keep_rules_verbatim() {
         // Real-world reflect-config registers arrays and primitives; `-keep class byte[]` is not
-        // ProGuard syntax and aborts R8 (JK-1754). Reference arrays keep their element class;
+        // ProGuard syntax and aborts R8. Reference arrays keep their element class;
         // primitives and primitive arrays need no keeping. The reachability output still carries
         // the original names — Graal accepts them.
         String body = """

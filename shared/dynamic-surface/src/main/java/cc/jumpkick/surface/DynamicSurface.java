@@ -54,7 +54,7 @@ public record DynamicSurface(List<Entry> entries) {
          * comma-joined interface list ({@code "a.B,c.D"} — class names cannot contain a comma):
          * GraalVM matches proxy registrations by the exact ordered list, so splitting a
          * multi-interface proxy into per-interface entries would register proxies that never
-         * match the runtime lookup (JK-1799).
+         * match the runtime lookup.
          */
         PROXY_INTERFACE,
         /** A resource loaded by name or glob. {@code name} is the resource path or glob. */
@@ -63,14 +63,14 @@ public record DynamicSurface(List<Entry> entries) {
          * A resource in the legacy split-schema Java-regex syntax that has no faithful glob
          * translation; {@code name} is the regex. Emitted as a split-format {@code
          * resource-config.json} beside the unified file, which native-image still honors —
-         * re-emitting a regex as a glob would match nothing (JK-1777).
+         * re-emitting a regex as a glob would match nothing.
          */
         RESOURCE_PATTERN,
         /**
          * A resource a library's config explicitly excludes; {@code name} is a Java regex.
          * Re-emitted into the split-format {@code resource-config.json} excludes — native-image
          * merges includes and excludes across config files and exclusion wins, which is exactly
-         * what happens when the library's own config sits on the image classpath (JK-1800).
+         * what happens when the library's own config sits on the image classpath.
          */
         RESOURCE_EXCLUDE_PATTERN,
         /** The type crosses a serialization boundary. */
@@ -82,14 +82,14 @@ public record DynamicSurface(List<Entry> entries) {
         /**
          * A specific field or method is accessed from native code; {@code members} names it.
          * Distinct from {@link #REFLECTIVE_MEMBER} so the entry lands in the {@code jni} section
-         * of reachability metadata, not {@code reflection} (JK-1779).
+         * of reachability metadata, not {@code reflection}.
          */
         JNI_MEMBER
     }
 
     /**
      * Tag a member name as a field ({@code f:}). Members carry their kind as a prefix so a
-     * recorded {@code Field} access is not re-emitted as a method registration (JK-1753); a
+     * recorded {@code Field} access is not re-emitted as a method registration; a
      * bare, untagged name (older surface JSON) means "unknown — emit both forms".
      */
     public static String fieldMember(String name) {
@@ -104,7 +104,7 @@ public record DynamicSurface(List<Entry> entries) {
     /**
      * Tag a class name as a serialization {@code customTargetConstructorClass} ({@code c:}) —
      * carried in {@code members} on a {@link Kind#SERIALIZATION_TYPE} entry so the declared
-     * deserialization constructor survives the round trip (JK-1801).
+     * deserialization constructor survives the round trip.
      */
     public static String customConstructorMember(String name) {
         return "c:" + name;

@@ -48,7 +48,7 @@ class WorkspaceFileAccessTest {
         assertThat(WorkspaceFileAccess.normalizeRel("src/./Main.java")).isNull();
         assertThat(WorkspaceFileAccess.normalizeRel("src//Main.java")).isNull();
         assertThat(WorkspaceFileAccess.normalizeRel("src\\Main.java")).isNull();
-        assertThat(WorkspaceFileAccess.normalizeRel("src/Ma\0in.java")).isNull(); // NUL byte (JK-1955)
+        assertThat(WorkspaceFileAccess.normalizeRel("src/Ma\0in.java")).isNull(); // NUL byte
         assertThat(WorkspaceFileAccess.read(root, "../x.java")).isInstanceOf(ReadResult.BadRequest.class);
         assertThat(WorkspaceFileAccess.read(root, "src/Ma\0in.java")).isInstanceOf(ReadResult.BadRequest.class);
         assertThat(WorkspaceFileAccess.read(root, "")).isInstanceOf(ReadResult.BadRequest.class);
@@ -56,7 +56,7 @@ class WorkspaceFileAccessTest {
 
     @Test
     void symlinked_directory_escape_is_not_found(@TempDir Path root, @TempDir Path outside) throws Exception {
-        // JK-1955: the real-path containment must also catch a symlinked PARENT directory —
+        // the real-path containment must also catch a symlinked PARENT directory —
         // src/link/Secret.java where link -> outside.
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("src"));
@@ -247,7 +247,7 @@ class WorkspaceFileAccessTest {
 
     @Test
     void non_utf8_files_fall_back_to_latin1_with_the_encoding_flagged(@TempDir Path root) throws Exception {
-        // JK-1954: a Latin-1 source previously decoded with silent U+FFFD substitution and no
+        // a Latin-1 source previously decoded with silent U+FFFD substitution and no
         // indicator — corrupted content presented as the file's true text.
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("src"));
@@ -267,7 +267,7 @@ class WorkspaceFileAccessTest {
 
     @Test
     void latin1_read_write_round_trip_preserves_bytes(@TempDir Path root) throws Exception {
-        // JK-1972: a save under the encoding the file was read with must re-encode to the
+        // a save under the encoding the file was read with must re-encode to the
         // original bytes, never silently transcode the file to UTF-8.
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("src"));
@@ -321,7 +321,7 @@ class WorkspaceFileAccessTest {
             return;
         }
         assertThat(WorkspaceFileAccess.read(root, "src/Leak.java")).isInstanceOf(ReadResult.NotFound.class);
-        // list/read parity (JK-1952): the escaping link must not be listed either …
+        // list/read parity: the escaping link must not be listed either …
         assertThat(WorkspaceFileAccess.list(root).files())
                 .noneMatch(f -> f.path().equals("src/Leak.java"));
         // … while an in-root symlink stays listed and readable.
@@ -334,7 +334,7 @@ class WorkspaceFileAccessTest {
 
     @Test
     void depth_cap_reports_truncation(@TempDir Path root) throws Exception {
-        // JK-1982: files below MAX_WALK_DEPTH are readable via deep link but invisible in the
+        // files below MAX_WALK_DEPTH are readable via deep link but invisible in the
         // tree — the UI must at least see the truncation hint.
         writeJkToml(root, "demo");
         StringBuilder relDir = new StringBuilder();
@@ -355,7 +355,7 @@ class WorkspaceFileAccessTest {
 
     @Test
     void in_root_directory_symlinks_are_listed_and_cycles_terminate(@TempDir Path root) throws Exception {
-        // JK-1982: read() serves files under an in-root dir symlink, so list must show them.
+        // read() serves files under an in-root dir symlink, so list must show them.
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("real"));
         Files.writeString(root.resolve("real/A.java"), "class A {}");
@@ -409,8 +409,7 @@ class WorkspaceFileAccessTest {
 
     @Test
     void truncation_never_drops_the_root_manifest(@TempDir Path root) throws Exception {
-        // JK-1944: the old walk sorted lexically and kept the first 2000, so 2000+ files sorting
-        // before "jk.toml" amputated the default file (empty pane) and the tail of the alphabet.
+        // Truncation must keep the workspace-root jk.toml even when 2000+ files sort before it.
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("aaa"));
         for (int i = 0; i < 2100; i++) {

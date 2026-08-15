@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1350: an invisible freshen must never float pinned versions — conservative resolution keeps
+ * an invisible freshen must never float pinned versions — conservative resolution keeps
  * the existing lock's pins and only explicit {@code jk lock} picks latest. Also covers the legacy
  * upgrade: an unstamped lock gains {@code manifests-sha256} without any version moving.
  */
@@ -41,7 +41,7 @@ class LockFreshenConservativeTest {
 
     @BeforeEach
     void start() throws IOException {
-        // Isolate the ambient product store (JK-1918): JkStores resolves via JkDirs, and without
+        // Isolate the ambient product store: JkStores resolves via JkDirs, and without
         // this override the test writes 24h-TTL maven-metadata into — and evicts files from —
         // the developer's real store. jk.env.* properties beat the environment in JkDirs.
         System.setProperty("jk.env.JK_STORE_DIR", isolatedStore.resolve("store").toString());
@@ -179,7 +179,7 @@ class LockFreshenConservativeTest {
 
     @Test
     void workspace_freshen_resolves_with_default_features_like_jk_lock(@TempDir Path tmp) throws Exception {
-        // JK-1358: lock content must not depend on which path freshened. The pre-build guard
+        // lock content must not depend on which path freshened. The pre-build guard
         // used noDefaultFeatures=true and silently dropped feature-gated deps from the lock.
         serveLib("1.0");
         serveLeaf("com.foo", "extra", "1.0");
@@ -215,7 +215,7 @@ class LockFreshenConservativeTest {
 
     @Test
     void first_lock_of_a_kotlin_project_pins_the_compiler(@TempDir Path tmp) throws Exception {
-        // JK-1371: LockFlow (first-run/workspace freshen path) writes the kotlin pin like
+        // LockFlow (first-run/workspace freshen path) writes the kotlin pin like
         // lockBuildPlan does.
         serveLib("1.0");
         serveLeaf("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "2.1.0");
@@ -309,7 +309,7 @@ class LockFreshenConservativeTest {
      * Evict process + on-disk indexes for {@code com.foo:lib} at the current {@link #base}.
      * Metadata is keyed by URL and lives 24h; a loopback port recycled across
      * {@link #restartServer()} calls can otherwise hide newly served versions from plain
-     * {@code lock}. Operates on the {@code @TempDir}-isolated store (JK-1918), never the
+     * {@code lock}. Operates on the {@code @TempDir}-isolated store, never the
      * developer's.
      */
     private void dropLibIndexCache() throws IOException {
@@ -324,9 +324,8 @@ class LockFreshenConservativeTest {
     }
 
     /**
-     * A real (empty) jar for every POM this fixture serves. JK-1649 made a resolved-but-unfetchable
-     * artifact a hard lock failure, and this fixture predates it — POM-only repos used to be
-     * enough. Serving the bytes exercises that check instead of dodging it.
+     * A real (empty) jar for every POM this fixture serves. A resolved-but-unfetchable
+     * artifact is a hard lock failure; serving the bytes exercises that check.
      */
     private static byte[] emptyJar() {
         try {

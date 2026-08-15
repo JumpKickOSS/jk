@@ -25,7 +25,7 @@ class BuildLogicSupportTest {
 
     /**
      * BEFORE_COMPILE output is codegen: it lands in the generated-source root the compilers read,
-     * not in classes/ (JK-1602). One dir per task.
+     * not in classes/. One dir per task.
      */
     private static Path generated(BuildLayout layout, String task, String file) {
         return BuildLogicSupport.generatedSourceRoot(layout).resolve(task).resolve(file);
@@ -191,7 +191,7 @@ class BuildLogicSupportTest {
     }
 
     /**
-     * JK-1614: every file a task produces has to survive a cache hit. Only {@code outDir} is
+     * every file a task produces has to survive a cache hit. Only {@code outDir} is
      * captured and replayed, which is why the context no longer hands out the classes tree — a
      * task that wrote there worked once and then silently lost the file under a {@code cache hit}
      * label. This asserts the whole produced set, twice, so a future binding that reintroduces an
@@ -262,10 +262,8 @@ class BuildLogicSupportTest {
     }
 
     /**
-     * BuildPlanner calls {@code run()} once per anchor a module has tasks registered at — up to
-     * four times per module per build — and each call used to hash the whole project source tree
-     * from scratch. Sharing one {@code AtomicReference} (as BuildPlanner does) across a module's
-     * anchor calls must hash it at most once per build (JK-1655).
+     * Sharing one {@code AtomicReference} across a module's anchor calls hashes the project
+     * source tree at most once per build.
      */
     @Test
     void multiple_anchors_in_one_build_share_a_single_project_hash(@TempDir Path dir) throws Exception {
@@ -326,7 +324,7 @@ class BuildLogicSupportTest {
     /**
      * A task reads the project through {@code BuildLogicContext}, so the key must cover it. Keying
      * on the logic sources alone reported `cache hit` after a product edit and replayed the stale
-     * output (JK-1603).
+     * output.
      */
     @Test
     void a_product_source_edit_invalidates_a_task_that_reads_the_project(@TempDir Path dir) throws Exception {
@@ -387,7 +385,7 @@ class BuildLogicSupportTest {
     /**
      * A task can read {@code jk.toml} itself through {@code ctx.projectDir()} — e.g. to embed the
      * declared version — same as it can read product sources. Editing it must invalidate the task
-     * the same way (JK-1603).
+     * the same way.
      */
     @Test
     void a_jk_toml_edit_invalidates_a_task_that_reads_the_project_file(@TempDir Path dir) throws Exception {
@@ -449,7 +447,7 @@ class BuildLogicSupportTest {
      * <p>This case uses a directory-backed helper, which is the benign half: closing a
      * URLClassLoader shuts its <em>jar</em> handles, so directory entries survive. The failing half
      * is jar-backed and is pinned by {@code kotlin_spi_contributor_before_compile}, whose task body
-     * first touches kotlin-stdlib (JK-1604).
+     * first touches kotlin-stdlib.
      */
     @Test
     void a_task_body_may_first_touch_a_helper_class_at_run_time(@TempDir Path dir) throws Exception {
@@ -498,10 +496,8 @@ class BuildLogicSupportTest {
     }
 
     /**
-     * BuildPlanner calls run() once per anchor — four times per module per build — and each call
-     * used to delete and recompile the whole logic tree, re-resolving the Kotlin toolchain with it.
-     * A sentinel dropped into the classes dir survives a second anchor if no recompile happened,
-     * and must not survive a logic-source edit (JK-1606).
+     * Logic is compiled once per source change, not once per anchor. A sentinel in the classes
+     * dir survives a second anchor and must not survive a logic-source edit.
      */
     @Test
     void logic_is_compiled_once_per_change_not_once_per_anchor(@TempDir Path dir) throws Exception {
@@ -637,7 +633,7 @@ class BuildLogicSupportTest {
                     g.task("kt-before-compile", BuildLogicAnchor.BEFORE_COMPILE) { ctx ->
                       // joinToString is kotlin-stdlib, first touched HERE — inside the task body,
                       // long after registration. It resolves out of the stdlib jar, so it fails if
-                      // the defining loader was closed at the end of discovery (JK-1604).
+                      // the defining loader was closed at the end of discovery.
                       val text = listOf("from", "kt").joinToString("-")
                       Files.writeString(ctx.outDir().resolve("kt-before.txt"), text)
                     }
