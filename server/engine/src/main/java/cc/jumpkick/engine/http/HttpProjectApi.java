@@ -503,8 +503,11 @@ final class HttpProjectApi {
      */
     void handleProjectFilePut(HttpExchange exchange) throws IOException {
         // File write can be up to 1 MiB of content plus JSON quoting overhead; read past the
-        // engine-wide 64 KiB mutation cap used for build/cancel/scaffold.
-        int maxBody = WorkspaceFileAccess.MAX_FILE_BYTES * 3 + 4096;
+        // engine-wide 64 KiB mutation cap used for build/cancel/scaffold. Factor 6, not 3:
+        // JSON.stringify escapes each control char to six bytes (backslash-u form), and the
+        // binary probe only rejects NUL, so a legal control-char-heavy file under the 1 MiB
+        // write cap can escape past 3x (JK-1981).
+        int maxBody = WorkspaceFileAccess.MAX_FILE_BYTES * 6 + 4096;
         byte[] raw = exchange.getRequestBody().readNBytes(maxBody + 1);
         if (raw.length > maxBody) {
             HttpEngineServer.sendJson(

@@ -931,6 +931,22 @@ class HttpEngineServerTest {
                             .build(),
                     HttpResponse.BodyHandlers.ofString());
             assertThat(putImg.statusCode()).isEqualTo(415);
+
+            // JK-1981: control chars JSON-escape to six bytes each; a legal file well under the
+            // 1 MiB write cap must not 413 on the request-body cap (old factor 3 rejected it).
+            String ctlContent = "\u0001".repeat(600 * 1024);
+            String ctlBody = "{\"project\":\"" + id + "\",\"path\":\"src/Main.java\",\"content\":\""
+                    + "\\u0001".repeat(600 * 1024) + "\"}";
+            HttpResponse<String> ctl = client.send(
+                    HttpRequest.newBuilder(URI.create(baseUrl + "api/project/file"))
+                            .header("Authorization", "Bearer " + token())
+                            .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
+                            .header("Content-Type", "application/json")
+                            .PUT(HttpRequest.BodyPublishers.ofString(ctlBody))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(ctl.statusCode()).isEqualTo(200);
+            assertThat(Files.readString(checkout.resolve("src/Main.java"))).isEqualTo(ctlContent);
         } finally {
             System.clearProperty("jk.env.JK_BUILDS_DIR");
         }
