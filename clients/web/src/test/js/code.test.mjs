@@ -365,7 +365,7 @@ test('lineDecorations: neutral vs error styles', () => {
   assert.equal(jump[1].options.inlineClassName, 'code-col-hl');
   const noted = lineDecorations(2, true, 7, '    b.key(x);', 'error: cannot find symbol');
   assert.match(noted[0].options.hoverMessage.value, /cannot find symbol/);
-  assert.equal(noted[1].options.hoverMessage.value, noted[0].options.hoverMessage.value);
+  assert.equal(noted[1].options.hoverMessage, undefined);
 });
 
 test('columnSpan covers the identifier at col', () => {

@@ -528,6 +528,8 @@ export function columnSpan(text, col) {
  *
  * When {@code col} is set, a second inline decoration marks that column (identifier span when
  * {@code lineText} is supplied). {@code err} paints a red squiggle; otherwise a cyan underline.
+ * {@code msg} is a hover on the whole-line decoration only — attaching it to both stacks the
+ * same note twice when the cursor sits on the token.
  */
 export function lineDecorations(line, err = false, col = 0, lineText = '', msg = '') {
   const n = Number(line) || 0;
@@ -559,7 +561,6 @@ export function lineDecorations(line, err = false, col = 0, lineText = '', msg =
         ? { color: 'rgba(255, 51, 102, 0.95)', position: 1 }
         : { color: 'rgba(0, 240, 255, 0.85)', position: 1 },
     };
-    if (hover) colOpts.hoverMessage = hover;
     out.push({
       range: {
         startLineNumber: n,

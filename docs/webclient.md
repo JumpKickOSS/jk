@@ -157,8 +157,9 @@ suggestions. The theme is registered as `jk-vs-dark` — vs-dark inherited verba
 override, `editor.background` read from style.css's `--console-bg`, so a source pane reads as the
 same surface as the console tail and log panels instead of VS Code's `#1e1e1e`. `?line=` is a
 whole-line decoration (`.code-line-hl` soft/cyan, or `.code-line-err` red when `err=true`);
-`?col=` marks the token (red wavy underline when `err=true`). Both decorations carry
-`hoverMessage` when `?msg=` is present (compiler key/value details from the CLI OSC-8 link).
+`?col=` marks the token (red wavy underline when `err=true`). The whole-line decoration
+carries `hoverMessage` when `?msg=` is present (compiler key/value details from the CLI
+OSC-8 link) — the column mark is visual only so Monaco does not stack the same note twice.
 The editor reveals the position and opens that hover on landing. Monaco ships no
 Groovy or TOML grammar, so `.groovy` tokenizes as `java` and `.toml` as
 `ini` (`MONACO_LANG` in `code.js`); anything unknown falls back to `plaintext`. Highlighting is
