@@ -83,7 +83,15 @@ class McpHandlerTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> tools = (List<Map<String, Object>>) result.get("tools");
         assertThat(tools.stream().map(t -> t.get("name")).toList())
-                .contains("jk_status", "jk_build", "jk_test", "jk_lock", "jk_cancel", "jk_project", "jk_history");
+                .contains(
+                        "jk_status",
+                        "jk_build",
+                        "jk_test",
+                        "jk_lock",
+                        "jk_cancel",
+                        "jk_bind",
+                        "jk_project",
+                        "jk_history");
     }
 
     @Test
@@ -97,8 +105,11 @@ class McpHandlerTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> content = (List<Map<String, Object>>) result.get("content");
         String text = (String) content.getFirst().get("text");
-        assertThat(text).contains("\"type\":\"status\"");
-        assertThat(text).contains("\"pid\":1");
+        assertThat(text).contains("pid");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> structured = (Map<String, Object>) result.get("structuredContent");
+        assertThat(structured.get("type")).isEqualTo("status");
+        assertThat(((Number) structured.get("pid")).longValue()).isEqualTo(1L);
     }
 
     @Test

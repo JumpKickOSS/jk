@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.engine.http.mcp.McpEnvelope;
+import cc.jumpkick.engine.http.mcp.McpHistoryViews;
+import cc.jumpkick.engine.http.mcp.McpProjectCards;
+import cc.jumpkick.engine.http.mcp.McpSession;
 import cc.jumpkick.plugin.protocol.MiniJson;
+import cc.jumpkick.util.PathUtil;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,6 +41,7 @@ public final class McpHandler {
     private final Supplier<List<String>> historyRaw;
     private final String version;
     private final ProgressTokenRegistry progressTokens;
+    private final McpSession session = new McpSession();
 
     public McpHandler(
             Supplier<StatusSnapshot> status,
@@ -213,8 +219,20 @@ public final class McpHandler {
                         "requestId",
                         Map.of("type", "integer", "description", "Alias for jid (kept for one release cycle)")))));
         tools.add(tool(
+                "jk_bind",
+                "Set the default workspace for later tools (omit dir after this). Returns a project card.",
+                objectSchema(
+                        Map.of(
+                                "dir",
+                                Map.of(
+                                        "type",
+                                        "string",
+                                        "description",
+                                        "Project/workspace root (jk.toml): absolute, ~/…, or home-relative")),
+                        List.of("dir"))));
+        tools.add(tool(
                 "jk_project",
-                "Parse project metadata from dir/jk.toml (coord, description).",
+                "Project card (coord, java, members, last run). dir optional after jk_bind.",
                 objectSchema(Map.of(
                         "dir",
                         Map.of(
@@ -224,9 +242,23 @@ public final class McpHandler {
                                 "Project root (jk.toml): absolute, ~/…, or home-relative")))));
         tools.add(tool(
                 "jk_history",
-                "Recent build journal entries (JSON array of records). Same source as GET /api/history.",
+                "Recent runs as summaries (id, success, failed modules, diagnostic count). "
+                        + "Default view=summary. Filters: dir, projectId, success, kind, limit, next.",
                 objectSchema(Map.of(
-                        "limit", Map.of("type", "integer", "description", "Max entries (default 20, max 200)")))));
+                        "limit",
+                        Map.of("type", "integer", "description", "Max rows (default 10, max 200)"),
+                        "next",
+                        Map.of("type", "integer", "description", "Skip this many matching rows (from prior next)"),
+                        "dir",
+                        Map.of("type", "string", "description", "Filter to this checkout (default: bound dir)"),
+                        "projectId",
+                        Map.of("type", "string", "description", "Filter to this durable project id"),
+                        "kind",
+                        Map.of("type", "string", "description", "build | test | lock | …"),
+                        "success",
+                        Map.of("type", "boolean", "description", "Only successful or only failed runs"),
+                        "view",
+                        Map.of("type", "string", "description", "summary (default) or full (raw journal — avoid)")))));
         return Map.of("tools", tools);
     }
 
@@ -237,18 +269,28 @@ public final class McpHandler {
         Map<String, Object> args = params.get("arguments") instanceof Map<?, ?> a ? (Map<String, Object>) a : Map.of();
         String progressToken = progressTokenOf(params);
 
-        Object payload =
-                switch (name) {
-                    case "jk_status" -> statusPayload();
-                    case "jk_build" -> jobPayload("build", args, jobs::triggerBuild, progressToken);
-                    case "jk_test" -> jobPayload("test", args, jobs::triggerTest, progressToken);
-                    case "jk_lock" -> jobPayload("lock", args, jobs::triggerLock, progressToken);
-                    case "jk_cancel" -> cancelPayload(args);
-                    case "jk_project" -> projectPayload(args);
-                    case "jk_history" -> historyPayload(args);
-                    default -> throw new McpError(-32602, "unknown tool: " + name);
-                };
-        return toolResult(MiniJson.write(payload), false);
+        return switch (name) {
+            case "jk_status" -> {
+                Map<String, Object> st = statusPayload();
+                yield ok(st, statusSummary(st));
+            }
+            case "jk_build" -> ok(jobPayload("build", args, jobs::triggerBuild, progressToken), "build accepted");
+            case "jk_test" -> ok(jobPayload("test", args, jobs::triggerTest, progressToken), "test accepted");
+            case "jk_lock" -> ok(jobPayload("lock", args, jobs::triggerLock, progressToken), "lock accepted");
+            case "jk_cancel" -> cancelResult(args);
+            case "jk_bind" -> bindResult(args);
+            case "jk_project" -> projectResult(args);
+            case "jk_history" -> historyResult(args);
+            default -> throw new McpError(-32602, "unknown tool: " + name);
+        };
+    }
+
+    private Map<String, Object> ok(Map<String, Object> envelope, String summary) {
+        return McpEnvelope.toolResult(envelope, summary);
+    }
+
+    private static String statusSummary(Map<String, Object> status) {
+        return "engine " + status.getOrDefault("version", "") + " pid " + status.getOrDefault("pid", "");
     }
 
     /** MCP progress token from {@code params._meta.progressToken} (string or number). */
@@ -263,49 +305,46 @@ public final class McpHandler {
 
     private Map<String, Object> statusPayload() {
         StatusSnapshot s = status.get();
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("schema", 1);
-        m.put("type", "status");
-        m.put("version", s.version());
-        m.put("pid", s.pid());
-        m.put("startedAt", s.startedAtMillis());
-        m.put("uptimeSeconds", Math.max(0, (System.currentTimeMillis() - s.startedAtMillis()) / 1000));
-        m.put("activeRequests", s.activeRequests());
-        m.put("activeBuildPlans", s.activeBuildPlans());
-        m.put("heapUsedBytes", s.heapUsedBytes());
-        m.put("heapCommittedBytes", s.heapCommittedBytes());
-        m.put("heapMaxBytes", s.heapMaxBytes());
-        m.put("rssBytes", s.rssBytes());
-        m.put("cores", s.cores());
-        return m;
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("version", s.version());
+        fields.put("pid", s.pid());
+        fields.put("startedAt", s.startedAtMillis());
+        fields.put("uptimeSeconds", Math.max(0, (System.currentTimeMillis() - s.startedAtMillis()) / 1000));
+        fields.put("activeRequests", s.activeRequests());
+        fields.put("activeBuildPlans", s.activeBuildPlans());
+        fields.put("heapUsedBytes", s.heapUsedBytes());
+        fields.put("heapCommittedBytes", s.heapCommittedBytes());
+        fields.put("heapMaxBytes", s.heapMaxBytes());
+        fields.put("rssBytes", s.rssBytes());
+        fields.put("cores", s.cores());
+        String bound = session.dir();
+        if (bound != null) fields.put("boundDir", bound);
+        return McpEnvelope.of("status", fields);
     }
 
     private Map<String, Object> jobPayload(
             String kind, Map<String, Object> args, Function<String, Long> trigger, String progressToken) {
-        String dir = string(args.get("dir"));
-        if (dir == null || dir.isBlank()) throw new McpError(-32602, "requires arguments.dir");
+        String dir = resolveDir(args, true);
         try {
             long requestId = trigger.apply(dir);
             if (progressToken != null) progressTokens.bind(progressToken, requestId);
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("schema", 1);
-            m.put("type", kind + "-accepted");
-            m.put("kind", kind);
-            m.put("requestId", requestId);
-            m.put("jid", requestId);
-            m.put("dir", dir);
-            m.put("events", "/api/events");
-            m.put("mcpEvents", "GET /mcp?requestId=" + requestId);
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("kind", kind);
+            fields.put("requestId", requestId);
+            fields.put("jid", requestId);
+            fields.put("dir", dir);
+            fields.put("events", "/api/events");
+            fields.put("mcpEvents", "GET /mcp?requestId=" + requestId);
             if (progressToken != null) {
-                m.put("progressToken", progressToken);
-                m.put("mcpEventsByToken", "GET /mcp?progressToken=" + progressToken);
+                fields.put("progressToken", progressToken);
+                fields.put("mcpEventsByToken", "GET /mcp?progressToken=" + progressToken);
             }
-            m.put(
-                    "note",
-                    "Job started asynchronously. Stream progress via GET /mcp?requestId="
-                            + requestId
-                            + " (Accept: text/event-stream) or GET /api/events. Cancel with jk_cancel.");
-            return m;
+            return McpEnvelope.of(
+                    kind + "-accepted",
+                    fields,
+                    false,
+                    null,
+                    "Stream GET /mcp?requestId=" + requestId + " or jk_cancel jid=" + requestId);
         } catch (IllegalStateException e) {
             throw new McpError(-32000, e.getMessage());
         } catch (IllegalArgumentException e) {
@@ -313,7 +352,7 @@ public final class McpHandler {
         }
     }
 
-    private Map<String, Object> cancelPayload(Map<String, Object> args) {
+    private Map<String, Object> cancelResult(Map<String, Object> args) {
         Object raw = args.get("jid");
         if (!(raw instanceof Number)) raw = args.get("requestId");
         if (!(raw instanceof Number n)) {
@@ -321,48 +360,112 @@ public final class McpHandler {
         }
         long id = n.longValue();
         boolean ok = jobs.cancel(id);
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("schema", 1);
-        m.put("type", "cancel");
-        m.put("requestId", id);
-        m.put("jid", id);
-        m.put("cancelled", ok);
-        if (!ok) m.put("note", "unknown or already finished jid");
-        return m;
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("requestId", id);
+        fields.put("jid", id);
+        fields.put("cancelled", ok);
+        if (!ok) fields.put("note", "unknown or already finished jid");
+        return ok(McpEnvelope.of("cancel", fields), ok ? "cancelled " + id : "jid " + id + " not cancelled");
     }
 
-    private Map<String, Object> projectPayload(Map<String, Object> args) {
+    private Map<String, Object> bindResult(Map<String, Object> args) {
         String dir = string(args.get("dir"));
-        if (dir == null || dir.isBlank()) throw new McpError(-32602, "jk_project requires arguments.dir");
-        Map<String, Object> m = new LinkedHashMap<>(projectLookup.apply(dir));
-        m.putIfAbsent("schema", 1);
-        m.putIfAbsent("type", "project");
-        m.put("dir", dir);
-        return m;
+        if (dir == null || dir.isBlank()) throw new McpError(-32602, "jk_bind requires arguments.dir");
+        String abs;
+        try {
+            abs = PathUtil.resolveUserPath(dir).toString();
+        } catch (RuntimeException e) {
+            throw new McpError(-32602, "invalid dir: " + e.getMessage());
+        }
+        session.bind(abs);
+        Map<String, Object> card = McpProjectCards.card(abs, historyRaw.get());
+        Map<String, Object> env = McpEnvelope.of("project", card, false, null, "jk_history for recent runs");
+        String coord = String.valueOf(card.getOrDefault("coord", abs));
+        return ok(env, "bound " + coord);
     }
 
-    private Map<String, Object> historyPayload(Map<String, Object> args) {
-        int limit = 20;
-        Object lim = args.get("limit");
-        if (lim instanceof Number n) limit = n.intValue();
-        if (limit < 1) limit = 1;
-        if (limit > 200) limit = 200;
+    private Map<String, Object> projectResult(Map<String, Object> args) {
+        String dir = resolveDir(args, true);
+        String abs;
+        try {
+            abs = PathUtil.resolveUserPath(dir).toString();
+        } catch (RuntimeException e) {
+            abs = dir;
+        }
+        Map<String, Object> card = McpProjectCards.card(abs, historyRaw.get());
+        // Keep legacy lookup keys (coord/description) if parse failed.
+        if (!card.containsKey("coord")) {
+            card.putAll(projectLookup.apply(dir));
+        }
+        return ok(McpEnvelope.of("project", card), String.valueOf(card.getOrDefault("coord", abs)));
+    }
+
+    private Map<String, Object> historyResult(Map<String, Object> args) {
+        int limit = intArg(args.get("limit"), 10, 1, 200);
+        int skip = intArg(args.get("next"), 0, 0, Integer.MAX_VALUE);
+        String view = string(args.get("view"));
+        boolean full = view != null && "full".equalsIgnoreCase(view);
+        String dir = string(args.get("dir"));
+        if (dir == null || dir.isBlank()) dir = session.dir();
+        String projectId = string(args.get("projectId"));
+        String kind = string(args.get("kind"));
+        Boolean success = McpHistoryViews.parseBool(args.get("success"));
+
         List<String> raw = historyRaw.get();
-        if (raw.size() > limit) raw = raw.subList(0, limit);
-        // Return as parsed objects when possible for agent convenience.
-        List<Object> records = new ArrayList<>();
+        List<Object> matched = new ArrayList<>();
         for (String r : raw) {
+            Map<String, Object> rec = parseRecord(r);
+            if (rec == null) continue;
+            if (!McpHistoryViews.matches(rec, dir, projectId, success, kind)) continue;
+            matched.add(full ? rec : McpHistoryViews.summarize(rec));
+        }
+        int total = matched.size();
+        int from = Math.min(skip, total);
+        int to = Math.min(from + limit, total);
+        List<Object> page = new ArrayList<>(matched.subList(from, to));
+        boolean truncated = to < total;
+        Object next = truncated ? Integer.valueOf(to) : null;
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("records", page);
+        fields.put("count", page.size());
+        fields.put("totalMatched", total);
+        String hint = truncated ? "jk_history next=" + next : null;
+        String summary = page.size() + " of " + total + " runs";
+        return ok(McpEnvelope.of("history", fields, truncated, next, hint), summary);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> parseRecord(String raw) {
+        try {
+            Object o = MiniJson.parse(raw);
+            return o instanceof Map<?, ?> m ? (Map<String, Object>) m : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private String resolveDir(Map<String, Object> args, boolean required) {
+        String dir = string(args.get("dir"));
+        if (dir == null || dir.isBlank()) dir = session.dir();
+        if ((dir == null || dir.isBlank()) && required) {
+            throw new McpError(-32602, "requires arguments.dir (or jk_bind first)");
+        }
+        return dir;
+    }
+
+    private static int intArg(Object raw, int fallback, int min, int max) {
+        int n = fallback;
+        if (raw instanceof Number num) n = num.intValue();
+        else if (raw != null) {
             try {
-                records.add(MiniJson.parse(r));
-            } catch (RuntimeException e) {
-                records.add(r);
+                n = Integer.parseInt(String.valueOf(raw).trim());
+            } catch (NumberFormatException ignored) {
+                n = fallback;
             }
         }
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("schema", 1);
-        m.put("type", "history");
-        m.put("records", records);
-        return m;
+        if (n < min) n = min;
+        if (n > max) n = max;
+        return n;
     }
 
     private static Map<String, Object> tool(String name, String description, Map<String, Object> inputSchema) {
@@ -374,25 +477,15 @@ public final class McpHandler {
     }
 
     private static Map<String, Object> objectSchema(Map<String, Object> properties) {
+        return objectSchema(properties, List.of());
+    }
+
+    private static Map<String, Object> objectSchema(Map<String, Object> properties, List<String> required) {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
         schema.put("properties", properties);
-        List<String> required = new ArrayList<>();
-        for (String k : properties.keySet()) {
-            if ("dir".equals(k)) required.add(k);
-        }
-        if (!required.isEmpty()) schema.put("required", required);
+        if (required != null && !required.isEmpty()) schema.put("required", required);
         return schema;
-    }
-
-    private static Map<String, Object> toolResult(String text, boolean isError) {
-        Map<String, Object> content = new LinkedHashMap<>();
-        content.put("type", "text");
-        content.put("text", text);
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("content", List.of(content));
-        if (isError) result.put("isError", true);
-        return result;
     }
 
     private static Map<String, Object> resultMap(Object id, Object result) {
