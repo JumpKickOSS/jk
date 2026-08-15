@@ -18,7 +18,7 @@ class EnsureJdkProgressTest {
         PlannerSetup.EnsureJdkProgress p = new PlannerSetup.EnsureJdkProgress(ctx);
         p.onDownloadStart("Temurin 25", 200);
         p.onDownloadProgress(50, 200);
-        p.onDownloadProgress(51, 200); // still 26%? 50/200=25, 51/200=26...
+        p.onDownloadProgress(51, 200); // floor: 50/200 and 51/200 are both 25% — one label
         p.onDownloadProgress(100, 200);
         p.onDownloadProgress(100, 200);
         p.onExtractStart("Temurin 25");
@@ -26,7 +26,20 @@ class EnsureJdkProgressTest {
         assertThat(ctx.labels.getFirst()).isEqualTo(JdkProgressLabel.downloading("Temurin 25", 0, 200));
         assertThat(ctx.labels).contains(JdkProgressLabel.downloading("Temurin 25", 100, 200));
         assertThat(ctx.labels.getLast()).isEqualTo(JdkProgressLabel.installing("Temurin 25"));
+        assertThat(ctx.labels.stream().filter(s -> s.endsWith(" 25%")).count()).isEqualTo(1);
         assertThat(ctx.labels.stream().filter(s -> s.endsWith("50%")).count()).isEqualTo(1);
+    }
+
+    @Test
+    void unknown_size_emits_one_bar_less_label() {
+        RecordingCtx ctx = new RecordingCtx();
+        PlannerSetup.EnsureJdkProgress p = new PlannerSetup.EnsureJdkProgress(ctx);
+        p.onDownloadStart("Temurin 25", 0);
+        p.onDownloadProgress(1024, 0);
+        p.onDownloadProgress(4096, 0);
+        p.onExtractStart("Temurin 25");
+
+        assertThat(ctx.labels).containsExactly("downloading Temurin 25", JdkProgressLabel.installing("Temurin 25"));
     }
 
     private static final class RecordingCtx implements TaskContext {

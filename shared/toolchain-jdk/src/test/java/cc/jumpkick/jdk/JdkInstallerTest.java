@@ -270,6 +270,28 @@ class JdkInstallerTest {
         assertThat(installed.home().resolve("release")).exists();
     }
 
+    @Test
+    void service_install_journals_the_ledger_under_the_registry_root(@TempDir Path tempDir) throws Exception {
+        // JK-1951: an overridden jdks dir must journal MRU rows in its own tree, not the
+        // default location's ledger.
+        byte[] archive = buildTarGz(
+                "jdk-21.0.5+11",
+                Map.of(
+                        "bin/java", "#!/fake/java",
+                        "bin/javac", "#!/fake/java",
+                        "release", "JAVA_VERSION=21.0.5\n"));
+        served.put("/jdk.tar.gz", archive);
+        Path jdksRoot = tempDir.resolve("custom-jdks");
+        JdkCatalog.Entry e = entry("linux", "x64", "", base.resolve("/jdk.tar.gz"), Hashing.sha256Hex(archive));
+
+        InstalledJdk installed = new JdkService().install(e, new JdkRegistry(jdksRoot), false, null);
+
+        Path ledger = jdksRoot.resolve(JdkAccessLedger.FILE_NAME);
+        assertThat(ledger).exists();
+        assertThat(Files.readString(ledger))
+                .contains(installed.home().toAbsolutePath().normalize().toString());
+    }
+
     private static JdkCatalog.Entry entry(String os, String arch, String javaHomeSubpath, URI url, String sha256) {
         return new JdkCatalog.Entry(
                 "Eclipse",

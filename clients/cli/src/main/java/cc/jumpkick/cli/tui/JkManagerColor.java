@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.jdk.JdkProgressLabel;
 import java.util.Locale;
 import java.util.regex.Pattern;
 import org.jline.utils.AttributedStyle;
@@ -92,7 +93,7 @@ public final class JkManagerColor {
      * percent mid-gray, product name cyan, filled bar cells blue, empty cells dark gray.
      */
     static String colorJdkProgressDetail(String detail, Theme t) {
-        cc.jumpkick.jdk.JdkProgressLabel.Parsed p = cc.jumpkick.jdk.JdkProgressLabel.tryParse(detail);
+        JdkProgressLabel.Parsed p = JdkProgressLabel.tryParse(detail);
         if (p == null) return null;
         StringBuilder out = new StringBuilder(detail.length() + 64);
         out.append(Theme.colorize(p.verb(), t.midGray()));
@@ -102,8 +103,7 @@ public final class JkManagerColor {
             out.append(Theme.colorize(" ", t.midGray()));
             for (int i = 0; i < p.bar().length(); i++) {
                 char c = p.bar().charAt(i);
-                out.append(Theme.colorize(
-                        String.valueOf(c), c == cc.jumpkick.jdk.JdkProgressLabel.FILLED ? t.blue() : t.darkGray()));
+                out.append(Theme.colorize(String.valueOf(c), c == JdkProgressLabel.FILLED ? t.blue() : t.darkGray()));
             }
             out.append(Theme.colorize(" ", t.midGray()));
             out.append(Theme.colorize(p.percent() + "%", t.midGray()));

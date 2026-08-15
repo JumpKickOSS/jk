@@ -36,11 +36,15 @@ public final class JdkProgressLabel {
         return product + " " + entry.majorVersion();
     }
 
-    /** {@code 0..100}, or {@code -1} when {@code total} is unknown. */
+    /**
+     * {@code 0..100}, or {@code -1} when {@code total} is unknown. Floors rather than rounds:
+     * "100%" means the last byte arrived, never "99.5% and still downloading" — the
+     * downloading/installing boundary the label design hinges on (JK-1951).
+     */
     public static int percent(long read, long total) {
         if (total <= 0) return -1;
         long clamped = Math.max(0L, read);
-        return (int) Math.min(100L, Math.round(100.0 * clamped / total));
+        return (int) Math.min(100L, (100L * clamped) / total);
     }
 
     public static String downloading(String name, long read, long total) {

@@ -1157,6 +1157,15 @@ test('detailSegments paints ensure-jdk download and install labels', () => {
   assert.ok(inst.filter((s) => s.cls === 'det-bar-fill').length === 10);
 });
 
+test('detailSegments paints the bar-less unknown-size download label', () => {
+  // Feed rows without archiveSize emit "downloading Temurin 25" alone (JK-1951).
+  const bare = detailSegments('downloading Temurin 25');
+  assert.ok(bare.some((s) => s.cls === 'det-mid' && s.text === 'downloading'));
+  assert.ok(bare.some((s) => s.cls === 'det-jdk' && s.text === 'Temurin 25'));
+  assert.equal(bare.filter((s) => s.cls === 'det-bar-fill' || s.cls === 'det-bar-empty').length, 0);
+  assert.ok(!bare.some((s) => /%$/.test(s.text)));
+});
+
 test('request-finish folds the run\'s byte counters onto the card', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
