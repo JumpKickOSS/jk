@@ -42,7 +42,7 @@ class VerboseListenerTest {
         assertThat(plain).doesNotContain("@@src");
         assertThat(plain).doesNotContain("Test Failure end");
         assertThat(plain).contains("FAILED Foo.bar()");
-        assertThat(plain).contains("Foo.java");
+        assertThat(plain).contains("Foo.java:3");
         assertThat(plain).contains("AssertionFailedError thrown at line 3");
         assertThat(plain).contains(DiagnosticReport.FOOTER);
     }

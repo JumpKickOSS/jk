@@ -18,6 +18,7 @@ const {
   columnSpan,
   clipHashMsg,
   hoverMessage,
+  locusLabel,
   consoleBackground,
   themeDefinition,
   buildFileTree,
@@ -123,6 +124,15 @@ test('buildProjectHash keeps slashes in the file path', () => {
     }),
     '#project/ab/files/src/Main.java?line=12&col=7&err=true&msg=error%3A%20cannot%20find%20symbol',
   );
+});
+
+test('locusLabel appends line and column for copy-paste', () => {
+  assert.equal(locusLabel(''), '');
+  assert.equal(locusLabel('src/Main.java'), 'src/Main.java');
+  assert.equal(locusLabel('src/Main.java', 0), 'src/Main.java');
+  assert.equal(locusLabel('src/Main.java', 12), 'src/Main.java:12');
+  assert.equal(locusLabel('src/Main.java', 12, 0), 'src/Main.java:12');
+  assert.equal(locusLabel('src/Main.java', 12, 7), 'src/Main.java:12:7');
 });
 
 test('clipHashMsg and hoverMessage wrap compiler notes', () => {

@@ -117,7 +117,7 @@ public final class CompilerDiagnostic {
                         .append(TestFailureHighlight.paintSourcePath(
                                 display, file, lineNo, linkCol, t, formatNote(kvs, extras)));
             } else {
-                out.append("    ").append(display);
+                out.append("    ").append(TestFailureHighlight.locusLabel(display, lineNo, linkCol));
             }
             return;
         }

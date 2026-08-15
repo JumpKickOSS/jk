@@ -55,7 +55,7 @@ class TestFailureHighlightTest {
         assertThat(all).doesNotContain("[dogfood:");
         assertThat(all).contains("Expected: 42");
         assertThat(all).contains("But Was: 41");
-        assertThat(all).contains("src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java");
+        assertThat(all).contains("src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java:23");
         assertThat(all).contains("isEqualTo");
         assertThat(all).doesNotContain("org.opentest4j");
         assertThat(all).doesNotContain("@@source");
@@ -99,10 +99,10 @@ class TestFailureHighlightTest {
             painted = TestFailureHighlight.paintSourcePath(
                     path, "@@source path=" + path + " line=9 lang=java", Theme.active());
         }
-        // AttributedString.stripAnsi leaves OSC-8; visible text is still the path.
+        // AttributedString.stripAnsi leaves OSC-8; visible text is path:line for copy-paste.
         assertThat(painted).contains(Ansi.OSC + "8;;" + expectedUrl);
         assertThat(painted).contains(path);
-        assertThat(cc.jumpkick.cli.tui.RenderContext.stripAnsi(painted)).isEqualTo(path);
+        assertThat(cc.jumpkick.cli.tui.RenderContext.stripAnsi(painted)).isEqualTo(path + ":9");
         // Full failure block also carries the OSC-8 target on the path line.
         List<String> block;
         try (var scope = DashboardCodeLink.open(Path.of("/ws"), Path.of("/ws"))) {
@@ -188,7 +188,7 @@ class TestFailureHighlightTest {
         assertThat(all).contains("AssertionFailedError thrown at line 9");
         assertThat(all).contains("Expected: 42");
         assertThat(all).contains("But Was: 41");
-        assertThat(all).contains("Foo.java");
+        assertThat(all).contains("Foo.java:9");
         assertThat(all).contains(DiagnosticReport.FOOTER);
         assertThat(all).contains("Note: leftover output");
         assertThat(all).doesNotContain("Test Failure end");
@@ -278,7 +278,7 @@ class TestFailureHighlightTest {
         List<String> painted = TestFailureHighlight.paintLines(raw);
         String all = String.join(
                 "\n", painted.stream().map(TestFailureHighlightTest::plain).toList());
-        assertThat(all).contains("src/test/groovy/My Specs/FooSpec.groovy");
+        assertThat(all).contains("src/test/groovy/My Specs/FooSpec.groovy:3");
 
         // Old-format header (path mid-line, no spaces) keeps parsing.
         List<String> old = List.of(
@@ -296,8 +296,16 @@ class TestFailureHighlightTest {
                 TestFailureHighlight.paintLines(old).stream()
                         .map(TestFailureHighlightTest::plain)
                         .toList());
-        assertThat(oldAll).contains("Foo.java");
+        assertThat(oldAll).contains("Foo.java:3");
         assertThat(oldAll).doesNotContain("Foo.java line=");
+    }
+
+    @Test
+    void locusLabel_appends_line_and_column() {
+        assertThat(TestFailureHighlight.locusLabel("", 1, 1)).isEmpty();
+        assertThat(TestFailureHighlight.locusLabel("src/Main.java", 0, 7)).isEqualTo("src/Main.java");
+        assertThat(TestFailureHighlight.locusLabel("src/Main.java", 12, 0)).isEqualTo("src/Main.java:12");
+        assertThat(TestFailureHighlight.locusLabel("src/Main.java", 12, 7)).isEqualTo("src/Main.java:12:7");
     }
 
     @Test

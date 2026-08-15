@@ -40,6 +40,7 @@ import {
   routeFromHash,
   buildProjectHash,
   codePathForFailure,
+  locusLabel,
   CodeView,
 } from './code.js';
 
@@ -292,6 +293,12 @@ const FailReport = {
     canOpen() {
       return !!(this.projectId && this.codePath);
     },
+    /** Path plus line/col so a copied fail-report still names the jump. */
+    fileLocus() {
+      const r = this.rep;
+      if (!r || !r.file) return '';
+      return locusLabel(r.file, r.line || 0, r.column || r.col || 0);
+    },
     /** Real hash deep link into the Monaco files pane (copyable, middle-clickable). */
     deepLink() {
       if (!this.canOpen) return undefined;
@@ -368,7 +375,7 @@ const FailReport = {
         class="fail-line fail-path"
         :class="{ link: canOpen }"
         :href="deepLink"
-      >{{ rep.file }}</component>
+      >{{ fileLocus }}</component>
       <div
         v-for="(row, ri) in rep.rows"
         :key="'s'+ri"

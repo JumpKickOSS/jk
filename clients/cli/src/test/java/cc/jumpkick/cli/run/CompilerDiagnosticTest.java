@@ -41,7 +41,7 @@ class CompilerDiagnosticTest {
         assertThat(p).contains("symbol: class Test");
         assertThat(p).contains("location: class Foo");
         assertThat(p).doesNotContain("\n     ^");
-        assertThat(p).contains("Foo.java");
+        assertThat(p).contains("Foo.java:2:");
         assertThat(p).contains("@Test");
         assertThat(p).contains("void t()");
         // Colons of the trailer keys line up with "error:" (column, not string index).
@@ -68,7 +68,7 @@ class CompilerDiagnosticTest {
         String raw = src + ":2:5: error: unresolved reference: Test\n    @Test\n     ^";
         String p = plain(CompilerDiagnostic.render(raw));
         assertThat(p).contains("error: unresolved reference: Test");
-        assertThat(p).contains("Baz.kt");
+        assertThat(p).contains("Baz.kt:2:");
         assertThat(p).contains("@Test");
         assertThat(p).doesNotContain("^");
     }
@@ -78,7 +78,7 @@ class CompilerDiagnosticTest {
         String raw = "Bar.java:3: error: package org.junit.jupiter.api does not exist";
         String p = plain(CompilerDiagnostic.render(raw));
         assertThat(p).contains("error: package org.junit.jupiter.api does not exist");
-        assertThat(p).contains("Bar.java");
+        assertThat(p).contains("Bar.java:3");
     }
 
     @Test
@@ -104,6 +104,7 @@ class CompilerDiagnosticTest {
         assertThat(rendered).contains("&err=true");
         assertThat(rendered).contains("&msg=");
         assertThat(rendered).contains("cannot%20find%20symbol");
+        assertThat(plain(rendered)).contains("Main.java:2:18");
     }
 
     @Test
@@ -155,8 +156,8 @@ class CompilerDiagnosticTest {
                 "          ^",
                 "  symbol: class Y");
         String p = plain(CompilerDiagnostic.render(raw));
-        assertThat(p).contains("A.java");
-        assertThat(p).contains("B.java");
+        assertThat(p).contains("A.java:1:");
+        assertThat(p).contains("B.java:1:");
         assertThat(p).contains("class X");
         assertThat(p).contains("class Y");
     }

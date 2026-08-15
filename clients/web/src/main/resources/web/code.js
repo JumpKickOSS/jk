@@ -406,6 +406,19 @@ export function buildProjectHash({ projectId, files, path, line, col, err, msg }
   return h;
 }
 
+/**
+ * Visible locus on a failure path: {@code path}, {@code path:line}, or {@code path:line:col}.
+ * Copy-paste still carries the jump after the hash / OSC-8 link is stripped.
+ */
+export function locusLabel(path, line = 0, col = 0) {
+  const p = path == null ? '' : String(path);
+  if (!p) return '';
+  const n = Number(line) || 0;
+  if (n < 1) return p;
+  const c = Number(col) || 0;
+  return c > 0 ? p + ':' + n + ':' + c : p + ':' + n;
+}
+
 /** Keep hash / OSC-8 URLs from ballooning; compiler notes are a few short lines. */
 export function clipHashMsg(msg, max = 800) {
   const t = msg == null ? '' : String(msg).trim();

@@ -29,7 +29,7 @@ import org.jline.utils.AttributedStyle;
  *  ┃  Expected: 42
  *  ┃   But Was: 41
  *  ┃
- *  ┃     path/to/File.java   ← OSC-8 deep link into the dashboard code editor when known
+ *  ┃     path/to/File.java:23   ← OSC-8 deep link; line (and col) stay in the copied text
  *  ┃   19│ …
  *  ┃     AssertionFailedError thrown at line 23
  *  ┗━
@@ -372,9 +372,10 @@ public final class TestFailureHighlight {
             maxCode = Math.max(maxCode, row.code.length());
         }
 
+        int line = parsePositiveInt(attr(header, "line"));
         List<String> out = new ArrayList<>();
         if (!t.isAnsi()) {
-            out.add(railPlain(BODY_INDENT + path));
+            out.add(railPlain(BODY_INDENT + locusLabel(path, line, 0)));
             for (SrcRow row : rows) out.add(railPlain(plainSrcLine(row, maxCode)));
             return out;
         }
@@ -424,12 +425,13 @@ public final class TestFailureHighlight {
         boolean snippetOnly = n == 1 && err > 1;
         int lo = snippetOnly ? 1 : Math.max(1, err - 2);
         int hi = snippetOnly ? 1 : Math.min(n, err + 2);
+        int linkCol = errorCol >= 0 ? errorCol + 1 : 0;
         if (n == 0) {
             List<String> empty = new ArrayList<>();
             if (!t.isAnsi()) {
-                empty.add(BODY_INDENT + displayPath);
+                empty.add(BODY_INDENT + locusLabel(displayPath, err, linkCol));
             } else {
-                empty.add(BODY_INDENT + paintSourcePath(displayPath, linkPath, err, errorCol + 1, t, note));
+                empty.add(BODY_INDENT + paintSourcePath(displayPath, linkPath, err, linkCol, t, note));
             }
             return empty;
         }
@@ -448,11 +450,11 @@ public final class TestFailureHighlight {
         }
         List<String> out = new ArrayList<>();
         if (!t.isAnsi()) {
-            out.add(BODY_INDENT + displayPath);
+            out.add(BODY_INDENT + locusLabel(displayPath, err, linkCol));
             for (SrcRow row : rows) out.add(plainSrcLine(row, maxCode));
             return out;
         }
-        out.add(BODY_INDENT + paintSourcePath(displayPath, linkPath, err, errorCol + 1, t, note));
+        out.add(BODY_INDENT + paintSourcePath(displayPath, linkPath, err, linkCol, t, note));
         Rgb pane = CONSOLE_BG;
         for (SrcRow row : rows) {
             out.add(paintSrcLine(row, maxCode, lang == null ? SyntaxHighlight.Language.JAVA : lang, t, pane));
@@ -483,15 +485,27 @@ public final class TestFailureHighlight {
 
     static String paintSourcePath(String display, String linkPath, int line, int col, Theme t, String note) {
         if (display == null || display.isEmpty()) return "";
+        String label = locusLabel(display, line, col);
         String url = DashboardCodeLink.urlForSnippet(linkPath != null ? linkPath : display, line, col, note);
         if (url == null && linkPath != null && !linkPath.equals(display)) {
             url = DashboardCodeLink.urlForSnippet(display, line, col, note);
         }
         if (url != null && !url.isBlank()) {
-            return RichText.parse("[link " + url + "][path underline]" + RichText.escape(display) + "[/][/]")
+            return RichText.parse("[link " + url + "][path underline]" + RichText.escape(label) + "[/][/]")
                     .render();
         }
-        return Theme.colorize(display, t.path().underline());
+        return Theme.colorize(label, t.path().underline());
+    }
+
+    /**
+     * Visible locus: {@code path}, {@code path:line}, or {@code path:line:col}. Copy-paste into an
+     * agent still carries the jump after OSC-8 / colour is stripped.
+     */
+    static String locusLabel(String path, int line, int col) {
+        if (path == null || path.isEmpty()) return "";
+        if (line <= 0) return path;
+        if (col > 0) return path + ":" + line + ":" + col;
+        return path + ":" + line;
     }
 
     private static int parsePositiveInt(String raw) {

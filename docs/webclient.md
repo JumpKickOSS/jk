@@ -92,7 +92,8 @@ add `&err=true` so the target line uses the error-red wash (plain `?line=` stays
 rail). Compiler (and fail-report) jumps also pass `&msg=` — a short, URL-encoded note (capped at
 800 characters) shown as a Monaco hover on the highlighted line and column.
 The underlined path above a test-failure snippet is a real hash deep link into that route (so
-middle-click / copy-link work). Module-relative paths join `rel(checkout, module.dir)` +
+middle-click / copy-link work). Visible text is `path:line` (and `:col` for compiler
+jumps) so a copied snippet still names the locus after colour / OSC-8 is stripped. Module-relative paths join `rel(checkout, module.dir)` +
 `rep.file`; an empty live single-plan module dir leaves `rep.file` as already checkout-relative.
 Basename-only paths stay plain text.
 
