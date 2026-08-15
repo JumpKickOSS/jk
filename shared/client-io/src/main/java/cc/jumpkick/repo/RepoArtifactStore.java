@@ -30,7 +30,7 @@ import java.util.stream.Stream;
  * (same bytes, one inode), else a copy. The store root is fully jk-owned ({@code JK_STORE_DIR} /
  * {@code ~/.local/share/jk/store}); writers must use temp + atomic replace, never in-place truncation of a
  * hard-linked path. (Separately, a project may opt into also mirroring artifacts to {@code ~/.m2}
- * for Maven/Gradle interop — see {@code project.m2install} — but that mirror is not this store and
+ * for Maven/Gradle interop — see {@code m2install} — but that mirror is not this store and
  * is never hard-linked from the CAS by default.)
  *
  * <h3>Sidecar invariant</h3>
@@ -363,7 +363,7 @@ public final class RepoArtifactStore {
      * legacy copy of the CAS blob). Callers that delete CAS paths must invoke this for the same
      * sha set: with hard-linked materialization, removing only {@code sha256/…} leaves a live
      * nlink under {@code repos/} and the GC does not reclaim disk. Never touches an opt-in
-     * {@code ~/.m2} mirror (jk doesn't GC Maven's store; see {@code project.m2install}).
+     * {@code ~/.m2} mirror (jk doesn't GC Maven's store; see {@code m2install}).
      * Best-effort; returns entries removed. Never throws.
      */
     public static int removeShasFromAll(Path cacheRoot, Set<String> shas, boolean dryRun) {

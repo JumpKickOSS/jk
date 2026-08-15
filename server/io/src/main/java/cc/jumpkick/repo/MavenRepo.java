@@ -120,7 +120,7 @@ public final class MavenRepo {
     /**
      * Field-setting constructor. {@code httpOrNull} is the HTTP client when the repo is http(s)
      * (enabling the metadata cache), or {@code null} for a non-HTTP transport. {@code mirrorToM2}
-     * is the resolving project's {@code project.m2install} value — {@code false} for resolvers not
+     * is the resolving project's {@code m2install} value — {@code false} for resolvers not
      * tied to a specific project's declared dependencies (tool/plugin/script/git resolution).
      */
     private MavenRepo(

@@ -39,7 +39,7 @@ public record Lockfile(
 
     /**
      * Resolved first-party project identity for one workspace member (or the standalone root at
-     * {@code path = "."}). Captures concrete values after {@code project.*.workspace = true}
+     * {@code path = "."}). Captures concrete values after {@code *.workspace = true}
      * inheritance so a re-lock is the only way those pins change.
      */
     public record ModuleEntry(

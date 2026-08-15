@@ -13,7 +13,7 @@ import java.util.Objects;
 
 /**
  * Loads each {@code workspace.modules} entry's {@code jk.toml} (literal paths only). Missing
- * modules raise {@link JkBuildParseException}. Resolves Cargo-style {@code project.<field>.workspace
+ * modules raise {@link JkBuildParseException}. Resolves Cargo-style {@code <field>.workspace
  * = true} against the workspace root before returning.
  */
 public final class WorkspaceLoader {
@@ -59,7 +59,7 @@ public final class WorkspaceLoader {
     }
 
     /**
-     * Apply every pending {@code project.*.workspace = true} field from the workspace root.
+     * Apply every pending {@code *.workspace = true} field from the workspace root.
      * Unchanged when the module has no inheritance flags.
      */
     public static JkBuild inheritFromRoot(JkBuild module, JkBuild root) {

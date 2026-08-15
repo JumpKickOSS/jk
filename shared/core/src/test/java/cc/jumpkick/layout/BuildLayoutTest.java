@@ -12,7 +12,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class BuildLayoutTest {
 
-    /** Library project: no {@code project.main}. Artifacts land in {@code target/lib/}. */
+    /** Library project: no {@code main}. Artifacts land in {@code target/lib/}. */
     private static JkBuild project(String artifact, String version) {
         return JkBuild.of(new JkBuild.Project("com.acme", artifact, version, 25));
     }

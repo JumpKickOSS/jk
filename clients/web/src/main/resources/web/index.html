@@ -328,7 +328,7 @@
       <p v-if="projectDetail && projectDetail.description" class="proj-desc">
         <span class="proj-desc-q" aria-hidden="true">"</span><span class="proj-desc-body">{{ projectDetail.description }}</span><span class="proj-desc-q" aria-hidden="true">"</span>
       </p>
-      <p v-else-if="projectDetail" class="proj-desc dim small">No description — add one under <code>[project]</code> in jk.toml.</p>
+      <p v-else-if="projectDetail" class="proj-desc dim small">No description — add a top-level <code>description</code> key in jk.toml.</p>
 
       <template v-if="projectDetail && !projectDetail.empty">
         <div class="tiles">

@@ -29,7 +29,7 @@ public final class BuildLayout {
     private final Path moduleRoot;
     private final String artifact;
     private final String version;
-    /** True when the project declares a {@code project.main} class (i.e. it is an application). */
+    /** True when the project declares a {@code main} class (i.e. it is an application). */
     private final boolean hasMain;
 
     private BuildLayout(Path workspaceRoot, Path moduleRoot, String artifact, String version, boolean hasMain) {
@@ -90,7 +90,7 @@ public final class BuildLayout {
         return version;
     }
 
-    /** True when this project declares {@code project.main} — i.e. it is an application. */
+    /** True when this project declares {@code main} — i.e. it is an application. */
     public boolean hasMain() {
         return hasMain;
     }
@@ -328,9 +328,9 @@ public final class BuildLayout {
      * Destination directory for deliverable artifacts (jars, binaries, OCI images).
      *
      * <ul>
-     * <li>{@code target/} when the project declares {@code project.main} — it is an application
+     * <li>{@code target/} when the project declares {@code main} — it is an application
      * and its packaged output is a directly-runnable artifact.
-     * <li>{@code target/lib/} when no {@code project.main} is declared — it is a library whose
+     * <li>{@code target/lib/} when no {@code main} is declared — it is a library whose
      * packaged output is consumed by other projects, not run directly.
      * </ul>
      *

@@ -1089,7 +1089,7 @@ public final class BuildCommand implements CliCommand {
 
     /**
      * Pre-computes hard-link destinations for all application module artifacts in a workspace.
-     * For each module dir (excluding {@code workspaceRoot} itself) with {@code project.main},
+     * For each module dir (excluding {@code workspaceRoot} itself) with {@code main},
      * maps each candidate artifact path to its link path under {@code workspaceRoot/target/}.
      * When two or more modules produce the same filename the link name is prefixed with the
      * module's group: {@code group-filename}.

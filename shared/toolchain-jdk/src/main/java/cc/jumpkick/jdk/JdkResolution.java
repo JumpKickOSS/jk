@@ -10,7 +10,7 @@ import java.util.function.Function;
 
 /**
  * Canonical JDK resolution shared by the build plan and {@code jk activate}. Order: {@code --jdk},
- * {@code JK_JDK}, {@code .jdk-version}, lock, {@code project.jdk}, java-release floor, current/default
+ * {@code JK_JDK}, {@code .jdk-version}, lock, {@code jdk}, java-release floor, current/default
  * pointers, {@code JAVA_HOME}/{@code GRAALVM_HOME}, then {@code PATH}. {@link #resolve} stops on an
  * uninstalled named pin with {@code wouldInstall}; {@link #resolveForHook} never installs and falls through.
  */

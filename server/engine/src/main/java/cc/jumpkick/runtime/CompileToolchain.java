@@ -39,7 +39,7 @@ public final class CompileToolchain {
 
     /**
      * Pick the Kotlin compiler version to provision: the version pinned in {@code jk-lock.toml} (resolved
-     * by {@code jk lock}) if present, else an exact {@code project.kotlin} pin, else {@code null}
+     * by {@code jk lock}) if present, else an exact {@code kotlin} pin, else {@code null}
      * which falls back to the bundled default distribution.
      */
     public static String kotlinVersionFor(cc.jumpkick.lock.Lockfile lock, JkBuild project) {
@@ -56,7 +56,7 @@ public final class CompileToolchain {
      * Pick the Groovy compiler version to provision, mirroring {@link #kotlinVersionFor}:
      * the locked {@code org.apache.groovy:groovy} runtime first — the compiler must match what
      * actually ships (caret/tilde pins and BOM-managed grails floats resolve here,
-     * else an exact {@code project.groovy} pin, else {@code null} (bundled default).
+     * else an exact {@code groovy} pin, else {@code null} (bundled default).
      */
     public static String groovyVersionFor(cc.jumpkick.lock.Lockfile lock, JkBuild project) {
         if (lock != null) {

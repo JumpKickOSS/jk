@@ -271,7 +271,7 @@ public final class IdeOps {
     }
 
     /**
-     * The project-default SDK: root {@code project.jdk}, else the highest module level. Reuses a
+     * The project-default SDK: root {@code jdk}, else the highest module level. Reuses a
      * module's resolved handle when one matches that level; otherwise resolves the root build.
      */
     private static String[] defaultSdkRef(

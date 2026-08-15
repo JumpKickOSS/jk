@@ -268,7 +268,7 @@ public final class JkBuildParser {
     /**
      * Parse the optional top-level {@code [manifest]} table — string-valued custom jar-manifest
      * attributes (e.g. {@code "Implementation-Title"}). {@code Main-Class} is intentionally
-     * <em>not</em> read here; it derives from {@code project.main}.
+     * <em>not</em> read here; it derives from {@code main}.
      */
     /**
      * Reject removed catalog knobs. Project short names live in workspace-root {@code jk-libs.toml};

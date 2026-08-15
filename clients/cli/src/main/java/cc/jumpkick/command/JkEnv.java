@@ -99,7 +99,7 @@ public final class JkEnv {
 
     /**
      * Build the env vars (JAVA_HOME / GRAALVM_HOME / PATH). GRAALVM_HOME is managed independently of
-     * JAVA_HOME from its own chain ({@code JK_GRAAL} > {@code project.graal} > the {@code jk jdk
+     * JAVA_HOME from its own chain ({@code JK_GRAAL} > {@code graal} > the {@code jk jdk
      * graal} default); only when that chain finds nothing do we fall back to the active JDK if it is
      * itself a GraalVM. Absent → the hook unsets any GRAALVM_HOME it previously exported.
      */

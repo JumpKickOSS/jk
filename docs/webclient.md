@@ -139,7 +139,7 @@ tab bar: [ file-name-pill ]   [ Copy ] [ Preview ] [ Save ]
   self-hosted); images use an auth-fetch → blob URL. Markdown also renders fenced
   ` ```mermaid ` blocks. Preview-eligible files open with Preview on by default (toggle to Source). The rendered
   pane sits above the editor; text buffers re-render on a short debounce while both are open.
-  Markdown images (including raw HTML {@code <img>}): relative paths load via the workspace
+  Markdown images (including raw HTML `<img>`): relative paths load via the workspace
   raw-file API as `blob:` URLs; remote `http(s)` stay as direct `<img src>` with
   `referrerpolicy=no-referrer` and **no** `crossorigin` (setting CORS mode broke GitHub
   user-attachments and badges). Images are **inline** (badge rows stay on one line). Relative

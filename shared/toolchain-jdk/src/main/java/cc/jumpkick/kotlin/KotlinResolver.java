@@ -11,7 +11,7 @@ import java.net.URI;
  * version, downloaded once into {@code $JK_CACHE_DIR/tools/kotlin/<version>/} and reused
  * thereafter.
  *
- * <p>v0.6 first iteration: no project-level pin yet (a {@code project.kotlin} field on {@code
+ * <p>v0.6 first iteration: no project-level pin yet (a {@code kotlin} field on {@code
  * jk.toml} lands when more user code lives in Kotlin). {@link #defaultDistribution()} is the single
  * source of truth.
  */

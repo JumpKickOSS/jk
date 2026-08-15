@@ -33,7 +33,7 @@ public final class CacheSync {
         this(cas, http, new cc.jumpkick.repo.RepoCredentialResolver(), false);
     }
 
-    /** As above, with the resolving project's {@code project.m2install} value. */
+    /** As above, with the resolving project's {@code m2install} value. */
     public CacheSync(Cas cas, Http http, boolean mirrorToM2) {
         this(cas, http, new cc.jumpkick.repo.RepoCredentialResolver(), mirrorToM2);
     }
