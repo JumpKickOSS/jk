@@ -1421,12 +1421,16 @@ export const CodeView = {
       this.saving = true;
       this.saved = false;
       this.error = null;
+      // The response must only ever apply to the file it was issued for: navigating away
+      // (discard confirmed) while the PUT is in flight would otherwise stamp the OLD file's
+      // content/etag onto the NEW file's state (JK-1977).
+      const savedPath = this.path;
       try {
         const { put } = await import('./api.js');
         const content = this.currentContent();
         const body = {
           project: this.projectId,
-          path: this.path,
+          path: savedPath,
           content,
         };
         if (this._etag) body.etag = this._etag;
@@ -1436,11 +1440,13 @@ export const CodeView = {
           body.encoding = this.file.encoding;
         }
         const resp = await put('/api/project/file', body);
+        if (this.path !== savedPath) return; // navigated away — the write landed; drop the state
         const nextEtag = (resp && resp.etag) || null;
         if (this.file) this.file = { ...this.file, content, etag: nextEtag };
         this.setBaseline(content, nextEtag);
         this.flashSaved();
       } catch (e) {
+        if (this.path !== savedPath) return; // stale failure belongs to a file no longer shown
         this.error = saveErrorMessage(e);
       } finally {
         this.saving = false;
