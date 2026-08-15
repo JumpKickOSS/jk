@@ -7,7 +7,11 @@ import cc.jumpkick.cli.tui.WizardStep;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.scaffold.NewInputs;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.NullMarked;
 
 /** Wizard construction and flag/name helpers for jk new. */

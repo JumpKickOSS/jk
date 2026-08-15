@@ -14,7 +14,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
-import java.util.jar.*;
+import java.util.jar.Attributes;
+import java.util.jar.JarEntry;
+import java.util.jar.JarInputStream;
+import java.util.jar.JarOutputStream;
+import java.util.jar.Manifest;
 
 /**
  * {@code jk build --aot-cache}: extract the app under {@code target/aot-cache/} and train a JVM

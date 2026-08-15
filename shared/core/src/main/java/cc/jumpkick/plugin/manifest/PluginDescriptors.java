@@ -2,7 +2,11 @@
 package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.JkBuildParseException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlParseResult;

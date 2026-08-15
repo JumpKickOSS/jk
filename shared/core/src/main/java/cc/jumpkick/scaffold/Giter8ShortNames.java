@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.scaffold;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * Official Giter8 short-name catalog shared by {@code jk new --template}, {@code GET

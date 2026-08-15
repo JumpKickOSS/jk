@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.protocol;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Dependency-free JSONL field codec for plugin wire lines: readers return defaults on missing/bad

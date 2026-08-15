@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver.pubgrub;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
 
 /**
  * PubGrub assignment stack (decisions + derivations) with decision-level backtracking. Per-package
