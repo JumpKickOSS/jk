@@ -111,7 +111,10 @@
             <template v-if="coordParts(card).group"><span class="cg">{{ coordParts(card).group }}</span><span class="csep">:</span></template>
             <span class="cn">{{ coordParts(card).name }}</span>
           </span>
-          <span class="kind">{{ card.kind }}</span>
+          <!-- Multi-module cards use a self-contained summary ("built 27 modules"); hide the raw
+               kind so it does not read as "build 27 modules" / "build built …". Finished builds
+               conjugate to "built" (incl. fully-cached / no module rows). -->
+          <span v-if="card.modules.length <= 1" class="kind">{{ kindLabel(card) }}</span>
           <span v-if="card.modules.length > 1" class="summary">{{ summary(card) }}</span>
           <span class="spacer"></span>
           <button v-if="outcome(card) === 'running' && card.id != null" class="rebuild icon danger"
@@ -286,14 +289,12 @@
 
     <main v-if="view === 'project'" class="project-detail" :class="{ 'code-view': filesOpen }">
       <div class="detail-head">
-        <!-- Files pane: chevron only, one level up to the project page. Otherwise: out to the list. -->
+        <!-- Chevron only: files pane → project page; project page → projects list. -->
         <button v-if="filesOpen" class="ghost back chevron-only" @click="closeCode()"
                 aria-label="Back to project" data-tip="Back to project"><jk-icon name="chevron-left"></jk-icon></button>
-        <button v-else class="ghost back" @click="setView('projects')"><jk-icon name="chevron-left"></jk-icon>Projects</button>
-        <span class="coord detail">
-          <template v-if="projectDetail && projectDetail.group"><span class="cg">{{ projectDetail.group }}</span><span class="csep">:</span></template>
-          <span class="cn">{{ projectDetail ? projectDetail.name : '' }}</span>
-        </span>
+        <button v-else class="ghost back chevron-only" @click="setView('projects')"
+                aria-label="Back to projects" data-tip="Back to projects"><jk-icon name="chevron-left"></jk-icon></button>
+        <h2>{{ projectTitle() }}</h2>
         <span class="spacer"></span>
         <div class="detail-actions">
           <button
@@ -312,9 +313,9 @@
             class="browse"
             :disabled="!selectedProjectId"
             @click="browseCodebase"
-            aria-label="Browse this codebase"
-            data-tip="Browse this codebase"
-          ><jk-icon name="folder-open"></jk-icon></button>
+            aria-label="View/edit this codebase"
+            data-tip="View/edit this codebase"
+          ><jk-icon name="code"></jk-icon></button>
           <button v-if="projectDetail" class="action-green" @click="buildProject(projectDetail.dir)" data-tip="Build this project now"><jk-icon name="bolt"></jk-icon>Build</button>
         </div>
       </div>
@@ -324,7 +325,9 @@
                    :key="selectedProjectId" @navigate="onCodeNavigate"></code-view>
       </template>
       <template v-else>
-      <p v-if="projectDetail && projectDetail.description" class="proj-desc">{{ projectDetail.description }}</p>
+      <p v-if="projectDetail && projectDetail.description" class="proj-desc">
+        <span class="proj-desc-q" aria-hidden="true">"</span><span class="proj-desc-body">{{ projectDetail.description }}</span><span class="proj-desc-q" aria-hidden="true">"</span>
+      </p>
       <p v-else-if="projectDetail" class="proj-desc dim small">No description — add one under <code>[project]</code> in jk.toml.</p>
 
       <template v-if="projectDetail && !projectDetail.empty">

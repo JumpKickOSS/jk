@@ -37,6 +37,10 @@ const {
   saveErrorMessage,
   markedParse,
   baseFileName,
+  resolveMarkdownImagePath,
+  resolveMarkdownLinkPath,
+  resolveWorkspaceRelPath,
+  isRemoteHttpUrl,
 } = await import(pathToFileURL(process.env.JK_CODE_MJS));
 
 test('routeFromHash nests files under #project/<id>', () => {
@@ -145,6 +149,27 @@ test('baseFileName is the last path segment', () => {
   assert.equal(baseFileName('docs/guide.md'), 'guide.md');
   assert.equal(baseFileName('src/main/java/Main.java'), 'Main.java');
   assert.equal(baseFileName(''), '');
+});
+
+test('resolveMarkdownImagePath joins relative to the open file', () => {
+  assert.equal(resolveMarkdownImagePath('README.md', 'docs/logo.png'), 'docs/logo.png');
+  assert.equal(resolveMarkdownImagePath('docs/guide.md', './img/a.png'), 'docs/img/a.png');
+  assert.equal(resolveMarkdownImagePath('docs/guide.md', '../logo.png'), 'logo.png');
+  assert.equal(resolveMarkdownImagePath('docs/guide.md', '/assets/icon.svg'), 'assets/icon.svg');
+  assert.equal(resolveMarkdownImagePath('docs/guide.md', '../../escape.png'), null);
+  assert.equal(resolveMarkdownImagePath('README.md', 'https://example.com/a.png'), null);
+  assert.equal(resolveMarkdownImagePath('README.md', 'notes.txt'), null);
+  assert.equal(isRemoteHttpUrl('https://github.com/user-attachments/assets/abc'), true);
+  assert.equal(isRemoteHttpUrl('//img.shields.io/badge/x-y.svg'), true);
+  assert.equal(isRemoteHttpUrl('docs/logo.png'), false);
+});
+
+test('resolveMarkdownLinkPath opens workspace paths (not only images)', () => {
+  assert.equal(resolveMarkdownLinkPath('README.md', 'docs/architecture.md'), 'docs/architecture.md');
+  assert.equal(resolveMarkdownLinkPath('README.md', 'docs/architecture.md#sec'), 'docs/architecture.md');
+  assert.equal(resolveMarkdownLinkPath('README.md', 'LICENSE'), 'LICENSE');
+  assert.equal(resolveWorkspaceRelPath('docs/a.md', '../b.md'), 'b.md');
+  assert.equal(resolveMarkdownLinkPath('README.md', 'https://openjdk.org/'), null);
 });
 
 test('codePathForFailure joins module-relative paths', () => {

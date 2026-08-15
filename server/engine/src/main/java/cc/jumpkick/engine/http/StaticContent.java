@@ -213,8 +213,9 @@ final class StaticContent {
                         "default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com; "
                                 + "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
                                 + "font-src https://fonts.gstatic.com data:; worker-src blob:; "
-                                // Preview pane: auth-fetch → blob: object URLs for images; data: for rare inlines.
-                                + "img-src 'self' blob: data:;");
+                                // Preview pane: auth-fetch → blob: for in-repo images; https: for badges /
+                                // remote README images (shields.io, etc.); data: for rare inlines.
+                                + "img-src 'self' blob: data: https: http:;");
         if (snapshotVersion) {
             exchange.getResponseHeaders().set("Cache-Control", "no-cache"); // see snapshotVersion javadoc
         } else {

@@ -49,9 +49,11 @@ the CDN, **version-pinned with an SRI `integrity` hash** — a CDN compromise mu
 script a page that can trigger builds. When bumping a pin, update the `integrity` hash in
 `index.html` in the same change. Preview-only libraries (marked, DOMPurify, mermaid, viz-js,
 Asciidoctor; D2 via dynamic ESM) are pinned in `code.js` and load **only** when Preview is used —
-same unpkg origin, never self-hosted. Their classic UMD tags load with `window.define` parked (refcounted, so parallel marked + purify +
-mermaid loads do not restore AMD mid-flight) so Monaco's loader does not swallow them. There is no
-bundler and no npm build step: the shell ships as static resources inside the engine jar.
+same unpkg origin, never self-hosted. marked and DOMPurify load as **ESM** (`import()` from unpkg) so Preview never parks Monaco's AMD
+`define` (that race broke Monaco's on-demand markdown grammar: `define is not a function`).
+Mermaid / viz / asciidoctor still use classic UMD with a refcounted `define` park, and only when
+those diagram kinds are needed. There is no bundler and no npm build step: the shell ships as
+static resources inside the engine jar.
 
 **Monaco is the one partial exception.** Its version is pinned and `loader.js` carries SRI
 (`MONACO_LOADER` in `code.js`), but the loader then fetches `editor.main.js`, `editor.main.css` and
@@ -79,10 +81,10 @@ Source files hang off the same route:
 #project/<projectId>/files/src/Main.java?line=42
 ```
 
-The cyan folder **Browse this codebase** control (same icon button as Activity’s workspace
-picker) sits next to **Build** and opens `#project/<id>/files` (tree). It is hidden *on* the files
-pane — you are already browsing there — which is also where the header's back control drops its
-label: a bare chevron that goes up one level to `#project/<id>`, not out to the project list.
+The cyan **code** control (**View/edit this codebase**) sits next to **Build** and opens
+`#project/<id>/files` (tree). It is hidden *on* the files pane — you are already there — which is
+also where the header's back control drops its label: a bare chevron that goes up one level to
+`#project/<id>`, not out to the project list.
 Selecting a file appends the workspace-relative path as extra hash segments (each `encodeURIComponent`;
 `/` stays a separator). Optional `?line=` is a 1-based highlight; fail-report and CLI OSC-8 jumps
 add `&err=true` so the target line uses the error-red wash (plain `?line=` stays a soft cyan
@@ -135,9 +137,15 @@ tab bar: [ file-name-pill ]   [ Copy ] [ Preview ] [ Save ]
 - **Preview** is enabled for markdown, images, mermaid (`.mmd`/`.mermaid`), Graphviz (`.dot`/`.gv`),
   AsciiDoc (`.adoc`/`.asciidoc`), and D2 (`.d2`). Renderers load **lazily from unpkg only** (never
   self-hosted); images use an auth-fetch → blob URL. Markdown also renders fenced
-  ` ```mermaid ` blocks. While Preview is open, text buffers re-render on a short debounce as you
-  type. D2 is WASM-heavy and may fail under CSP — the pane shows the error rather than shipping a
-  binary.
+  ` ```mermaid ` blocks. Preview-eligible files open with Preview on by default (toggle to Source). The rendered
+  pane sits above the editor; text buffers re-render on a short debounce while both are open.
+  Markdown images (including raw HTML {@code <img>}): relative paths load via the workspace
+  raw-file API as `blob:` URLs; remote `http(s)` stay as direct `<img src>` with
+  `referrerpolicy=no-referrer` and **no** `crossorigin` (setting CORS mode broke GitHub
+  user-attachments and badges). Images are **inline** (badge rows stay on one line). Relative
+  markdown links (`[Status](docs/architecture.md)`) rewrite to `#project/…/files/…` so they open
+  in the files pane; external links open in a new tab. D2 is WASM-heavy and may fail under CSP —
+  the pane shows the error rather than shipping a binary.
 
 Monaco **0.56.0** loads lazily from unpkg (AMD loader SRI-pinned; see the CDN section) only when
 `/files` is open, and renders a **light editor** in the built-in **Visual Studio Dark**

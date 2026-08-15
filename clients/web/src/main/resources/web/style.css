@@ -403,7 +403,12 @@ nav button.active {
 main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 
 .feed-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-.feed-head h2 { font: 700 15px var(--mono); color: var(--bright); margin: 0; }
+.feed-head h2,
+.detail-head h2 {
+  font: 700 15px var(--mono);
+  color: var(--bright);
+  margin: 0;
+}
 
 .retention {
   font-size: 11px;
@@ -1011,9 +1016,6 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 /* Labelless variant (files pane): no gap to collapse, and a bigger glyph so it stays a target. */
 .back.chevron-only { gap: 0; padding: 2px 4px; }
 .back.chevron-only .ico { width: 18px; height: 18px; }
-.coord.detail { font-weight: 600; }
-.coord.detail .cn { font-size: 22px; }
-.coord.detail .cg { font-size: 15px; }
 .detail-actions { display: flex; gap: 8px; align-self: center; align-items: center; }
 .detail-actions button:not(.browse) {
   background: var(--okc);
@@ -1087,7 +1089,23 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   background: rgba(var(--indigo-rgb), 0.4);
   border-color: var(--indigo);
 }
-.proj-desc { color: var(--tx); margin: 2px 0 16px; max-width: 74ch; }
+/* Project blurb: oversized darkGray (CLI Theme.darkGray → --dim) quotes around body text. */
+.proj-desc {
+  color: var(--tx);
+  margin: 2px 0 16px;
+  max-width: 74ch;
+  line-height: 1.45;
+}
+.proj-desc-q {
+  font: 700 1.85em/0.75 var(--mono);
+  color: var(--dim); /* darkGray() */
+  vertical-align: -0.12em;
+  user-select: none;
+}
+.proj-desc-body {
+  color: var(--mu); /* mid-gray (CLI GRAY) */
+  font-style: italic;
+}
 
 /* min/max and last-built carry longer strings than a single KPI number */
 .kpi-sm { font: 700 13.5px/1.3 var(--mono); color: var(--bright); overflow-wrap: anywhere; }
@@ -1533,7 +1551,8 @@ button.action-green:disabled {
   box-shadow: none;
 }
 
-/* Cyan twin of the green primary — file tab bar (Copy / Preview / Save). Same geometry, --cn. */
+/* File tab bar (Copy / Preview / Save) — same rest/hover language as header nav (Activity /
+ * Projects / Admin): no fill or outline at rest; cyan wash + border only on hover. */
 button.action-cyan,
 .file-tab-actions button.action-cyan {
   position: relative;
@@ -1542,22 +1561,24 @@ button.action-cyan,
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: rgba(var(--cn-rgb), 0.12);
-  color: var(--cn);
-  border: 1px solid rgba(var(--cn-rgb), 0.4);
+  background: none;
+  color: var(--mu);
+  border: 1px solid transparent;
   border-radius: var(--r-md);
   padding: 7px 13px;
   font: 600 12.5px var(--mono);
   cursor: pointer;
-  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
-    box-shadow var(--dur) var(--ease);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 button.action-cyan:hover:not(:disabled),
 .file-tab-actions button.action-cyan:hover:not(:disabled) {
-  background: rgba(var(--cn-rgb), 0.22);
-  border-color: rgba(var(--cn-rgb), 0.65);
-  box-shadow: 0 0 16px rgba(var(--cn-rgb), 0.22);
+  background: rgba(var(--cn-rgb), 0.15);
+  border-color: rgba(var(--cn-rgb), 0.45);
+  color: var(--cn);
+  box-shadow: 0 0 14px rgba(var(--cn-rgb), 0.22);
 }
+/* One-pass light sweep on hover (same family as nav / primary actions). */
 button.action-cyan::before,
 .file-tab-actions button.action-cyan::before {
   content: '';
@@ -1579,6 +1600,9 @@ button.action-cyan:disabled,
   opacity: 0.45;
   cursor: not-allowed;
   box-shadow: none;
+  background: none;
+  border-color: transparent;
+  color: var(--mu);
 }
 
 /* Browse — a neon-cyan icon button (accent colour at rest, brighter on hover). Used on Activity
@@ -2098,17 +2122,17 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
   display: flex;
   flex-direction: column;
 }
-/* Live Preview: Monaco + rendered pane stacked (text); image Preview fills the pane alone.
+/* Live Preview: rendered pane on top, Monaco below (text); image Preview fills the pane alone.
  * Always flex-grow the active surface(s) so Source ↔ Preview toggles don't leave a dead zone. */
-.code-pane.mode-split .code-editor {
-  flex: 1 1 50%;
-  min-height: 0;
-  border-bottom: 1px solid var(--bd);
-}
 .code-pane.mode-split .code-preview {
   flex: 1 1 50%;
   min-height: 0;
   position: relative;
+  border-bottom: 1px solid var(--bd);
+}
+.code-pane.mode-split .code-editor {
+  flex: 1 1 50%;
+  min-height: 0;
 }
 .code-pane.mode-editor .code-editor {
   flex: 1 1 auto;
@@ -2141,6 +2165,27 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
   background-position: 0 0, 0 8px, 8px -8px, -8px 0;
 }
 .code-preview-body { max-width: 52rem; }
+/* Markdown images: inline so shields badges sit on one line (GitHub README style). */
+.code-preview-body img {
+  max-width: 100%;
+  height: auto;
+  display: inline;
+  vertical-align: middle;
+  margin: 0 0.2em 0 0;
+  border-radius: 0;
+  border: none;
+}
+/* Standalone / large figures still readable when alone in a paragraph. */
+.code-preview-body p > img:only-child,
+.code-preview-body p > a:only-child > img:only-child {
+  max-width: 100%;
+}
+.code-preview-body img.code-preview-img-miss {
+  outline: 1px dashed rgba(var(--err-rgb), 0.5);
+  min-height: 1.2rem;
+  min-width: 2rem;
+  background: rgba(var(--err-rgb), 0.06);
+}
 .code-preview-body h1,
 .code-preview-body h2,
 .code-preview-body h3 { color: var(--bright); margin: 1.1em 0 0.45em; font-weight: 700; }
@@ -2149,6 +2194,12 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
 .code-preview-body h3 { font-size: 1.05em; }
 .code-preview-body p { margin: 0.55em 0; }
 .code-preview-body a { color: var(--cn); }
+/* Workspace file links rewritten to #project/…/files/… */
+.code-preview-body a.code-preview-inlink {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
 .code-preview-body code {
   font-family: var(--mono);
   font-size: 0.9em;

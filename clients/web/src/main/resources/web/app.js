@@ -88,6 +88,8 @@ const ICON_PATHS = {
   save: 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8',
   // Eye — Preview affordance (Files toolbar).
   eye: 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+  // "</>" — code (View/edit this codebase on the project page).
+  code: 'M16 18l6-6-6-6M8 6l-6 6 6 6M14.5 4l-5 16',
 };
 // Icons that read better as a solid shape than an outline at small sizes.
 const ICON_SOLID = {
@@ -1632,6 +1634,24 @@ Vue.createApp({
       return moduleSummary(card);
     },
 
+    /**
+     * Activity kind label. Wire kind stays {@code build}; finished runs use past tense so a
+     * fully-cached monorepo (no / few module rows, ~100ms) reads "built" not "build".
+     */
+    kindLabel(card) {
+      const k = (card && card.kind) || '';
+      if (k === 'build' && this.outcome(card) !== 'running') return 'built';
+      return k;
+    },
+
+    /** Project page title — plain {@code group:name} (or name alone), same weight as other view h2s. */
+    projectTitle() {
+      const p = this.projectDetail;
+      if (!p) return 'Project';
+      if (p.group) return p.group + ':' + p.name;
+      return p.name || 'Project';
+    },
+
     // The capitalized phase a diagnostic belongs to, joined from the module's step rows (which carry
     // the phase) by matching the diagnostic's step name. '' when the step has no phase or isn't found
     // — the failure line then reads step › … without a phase prefix.
@@ -2246,13 +2266,19 @@ Vue.createApp({
 
     // ---- formatting helpers (templates keep zero logic beyond these) ----
     coordParts(card) {
-      // "group:name" → colored segments; fall back to the dir's last two path segments.
-      if (card.coord && card.coord.includes(':')) {
-        const i = card.coord.indexOf(':');
-        return { group: card.coord.slice(0, i), name: card.coord.slice(i + 1) };
+      // "group:name" → colored segments; fall back to the dir's last path segment.
+      // Guard null/undefined dir — projectMeta can land before a journal row has a path, and a
+      // files-pane open with only projectId used to throw on .split (README Preview flicker).
+      const c = card || {};
+      if (c.coord && String(c.coord).includes(':')) {
+        const i = String(c.coord).indexOf(':');
+        return { group: String(c.coord).slice(0, i), name: String(c.coord).slice(i + 1) };
       }
-      const parts = card.dir.split('/').filter(Boolean);
-      return { group: null, name: parts.length ? parts[parts.length - 1] : card.dir };
+      if (c.dir == null || c.dir === '') {
+        return { group: null, name: c.coord || 'project' };
+      }
+      const parts = String(c.dir).split('/').filter(Boolean);
+      return { group: null, name: parts.length ? parts[parts.length - 1] : String(c.dir) };
     },
     mib(bytes) {
       // Null guard: a thin cache SSE frame can land before the full REST snapshot on a hard load
