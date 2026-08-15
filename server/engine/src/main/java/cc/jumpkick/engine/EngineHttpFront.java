@@ -359,7 +359,16 @@ public final class EngineHttpFront {
             BuildPlan plan = SessionContext.where(
                     session,
                     () -> FormatPlans.formatBuildPlan(
-                            entryDir, cache, false, null, null, true, true, true, null, (p, s, m, i, t) -> {}));
+                            entryDir,
+                            cache,
+                            false,
+                            "palantir",
+                            "kotlinlang",
+                            true,
+                            true,
+                            true,
+                            null,
+                            (p, s, m, i, t) -> {}));
             plan.addListener(listeners.hubPlan(entryDir.toString()));
             return finishPlan(entryDir, SessionContext.where(session, plan::run));
         } catch (Exception e) {
