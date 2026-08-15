@@ -840,6 +840,7 @@ export const CodeView = {
     loadingList: false,
     loadingFile: false,
     error: null,
+    notice: null,
     files: [],
     truncated: false,
     file: null,
@@ -1281,6 +1282,7 @@ export const CodeView = {
       this._fileAbort = ac;
       this.loadingFile = true;
       this.error = null;
+      this.notice = null;
       try {
         if (isImagePath(this.path)) {
           // Images are not JSON-text; meta only — Preview uses the raw endpoint.
@@ -1421,6 +1423,7 @@ export const CodeView = {
       this.saving = true;
       this.saved = false;
       this.error = null;
+      this.notice = null;
       // The response must only ever apply to the file it was issued for: navigating away
       // (discard confirmed) while the PUT is in flight would otherwise stamp the OLD file's
       // content/etag onto the NEW file's state (JK-1977).
@@ -1444,6 +1447,9 @@ export const CodeView = {
         const nextEtag = (resp && resp.etag) || null;
         if (this.file) this.file = { ...this.file, content, etag: nextEtag };
         this.setBaseline(content, nextEtag);
+        if (resp && resp.lockStale) {
+          this.notice = 'Manifest saved — the lock is now stale; the next build will re-resolve dependencies';
+        }
         this.flashSaved();
       } catch (e) {
         if (this.path !== savedPath) return; // stale failure belongs to a file no longer shown
@@ -1638,6 +1644,7 @@ export const CodeView = {
         <section class="code-pane" :class="'mode-' + paneMode">
           <div class="code-msgs">
             <p v-if="error" class="error">{{ error }}</p>
+            <p v-if="notice" class="warn">{{ notice }}</p>
             <div v-else-if="!path" class="code-empty">
               <jk-icon name="file"></jk-icon>
               <p class="code-empty-head">Select a file from the tree.</p>

@@ -603,6 +603,12 @@ final class HttpProjectApi {
                 resp.put("bytes", w.bytes());
                 resp.put("lines", w.lines());
                 resp.put("etag", w.etag());
+                // A manifest edit stales the lock's manifests-sha256 stamp: the next build pays a
+                // full re-resolve. Tell the pane so the user is not surprised (JK-1983).
+                String fileName = w.path().substring(w.path().lastIndexOf('/') + 1);
+                if (fileName.equals("jk.toml") || fileName.equals("jk-libs.toml")) {
+                    resp.put("lockStale", Boolean.TRUE);
+                }
                 HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(resp));
             }
         }

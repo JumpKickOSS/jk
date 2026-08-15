@@ -200,7 +200,10 @@ token and build a blob URL — a bare `<img src>` cannot send `Authorization`.
 
 ### `PUT /api/project/file`
 
-`PUT /api/project/file` with JSON body `{ "project", "path", "content", "etag"? }`.
+`PUT /api/project/file` with JSON body `{ "project", "path", "content", "etag"?, "encoding"? }`.
+`encoding` echoes the value GET returned (`utf-8` default, `iso-8859-1` for the Latin-1
+fallback) so a save re-encodes to the original charset instead of transcoding; content no
+longer representable in the declared charset → **400**.
 
 Replace a **text-servable** file under the identity checkout (atomic temp+move). Images and
 non-servable paths are not writable. Body size is capped near 1 MiB of content (not the smaller
@@ -210,7 +213,9 @@ When `etag` is present it must match the current on-disk SHA-256 (from GET). Mis
 `{ "error": "file changed on disk", "etag": "<current>" }` so a multi-tab / external edit cannot
 silently clobber. Omit `etag` for last-write-wins.
 
-Response: `{ projectId, dir, path, lang, bytes, lines, etag }` (new content hash).
+Response: `{ projectId, dir, path, lang, bytes, lines, etag }` (new content hash), plus
+`"lockStale": true` when the saved file is a manifest (`jk.toml` / `jk-libs.toml`) — the lock's
+`manifests-sha256` stamp no longer matches, so the next build pays a full re-resolve.
 
 | Status | When |
 | --- | --- |

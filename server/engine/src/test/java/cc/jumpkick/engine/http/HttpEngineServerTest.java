@@ -905,7 +905,22 @@ class HttpEngineServerTest {
                     HttpResponse.BodyHandlers.ofString());
             assertThat(put.statusCode()).isEqualTo(200);
             assertThat(put.body()).contains("\"path\":\"src/Main.java\"").contains("\"etag\":");
+            assertThat(put.body()).doesNotContain("lockStale"); // sources do not stale the lock
             assertThat(Files.readString(checkout.resolve("src/Main.java"))).isEqualTo("class Main { int y; }\n");
+
+            // A manifest save flags the now-stale lock stamp (JK-1983).
+            HttpResponse<String> putManifest = client.send(
+                    HttpRequest.newBuilder(URI.create(baseUrl + "api/project/file"))
+                            .header("Authorization", "Bearer " + token())
+                            .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
+                            .header("Content-Type", "application/json")
+                            .PUT(HttpRequest.BodyPublishers.ofString("{\"project\":\"" + id
+                                    + "\",\"path\":\"jk.toml\",\"content\":\"group = \\\"g\\\"\\n"
+                                    + "name = \\\"n\\\"\\nversion = \\\"2\\\"\\n\"}"))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(putManifest.statusCode()).isEqualTo(200);
+            assertThat(putManifest.body()).contains("\"lockStale\":true");
 
             HttpResponse<String> stale = client.send(
                     HttpRequest.newBuilder(URI.create(baseUrl + "api/project/file"))
