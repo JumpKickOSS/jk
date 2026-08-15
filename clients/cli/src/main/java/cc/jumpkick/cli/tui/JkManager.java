@@ -91,12 +91,12 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     int frame;
     int linesDrawn; // plan mode: lines in the live region
     List<String> lastLines = List.of(); // plan mode: last painted lines, for diffing
-    /** JK-1373: true after the leading blank of the human chrome envelope was printed. */
+    /** true after the leading blank of the human chrome envelope was printed. */
     boolean leadingBlankPrinted;
 
     /**
      * Plain ({@code --no-ansi}) multi-line progress: last printed 20% step (0, 20, …, 80), or -1
-     * before the mandatory 0% start line. 100% is only emitted as a done line on settle (JK-1379).
+     * before the mandatory 0% start line. 100% is only emitted as a done line on settle.
      */
     int plainLastDecade = -1;
 
@@ -221,13 +221,13 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         JkManager cm = new JkManager(out, animate, false, DEFAULT_WIDTH);
         cm.label = command;
         LiveRegion.setActive(cm);
-        cm.ensureLeadingBlank(); // JK-1373: blank line before human chrome
+        cm.ensureLeadingBlank(); // blank line before human chrome
         if (animate && Theme.active().isAnsi()) {
             out.print(Ansi.HIDE_CURSOR);
             out.flush();
             cm.startAnimator();
         } else if (animate) {
-            // Plain multi-line: mandatory start line (JK-1379).
+            // Plain multi-line: mandatory start line.
             cm.printPlainIndeterminate(true);
         }
         return cm;
@@ -254,7 +254,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         cm.name = name;
         cm.startNanos = System.nanoTime();
         LiveRegion.setActive(cm);
-        cm.ensureLeadingBlank(); // JK-1373: blank line before human chrome
+        cm.ensureLeadingBlank(); // blank line before human chrome
         if (animate && Theme.active().isAnsi()) {
             out.print(Ansi.HIDE_CURSOR);
             out.flush();
@@ -363,7 +363,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             this.target = module;
             touchPhaseStart(phaseKey);
             // First module task starting = execute has begun: freeze the R0 seed path so
-            // provisional eta rewrites cannot thrash the total (JK-1806). Residual still
+            // provisional eta rewrites cannot thrash the total. Residual still
             // re-anchors the painted countdown.
             if (remainingWorkMs >= 0) openLoopLocked = true;
         }
@@ -475,12 +475,12 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             // promised open-loop decay between samples actually happens. Without this, the
             // preflight ticks force-emitting an unchanged R0 every ~500 ms re-anchored the
             // countdown each time and froze the face at R0 for the whole prepare window,
-            // silently pushing the real finish to executeStart + R0 (JK-1843).
+            // silently pushing the real finish to executeStart + R0.
             if (rem == residualRemainingMs) return;
             long elapsed = elapsedMillis();
             residualRemainingMs = rem;
             residualSetAtElapsedMs = elapsed;
-            // Reconnect / residual-before-seed: seed R0 from first positive residual (JK-1820).
+            // Reconnect / residual-before-seed: seed R0 from first positive residual.
             if (remainingWorkMs < 0 && rem > 0) {
                 remainingWorkMs = rem;
                 remainingSetAtElapsedMs = elapsed;
@@ -517,7 +517,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             this.modulesTotal = Math.max(0, total);
             // A completed module means execute is underway — freeze the R0 seed path.
             // modulesTotal alone arrives with the work model *before* the engine's real
-            // post-forecast seed (`eta` line), so it must not lock (JK-1806). Residual
+            // post-forecast seed (`eta` line), so it must not lock. Residual
             // re-anchors for display still apply after lock.
             if (this.modulesComplete > 0 && remainingWorkMs >= 0) {
                 openLoopLocked = true;
@@ -532,7 +532,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
      */
     public void solveLabel(String label) {
         // Same lock as the other solveLabel writers (preflight/progress/seed) — worker and
-        // render threads otherwise raced on plain JMM visibility (JK-1852).
+        // render threads otherwise raced on plain JMM visibility.
         synchronized (lock) {
             this.solveLabel = label == null ? "" : label;
         }

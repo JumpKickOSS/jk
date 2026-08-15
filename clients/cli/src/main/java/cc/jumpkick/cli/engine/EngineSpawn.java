@@ -26,7 +26,7 @@ import java.util.Optional;
 /**
  * Spawn, takeover, and AOT-cache selection for the resident engine. Mode, artifact, and
  * {@code awaitStartup} stay together so a torn AOT cache cannot be mapped without the self-heal
- * retry (JK-1452). Over the 800-line house cap by the AOT key/manifest comments.
+ * retry. Over the 800-line house cap by the AOT key/manifest comments.
  */
 public final class EngineSpawn {
 
@@ -65,7 +65,7 @@ public final class EngineSpawn {
             }
             if (clientVersion.equals(hs.version()) && buildIdCurrent(hs, clientVersion)) {
                 // Already primary — do not wipe AOT (would thrash the live train). Wipe only on
-                // materialize / new endpoint claim (JK-1452).
+                // materialize / new endpoint claim.
                 return hs;
             }
             // Version skew (incl. same -SNAPSHOT with different content identity) → TAKEOVER, not
@@ -172,7 +172,7 @@ public final class EngineSpawn {
                         writeNoAotMarker(target.aotCache());
                         logReason(paths, "AOT cache was ignored by the engine JVM; skipping it for this key");
                     }
-                    // EngineServer wipes state/aot after claiming the endpoint (JK-1452). Do not
+                    // EngineServer wipes state/aot after claiming the endpoint. Do not
                     // wipe again here — the sidecar may already be training into a fresh file.
                     return r.handshake();
                 }
@@ -448,7 +448,7 @@ public final class EngineSpawn {
         // ONE home for every AOT cache — engine and workers alike live in ~/.local/state/jk/aot/ so a
         // user (or `jk engine aot`) finds them all side by side. The engine's file
         // carries its jk version ("engine-<version>-<key>.aot") because its LIFETIME is
-        // version-scoped: a new primary reaps other versions' engine AOT (JK-1452), and
+        // version-scoped: a new primary reaps other versions' engine AOT, and
         // VersionStore.prune also retires them with the version tree. The sweep below stays
         // within one version so side-by-side keys for the same version never thrash each other.
         // Worker caches (kotlinc-/java-compiler-) have no version dimension.
@@ -488,8 +488,8 @@ public final class EngineSpawn {
             cc.jumpkick.util.AotManifest.reconcile(aotDir);
         }
         recordEngineAotManifest(cache, engineJar, jdk, version, hash);
-        // Pre-1.0 migration: the cache used to live in <engine-state>/<version>/ — retire that
-        // dir so nobody plays hide-and-seek with stale copies. Remove once 1.0 ships.
+        // Drop leftover per-version cache under engine-state so it is not confused with the
+        // current content-addressed AOT key.
         deleteRecursivelyQuietly(paths.dir().resolve(version));
         return cache;
     }
@@ -590,7 +590,7 @@ public final class EngineSpawn {
                         .resolve(HostPlatform.isWindows() ? "java.exe" : "java")
                         .toString());
                 command.add("-XX:+UseSerialGC");
-                // Heap-return ergonomics (JK-1942): SerialGC's defaults (MaxHeapFreeRatio=70,
+                // Heap-return ergonomics: SerialGC's defaults (MaxHeapFreeRatio=70,
                 // ShrinkHeapInSteps) keep committed ≈ 3.3× live and shrink one slice per full GC —
                 // an idle coordinator that GCs once at the build boundary never gives memory back.
                 // Tight free ratios + whole-step shrink make that single idle GC snap committed to
@@ -600,15 +600,11 @@ public final class EngineSpawn {
                 command.add("-XX:-ShrinkHeapInSteps");
                 command.add("-XX:MaxMetaspaceSize=256m");
                 command.add("-Xss512k");
-                // AOT cache (JEP 514, JDK 25+): pre-parsed class metadata AND AOT-compiled code,
-                // taming the cold engine's JIT-warmup tail. USE maps an existing cache. TRAIN no
-                // longer records THROUGH the serving engine (the old train→stop→assemble→restart
-                // dance flapped the endpoint and confused anything watching pids): the engine
-                // boots cold and spawns a SIDECAR trainer (`EngineMain --aot-training`, isolated
-                // temp state, throwaway socket) that records and assembles off to the side — the
-                // property tells it where to write. NONE omits the cache entirely (non-HotSpot
-                // host JDK, or a key that already proved unmappable). The cache is keyed to
-                // jar + host-JDK identity so an upgrade/JDK-swap retrains.
+                // AOT cache (JEP 514, JDK 25+): pre-parsed class metadata and AOT-compiled code.
+                // USE maps an existing cache. TRAIN boots cold and spawns a sidecar trainer
+                // (`EngineMain --aot-training`, isolated temp state, throwaway socket). NONE
+                // omits the cache (non-HotSpot host JDK, or a key that already proved unmappable).
+                // The cache is keyed to jar + host-JDK identity so an upgrade/JDK-swap retrains.
                 switch (mode) {
                     case TRAIN -> command.add("-Djk.aot.train.output=" + target.aotCache());
                     case USE -> command.add("-XX:AOTCache=" + target.aotCache());
@@ -624,7 +620,7 @@ public final class EngineSpawn {
                 // tests) into the engine JVM — PluginJar.locate reads System.getProperty there.
                 // Also forward AOT switches so nested engines honor JK_AOT_TRAIN / jk.aot.train,
                 // and jk.env.* layout overlays (JkDirs test seam) so a spawned engine resolves the
-                // same store/state the client did (JK-1450).
+                // same store/state the client did.
                 for (var e : System.getProperties().entrySet()) {
                     String key = String.valueOf(e.getKey());
                     if (!key.startsWith("jk.")) continue;
@@ -650,7 +646,7 @@ public final class EngineSpawn {
                     command.add("-Xms" + config.minHeapMb() + "m");
                     command.add("-Xmx" + config.maxHeapMb() + "m");
                 }
-                // Same heap-return ergonomics as the JAR spawn (JK-1942); like -Xm* above these
+                // Same heap-return ergonomics as the JAR spawn; like -Xm* above these
                 // land as argv for the wrapper to consume, and an ignoring wrapper stays alive.
                 command.add("-XX:MinHeapFreeRatio=10");
                 command.add("-XX:MaxHeapFreeRatio=25");

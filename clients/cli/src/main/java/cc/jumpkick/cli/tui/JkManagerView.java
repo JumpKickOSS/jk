@@ -163,7 +163,7 @@ final class JkManagerView {
     }
 
     /**
-     * Print the settled result line. Leading blank only (JK-1373): one blank before chrome starts,
+     * Print the settled result line. Leading blank only: one blank before chrome starts,
      * no automatic blank after the settle line — that looked like an extra line before the shell
      * prompt on {@code jk build}/{@code jk lock}/one-shot wedges. Callers that hand off to a
      * subprocess ({@code jk run}) add their own separator when needed.
@@ -184,7 +184,7 @@ final class JkManagerView {
                 m.out.print(Ansi.taskbarClear());
                 m.out.print(Ansi.SHOW_CURSOR);
             } else if (m.animate && !Theme.active().isAnsi()) {
-                // Plain multi-line: mandatory done line before the settle wedge (JK-1379).
+                // Plain multi-line: mandatory done line before the settle wedge.
                 m.printPlainDone();
             }
             // Deferred subprocess output (e.g. compiler warnings) prints as
@@ -200,7 +200,7 @@ final class JkManagerView {
         }
     }
 
-    // --- plain multi-line chrome (JK-1379) ---------------------------------
+    // --- plain multi-line chrome ---------------------------------
 
     /**
      * Emit plain progress lines for every newly crossed 20% step up to (and not past) 80%.
@@ -317,7 +317,7 @@ final class JkManagerView {
     }
 
     /**
-     * Leading blank once per command (JK-1373). Shared with prep spinners via
+     * Leading blank once per command. Shared with prep spinners via
      * {@link CommandWedge#envelopeStart(PrintStream)} so lock/analyze wedges and the live region
      * do not double-space.
      */
@@ -352,7 +352,7 @@ final class JkManagerView {
             }
             // Erase the live region back to its top.
             if (m.planMode) {
-                // Resize first (JK-1990): after a shrink the region reflowed to more physical
+                // Resize first: after a shrink the region reflowed to more physical
                 // rows than linesDrawn, so the logical-lines erase below would undershoot and —
                 // with lastLines cleared before repaint — the next syncTerminalSize would skip
                 // its reflow-aware wipe, stranding the region's top rows above the emitted text.
@@ -463,7 +463,7 @@ final class JkManagerView {
     private void wipeReflowedRegion(int fromCols, int toCols) {
         // Clipping terminals (xterm, linux console, screen, …) keep exactly one physical row per
         // logical line: climbing the reflow estimate there overshoots into completed output above
-        // the region and ERASE_DISPLAY_TO_END destroys it (JK-1989). Only terminals known to
+        // the region and ERASE_DISPLAY_TO_END destroys it. Only terminals known to
         // rewrap get the reflow-height climb.
         int up = m.lastLines.size();
         if (TerminalReflow.reflows()) {
@@ -710,7 +710,7 @@ final class JkManagerView {
         long barNum = bd[0];
         long barDen = bd[1];
         // Sample worker-written state under the lock — the animator thread otherwise read
-        // m.denominator/m.solveLabel on plain JMM visibility (JK-1852).
+        // m.denominator/m.solveLabel on plain JMM visibility.
         long den;
         String sl;
         synchronized (m.lock) {
@@ -752,7 +752,7 @@ final class JkManagerView {
                 // holds until elapsedSec advances (or first paint / seed / snap-to-zero). One
                 // asymmetry is deliberate the other way: a re-anchor that RAISES the m.target in the
                 // same second a zero was committed repaints immediately — holding the 0s until the
-                // next second manufactured a 0s → Ns bounce (JK-1850).
+                // next second manufactured a 0s → Ns bounce.
                 if (m.countdownDisplayElapsedSec < 0
                         || elapsedSec != m.countdownDisplayElapsedSec
                         || targetSec == 0
