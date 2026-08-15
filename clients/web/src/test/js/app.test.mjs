@@ -56,6 +56,31 @@ test('project switch and missing meta both refetch', () => {
   assert.equal(calls2, 1, 'never-loaded meta is fetched even without a switch');
 });
 
+test('a stale project-meta response never overwrites the current project (JK-1995)', async () => {
+  const v = vm({ selectedProjectId: 'slowA', projectMeta: null, projectHistory: [{}] });
+  let resolveSlow;
+  v.fetchProjectMeta = () =>
+    new Promise((r) => {
+      resolveSlow = r;
+    });
+  const call = v.loadProjectMeta('slowA');
+  // The user switches to fastB (whose meta already landed) while slowA's response is pending.
+  v.selectedProjectId = 'fastB';
+  v.projectMeta = { dir: '/fastB' };
+  v.selectedProjectDir = '/fastB';
+  resolveSlow({ dir: '/slowA', coord: 'g:slowA' });
+  await call;
+  assert.equal(v.projectMeta.dir, '/fastB', 'stale response dropped');
+  assert.equal(v.selectedProjectDir, '/fastB');
+
+  // The matching case still applies normally.
+  const w = vm({ selectedProjectId: 'same', projectMeta: null, projectHistory: [{}] });
+  w.fetchProjectMeta = () => Promise.resolve({ dir: '/same' });
+  await w.loadProjectMeta('same');
+  assert.equal(w.projectMeta.dir, '/same');
+  assert.equal(w.selectedProjectDir, '/same');
+});
+
 test('leaving project view or switching projects collapses the graph panel', () => {
   globalThis.location.hash = '#project/abc123';
   const v = vm({ selectedProjectId: 'abc123', projectMeta: { dir: '/x' }, projectGraphOpen: true });

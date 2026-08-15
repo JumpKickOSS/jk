@@ -1416,16 +1416,27 @@ export const appOptions = {
       this.projectGraphOpen = !this.projectGraphOpen;
     },
 
+    /** The raw meta fetch — separated so the headless suite can control response timing. */
+    fetchProjectMeta(projectId) {
+      return get('/api/project?project=' + encodeURIComponent(projectId));
+    },
+
     // Live coord + description for the open project (by durable id).
     async loadProjectMeta(projectId) {
       if (this.authModal) return;
       this.projectMeta = null;
       try {
-        this.projectMeta = await get('/api/project?project=' + encodeURIComponent(projectId));
-        if (this.projectMeta && this.projectMeta.dir) {
-          this.selectedProjectDir = this.projectMeta.dir;
+        const meta = await this.fetchProjectMeta(projectId);
+        // A slow response for a project the user already navigated away from must not
+        // overwrite the current project's state — with the JK-1945 guard suppressing
+        // same-project refetches, the stale data would stick until the next switch (JK-1995).
+        if (this.selectedProjectId !== projectId) return;
+        this.projectMeta = meta;
+        if (meta && meta.dir) {
+          this.selectedProjectDir = meta.dir;
         }
       } catch (e) {
+        if (this.selectedProjectId !== projectId) return;
         this.handleHttpError(e);
       }
       if (!this.projectHistory.length) this.loadProjectHistory(); // detail rows come from history
