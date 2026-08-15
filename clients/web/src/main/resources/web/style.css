@@ -2301,6 +2301,17 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
   background: rgba(var(--err-rgb), 0.3);
   border-left: 2px solid var(--err);
 }
+/* ?col=C: mark the diagnostic token. err=true is a red squiggle; otherwise cyan underline. */
+.code-col-err {
+  background: rgba(var(--err-rgb), 0.45);
+  border-bottom: 2px solid var(--err);
+  text-decoration: underline wavy var(--err);
+  text-underline-offset: 2px;
+}
+.code-col-hl {
+  background: rgba(var(--cn-rgb), 0.28);
+  border-bottom: 2px solid var(--cn);
+}
 /* Plain-text fallback: file over the highlight budget, or Monaco failed to load. */
 .code-pane .code-pre {
   margin: 0;

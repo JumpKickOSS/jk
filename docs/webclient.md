@@ -86,9 +86,11 @@ The cyan **code** control (**View/edit this codebase**) sits next to **Build** a
 also where the header's back control drops its label: a bare chevron that goes up one level to
 `#project/<id>`, not out to the project list.
 Selecting a file appends the workspace-relative path as extra hash segments (each `encodeURIComponent`;
-`/` stays a separator). Optional `?line=` is a 1-based highlight; fail-report and CLI OSC-8 jumps
+`/` stays a separator). Optional `?line=` is a 1-based highlight; compiler jumps also add `&col=` so
+Monaco lands on the diagnostic column. Fail-report and CLI OSC-8 jumps
 add `&err=true` so the target line uses the error-red wash (plain `?line=` stays a soft cyan
-rail).
+rail). Compiler (and fail-report) jumps also pass `&msg=` — a short, URL-encoded note (capped at
+800 characters) shown as a Monaco hover on the highlighted line and column.
 The underlined path above a test-failure snippet is a real hash deep link into that route (so
 middle-click / copy-link work). Module-relative paths join `rel(checkout, module.dir)` +
 `rep.file`; an empty live single-plan module dir leaves `rep.file` as already checkout-relative.
@@ -153,8 +155,10 @@ Monaco **0.56.0** loads lazily from unpkg (AMD loader SRI-pinned; see the CDN se
 suggestions. The theme is registered as `jk-vs-dark` — vs-dark inherited verbatim with a single
 override, `editor.background` read from style.css's `--console-bg`, so a source pane reads as the
 same surface as the console tail and log panels instead of VS Code's `#1e1e1e`. `?line=` is a
-whole-line decoration (`.code-line-hl` soft/cyan, or `.code-line-err` red when `err=true`) plus
-`revealLineInCenter`, not a selection. Monaco ships no
+whole-line decoration (`.code-line-hl` soft/cyan, or `.code-line-err` red when `err=true`);
+`?col=` marks the token (red wavy underline when `err=true`). Both decorations carry
+`hoverMessage` when `?msg=` is present (compiler key/value details from the CLI OSC-8 link).
+The editor reveals the position and opens that hover on landing. Monaco ships no
 Groovy or TOML grammar, so `.groovy` tokenizes as `java` and `.toml` as
 `ini` (`MONACO_LANG` in `code.js`); anything unknown falls back to `plaintext`. Highlighting is
 skipped above 200 KiB / 4000 lines, and when the CDN is unreachable; the file then renders as

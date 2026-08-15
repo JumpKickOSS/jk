@@ -367,7 +367,7 @@ public final class TestFailureHighlight {
             SrcRow row = parseSrcRow(m);
             if (row == null) continue;
             String code = clampCode(expandTabs(row.code), budget, t.isAnsi());
-            row = new SrcRow(row.num, row.error, code);
+            row = new SrcRow(row.num, row.error, code, row.markCol);
             rows.add(row);
             maxCode = Math.max(maxCode, row.code.length());
         }
@@ -388,19 +388,110 @@ public final class TestFailureHighlight {
     }
 
     /**
+     * Editor-style window around {@code errorLine} (1-based) of {@code fileLines} (file order).
+     * Returns unrailed painted rows (path + guttered source) so a caller can wrap them in its
+     * own rail. {@code errorCol} is 0-based; {@code -1} paints the error wash without a column mark.
+     */
+    public static List<String> paintSourceWindow(
+            String displayPath, List<String> fileLines, int errorLine, int errorCol, SyntaxHighlight.Language lang) {
+        return paintSourceWindow(displayPath, displayPath, fileLines, errorLine, errorCol, lang, null);
+    }
+
+    public static List<String> paintSourceWindow(
+            String displayPath,
+            String linkPath,
+            List<String> fileLines,
+            int errorLine,
+            int errorCol,
+            SyntaxHighlight.Language lang) {
+        return paintSourceWindow(displayPath, linkPath, fileLines, errorLine, errorCol, lang, null);
+    }
+
+    public static List<String> paintSourceWindow(
+            String displayPath,
+            String linkPath,
+            List<String> fileLines,
+            int errorLine,
+            int errorCol,
+            SyntaxHighlight.Language lang,
+            String note) {
+        if (displayPath == null) displayPath = "";
+        Theme t = Theme.active();
+        int budget = Math.max(40, cc.jumpkick.cli.tui.TerminalSize.columns() - ROW_OVERHEAD);
+        int n = fileLines == null ? 0 : fileLines.size();
+        int err = Math.max(1, errorLine);
+        // A lone snippet (file unread) still wears the real diagnostic line number.
+        boolean snippetOnly = n == 1 && err > 1;
+        int lo = snippetOnly ? 1 : Math.max(1, err - 2);
+        int hi = snippetOnly ? 1 : Math.min(n, err + 2);
+        if (n == 0) {
+            List<String> empty = new ArrayList<>();
+            if (!t.isAnsi()) {
+                empty.add(BODY_INDENT + displayPath);
+            } else {
+                empty.add(BODY_INDENT + paintSourcePath(displayPath, linkPath, err, errorCol + 1, t, note));
+            }
+            return empty;
+        }
+        List<SrcRow> rows = new ArrayList<>();
+        int maxCode = 0;
+        for (int line = lo; line <= hi; line++) {
+            String raw = fileLines.get(line - 1);
+            if (raw == null) raw = "";
+            String code = clampCode(expandTabs(raw), budget, t.isAnsi());
+            boolean isErr = snippetOnly || line == err;
+            int mark = isErr ? errorCol : -1;
+            String num = Integer.toString(snippetOnly ? err : line);
+            SrcRow row = new SrcRow(num, isErr, code, mark);
+            rows.add(row);
+            maxCode = Math.max(maxCode, row.code.length());
+        }
+        List<String> out = new ArrayList<>();
+        if (!t.isAnsi()) {
+            out.add(BODY_INDENT + displayPath);
+            for (SrcRow row : rows) out.add(plainSrcLine(row, maxCode));
+            return out;
+        }
+        out.add(BODY_INDENT + paintSourcePath(displayPath, linkPath, err, errorCol + 1, t, note));
+        Rgb pane = CONSOLE_BG;
+        for (SrcRow row : rows) {
+            out.add(paintSrcLine(row, maxCode, lang == null ? SyntaxHighlight.Language.JAVA : lang, t, pane));
+        }
+        return out;
+    }
+
+    /**
      * Path color + underline; when the dashboard HTTP surface and project id are known, wrap in an
      * OSC-8 deep link ({@code [link url][path underline]…[/][/]}) to the Monaco files pane.
      */
     static String paintSourcePath(String path, String sourceHeader, Theme t) {
-        if (path == null || path.isEmpty()) return "";
         int line = parsePositiveInt(attr(sourceHeader, "line"));
-        String url = DashboardCodeLink.urlForSnippet(path, line);
+        return paintSourcePath(path, line, 0, t);
+    }
+
+    /**
+     * Path color + underline; when the dashboard HTTP surface and project id are known, wrap in an
+     * OSC-8 deep link to the Monaco files pane ({@code ?line=N} and {@code &col=C} when set).
+     */
+    static String paintSourcePath(String path, int line, int col, Theme t) {
+        return paintSourcePath(path, path, line, col, t);
+    }
+
+    static String paintSourcePath(String display, String linkPath, int line, int col, Theme t) {
+        return paintSourcePath(display, linkPath, line, col, t, null);
+    }
+
+    static String paintSourcePath(String display, String linkPath, int line, int col, Theme t, String note) {
+        if (display == null || display.isEmpty()) return "";
+        String url = DashboardCodeLink.urlForSnippet(linkPath != null ? linkPath : display, line, col, note);
+        if (url == null && linkPath != null && !linkPath.equals(display)) {
+            url = DashboardCodeLink.urlForSnippet(display, line, col, note);
+        }
         if (url != null && !url.isBlank()) {
-            // RichText owns OSC-8; path + underline match the unlinked Theme.colorize form.
-            return RichText.parse("[link " + url + "][path underline]" + RichText.escape(path) + "[/][/]")
+            return RichText.parse("[link " + url + "][path underline]" + RichText.escape(display) + "[/][/]")
                     .render();
         }
-        return Theme.colorize(path, t.path().underline());
+        return Theme.colorize(display, t.path().underline());
     }
 
     private static int parsePositiveInt(String raw) {
@@ -443,7 +534,11 @@ public final class TestFailureHighlight {
         return code.substring(0, cut) + ellipsis;
     }
 
-    private record SrcRow(String num, boolean error, String code) {}
+    private record SrcRow(String num, boolean error, String code, int markCol) {
+        SrcRow(String num, boolean error, String code) {
+            this(num, error, code, -1);
+        }
+    }
 
     private static SrcRow parseSrcRow(String marker) {
         int sp = marker.indexOf(' ');
@@ -452,7 +547,7 @@ public final class TestFailureHighlight {
         String numPart = marker.substring(sp + 1, bar);
         boolean isError = numPart.endsWith("*");
         String num = isError ? numPart.substring(0, numPart.length() - 1) : numPart;
-        return new SrcRow(num, isError, marker.substring(bar + 1));
+        return new SrcRow(num, isError, marker.substring(bar + 1), -1);
     }
 
     private static String plainSrcLine(SrcRow row, int maxCode) {
@@ -467,12 +562,45 @@ public final class TestFailureHighlight {
         String gutterRail = Theme.colorize("│", t.withBackground(t.darkGray(), lineBg));
         String gap = Theme.colorize(" ", t.withBackground(AttributedStyle.DEFAULT, lineBg));
         String code = row.code;
-        String codePainted = code.isEmpty() ? "" : SyntaxHighlight.highlight(code, language, lineBg);
+        String codePainted = paintCode(row, language, lineBg, t);
         int pad = Math.max(0, maxCode - code.length());
         if (code.isEmpty() && pad == 0) pad = 1;
         String padPainted =
                 pad > 0 ? Theme.colorize(" ".repeat(pad), t.withBackground(AttributedStyle.DEFAULT, lineBg)) : "";
         return gutter + gutterRail + gap + codePainted + padPainted;
+    }
+
+    /** Syntax-highlight {@code row.code}; mark the identifier at {@code markCol} in error style. */
+    private static String paintCode(SrcRow row, SyntaxHighlight.Language language, Rgb lineBg, Theme t) {
+        String code = row.code;
+        if (code.isEmpty()) return "";
+        int mark = row.markCol;
+        if (!row.error || mark < 0 || mark >= code.length()) {
+            return SyntaxHighlight.highlight(code, language, lineBg);
+        }
+        int to = identifierEnd(code, mark);
+        String left = mark > 0 ? SyntaxHighlight.highlight(code.substring(0, mark), language, lineBg) : "";
+        AttributedStyle err = t.error().bold().underline();
+        String mid = Theme.colorize(code.substring(mark, to), t.withBackground(err, lineBg));
+        String right = to < code.length() ? SyntaxHighlight.highlight(code.substring(to), language, lineBg) : "";
+        return left + mid + right;
+    }
+
+    /** End index (exclusive) of the identifier starting at {@code from}, or one code point. */
+    static int identifierEnd(String code, int from) {
+        if (code == null || from < 0 || from >= code.length()) return from;
+        int i = from;
+        int cp = code.codePointAt(i);
+        if (!Character.isJavaIdentifierStart(cp) && !Character.isJavaIdentifierPart(cp)) {
+            return i + Character.charCount(cp);
+        }
+        i += Character.charCount(cp);
+        while (i < code.length()) {
+            cp = code.codePointAt(i);
+            if (!Character.isJavaIdentifierPart(cp)) break;
+            i += Character.charCount(cp);
+        }
+        return i;
     }
 
     private static String padRight(String s, int width) {

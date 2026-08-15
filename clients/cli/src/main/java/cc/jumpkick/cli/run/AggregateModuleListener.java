@@ -96,7 +96,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
 
     @Override
     public void warn(String step, String code, String message) {
-        emit(ConsoleSpec.renderWarning(step, code, message));
+        emit(ConsoleSpec.renderWarning(step, code, message, module));
     }
 
     @Override
@@ -106,7 +106,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
         // Per-test failures are fully rendered by run-tests output (styled "Test Failure" block).
         // Do not also print a second report — keep the diagnostic for JSON.
         if ("test-failure".equals(code)) return;
-        String report = ConsoleSpec.renderError(step, code, message);
+        String report = ConsoleSpec.renderError(step, code, message, module);
         if (report != null && !report.isEmpty()) emit(report);
     }
 

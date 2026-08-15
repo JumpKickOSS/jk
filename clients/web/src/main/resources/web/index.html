@@ -321,7 +321,9 @@
       </div>
       <template v-if="filesOpen">
         <code-view ref="codeView" :project-id="selectedProjectId" :path="codePath" :line="codeLine"
+                   :col="codeCol"
                    :line-err="codeLineErr"
+                   :msg="codeMsg"
                    :key="selectedProjectId" @navigate="onCodeNavigate"></code-view>
       </template>
       <template v-else>

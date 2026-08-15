@@ -300,8 +300,26 @@ const FailReport = {
         files: true,
         path: this.codePath,
         line: this.rep.line || 0,
+        col: this.rep.column || this.rep.col || 0,
         err: true, // red error-line highlight on the fail jump
+        msg: this.hoverNote,
       });
+    },
+    /** Assertion / exception text for the Monaco hover ({@code ?msg=}). */
+    hoverNote() {
+      const r = this.rep;
+      if (!r) return '';
+      if (r.assertj) {
+        const lines = [];
+        if (r.assertj.desc) lines.push(String(r.assertj.desc));
+        lines.push('Expected: ' + (r.assertj.expected ?? ''));
+        lines.push('But was: ' + (r.assertj.actual ?? ''));
+        return lines.join('\n');
+      }
+      const lines = [];
+      if (r.exceptionClass) lines.push(String(r.exceptionClass));
+      if (r.message) lines.push(String(r.message));
+      return lines.join('\n');
     },
   },
   methods: {
@@ -858,7 +876,9 @@ export const appOptions = {
     filesOpen: !!routeFromHash().files, // #project/<id>/files[/<rel>]
     codePath: routeFromHash().path,
     codeLine: routeFromHash().line,
+    codeCol: routeFromHash().col || 0,
     codeLineErr: !!routeFromHash().lineErr,
+    codeMsg: routeFromHash().msg || '',
     selectedProjectDir: null, // checkout path resolved from project meta
     projectMeta: null, // live /api/project payload (coord + description + dir) for the open project
     // JK-1542: Dependencies panel on the Project page — closed by default; graph fetch + echarts
@@ -1361,7 +1381,9 @@ export const appOptions = {
       this.filesOpen = !!r.files;
       this.codePath = r.path;
       this.codeLine = r.line;
+      this.codeCol = r.col || 0;
       this.codeLineErr = !!r.lineErr;
+      this.codeMsg = r.msg || '';
       // Collapse the expensive graph panel when leaving project view or switching projects.
       if (r.view !== 'project' || idChanged || r.files) this.projectGraphOpen = false;
       // Project identity cannot change between two clicks on the same #project/<id> route, and
@@ -1382,7 +1404,7 @@ export const appOptions = {
       this.openCode({ projectId: this.selectedProjectId });
     },
 
-    openCode({ projectId, path, line, err, replace } = {}) {
+    openCode({ projectId, path, line, col, err, msg, replace } = {}) {
       if (this.authModal) return;
       const id = projectId || this.selectedProjectId;
       if (!id) return;
@@ -1391,7 +1413,9 @@ export const appOptions = {
         files: true,
         path: path || null,
         line: line || 0,
+        col: col || 0,
         err: !!err,
+        msg: msg || '',
       });
       if (replace) {
         // replaceState does not fire hashchange — apply the route ourselves.

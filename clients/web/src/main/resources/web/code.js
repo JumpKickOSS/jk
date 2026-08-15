@@ -316,18 +316,32 @@ export function parseTruthy(raw) {
  *   #project/<id>
  *   #project/<id>/files
  *   #project/<id>/files/<rel/path>?line=<n>
- *   #project/<id>/files/<rel/path>?line=<n>&err=true  (fail-report / OSC-8 jump)
+ *   #project/<id>/files/<rel/path>?line=<n>&col=<c>&err=true&msg=<note>  (fail-report / OSC-8)
  */
+function routeFields(over = {}) {
+  return {
+    view: 'activity',
+    projectId: null,
+    files: false,
+    path: null,
+    line: 0,
+    col: 0,
+    lineErr: false,
+    msg: '',
+    ...over,
+  };
+}
+
 export function routeFromHash(hash = typeof location !== 'undefined' ? location.hash : '') {
   const h = hash || '';
   const q = parseHashQuery(h);
   const pathPart = h.indexOf('?') >= 0 ? h.slice(0, h.indexOf('?')) : h;
-  const empty = { view: 'activity', projectId: null, files: false, path: null, line: 0, lineErr: false };
+  const empty = routeFields();
   if (pathPart === '#projects') {
-    return { view: 'projects', projectId: null, files: false, path: null, line: 0, lineErr: false };
+    return routeFields({ view: 'projects' });
   }
   if (pathPart === '#status') {
-    return { view: 'status', projectId: null, files: false, path: null, line: 0, lineErr: false };
+    return routeFields({ view: 'status' });
   }
   if (pathPart.startsWith('#project/')) {
     const segs = pathPart.slice('#project/'.length).split('/');
@@ -339,32 +353,35 @@ export function routeFromHash(hash = typeof location !== 'undefined' ? location.
         if (raw === '') continue;
         const s = decodeComp(raw);
         if (s == null || s === '' || s === '.' || s === '..') {
-          return {
+          return routeFields({
             view: 'project',
             projectId: id,
             files: true,
-            path: null,
             line: parseLine(q.line),
+            col: parseLine(q.col),
             lineErr: parseTruthy(q.err),
-          };
+            msg: q.msg || '',
+          });
         }
         rel.push(s);
       }
-      return {
+      return routeFields({
         view: 'project',
         projectId: id,
         files: true,
         path: rel.length ? rel.join('/') : null,
         line: parseLine(q.line),
+        col: parseLine(q.col),
         lineErr: parseTruthy(q.err),
-      };
+        msg: q.msg || '',
+      });
     }
-    return { view: 'project', projectId: id, files: false, path: null, line: 0, lineErr: false };
+    return routeFields({ view: 'project', projectId: id });
   }
   return empty;
 }
 
-export function buildProjectHash({ projectId, files, path, line, err } = {}) {
+export function buildProjectHash({ projectId, files, path, line, col, err, msg } = {}) {
   if (!projectId) return '#projects';
   let h = '#project/' + encodeURIComponent(projectId);
   if (files || path) {
@@ -381,9 +398,30 @@ export function buildProjectHash({ projectId, files, path, line, err } = {}) {
   }
   if (line > 0) {
     h += '?line=' + line;
+    if (col > 0) h += '&col=' + col;
     if (err) h += '&err=true';
+    const note = clipHashMsg(msg);
+    if (note) h += '&msg=' + encodeURIComponent(note);
   }
   return h;
+}
+
+/** Keep hash / OSC-8 URLs from ballooning; compiler notes are a few short lines. */
+export function clipHashMsg(msg, max = 800) {
+  const t = msg == null ? '' : String(msg).trim();
+  if (!t) return '';
+  if (t.length <= max) return t;
+  return t.slice(0, Math.max(1, max - 1)) + '…';
+}
+
+/**
+ * Monaco {@code hoverMessage} payload for a decoration. Wrapped as a text fence so
+ * identifiers like {@code List<T>} don't go through Markdown emphasis.
+ */
+export function hoverMessage(msg) {
+  const t = clipHashMsg(msg);
+  if (!t) return undefined;
+  return { value: '```text\n' + t.replace(/```/g, "'''") + '\n```' };
 }
 
 export function langFromPath(path) {
@@ -450,30 +488,76 @@ export function monacoLang(lang) {
 }
 
 /**
+ * 1-based [start, end) span covering the identifier at {@code col}, or a single column
+ * when the character is not an identifier. Used so {@code ?col=} paints the token, not a sliver.
+ */
+export function columnSpan(text, col) {
+  const n = Number(col) || 0;
+  if (n < 1) return null;
+  const s = text == null ? '' : String(text);
+  if (!s.length) return { start: n, end: n + 1 };
+  const i = Math.min(Math.max(n, 1), s.length + 1) - 1;
+  const isId = (ch) => ch != null && /[A-Za-z0-9_$]/.test(ch);
+  if (i >= s.length || !isId(s[i])) {
+    return { start: i + 1, end: i + 2 };
+  }
+  let start = i;
+  while (start > 0 && isId(s[start - 1])) start--;
+  let end = i + 1;
+  while (end < s.length && isId(s[end])) end++;
+  return { start: start + 1, end: end + 1 };
+}
+
+/**
  * `?line=` whole-line decoration — plain IRange objects, testable without a monaco global.
  * Empty for line 0. Neutral (cyan/soft) by default; {@code err: true} uses the fail-report red wash
  * ({@code ?line=N&err=true} from Activity / OSC-8).
+ *
+ * When {@code col} is set, a second inline decoration marks that column (identifier span when
+ * {@code lineText} is supplied). {@code err} paints a red squiggle; otherwise a cyan underline.
  */
-export function lineDecorations(line, err = false) {
+export function lineDecorations(line, err = false, col = 0, lineText = '', msg = '') {
   const n = Number(line) || 0;
   if (n < 1) return [];
   const error = !!err;
+  const hover = hoverMessage(msg);
   const opts = {
     isWholeLine: true,
     className: error ? 'code-line-err' : 'code-line-hl',
     linesDecorationsClassName: error ? 'code-line-err-gutter' : 'code-line-hl-gutter',
   };
+  if (hover) opts.hoverMessage = hover;
   if (error) {
     // Stick the mark in the overview/minimap so a long file still shows where the jump landed.
     opts.overviewRuler = { color: 'rgba(255, 51, 102, 0.85)', position: 1 };
     opts.minimap = { color: 'rgba(255, 51, 102, 0.85)', position: 1 };
   }
-  return [
+  const out = [
     {
       range: { startLineNumber: n, startColumn: 1, endLineNumber: n, endColumn: 1 },
       options: opts,
     },
   ];
+  const span = columnSpan(lineText, col);
+  if (span) {
+    const colOpts = {
+      inlineClassName: error ? 'code-col-err' : 'code-col-hl',
+      overviewRuler: error
+        ? { color: 'rgba(255, 51, 102, 0.95)', position: 1 }
+        : { color: 'rgba(0, 240, 255, 0.85)', position: 1 },
+    };
+    if (hover) colOpts.hoverMessage = hover;
+    out.push({
+      range: {
+        startLineNumber: n,
+        startColumn: span.start,
+        endLineNumber: n,
+        endColumn: span.end,
+      },
+      options: colOpts,
+    });
+  }
+  return out;
 }
 
 /**
@@ -832,8 +916,12 @@ export const CodeView = {
     projectId: { type: String, default: null },
     path: { type: String, default: null },
     line: { type: Number, default: 0 },
+    /** 1-based column from {@code ?col=}; 0 means line-only. */
+    col: { type: Number, default: 0 },
     /** True when the hash carried {@code err=true} (fail-report / OSC-8 jump). */
     lineErr: { type: Boolean, default: false },
+    /** Compiler / failure note from {@code ?msg=} — shown on hover. */
+    msg: { type: String, default: '' },
   },
   emits: ['navigate', 'build'],
   data: () => ({
@@ -965,14 +1053,18 @@ export const CodeView = {
     line() {
       this.$nextTick(() => this.scrollToLine());
     },
+    col() {
+      this.$nextTick(() => this.scrollToLine());
+    },
+    msg() {
+      this.$nextTick(() => this.applyLineDecorations());
+    },
     // A buffer going clean releases an epoch reload the user declined while dirty (JK-1973).
     dirty(next) {
       if (!next && this._api) this._api.releaseDeferredEpochReload();
     },
     lineErr() {
-      this.$nextTick(() => {
-        if (this._decorations) this._decorations.set(lineDecorations(this.line, this.lineErr));
-      });
+      this.$nextTick(() => this.applyLineDecorations());
     },
     // Preview open/close changes flex slots; Monaco only remeasures on layout().
     paneMode() {
@@ -1384,19 +1476,39 @@ export const CodeView = {
         this._editor.layout();
       }
       if (!this._model) this._model = this._editor.getModel();
-      this._decorations = this._editor.createDecorationsCollection(
-        lineDecorations(this.line, this.lineErr),
-      );
+      this._decorations = this._editor.createDecorationsCollection(this.lineDecorationSpecs());
       if (!options.readOnly && this._model) {
         this._contentSub = this._model.onDidChangeContent(() => this.recomputeDirty());
       }
       this.recomputeDirty();
     },
+    lineDecorationSpecs() {
+      let text = '';
+      if (this._model && this.line > 0) {
+        try {
+          text = this._model.getLineContent(this.line) || '';
+        } catch {
+          text = '';
+        }
+      }
+      return lineDecorations(this.line, this.lineErr, this.col, text, this.msg);
+    },
+    applyLineDecorations() {
+      if (this._decorations) this._decorations.set(this.lineDecorationSpecs());
+    },
     scrollToLine() {
       if (this.line < 1) return;
       if (this._editor) {
-        if (this._decorations) this._decorations.set(lineDecorations(this.line, this.lineErr));
-        this._editor.revealLineInCenter(this.line);
+        this.applyLineDecorations();
+        const col = this.col > 0 ? this.col : 1;
+        this._editor.setPosition({ lineNumber: this.line, column: col });
+        this._editor.revealPositionInCenter({ lineNumber: this.line, column: col });
+        if (this.msg) {
+          // Land with the compiler / failure note open, not only after the user hunts for hover.
+          requestAnimationFrame(() => {
+            if (this._editor && this.msg) this._editor.trigger('jk', 'editor.action.showHover', {});
+          });
+        }
         return;
       }
       const pre = this.$refs.pre;
@@ -1656,7 +1768,8 @@ export const CodeView = {
               <p v-else class="warn">Highlighter failed to load — showing plain text</p>
               <pre class="code-pre code-plain" ref="pre">
                 <div v-for="(row, i) in rows" :key="i" class="code-plain-row fail-src"
-                     :class="{ 'code-line-on': line === i + 1 && !lineErr, 'code-line-err-plain': line === i + 1 && lineErr }">
+                     :class="{ 'code-line-on': line === i + 1 && !lineErr, 'code-line-err-plain': line === i + 1 && lineErr }"
+                     :title="line === i + 1 && msg ? msg : undefined">
                   <span class="fail-gutter">{{ i + 1 }}</span><span class="fail-gutter-rail">\u2502</span><span class="fail-src-code">{{ row }}</span>
                 </div>
               </pre>

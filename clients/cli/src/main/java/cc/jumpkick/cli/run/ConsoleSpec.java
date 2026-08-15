@@ -65,22 +65,32 @@ public record ConsoleSpec(
 
     /** Render an error diagnostic for the console, per its {@code code}. */
     public static String renderError(BuildPlanResult.Diagnostic d) {
-        return renderError(d.step(), d.code(), d.message());
+        return renderError(d.step(), d.code(), d.message(), d.module());
     }
 
     /** Render an error diagnostic from its parts (used by live + summary paths alike). */
     public static String renderError(String step, String code, String message) {
-        return DiagnosticReport.renderError(step, code, message);
+        return DiagnosticReport.renderError(step, code, message, null);
+    }
+
+    /** Like {@link #renderError(String, String, String)} with a {@code group:artifact} module. */
+    public static String renderError(String step, String code, String message, String module) {
+        return DiagnosticReport.renderError(step, code, message, module);
     }
 
     /** Render a warning diagnostic for the console, per its {@code code}. */
     public static String renderWarning(BuildPlanResult.Diagnostic d) {
-        return renderWarning(d.step(), d.code(), d.message());
+        return renderWarning(d.step(), d.code(), d.message(), d.module());
     }
 
     /** Warning report: yellow phase pill + railed body. */
     public static String renderWarning(String step, String code, String message) {
-        return DiagnosticReport.renderWarning(step, code, message);
+        return DiagnosticReport.renderWarning(step, code, message, null);
+    }
+
+    /** Like {@link #renderWarning(String, String, String)} with a {@code group:artifact} module. */
+    public static String renderWarning(String step, String code, String message, String module) {
+        return DiagnosticReport.renderWarning(step, code, message, module);
     }
 
     /**
@@ -92,7 +102,7 @@ public record ConsoleSpec(
 
     /** Compiler diagnostics (javac/kotlinc) carry a verbatim multi-line block. */
     public static boolean isCompilerCode(String code) {
-        return "javac".equals(code) || "kotlinc".equals(code);
+        return "javac".equals(code) || "kotlinc".equals(code) || "groovyc".equals(code);
     }
 
     /**

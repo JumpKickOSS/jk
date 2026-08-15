@@ -36,6 +36,12 @@ class DashboardCodeLinkTest {
     void fileUrl_matches_web_hash_route() {
         assertThat(DashboardCodeLink.fileUrl("http://127.0.0.1:8910/", "ab12", "src/test/java/FooTest.java", 23))
                 .isEqualTo("http://127.0.0.1:8910#project/ab12/files/src/test/java/FooTest.java?line=23&err=true");
+        assertThat(DashboardCodeLink.fileUrl("http://127.0.0.1:8910/", "ab12", "src/Main.java", 12, 7))
+                .isEqualTo("http://127.0.0.1:8910#project/ab12/files/src/Main.java?line=12&col=7&err=true");
+        assertThat(DashboardCodeLink.fileUrl(
+                        "http://127.0.0.1:8910/", "ab12", "src/Main.java", 12, 7, "error: cannot find symbol"))
+                .isEqualTo(
+                        "http://127.0.0.1:8910#project/ab12/files/src/Main.java?line=12&col=7&err=true&msg=error%3A%20cannot%20find%20symbol");
         assertThat(DashboardCodeLink.fileUrl("http://127.0.0.1:8910", "ab", "src/A+B.java", 3))
                 .isEqualTo("http://127.0.0.1:8910#project/ab/files/src/A%2BB.java?line=3&err=true");
         assertThat(DashboardCodeLink.fileUrl("http://x", "id", "src/Main.java", 0))
@@ -55,5 +61,15 @@ class DashboardCodeLinkTest {
             assertThat(DashboardCodeLink.codePath(scope.checkoutDir(), scope.moduleDir(), "src/Foo.java"))
                     .isEqualTo("lib/src/Foo.java");
         }
+    }
+
+    @Test
+    void clipMsg_trims_and_caps() {
+        assertThat(DashboardCodeLink.clipMsg(null)).isEmpty();
+        assertThat(DashboardCodeLink.clipMsg("  hi  ")).isEqualTo("hi");
+        String overlong = "x".repeat(DashboardCodeLink.MAX_MSG_CHARS + 20);
+        String clipped = DashboardCodeLink.clipMsg(overlong);
+        assertThat(clipped).hasSize(DashboardCodeLink.MAX_MSG_CHARS);
+        assertThat(clipped).endsWith("…");
     }
 }

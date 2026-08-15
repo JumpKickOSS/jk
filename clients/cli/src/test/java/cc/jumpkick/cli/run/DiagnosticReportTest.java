@@ -63,6 +63,21 @@ class DiagnosticReportTest {
     }
 
     @Test
+    void compiler_error_header_includes_module_coord() {
+        String report = DiagnosticReport.renderError(
+                "compile-java", "javac", "Foo.java:1: error: cannot find symbol", "cc.jumpkick:jk-core");
+        String p = plain(report);
+        assertThat(p).contains("Compile Java");
+        assertThat(p).contains("Failure");
+        assertThat(p).contains("in cc.jumpkick:jk-core");
+        assertThat(p).contains("error:");
+        assertThat(p).contains("Foo.java");
+        if (Theme.active().isAnsi()) {
+            assertThat(report).contains(Coords.ga("cc.jumpkick", "jk-core"));
+        }
+    }
+
+    @Test
     void warning_pill_uses_black_ink_on_amber() {
         String report = DiagnosticReport.renderWarning("compile-java", "javac", "src/Main.java:1: warning: something");
         String plain = plain(report);

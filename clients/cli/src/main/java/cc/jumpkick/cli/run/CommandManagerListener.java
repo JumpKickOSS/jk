@@ -141,7 +141,7 @@ public final class CommandManagerListener implements BuildPlanListener {
         cm.attachPhaseError(module, step, "", brief);
         // Styled "Test Failure" block already covers per-test failures; keep JSON diagnostics only.
         if ("test-failure".equals(code)) return;
-        String report = ConsoleSpec.renderError(step, code, message);
+        String report = ConsoleSpec.renderError(step, code, message, module);
         if (report != null && !report.isEmpty()) cm.writeAbove(report);
     }
 
