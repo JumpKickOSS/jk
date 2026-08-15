@@ -140,6 +140,56 @@ public final class SecretRedactor {
     }
 
     /**
+     * A redactor that additionally matches each secret's JSON-string-escaped rendering (JK-1975).
+     *
+     * <p>Replay paths re-redact <em>escaped JSON documents</em>: a secret containing {@code "},
+     * {@code \}, or a control character was persisted through {@code Jsonl.quote} in escaped form,
+     * which the exact-substring pass over the raw document cannot match. This view carries both
+     * renderings so escaped occurrences are masked without decode–re-encode. Memoized per
+     * instance; returns {@code this} when no secret changes under escaping.
+     */
+    public SecretRedactor forEscapedJson() {
+        if (secrets.isEmpty()) return this;
+        SecretRedactor v = escapedJsonView;
+        if (v == null) {
+            List<String> all = new ArrayList<>(secrets);
+            for (String s : secrets) {
+                String esc = jsonEscape(s);
+                if (!esc.equals(s)) all.add(esc);
+            }
+            v = all.size() == secrets.size() ? this : of(all);
+            escapedJsonView = v;
+        }
+        return v;
+    }
+
+    private volatile SecretRedactor escapedJsonView;
+
+    /**
+     * JSON string-body escaping — MUST stay in lock-step with {@code Jsonl.quote} (shared/plugin-sdk;
+     * that module is not visible from here, hence the copy): quote and backslash get a backslash,
+     * {@code \n \r \t} use the short forms, other control chars become lowercase backslash-u00xx.
+     */
+    private static String jsonEscape(String s) {
+        StringBuilder b = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"' -> b.append("\\\"");
+                case '\\' -> b.append("\\\\");
+                case '\n' -> b.append("\\n");
+                case '\r' -> b.append("\\r");
+                case '\t' -> b.append("\\t");
+                default -> {
+                    if (c < 0x20) b.append(String.format("\\u%04x", (int) c));
+                    else b.append(c);
+                }
+            }
+        }
+        return b.toString();
+    }
+
+    /**
      * Form suitable for an action / stamp key. If {@code value} is itself a secret or contains one,
      * return {@code sha256:<hex>} of the full value; otherwise return {@code value} unchanged.
      *

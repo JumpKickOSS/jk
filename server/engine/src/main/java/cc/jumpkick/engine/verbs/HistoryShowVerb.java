@@ -82,6 +82,10 @@ public final class HistoryShowVerb implements HostedVerb {
                             .put("coveredSkips", b != null ? b.coveredSkips() : -1)
                             .put("totalSkips", b != null ? b.totalSkips() : -1)
                             .toString());
+            // Defense in depth (JK-1963): records persisted before write-time redaction (JK-1878)
+            // may carry .env secrets — re-redact on replay against the record's own dir. Hoisted
+            // above the step loops so labels get the same coverage as diagnostics (JK-1975).
+            cc.jumpkick.config.SecretRedactor redactor = replayRedactor(r.dir());
             int stepCount = 0;
             for (BuildRecord.Module m : r.modules()) {
                 host.send(
@@ -97,19 +101,15 @@ public final class HistoryShowVerb implements HostedVerb {
                 // Each module's own step chain, tagged with the module so the CLI can group them.
                 String label = m.coord() != null ? m.coord() : m.dir();
                 for (BuildRecord.Task p : m.steps()) {
-                    host.send(writer, stepLine(p, label));
+                    host.send(writer, stepLine(redactor, p, label));
                     stepCount++;
                 }
             }
             // Single-plan builds carry their steps at the record's top level (no module rows).
             for (BuildRecord.Task p : r.steps()) {
-                host.send(writer, stepLine(p, null));
+                host.send(writer, stepLine(redactor, p, null));
                 stepCount++;
             }
-            // Defense in depth (JK-1963): records persisted before write-time redaction (JK-1878)
-            // may carry .env secrets in message/stack — re-redact on replay against the record's
-            // own dir. One redactor per record; SecretRedactor memoizes by value-set.
-            cc.jumpkick.config.SecretRedactor redactor = replayRedactor(r.dir());
             for (BuildRecord.Diag d : r.diagnostics()) {
                 host.send(writer, cc.jumpkick.engine.journal.JournalWriter.historyDiagLine(redactDiag(redactor, d)));
             }
@@ -129,11 +129,11 @@ public final class HistoryShowVerb implements HostedVerb {
         }
     }
 
-    private static String stepLine(BuildRecord.Task p, String module) {
+    private static String stepLine(cc.jumpkick.config.SecretRedactor r, BuildRecord.Task p, String module) {
         return JsonOut.object()
                 .put("type", EngineProtocol.HISTORY_TASK)
                 .put("module", module)
-                .put("name", p.name())
+                .put("name", redactSafe(r, p.name()))
                 .put("status", p.status())
                 .put("millis", p.millis())
                 .toString();

@@ -101,7 +101,9 @@ final class HttpHistoryApi {
                     return cc.jumpkick.config.SecretRedactor.none();
                 }
             });
-            return redactor.redact(raw);
+            // The document is escaped JSON: match escaped renderings too, or a secret containing
+            // a quote/backslash/control char streams through verbatim (JK-1975).
+            return redactor.forEscapedJson().redact(raw);
         } catch (RuntimeException e) {
             return raw;
         }

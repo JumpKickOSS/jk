@@ -92,6 +92,24 @@ class SecretRedactorTest {
     }
 
     @Test
+    void escaped_json_view_masks_both_renderings() {
+        // JK-1975: replay paths redact escaped JSON documents; a secret with a quote, backslash,
+        // or newline was persisted in escaped form.
+        SecretRedactor r = SecretRedactor.of(List.of("pa\\ss\"wd\n9"));
+        SecretRedactor json = r.forEscapedJson();
+        assertThat(json.redact("leak pa\\\\ss\\\"wd\\n9 here")).isEqualTo("leak *** here");
+        // The raw rendering still masks too.
+        assertThat(json.redact("leak pa\\ss\"wd\n9 here")).isEqualTo("leak *** here");
+        // Control chars use the lowercase four-digit form (Jsonl.quote parity).
+        SecretRedactor ctl = SecretRedactor.of(List.of("ab\u0001cdef"));
+        assertThat(ctl.forEscapedJson().redact("x ab\\u0001cdef y")).isEqualTo("x *** y");
+        // Secrets that escape to themselves reuse the same instance; the view is memoized.
+        SecretRedactor plain = SecretRedactor.of(List.of("plain-secret"));
+        assertThat(plain.forEscapedJson()).isSameAs(plain);
+        assertThat(json).isSameAs(r.forEscapedJson());
+    }
+
+    @Test
     void none_is_a_no_op() {
         assertThat(SecretRedactor.none().redact("anything")).isEqualTo("anything");
         assertThat(SecretRedactor.none().forCacheKey("anything")).isEqualTo("anything");
