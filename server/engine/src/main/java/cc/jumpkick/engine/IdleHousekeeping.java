@@ -19,11 +19,13 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import lombok.RequiredArgsConstructor;
 
 /**
  * Idle-boundary chores: cache prune, journal/metrics retention, host warmup, trailing GC.
- * Exactly-once at the build boundary (JK-1795); GC is always last (JK-1725).
+ * Exactly-once at the build boundary; GC is always last.
  */
+@RequiredArgsConstructor
 public final class IdleHousekeeping {
 
     private final AtomicInteger activeBuildPlans;
@@ -42,32 +44,9 @@ public final class IdleHousekeeping {
     private final AtomicBoolean warmupRunning = new AtomicBoolean();
     private final AtomicBoolean running = new AtomicBoolean();
 
-    public IdleHousekeeping(
-            AtomicInteger activeBuildPlans,
-            ReentrantReadWriteLock cacheGate,
-            JkHistoryConfig historyConfig,
-            BuildJournal journal,
-            Supplier<Path> metricsFile,
-            LongSupplier clock,
-            Consumer<String> log,
-            BooleanSupplier shuttingDown,
-            BooleanSupplier draining,
-            Runnable onDrainIdle) {
-        this.activeBuildPlans = activeBuildPlans;
-        this.cacheGate = cacheGate;
-        this.historyConfig = historyConfig;
-        this.journal = journal;
-        this.metricsFile = metricsFile;
-        this.clock = clock;
-        this.log = log;
-        this.shuttingDown = shuttingDown;
-        this.draining = draining;
-        this.onDrainIdle = onDrainIdle;
-    }
-
     /**
      * After a plan slot was released: all idle housekeeping when nothing remains in flight.
-     * Does not decrement the counter — the finish path decrements first (JK-1725).
+     * Does not decrement the counter — the finish path decrements first.
      */
     public void maybeIdleBoundary() {
         if (activeBuildPlans.get() != 0) return;
@@ -206,7 +185,7 @@ public final class IdleHousekeeping {
 
     /**
      * Drop process-wide memos whose payoff is intra-build so the trailing GC has something to
-     * reclaim (JK-1942): pool-thread hash caches (keys embed nano-mtime, so rebuilds mint new
+     * reclaim: pool-thread hash caches (keys embed nano-mtime, so rebuilds mint new
      * entries forever), resolve memos (rebuilt cheaply from the on-disk caches), the metrics
      * aggregate, and any unclaimed test-wall snapshots. All are optimisations, never correctness.
      */

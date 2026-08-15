@@ -51,9 +51,10 @@ you want one, `jk format --check` is the command, but the CI gate is what's auth
 
 ### Code as Art
 
-How we write Java (size budgets, Typed Envelope, JSpecify, diet Lombok, pre-1.0 breakage):
-**[code-as-art.md](code-as-art.md)**. Campaign epic JK-1923 preempts other work until it
-closes.
+How we write Java (size budgets, Typed Envelope, JSpecify, fluent Lombok, pre-1.0 breakage):
+**[docs/code-as-art.md](docs/code-as-art.md)**. Comments and Javadoc state the current type only
+(no ticket ids, no historical essays) — **[AGENTS.md](AGENTS.md#comments-and-javadoc)**.
+Campaign epic JK-1923 preempts other work until it closes.
 
 ### Self-host (phase 2+) — workspace modules + thin workers with jk
 

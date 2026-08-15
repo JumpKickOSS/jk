@@ -31,33 +31,16 @@ public final class TaskForecast {
     }
 
     /** One module's forecast: identity plus ordered steps. */
-    public static final class Module {
-        private final Path dir;
-        private final String coord;
-        private final List<Task> steps;
-        private final int sourceCount;
-        private final int testCount;
-        private final boolean producesJar;
-        private final boolean producesImage;
+    public record Module(
+            Path dir,
+            String coord,
+            List<Task> steps,
+            int sourceCount,
+            int testCount,
+            boolean producesJar,
+            boolean producesImage) {
 
-        public Module(
-                Path dir,
-                String coord,
-                List<Task> steps,
-                int sourceCount,
-                int testCount,
-                boolean producesJar,
-                boolean producesImage) {
-            this.dir = dir;
-            this.coord = coord;
-            this.steps = steps;
-            this.sourceCount = sourceCount;
-            this.testCount = testCount;
-            this.producesJar = producesJar;
-            this.producesImage = producesImage;
-        }
-
-        /** Reconstruct a forecast module client-side from wire-level data (engine front-ends). */
+        /** Reconstruct a forecast module client-side from wire-level data. */
         public static Module fromWire(
                 Path dir,
                 String coord,
@@ -69,44 +52,10 @@ public final class TaskForecast {
             return new Module(dir, coord, steps, sourceCount, testCount, producesJar, producesImage);
         }
 
-        /** The module's {@code group:artifact} coordinate. */
-        public String coord() {
-            return coord;
-        }
-
-        /** The module's directory. */
-        public Path dir() {
-            return dir;
-        }
-
-        public List<Task> steps() {
-            return steps;
-        }
-
-        public int sourceCount() {
-            return sourceCount;
-        }
-
-        public int testCount() {
-            return testCount;
-        }
-
-        public boolean producesJar() {
-            return producesJar;
-        }
-
-        public boolean producesImage() {
-            return producesImage;
-        }
-
         /**
-         * True when this module has <em>material</em> work that is not cache-restorable —
-         * compile, tests, package, native, image, or source-generating build-logic.
-         *
-         * <p>Always-run bookkeeping steps ({@code parse-build}, {@code resolve-deps},
-         * {@code write-stamp}, …) are not cached in the action store but cost milliseconds; treating
-         * them as dirty scheduled every workspace member on every build and inflated ETA to a full
-         * monorepo history floor (~minutes) when only a few modules needed real work.
+         * True when this module has material work that is not cache-restorable (compile, tests,
+         * package, native, image, or source-generating build-logic). Always-run bookkeeping
+         * ({@code parse-build}, {@code resolve-deps}, {@code write-stamp}, …) is not dirty.
          */
         public boolean dirty() {
             return steps.stream().anyMatch(p -> !p.cached() && isMaterialWork(p.name()));
@@ -124,12 +73,8 @@ public final class TaskForecast {
 
         /**
          * Always-run / stamp-check steps that must not alone mark a module dirty.
-         *
-         * <p>{@code copy-resources}/{@code copy-test-resources} are deliberately NOT here: the
-         * forecaster emits them only on real resource drift (never as always-run bookkeeping), and
-         * a drifted resource must schedule the module or the jar ships stale bytes (JK-1808).
-         * Compile-consumer cascade still requires package/compile dirtiness — resource-only drift
-         * does not alone force dependents to recompile.
+         * {@code copy-resources} / {@code copy-test-resources} are not bookkeeping: they emit only
+         * on real resource drift, which must schedule the module.
          */
         public static boolean isBookkeepingStep(String stepName) {
             if (stepName == null) return true;

@@ -57,7 +57,7 @@ pin behavior (`JdkFloorTest`, `FirstBuildJdkTest`, …). Elsewhere prefer `java 
 - Do not write per-module lockfiles — one `jk-lock.toml` at the workspace root (or standalone project root).
 - Do not grow unbounded product docs — keep the public set small ([docs/README.md](docs/README.md)).
 - Do not expand infinite ecosystem long tail (full KMP multiplatform, AGP parity, plugin marketplace, RBE) without an explicit ticket that says so.
-- Do not leave long historical essays in code comments; keep Javadocs tight — let the code speak.
+- Do not leave historical essays, ticket ids, or decision records in code comments — see [Comments and Javadoc](#comments-and-javadoc).
 - **Do not bump schema/protocol versions before 1.0** — stay on version **1** for `jk-lock.toml`, wire
   `proto`, JSONL/`details.jsonl` `schema`, REST/SSE, MCP, etc. Additive fields only; no version
   churn noise without public users. See [docs/architecture.md](docs/architecture.md#schema-freeze-until-10).
@@ -114,7 +114,7 @@ Needs a GraalVM-capable JDK for `dist` (see [CONTRIBUTING.md](CONTRIBUTING.md) /
 - Tickets: `projects/jk/tickets/JK-NNNN-*.md` (status lives on the ticket file; board views are generated).
 - Sibling checkout assumed: `../kanartist` next to this repo (or set `KANARTIST_WORKSPACE_ROOT`).
 - **Preempt:** JK-1923 (Code as Art / Typed Envelope) and its children are **P0**. Do not
-  claim unrelated tickets until that epic is `done`. Spec: [code-as-art.md](code-as-art.md).
+  claim unrelated tickets until that epic is `done`. Spec: [docs/code-as-art.md](docs/code-as-art.md).
   Baseline tag: `pre-code-as-art`.
 
 ### Claim and ship a ticket
@@ -157,6 +157,34 @@ Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not**
 4. **Project smoke** — a simple project builds with the reinstalled binary, e.g. `jk init … && jk build` (or equivalent lock/build path the ticket affects).
 
 Record failures on the kanartist ticket (`status: blocked` or body notes); do not mark done on green unit tests alone if dist/install/dogfood is broken.
+
+## Comments and Javadoc
+
+Comments document the **current** type or method. There is no past that belongs in
+source. A brand-new contributor should learn facts, not parse memos from old tickets
+or agents.
+
+**Write**
+
+- Facts the signature does not carry: units, invariants, on-disk / wire format, what
+  `null` means, why an obvious alternative is illegal *right now*.
+- One short class or public-method sentence when the name is not enough.
+
+**Never write**
+
+- Ticket ids (`JK-1234`) in comments, Javadoc, or `package-info`.
+- History: formerly, used to, before this, landed in, back-compat, kept for migration.
+- Decision records, agent breadcrumbs, “do not revert”, “for future turns”, PR narration.
+- Comments that only restate the next line of code.
+
+**Where history goes**
+
+KanArtist, the commit / PR body, or (last resort) `docs/`. Never the main source tree.
+
+**When you touch a file**
+
+Strip ticket refs and leftover essays in that file. Do not add new ones. Keep or
+tighten comments that still state a live invariant.
 
 ## Code formatting (mandatory before every commit)
 

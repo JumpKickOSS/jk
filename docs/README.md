@@ -22,4 +22,6 @@ Project planning (not product docs): [kanartist](https://github.com/JumpKickOSS/
 
 Competitive notes (maintainers): [mill-comparison.md](mill-comparison.md) — adversarial gap analysis vs Mill.
 
+How we write the tree (maintainers): [code-as-art.md](code-as-art.md) — size budgets, Typed Envelope, JSpecify, fluent Lombok.
+
 Contributing and build instructions: [../CONTRIBUTING.md](../CONTRIBUTING.md).

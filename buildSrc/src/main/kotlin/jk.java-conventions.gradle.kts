@@ -27,9 +27,13 @@ tasks.withType<JavaCompile>().configureEach {
 val libs = extensions.getByType<VersionCatalogsExtension>().named("libs")
 
 dependencies {
-    // House nullness (code-as-art.md). compileOnly: zero runtime; safe on the Graal CLI.
+    // JSpecify + Lombok: compile-time only; never on the runtime / native / fat-jar classpath.
     "compileOnly"(libs.findLibrary("jspecify").orElseThrow())
     "testCompileOnly"(libs.findLibrary("jspecify").orElseThrow())
+    "compileOnly"(libs.findLibrary("lombok").orElseThrow())
+    "annotationProcessor"(libs.findLibrary("lombok").orElseThrow())
+    "testCompileOnly"(libs.findLibrary("lombok").orElseThrow())
+    "testAnnotationProcessor"(libs.findLibrary("lombok").orElseThrow())
     "testImplementation"(libs.findLibrary("junit-jupiter").orElseThrow())
     "testImplementation"(libs.findLibrary("assertj-core").orElseThrow())
     "testRuntimeOnly"(libs.findLibrary("junit-platform-launcher").orElseThrow())
