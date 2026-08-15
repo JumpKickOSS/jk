@@ -149,11 +149,11 @@ public final class PlannerNative {
                     // speaking, not jk guessing.
                     Path frameworkSources = nativeImageSourcesDir(project, dir, cache, layout);
                     if (frameworkSources == null && packagerDeclaresNativeSources(project, dir)) {
-                        // The packager owns the native invocation (JK-1710) but its augment ran in
+                        // The packager owns the native invocation but its augment ran in
                         // JVM mode — without a [native] table the build never asked for native
                         // sources. Falling through to the generic classpath build is exactly the
-                        // "main entry point not found" failure JK-1710 fixed; fail with the cure
-                        // instead (JK-1762).
+                        // "main entry point not found" failure  fixed; fail with the cure
+                        // instead.
                         String msg = "this framework builds its own native image, but no native-image"
                                 + " sources were produced. Add a `[native]` table (it can be empty) to"
                                 + " jk.toml so the framework's augment runs in native mode, then re-run"
@@ -194,7 +194,7 @@ public final class PlannerNative {
                     } else {
                         classpath.add(mainJar);
                     }
-                    // Module-scoped runtime closure + workspace sibling jars (JK-1345).
+                    // Module-scoped runtime closure + workspace sibling jars.
                     for (Path p : assemblyDependencyJars(dir, project, lockFile, cache)) {
                         if (!classpath.contains(p)) classpath.add(p);
                     }
@@ -274,7 +274,7 @@ public final class PlannerNative {
                             "out:" + out.getFileName(),
                             "graal:" + graalTok,
                             // Framework mode consumes the whole native-sources tree (computed args,
-                            // runner jar) — a plugin-only change to it must miss the cache (JK-1782).
+                            // runner jar) — a plugin-only change to it must miss the cache.
                             "framework:"
                                     + (frameworkSources == null
                                             ? ""

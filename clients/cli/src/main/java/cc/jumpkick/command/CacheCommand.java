@@ -91,7 +91,7 @@ public final class CacheCommand extends GroupCommand {
      * <p>Byte sizes are exclusive across store sections (CAS first), so hard-linked repo jars do not
      * inflate "Size on Disk" or the utilization bar. Cache-tier {@code actions} stats include the
      * cache CAS blob tree; plain (non-exclusive) counting there is exact because the cache CAS is
-     * copy-only — no blob is ever hard-linked across tiers (verified for JK-1525).
+     * copy-only — no blob is ever hard-linked across tiers (verified for ).
      */
     static SectionStats sectionStats(Path cacheRoot) throws IOException {
         Path storeCas = JkStores.resolve(cacheRoot, "sha256");
@@ -550,7 +550,7 @@ public final class CacheCommand extends GroupCommand {
      * @param localOnly skip the engine-hosted purge and wipe in-process. Set by {@code jk self
      *     nuke} multi-target runs: the fleet was just stopped, and the hosted path's
      *     {@code ensureRunning} would boot a fresh engine only for STATE deletion to pull the
-     *     state dir (sockets included) out from under it (JK-1773).
+     *     state dir (sockets included) out from under it.
      */
     static int runNuke(Path root, boolean dryRun, GlobalOptions global, boolean skipConfirm, boolean localOnly)
             throws IOException {
@@ -578,7 +578,7 @@ public final class CacheCommand extends GroupCommand {
         // Prefer engine idle-boundary wipe; fall back to in-process delete only when no engine
         // is reachable (unit tests, engine down). A LIVE engine whose purge plan failed keeps
         // admitting builds — racing it with a client-side recursive delete is how a nuke ends
-        // half-done on top of fresh writes (JK-1791).
+        // half-done on top of fresh writes.
         if (!localOnly) {
             try {
                 long[] result = {stats.files(), stats.bytes()};
@@ -753,7 +753,7 @@ public final class CacheCommand extends GroupCommand {
             boolean dryRun = in.isSet("dry-run");
             boolean sweep = in.isSet("sweep");
             // --background is parsed for script back-compat but has no distinct behavior since
-            // the engine's idle-boundary prune replaced the detached spawner (JK-1789).
+            // the engine's idle-boundary prune replaced the detached spawner.
             GlobalOptions global = GlobalOptions.from(in);
 
             Path root = resolveCacheRoot(cacheDir);
@@ -785,7 +785,7 @@ public final class CacheCommand extends GroupCommand {
                 result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                         cc.jumpkick.engine.EnginePaths.current(),
                         // --sweep adds the CAS sweep but must not do LESS cleaning than plain
-                        // clean: Class-C heavy outputs drop either way (JK-1788).
+                        // clean: Class-C heavy outputs drop either way.
                         sweep
                                 ? new cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest(
                                         "prune", root, olderThanDays, dryRun, true, defaultCacheDir, null, true)

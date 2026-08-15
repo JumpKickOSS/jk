@@ -256,10 +256,8 @@ public final class BuildEta {
             boolean testResourceDrift) {
         if (s == null || s.cached()) return false;
         String name = s.name();
-        // TEST-resource drift reruns the suite for real — test action keys hash test resources
-        // (that is what made the drift material at all, JK-1808/1809) — so run-tests must keep
-        // its full wall no matter which rule below would discount it (JK-1842: one edited
-        // fixture priced a 792-test suite as a recheck token and the countdown collapsed).
+        // TEST-resource drift reruns the suite for real — test action keys hash test resources —
+        // so run-tests must keep its full wall no matter which rule below would discount it.
         if ("run-tests".equals(name) && testResourceDrift) {
             return false;
         }
@@ -287,7 +285,7 @@ public final class BuildEta {
 
     /**
      * "Exactly zero sources changed" — the count must not be a suffix of a larger number
-     * ("10 sources changed"), see JK-1836. Text form from {@code JavaIncrementalCompile}:
+     * ("10 sources changed"), see . Text form from {@code JavaIncrementalCompile}:
      * {@code "1 source changed"} / {@code "<n> sources changed"}.
      */
     private static final java.util.regex.Pattern ZERO_SOURCES =
@@ -304,7 +302,7 @@ public final class BuildEta {
             String t = s.text() == null ? "" : s.text();
             // "compile · 0 sources changed" is not material work. Digit-guarded: a bare
             // contains("0 source") also matched "10/20/…N0 sources changed" and silently
-            // discounted whole test suites for modules with a multiple-of-ten edit (JK-1836).
+            // discounted whole test suites for modules with a multiple-of-ten edit.
             if (ZERO_SOURCES.matcher(t).find()) continue;
             if (s.status() == TaskForecast.Status.PARTIAL || s.status() == TaskForecast.Status.FULL) {
                 return true;
@@ -342,7 +340,7 @@ public final class BuildEta {
     /**
      * TEST-resource drift specifically — the suite genuinely reruns (test action keys hash test
      * resources), so unlike main-resource drift it must never discount {@code run-tests}
-     * (JK-1842).
+     *.
      */
     static boolean hasTestResourceDriftWork(TaskForecast.Module m) {
         if (m == null || m.steps() == null) return false;
@@ -416,10 +414,7 @@ public final class BuildEta {
         // reference frame.
         BuildMetrics.Stats okHist = okHistory(entryDir, hist);
         // Whole-build history floor only for true full rebuilds — not merely "many modules are
-        // dirty." Wide+shallow forecasts (cascade dirties 20+ modules but only 1–2 schedule real
-        // tests/native) used to hit dirtyModules>=16 and get floored to multi-minute full-rebuild
-        // walls (~40s over on dogfood when most run-tests SKIPPED). Require substantial scheduled
-        // weight breadth, or an explicit --force/--rebuild.
+        // dirty." Require substantial scheduled weight breadth, or an explicit --force/--rebuild.
         boolean fullWork = isFullWorkShape(hist, costs);
         boolean coldFull = fullWork && (okHist == null || okHist.count() == 0);
         int etaConcurrency = concurrency;

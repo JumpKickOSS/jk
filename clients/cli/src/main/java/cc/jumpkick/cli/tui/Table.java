@@ -122,7 +122,7 @@ public final class Table implements Widget {
         return headerCell(text, Theme.active().isAnsi());
     }
 
-    /** Like every other paint decision, the plain fallback follows the render context (JK-1889). */
+    /** Like every other paint decision, the plain fallback follows the render context. */
     static String headerCell(String text, boolean ansi) {
         String s = text == null ? "" : text;
         if (s.isEmpty() || !ansi) return s;
@@ -229,7 +229,7 @@ public final class Table implements Widget {
         }
         if (resolved == Append.MERGE) {
             // A merge absorbs the whole child, not just its rows: its own appended sections keep
-            // rendering, and sticky styling flags survive (JK-1890). Alignment stays the parent's —
+            // rendering, and sticky styling flags survive. Alignment stays the parent's —
             // matching columns were the precondition for MERGE.
             rows.addAll(other.rows);
             appended.addAll(other.appended);
@@ -239,7 +239,7 @@ public final class Table implements Widget {
         }
         // A SECTION child snaps each of its columns onto a span of parent columns, so it can
         // never have more columns than the parent — snapSpans would produce out-of-range,
-        // non-monotonic span ends and the painter would throw AIOOBE mid-render (JK-1886).
+        // non-monotonic span ends and the painter would throw AIOOBE mid-render.
         // Fail here, at the call site that can actually fix the layout.
         if (other.columns.size() > this.columns.size()) {
             throw new IllegalArgumentException("appended section has more columns ("
@@ -384,7 +384,7 @@ public final class Table implements Widget {
                     out.add(divider(ctx, "├", "┼", "┤", cw));
                 } else if (row.kind() == RowKind.SPAN) {
                     // Same treatment as the parent loop: collapse the column rails before a
-                    // full-span row instead of colliding into it without junctions (JK-1891).
+                    // full-span row instead of colliding into it without junctions.
                     if (isFullSpan(row, cw.length)) {
                         out.add(divider(ctx, "├", "┴", "┤", cw));
                     }
@@ -613,7 +613,7 @@ public final class Table implements Widget {
         for (int i = 0; i < widths.length; i++) {
             String name = i < cols.size() ? cols.get(i).name() : "";
             if (plain) name = PlainAscii.transform(name);
-            // Headers sit over their data — a CENTER column centers its header too (JK-1888).
+            // Headers sit over their data — a CENTER column centers its header too.
             Align align = i < cols.size() ? cols.get(i).align() : Align.LEFT;
             String cell = pad(headerCell(name, ansi), widths[i], align);
             sb.append(' ').append(cell).append(' ').append(bar);
