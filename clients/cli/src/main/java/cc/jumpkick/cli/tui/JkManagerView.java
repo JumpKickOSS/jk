@@ -352,8 +352,16 @@ final class JkManagerView {
             }
             // Erase the live region back to its top.
             if (m.planMode) {
-                if (m.linesDrawn > 0) m.out.print(Ansi.cursorUp(m.linesDrawn));
-                m.out.print(Ansi.ERASE_DISPLAY_TO_END);
+                // Resize first (JK-1990): after a shrink the region reflowed to more physical
+                // rows than linesDrawn, so the logical-lines erase below would undershoot and —
+                // with lastLines cleared before repaint — the next syncTerminalSize would skip
+                // its reflow-aware wipe, stranding the region's top rows above the emitted text.
+                // syncTerminalSize wipes (and clears lastLines) itself when columns changed.
+                syncTerminalSize();
+                if (!m.lastLines.isEmpty()) {
+                    if (m.linesDrawn > 0) m.out.print(Ansi.cursorUp(m.linesDrawn));
+                    m.out.print(Ansi.ERASE_DISPLAY_TO_END);
+                }
             } else {
                 m.out.print(Ansi.CLEAR_LINE);
             }
@@ -453,9 +461,14 @@ final class JkManagerView {
      * first frame ({@code lastLines} cleared).
      */
     private void wipeReflowedRegion(int fromCols, int toCols) {
-        int up = physicalRowsAfterReflow(m.lastLines, fromCols, toCols);
-        // Never under-shoot: non-reflow terminals keep one physical row per logical line.
-        up = Math.max(up, m.lastLines.size());
+        // Clipping terminals (xterm, linux console, screen, …) keep exactly one physical row per
+        // logical line: climbing the reflow estimate there overshoots into completed output above
+        // the region and ERASE_DISPLAY_TO_END destroys it (JK-1989). Only terminals known to
+        // rewrap get the reflow-height climb.
+        int up = m.lastLines.size();
+        if (TerminalReflow.reflows()) {
+            up = Math.max(physicalRowsAfterReflow(m.lastLines, fromCols, toCols), up);
+        }
         if (up > 0) m.out.print(Ansi.cursorUp(up));
         m.out.print('\r');
         m.out.print(Ansi.ERASE_DISPLAY_TO_END);

@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
@@ -11,6 +12,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.jline.utils.AttributedStyle;
 import org.junit.jupiter.api.Test;
@@ -893,6 +895,105 @@ class JkManagerTest {
                     .asString()
                     .doesNotContain("…");
         } finally {
+            TerminalSize.probe = savedProbe;
+            TerminalSize.reset();
+        }
+    }
+
+    @Test
+    void reflow_detection_is_env_driven_and_defaults_to_clipping() {
+        // JK-1989: overshooting the wipe on a clipping terminal destroys completed output, so
+        // unknown terminals must read as clipping.
+        Map<String, String> vte = Map.of("VTE_VERSION", "7802");
+        assertThat(TerminalReflow.detect(vte::get)).isTrue();
+        assertThat(TerminalReflow.detect(Map.of("TERM_PROGRAM", "WezTerm")::get))
+                .isTrue();
+        assertThat(TerminalReflow.detect(Map.of("WT_SESSION", "x")::get)).isTrue();
+        assertThat(TerminalReflow.detect(Map.of("TERM", "xterm-kitty")::get)).isTrue();
+        assertThat(TerminalReflow.detect(Map.of("TERM", "xterm-256color")::get)).isFalse();
+        assertThat(TerminalReflow.detect(Map.of("TERM", "screen")::get)).isFalse();
+        assertThat(TerminalReflow.detect(k -> null)).isFalse();
+    }
+
+    @Test
+    void shrink_wipe_climbs_only_the_logical_rows_on_clipping_terminals() {
+        // JK-1989: on a clipping terminal the wipe must be exactly lastLines.size() rows —
+        // the reflow estimate overshoots into (and erases) completed output above the region.
+        var savedProbe = TerminalSize.probe;
+        try {
+            TerminalSize.probe = () -> new int[] {24, 80};
+            TerminalSize.reset();
+            var buf = new ByteArrayOutputStream();
+            var cm = new JkManager(stream(buf), true, true, 80);
+            cm.height = 24;
+            cm.name = "Build";
+            cm.startNanos = System.nanoTime();
+            cm.nerdFont = NerdFontCaps.NONE;
+            cm.stepRunning("cc.jumpkick:jk-io", "run-tests", "test");
+            cm.stepMessage("cc.jumpkick:jk-io", "run-tests", "SomeVeryLongTestClassName.and_a_member_name_that_pads");
+            cm.tick();
+            int drawn = cm.view.renderBuildPlanLines(80, 0).size();
+
+            TerminalSize.probe = () -> new int[] {24, 40};
+            TerminalSize.reset();
+            buf.reset();
+
+            TerminalReflow.force(false); // clipping terminal
+            cm.tick();
+            String clipped = buf.toString(StandardCharsets.UTF_8);
+            assertThat(clipped).contains(Ansi.cursorUp(drawn));
+
+            // Reflowing terminal: same shrink climbs the (larger) estimated physical height.
+            TerminalSize.probe = () -> new int[] {24, 80};
+            TerminalSize.reset();
+            TerminalReflow.force(true);
+            cm.tick(); // repaint at 80 again
+            TerminalSize.probe = () -> new int[] {24, 40};
+            TerminalSize.reset();
+            List<String> last = cm.view.renderBuildPlanLines(80, 0);
+            int estimate = Math.max(JkManagerView.physicalRowsAfterReflow(last, 80, 40), last.size());
+            buf.reset();
+            cm.tick();
+            assertThat(buf.toString(StandardCharsets.UTF_8)).contains(Ansi.cursorUp(estimate));
+        } finally {
+            TerminalReflow.force(null);
+            TerminalSize.probe = savedProbe;
+            TerminalSize.reset();
+        }
+    }
+
+    @Test
+    void write_above_after_a_shrink_wipes_with_post_resize_geometry() {
+        // JK-1990: writeAbove used pre-resize linesDrawn for its erase; the reflow-aware sync
+        // must run first so no orphan rows survive above the emitted line.
+        var savedProbe = TerminalSize.probe;
+        try {
+            TerminalSize.probe = () -> new int[] {24, 80};
+            TerminalSize.reset();
+            var buf = new ByteArrayOutputStream();
+            var cm = new JkManager(stream(buf), true, true, 80);
+            cm.height = 24;
+            cm.name = "Build";
+            cm.startNanos = System.nanoTime();
+            cm.nerdFont = NerdFontCaps.NONE;
+            cm.stepRunning("cc.jumpkick:jk-io", "run-tests", "test");
+            cm.stepMessage("cc.jumpkick:jk-io", "run-tests", "SomeVeryLongTestClassName.and_a_member_name_that_pads");
+            cm.tick();
+            List<String> last = cm.view.renderBuildPlanLines(80, 0);
+
+            TerminalSize.probe = () -> new int[] {24, 40};
+            TerminalSize.reset();
+            TerminalReflow.force(true);
+            int estimate = Math.max(JkManagerView.physicalRowsAfterReflow(last, 80, 40), last.size());
+            buf.reset();
+            cm.view.writeAbove("WARN something happened");
+            String out = buf.toString(StandardCharsets.UTF_8);
+            // The reflow-aware climb ran before the text landed, and the text precedes the repaint.
+            assertThat(out).contains(Ansi.cursorUp(estimate));
+            assertThat(out.indexOf(Ansi.cursorUp(estimate))).isLessThan(out.indexOf("WARN something happened"));
+            assertThat(cm.width()).isEqualTo(40);
+        } finally {
+            TerminalReflow.force(null);
             TerminalSize.probe = savedProbe;
             TerminalSize.reset();
         }
