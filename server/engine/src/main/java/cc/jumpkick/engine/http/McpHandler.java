@@ -11,6 +11,7 @@ import cc.jumpkick.util.PathUtil;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
@@ -295,6 +296,45 @@ public final class McpHandler {
                         Map.of("type", "integer", "description", "Max rows (default 20)"),
                         "next",
                         Map.of("type", "integer", "description", "Skip this many unique rows")))));
+        tools.add(tool(
+                "jk_run",
+                "Start a job (build|test|lock|update|format|native|image|assemble|compile|clean). "
+                        + "wait defaults true. dir optional after jk_bind. Aliases: jk_build/jk_test/jk_lock.",
+                objectSchema(Map.of(
+                        "kind",
+                        Map.of(
+                                "type",
+                                "string",
+                                "description",
+                                "build|test|lock|update|format|native|image|assemble|compile|clean"),
+                        "dir",
+                        Map.of("type", "string", "description", "Project root (default: bound dir)"),
+                        "modules",
+                        Map.of("type", "array", "items", Map.of("type", "string"), "description", "Module names/globs"),
+                        "include_tags",
+                        Map.of("type", "array", "items", Map.of("type", "string")),
+                        "exclude_tags",
+                        Map.of("type", "array", "items", Map.of("type", "string")),
+                        "suites",
+                        Map.of("type", "array", "items", Map.of("type", "string")),
+                        "skip_tests",
+                        Map.of("type", "boolean"),
+                        "wait",
+                        Map.of("type", "boolean", "description", "Block until finish (default true)"),
+                        "timeout_s",
+                        Map.of("type", "integer", "description", "Wait timeout seconds (default 600)"),
+                        "aot_cache",
+                        Map.of("type", "boolean")))));
+        tools.add(tool(
+                "jk_job",
+                "get / wait / cancel a job. Omit jid to use the latest live job for the bound dir.",
+                objectSchema(Map.of(
+                        "action",
+                        Map.of("type", "string", "description", "get | wait | cancel"),
+                        "jid",
+                        Map.of("type", "integer"),
+                        "timeout_s",
+                        Map.of("type", "integer")))));
         return Map.of("tools", tools);
     }
 
@@ -318,6 +358,8 @@ public final class McpHandler {
             case "jk_project" -> projectResult(args);
             case "jk_history" -> historyResult(args);
             case "jk_diagnostics" -> diagnosticsResult(args);
+            case "jk_run" -> runResult(args, progressToken);
+            case "jk_job" -> jobResult(args);
             default -> throw new McpError(-32602, "unknown tool: " + name);
         };
     }
@@ -558,6 +600,143 @@ public final class McpHandler {
         return ok(
                 McpEnvelope.of("diagnostics", fields, truncated, next, hint),
                 page.size() + " of " + total + " diagnostics");
+    }
+
+    private Map<String, Object> runResult(Map<String, Object> args, String progressToken) {
+        String kind = string(args.get("kind"));
+        if (kind == null || kind.isBlank()) kind = "build";
+        kind = kind.toLowerCase(Locale.ROOT);
+        boolean wait = !Boolean.FALSE.equals(McpHistoryViews.parseBool(args.get("wait")));
+        int timeoutS = intArg(args.get("timeout_s"), 600, 1, 24 * 3600);
+        long jid =
+                switch (kind) {
+                    case "build", "assemble", "compile", "clean" ->
+                        jobPayloadId("build", args, jobs::triggerBuild, progressToken);
+                    case "test" -> jobPayloadId("test", args, jobs::triggerTest, progressToken);
+                    case "lock", "update" -> jobPayloadId("lock", args, jobs::triggerLock, progressToken);
+                    default ->
+                        throw new McpError(
+                                -32602, "kind not hosted yet: " + kind + " (use build|test|lock; see JK-2021)");
+                };
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("kind", kind);
+        fields.put("jid", jid);
+        fields.put("requestId", jid);
+        fields.put("dir", resolveDir(args, true));
+        Object mods = args.get("modules");
+        if (mods != null) fields.put("modules", mods);
+        Object tags = args.get("include_tags");
+        if (tags != null) {
+            fields.put("include_tags", tags);
+            fields.put("note", "include_tags accepted; engine apply is JK-2021");
+        }
+        if (!wait) {
+            fields.put("mcpEvents", "GET /mcp?requestId=" + jid);
+            return ok(
+                    McpEnvelope.of("job-accepted", fields, false, null, "jk_job action=wait jid=" + jid), "jid " + jid);
+        }
+        boolean done = waitUntilGone(jid, timeoutS * 1000L);
+        fields.put("waited", true);
+        fields.put("finished", done);
+        if (!done) {
+            return ok(
+                    McpEnvelope.of("job", fields, false, null, "jk_job action=wait jid=" + jid),
+                    "still running " + jid);
+        }
+        Map<String, Object> last = lastFinished(resolveDir(args, false));
+        if (last != null) {
+            fields.put("result", last);
+            if (Boolean.FALSE.equals(last.get("success"))) {
+                Map<String, Object> diags = diagnosticsResult(Map.of());
+                @SuppressWarnings("unchecked")
+                Map<String, Object> env = (Map<String, Object>) diags.get("structuredContent");
+                if (env != null) fields.put("diagnostics", env.get("diagnostics"));
+            }
+        }
+        return ok(McpEnvelope.of("job", fields), done ? "finished " + jid : "jid " + jid);
+    }
+
+    private long jobPayloadId(
+            String kind, Map<String, Object> args, Function<String, Long> trigger, String progressToken) {
+        Map<String, Object> accepted = jobPayload(kind, args, trigger, progressToken);
+        Object jid = accepted.get("jid");
+        if (jid instanceof Number n) return n.longValue();
+        throw new McpError(-32603, "job did not return jid");
+    }
+
+    private Map<String, Object> jobResult(Map<String, Object> args) {
+        String action = string(args.get("action"));
+        if (action == null || action.isBlank()) action = "get";
+        action = action.toLowerCase(Locale.ROOT);
+        Long jid = numberArg(args.get("jid"));
+        if (jid == null) jid = latestLiveJid(session.dir());
+        if ("cancel".equals(action)) {
+            if (jid == null) throw new McpError(-32602, "no live job to cancel");
+            boolean ok = jobs.cancel(jid);
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("jid", jid);
+            fields.put("cancelled", ok);
+            return ok(McpEnvelope.of("cancel", fields), ok ? "cancelled " + jid : "jid " + jid + " not cancelled");
+        }
+        if (jid == null) {
+            return ok(McpEnvelope.of("job", Map.of("live", false)), "no live job");
+        }
+        if ("wait".equals(action)) {
+            int timeoutS = intArg(args.get("timeout_s"), 600, 1, 24 * 3600);
+            boolean done = waitUntilGone(jid, timeoutS * 1000L);
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("jid", jid);
+            fields.put("finished", done);
+            return ok(McpEnvelope.of("job", fields), done ? "finished " + jid : "still running " + jid);
+        }
+        boolean live = isLive(jid);
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("jid", jid);
+        fields.put("live", live);
+        return ok(McpEnvelope.of("job", fields), live ? "running " + jid : "jid " + jid + " not live");
+    }
+
+    private boolean waitUntilGone(long jid, long timeoutMs) {
+        long start = System.currentTimeMillis();
+        boolean seen = false;
+        while (System.currentTimeMillis() - start < timeoutMs) {
+            boolean live = isLive(jid);
+            if (live) seen = true;
+            if (seen && !live) return true;
+            if (!seen && System.currentTimeMillis() - start > 250) return true;
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return !isLive(jid);
+    }
+
+    private boolean isLive(long jid) {
+        for (HttpLive.Run r : liveRuns.get()) {
+            if (r.requestId() == jid) return true;
+        }
+        return false;
+    }
+
+    private Long latestLiveJid(String dir) {
+        String want = dir == null ? null : McpHistoryViews.normalizeDir(dir);
+        Long found = null;
+        for (HttpLive.Run r : liveRuns.get()) {
+            if (want != null) {
+                String have = McpHistoryViews.normalizeDir(r.dir() == null ? "" : r.dir());
+                if (!have.equals(want) && !have.startsWith(want + "/")) continue;
+            }
+            found = r.requestId();
+        }
+        return found;
+    }
+
+    private static Long numberArg(Object raw) {
+        if (raw instanceof Number n) return n.longValue();
+        return null;
     }
 
     @SuppressWarnings("unchecked")

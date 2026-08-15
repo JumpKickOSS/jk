@@ -132,6 +132,13 @@ class McpContractTest {
     }
 
     @Test
+    void run_wait_returns_job_envelope() {
+        Map<String, Object> r = call("jk_run", "{\"kind\":\"test\",\"dir\":\"/tmp\",\"wait\":true,\"timeout_s\":2}");
+        assertThat(r.get("type")).isIn("job", "job-accepted", "test-accepted");
+        assertThat(r.get("jid")).isNotNull();
+    }
+
+    @Test
     void tools_list_includes_bind() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");
         assertThat(body).contains("jk_bind");
