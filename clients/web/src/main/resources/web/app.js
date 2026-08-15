@@ -43,7 +43,8 @@ import {
   CodeView,
 } from './code.js';
 
-bootstrapToken();
+// Guarded so the module can be imported headlessly (node --test) — JK-1986.
+if (typeof document !== 'undefined') bootstrapToken();
 
 // The build **phase-chain**: a single horizontal strip of coarse plan phases (Resolve →
 // Compile → Test → …), never wrapping. New phases advance rightward and push earlier ones off the
@@ -849,7 +850,8 @@ function fmtMillis(millis) {
   return Math.floor(totalSec / 60) + 'm ' + String(totalSec % 60).padStart(2, '0') + 's';
 }
 
-Vue.createApp({
+// Exported for the headless harness (app.test.mjs); the browser block below mounts it.
+export const appOptions = {
   data: () => ({
     view: routeFromHash().view, // 'activity' | 'projects' | 'project' | 'status'
     selectedProjectId: routeFromHash().projectId, // durable id (#project/<id>)
@@ -2470,14 +2472,18 @@ Vue.createApp({
       }
     },
   },
-})
-  .component('jk-icon', JkIcon)
-  .component('phase-chain', PhaseChain)
-  .component('fail-report', FailReport)
-  .component('build-bars', BuildBars)
-  .component('module-dep-graph', ModuleDepGraph)
-  .component('code-view', CodeView)
-  .mount('#app');
+};
 
-// Themed tooltips for data-tip / title (native title= is unstyleable OS chrome — JK-1726).
-installTips(document);
+if (typeof Vue !== 'undefined' && typeof document !== 'undefined') {
+  Vue.createApp(appOptions)
+    .component('jk-icon', JkIcon)
+    .component('phase-chain', PhaseChain)
+    .component('fail-report', FailReport)
+    .component('build-bars', BuildBars)
+    .component('module-dep-graph', ModuleDepGraph)
+    .component('code-view', CodeView)
+    .mount('#app');
+
+  // Themed tooltips for data-tip / title (native title= is unstyleable OS chrome — JK-1726).
+  installTips(document);
+}
