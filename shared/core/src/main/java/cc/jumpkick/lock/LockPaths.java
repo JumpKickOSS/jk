@@ -41,7 +41,7 @@ public final class LockPaths {
             try {
                 // Raw probe, NOT a full parse: this runs inside JkBuildParser.parse itself
                 // (plugin-manifest resolution → lockEntry → here), so parsing the same file
-                // again would recurse without end (JK-1341).
+                // again would recurse without end.
                 if (JkBuildParser.declaresWorkspaceModules(toml)) {
                     return dir;
                 }

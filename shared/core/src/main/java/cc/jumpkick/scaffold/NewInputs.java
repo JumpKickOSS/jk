@@ -42,7 +42,7 @@ public record NewInputs(
         // A plugin project ships a fat jar (jk-plugin-sdk shaded in) and so does a Micronaut app
         // (Maven shade parity). The rule lives here, not at the call site, because
         // NewJkBuildRenderer owns the single [application] table — a scaffold fragment cannot
-        // open a second one to add `assembly = true` (JK-1671).
+        // open a second one to add `assembly = true`.
         assembly = assembly || plugin || micronaut;
     }
 

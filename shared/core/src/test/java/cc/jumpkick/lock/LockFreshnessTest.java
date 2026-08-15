@@ -108,7 +108,7 @@ class LockFreshnessTest {
     @Test
     void jk_libs_toml_edit_flips_staleness(@TempDir Path dir) throws Exception {
         // The workspace catalog layer changes short-name -> GA resolution, so a pin edit must
-        // stale the lock exactly like a manifest edit (JK-1864).
+        // stale the lock exactly like a manifest edit.
         Files.writeString(dir.resolve("jk.toml"), """
                 group = "g"
                 name = "n"

@@ -38,7 +38,7 @@ class PluginContributionsTest {
                 .extracting(Dependency::module, d -> d.version().raw())
                 .containsExactly(org.assertj.core.groups.Tuple.tuple(
                         "org.springframework.boot:spring-boot-dependencies", "4.0.0"));
-        // JK-1545: the contribution lands as written, not exactified with a leading `=`, so a
+        // The contribution lands as written, not exactified with a leading `=`, so a
         // `version = "4"` floor floats within the Boot 4 line at lock.
         assertThat(build.dependencies().of(Scope.PLATFORM).getFirst().version())
                 .isInstanceOf(cc.jumpkick.model.VersionSelector.Caret.class);

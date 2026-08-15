@@ -58,7 +58,7 @@ public final class ModuleOrder {
      * coordinate, or — for unresolved {@code workspace = true} placeholders only — its bare sibling
      * name. Deliberately no fallback on the TOML table key ({@code Dependency.library()}): a table
      * key that happens to equal a module's name (e.g. an external, published release of a
-     * first-party artifact) must stay an external artifact, not become a module edge (JK-1623).
+     * first-party artifact) must stay an external artifact, not become a module edge.
      * Shared by build ordering and the dependency graph so both draw identical module edges.
      */
     public static <T> T resolveSibling(Dependency d, Map<String, T> byCoord, Map<String, T> byName) {

@@ -25,7 +25,7 @@ public final class OfficialTemplatesFreshen {
 
     /**
      * Last freshen attempt (success or failure) per cache key. Short-name resolution calls
-     * {@link #refreshQuiet} from the engine's request path (JK-1454): without this guard an offline
+     * {@link #refreshQuiet} from the engine's request path: without this guard an offline
      * host would re-run a 60–120 s git attempt on every retry of a missing template.
      */
     private static final ConcurrentHashMap<String, Long> LAST_ATTEMPT_NANOS = new ConcurrentHashMap<>();

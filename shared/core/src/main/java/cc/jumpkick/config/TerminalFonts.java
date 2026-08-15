@@ -80,7 +80,7 @@ public interface TerminalFonts {
 
         /**
          * First existing candidate wins, matching Alacritty's own resolution order. {@code import}
-         * chains are not followed (JK-1970 non-goal), so a font set only in an imported file reads
+         * chains are not followed (non-goal), so a font set only in an imported file reads
          * as absent.
          */
         @Override

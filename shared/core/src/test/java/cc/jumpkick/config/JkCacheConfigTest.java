@@ -174,7 +174,7 @@ class JkCacheConfigTest {
 
     @org.junit.jupiter.api.Test
     void small_disk_clamp_counts_the_tiers_own_bytes_as_headroom() {
-        // JK-1772: an 8 GiB volume with 2 GiB free where the cache itself holds 3 GiB must
+        // An 8 GiB volume with 2 GiB free where the cache itself holds 3 GiB must
         // budget from 5 GiB of reclaimable space, not 2 — otherwise the budget chases its own
         // eviction downward.
         long gib = 1024L * 1024 * 1024;

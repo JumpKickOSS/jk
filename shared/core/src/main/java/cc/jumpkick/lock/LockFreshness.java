@@ -31,7 +31,7 @@ public final class LockFreshness {
      * True when {@code rootLock} is absent or no longer matches the root manifest or any declared
      * workspace member manifest. One digest comparison covers everything: the digest is
      * workspace-wide (owner = the lock's directory) and already folds member and path-dep
-     * manifests in, so a per-module loop would recompute the identical digest N times (JK-1359).
+     * manifests in, so a per-module loop would recompute the identical digest N times.
      */
     public static boolean workspaceLockStale(Path root, Path rootLock) {
         if (!Files.exists(rootLock)) return true;

@@ -68,7 +68,7 @@ public final class AffectedSelection {
     public static List<String> gitDiffNameOnly(Path root, String ref) {
         try {
             // --end-of-options: a ref like "--output=…" must be read as a revision, not a git
-            // option (JK-1488). Matches the discipline in GitCliExtension.
+            // option. Matches the discipline in GitCliExtension.
             Process p = new ProcessBuilder("git", "diff", "--name-only", "--end-of-options", ref + "...HEAD")
                     .directory(root.toFile())
                     .redirectErrorStream(true)

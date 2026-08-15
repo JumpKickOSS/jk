@@ -208,7 +208,7 @@ public final class MacPrefs {
             if (cfInitAttempted) return;
             // Flag written LAST (finally): the fast path reads it unsynchronized, so an early
             // write would publish attempted=true with null handles to a concurrent caller
-            // (JK-1987 — benign here beyond one spurious empty read, but same idiom as
+            // — benign here beyond one spurious empty read, but same idiom as
             // TerminalSize).
             try {
                 Linker linker = Linker.nativeLinker();

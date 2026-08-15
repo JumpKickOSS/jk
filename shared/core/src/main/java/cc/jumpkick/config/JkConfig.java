@@ -107,7 +107,7 @@ public record JkConfig(
     }
 
     // --- withers: one-field copies so callers (tests especially) never restate the
-    // 11-positional-Optional constructor (JK-1805). ---
+    // 11-positional-Optional constructor. ---
 
     public JkConfig withColor(Optional<ColorChoice> v) {
         return new JkConfig(

@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
 
 /**
  * Cache-prune cadence: {@code .last-pruned} bookkeeping consulted by the engine's idle-boundary
- * prune (which replaced the old detached {@code jk cache prune --background} spawner — JK-1789).
+ * prune.
  */
 public final class CachePruneScheduler {
 
