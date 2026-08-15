@@ -2,22 +2,28 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.builds.ProjectIdentity;
+import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -41,14 +47,52 @@ final class WorkspaceFileAccess {
             Map.entry(".json", "json"),
             Map.entry(".jsonl", "json"),
             Map.entry(".md", "markdown"),
-            Map.entry(".markdown", "markdown"));
+            Map.entry(".markdown", "markdown"),
+            // Preview-oriented text (dashboard Preview pane; still UTF-8 sources).
+            Map.entry(".mmd", "mermaid"),
+            Map.entry(".mermaid", "mermaid"),
+            Map.entry(".dot", "graphviz"),
+            Map.entry(".gv", "graphviz"),
+            Map.entry(".adoc", "asciidoc"),
+            Map.entry(".asciidoc", "asciidoc"),
+            Map.entry(".d2", "d2"),
+            // Binary image kinds — listable + raw-readable; not text-writable.
+            Map.entry(".png", "image"),
+            Map.entry(".jpg", "image"),
+            Map.entry(".jpeg", "image"),
+            Map.entry(".gif", "image"),
+            Map.entry(".webp", "image"),
+            Map.entry(".ico", "image"),
+            Map.entry(".svg", "image"),
+            Map.entry(".bmp", "image"),
+            Map.entry(".avif", "image"));
+
+    private static final Map<String, String> IMAGE_CONTENT_TYPE = Map.ofEntries(
+            Map.entry(".png", "image/png"),
+            Map.entry(".jpg", "image/jpeg"),
+            Map.entry(".jpeg", "image/jpeg"),
+            Map.entry(".gif", "image/gif"),
+            Map.entry(".webp", "image/webp"),
+            Map.entry(".ico", "image/x-icon"),
+            Map.entry(".svg", "image/svg+xml"),
+            Map.entry(".bmp", "image/bmp"),
+            Map.entry(".avif", "image/avif"));
 
     record ListedFile(String path, String lang) {}
 
     record FileList(Path root, List<ListedFile> files, boolean truncated) {}
 
-    /** {@code encoding} is {@code utf-8}, or {@code iso-8859-1} when the bytes were not valid UTF-8 (JK-1954). */
-    record FileBody(Path root, String path, String lang, long bytes, int lines, String content, String encoding) {}
+    /**
+     * {@code encoding} is {@code utf-8}, or {@code iso-8859-1} when the bytes were not valid UTF-8
+     *. {@code etag} is the SHA-256 hex of the on-disk bytes (optimistic concurrency for
+     * PUT).
+     */
+    record FileBody(
+            Path root, String path, String lang, long bytes, int lines, String content, String encoding, String etag) {}
+
+    record RawBody(Path root, String path, String lang, String contentType, byte[] bytes) {}
+
+    record WrittenBody(Path root, String path, String lang, long bytes, int lines, String etag) {}
 
     sealed interface ReadResult {
         record Ok(FileBody body) implements ReadResult {}
@@ -60,6 +104,38 @@ final class WorkspaceFileAccess {
         record TooLarge(long bytes, int maxBytes) implements ReadResult {}
 
         record Binary() implements ReadResult {}
+    }
+
+    sealed interface RawResult {
+        record Ok(RawBody body) implements RawResult {}
+
+        record BadRequest(String error) implements RawResult {}
+
+        record NotFound() implements RawResult {}
+
+        record TooLarge(long bytes, int maxBytes) implements RawResult {}
+    }
+
+    sealed interface WriteResult {
+        record Ok(WrittenBody body) implements WriteResult {}
+
+        record BadRequest(String error) implements WriteResult {}
+
+        record NotFound() implements WriteResult {}
+
+        record TooLarge(long bytes, int maxBytes) implements WriteResult {}
+
+        record NotWritable(String error) implements WriteResult {}
+
+        /** On-disk bytes no longer match the client's {@code etag} (multi-tab / external edit). */
+        record Conflict(String currentEtag) implements WriteResult {}
+
+        record Failed(String error) implements WriteResult {}
+    }
+
+    /** SHA-256 hex of file bytes — the JSON {@code etag} field and PUT concurrency token. */
+    static String etagOf(byte[] bytes) {
+        return Hashing.sha256Hex(bytes == null ? new byte[0] : bytes);
     }
 
     private WorkspaceFileAccess() {}
@@ -91,6 +167,22 @@ final class WorkspaceFileAccess {
         int dot = lower.lastIndexOf('.');
         if (dot < 0) return null;
         return LANG_BY_EXT.get(lower.substring(dot));
+    }
+
+    static boolean isImageLang(@Nullable String lang) {
+        return "image".equals(lang);
+    }
+
+    /** Text sources the dashboard may write back via {@code PUT /api/project/file}. */
+    static boolean isTextWritable(@Nullable String lang) {
+        return lang != null && !isImageLang(lang);
+    }
+
+    static @Nullable String imageContentType(String filename) {
+        String lower = filename.toLowerCase(Locale.ROOT);
+        int dot = lower.lastIndexOf('.');
+        if (dot < 0) return null;
+        return IMAGE_CONTENT_TYPE.get(lower.substring(dot));
     }
 
     static boolean isModuleRoot(Path dir) {
@@ -132,14 +224,10 @@ final class WorkspaceFileAccess {
     }
 
     /**
-     * Breadth-first listing bounded at {@link #MAX_LIST_FILES} entries (JK-1944). Truncation
-     * therefore trims the deepest leaves — the old walk sorted everything lexically and kept the
-     * first 2000, so a big workspace lost {@code jk.toml} and the whole tail of the alphabet
-     * (including the pane's default file), and the walk materialised every servable path before
-     * the cap. The workspace-root {@code jk.toml} is pre-seeded so the default-open contract
-     * survives any truncation. Prune rules match {@link #servable}: the per-file ancestor re-walk
-     * the old visitor paid (~depth×8 stats per file) is unnecessary because ancestors are pruned
-     * before descent.
+     * Breadth-first listing bounded at {@link #MAX_LIST_FILES} entries. Truncation trims the
+     * deepest leaves. The workspace-root {@code jk.toml} is pre-seeded so the default-open
+     * contract survives any truncation. Prune rules match {@link #servable}; ancestors are
+     * pruned before descent.
      */
     static FileList list(Path root) throws IOException {
         Path absRoot = root.toAbsolutePath().normalize();
@@ -147,6 +235,16 @@ final class WorkspaceFileAccess {
         boolean rootManifest = Files.isRegularFile(absRoot.resolve("jk.toml"));
         if (rootManifest) collected.add(new ListedFile("jk.toml", langOf("jk.toml")));
         boolean truncated = false;
+        Path realRoot;
+        try {
+            realRoot = absRoot.toRealPath();
+        } catch (IOException e) {
+            realRoot = absRoot;
+        }
+        // Real-path visited set: in-root directory symlinks are walked (list/read parity,
+        // ), and a link pointing at an ancestor would otherwise cycle the BFS.
+        Set<Path> visited = new HashSet<>();
+        visited.add(realRoot);
         List<Path> level = List.of(absRoot);
         for (int depth = 0; depth < MAX_WALK_DEPTH && !level.isEmpty() && !truncated; depth++) {
             List<Path> next = new ArrayList<>();
@@ -163,13 +261,17 @@ final class WorkspaceFileAccess {
                         } catch (IOException unreadable) {
                             continue;
                         }
-                        if (attrs.isDirectory()) {
-                            if (!isSkippedOutputDir(entry)) next.add(entry);
+                        if (attrs.isDirectory() || (attrs.isSymbolicLink() && Files.isDirectory(entry))) {
+                            // Symlinked dirs descend only when their target stays in root
+                            // (read() would reject their files otherwise) and only once.
+                            if (!isSkippedOutputDir(entry) && descendOnce(entry, realRoot, visited)) {
+                                next.add(entry);
+                            }
                             continue;
                         }
                         String lang = langOf(n);
                         if (lang == null) continue;
-                        // list/read parity (JK-1952): read() rejects symlinks whose real path
+                        // list/read parity: read() rejects symlinks whose real path
                         // escapes the root, so an escaping link must not appear in the tree only
                         // to 404 on click. Only symlinks pay the real-path check.
                         if (attrs.isSymbolicLink()) {
@@ -196,8 +298,25 @@ final class WorkspaceFileAccess {
             }
             level = next;
         }
+        // The depth cap is truncation too: files below it are readable via deep link but
+        // invisible here, so the UI must get its hint. Conservative — the unvisited
+        // dirs may hold nothing servable.
+        if (!level.isEmpty()) truncated = true;
         collected.sort(Comparator.comparing(ListedFile::path));
         return new FileList(absRoot, List.copyOf(collected), truncated);
+    }
+
+    /**
+     * True when {@code dir} should be entered: its real path stays under {@code realRoot} and has
+     * not been walked yet this listing (symlink cycles / diamonds visit a tree once).
+     */
+    private static boolean descendOnce(Path dir, Path realRoot, Set<Path> visited) {
+        try {
+            Path real = dir.toRealPath();
+            return real.startsWith(realRoot) && visited.add(real);
+        } catch (IOException broken) {
+            return false;
+        }
     }
 
     static ReadResult read(Path root, @Nullable String rawRel) {
@@ -232,11 +351,16 @@ final class WorkspaceFileAccess {
             return new ReadResult.NotFound();
         }
         if (bytes.length > MAX_FILE_BYTES) return new ReadResult.TooLarge(bytes.length, MAX_FILE_BYTES);
+        String name = file.getFileName().toString();
+        String lang = langOf(name);
+        if (lang == null) return new ReadResult.NotFound();
+        // Image allow-list entries are binary by nature — JSON body endpoint rejects them; use raw.
+        if (isImageLang(lang)) return new ReadResult.Binary();
         int probe = Math.min(BINARY_PROBE_BYTES, bytes.length);
         for (int i = 0; i < probe; i++) {
             if (bytes[i] == 0) return new ReadResult.Binary();
         }
-        // Strict decode first (JK-1954): new String(bytes, UTF_8) silently swaps every bad byte
+        // Strict decode first: new String(bytes, UTF_8) silently swaps every bad byte
         // for U+FFFD, so a Latin-1 source rendered as mojibake presented as the file's true text.
         // Non-UTF-8 files fall back to ISO-8859-1 (every byte maps) with the encoding flagged so
         // the pane can say so.
@@ -253,11 +377,183 @@ final class WorkspaceFileAccess {
             content = new String(bytes, StandardCharsets.ISO_8859_1);
             encoding = "iso-8859-1";
         }
+        return new ReadResult.Ok(
+                new FileBody(absRoot, rel, lang, bytes.length, countLines(content), content, encoding, etagOf(bytes)));
+    }
+
+    /**
+     * Raw bytes for any servable path (images and text). Same sandbox as {@link #read}; no UTF-8
+     * decode. Used by {@code GET /api/project/file/raw} for the Preview image path (token-bearing
+     * fetch → blob URL).
+     */
+    static RawResult readRaw(Path root, @Nullable String rawRel) {
+        if (rawRel == null || rawRel.isBlank()) return new RawResult.BadRequest("missing \"path\"");
+        String rel = normalizeRel(rawRel);
+        if (rel == null) return new RawResult.BadRequest("illegal path");
+        Path absRoot = root.toAbsolutePath().normalize();
+        if (!servable(absRoot, rel)) return new RawResult.NotFound();
+        Path file = absRoot.resolve(rel).normalize();
+        if (!file.startsWith(absRoot)) return new RawResult.BadRequest("illegal path");
+        if (!Files.isRegularFile(file)) return new RawResult.NotFound();
+        Path realFile;
+        Path realRoot;
+        try {
+            realFile = file.toRealPath();
+            realRoot = absRoot.toRealPath();
+        } catch (IOException e) {
+            return new RawResult.NotFound();
+        }
+        if (!realFile.startsWith(realRoot)) return new RawResult.NotFound();
+        long size;
+        try {
+            size = Files.size(file);
+        } catch (IOException e) {
+            return new RawResult.NotFound();
+        }
+        if (size > MAX_FILE_BYTES) return new RawResult.TooLarge(size, MAX_FILE_BYTES);
+        byte[] bytes;
+        try (InputStream in = Files.newInputStream(file)) {
+            bytes = in.readNBytes(MAX_FILE_BYTES + 1);
+        } catch (IOException e) {
+            return new RawResult.NotFound();
+        }
+        if (bytes.length > MAX_FILE_BYTES) return new RawResult.TooLarge(bytes.length, MAX_FILE_BYTES);
         String name = file.getFileName().toString();
         String lang = langOf(name);
-        if (lang == null) return new ReadResult.NotFound();
-        return new ReadResult.Ok(
-                new FileBody(absRoot, rel, lang, bytes.length, countLines(content), content, encoding));
+        if (lang == null) return new RawResult.NotFound();
+        String contentType = imageContentType(name);
+        if (contentType == null) contentType = "application/octet-stream";
+        return new RawResult.Ok(new RawBody(absRoot, rel, lang, contentType, bytes));
+    }
+
+    /**
+     * Replace a text-servable file's contents. Atomic temp+move in the same directory; does not
+     * create missing parents. Images and non-servable paths are not writable.
+     *
+     * <p>When {@code expectedEtag} is non-blank, the current on-disk SHA-256 must match or the
+     * write is rejected as {@link WriteResult.Conflict} (last-write-wins is opt-in by omitting
+     * etag).
+     *
+     * <p>{@code encoding} is the charset the client read the file under ({@link ReadResult.Ok}'s
+     * {@code encoding} field): null/blank/{@code utf-8} writes UTF-8; {@code iso-8859-1}
+     * re-encodes to the original bytes so a save cannot silently transcode a Latin-1 file.
+     * Content that no longer fits the declared charset is rejected rather than transcoded.
+     */
+    static WriteResult write(
+            Path root,
+            @Nullable String rawRel,
+            @Nullable String content,
+            @Nullable String expectedEtag,
+            @Nullable String encoding) {
+        if (rawRel == null || rawRel.isBlank()) return new WriteResult.BadRequest("missing \"path\"");
+        if (content == null) return new WriteResult.BadRequest("missing \"content\"");
+        String rel = normalizeRel(rawRel);
+        if (rel == null) return new WriteResult.BadRequest("illegal path");
+        Path absRoot = root.toAbsolutePath().normalize();
+        if (!servable(absRoot, rel)) return new WriteResult.NotFound();
+        String name = Path.of(rel).getFileName().toString();
+        String lang = langOf(name);
+        if (!isTextWritable(lang)) {
+            return new WriteResult.NotWritable("file type is not text-writable");
+        }
+        Path file = absRoot.resolve(rel).normalize();
+        if (!file.startsWith(absRoot)) return new WriteResult.BadRequest("illegal path");
+        if (!Files.isRegularFile(file)) return new WriteResult.NotFound();
+        Path realFile;
+        Path realRoot;
+        try {
+            realFile = file.toRealPath();
+            realRoot = absRoot.toRealPath();
+        } catch (IOException e) {
+            return new WriteResult.NotFound();
+        }
+        if (!realFile.startsWith(realRoot)) return new WriteResult.NotFound();
+        if (expectedEtag != null && !expectedEtag.isBlank()) {
+            long curSize;
+            try {
+                curSize = Files.size(file);
+            } catch (IOException e) {
+                return new WriteResult.NotFound();
+            }
+            if (curSize > MAX_FILE_BYTES) {
+                return new WriteResult.TooLarge(curSize, MAX_FILE_BYTES);
+            }
+            byte[] current;
+            try (InputStream in = Files.newInputStream(file)) {
+                current = in.readNBytes(MAX_FILE_BYTES + 1);
+            } catch (IOException e) {
+                return new WriteResult.NotFound();
+            }
+            if (current.length > MAX_FILE_BYTES) {
+                return new WriteResult.TooLarge(current.length, MAX_FILE_BYTES);
+            }
+            String disk = etagOf(current);
+            if (!disk.equalsIgnoreCase(expectedEtag.trim())) {
+                return new WriteResult.Conflict(disk);
+            }
+        }
+        String charset = (encoding == null || encoding.isBlank())
+                ? "utf-8"
+                : encoding.trim().toLowerCase(Locale.ROOT);
+        byte[] bytes;
+        switch (charset) {
+            case "utf-8" -> bytes = content.getBytes(StandardCharsets.UTF_8);
+            case "iso-8859-1" -> {
+                try {
+                    ByteBuffer encoded = StandardCharsets.ISO_8859_1
+                            .newEncoder()
+                            .onMalformedInput(CodingErrorAction.REPORT)
+                            .onUnmappableCharacter(CodingErrorAction.REPORT)
+                            .encode(CharBuffer.wrap(content));
+                    bytes = new byte[encoded.remaining()];
+                    encoded.get(bytes);
+                } catch (CharacterCodingException e) {
+                    return new WriteResult.BadRequest("content contains characters not representable in iso-8859-1");
+                }
+            }
+            default -> {
+                return new WriteResult.BadRequest("unsupported encoding: " + charset);
+            }
+        }
+        if (bytes.length > MAX_FILE_BYTES) {
+            return new WriteResult.TooLarge(bytes.length, MAX_FILE_BYTES);
+        }
+        Path dir = file.getParent();
+        if (dir == null) return new WriteResult.Failed("no parent directory");
+        Path tmp = null;
+        try {
+            tmp = Files.createTempFile(dir, ".jk-write-", ".tmp");
+            Files.write(tmp, bytes);
+            try {
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+            }
+            tmp = null;
+        } catch (IOException e) {
+            return new WriteResult.Failed(e.getMessage() == null ? "write failed" : e.getMessage());
+        } finally {
+            if (tmp != null) {
+                try {
+                    Files.deleteIfExists(tmp);
+                } catch (IOException ignored) {
+                    // best-effort cleanup
+                }
+            }
+        }
+        return new WriteResult.Ok(
+                new WrittenBody(absRoot, rel, lang, bytes.length, countLines(content), etagOf(bytes)));
+    }
+
+    /** Convenience overload — UTF-8, no concurrency token (last-write-wins). */
+    static WriteResult write(Path root, @Nullable String rawRel, @Nullable String content) {
+        return write(root, rawRel, content, null, null);
+    }
+
+    /** Convenience overload — UTF-8. */
+    static WriteResult write(
+            Path root, @Nullable String rawRel, @Nullable String content, @Nullable String expectedEtag) {
+        return write(root, rawRel, content, expectedEtag, null);
     }
 
     /** Split on {@code \n}; drop the last empty segment from a trailing newline. */

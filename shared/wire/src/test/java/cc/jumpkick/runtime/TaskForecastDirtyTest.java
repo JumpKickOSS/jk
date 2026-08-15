@@ -48,7 +48,7 @@ class TaskForecastDirtyTest {
     @Test
     void resource_drift_is_dirty() {
         // copy-resources is emitted only on real drift — it must schedule the module or the
-        // jar ships stale resource bytes while the build reports up-to-date (JK-1808).
+        // jar ships stale resource bytes while the build reports up-to-date.
         var m = new TaskForecast.Module(
                 Path.of("/m"),
                 "g:a",

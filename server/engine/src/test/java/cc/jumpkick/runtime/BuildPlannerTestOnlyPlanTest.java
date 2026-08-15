@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Regression (JK-1575): testOnly plans must construct valid. run-tests requires the plugin tasks
+ * Regression: testOnly plans must construct valid. run-tests requires the plugin tasks
  * that are test-only or contribute to the test classpath, so those tasks (and the plugin tasks
  * they transitively require) must be in the plan even though the packaging-feeding rest stay
  * out; and appendDeclaredTails must not re-root a test/compile plan onto package tails that
@@ -94,7 +94,6 @@ class BuildPlannerTestOnlyPlanTest {
                 dir.resolve("src/main/java/ex/Main.java"),
                 "package ex; class Main { public static void main(String[] a) {} }\n");
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "ex"
                 name = "app"
                 version = "1.0"
@@ -131,7 +130,6 @@ class BuildPlannerTestOnlyPlanTest {
         Files.createDirectories(dir.resolve("src/main/java"));
         Files.createDirectories(dir.resolve("src/main/kotlin"));
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "ex"
                 name = "m"
                 version = "1.0"
@@ -153,7 +151,6 @@ class BuildPlannerTestOnlyPlanTest {
         Files.createDirectories(dir.resolve("src/main/java"));
         Files.createDirectories(dir.resolve("src/main/kotlin"));
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "ex"
                 name = "m"
                 version = "1.0"
@@ -178,7 +175,6 @@ class BuildPlannerTestOnlyPlanTest {
     void single_language_compile_only_keeps_single_stamp_terminal(@TempDir Path dir) throws Exception {
         Files.createDirectories(dir.resolve("src/main/java"));
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "ex"
                 name = "m"
                 version = "1.0"
@@ -194,7 +190,7 @@ class BuildPlannerTestOnlyPlanTest {
     }
 
     /**
-     * Regression (JK-1593): compile-test's classpath includes classes/main, which copy-resources
+     * Regression: compile-test's classpath includes classes/main, which copy-resources
      * writes — without this edge the two are racing siblings under build-logic-after-compile and
      * the fingerprint intermittently walks a half-copied dir (`jk build -r` on resource modules).
      */
@@ -203,7 +199,6 @@ class BuildPlannerTestOnlyPlanTest {
         Files.createDirectories(dir.resolve("src/main/java"));
         Files.createDirectories(dir.resolve("src/test/java"));
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "ex"
                 name = "m"
                 version = "1.0"
@@ -231,7 +226,6 @@ class BuildPlannerTestOnlyPlanTest {
         Files.createDirectories(dir.resolve("src/test/java/ex"));
         Files.writeString(dir.resolve("src/test/java/ex/ATest.java"), "package ex; class ATest {}\n");
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 name = "demo"
                 group = "com.demo"
                 version = "0.1.0"

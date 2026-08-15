@@ -185,7 +185,6 @@ class IdeCommandTest {
         Files.createDirectories(ws.resolve("src/main/java/example"));
         Files.writeString(ws.resolve("src/main/java/example/Hello.java"), "package example;\npublic class Hello {}\n");
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 group = "dev.example"
                 name = "widget"
                 version = "0.1.0"

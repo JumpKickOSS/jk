@@ -37,7 +37,6 @@ class BuildServiceForecastDirtyTest {
     @Test
     void rebuild_marks_every_module_dirty_without_per_step_forecast(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.1.0"
@@ -51,7 +50,6 @@ class BuildServiceForecastDirtyTest {
             Path dir = tmp.resolve(m);
             Files.createDirectories(dir);
             Files.writeString(dir.resolve("jk.toml"), """
-                    [project]
                     group = "t"
                     name = "%s"
                     version = "0.1.0"
@@ -77,7 +75,6 @@ class BuildServiceForecastDirtyTest {
     @Test
     void force_marks_every_module_dirty_without_per_step_forecast(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "only"
                 version = "0.1.0"

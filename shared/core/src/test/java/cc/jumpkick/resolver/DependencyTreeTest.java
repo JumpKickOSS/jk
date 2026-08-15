@@ -212,7 +212,7 @@ class DependencyTreeTest {
     }
 
     /**
-     * JK-1640: a test-only project under the narrowed default (export/main/runtime) must not print
+     * a test-only project under the narrowed default (export/main/runtime) must not print
      * an effectively empty tree — it names the scopes that DO have deps and how to show them.
      */
     @Test
@@ -250,7 +250,6 @@ class DependencyTreeTest {
             throws Exception {
         // A workspace root with two modules; module b depends on a via `workspace = true`.
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name = "ws"
                 version = "9.9.9"
@@ -260,7 +259,6 @@ class DependencyTreeTest {
                 """);
         Path a = Files.createDirectories(root.resolve("a"));
         Files.writeString(a.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name = "a"
                 version = "9.9.9"
@@ -268,7 +266,6 @@ class DependencyTreeTest {
         Files.writeString(a.resolve("jk-lock.toml"), EMPTY_LOCK);
         Path b = Files.createDirectories(root.resolve("b"));
         Files.writeString(b.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name = "b"
                 version = "9.9.9"
@@ -303,7 +300,6 @@ class DependencyTreeTest {
         // b → a (workspace) → c (workspace) + leaf → grand. Member-scoped trees must
         // treat siblings as modules (version from jk.toml), not lock-missing Maven coords.
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name = "ws"
                 version = "9.9.9"
@@ -314,7 +310,6 @@ class DependencyTreeTest {
         Files.writeString(root.resolve("jk-lock.toml"), EMPTY_LOCK);
         Path a = Files.createDirectories(root.resolve("a"));
         Files.writeString(a.resolve("jk.toml"), """
-                [project]
                 name = "a"
 
                 [dependencies]
@@ -323,7 +318,6 @@ class DependencyTreeTest {
                 """);
         Path b = Files.createDirectories(root.resolve("b"));
         Files.writeString(b.resolve("jk.toml"), """
-                [project]
                 name = "b"
 
                 [dependencies]
@@ -331,7 +325,6 @@ class DependencyTreeTest {
                 """);
         Path c = Files.createDirectories(root.resolve("c"));
         Files.writeString(c.resolve("jk.toml"), """
-                [project]
                 name = "c"
                 """);
         Lockfile lock = lockOf(
@@ -368,10 +361,8 @@ class DependencyTreeTest {
             @org.junit.jupiter.api.io.TempDir Path root) throws Exception {
         // b consumes a under [test-dependencies]. The expanded sibling must show what the member
         // actually inherits from it — a's export/main/runtime deps — and never a's own test-only
-        // deps (JK-1884: previously the subtree reused the consuming edge's scope, listing a's
-        // junit as if it were on b's classpath and hiding a's export dep entirely).
+        // deps.
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name = "ws"
                 version = "1.0"
@@ -382,7 +373,6 @@ class DependencyTreeTest {
         Files.writeString(root.resolve("jk-lock.toml"), EMPTY_LOCK);
         Path a = Files.createDirectories(root.resolve("a"));
         Files.writeString(a.resolve("jk.toml"), """
-                [project]
                 name = "a"
 
                 [export-dependencies]
@@ -396,7 +386,6 @@ class DependencyTreeTest {
                 """);
         Path b = Files.createDirectories(root.resolve("b"));
         Files.writeString(b.resolve("jk.toml"), """
-                [project]
                 name = "b"
 
                 [test-dependencies]
@@ -425,10 +414,9 @@ class DependencyTreeTest {
     void sibling_runtime_module_edges_do_not_chain(@org.junit.jupiter.api.io.TempDir Path root) throws Exception {
         // b -> a, and a declares sibling c under [runtime-dependencies]. WorkspaceClasspath only
         // chains sibling->sibling module edges through export/main (SIBLING_MODULE_SCOPES), so c's
-        // jar is never on b's classpath — the tree must not draw it (JK-1962). a's EXTERNAL
+        // jar is never on b's classpath — the tree must not draw it. a's EXTERNAL
         // runtime dep still rides.
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name = "ws"
                 version = "1.0"
@@ -439,7 +427,6 @@ class DependencyTreeTest {
         Files.writeString(root.resolve("jk-lock.toml"), EMPTY_LOCK);
         Path a = Files.createDirectories(root.resolve("a"));
         Files.writeString(a.resolve("jk.toml"), """
-                [project]
                 name = "a"
 
                 [runtime-dependencies]
@@ -448,7 +435,6 @@ class DependencyTreeTest {
                 """);
         Path b = Files.createDirectories(root.resolve("b"));
         Files.writeString(b.resolve("jk.toml"), """
-                [project]
                 name = "b"
 
                 [dependencies]
@@ -456,7 +442,6 @@ class DependencyTreeTest {
                 """);
         Path c = Files.createDirectories(root.resolve("c"));
         Files.writeString(c.resolve("jk.toml"), """
-                [project]
                 name = "c"
 
                 [export-dependencies]

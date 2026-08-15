@@ -13,7 +13,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
-/** JK-1380: Unicode chrome → ASCII under plain / --no-ansi. */
+/** Unicode chrome → ASCII under plain / --no-ansi. */
 class PlainAsciiTest {
 
     @Test

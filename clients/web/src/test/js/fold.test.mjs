@@ -448,9 +448,11 @@ test('module summary counts modules and failures', () => {
   foldEvent(cards, start(1, '/w'));
   assert.equal(moduleSummary(cards[0]), '');
   foldEvent(cards, { type: 'module-finish', data: { requestId: 1, dir: '/w/a', success: true, millis: 5 } });
-  assert.equal(moduleSummary(cards[0]), '1 module');
-  foldEvent(cards, { type: 'module-finish', data: { requestId: 1, dir: '/w/b', success: false, millis: 5 } });
-  assert.equal(moduleSummary(cards[0]), '2 modules · 1 failed');
+  assert.equal(moduleSummary(cards[0]), 'built 1 module');
+  foldEvent(cards, { type: 'module-finish', data: { requestId: 1, dir: '/w/b', success: true, millis: 5 } });
+  assert.equal(moduleSummary(cards[0]), 'built 2 modules');
+  foldEvent(cards, { type: 'module-finish', data: { requestId: 1, dir: '/w/c', success: false, millis: 5 } });
+  assert.equal(moduleSummary(cards[0]), '3 modules · 1 failed');
 });
 
 test('seedFromHistory adds finished cards, newest first', () => {
@@ -1153,6 +1155,15 @@ test('detailSegments paints ensure-jdk download and install labels', () => {
   assert.ok(inst.some((s) => s.cls === 'det-mid' && s.text === 'installing'));
   assert.ok(inst.some((s) => s.cls === 'det-jdk' && s.text === 'Temurin 25'));
   assert.ok(inst.filter((s) => s.cls === 'det-bar-fill').length === 10);
+});
+
+test('detailSegments paints the bar-less unknown-size download label', () => {
+  // Feed rows without archiveSize emit "downloading Temurin 25" alone (JK-1951).
+  const bare = detailSegments('downloading Temurin 25');
+  assert.ok(bare.some((s) => s.cls === 'det-mid' && s.text === 'downloading'));
+  assert.ok(bare.some((s) => s.cls === 'det-jdk' && s.text === 'Temurin 25'));
+  assert.equal(bare.filter((s) => s.cls === 'det-bar-fill' || s.cls === 'det-bar-empty').length, 0);
+  assert.ok(!bare.some((s) => /%$/.test(s.text)));
 });
 
 test('request-finish folds the run\'s byte counters onto the card', () => {

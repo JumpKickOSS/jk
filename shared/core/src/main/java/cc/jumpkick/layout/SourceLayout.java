@@ -7,7 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.stream.Stream;
 
-/** Resolves {@code project.layout} to simple vs traditional source roots. */
+/** Resolves {@code layout} to simple vs traditional source roots. */
 public final class SourceLayout {
 
     private SourceLayout() {}

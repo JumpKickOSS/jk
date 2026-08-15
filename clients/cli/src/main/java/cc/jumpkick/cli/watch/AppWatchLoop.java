@@ -16,23 +16,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import lombok.RequiredArgsConstructor;
 
 /**
  * {@code jk watch run} / {@code jk dev}: build, start the app from classes, recompile on change.
  * Boot DevTools hot-restart when present; otherwise process restart. Android device deploy path
  * when the engine returns a deploy command.
  */
+@RequiredArgsConstructor
 public final class AppWatchLoop {
 
     private final GlobalOptions global;
     private final Path jdksDir;
     private final String logPrefix;
-
-    public AppWatchLoop(GlobalOptions global, Path jdksDir, String logPrefix) {
-        this.global = global;
-        this.jdksDir = jdksDir;
-        this.logPrefix = logPrefix;
-    }
 
     public int run(Path projectDir, Path cache, List<String> appArgs) throws IOException, InterruptedException {
         if (!build(projectDir, cache)) return 1;

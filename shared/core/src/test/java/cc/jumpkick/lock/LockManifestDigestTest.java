@@ -35,7 +35,6 @@ class LockManifestDigestTest {
     @Test
     void compute_stable_for_standalone_project(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
@@ -47,9 +46,8 @@ class LockManifestDigestTest {
 
     @Test
     void crlf_manifest_hashes_like_lf(@TempDir Path dir) throws Exception {
-        // JK-1357: autocrlf checkouts must not read as permanently stale.
+        // autocrlf checkouts must not read as permanently stale.
         String lf = """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
@@ -63,13 +61,12 @@ class LockManifestDigestTest {
 
     @Test
     void path_dep_manifest_feeds_the_digest(@TempDir Path dir) throws Exception {
-        // JK-1357: a path-source dep's jk.toml feeds the lock, so editing it flips the digest.
+        // a path-source dep's jk.toml feeds the lock, so editing it flips the digest.
         Path app = dir.resolve("app");
         Path lib = dir.resolve("lib");
         Files.createDirectories(app);
         Files.createDirectories(lib);
         Files.writeString(app.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
@@ -78,14 +75,12 @@ class LockManifestDigestTest {
                 lib = { path = "../lib" }
                 """);
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "lib"
                 version = "1.0.0"
                 """);
         String before = LockManifestDigest.compute(app);
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "lib"
                 version = "2.0.0"
@@ -95,14 +90,13 @@ class LockManifestDigestTest {
 
     @Test
     void unreadable_manifest_fails_loud(@TempDir Path dir) throws Exception {
-        // JK-1357: never silently produce an unstamped (permanently stale) digest — an I/O
+        // never silently produce an unstamped (permanently stale) digest — an I/O
         // failure reading a contributing manifest must surface, not vanish into a missing stamp.
         org.junit.jupiter.api.Assumptions.assumeTrue(
                 dir.getFileSystem().supportedFileAttributeViews().contains("posix"));
         org.junit.jupiter.api.Assumptions.assumeTrue(!"root".equals(System.getProperty("user.name")));
         Path toml = dir.resolve("jk.toml");
         Files.writeString(toml, """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
@@ -122,9 +116,8 @@ class LockManifestDigestTest {
 
     @Test
     void manifest_edited_mid_lock_reads_stale(@TempDir Path dir) throws Exception {
-        // JK-1357 TOCTOU: the stamp reflects the bytes that fed resolution, not the live files.
+        //  TOCTOU: the stamp reflects the bytes that fed resolution, not the live files.
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
@@ -133,7 +126,6 @@ class LockManifestDigestTest {
 
         // Manifest edited while the (slow) resolution is still running…
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "9.9.9"
@@ -148,14 +140,12 @@ class LockManifestDigestTest {
     void compute_changes_when_manifest_edited(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("jk.toml");
         Files.writeString(toml, """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
                 """);
         String before = LockManifestDigest.compute(dir);
         Files.writeString(toml, """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.1"

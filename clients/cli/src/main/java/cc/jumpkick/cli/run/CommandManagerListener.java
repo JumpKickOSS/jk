@@ -111,7 +111,7 @@ public final class CommandManagerListener implements BuildPlanListener {
     @Override
     public void output(String step, String line) {
         if (TestFailureHighlight.isHeader(line)) {
-            // A second header must not reset() away an un-flushed first block (JK-1915).
+            // A second header must not reset() away an un-flushed first block.
             flushBufferedFailure();
             inTestFailure = true;
             testFailStream.reset();
@@ -125,7 +125,7 @@ public final class CommandManagerListener implements BuildPlanListener {
         cm.writeAbove(StackTraceHighlight.line(line));
     }
 
-    /** Paint any buffered failure block now — already-received lines must not be dropped (JK-1915). */
+    /** Paint any buffered failure block now — already-received lines must not be dropped. */
     private void flushBufferedFailure() {
         if (!inTestFailure) return;
         for (String painted : testFailStream.finish()) {
@@ -168,7 +168,7 @@ public final class CommandManagerListener implements BuildPlanListener {
     @Override
     public void planFinish(BuildPlanResult result) {
         // A cancel/disconnect between a block's lines and stepFinish must still show what
-        // already arrived (JK-1915).
+        // already arrived.
         flushBufferedFailure();
         if (cm != null) cm.finishModule(module, result.success());
         // Restore the real streams before settling so the result line isn't
@@ -197,7 +197,7 @@ public final class CommandManagerListener implements BuildPlanListener {
         // command discovered afterward that it can't proceed (e.g. jk run found no runnable entry
         // point). Rendered as the red failure chip with the caller's exact sentence — no "Failed to
         // <command>" derivation — so a genuine build failure (below) keeps its normal phrasing.
-        // Only probe softFailure when the build succeeded (JK-1162): on a failed plan, execPlan
+        // Only probe softFailure when the build succeeded: on a failed plan, execPlan
         // / entry-point scans can emit red diagnostics that flash under the live region before the
         // real failure settle.
         String soft = null;

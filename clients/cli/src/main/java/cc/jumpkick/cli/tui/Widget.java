@@ -13,7 +13,7 @@ public interface Widget {
     List<String> render(RenderContext ctx);
 
     /**
-     * Paint on stdout. Opens the per-command blank-line envelope (JK-1373) so callers cannot skip
+     * Paint on stdout. Opens the per-command blank-line envelope so callers cannot skip
      * it the way a raw {@code JkWedge.chipLine} print used to.
      */
     default void print() {

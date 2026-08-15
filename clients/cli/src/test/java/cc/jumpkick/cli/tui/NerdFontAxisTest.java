@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
  * Powerline set has the solid triangles but not the solid semi-circles, so granting {@code wedge}
  * must never leak a pill cap — that would be tofu on exactly the fonts {@code wedge} is for.
  * Asserted on rendered output rather than on the config value, since the config is only correct
- * insofar as the glyphs follow it (JK-1970).
+ * insofar as the glyphs follow it.
  */
 class NerdFontAxisTest {
 

@@ -22,7 +22,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Stream;
 
 /**
@@ -141,7 +147,7 @@ public final class PlannerSupport {
 
     /**
      * Jars to embed in an assembly / native-image classpath for one module — delegates to {@link
-     * ModuleRuntimeClasspath} (JK-1345 / JK-1347).
+     * ModuleRuntimeClasspath}.
      */
     static List<Path> assemblyDependencyJars(Path moduleDir, JkBuild project, Path lockFile, Path cache)
             throws IOException {
@@ -447,8 +453,8 @@ public final class PlannerSupport {
     /**
      * Test hook: when set, host-engine-jar discovery searches only this root's monorepo product
      * paths. Keeps tests from depending on — or worse, seeding — the real checkout's build
-     * outputs (JK-1885), and makes fallback assertions deterministic on warm developer trees
-     * where the process/VersionStore probes would otherwise win (JK-1917).
+     * outputs, and makes fallback assertions deterministic on warm developer trees
+     * where the process/VersionStore probes would otherwise win.
      */
     static Path locateHostEngineJar() {
         Path override = BuildPlanner.hostEngineSearchOverride;
@@ -554,7 +560,7 @@ public final class PlannerSupport {
      */
     static cc.jumpkick.config.TestSelection effectiveSelection(cc.jumpkick.config.TestSelection sel, Path moduleDir) {
         // tagsResolved: the CLI already applied baseline/profile/flag layers — an empty list may
-        // be an explicit clear ([profiles.x] exclude-tags = []) and must stay empty (JK-1809).
+        // be an explicit clear ([profiles.x] exclude-tags = []) and must stay empty.
         if (sel.tagsResolved()) return sel;
         if (!sel.includeTags().isEmpty() || !sel.excludeTags().isEmpty()) return sel;
         var fromToml = cc.jumpkick.config.JkBuildParser.parseTestTags(moduleDir.resolve("jk.toml"));
@@ -757,7 +763,7 @@ public final class PlannerSupport {
         // A wipe that cannot finish is a build error, not something to paper over: the copy below
         // only overwrites paths it reproduces, so a survivor from a previous build (a renamed or
         // no-longer-emitted class) would be packaged, and the packaging key is taken over this
-        // dir — so the wrong content is what gets cached and restored (JK-1659).
+        // dir — so the wrong content is what gets cached and restored.
         cc.jumpkick.util.PathUtil.deleteRecursivelyOrThrow(stage);
         Files.createDirectories(stage);
         copyTreeInto(classes, stage);

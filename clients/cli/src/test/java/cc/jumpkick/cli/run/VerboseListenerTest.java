@@ -60,7 +60,7 @@ class VerboseListenerTest {
 
     @Test
     void output_streams_live_and_is_not_held_until_step_finish() {
-        // A hung run-tests step must still show its output under --verbose (JK-1882).
+        // A hung run-tests step must still show its output under --verbose.
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         PrintStream out = new PrintStream(buf, true, StandardCharsets.UTF_8);
         var v = new VerboseListener(out, out);
@@ -95,9 +95,9 @@ class VerboseListenerTest {
 
     @Test
     void second_header_without_a_footer_flushes_the_first_block() {
-        // JK-1964 (JK-1915 parity): a worker killed mid-block never delivers the footer; the next
-        // failure's header must paint the stranded first block instead of appending into it —
-        // otherwise both sit until stepFinish and paint as one malformed unit.
+        // A worker killed mid-block never delivers the footer; the next failure's header
+        // must paint the stranded first block instead of appending into it — otherwise both
+        // sit until stepFinish and paint as one malformed unit.
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         PrintStream out = new PrintStream(buf, true, StandardCharsets.UTF_8);
         var v = new VerboseListener(out, out);

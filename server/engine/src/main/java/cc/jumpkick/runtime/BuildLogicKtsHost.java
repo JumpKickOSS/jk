@@ -80,7 +80,7 @@ final class BuildLogicKtsHost {
         // including imports that sit after a comment. A comment must not end the header scan: this
         // repo's own convention puts `// SPDX-License-Identifier` on line 1, which would have
         // pushed every following import below the bindings and made the script uncompilable
-        // (JK-1605) — and a `/* ... */` block comment (a common license-header style) is the same
+        // — and a `/* ... */` block comment (a common license-header style) is the same
         // bug for a comment that can also span multiple lines.
         List<String> fileAnnotations = new ArrayList<>();
         List<String> userImports = new ArrayList<>();

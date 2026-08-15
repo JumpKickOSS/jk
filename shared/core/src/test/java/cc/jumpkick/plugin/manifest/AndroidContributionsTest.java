@@ -47,7 +47,6 @@ class AndroidContributionsTest {
 
     private static JkBuild android(String extraKeys) {
         return JkBuildParser.parse("""
-                [project]
                 name    = "demo"
                 group   = "com.example"
                 version = "1.0.0"

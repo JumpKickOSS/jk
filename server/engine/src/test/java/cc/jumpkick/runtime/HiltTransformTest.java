@@ -37,8 +37,7 @@ class HiltTransformTest {
     @Test
     @Disabled("Hilt 2.60.1 + KSP aborts with GeneratesRootInputPropagatedData on "
             + "dagger_hilt_android_AndroidEntryPoint (processor re-reads its own codegen "
-            + "package). Unblocks CI while the Android Hilt pipeline is fixed — tracked as "
-            + "JK-1493 / JK-1672.")
+            + "package). Unblocks CI while the Android Hilt pipeline is fixed.")
     void unmodified_hilt_sources_build_and_superclasses_rewrite(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
@@ -159,7 +158,6 @@ class HiltTransformTest {
 
     private static void writeProject(Path project) throws Exception {
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name    = "hilttx"
                 group   = "com.example"
                 version = "1.0.0"

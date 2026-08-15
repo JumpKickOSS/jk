@@ -100,8 +100,7 @@ class CoalescingBuildPlanListenerTest {
         };
         try (CoalescingBuildPlanListener c = new CoalescingBuildPlanListener(sink, 60_000L)) {
             // A synchronous burst (test-failure stack, native-image log) inside one cadence
-            // window must arrive complete — latest-wins here silently ate failure reports
-            // (JK-1833).
+            // window must arrive complete — latest-wins here silently ate failure reports.
             c.output("run-tests", "FooTest.bar FAILED");
             c.output("run-tests", "  at FooTest.bar(FooTest.java:42)");
             c.output("compile", "warning: deprecated");

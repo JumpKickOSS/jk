@@ -14,7 +14,7 @@ package cc.jumpkick.config;
  *
  * <p>A font carrying only the classic Powerline set renders the triangles perfectly and the
  * semi-circles as tofu, so one boolean cannot describe it: the honest answer is {@link #WEDGE_ONLY}.
- * That is the whole reason this is a pair of flags rather than a flag (JK-1970).
+ * That is the whole reason this is a pair of flags rather than a flag.
  */
 public record NerdFontCaps(boolean wedge, boolean pill) {
 

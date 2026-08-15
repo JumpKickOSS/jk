@@ -64,7 +64,6 @@ class PolicyCheckerTest {
     @Test
     void toml_parser_extracts_sources_only() {
         DenyPolicy policy = DenyPolicyParser.parse("""
-                [project]
                 group    = "g"
                 name     = "a"
                 version  = "1"
@@ -82,7 +81,6 @@ class PolicyCheckerTest {
     void toml_parser_rejects_unenforced_licenses() {
         org.junit.jupiter.api.Assertions.assertThrows(
                 cc.jumpkick.config.JkBuildParseException.class, () -> DenyPolicyParser.parse("""
-                        [project]
                         group = "g"
                         name = "a"
                         version = "1"
@@ -96,7 +94,6 @@ class PolicyCheckerTest {
     void toml_parser_rejects_unenforced_yanked_deny() {
         org.junit.jupiter.api.Assertions.assertThrows(
                 cc.jumpkick.config.JkBuildParseException.class, () -> DenyPolicyParser.parse("""
-                        [project]
                         group = "g"
                         name = "a"
                         version = "1"
@@ -109,7 +106,6 @@ class PolicyCheckerTest {
     @Test
     void toml_parser_returns_permissive_when_block_absent() {
         DenyPolicy policy = DenyPolicyParser.parse("""
-                [project]
                 group    = "g"
                 name     = "a"
                 version  = "1"

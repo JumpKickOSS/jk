@@ -22,7 +22,6 @@ class ExportCommandTest {
     private static void writeApp(Path dir) throws IOException {
         Files.createDirectories(dir);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.2.3"
@@ -105,7 +104,6 @@ class ExportCommandTest {
     void export_maven_workspace_writes_root_and_module_poms(@TempDir Path tmp) throws IOException {
         Files.createDirectories(tmp);
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
@@ -118,7 +116,6 @@ class ExportCommandTest {
         Path modA = tmp.resolve("mod-a");
         Files.createDirectories(modA);
         Files.writeString(modA.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "mod-a"
                 version = "1.0.0"
@@ -141,7 +138,6 @@ class ExportCommandTest {
     void export_gradle_workspace_includes_modules(@TempDir Path tmp) throws IOException {
         Files.createDirectories(tmp);
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
@@ -154,7 +150,6 @@ class ExportCommandTest {
         Path modA = tmp.resolve("mod-a");
         Files.createDirectories(modA);
         Files.writeString(modA.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "mod-a"
                 version = "1.0.0"

@@ -63,7 +63,6 @@ class ProcessorClasspathTest {
     void a_coordinate_processor_absent_from_the_lock_is_reported(@TempDir Path tmp) throws Exception {
         Path dir = Files.createDirectories(tmp.resolve("solo"));
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "solo"
                 version = "1.0.0"
@@ -92,7 +91,6 @@ class ProcessorClasspathTest {
     private static Path workspace(Path tmp) throws Exception {
         Path root = Files.createDirectories(tmp.resolve("ws"));
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "ws"
                 version = "1.0.0"
@@ -103,7 +101,6 @@ class ProcessorClasspathTest {
 
         Path proc = Files.createDirectories(root.resolve("proc"));
         Files.writeString(proc.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "proc"
                 version = "1.0.0"
@@ -114,7 +111,6 @@ class ProcessorClasspathTest {
 
         Path consumer = Files.createDirectories(root.resolve("consumer"));
         Files.writeString(consumer.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "consumer"
                 version = "1.0.0"

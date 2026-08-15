@@ -26,7 +26,6 @@ class JkBuildRendererTest {
                 new JkBuild(new JkBuild.Project("com.example", "widget", "1.0.0", 25), JkBuild.Dependencies.empty());
         String out = JkBuildRenderer.render(model);
         assertThat(out).isEqualTo("""
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"

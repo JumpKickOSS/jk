@@ -29,7 +29,7 @@ public final class LockfileReader {
      *
      * <p>Keyed by PATH, not (path, size, mtime): with the stamp in the key every {@code jk lock} /
      * {@code jk add} / {@code jk update} would strand the previous {@code Lockfile} — hundreds of
-     * artifacts each — for the engine's lifetime (JK-1483).
+     * artifacts each — for the engine's lifetime.
      */
     private static final ConcurrentHashMap<Path, Cached> READ_CACHE = new ConcurrentHashMap<>();
 
@@ -49,7 +49,7 @@ public final class LockfileReader {
         }
         TomlParseResult result = Toml.parse(file);
         Lockfile lockfile = fromResult(result, file.toString());
-        // Clear-on-overflow (ProjectIds idiom, JK-1942): one parsed Lockfile — potentially MBs —
+        // Clear-on-overflow (same bound as ProjectIds): one parsed Lockfile — potentially MBs —
         // per distinct lockfile path the process ever read, forever.
         if (READ_CACHE.size() >= 64) READ_CACHE.clear();
         READ_CACHE.put(key, new Cached(attrs.size(), attrs.lastModifiedTime(), lockfile));
@@ -159,7 +159,7 @@ public final class LockfileReader {
         }
         String manifestsSha = result.getString("manifests-sha256"); // optional, additive v1
         if (manifestsSha != null && manifestsSha.isBlank()) manifestsSha = null;
-        String projectId = result.getString("project-id"); // optional durable identity (JK-1728)
+        String projectId = result.getString("project-id"); // optional durable identity
         if (projectId != null && projectId.isBlank()) projectId = null;
         return new Lockfile(
                 lockVersion,

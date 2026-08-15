@@ -10,7 +10,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * Regression (JK-1578): {@code of} must tolerate null on EITHER side. The workspace test
+ * Regression: {@code of} must tolerate null on EITHER side. The workspace test
  * headless path passes a null session mirror as the first argument when the transcript is
  * off — composing it blindly NPE'd on the first wire event.
  */

@@ -102,7 +102,7 @@ public final class EngineServer implements AutoCloseable {
     private void noteConnectionOpened() {
         activeConnections.incrementAndGet();
         // Combined high-water mark (UDS + SSE surfaces) — same metric the SSE admission hook and
-        // statusSnapshot() bump, so the reported peak means one thing (JK-1861).
+        // statusSnapshot() bump, so the reported peak means one thing.
         peakActiveConnections.accumulateAndGet(liveConnectionCount(), Math::max);
     }
 
@@ -119,7 +119,7 @@ public final class EngineServer implements AutoCloseable {
      * {@code jk engine stop} both decide under this lock, so a job that passed the check but had
      * not yet incremented is invisible to them — they see zero plans, set {@code shuttingDown},
      * close the listener, and the JVM exits mid-build. Claiming the slot inside the same lock the
-     * deciders use closes that window (JK-1470).
+     * deciders use closes that window.
      *
      * @return false when the engine is draining or already shutting down (caller must refuse)
      */
@@ -153,7 +153,7 @@ public final class EngineServer implements AutoCloseable {
 
     /**
      * One row per request: progress, accumulator, emit throttle. Retired ids cannot
-     * {@code computeIfAbsent} a zombie (JK-1474).
+     * {@code computeIfAbsent} a zombie.
      */
     private final JobSessions sessions = new JobSessions(requestIds::get);
 
@@ -258,7 +258,7 @@ public final class EngineServer implements AutoCloseable {
         this.clockMillis = System::currentTimeMillis;
         this.pid = ProcessHandle.current().pid();
         this.startedAtMillis = clockMillis.getAsLong();
-        // Process-scoped generation id for the dashboard hard-refresh contract (JK-1724).
+        // Process-scoped generation id for the dashboard hard-refresh contract.
         String bid = this.buildId.isEmpty() ? "" : "+" + this.buildId;
         this.engineEpoch = version + bid + "@" + this.startedAtMillis;
         this.aot = new AotTrainer(this.log);
@@ -382,10 +382,7 @@ public final class EngineServer implements AutoCloseable {
 
         // Where clients currently connect — the engine this one displaces (drained below).
         // Captured BEFORE we bind, and null when nothing was live: once the compat pointer is
-        // written the flat path names US, and a drain aimed there is a self-shutdown. (That
-        // self-drain shipped for a while, masked only by accidents — on TCP the old raw-token
-        // auth failed, on Unix the closed drain connection made the bye reply throw before
-        // shuttingDown was set. See EngineTcpTransportTest.)
+        // written the flat path names US, and a drain aimed there is a self-shutdown.
         Path previousActive = EnginePaths.activeSocket(paths);
         if (!Files.exists(previousActive)) previousActive = null;
 
@@ -440,7 +437,7 @@ public final class EngineServer implements AutoCloseable {
             expectedToken = EngineTransport.newToken();
             // This token gates every engine RPC — i.e. arbitrary code execution as the engine
             // owner. It must be owner-only, like the HTTP bearer token, not left to the ambient
-            // umask on a shared machine (JK-1467).
+            // umask on a shared machine.
             cc.jumpkick.util.OwnerOnlyFiles.write(active.token().getParent(), active.token(), expectedToken);
             Files.writeString(active.socket(), Integer.toString(port));
         } else {
@@ -459,7 +456,7 @@ public final class EngineServer implements AutoCloseable {
 
         log.accept("jk engine: listening on " + active.socket() + " (pid " + pid + ")");
 
-        // Order matters (JK-1452, JK-1475): tell the predecessor to drain FIRST — that is what
+        // Order matters: tell the predecessor to drain FIRST — that is what
         // makes it suppress training and kill its trainer sidecar. Wiping before that signal
         // leaves a window in which its in-flight trainer can atomically rename a fresh cache into
         // the directory we just swept, which is exactly the refill this was meant to prevent.
@@ -601,12 +598,9 @@ public final class EngineServer implements AutoCloseable {
      * drain jobs. Attached dashboard streams get no vote here: the successor needs the port, and a
      * tab reconnects to it.
      * <li><b>The pointer is absent</b> — orphaned. Nothing names this engine, so no CLI will ever reach
-     * it again, and no successor is waiting for its port either. That combination used to mean
-     * serving forever: the displacement test required the pointer to EXIST, so a deleted one left an
-     * unreachable engine running indefinitely (three were found alive for over an hour,.
-     * Exit once genuinely unused — no jobs and no attached streams. Keep the port while a browser
-     * is attached, because here there is no successor to hand it to and dropping it would strand
-     * the tab.
+     * it again, and no successor is waiting for its port either. Exit once genuinely unused —
+     * no jobs and no attached streams. Keep the port while a browser is attached, because
+     * here there is no successor to hand it to and dropping it would strand the tab.
      * <li><b>The pointer names this engine</b> — primary. Never self-terminates. An HTTP-enabled engine
      * never idles out; the dashboard is written against that invariant and treats a lost stream as
      * an anomaly rather than routine.
@@ -627,7 +621,7 @@ public final class EngineServer implements AutoCloseable {
                             if (Files.isRegularFile(ep)
                                     && !mine.equals(Files.readString(ep).trim())) {
                                 log.accept("jk engine: displaced by a newer generation — draining");
-                                // JK-1452: do not finish / re-start engine AOT for a lame-duck generation.
+                                // do not finish / re-start engine AOT for a lame-duck generation.
                                 aot.stopQuietly();
                                 synchronized (lifecycleLock) {
                                     if (activeBuildPlans.get() == 0) {
@@ -796,7 +790,7 @@ public final class EngineServer implements AutoCloseable {
                 case EngineProtocol.SHUTDOWN -> {
                     boolean force = cc.jumpkick.plugin.protocol.Jsonl.bool(line, "force", false);
                     // Takeover already repointed the endpoint before sending shutdown — kill the
-                    // engine AOT sidecar so it cannot re-publish engine-<old-v>-* (JK-1452).
+                    // engine AOT sidecar so it cannot re-publish engine-<old-v>-*.
                     // Voluntary `jk engine stop` still names us; leave train to finish then.
                     if (!endpointNamesThisEngine()) {
                         aot.stopQuietly();
@@ -886,7 +880,7 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * Orders wire-event publication against dashboard SSE connect hydration (JK-1837).
+     * Orders wire-event publication against dashboard SSE connect hydration.
      * Publishers take the read side around each publish (accumulation happens strictly before,
      * in program order); a connecting dashboard takes the write side around snapshot capture →
      * {@code deliverTo} → {@code attach}. Any publish that completed before the write section

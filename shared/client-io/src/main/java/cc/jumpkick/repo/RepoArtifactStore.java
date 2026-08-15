@@ -30,7 +30,7 @@ import java.util.stream.Stream;
  * (same bytes, one inode), else a copy. The store root is fully jk-owned ({@code JK_STORE_DIR} /
  * {@code ~/.local/share/jk/store}); writers must use temp + atomic replace, never in-place truncation of a
  * hard-linked path. (Separately, a project may opt into also mirroring artifacts to {@code ~/.m2}
- * for Maven/Gradle interop — see {@code project.m2install} — but that mirror is not this store and
+ * for Maven/Gradle interop — see {@code m2install} — but that mirror is not this store and
  * is never hard-linked from the CAS by default.)
  *
  * <h3>Sidecar invariant</h3>
@@ -363,7 +363,7 @@ public final class RepoArtifactStore {
      * legacy copy of the CAS blob). Callers that delete CAS paths must invoke this for the same
      * sha set: with hard-linked materialization, removing only {@code sha256/…} leaves a live
      * nlink under {@code repos/} and the GC does not reclaim disk. Never touches an opt-in
-     * {@code ~/.m2} mirror (jk doesn't GC Maven's store; see {@code project.m2install}).
+     * {@code ~/.m2} mirror (jk doesn't GC Maven's store; see {@code m2install}).
      * Best-effort; returns entries removed. Never throws.
      */
     public static int removeShasFromAll(Path cacheRoot, Set<String> shas, boolean dryRun) {
@@ -428,7 +428,7 @@ public final class RepoArtifactStore {
      *
      * <p>The escape hatch for jk's first-write-wins mirror contract: a mirror hit otherwise serves
      * the bytes first stored for a coordinate forever, which is wrong in the rare case where
-     * upstream really did republish (see {@code docs/mirror-verification-decision.md}, JK-1460).
+     * upstream really did republish (see {@code docs/mirror-verification-decision.md}).
      * Removing the sidecar first keeps the "sidecar present ⇒ fully stored" invariant true at every
      * instant, so a concurrent reader sees a miss rather than a half-evicted entry.
      *
@@ -484,7 +484,7 @@ public final class RepoArtifactStore {
      * Cas.putByLink} — no network).
      */
     public static void writeToLocalStore(Path artifactRoot, String relativePath, Path source) throws IOException {
-        // The caller picks the root deliberately (JK-1445): the engine install plan passes the
+        // The caller picks the root deliberately: the engine install plan passes the
         // store (where resolvers read since the cache/store split); plugin install-local may pass
         // an isolated --cache-dir root on purpose.
         Path target = artifactRoot.resolve("repos/local/" + relativePath);
@@ -494,7 +494,7 @@ public final class RepoArtifactStore {
         AtomicWrites.moveInto(tmp, target);
         String hex = Hashing.sha256Hex(target);
         Files.writeString(Path.of(target + ".sha256"), hex);
-        // Ingest into the sibling CAS too (JK-1450): the compile classpath is materialized from
+        // Ingest into the sibling CAS too: the compile classpath is materialized from
         // sha256/<hex> for every locked artifact — local sources included — so a repos/local file
         // without its blob locks fine and then silently vanishes from javac's classpath. Linking
         // jk's own immutable repos/local entry mirrors materialize()'s CAS→repos link.

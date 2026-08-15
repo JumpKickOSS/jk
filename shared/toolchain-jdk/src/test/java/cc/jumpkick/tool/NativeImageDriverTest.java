@@ -56,6 +56,39 @@ class NativeImageDriverTest {
                 .isInstanceOf(NullPointerException.class);
     }
 
+    @Test
+    void step_header_normalizes_trailing_ascii_dots_to_ellipsis() {
+        // Graal prints "[N/M] Label..." — live TUI labels use the same … as the rest of jk.
+        var step = NativeImageDriver.parseStepHeader("[1/8] Initializing...");
+        assertThat(step).isNotNull();
+        assertThat(step.current()).isEqualTo(1);
+        assertThat(step.total()).isEqualTo(8);
+        assertThat(step.label()).isEqualTo("Initializing…");
+
+        assertThat(NativeImageDriver.parseStepHeader("[2/8] Performing analysis...")
+                        .label())
+                .isEqualTo("Performing analysis…");
+        assertThat(NativeImageDriver.parseStepHeader("[5/8] Inlining methods...")
+                        .label())
+                .isEqualTo("Inlining methods…");
+        // Timing columns after two+ spaces are dropped; trailing ... still normalized.
+        assertThat(NativeImageDriver.parseStepHeader("[3/8] Building universe...      (1.2s @ 0.40GB)")
+                        .label())
+                .isEqualTo("Building universe…");
+        // Already-unicode ellipsis stays; non-headers are ignored.
+        assertThat(NativeImageDriver.parseStepHeader("[8/8] Creating image…").label())
+                .isEqualTo("Creating image…");
+        assertThat(NativeImageDriver.parseStepHeader("not a step")).isNull();
+    }
+
+    @Test
+    void normalize_step_label_rewrites_only_trailing_ascii_dots() {
+        assertThat(NativeImageDriver.normalizeStepLabel("Initializing...")).isEqualTo("Initializing…");
+        assertThat(NativeImageDriver.normalizeStepLabel("done")).isEqualTo("done");
+        assertThat(NativeImageDriver.normalizeStepLabel("already…")).isEqualTo("already…");
+        assertThat(NativeImageDriver.normalizeStepLabel("")).isEmpty();
+    }
+
     private static Throwable catchThrowable(Runnable r) {
         try {
             r.run();

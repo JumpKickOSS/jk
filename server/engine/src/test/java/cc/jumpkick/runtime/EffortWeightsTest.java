@@ -106,7 +106,6 @@ class EffortWeightsTest {
     @Test
     void predict_reserves_groovy_compile_until_the_stamp_holds(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "g"
                 version = "0.1.0"
@@ -346,7 +345,7 @@ class EffortWeightsTest {
     @Test
     void heavy_step_blip_rejection_prefers_the_mean_over_a_fast_over_floor_last(
             @org.junit.jupiter.api.io.TempDir Path state) throws Exception {
-        // JK-1828: the old `|| last >= 5_000` escape made the mean*0.25 rejection dead for heavy
+        // The old `|| last >= 5_000` escape made the mean*0.25 rejection dead for heavy
         // steps — one 6s mostly-warmed native run replaced a stable 60s mean.
         String prev = System.getProperty("jk.env.JK_STATE_DIR");
         System.setProperty("jk.env.JK_STATE_DIR", state.resolve("state").toString());

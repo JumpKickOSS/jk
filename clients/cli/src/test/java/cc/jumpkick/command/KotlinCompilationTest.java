@@ -134,7 +134,7 @@ class KotlinCompilationTest {
         run("new", "--name", "mixed", "--lang", "kotlin", "--layout", "traditional", tempDir.toString());
         // Opt into Java too — a mixed project declares both java and kotlin.
         Path toml = tempDir.resolve("jk.toml");
-        Files.writeString(toml, Files.readString(toml).replace("[project]\n", "[project]\njava = 25\n"));
+        Files.writeString(toml, Files.readString(toml).replace("", "java = 25\n"));
         // Java type that Kotlin will use.
         Path javaSrc = tempDir.resolve("src/main/java/example/Hub.java");
         Files.createDirectories(javaSrc.getParent());
@@ -168,7 +168,7 @@ class KotlinCompilationTest {
         // Java → Kotlin references resolve within a single module.
         run("new", "--name", "mixed", "--lang", "kotlin", "--layout", "traditional", tempDir.toString());
         Path toml = tempDir.resolve("jk.toml");
-        Files.writeString(toml, Files.readString(toml).replace("[project]\n", "[project]\njava = 25\n"));
+        Files.writeString(toml, Files.readString(toml).replace("", "java = 25\n"));
         Path ktSrc = tempDir.resolve("src/main/kotlin/example/Greeter.kt");
         Files.createDirectories(ktSrc.getParent());
         Files.writeString(ktSrc, """
@@ -203,7 +203,7 @@ class KotlinCompilationTest {
         run("new", "--name", "mixed", "--lang", "kotlin", "--layout", "traditional", tempDir.toString());
         ScaffoldTestSupport.writeEmptyLock(tempDir); // jk new no longer locks; check needs a lock
         Path toml = tempDir.resolve("jk.toml");
-        Files.writeString(toml, Files.readString(toml).replace("[project]\n", "[project]\njava = 25\n"));
+        Files.writeString(toml, Files.readString(toml).replace("", "java = 25\n"));
         Path ktSrc = tempDir.resolve("src/main/kotlin/example/Greeter.kt");
         Files.createDirectories(ktSrc.getParent());
         Files.writeString(ktSrc, """

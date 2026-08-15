@@ -120,7 +120,7 @@ class CacheCommandTest {
 
     @Test
     void prune_removes_stale_action_entries_and_cache_tier_tmp_files(@TempDir Path tempDir) throws Exception {
-        // JK-1531: post-split, plain `jk cache clean` is CACHE-tier only. Its temp janitor runs
+        // post-split, plain `jk cache clean` is CACHE-tier only. Its temp janitor runs
         // on the cache root's sha256/ (the cache CAS); the artifact store's temps belong to the
         // store sweep (`jk storage clean` / scheduled --sweep) and must survive a plain prune.
         Path cache = tempDir.resolve("cache");
@@ -280,7 +280,7 @@ class CacheCommandTest {
 
     @Test
     void storage_usage_reports_content_classes_without_action_cache() throws Exception {
-        // JK-1531: since the CAS split, `jk storage usage` measures the AMBIENT artifact store, so
+        // since the CAS split, `jk storage usage` measures the AMBIENT artifact store, so
         // exact byte totals depend on whatever the module-shared store holds and cannot be asserted
         // here. Structural shape only; the hard-link no-double-count arithmetic is covered
         // hermetically by DiskUsageTest.exclusive_does_not_double_count_hardlinked_cas_and_repos.
@@ -307,7 +307,6 @@ class CacheCommandTest {
     private static void writeProject(Path dir, String group, String name, String version) throws Exception {
         Files.createDirectories(dir);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "%s"
                 name  = "%s"
                 version = "%s"

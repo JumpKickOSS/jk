@@ -1,4 +1,3 @@
-[project]
 name = "jk-io"
 description = "Engine I/O: HTTP client, CAS, and Maven repository access"
 

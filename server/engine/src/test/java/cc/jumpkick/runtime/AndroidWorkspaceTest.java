@@ -170,7 +170,6 @@ class AndroidWorkspaceTest {
 
     private static void writeWorkspace(Path root) throws Exception {
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 name    = "ws"
                 group   = "com.example"
                 version = "1.0.0"
@@ -182,7 +181,6 @@ class AndroidWorkspaceTest {
 
         Path lib = Files.createDirectories(root.resolve("lib"));
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 name    = "lib"
                 group   = "com.example"
                 version = "1.0.0"
@@ -236,7 +234,6 @@ class AndroidWorkspaceTest {
 
         Path app = Files.createDirectories(root.resolve("app"));
         Files.writeString(app.resolve("jk.toml"), """
-                [project]
                 name    = "app"
                 group   = "com.example"
                 version = "1.0.0"

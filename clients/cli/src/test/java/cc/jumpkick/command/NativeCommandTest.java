@@ -25,7 +25,7 @@ class NativeCommandTest {
     void refuses_before_build_when_preflight_fails(@TempDir Path tempDir) throws Exception {
         Files.writeString(
                 tempDir.resolve("jk.toml"),
-                "[project]\ngroup = \"com.example\"\nname = \"widget\"\nversion = \"0.1.0\"\n" + "java = 25\n");
+                "group = \"com.example\"\nname = \"widget\"\nversion = \"0.1.0\"\n" + "java = 25\n");
         Path src = tempDir.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, "package example;\npublic class Hello { public int n() { return 1; } }\n");

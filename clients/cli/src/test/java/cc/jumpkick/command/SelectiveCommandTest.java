@@ -97,7 +97,6 @@ class SelectiveCommandTest {
         for (String m : new String[] {"api", "worker", "libs/core"}) {
             Files.createDirectories(root.resolve(m));
             Files.writeString(root.resolve(m).resolve("jk.toml"), """
-                    [project]
                     group = "com.ex"
                     name = "%s"
                     version = "1.0.0"
@@ -105,7 +104,6 @@ class SelectiveCommandTest {
                     """.formatted(m.replace('/', '-')));
         }
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.ex"
                 name = "ws"
                 version = "1.0.0"

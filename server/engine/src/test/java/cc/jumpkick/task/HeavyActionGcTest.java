@@ -106,7 +106,7 @@ class HeavyActionGcTest {
 
     @Test
     void dry_run_reports_the_same_reclaimable_blobs_as_the_real_purge(@TempDir Path root) throws Exception {
-        // JK-1770: a dry purge leaves the Class-C keys on disk; the following sweep must still
+        // A dry purge leaves the Class-C keys on disk; the following sweep must still
         // treat their blobs as dead, or dry-run under-reports by the whole heavy tier.
         Path cache = root.resolve("cache");
         Cas cas = new Cas(cache);

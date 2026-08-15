@@ -141,7 +141,7 @@ public final class ProtoJobs {
 
     /**
      * The client's {@code JK_PROGRESS_MODE} rides each request so the resident engine paints the
-     * requesting shell's mode, not whatever env the daemon happened to start with (JK-1816).
+     * requesting shell's mode, not whatever env the daemon happened to start with.
      * Emitted only when non-AUTO so older engines see an unchanged request.
      */
     static String progressModeJsonSuffix() {
@@ -803,7 +803,7 @@ public final class ProtoJobs {
     /**
      * Build native artifacts (see {@link EngineProtocol#NATIVE_REQUEST}). {@code mainClass} is the {@code --main}
      * override (may be {@code null} — the engine resolves {@code [native].main-class}/{@code
-     * [image].main}/{@code [project].main} itself); {@code extraArgs} are forwarded to {@code
+     * [image].main}/{@code [application].main} itself); {@code extraArgs} are forwarded to {@code
      * native-image}; {@code graalHomes} maps each native-eligible module dir to the GraalVM home
      * the client resolved for it (the one flat-map wire encoding — see {@code Jsonl.map}).
      */

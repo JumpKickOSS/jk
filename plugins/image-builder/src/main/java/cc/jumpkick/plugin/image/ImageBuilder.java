@@ -22,7 +22,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 /**
@@ -239,7 +245,7 @@ public final class ImageBuilder {
 
     /**
      * Entrypoint for a packager-produced app tree: {@code java [-XX:AOTCache=app.aot] -jar
-     * <appJar>}. No lock-derived classpath — the tree is the whole program (JK-1722).
+     * <appJar>}. No lock-derived classpath — the tree is the whole program.
      */
     static List<String> appTreeEntrypoint(Plan plan, boolean aotCache) {
         List<String> entry = new ArrayList<>();
@@ -296,7 +302,7 @@ public final class ImageBuilder {
         // AOT cache: the trainer stages the runnable layout at /app, trains, and hands back the
         // staged manifest + cache. The staged tree IS the application — shipping layers 1-3 as
         // well would double every byte, and shipping the whole post-training staging root would
-        // embed whatever the app wrote during the record run (JK-1758).
+        // embed whatever the app wrote during the record run.
         AotCacheTrainer.Result aot = null;
         String appClasspath = null;
         if (cfg.aotCache()) {

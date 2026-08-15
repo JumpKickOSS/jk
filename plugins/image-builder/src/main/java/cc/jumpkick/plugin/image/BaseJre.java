@@ -16,7 +16,11 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
@@ -66,7 +70,7 @@ final class BaseJre {
      * Materialize {@code base}'s JRE under {@code cacheRoot} and return its {@code java}, or null
      * when the image carries none. Cached by image reference, validated by the <em>resolved</em>
      * digest: a republished tag must not keep training (and verifying!) with the previous JVM —
-     * the shipped image would carry an AOT cache the runtime silently rejects (JK-1757).
+     * the shipped image would carry an AOT cache the runtime silently rejects.
      * Digest-pinned references never re-validate; mutable tags re-resolve after
      * {@link #REVALIDATE_MILLIS} (Jib's layer cache makes an unchanged re-pull cheap).
      */

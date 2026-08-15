@@ -61,7 +61,7 @@ public final class CompileCommand implements CliCommand {
         Path buildFile = proj.buildFile();
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
 
-        // -m/--modules / --affected-since: compile each selected module (validated — JK-1360).
+        // -m/--modules / --affected-since: compile each selected module (validated —).
         List<Path> dirs = List.of(dir);
         String modulesSpec = in.value("modules").orElse(null);
         String affectedSince = in.value("affected-since").orElse(null);

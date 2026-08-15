@@ -144,7 +144,6 @@ class OutdatedCommandTest {
         registerMetadata("com.foo.outdated", "leaf", "1.0", "2.0");
         registerMetadata("com.foo.outdated", "core", "3.0", "3.1");
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name = "ws"
                 version = "0.1.0"
@@ -154,7 +153,6 @@ class OutdatedCommandTest {
                 """);
         Path app = Files.createDirectories(tempDir.resolve("app"));
         Files.writeString(app.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name = "app"
                 version = "0.1.0"
@@ -164,7 +162,6 @@ class OutdatedCommandTest {
                 """);
         Path lib = Files.createDirectories(tempDir.resolve("lib"));
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name = "lib"
                 version = "0.1.0"
@@ -284,7 +281,6 @@ class OutdatedCommandTest {
 
     private static void writeProject(Path dir, String depLines) throws IOException {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name = "app"
                 version = "0.1.0"

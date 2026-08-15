@@ -139,7 +139,7 @@ class TaskWeightTest {
     @Test
     void reweight_up_is_ignored_the_denominator_never_grows_mid_run() {
         // A runtime re-estimate (native-image sized against the post-package jar) may only
-        // release weight — growing the denominator mid-run backslides the bar (JK-1819).
+        // release weight — growing the denominator mid-run backslides the bar.
         BuildPlan plan = BuildPlan.builder("g")
                 .addTask(Task.builder("a")
                         .weight(40)

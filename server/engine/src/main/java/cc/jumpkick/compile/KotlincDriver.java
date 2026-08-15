@@ -11,7 +11,11 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -34,7 +38,7 @@ public final class KotlincDriver {
      * Trainer {@code jvmTarget} when no real request is in hand (bare optimize / smoke). The
      * trainer runs on the PROJECT's kotlinc worker classpath, and Kotlin rejects unknown JVM
      * targets ("Unknown JVM target: 25" on pre-2.2.20 lines), so this must stay a target every
-     * supported Kotlin line accepts — do NOT bump it alongside the host JDK (JK-1434; a too-new
+     * supported Kotlin line accepts — do NOT bump it alongside the host JDK (a too-new
      * value silently kills AOT training for projects pinning older Kotlin). Production
      * train-on-miss uses the triggering request's own jvmTarget instead, which that Kotlin
      * version already compiles with.
@@ -126,7 +130,7 @@ public final class KotlincDriver {
      * for by name — but every real Kotlin compile already carries the version-matched
      * kotlin-stdlib the request pairs with {@code -no-stdlib}). Full startup + compile fidelity
      * exactly the warmup the cache exists to skip. The trainer inherits the request's own
-     * {@code jvmTarget} — the one value the project's pinned Kotlin provably accepts (JK-1434).
+     * {@code jvmTarget} — the one value the project's pinned Kotlin provably accepts.
      */
     static List<String> trainerCommand(
             KotlincRequest request, String classpath, Path hostJavaHome, Path aotOutput, Path scratch)
@@ -192,7 +196,7 @@ public final class KotlincDriver {
         Path spec = scratch.resolve("train.spec");
         Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
         // Match ForkedJavac / real PluginLoader forks so GC + classpath key the same as production
-        // (JK-1397: dedicated train key must match real kotlinc worker keys).
+        // (dedicated train key must match real kotlinc worker keys).
         List<String> jvmFlags = new ArrayList<>();
         jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
         jvmFlags.addAll(cc.jumpkick.engine.plugin.JvmOptions.batchFlags(1));

@@ -345,7 +345,7 @@ public final class DependencyTree {
      * The narrowed default ({@code export, main, runtime}) can select zero populated scopes — e.g.
      * a test-only project — and the early-return sections then print nothing under the root, which
      * reads as "this project has no dependencies". Name the scopes that <em>do</em> have deps and
-     * how to show them instead (JK-1640).
+     * how to show them instead.
      */
     private static void appendEmptyScopesHint(
             JkBuild project, Path projectDir, List<Scope> scopeOrder, Styling styling, StringBuilder out) {
@@ -723,7 +723,7 @@ public final class DependencyTree {
     /**
      * {@code siblingSurface}: rendering a consumed sibling's contributed deps — its module
      * (workspace) edges then chain only through {@code WorkspaceClasspath.SIBLING_MODULE_SCOPES}
-     * (JK-1962); external deps keep the full export/main/runtime surface.
+     *; external deps keep the full export/main/runtime surface.
      */
     private static void renderScopeDepList(
             JkBuild project,
@@ -820,7 +820,7 @@ public final class DependencyTree {
      * As {@link #loadModules(List, Path)}, but when {@code sharedLock} is non-null every member
      * uses it directly — modules never own a lockfile ({@code LockPaths} resolves each to the same
      * root {@code jk-lock.toml}), and re-parsing that ~2,300-line file once per member threw away
-     * ~15 identical parses per render (JK-1920). With no shared lock, each distinct lock path is
+     * ~15 identical parses per render. With no shared lock, each distinct lock path is
      * still parsed at most once.
      */
     private static List<LoadedModule> loadModules(List<String> moduleRels, Path rootDir, Lockfile sharedLock) {
@@ -1031,7 +1031,7 @@ public final class DependencyTree {
         LoadedModule sibling = resolveSibling(module, ws);
         if (sibling != null) {
             // resolveSibling only hits in the member graph (byGa populated ⇒ expandSiblings=true);
-            // the collapsed [workspace] form renders via Dependency.isWorkspaceRef below (JK-1919).
+            // the collapsed [workspace] form renders via Dependency.isWorkspaceRef below.
             String ga = moduleGa(sibling.build());
             String ver = sibling.build().project().version();
             if (!visited.add(ga)) return;
@@ -1039,9 +1039,9 @@ public final class DependencyTree {
             Map<String, Lockfile.Artifact> siblingIndex =
                     sibling.lock() == null ? byModule : indexByModule(sibling.lock());
             // The sibling contributes its own surface (export/main/runtime), not whatever
-            // scope section of the consumer declared it (JK-1884). Module (workspace) edges chain
+            // scope section of the consumer declared it. Module (workspace) edges chain
             // only through export/main — WorkspaceClasspath never adds a sibling's RUNTIME module
-            // deps to the consumer's classpath, so the tree must not draw them either (JK-1962).
+            // deps to the consumer's classpath, so the tree must not draw them either.
             for (Scope s : siblingContributedScopes()) {
                 boolean moduleEdges = cc.jumpkick.config.WorkspaceClasspath.SIBLING_MODULE_SCOPES.contains(s);
                 for (String dep : directModules(sibling.build(), s)) {
@@ -1137,7 +1137,7 @@ public final class DependencyTree {
 
         LoadedModule sibling = resolveSibling(module, ws);
         if (sibling != null) {
-            // Member graph only (JK-1919): collapsed [workspace] rows come from isWorkspaceRef.
+            // Member graph only: collapsed [workspace] rows come from isWorkspaceRef.
             renderSiblingModule(
                     sibling, scopes, depth, maxDepth, isLast, prefix, styling, ws, seenModules, seenDirs, out);
             return;
@@ -1185,7 +1185,7 @@ public final class DependencyTree {
      * The scope surface a consumed workspace sibling contributes to its consumer: export, main,
      * runtime — matching {@code ModuleRuntimeClasspath}/{@code WorkspaceClasspath}. A sibling's
      * test/dev/processor deps never ride the member's classpath, and its export/runtime deps
-     * always do — regardless of which section of the member declared the sibling (JK-1884).
+     * always do — regardless of which section of the member declared the sibling.
      */
     private static List<Scope> siblingContributedScopes() {
         return List.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);

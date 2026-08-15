@@ -24,7 +24,7 @@ class SpinnerTest {
         var s = new Spinner(stream(buf), "Working");
         s.step();
         String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
-        // ANSI: ● Working; plain / CI: * Working (JK-1376)
+        // ANSI: ● Working; plain / CI: * Working
         if (cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
             assertThat(visible).contains(Spinner.PULSE_GLYPH + " Working");
         } else {
@@ -218,7 +218,7 @@ class SpinnerTest {
         if (cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
             assertThat(painted).contains(Spinner.PULSE_GLYPH);
         } else {
-            // Plain multi-line working frame (JK-1379).
+            // Plain multi-line working frame.
             assertThat(painted.trim()).isEqualTo("* Status > Analyzing status... - working...");
         }
         buf.reset();

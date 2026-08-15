@@ -22,7 +22,6 @@ for i in $(seq 1 "$MODULES"); do
   dir="$OUT/$name"
   mkdir -p "$dir/src"
   cat >"$dir/jk.toml" <<EOF
-[project]
 group = "bench"
 name = "$name"
 version = "0.0.1"
@@ -70,7 +69,6 @@ done
 # Join modules list
 mods_joined=$(IFS=,; echo "${mod_list[*]}")
 cat >"$OUT/jk.toml" <<EOF
-[project]
 group = "bench"
 name = "synthetic-monorepo"
 version = "0.0.1"

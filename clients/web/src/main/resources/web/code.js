@@ -60,6 +60,22 @@ const LANG_BY_EXT = {
   '.jsonl': 'json',
   '.md': 'markdown',
   '.markdown': 'markdown',
+  '.mmd': 'mermaid',
+  '.mermaid': 'mermaid',
+  '.dot': 'graphviz',
+  '.gv': 'graphviz',
+  '.adoc': 'asciidoc',
+  '.asciidoc': 'asciidoc',
+  '.d2': 'd2',
+  '.png': 'image',
+  '.jpg': 'image',
+  '.jpeg': 'image',
+  '.gif': 'image',
+  '.webp': 'image',
+  '.ico': 'image',
+  '.svg': 'image',
+  '.bmp': 'image',
+  '.avif': 'image',
 };
 
 /**
@@ -75,7 +91,190 @@ const MONACO_LANG = {
   toml: 'ini',
   json: 'json',
   markdown: 'markdown',
+  mermaid: 'plaintext',
+  graphviz: 'plaintext',
+  asciidoc: 'plaintext',
+  d2: 'plaintext',
+  image: 'plaintext',
 };
+
+/** Extensions the Preview button may open (client-side; server allow-list must match). */
+const PREVIEW_KINDS = {
+  '.md': 'markdown',
+  '.markdown': 'markdown',
+  '.png': 'image',
+  '.jpg': 'image',
+  '.jpeg': 'image',
+  '.gif': 'image',
+  '.webp': 'image',
+  '.ico': 'image',
+  '.svg': 'image',
+  '.bmp': 'image',
+  '.avif': 'image',
+  '.mmd': 'mermaid',
+  '.mermaid': 'mermaid',
+  '.dot': 'graphviz',
+  '.gv': 'graphviz',
+  '.adoc': 'asciidoc',
+  '.asciidoc': 'asciidoc',
+  '.d2': 'd2',
+};
+
+export function previewKind(path) {
+  const name = String(path || '').split('/').pop() || '';
+  const lower = name.toLowerCase();
+  const dot = lower.lastIndexOf('.');
+  if (dot < 0) return null;
+  return PREVIEW_KINDS[lower.slice(dot)] || null;
+}
+
+export function isPreviewable(path) {
+  return previewKind(path) != null;
+}
+
+export function isImagePath(path) {
+  return previewKind(path) === 'image';
+}
+
+export function isTextWritableLang(lang) {
+  return !!lang && lang !== 'image';
+}
+
+/** Final path segment for the open-file tab label (full path stays on the tooltip). */
+export function baseFileName(path) {
+  const parts = String(path || '').split('/');
+  return parts[parts.length - 1] || path || '';
+}
+
+/** True for absolute http(s) image URLs (badges, GitHub user-attachments, etc.). */
+export function isRemoteHttpUrl(href) {
+  if (href == null) return false;
+  const h = String(href).trim();
+  return /^https?:\/\//i.test(h) || h.startsWith('//');
+}
+
+/**
+ * Resolve a markdown href against the open file into a workspace-relative path, or null when
+ * external / escapes the root. Leading {@code /} means workspace root (GitHub-style).
+ * Fragment/query are stripped ({@code docs/x.md#sec} → {@code docs/x.md}).
+ */
+export function resolveWorkspaceRelPath(fromFile, href) {
+  if (href == null) return null;
+  let h = String(href).trim();
+  if (!h) return null;
+  // Protocol-relative or absolute URLs are remote (not in-workspace).
+  if (/^[a-z][a-z0-9+.-]*:/i.test(h) || h.startsWith('//')) return null;
+  // In-page anchors only.
+  if (h.startsWith('#')) return null;
+  h = h.split('#')[0].split('?')[0];
+  if (!h) return null;
+  try {
+    h = decodeURIComponent(h);
+  } catch {
+    return null;
+  }
+  h = h.replace(/\\/g, '/');
+  let parts;
+  if (h.startsWith('/')) {
+    parts = h.split('/').filter(Boolean);
+  } else {
+    const base = String(fromFile || '')
+      .replace(/\\/g, '/')
+      .split('/')
+      .filter(Boolean);
+    if (base.length) base.pop(); // directory of the open markdown file
+    parts = base.concat(h.split('/').filter((p) => p !== ''));
+  }
+  const out = [];
+  for (const p of parts) {
+    if (p === '.') continue;
+    if (p === '..') {
+      if (!out.length) return null;
+      out.pop();
+      continue;
+    }
+    if (p.includes('\0')) return null;
+    out.push(p);
+  }
+  if (!out.length) return null;
+  return out.join('/');
+}
+
+/**
+ * Image-only resolve: workspace-relative path must be a previewable image type.
+ * Remote http(s) returns null — remote images stay on their own URLs (no proxy).
+ */
+export function resolveMarkdownImagePath(fromFile, href) {
+  const rel = resolveWorkspaceRelPath(fromFile, href);
+  if (!rel || !isImagePath(rel)) return null;
+  return rel;
+}
+
+/**
+ * Link resolve for markdown {@code [text](path)} / badge targets — any workspace-relative path.
+ */
+export function resolveMarkdownLinkPath(fromFile, href) {
+  return resolveWorkspaceRelPath(fromFile, href);
+}
+
+/**
+ * Pull fenced ```mermaid blocks out of markdown so the rest can go through marked, then re-inject
+ * rendered SVGs by placeholder. Placeholders are plain tokens that survive DOMPurify.
+ */
+export function extractMermaidFences(markdown) {
+  const src = markdown == null ? '' : String(markdown);
+  const fences = [];
+  // Opening fence at line start; language is mermaid (optional trailing attrs ignored).
+  const re = /^[ \t]*```[ \t]*mermaid[ \t]*\r?\n([\s\S]*?)^[ \t]*```[ \t]*$/gim;
+  const markdownOut = src.replace(re, (_, body) => {
+    const i = fences.length;
+    fences.push(String(body).replace(/\r\n/g, '\n').replace(/\s+$/, ''));
+    return '\n\nJKMERMAIDPLACEHOLDER' + i + 'X\n\n';
+  });
+  return { markdown: markdownOut, fences };
+}
+
+/** Replace JKMERMAIDPLACEHOLDER{n}X tokens with the corresponding rendered SVG (or error HTML). */
+export function injectMermaidSvgs(html, svgs) {
+  let out = html == null ? '' : String(html);
+  const list = svgs || [];
+  for (let i = 0; i < list.length; i++) {
+    const token = 'JKMERMAIDPLACEHOLDER' + i + 'X';
+    const svg = list[i] == null ? '' : String(list[i]);
+    out = out.split(token).join(svg);
+  }
+  return out;
+}
+
+/** Human-readable save failure (network / auth / concurrency). */
+export function saveErrorMessage(e) {
+  if (!e) return 'Failed to save file';
+  if (e.status === 409 && e.error === 'file changed on disk') {
+    return 'File changed on disk — reload it to edit the latest version';
+  }
+  if (e.status === 409 && (e.error === 'engine-epoch-mismatch' || e.engineEpoch)) {
+    return 'Engine restarted — reload the page';
+  }
+  if (e.status === 401) return 'Not authorized — run jk web for a fresh token';
+  if (e.status === 413) return 'File too large to save (1 MiB limit)';
+  if (e.status === 415) return 'This file type cannot be saved from the editor';
+  if (e.status === 404) return 'File no longer exists on disk';
+  if (e.status === 500) return (e.error && String(e.error)) || 'Engine failed to write the file';
+  // fetch network failure (TypeError) or missing status
+  if (e.status == null || e.name === 'TypeError') {
+    return 'Cannot reach the engine — is it running?';
+  }
+  if (e.error) return String(e.error);
+  return 'Save failed (HTTP ' + e.status + ')';
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 function decodeComp(raw) {
   try {
@@ -105,33 +304,49 @@ function parseLine(raw) {
   return Number.isFinite(line) && line > 0 ? line : 0;
 }
 
+/** Truthy query values: 1 / true / yes / on (case-insensitive). */
+export function parseTruthy(raw) {
+  if (raw == null || raw === '') return false;
+  const t = String(raw).trim().toLowerCase();
+  return t === '1' || t === 'true' || t === 'yes' || t === 'on';
+}
+
 /**
  * Hash routes:
  *   #project/<id>
  *   #project/<id>/files
  *   #project/<id>/files/<rel/path>?line=<n>
+ *   #project/<id>/files/<rel/path>?line=<n>&err=true  (fail-report / OSC-8 jump)
  */
 export function routeFromHash(hash = typeof location !== 'undefined' ? location.hash : '') {
   const h = hash || '';
   const q = parseHashQuery(h);
   const pathPart = h.indexOf('?') >= 0 ? h.slice(0, h.indexOf('?')) : h;
+  const empty = { view: 'activity', projectId: null, files: false, path: null, line: 0, lineErr: false };
   if (pathPart === '#projects') {
-    return { view: 'projects', projectId: null, files: false, path: null, line: 0 };
+    return { view: 'projects', projectId: null, files: false, path: null, line: 0, lineErr: false };
   }
   if (pathPart === '#status') {
-    return { view: 'status', projectId: null, files: false, path: null, line: 0 };
+    return { view: 'status', projectId: null, files: false, path: null, line: 0, lineErr: false };
   }
   if (pathPart.startsWith('#project/')) {
     const segs = pathPart.slice('#project/'.length).split('/');
     const id = decodeComp(segs[0] || '');
-    if (!id) return { view: 'activity', projectId: null, files: false, path: null, line: 0 };
+    if (!id) return empty;
     if (segs[1] === 'files') {
       const rel = [];
       for (const raw of segs.slice(2)) {
         if (raw === '') continue;
         const s = decodeComp(raw);
         if (s == null || s === '' || s === '.' || s === '..') {
-          return { view: 'project', projectId: id, files: true, path: null, line: parseLine(q.line) };
+          return {
+            view: 'project',
+            projectId: id,
+            files: true,
+            path: null,
+            line: parseLine(q.line),
+            lineErr: parseTruthy(q.err),
+          };
         }
         rel.push(s);
       }
@@ -141,14 +356,15 @@ export function routeFromHash(hash = typeof location !== 'undefined' ? location.
         files: true,
         path: rel.length ? rel.join('/') : null,
         line: parseLine(q.line),
+        lineErr: parseTruthy(q.err),
       };
     }
-    return { view: 'project', projectId: id, files: false, path: null, line: 0 };
+    return { view: 'project', projectId: id, files: false, path: null, line: 0, lineErr: false };
   }
-  return { view: 'activity', projectId: null, files: false, path: null, line: 0 };
+  return empty;
 }
 
-export function buildProjectHash({ projectId, files, path, line } = {}) {
+export function buildProjectHash({ projectId, files, path, line, err } = {}) {
   if (!projectId) return '#projects';
   let h = '#project/' + encodeURIComponent(projectId);
   if (files || path) {
@@ -163,7 +379,10 @@ export function buildProjectHash({ projectId, files, path, line } = {}) {
           .join('/');
     }
   }
-  if (line > 0) h += '?line=' + line;
+  if (line > 0) {
+    h += '?line=' + line;
+    if (err) h += '&err=true';
+  }
   return h;
 }
 
@@ -231,32 +450,44 @@ export function monacoLang(lang) {
 }
 
 /**
- * `?line=` as a whole-line decoration — plain IRange objects, so this stays testable without a
- * monaco global. Empty for line 0: the editor then draws no highlight at all.
+ * `?line=` whole-line decoration — plain IRange objects, testable without a monaco global.
+ * Empty for line 0. Neutral (cyan/soft) by default; {@code err: true} uses the fail-report red wash
+ * ({@code ?line=N&err=true} from Activity / OSC-8).
  */
-export function lineDecorations(line) {
+export function lineDecorations(line, err = false) {
   const n = Number(line) || 0;
   if (n < 1) return [];
+  const error = !!err;
+  const opts = {
+    isWholeLine: true,
+    className: error ? 'code-line-err' : 'code-line-hl',
+    linesDecorationsClassName: error ? 'code-line-err-gutter' : 'code-line-hl-gutter',
+  };
+  if (error) {
+    // Stick the mark in the overview/minimap so a long file still shows where the jump landed.
+    opts.overviewRuler = { color: 'rgba(255, 51, 102, 0.85)', position: 1 };
+    opts.minimap = { color: 'rgba(255, 51, 102, 0.85)', position: 1 };
+  }
   return [
     {
       range: { startLineNumber: n, startColumn: 1, endLineNumber: n, endColumn: 1 },
-      options: { isWholeLine: true, className: 'code-line-hl', linesDecorationsClassName: 'code-line-hl-gutter' },
+      options: opts,
     },
   ];
 }
 
 /**
- * Options for `monaco.editor.create` — a read-only viewer, not an editor: no context menu, no
- * suggestions, and `renderLineHighlight: 'none'` so the only highlighted row is the `?line=` one.
- * Content rides `value` (a model string Monaco tokenizes), never innerHTML.
+ * Options for `monaco.editor.create` — light editor: no context menu / suggestions; `?line=` is
+ * still the only whole-line decoration (`renderLineHighlight: 'none'`). Content rides `value`
+ * (a model string Monaco tokenizes), never innerHTML.
  */
-export function viewerOptions({ content, lang } = {}) {
+export function viewerOptions({ content, lang, readOnly = false } = {}) {
   return {
     value: content == null ? '' : String(content),
     language: monacoLang(lang),
     theme: MONACO_THEME,
-    readOnly: true,
-    domReadOnly: true,
+    readOnly: !!readOnly,
+    domReadOnly: !!readOnly,
     automaticLayout: true,
     // Mirrors --mono / .code-pre in style.css so the pane matches the rest of the shell.
     fontFamily:
@@ -278,6 +509,99 @@ export function viewerOptions({ content, lang } = {}) {
   };
 }
 
+/**
+ * Preview renderers (unpkg only; never self-hosted).
+ * marked + DOMPurify load as ESM via dynamic import() so we never park Monaco's AMD {@code define}
+ * during README Preview (parking races Monaco's on-demand markdown grammar → "define is not a function").
+ * Mermaid / viz / asciidoctor still use classic UMD + noAmd, and only when that diagram kind is needed.
+ */
+const CDN = {
+  markedEsm: 'https://unpkg.com/marked@15.0.12/lib/marked.esm.js',
+  purifyEsm: 'https://unpkg.com/dompurify@3.2.5/dist/purify.es.mjs',
+  mermaid: {
+    src: 'https://unpkg.com/mermaid@11.6.0/dist/mermaid.min.js',
+    integrity: 'sha384-zkWMJO4sgpPUzyuOgDx8HB/K55glbAwajEpk1Go2NWRuPkPA/wIhoEJTuSkmOYrV',
+  },
+  viz: {
+    src: 'https://unpkg.com/@viz-js/viz@3.11.0/lib/viz-standalone.js',
+    integrity: 'sha384-6ECxW8G4FmLMEr8fKkk617NsYhxb7AhsiyyT6Gey/Sru4R+lyRpVM12ekzlOD08g',
+  },
+  asciidoctor: {
+    src: 'https://unpkg.com/@asciidoctor/core@3.0.4/dist/browser/asciidoctor.min.js',
+    integrity: 'sha384-Rd2/5b41kZm7C1w7DbZXiNbMElh62qr8urCNwxmNaYVvL06PjEwpmw1PRGqAwOZP',
+  },
+};
+
+const previewLoaders = Object.create(null);
+
+async function ensureCdn(name) {
+  if (previewLoaders[name]) return previewLoaders[name];
+
+  if (name === 'marked') {
+    previewLoaders.marked = import(/* @vite-ignore */ CDN.markedEsm)
+      .then((m) => {
+        const api = m.marked || m.default || m;
+        if (api == null) throw new Error('marked ESM export missing');
+        return api;
+      })
+      .catch((e) => {
+        delete previewLoaders.marked;
+        throw e;
+      });
+    return previewLoaders.marked;
+  }
+
+  if (name === 'purify') {
+    previewLoaders.purify = import(/* @vite-ignore */ CDN.purifyEsm)
+      .then((m) => {
+        // purify.es.mjs exports a ready DOMPurify instance as default.
+        const api = m.default || m.DOMPurify || m;
+        if (api == null || typeof api.sanitize !== 'function') {
+          throw new Error('DOMPurify ESM export missing');
+        }
+        return api;
+      })
+      .catch((e) => {
+        delete previewLoaders.purify;
+        throw e;
+      });
+    return previewLoaders.purify;
+  }
+
+  const pin = CDN[name];
+  if (!pin || !pin.src) throw new Error('unknown CDN lib ' + name);
+  // UMD diagram libs only: park define for the load so they attach globals (Monaco claims AMD).
+  previewLoaders[name] = loadScript({ ...pin, noAmd: true })
+    .then(() => {
+      const global =
+        name === 'mermaid'
+          ? globalThis.mermaid
+          : name === 'viz'
+            ? globalThis.Viz
+            : name === 'asciidoctor'
+              ? globalThis.Asciidoctor
+              : null;
+      if (global == null) {
+        delete previewLoaders[name];
+        throw new Error(name + ' CDN script loaded but global was not set');
+      }
+      return global;
+    })
+    .catch((e) => {
+      delete previewLoaders[name];
+      throw e;
+    });
+  return previewLoaders[name];
+}
+
+/** marked UMD may expose parse as a method or as the callable itself. */
+export function markedParse(marked, src) {
+  if (marked == null) throw new Error('marked is not loaded');
+  if (typeof marked.parse === 'function') return marked.parse(src);
+  if (typeof marked === 'function') return marked(src);
+  throw new Error('marked API unavailable');
+}
+
 export async function copyText(str) {
   const text = str == null ? '' : String(str);
   if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
@@ -296,14 +620,66 @@ export async function copyText(str) {
   document.body.removeChild(ta);
 }
 
-function loadScript({ src, integrity }) {
+/**
+ * Refcounted park of Monaco's AMD {@code define}. Preview CDNs load in parallel (marked + purify
+ * + mermaid); a naive park/restore per tag lets the first onload put {@code define} back while
+ * another UMD is still evaluating — that one AMD-registers and never sets its global
+ * (e.g. "purify CDN script loaded but global was not set").
+ */
+let amdParkDepth = 0;
+let amdParkSaved = undefined;
+
+function parkAmdDefine() {
+  if (typeof globalThis === 'undefined') return false;
+  if (amdParkDepth === 0) {
+    if (typeof globalThis.define !== 'function') return false;
+    amdParkSaved = globalThis.define;
+    try {
+      globalThis.define = undefined;
+    } catch {
+      return false;
+    }
+  }
+  amdParkDepth++;
+  return true;
+}
+
+function unparkAmdDefine() {
+  if (amdParkDepth <= 0) return;
+  amdParkDepth--;
+  if (amdParkDepth > 0) return;
+  try {
+    globalThis.define = amdParkSaved;
+  } catch {
+    // ignore
+  }
+  amdParkSaved = undefined;
+}
+
+/**
+ * Load a classic script. When {@code noAmd} is set, park {@code window.define} for the load so
+ * UMD builds take their browser-global branch instead of registering with Monaco's AMD loader.
+ */
+function loadScript({ src, integrity, noAmd = false }) {
   return new Promise((resolve, reject) => {
     const s = document.createElement('script');
     s.src = src;
-    s.integrity = integrity;
-    s.crossOrigin = 'anonymous';
-    s.onload = () => resolve();
+    if (integrity) {
+      s.integrity = integrity;
+      s.crossOrigin = 'anonymous';
+    } else {
+      s.crossOrigin = 'anonymous';
+    }
+    const parked = noAmd && parkAmdDefine();
+    const restore = () => {
+      if (parked) unparkAmdDefine();
+    };
+    s.onload = () => {
+      restore();
+      resolve();
+    };
     s.onerror = () => {
+      restore();
       s.remove(); // retries append a fresh tag; don't accumulate dead ones (JK-1953)
       reject(new Error('failed to load ' + src));
     };
@@ -456,11 +832,15 @@ export const CodeView = {
     projectId: { type: String, default: null },
     path: { type: String, default: null },
     line: { type: Number, default: 0 },
+    /** True when the hash carried {@code err=true} (fail-report / OSC-8 jump). */
+    lineErr: { type: Boolean, default: false },
   },
+  emits: ['navigate', 'build'],
   data: () => ({
     loadingList: false,
     loadingFile: false,
     error: null,
+    notice: null,
     files: [],
     truncated: false,
     file: null,
@@ -468,9 +848,22 @@ export const CodeView = {
     expanded: {}, // open directory paths, keyed by the (possibly compacted) node path
     highlighterFailed: false,
     copied: false,
+    saved: false,
+    dirty: false,
+    saving: false,
+    previewOpen: false,
+    previewError: null,
+    previewHtml: '',
+    previewImageUrl: null,
+    previewLoading: false,
     _copiedTimer: null,
+    _savedTimer: null,
+    _previewTimer: null,
+    _previewGen: 0,
     _listAbort: null,
     _fileAbort: null,
+    _baseline: '',
+    _etag: null,
     // The editor/model/decorations handles stay OFF data() on purpose: data is deeply reactive,
     // and wrapping Monaco's instances in a Proxy breaks them. They live on the raw instance
     // (this._editor, set in mount()).
@@ -504,20 +897,66 @@ export const CodeView = {
     rows() {
       return this.file ? plainRows(this.file.content) : [];
     },
+    isImage() {
+      return !!(this.path && isImagePath(this.path));
+    },
+    previewable() {
+      return !!(this.path && isPreviewable(this.path));
+    },
+    editable() {
+      // Oversized / failed-highlighter plain branch and image-only opens are not edited in Monaco.
+      return !!(
+        this.file &&
+        !this.isImage &&
+        !this.skippedHighlight &&
+        !this.highlighterFailed &&
+        isTextWritableLang(this.file.lang || langFromPath(this.file.path))
+      );
+    },
+    canSave() {
+      return !!(this.editable && this.dirty && !this.saving && !this.loadingFile && this.path && this.projectId);
+    },
     /**
      * The editor host stays mounted and is only hidden (v-show), never v-if'd: a `v-if` would rip
      * the host out of the DOM on every `file = null` between loads, leaving the live editor
      * attached to a detached node — a blank pane on the next file.
      */
     editorVisible() {
-      return !!this.file && !this.error && !this.loadingFile && !this.skippedHighlight && !this.highlighterFailed;
+      // Stay mounted while Preview is open for text so edits re-render the live pane.
+      return (
+        !!this.file &&
+        !this.error &&
+        !this.loadingFile &&
+        !this.skippedHighlight &&
+        !this.highlighterFailed &&
+        !this.isImage
+      );
+    },
+    previewVisible() {
+      return !!(this.previewOpen && this.previewable && !this.loadingFile && this.path);
+    },
+    /** Image-only preview fills the pane; text Preview shares the pane with Monaco (live edit). */
+    paneMode() {
+      if (this.previewVisible && this.isImage) return 'preview-only';
+      if (this.previewVisible && this.editorVisible) return 'split';
+      return 'editor';
     },
   },
   watch: {
     projectId() {
       this.loadList();
     },
-    path() {
+    path(next, prev) {
+      // Revert after a cancelled leave must not re-prompt or re-fetch (would wipe the dirty buffer).
+      if (this._ignorePathGuard) {
+        this._ignorePathGuard = false;
+        return;
+      }
+      if (prev && this.dirty && next !== prev && !this.confirmDiscard()) {
+        this._ignorePathGuard = true;
+        this.$emit('navigate', { path: prev, line: 0, replace: true });
+        return;
+      }
       // Landing back on a bare /files (the Browse control) re-arms the default file.
       if (!this.path) this.openDefaultFile();
       this.expandTo(this.path);
@@ -526,8 +965,41 @@ export const CodeView = {
     line() {
       this.$nextTick(() => this.scrollToLine());
     },
+    // A buffer going clean releases an epoch reload the user declined while dirty (JK-1973).
+    dirty(next) {
+      if (!next && this._api) this._api.releaseDeferredEpochReload();
+    },
+    lineErr() {
+      this.$nextTick(() => {
+        if (this._decorations) this._decorations.set(lineDecorations(this.line, this.lineErr));
+      });
+    },
+    // Preview open/close changes flex slots; Monaco only remeasures on layout().
+    paneMode() {
+      this.$nextTick(() => {
+        if (this._editor) this._editor.layout();
+      });
+    },
+    editorVisible(vis) {
+      if (!vis) return;
+      this.$nextTick(() => {
+        if (this._editor) this._editor.layout();
+      });
+    },
   },
   async mounted() {
+    // Browser-level loss guards (JK-1973): warn on tab close/F5 with unsaved edits, and let the
+    // epoch hard-reload ask before discarding the buffer.
+    this._api = await import('./api.js');
+    this._dirtyProbe = () => this.dirty;
+    this._api.registerDirtyGuard(this._dirtyProbe);
+    this._beforeUnload = (e) => {
+      if (this.dirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', this._beforeUnload);
     await this.loadList();
     await this.loadFile();
   },
@@ -536,12 +1008,27 @@ export const CodeView = {
   },
   methods: {
     teardown() {
+      if (this._beforeUnload) {
+        window.removeEventListener('beforeunload', this._beforeUnload);
+        this._beforeUnload = null;
+      }
+      if (this._api && this._dirtyProbe) {
+        this._api.unregisterDirtyGuard(this._dirtyProbe);
+        this._dirtyProbe = null;
+      }
       if (this._listAbort) this._listAbort.abort();
       if (this._fileAbort) this._fileAbort.abort();
       if (this._copiedTimer) clearTimeout(this._copiedTimer);
+      if (this._savedTimer) clearTimeout(this._savedTimer);
+      if (this._previewTimer) clearTimeout(this._previewTimer);
+      this.revokeImageUrl();
       this.disposeEditor();
     },
     disposeEditor() {
+      if (this._contentSub) {
+        this._contentSub.dispose();
+        this._contentSub = null;
+      }
       if (this._decorations) {
         this._decorations.clear();
         this._decorations = null;
@@ -555,9 +1042,133 @@ export const CodeView = {
         this._model = null;
       }
     },
+    revokeImageUrl() {
+      if (this.previewImageUrl) {
+        URL.revokeObjectURL(this.previewImageUrl);
+        this.previewImageUrl = null;
+      }
+      if (this._mdImgBlobs) {
+        for (const u of this._mdImgBlobs) {
+          try {
+            URL.revokeObjectURL(u);
+          } catch {
+            // ignore
+          }
+        }
+        this._mdImgBlobs = [];
+      }
+    },
+    /**
+     * Markdown {@code <img>} handling (GitHub README style):
+     * - Remote http(s): leave the absolute URL on the tag. Do <b>not</b> set {@code crossorigin}
+     *   (that forces a CORS fetch and breaks github.com/user-attachments / many badge CDNs).
+     *   {@code referrerpolicy=no-referrer} helps hosts that soft-block hotlinks by Referer.
+     *   We intentionally skip the engine image proxy for remotes — GH user-attachments often 404
+     *   server-side, and a failed proxy + {@code crossorigin} fallback was the CORS error loop.
+     * - Relative: auth-fetch workspace raw bytes → blob: URL.
+     */
+    async hydrateMarkdownImages(html, gen) {
+      if (!html || typeof DOMParser === 'undefined') return html;
+      const parser = new DOMParser();
+      const doc = parser.parseFromString('<div id="jk-md-root">' + html + '</div>', 'text/html');
+      const root = doc.getElementById('jk-md-root');
+      if (!root) return html;
+      const imgs = root.querySelectorAll('img[src]');
+      if (!imgs.length) return root.innerHTML;
+      const { getBlob } = await import('./api.js');
+      const blobs = [];
+      const jobs = [];
+      for (const img of imgs) {
+        const src = img.getAttribute('src');
+        if (!src) continue;
+
+        img.removeAttribute('crossorigin');
+        img.setAttribute('loading', 'lazy');
+
+        if (isRemoteHttpUrl(src)) {
+          let remote = src.trim();
+          if (remote.startsWith('//')) remote = 'https:' + remote;
+          img.setAttribute('src', remote);
+          img.setAttribute('referrerpolicy', 'no-referrer');
+          continue;
+        }
+
+        const rel = resolveMarkdownImagePath(this.path, src);
+        if (!rel) continue;
+        jobs.push(
+          (async () => {
+            try {
+              const blob = await getBlob(
+                '/api/project/file/raw?project=' +
+                  encodeURIComponent(this.projectId) +
+                  '&path=' +
+                  encodeURIComponent(rel),
+              );
+              if (gen !== this._previewGen) return;
+              const url = URL.createObjectURL(blob);
+              blobs.push(url);
+              img.setAttribute('src', url);
+              img.removeAttribute('data-jk-img-miss');
+              img.classList.remove('code-preview-img-miss');
+            } catch {
+              img.setAttribute('data-jk-img-miss', rel);
+              img.classList.add('code-preview-img-miss');
+            }
+          })(),
+        );
+      }
+      await Promise.all(jobs);
+      if (gen !== this._previewGen) {
+        for (const u of blobs) {
+          try {
+            URL.revokeObjectURL(u);
+          } catch {
+            // ignore
+          }
+        }
+        return html;
+      }
+      this._mdImgBlobs = blobs;
+      return root.innerHTML;
+    },
+    /**
+     * Point relative markdown links at the files-pane hash so clicks open the target in
+     * code-view (e.g. badge → {@code docs/architecture.md}). External http(s) stay as-is
+     * (new tab).
+     */
+    rewriteMarkdownLinks(html) {
+      if (!html || typeof DOMParser === 'undefined' || !this.projectId) return html;
+      const parser = new DOMParser();
+      const doc = parser.parseFromString('<div id="jk-md-root">' + html + '</div>', 'text/html');
+      const root = doc.getElementById('jk-md-root');
+      if (!root) return html;
+      for (const a of root.querySelectorAll('a[href]')) {
+        const href = a.getAttribute('href');
+        if (!href) continue;
+        if (isRemoteHttpUrl(href) || /^[a-z][a-z0-9+.-]*:/i.test(href.trim())) {
+          // External: open outside the SPA.
+          a.setAttribute('target', '_blank');
+          a.setAttribute('rel', 'noopener noreferrer');
+          continue;
+        }
+        if (href.trim().startsWith('#')) continue; // in-page anchor
+        const rel = resolveMarkdownLinkPath(this.path, href);
+        if (!rel) continue;
+        a.setAttribute(
+          'href',
+          buildProjectHash({ projectId: this.projectId, files: true, path: rel }),
+        );
+        a.classList.add('code-preview-inlink');
+        a.removeAttribute('target');
+      }
+      return root.innerHTML;
+    },
+    confirmDiscard() {
+      if (typeof window === 'undefined' || !window.confirm) return true;
+      return window.confirm('Discard unsaved changes?');
+    },
     fileName(p) {
-      const parts = String(p || '').split('/');
-      return parts[parts.length - 1] || p;
+      return baseFileName(p);
     },
     /** A row's own click target: folders open/close, files navigate. */
     activate(row) {
@@ -583,6 +1194,40 @@ export const CodeView = {
     },
     selectFile(p) {
       this.$emit('navigate', { path: p, line: 0 });
+    },
+    setBaseline(text, etag) {
+      this._baseline = text == null ? '' : String(text);
+      if (etag !== undefined) this._etag = etag || null;
+      this.dirty = false;
+    },
+    recomputeDirty() {
+      if (!this._editor || !this.editable) {
+        this.dirty = false;
+        return;
+      }
+      this.dirty = this._editor.getValue() !== this._baseline;
+      this.schedulePreviewRefresh();
+    },
+    currentContent() {
+      if (this._editor && this.editable) return this._editor.getValue();
+      return this.file && this.file.content != null ? String(this.file.content) : '';
+    },
+    /** Debounced re-render while Preview is open and the buffer is text (not image). */
+    schedulePreviewRefresh() {
+      if (!this.previewOpen || this.isImage) return;
+      if (this._previewTimer) clearTimeout(this._previewTimer);
+      this._previewTimer = setTimeout(() => {
+        this._previewTimer = null;
+        if (this.previewOpen && !this.isImage) this.renderPreview();
+      }, 350);
+    },
+    flashSaved() {
+      this.saved = true;
+      if (this._savedTimer) clearTimeout(this._savedTimer);
+      this._savedTimer = setTimeout(() => {
+        this.saved = false;
+        this._savedTimer = null;
+      }, 1500);
     },
     async loadList() {
       if (this._listAbort) this._listAbort.abort();
@@ -617,7 +1262,18 @@ export const CodeView = {
     },
     async loadFile() {
       if (this._fileAbort) this._fileAbort.abort();
+      if (this._previewTimer) {
+        clearTimeout(this._previewTimer);
+        this._previewTimer = null;
+      }
       this.file = null;
+      this.dirty = false;
+      this.saved = false;
+      this.previewOpen = false;
+      this.previewError = null;
+      this.previewHtml = '';
+      this.revokeImageUrl();
+      this.setBaseline('', null);
       if (!this.projectId || !this.path) {
         this.loadingFile = false;
         return;
@@ -626,7 +1282,25 @@ export const CodeView = {
       this._fileAbort = ac;
       this.loadingFile = true;
       this.error = null;
+      this.notice = null;
       try {
+        if (isImagePath(this.path)) {
+          // Images are not JSON-text; meta only — Preview uses the raw endpoint.
+          this.file = {
+            path: this.path,
+            lang: 'image',
+            content: '',
+            bytes: 0,
+            lines: 0,
+            encoding: 'binary',
+            etag: null,
+          };
+          this.loadingFile = false;
+          this.previewOpen = true;
+          await this.$nextTick();
+          await this.renderPreview();
+          return;
+        }
         const { get } = await import('./api.js');
         const data = await get(
           '/api/project/file?project=' +
@@ -637,9 +1311,13 @@ export const CodeView = {
         );
         if (ac.signal.aborted) return;
         this.file = data;
+        this.setBaseline(data.content, data.etag || null);
         this.loadingFile = false;
+        // Preview-eligible types open in preview by default (toggle still flips to source).
+        this.previewOpen = isPreviewable(this.path);
         await this.$nextTick();
         await this.paint();
+        if (this.previewOpen) await this.renderPreview();
       } catch (e) {
         if (e && e.name === 'AbortError') return;
         if (ac.signal.aborted) return;
@@ -648,7 +1326,7 @@ export const CodeView = {
       }
     },
     async paint() {
-      if (!this.file || this.skippedHighlight) {
+      if (!this.file || this.skippedHighlight || this.isImage) {
         this.disposeEditor(); // the plain-text branch owns the pane now
         this.$nextTick(() => this.scrollToLine());
         return;
@@ -679,28 +1357,45 @@ export const CodeView = {
       const options = viewerOptions({
         content: this.file.content,
         lang: this.file.lang || langFromPath(this.file.path),
+        readOnly: !this.editable,
       });
       // Belt to editorVisible's braces: an editor whose DOM is no longer under the live host can
       // only paint into a detached node (a blank pane), so rebuild rather than swap a model onto it.
       if (this._editor && !host.contains(this._editor.getContainerDomNode())) this.disposeEditor();
+      if (this._contentSub) {
+        this._contentSub.dispose();
+        this._contentSub = null;
+      }
       if (!this._editor) {
         this._editor = monaco.editor.create(host, options);
         // create() can land before the host's box is measurable, and a viewport-less editor
-        // reveals ?line= at the top instead of the middle. Measure now, once.
+        // reveals ?line= at the top instead of the middle. Measure now, and again after layout
+        // settles (flex + tab strip can still be sizing on the first paint).
         this._editor.layout();
+        requestAnimationFrame(() => {
+          if (this._editor) this._editor.layout();
+        });
       } else {
         const previous = this._model;
         this._model = monaco.editor.createModel(options.value, options.language);
         this._editor.setModel(this._model);
+        this._editor.updateOptions({ readOnly: options.readOnly, domReadOnly: options.domReadOnly });
         if (previous) previous.dispose();
+        this._editor.layout();
       }
       if (!this._model) this._model = this._editor.getModel();
-      this._decorations = this._editor.createDecorationsCollection(lineDecorations(this.line));
+      this._decorations = this._editor.createDecorationsCollection(
+        lineDecorations(this.line, this.lineErr),
+      );
+      if (!options.readOnly && this._model) {
+        this._contentSub = this._model.onDidChangeContent(() => this.recomputeDirty());
+      }
+      this.recomputeDirty();
     },
     scrollToLine() {
       if (this.line < 1) return;
       if (this._editor) {
-        if (this._decorations) this._decorations.set(lineDecorations(this.line));
+        if (this._decorations) this._decorations.set(lineDecorations(this.line, this.lineErr));
         this._editor.revealLineInCenter(this.line);
         return;
       }
@@ -710,9 +1405,9 @@ export const CodeView = {
       if (target && target.scrollIntoView) target.scrollIntoView({ block: 'center' });
     },
     async copy() {
-      if (!this.file) return;
+      if (!this.path) return;
       try {
-        await copyText(this.file.content);
+        await copyText(this.currentContent());
         this.copied = true;
         if (this._copiedTimer) clearTimeout(this._copiedTimer);
         this._copiedTimer = setTimeout(() => {
@@ -721,6 +1416,180 @@ export const CodeView = {
         }, 1500);
       } catch {
         // clipboard blocked
+      }
+    },
+    async save() {
+      if (!this.canSave) return;
+      this.saving = true;
+      this.saved = false;
+      this.error = null;
+      this.notice = null;
+      // The response must only ever apply to the file it was issued for: navigating away
+      // (discard confirmed) while the PUT is in flight would otherwise stamp the OLD file's
+      // content/etag onto the NEW file's state (JK-1977).
+      const savedPath = this.path;
+      try {
+        const { put } = await import('./api.js');
+        const content = this.currentContent();
+        const body = {
+          project: this.projectId,
+          path: savedPath,
+          content,
+        };
+        if (this._etag) body.etag = this._etag;
+        // Echo the charset the file was decoded under so the engine re-encodes to the
+        // original bytes instead of silently transcoding a Latin-1 file to UTF-8 (JK-1972).
+        if (this.file && this.file.encoding && this.file.encoding !== 'utf-8') {
+          body.encoding = this.file.encoding;
+        }
+        const resp = await put('/api/project/file', body);
+        if (this.path !== savedPath) return; // navigated away — the write landed; drop the state
+        const nextEtag = (resp && resp.etag) || null;
+        if (this.file) this.file = { ...this.file, content, etag: nextEtag };
+        this.setBaseline(content, nextEtag);
+        if (resp && resp.lockStale) {
+          this.notice = 'Manifest saved — the lock is now stale; the next build will re-resolve dependencies';
+        }
+        this.flashSaved();
+      } catch (e) {
+        if (this.path !== savedPath) return; // stale failure belongs to a file no longer shown
+        this.error = saveErrorMessage(e);
+      } finally {
+        this.saving = false;
+      }
+    },
+    async togglePreview() {
+      if (!this.previewable) return;
+      if (this.previewOpen) {
+        if (this._previewTimer) {
+          clearTimeout(this._previewTimer);
+          this._previewTimer = null;
+        }
+        this.previewOpen = false;
+        this.previewError = null;
+        this.previewHtml = '';
+        this.revokeImageUrl();
+        await this.$nextTick();
+        if (this._editor) this._editor.layout();
+        if (this.file && !this.isImage && !this.editorVisible) await this.paint();
+        return;
+      }
+      this.previewOpen = true;
+      await this.$nextTick();
+      if (this._editor) this._editor.layout();
+      await this.renderPreview();
+    },
+    async renderPreview() {
+      const gen = ++this._previewGen;
+      this.previewLoading = true;
+      this.previewError = null;
+      // Keep prior HTML visible while re-rendering (live edit); only clear image URL for image kind.
+      const kind = previewKind(this.path);
+      try {
+        if (kind === 'image') {
+          this.revokeImageUrl();
+          this.previewHtml = '';
+          const { getBlob } = await import('./api.js');
+          const blob = await getBlob(
+            '/api/project/file/raw?project=' +
+              encodeURIComponent(this.projectId) +
+              '&path=' +
+              encodeURIComponent(this.path),
+          );
+          if (gen !== this._previewGen) return;
+          this.previewImageUrl = URL.createObjectURL(blob);
+        } else if (kind === 'markdown') {
+          this.revokeImageUrl(); // drop prior blob: image srcs before re-render
+          // ESM for marked/purify — no AMD park (avoids racing Monaco's markdown grammar load).
+          const [marked, purify] = await Promise.all([ensureCdn('marked'), ensureCdn('purify')]);
+          if (gen !== this._previewGen) return;
+          const { markdown, fences } = extractMermaidFences(this.currentContent());
+          const raw = markedParse(marked, markdown);
+          // Keep raw HTML <img> (GitHub READMEs) and markdown images; hydrate srcs to blob: after.
+          let html = purify.sanitize(raw, {
+            ADD_ATTR: ['loading', 'referrerpolicy', 'decoding', 'width', 'height'],
+            ALLOW_UNKNOWN_PROTOCOLS: false,
+            ALLOWED_URI_REGEXP:
+              /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|blob|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+          });
+          // Mermaid UMD only when fenced blocks exist (noAmd park stays off the default path).
+          if (fences.length) {
+            const mermaid = await ensureCdn('mermaid');
+            if (gen !== this._previewGen) return;
+            mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' });
+            const svgs = [];
+            for (let i = 0; i < fences.length; i++) {
+              try {
+                const id = 'jk-md-mmd-' + gen + '-' + i;
+                const { svg } = await mermaid.render(id, fences[i]);
+                svgs.push('<div class="code-preview-diagram">' + svg + '</div>');
+              } catch (err) {
+                const msg = (err && err.message) || 'Mermaid diagram failed';
+                svgs.push('<pre class="code-preview-diagram-err">' + escapeHtml(msg) + '</pre>');
+              }
+              if (gen !== this._previewGen) return;
+            }
+            html = injectMermaidSvgs(html, svgs);
+          }
+          if (gen !== this._previewGen) return;
+          html = await this.hydrateMarkdownImages(html, gen);
+          if (gen !== this._previewGen) return;
+          html = this.rewriteMarkdownLinks(html);
+          if (gen !== this._previewGen) return;
+          this.previewHtml = html;
+        } else if (kind === 'mermaid') {
+          const mermaid = await ensureCdn('mermaid');
+          if (gen !== this._previewGen) return;
+          mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' });
+          const id = 'jk-mmd-' + gen;
+          const { svg } = await mermaid.render(id, this.currentContent());
+          if (gen !== this._previewGen) return;
+          this.previewHtml = '<div class="code-preview-diagram">' + svg + '</div>';
+        } else if (kind === 'graphviz') {
+          // Sanitize like markdown/asciidoc (JK-1976): .dot files from a cloned repo control
+          // the SVG (URL= attrs, arbitrary markup) — one DOMPurify chokepoint for all renderers.
+          const [Viz, purify] = await Promise.all([ensureCdn('viz'), ensureCdn('purify')]);
+          if (gen !== this._previewGen) return;
+          const viz = await Viz.instance();
+          if (gen !== this._previewGen) return;
+          this.previewHtml =
+            '<div class="code-preview-diagram">' +
+            purify.sanitize(viz.renderSVGElement(this.currentContent()).outerHTML, {
+              USE_PROFILES: { svg: true, svgFilters: true },
+            }) +
+            '</div>';
+        } else if (kind === 'asciidoc') {
+          const Asciidoctor = await ensureCdn('asciidoctor');
+          const purify = await ensureCdn('purify');
+          if (gen !== this._previewGen) return;
+          const adoc = typeof Asciidoctor === 'function' ? Asciidoctor() : Asciidoctor;
+          const html = adoc.convert(this.currentContent(), { safe: 'secure', attributes: { showtitle: true } });
+          this.previewHtml = purify.sanitize(html);
+        } else if (kind === 'd2') {
+          // WASM-heavy; dynamic ESM from unpkg. CSP/wasm may reject — surface the error.
+          const mod = await import('https://unpkg.com/@terrastruct/d2@0.1.33/dist/index.js');
+          if (gen !== this._previewGen) return;
+          const D2 = mod.D2 || mod.default;
+          const d2 = new D2();
+          const result = await d2.compile(this.currentContent());
+          const rendered = await d2.render(result.diagram || result);
+          const purify = await ensureCdn('purify');
+          if (gen !== this._previewGen) return;
+          this.previewHtml =
+            '<div class="code-preview-diagram">' +
+            purify.sanitize(typeof rendered === 'string' ? rendered : String(rendered), {
+              USE_PROFILES: { svg: true, svgFilters: true },
+            }) +
+            '</div>';
+        } else {
+          this.previewError = 'No preview for this file type';
+        }
+      } catch (e) {
+        if (gen !== this._previewGen) return;
+        this.previewError = (e && e.message) || (e && e.error) || 'Preview failed';
+        this.previewHtml = '';
+      } finally {
+        if (gen === this._previewGen) this.previewLoading = false;
       }
     },
   },
@@ -747,29 +1616,62 @@ export const CodeView = {
           <span class="code-name">{{ row.name }}</span>
         </button>
       </aside>
-      <section class="code-pane">
-        <div class="code-msgs">
-          <p v-if="error" class="error">{{ error }}</p>
-          <div v-else-if="!path" class="code-empty">
+      <div class="code-main">
+        <!-- Tab strip: open-file tab (left) + Copy / Preview / Save (right). Build stays in the header. -->
+        <div class="file-tab-bar">
+          <span v-if="path" class="file-name-pill" :data-tip="path" role="tab" aria-selected="true"
+                :aria-label="path">
             <jk-icon name="file"></jk-icon>
-            <p class="code-empty-head">Select a file from the tree.</p>
-            <p class="code-empty-sub">Filter by path to jump straight to one.</p>
+            <span class="file-name-pill-label">{{ fileName(path) }}</span>
+          </span>
+          <span v-else class="file-tab-bar-spacer" aria-hidden="true"></span>
+          <div class="file-tab-actions">
+            <button type="button" class="action-cyan" :disabled="!path" @click="copy()"
+                    data-tip="Copy file contents">
+              <jk-icon name="copy"></jk-icon>{{ copied ? 'Copied' : 'Copy' }}
+            </button>
+            <button type="button" class="action-cyan"
+                    :disabled="!previewable" @click="togglePreview()"
+                    :data-tip="previewable ? (previewOpen ? 'Back to source' : 'Preview this file') : 'Preview not available for this file type'">
+              <jk-icon name="eye"></jk-icon>{{ previewOpen ? 'Source' : 'Preview' }}
+            </button>
+            <button type="button" class="action-cyan" :disabled="!canSave" @click="save()"
+                    :data-tip="canSave ? 'Save changes' : (saving ? 'Saving…' : (saved ? 'Saved' : 'No unsaved changes'))">
+              <jk-icon name="save"></jk-icon>{{ saving ? 'Saving…' : (saved ? 'Saved' : 'Save') }}
+            </button>
           </div>
-          <p v-else-if="loadingFile" class="empty">Loading…</p>
-          <template v-else-if="file && (skippedHighlight || highlighterFailed)">
-            <p v-if="skippedHighlight" class="warn">Highlighting skipped (file too large)</p>
-            <p v-else class="warn">Highlighter failed to load — showing plain text</p>
-            <pre class="code-pre code-plain" ref="pre">
-              <div v-for="(row, i) in rows" :key="i" class="code-plain-row fail-src"
-                   :class="{ 'code-line-on': line === i + 1 }">
-                <span class="fail-gutter">{{ i + 1 }}</span><span class="fail-gutter-rail">\u2502</span><span class="fail-src-code">{{ row }}</span>
-              </div>
-            </pre>
-          </template>
-          <p v-if="file && file.encoding && file.encoding !== 'utf-8'" class="warn">
-            Not valid UTF-8 — decoded as {{ file.encoding }}</p>
         </div>
-        <div v-show="editorVisible" class="code-editor" ref="editor"></div>
-      </section>
+        <section class="code-pane" :class="'mode-' + paneMode">
+          <div class="code-msgs">
+            <p v-if="error" class="error">{{ error }}</p>
+            <p v-if="notice" class="warn">{{ notice }}</p>
+            <div v-else-if="!path" class="code-empty">
+              <jk-icon name="file"></jk-icon>
+              <p class="code-empty-head">Select a file from the tree.</p>
+              <p class="code-empty-sub">Filter by path to jump straight to one.</p>
+            </div>
+            <p v-else-if="loadingFile" class="empty">Loading…</p>
+            <template v-else-if="file && !previewOpen && (skippedHighlight || highlighterFailed)">
+              <p v-if="skippedHighlight" class="warn">Highlighting skipped (file too large)</p>
+              <p v-else class="warn">Highlighter failed to load — showing plain text</p>
+              <pre class="code-pre code-plain" ref="pre">
+                <div v-for="(row, i) in rows" :key="i" class="code-plain-row fail-src"
+                     :class="{ 'code-line-on': line === i + 1 && !lineErr, 'code-line-err-plain': line === i + 1 && lineErr }">
+                  <span class="fail-gutter">{{ i + 1 }}</span><span class="fail-gutter-rail">\u2502</span><span class="fail-src-code">{{ row }}</span>
+                </div>
+              </pre>
+            </template>
+            <p v-if="file && file.encoding && file.encoding !== 'utf-8' && file.encoding !== 'binary'" class="warn">
+              Not valid UTF-8 — decoded as {{ file.encoding }}; saves keep this encoding</p>
+          </div>
+          <div v-show="previewVisible" class="code-preview">
+            <p v-if="previewLoading && !previewHtml && !previewImageUrl" class="empty">Rendering preview…</p>
+            <p v-else-if="previewError" class="error">{{ previewError }}</p>
+            <img v-else-if="previewImageUrl" class="code-preview-img" :src="previewImageUrl" :alt="path">
+            <div v-else-if="previewHtml" class="code-preview-body" v-html="previewHtml"></div>
+          </div>
+          <div v-show="editorVisible" class="code-editor" ref="editor"></div>
+        </section>
+      </div>
     </div>`,
 };

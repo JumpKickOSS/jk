@@ -27,7 +27,6 @@ class EmbedShaResolutionTest {
     @Test
     void resolves_sibling_jars_by_name_and_coord(@TempDir Path root) throws IOException {
         writeManifest(root, """
-                [project]
                 group   = "cc.jumpkick"
                 name    = "jk"
                 version = "1.0.0"
@@ -36,13 +35,11 @@ class EmbedShaResolutionTest {
                 modules = ["lib", "host"]
                 """);
         writeManifest(root.resolve("lib"), """
-                [project]
                 group   = "cc.jumpkick"
                 name    = "lib"
                 version = "1.0.0"
                 """);
         writeManifest(root.resolve("host"), """
-                [project]
                 group   = "cc.jumpkick"
                 name    = "host"
                 version = "1.0.0"
@@ -62,7 +59,6 @@ class EmbedShaResolutionTest {
     @Test
     void empty_when_not_in_a_workspace(@TempDir Path dir) throws IOException {
         writeManifest(dir, """
-                [project]
                 group   = "cc.jumpkick"
                 name    = "solo"
                 version = "1.0.0"

@@ -62,7 +62,7 @@ public final class SecretRedactor {
     /**
      * Mask a trailing fragment of {@code text} that is a leading prefix (≥ {@link
      * #MIN_SECRET_LENGTH} chars, shorter than the whole value) of any secret. Capture-time
-     * truncation can cut mid-value (JK-1960); the surviving prefix no longer matches the
+     * truncation can cut mid-value; the surviving prefix no longer matches the
      * exact-substring pass in {@link #redact}, so the seam is masked separately by callers that
      * know where the cut landed.
      */
@@ -137,6 +137,56 @@ public final class SecretRedactor {
             if (out.contains(s)) out = out.replace(s, MASK);
         }
         return out;
+    }
+
+    /**
+     * A redactor that additionally matches each secret's JSON-string-escaped rendering.
+     *
+     * <p>Replay paths re-redact <em>escaped JSON documents</em>: a secret containing {@code "},
+     * {@code \}, or a control character was persisted through {@code Jsonl.quote} in escaped form,
+     * which the exact-substring pass over the raw document cannot match. This view carries both
+     * renderings so escaped occurrences are masked without decode–re-encode. Memoized per
+     * instance; returns {@code this} when no secret changes under escaping.
+     */
+    public SecretRedactor forEscapedJson() {
+        if (secrets.isEmpty()) return this;
+        SecretRedactor v = escapedJsonView;
+        if (v == null) {
+            List<String> all = new ArrayList<>(secrets);
+            for (String s : secrets) {
+                String esc = jsonEscape(s);
+                if (!esc.equals(s)) all.add(esc);
+            }
+            v = all.size() == secrets.size() ? this : of(all);
+            escapedJsonView = v;
+        }
+        return v;
+    }
+
+    private volatile SecretRedactor escapedJsonView;
+
+    /**
+     * JSON string-body escaping — MUST stay in lock-step with {@code Jsonl.quote} (shared/plugin-sdk;
+     * that module is not visible from here, hence the copy): quote and backslash get a backslash,
+     * {@code \n \r \t} use the short forms, other control chars become lowercase backslash-u00xx.
+     */
+    private static String jsonEscape(String s) {
+        StringBuilder b = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"' -> b.append("\\\"");
+                case '\\' -> b.append("\\\\");
+                case '\n' -> b.append("\\n");
+                case '\r' -> b.append("\\r");
+                case '\t' -> b.append("\\t");
+                default -> {
+                    if (c < 0x20) b.append(String.format("\\u%04x", (int) c));
+                    else b.append(c);
+                }
+            }
+        }
+        return b.toString();
     }
 
     /**

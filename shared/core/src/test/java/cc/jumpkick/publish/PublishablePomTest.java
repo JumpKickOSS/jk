@@ -55,7 +55,7 @@ class PublishablePomTest {
 
     @Test
     void tests_kind_sibling_edge_is_omitted_but_external_test_jar_is_kept() {
-        // JK-1643: jk has no test-jar packaging task, so a tests-kind edge to a workspace
+        // jk has no test-jar packaging task, so a tests-kind edge to a workspace
         // sibling names an artifact that exists in no repository — omit it. External
         // test-jars exist upstream and stay.
         EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);

@@ -69,7 +69,7 @@ class NewGroupGuessTest {
     @Test
     void repo_local_git_config_wins_over_home_gitconfig(@TempDir Path tempDir) throws IOException {
         // `git config user.email` writes .git/config — a repo-local work identity must beat
-        // the global personal one (JK-1456).
+        // the global personal one.
         var repo = tempDir.resolve("project");
         var home = tempDir.resolve("home");
         Files.createDirectories(repo.resolve(".git"));

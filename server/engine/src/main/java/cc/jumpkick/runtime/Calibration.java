@@ -12,7 +12,11 @@ import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.tomlj.Toml;
@@ -1061,7 +1065,7 @@ public final class Calibration {
                 }
                 if (!rings.isEmpty()) learned = new HostLearnedRates(rings);
             }
-            // Language buckets from jk optimize (JK-1389): mean.by_language.<lang>.compile_per_source_ms
+            // Language buckets from jk optimize: mean.by_language.<lang>.compile_per_source_ms
             // seeds cold compile priors when continuous harvest has not yet measured that language.
             learned = foldLanguageBuckets(t, learned);
             if (mpw <= 0 && learned.isEmpty()) return absent;
@@ -1171,7 +1175,7 @@ public final class Calibration {
 
     /**
      * Fold {@code [mean.by_language.<lang>].compile_per_source_ms} into HostLearnedRates compile
-     * keys when continuous means are still cold (JK-1389).
+     * keys when continuous means are still cold.
      */
     static HostLearnedRates foldLanguageBuckets(TomlParseResult t, HostLearnedRates learned) {
         if (t == null) return learned == null ? new HostLearnedRates() : learned;
@@ -1197,7 +1201,7 @@ public final class Calibration {
             } catch (RuntimeException ignored) {
             }
         }
-        // Sanity: fixture walls used to write wall/10 (thousands of ms) — reject poison.
+        // Sanity: reject implausible compile_per_source_ms (must be 1–500).
         if (!(ms >= 1 && ms <= 500)) return;
         rings.put(rateKey, List.of(ms));
     }
@@ -1205,7 +1209,7 @@ public final class Calibration {
     static void writeTo(Path file, Calibration c) throws IOException {
         // Merge [calibration] into host-metrics.toml; preserve [mean]/ [lock], [fetch], language buckets.
         StringBuilder out = new StringBuilder();
-        out.append("# host-metrics — probe + continuous means (JK-1377)\n");
+        out.append("# host-metrics — probe + continuous means\n");
         if (Files.isRegularFile(file)) {
             try {
                 String existing = Files.readString(file);
@@ -1219,7 +1223,7 @@ public final class Calibration {
                         if (!block.isBlank()) out.append(block.strip()).append('\n');
                     }
                 }
-                // Preserve mean.by_language.* tables written by jk optimize (JK-1389).
+                // Preserve mean.by_language.* tables written by jk optimize.
                 out.append(extractByLanguageBlocks(existing));
             } catch (IOException ignored) {
             }

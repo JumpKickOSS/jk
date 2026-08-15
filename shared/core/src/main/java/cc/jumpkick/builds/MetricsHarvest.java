@@ -265,7 +265,7 @@ public final class MetricsHarvest {
                     }
                 }
                 continuousMean.putAll(parseContinuousMeanKeys(existing));
-                // Keep [mean.by_language.*] tables (JK-1389) — not harvested from runs.
+                // Keep [mean.by_language.*] tables — not harvested from runs.
                 StringBuilder lang = new StringBuilder();
                 boolean inLang = false;
                 for (String line : existing.split("\n", -1)) {

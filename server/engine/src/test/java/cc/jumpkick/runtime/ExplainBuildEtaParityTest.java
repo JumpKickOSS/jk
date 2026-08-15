@@ -60,14 +60,12 @@ class ExplainBuildEtaParityTest {
         Path mod = tmp.resolve("m");
         Files.createDirectories(mod);
         Files.writeString(mod.resolve("jk.toml"), """
-                [project]
                 group = "ex"
                 name = "m"
                 version = "1.0"
                 java = 25
                 """);
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "ex"
                 name = "ws"
                 version = "1.0"

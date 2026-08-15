@@ -15,7 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * {@link TestCommand#resolveTestSelection}: the resolved selection is final ({@code tagsResolved})
  * exactly when a layer spoke — baseline tags, a present profile key (including {@code = []} to
- * clear, JK-1809), or a CLI flag. Silent runs stay unresolved so the engine can still fold
+ * clear), or a CLI flag. Silent runs stay unresolved so the engine can still fold
  * per-module {@code [test]} tags for workspace members.
  */
 class TestSelectionResolveTest {
@@ -46,7 +46,6 @@ class TestSelectionResolveTest {
 
     private static void writeToml(Path dir, String body) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 name = "demo"
                 group = "t"
                 version = "0.0.1"

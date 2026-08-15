@@ -17,7 +17,15 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.Consumer;
 
 /**
@@ -278,7 +286,7 @@ public final class PluginBuild {
         if (deps.isEmpty()) return out;
         cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
         for (PluginContributions.PackagerDep dep : deps) {
-            // JK-1545: ${config.version} may be a caret floor ("4"); resolve to a concrete release.
+            // ${config.version} may be a caret floor ("4"); resolve to a concrete release.
             String version = resolveToolVersion(repos, dep.module(), dep.version());
             out.put(dep.artifact(), fetchArtifact(repos, dep.module(), version));
         }
@@ -446,7 +454,7 @@ public final class PluginBuild {
         // Keep path components reasonable on case-sensitive FS / path length limits. The lookup
         // is `Files.isDirectory(dir)` with no content check, so a collision silently serves one
         // closure's jars for another — hash the whole key rather than truncating it and hoping
-        // the tail differs in 32 bits of String.hashCode (JK-1661).
+        // the tail differs in 32 bits of String.hashCode.
         String key = sb.toString();
         if (key.length() > 180) {
             String artifact = roots.isEmpty() ? "tools" : roots.getFirst().artifact();
@@ -516,7 +524,7 @@ public final class PluginBuild {
      * — android's r8/aapt2/manifest-merger versions are chosen to match one AGP tools line. Only
      * an explicit {@code ^}/{@code ~} floats, and only then does this touch maven-metadata; an
      * exact spec costs no network at all. This is the opposite of the {@code jk.toml} dependency
-     * convention on purpose (JK-1657, correcting JK-1545).
+     * convention on purpose.
      */
     static String resolveToolVersion(cc.jumpkick.repo.RepoGroup repos, String module, String versionSpec)
             throws IOException, InterruptedException {

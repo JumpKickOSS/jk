@@ -20,7 +20,6 @@ class CrossPackageFeaturesTest {
         Path lib = dir.resolve("widget");
         Files.createDirectories(lib);
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "widget"
                 version = "0.1.0"
@@ -47,7 +46,6 @@ class CrossPackageFeaturesTest {
         Path lib = dir.resolve("widget");
         Files.createDirectories(lib);
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "widget"
                 version = "0.1.0"
@@ -73,7 +71,6 @@ class CrossPackageFeaturesTest {
         Path lib = dir.resolve("widget");
         Files.createDirectories(lib);
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "widget"
                 version = "0.1.0"

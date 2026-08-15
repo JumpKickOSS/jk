@@ -1,7 +1,6 @@
 # Multi-module showcase for CI dogfood.
 # After installing a local jk: jk lock && jk build && jk test
 
-[project]
 group = "com.example"
 name = "workspace-showcase"
 version = "0.0.1"

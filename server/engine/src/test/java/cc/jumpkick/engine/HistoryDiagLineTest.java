@@ -10,8 +10,8 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1909: {@code jk history} replay must carry everything the journal persists for a failure —
- * not flatten it back to task+message while the enrichment (JK-1869) rots unread on disk.
+ * {@code jk history} replay must carry everything the journal persists for a failure —
+ * not flatten it back to task+message while the enrichment rots unread on disk.
  */
 class HistoryDiagLineTest {
 

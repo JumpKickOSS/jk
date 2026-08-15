@@ -84,7 +84,7 @@ public final class RemoveCommand implements CliCommand {
                 : runtime ? Scope.RUNTIME : provided ? Scope.PROVIDED : processor ? Scope.PROCESSOR : Scope.MAIN;
         // Candidate manifest keys, most-literal first: for a bare name the manifest key wins over
         // a shadowing directory — an unrelated checkout ./jackson must not redirect
-        // `jk remove jackson` to that module's project name (JK-1516). Explicit path syntax
+        // `jk remove jackson` to that module's project name. Explicit path syntax
         // (:m, ./m, m/) is unambiguous and resolves via the module only.
         boolean explicitPath = AddCommand.isExplicitPathSyntax(nameArg);
         java.util.List<String> candidates = new java.util.ArrayList<>(2);

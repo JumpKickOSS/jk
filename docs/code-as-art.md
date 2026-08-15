@@ -1,7 +1,7 @@
 # Code as Art
 
-Maintainer spec for how JumpKick is written. Not a product doc — do not add
-this to [docs/README.md](docs/README.md).
+Maintainer spec for how JumpKick is written. Not a product doc — listed
+under maintainer notes in [README.md](README.md) only.
 
 Agents executing this file: **maximum correctness is the goal.** We are
 pre-1.0.0. We do not preserve leftover APIs, SPIs, file formats, wire
@@ -206,6 +206,9 @@ Apply to every new file and every extract, not only the engine.
   or SSE connect ordering. If the new type cannot express the old
   invariant, the type is unfinished.
 - `jk format` before every commit.
+- Comments state the **current** type or method only — no `JK-` ids, no
+  historical essays, no agent decision records. Policy:
+  [AGENTS.md — Comments and Javadoc](../AGENTS.md#comments-and-javadoc).
 
 ### Quality bar
 
@@ -257,35 +260,57 @@ Zero-runtime. Safe on the Graal CLI. Dogfoods `jk init`.
 
 Add `org.jspecify:jspecify` as `compileOnly` via `jk.java-conventions`.
 
-### Lombok (diet)
+### Lombok (project-wide)
 
-Records replaced `@Value`. Lombok is a scalpel on HotSpot modules after
-the types exist — never the modernization.
+Use Lombok **liberally** to erase boilerplate and keep types small.
+There is no module ban: `shared/*`, `clients/cli`, `server/*`,
+`plugins/*`, and IDE clients may all use it. Lombok is
+**compile-time only** (`annotationProcessor` / `[processor-dependencies]`
+plus `compileOnly` / `[provided-dependencies]`) — it is never a runtime
+dependency and does not grow the `jk` binary.
 
-| Tree | Lombok |
+**Records first when they fit.** Prefer a Java record for plain
+immutable data carriers with no builder story. Prefer Lombok when the
+type needs mutability, a builder, composition-root constructors, or
+derived equals/hashCode/toString without hand-written noise.
+
+**Fluent accessors are house style.** Project-root `lombok.config`:
+
+```properties
+lombok.accessors.fluent = true
+lombok.accessors.chain = true
+```
+
+Call sites use `version()`, not `getVersion()`. Setters chain
+(`obj.version(v).name(n)`). Do not mix bean-style getters with fluent
+on the same surface.
+
+**Use freely when they reduce code or enforce a pattern:**
+
+| Annotation | When |
 |---|---|
-| `server/*`, `plugins/*` | Diet only |
-| `shared/*`, `clients/cli` | **Forbidden** (Graal) |
-| `clients/intellij` | **Forbidden** |
+| `@Builder` / `@SuperBuilder` | Multi-field construction, optional fields, protocol / request shapes |
+| `@Data` | Mutable beans where getters+setters+equals+hashCode+toString are the whole type |
+| `@Getter` / `@Setter` | Partial surface when `@Data` is too broad |
+| `@EqualsAndHashCode` / `@ToString` | Value semantics without `@Data`; prefer explicit `of = {…}` when identity is a subset of fields |
+| `@RequiredArgsConstructor` / `@AllArgsConstructor` / `@NoArgsConstructor` | Composition roots and DI-by-constructor; drop hand-written ctor noise |
+| `@Value` | Immutable class when a record is awkward (inheritance, builder) |
+| `@With` | Copy-with-field on immutable types that are not records |
+| `@Slf4j` | Logging without a hand-declared logger field |
+| `@UtilityClass` | Pure static helpers (prefer package-private top-level when possible) |
 
-**Allowed:** `@RequiredArgsConstructor` on composition roots with
-**≥ 6** `private final` collaborators; `@Getter` only when the accessor
-is trivial; `@ToString(of = {…})` with an explicit list.
+**Still banned (nullness and foot-guns):**
 
-**Banned:** `@Data`, `@Value`, `@Builder`, `@SuperBuilder`,
-`@SneakyThrows`, `@EqualsAndHashCode`, `@Slf4j`, `@UtilityClass`,
-`@Cleanup`, `@ExtensionMethod`, Lombok nullness, `@With` on records.
+- Lombok nullness (`@NonNull` on fields as a nullness system) — **JSpecify**
+  is the house nullness story (`@NullMarked` / `@Nullable`).
+- `@SneakyThrows` except rare, local, justified cases (prefer explicit
+  handling or a real signature).
+- `@ExtensionMethod` — implicit static imports hide call sites.
 
-CI fails on `import lombok` outside `server/` and `plugins/` in the
-same change as the first use. If engine compile time grows more than
-~10% on a warm daemon, revert Lombok; keep records + JSpecify.
-
-Do not enable Lombok until the envelope and `JobSession` exist. If a
-reviewer can replace the annotation with a record, revert that hunk.
-
-`jk init` samples must match this diet (record + `@NullMarked`, no
-`@Data`). If we cannot show a 40-line sample we would merge, drop
-lombok from the default set.
+Wire Lombok into the monorepo Gradle conventions the same way jspecify
+is wired: `compileOnly` + `annotationProcessor`, never `implementation`.
+User projects scaffold Lombok under `[processor-dependencies]` and
+`[provided-dependencies]` (see `NewScaffolder`).
 
 ### Patterns
 
@@ -296,7 +321,7 @@ lombok from the default set.
 | Bridge (`EngineEvent` × `EventSink`; UDS vs TCP) | `AbstractEngine` |
 | Decorator (`CoalescingBuildPlanListener`) | A second coalescer “for HTTP” |
 | Composite (`CompositeEventSink`) | EventBus |
-| Hand-written withers / `EngineProtocol` builders | `@Builder` on records or ≤ 4 fields |
+| `@Builder` / fluent Lombok where multi-field construction is real | Hand-rolled builders that only restate fields |
 | Proxy (`EngineDelegate`, `PluginClient`) | Dynamic proxies for tests |
 | Process-as-singleton | `getInstance()`, static maps that outlive `close()` |
 | Existing listeners | A second observer SPI |
@@ -359,8 +384,13 @@ workspace/test → lock family → hosted plans → cache maint → sync reads.
 leave if `EngineServer` is still over 1,200. `EngineMaintenance`
 already exists — finish moving, do not invent a parallel chore type.
 
-**Phase 7 — Diet Lombok (optional).** `:engine` only, policy above,
-**< 15** lombok imports in first-party source.
+**Phase 7 — Lombok sweep.** Shipped (JK-2003): root `lombok.config`
+(fluent + chain + generated annotation), compile-only + AP on every
+Java module, `@Builder` on field-copy request types, `@RequiredArgsConstructor`
+on assignment-only composition roots, ticket-id comments gone.
+Remaining hand-rolled builders are accumulators (`Task`, `BuildPlan`,
+`JkBuild`, `WizardStep`, `Invocation`, graph/import builders) — keep
+them. Records stay records. JSpecify still owns nullness.
 
 ### Scoreboard
 
@@ -376,7 +406,7 @@ already exists — finish moving, do not invent a parallel chore type.
 | Events + sinks + bridges | ~800 anonymous | 500–700 | 800 |
 | Per-verb class | (methods) | 80–180 | 250 |
 | `EngineHttpJobs` | ~250 with copies | ~20 | 40 |
-| `import lombok` in `shared/` + `cli` | 0 | 0 | 0 |
+| Hand-rolled getters/setters/builders where Lombok fits | field-copy + assignment-only ctors | 0 (accumulators kept) | 0 |
 
 **Done** when a new hosted verb is one class + one registry line, rides
 one envelope on every transport, and nobody opens `EngineServer.java`
@@ -398,7 +428,7 @@ Same charter, one patient at a time. **Shipped** (JK-1933–1941):
 | `BuildService` | 1,618 | 507 | lock-guard / execute / fold |
 | `BuildPlanner` | 5,348 | 1,191 | `Planner*` step clusters; facade `coreBuilder` |
 | `JkBuildParser` | 2,238 | 391 | `Manifest*` table parsers |
-| `JkManager` / `NewCommand` | 2,204 / 1,403 | 1,178 / 1,164 | view/color + wizard; no Lombok |
+| `JkManager` / `NewCommand` | 2,204 / 1,403 | 1,178 / 1,164 | view/color + wizard |
 
 ¹ EngineServer entered this batch at 3,418 lines; the earlier JK-1875..1922 charter had already
 taken it from its 7,073-line peak.
@@ -415,7 +445,9 @@ taken it from its 7,073-line peak.
 - Template Method `AbstractAsyncJob`. The boolean-overload tower was
   that pattern. We are deleting it.
 - `@NullMarked` on 7,000 unmarked lines in one weekend.
-- Lombok as the modernization. Types are the modernization.
+- Hand-rolled boilerplate that Lombok or a record already expresses.
+  Types are still the modernization; Lombok is how we keep those types
+  short.
 - Growing public product docs for this. This file is enough.
 
 When in doubt: fewer maps, fewer flags, fewer copies — and a process

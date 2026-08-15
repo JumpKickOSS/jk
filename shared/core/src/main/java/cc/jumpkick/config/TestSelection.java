@@ -24,7 +24,7 @@ public record TestSelection(
          * {@code [test]} baseline, a profile key, or a CLI flag) explicitly resolved them, so the
          * engine must not fold per-module {@code [test]} tags back in even when both lists are
          * empty. An explicitly cleared filter ({@code exclude-tags = []} in a profile, or
-         * {@code --exclude-tags ""}) is only representable through this flag (JK-1809).
+         * {@code --exclude-tags ""}) is only representable through this flag.
          */
         boolean tagsResolved) {
 

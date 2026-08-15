@@ -23,7 +23,6 @@ class ExplainCommandTest {
     private static void project(Path dir, String name, String... deps) throws IOException {
         Files.createDirectories(dir);
         StringBuilder sb = new StringBuilder("""
-                [project]
                 group   = "com.example"
                 name    = "%s"
                 version = "1.0.0"
@@ -47,7 +46,6 @@ class ExplainCommandTest {
         String mods =
                 String.join(", ", Arrays.stream(modules).map(m -> '"' + m + '"').toList());
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "root"
                 version = "1.0.0"

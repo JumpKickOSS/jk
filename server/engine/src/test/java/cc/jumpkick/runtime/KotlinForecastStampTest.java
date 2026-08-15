@@ -84,7 +84,6 @@ class KotlinForecastStampTest {
     private static Path project(Path tmp) throws Exception {
         Path dir = Files.createDirectories(tmp.resolve("proj"));
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "proj"
                 version = "1.0.0"

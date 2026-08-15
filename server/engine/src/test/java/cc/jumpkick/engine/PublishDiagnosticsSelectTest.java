@@ -31,7 +31,7 @@ class PublishDiagnosticsSelectTest {
     @Test
     void pathological_test_failure_floods_are_bounded() {
         // A broken shared fixture failing thousands of tests must not stream unbounded
-        // snippet+stack payloads onto the SSE card (JK-1880). The "+N more" line owns the rest.
+        // snippet+stack payloads onto the SSE card. The "+N more" line owns the rest.
         List<BuildPlanResult.Diagnostic> in = new ArrayList<>();
         for (int i = 0; i < SsePublisher.MAX_TEST_FAILURE_EVENTS + 250; i++) {
             in.add(new BuildPlanResult.Diagnostic("run-tests", "test-failure", "fail " + i));

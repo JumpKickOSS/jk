@@ -39,8 +39,7 @@ import org.junit.jupiter.api.io.TempDir;
  * headers, literal {@code..} request targets).
  *
  * <p>Runs under {@code :engine:integrationTest} — the unit-tier {@code test} task excludes
- * {@code @Tag("integration")}, so a {@code test --tests} filter naming this class matches nothing
- * (JK-1803).
+ * {@code @Tag("integration")}, so a {@code test --tests} filter naming this class matches nothing.
  */
 @Tag("integration")
 class HttpEngineServerTest {
@@ -209,7 +208,7 @@ class HttpEngineServerTest {
     @Test
     void a_symlink_under_web_root_is_not_served() throws Exception {
         // Static content is deliberately never token-gated, so a link planted in web-root (builds
-        // may write there) must not become an unauthenticated read of anything outside it (JK-1487).
+        // may write there) must not become an unauthenticated read of anything outside it.
         Path secret = stateDir.resolve("outside-secret.txt");
         Files.writeString(secret, "TOP SECRET");
         try {
@@ -235,7 +234,7 @@ class HttpEngineServerTest {
     @Test
     void disk_content_is_sandboxed_while_the_classpath_shell_is_not() throws Exception {
         // Disk web-root is tokenless AND build-writable, so any HTML that lands there must not be
-        // able to script the dashboard origin and read localStorage['jk-http-token'] (JK-1776).
+        // able to script the dashboard origin and read localStorage['jk-http-token'].
         // A bare `sandbox` CSP forces a unique opaque origin with scripts/forms disabled.
         Files.writeString(webRoot.resolve("report.html"), "<html><script>alert(1)</script></html>");
         HttpResponse<String> disk = get("/report.html");
@@ -287,10 +286,14 @@ class HttpEngineServerTest {
         assertThat(shell).contains("integrity=\"sha384-");
         assertThat(shell).contains("crossorigin=\"anonymous\"");
         HttpResponse<String> js = get("/app.js");
-        assertThat(js.headers().firstValue("Content-Security-Policy"))
-                .contains("default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com; "
-                        + "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
-                        + "font-src https://fonts.gstatic.com data:; worker-src blob:");
+        // OptionalAssert#contains is equality, not substring — unwrap and check the directives
+        // (the full header also carries img-src and form-action; ).
+        String csp = js.headers().firstValue("Content-Security-Policy").orElseThrow();
+        assertThat(csp)
+                .startsWith("default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com; ")
+                .contains("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; ")
+                .contains("font-src https://fonts.gstatic.com data:; worker-src blob:")
+                .contains("form-action 'none'");
     }
 
     @Test
@@ -298,7 +301,10 @@ class HttpEngineServerTest {
         HttpResponse<String> resp = get("/classpath-only.txt");
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.body()).isEqualTo("from classpath\n");
-        assertThat(resp.headers().firstValue("ETag")).contains("\"jk-9.9.9-test\"");
+        // The classpath ETag carries a content stamp after the version.
+        assertThat(resp.headers().firstValue("ETag").orElseThrow())
+                .startsWith("\"jk-9.9.9-test")
+                .endsWith("\"");
         assertThat(resp.headers().firstValue("Cache-Control")).contains("max-age=3600");
     }
 
@@ -540,7 +546,7 @@ class HttpEngineServerTest {
 
     @Test
     void api_metrics_requires_the_token_even_on_loopback() throws Exception {
-        // Rows carry every project dir and coordinate ever built — same class as /api/fs (JK-1466).
+        // Rows carry every project dir and coordinate ever built — same class as /api/fs.
         HttpResponse<String> noToken = client.send(
                 HttpRequest.newBuilder(URI.create(baseUrl + "api/metrics")).build(),
                 HttpResponse.BodyHandlers.ofString());
@@ -552,7 +558,7 @@ class HttpEngineServerTest {
     void api_requires_matching_engine_epoch_except_status_and_events() throws Exception {
         // Bootstrap status has no epoch header requirement (token still required).
         assertThat(get("/api/status").statusCode()).isEqualTo(200);
-        // Token without epoch on other /api/* → 409 (fail-closed, JK-1724).
+        // Token without epoch on other /api/* → 409 (fail-closed).
         HttpResponse<String> missing = client.send(
                 HttpRequest.newBuilder(URI.create(baseUrl + "api/history"))
                         .header("Authorization", "Bearer " + token())
@@ -576,7 +582,7 @@ class HttpEngineServerTest {
     @Test
     void api_config_requires_the_token_even_on_loopback() throws Exception {
         // Payload names the owner's config path and verbatim values (templates.official can embed
-        // credentials) — same class as /api/projects/defaults (JK-1524).
+        // credentials) — same class as /api/projects/defaults.
         HttpResponse<String> noToken = client.send(
                 HttpRequest.newBuilder(URI.create(baseUrl + "api/config")).build(),
                 HttpResponse.BodyHandlers.ofString());
@@ -602,7 +608,6 @@ class HttpEngineServerTest {
         Files.createDirectories(ws.resolve("lib"));
         Files.createDirectories(ws.resolve("app"));
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "ws"
                 version = "1.0.0"
@@ -611,13 +616,11 @@ class HttpEngineServerTest {
                 modules = ["lib", "app"]
                 """);
         Files.writeString(ws.resolve("lib").resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "lib"
                 version = "1.0.0"
                 """);
         Files.writeString(ws.resolve("app").resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
@@ -650,7 +653,6 @@ class HttpEngineServerTest {
         Path solo = stateDir.resolve("solo");
         Files.createDirectories(solo);
         Files.writeString(solo.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "n"
                 version = "1"
@@ -670,7 +672,7 @@ class HttpEngineServerTest {
     /**
      * The SPA sends encodeURIComponent, which spells `,` as %2C. Reading the parameter raw turned
      * every multi-scope selection into one unknown token and silently fell back to main, with both
-     * checkboxes still ticked (JK-1607). Single-scope requests worked, which is why this was never
+     * checkboxes still ticked. Single-scope requests worked, which is why this was never
      * caught.
      */
     @Test
@@ -678,7 +680,6 @@ class HttpEngineServerTest {
         Path solo = stateDir.resolve("solo");
         Files.createDirectories(solo);
         Files.writeString(solo.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "n"
                 version = "1"
@@ -704,7 +705,7 @@ class HttpEngineServerTest {
     }
 
     /**
-     * JK-1624: a project that exists but cannot be loaded (workspace member missing its jk.toml,
+     * a project that exists but cannot be loaded (workspace member missing its jk.toml,
      * malformed toml) is a 422 naming what is broken — never a 200 with empty nodes, which the SPA
      * renders as "No dependencies for the selected scopes".
      */
@@ -713,7 +714,6 @@ class HttpEngineServerTest {
         Path ws = stateDir.resolve("broken-ws");
         Files.createDirectories(ws);
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "ws"
                 version = "1.0.0"
@@ -740,7 +740,7 @@ class HttpEngineServerTest {
         assertThat(absent.body()).contains("\"nodes\":[]");
     }
 
-    /** JK-1624: a malformed dir (NUL byte) is a client-error 400, not a logged 500. */
+    /** a malformed dir (NUL byte) is a client-error 400, not a logged 500. */
     @Test
     void api_project_graph_rejects_a_malformed_dir_with_400_not_500() throws Exception {
         var resp = get("/api/project/graph?dir=%00x", "Authorization", "Bearer " + token());
@@ -775,6 +775,29 @@ class HttpEngineServerTest {
     }
 
     @Test
+    void api_project_and_events_token_survive_malformed_percent_encoding() throws Exception {
+        // /api/project?project=%zz previously escaped the handler as a 500; a garbage
+        // access_token on /api/events must read as "no token" (401), never a 500.
+        String project = "GET /api/project?project=%zz HTTP/1.1\r\n"
+                + "Authorization: Bearer " + token() + "\r\n"
+                + "X-Jk-Engine-Epoch: " + SNAPSHOT.engineEpoch() + "\r\n"
+                + "Connection: close\r\n\r\n";
+        try (Socket socket = new Socket("127.0.0.1", port)) {
+            socket.getOutputStream().write(project.getBytes(UTF_8));
+            assertThat(new String(socket.getInputStream().readAllBytes(), UTF_8))
+                    .startsWith("HTTP/1.1 400");
+        }
+        String events = "GET /api/events?access_token=%zz HTTP/1.1\r\n" + "Connection: close\r\n\r\n";
+        try (Socket socket = new Socket("127.0.0.1", port)) {
+            socket.getOutputStream().write(events.getBytes(UTF_8));
+            // jdk.httpserver may reject the malformed URI itself (400) before dispatch; when it
+            // does dispatch, the garbage token reads as "no token" (401). Either way: never 5xx.
+            assertThat(new String(socket.getInputStream().readAllBytes(), UTF_8))
+                    .startsWith("HTTP/1.1 4");
+        }
+    }
+
+    @Test
     void api_project_files_and_file_are_identity_scoped() throws Exception {
         Path buildsDir = stateDir.resolve("file-builds");
         System.setProperty("jk.env.JK_BUILDS_DIR", buildsDir.toString());
@@ -782,7 +805,6 @@ class HttpEngineServerTest {
             Path checkout = stateDir.resolve("src-app");
             Files.createDirectories(checkout.resolve("src"));
             Files.writeString(checkout.resolve("jk.toml"), """
-                    [project]
                     group = "g"
                     name = "n"
                     version = "1"
@@ -845,6 +867,100 @@ class HttpEngineServerTest {
             HttpResponse<String> bin = get("/api/project/file?project=" + id + "&path=src%2FBin.java");
             assertThat(bin.statusCode()).isEqualTo(415);
             assertThat(bin.body()).contains("binary");
+
+            Files.createDirectories(checkout.resolve("docs"));
+            Files.write(checkout.resolve("docs/logo.png"), new byte[] {(byte) 0x89, 'P', 'N', 'G', 0});
+            Files.writeString(checkout.resolve("docs/flow.mmd"), "graph TD; A-->B\n");
+            assertThat(get("/api/project/files?project=" + id).body())
+                    .contains("docs/logo.png")
+                    .contains("docs/flow.mmd");
+            HttpResponse<String> imgJson = get("/api/project/file?project=" + id + "&path=docs%2Flogo.png");
+            assertThat(imgJson.statusCode()).isEqualTo(415);
+            HttpResponse<byte[]> imgRaw = client.send(
+                    HttpRequest.newBuilder(URI.create(
+                                    baseUrl + "api/project/file/raw?project=" + id + "&path=docs%2Flogo.png"))
+                            .header("Authorization", "Bearer " + token())
+                            .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
+                            .build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            assertThat(imgRaw.statusCode()).isEqualTo(200);
+            assertThat(imgRaw.headers().firstValue("Content-Type").orElse("")).isEqualTo("image/png");
+            assertThat(imgRaw.body()).startsWith((byte) 0x89, (byte) 'P');
+
+            assertThat(file.body()).contains("\"etag\":");
+            String etag = file.body().replaceAll("(?s).*\"etag\":\"([0-9a-f]+)\".*", "$1");
+            assertThat(etag).hasSize(64);
+
+            HttpResponse<String> put = client.send(
+                    HttpRequest.newBuilder(URI.create(baseUrl + "api/project/file"))
+                            .header("Authorization", "Bearer " + token())
+                            .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
+                            .header("Content-Type", "application/json")
+                            .PUT(HttpRequest.BodyPublishers.ofString(
+                                    "{\"project\":\"" + id + "\",\"path\":\"src/Main.java\","
+                                            + "\"content\":\"class Main { int y; }\\n\","
+                                            + "\"etag\":\"" + etag + "\"}"))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(put.statusCode()).isEqualTo(200);
+            assertThat(put.body()).contains("\"path\":\"src/Main.java\"").contains("\"etag\":");
+            assertThat(put.body()).doesNotContain("lockStale"); // sources do not stale the lock
+            assertThat(Files.readString(checkout.resolve("src/Main.java"))).isEqualTo("class Main { int y; }\n");
+
+            // A manifest save flags the now-stale lock stamp.
+            HttpResponse<String> putManifest = client.send(
+                    HttpRequest.newBuilder(URI.create(baseUrl + "api/project/file"))
+                            .header("Authorization", "Bearer " + token())
+                            .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
+                            .header("Content-Type", "application/json")
+                            .PUT(HttpRequest.BodyPublishers.ofString("{\"project\":\"" + id
+                                    + "\",\"path\":\"jk.toml\",\"content\":\"group = \\\"g\\\"\\n"
+                                    + "name = \\\"n\\\"\\nversion = \\\"2\\\"\\n\"}"))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(putManifest.statusCode()).isEqualTo(200);
+            assertThat(putManifest.body()).contains("\"lockStale\":true");
+
+            HttpResponse<String> stale = client.send(
+                    HttpRequest.newBuilder(URI.create(baseUrl + "api/project/file"))
+                            .header("Authorization", "Bearer " + token())
+                            .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
+                            .header("Content-Type", "application/json")
+                            .PUT(HttpRequest.BodyPublishers.ofString(
+                                    "{\"project\":\"" + id + "\",\"path\":\"src/Main.java\","
+                                            + "\"content\":\"class Main { stale; }\\n\","
+                                            + "\"etag\":\"" + etag + "\"}"))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(stale.statusCode()).isEqualTo(409);
+            assertThat(stale.body()).contains("file changed on disk");
+
+            HttpResponse<String> putImg = client.send(
+                    HttpRequest.newBuilder(URI.create(baseUrl + "api/project/file"))
+                            .header("Authorization", "Bearer " + token())
+                            .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
+                            .header("Content-Type", "application/json")
+                            .PUT(HttpRequest.BodyPublishers.ofString("{\"project\":\"" + id
+                                    + "\",\"path\":\"docs/logo.png\"," + "\"content\":\"nope\"}"))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(putImg.statusCode()).isEqualTo(415);
+
+            // control chars JSON-escape to six bytes each; a legal file well under the
+            // 1 MiB write cap must not 413 on the request-body cap (old factor 3 rejected it).
+            String ctlContent = "\u0001".repeat(600 * 1024);
+            String ctlBody = "{\"project\":\"" + id + "\",\"path\":\"src/Main.java\",\"content\":\""
+                    + "\\u0001".repeat(600 * 1024) + "\"}";
+            HttpResponse<String> ctl = client.send(
+                    HttpRequest.newBuilder(URI.create(baseUrl + "api/project/file"))
+                            .header("Authorization", "Bearer " + token())
+                            .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
+                            .header("Content-Type", "application/json")
+                            .PUT(HttpRequest.BodyPublishers.ofString(ctlBody))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(ctl.statusCode()).isEqualTo(200);
+            assertThat(Files.readString(checkout.resolve("src/Main.java"))).isEqualTo(ctlContent);
         } finally {
             System.clearProperty("jk.env.JK_BUILDS_DIR");
         }
@@ -852,7 +968,7 @@ class HttpEngineServerTest {
 
     @Test
     void api_project_file_decodes_query_values_exactly_once() throws Exception {
-        // JK-1943: getQuery() already percent-decodes, and a second URLDecoder pass mapped '+'
+        // getQuery() already percent-decodes, and a second URLDecoder pass mapped '+'
         // to space and truncated at a decoded '&' — so any file the tree listed with those
         // characters could never be opened, and %252e%252e relied on validation order alone.
         Path buildsDir = stateDir.resolve("decode-builds");
@@ -861,7 +977,6 @@ class HttpEngineServerTest {
             Path checkout = stateDir.resolve("src-decode");
             Files.createDirectories(checkout.resolve("src"));
             Files.writeString(checkout.resolve("jk.toml"), """
-                    [project]
                     group = "g"
                     name = "n"
                     version = "1"
@@ -891,10 +1006,12 @@ class HttpEngineServerTest {
                     .isEqualTo(200);
             assertThat(pct.body()).contains("class APct");
 
-            // Double-encoded traversal must decode to a literal ".." segment and be rejected.
+            // Double-encoded traversal decodes ONCE to the literal filename "%2e%2e/jk.toml" —
+            // not a ".." segment — so the correct answer is "no such file" (404). Anything else
+            // would mean a second decode happened somewhere.
             assertThat(get("/api/project/file?project=" + id + "&path=%252e%252e%2Fjk.toml")
                             .statusCode())
-                    .isEqualTo(400);
+                    .isEqualTo(404);
         } finally {
             System.clearProperty("jk.env.JK_BUILDS_DIR");
         }
@@ -1022,7 +1139,7 @@ class HttpEngineServerTest {
         Files.createDirectories(stateDir.resolve("workspace/module-a"));
         Files.createDirectories(stateDir.resolve("workspace/module-b"));
         Files.createDirectories(stateDir.resolve("workspace/.git")); // hidden: skipped
-        Files.writeString(stateDir.resolve("workspace/jk.toml"), "[project]");
+        Files.writeString(stateDir.resolve("workspace/jk.toml"), "");
         Files.writeString(stateDir.resolve("workspace/README.md"), "not a dir");
         HttpResponse<String> resp =
                 get("/api/fs?dir=" + stateDir.resolve("workspace"), "Authorization", "Bearer " + token());
@@ -1054,7 +1171,7 @@ class HttpEngineServerTest {
         Path home = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize();
         Path pick = home.resolve("jk-fs-home-rel-" + ProcessHandle.current().pid());
         Files.createDirectories(pick.resolve("child-a"));
-        Files.writeString(pick.resolve("jk.toml"), "[project]");
+        Files.writeString(pick.resolve("jk.toml"), "");
         try {
             String rel = home.relativize(pick).toString().replace('\\', '/');
             String enc = URLEncoder.encode(rel, UTF_8);
@@ -1430,7 +1547,7 @@ class HttpEngineServerTest {
         var lines = openEvents("");
         assertThat(nextLine(lines)).isEqualTo(": connected");
         assertThat(nextLine(lines)).isEqualTo(""); // blank line terminating the connected comment
-        // Connect hydrate may publish status/cache before our frame (JK-1495 LiveVitals).
+        // Connect hydrate may publish status/cache before our frame.
         events.publish("request-start", JsonOut.object().put("requestId", 1).put("kind", "build"));
         assertThat(awaitSseEvent(lines, "request-start")).isEqualTo("data: {\"requestId\":1,\"kind\":\"build\"}");
     }
@@ -1600,7 +1717,7 @@ class HttpEngineServerTest {
 
     @Test
     void matchLiveRun_dir_fallback_applies_only_without_a_buildNumber() {
-        // JK-1522: a stale running record with a real buildNumber that fails the strict match is a
+        // a stale running record with a real buildNumber that fails the strict match is a
         // DIFFERENT run (crashed-engine stub) — it must not rebind to the current run's stream.
         var run = new HttpLive.Run(42, 6, "build", "/w", "g:w", 0, Double.NaN, "j6");
         server.setLiveRunSupport(() -> List.of(run), null);

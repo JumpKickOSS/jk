@@ -11,7 +11,19 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Queue;
+import java.util.Set;
 
 /**
  * Maps a {@link Lockfile}'s checksummed packages to on-disk artifact paths in the {@link Cas},
@@ -23,7 +35,7 @@ import java.util.*;
  *
  * <p>Workspace locks are a <strong>union</strong> of every module's graph. Prefer
  * {@link #classpathClosure} / {@link #entriesForClosure} for packaging (assembly, native-image)
- * so a fat jar only embeds the module's runtime closure — not the whole monorepo lock (JK-1345).
+ * so a fat jar only embeds the module's runtime closure — not the whole monorepo lock.
  */
 public final class ClasspathResolver {
 
@@ -73,7 +85,7 @@ public final class ClasspathResolver {
      * Transitive closure of {@code rootModules} walked through the lockfile dependency graph,
      * then resolved to jar paths. Roots may be bare {@code g:a} or full package keys; workspace /
      * git / path refs are ignored. Used by assembly and native-image packaging so a monorepo lock
-     * does not dump every module's deps into one fat jar (JK-1345).
+     * does not dump every module's deps into one fat jar.
      */
     public List<Path> classpathClosure(Lockfile lock, Collection<String> rootModules, Set<Scope> scopes) {
         List<Path> result = new ArrayList<>();
@@ -220,7 +232,7 @@ public final class ClasspathResolver {
             if (checksum == null) {
                 // POM-only aliases (KMP roots, packaging=pom) legitimately have none; a jar row
                 // without a checksum is an incomplete lock. Either way, never skip silently
-                // (JK-1649): a missing classpath entry must not present as "cannot find symbol".
+                // : a missing classpath entry must not present as "cannot find symbol".
                 System.err.println("jk: warning: lock row "
                         + pkg.name()
                         + "@"

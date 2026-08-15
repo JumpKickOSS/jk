@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
+import lombok.Builder;
 
 /**
  * Human-readable index of files under {@code state/aot/}: {@code aot.toml}. Opaque
@@ -48,6 +49,7 @@ public final class AotManifest {
      * One cache (or sticky failure marker). Required: {@link #file()}. Other fields are optional
      * and omitted from TOML when null/empty.
      */
+    @Builder(toBuilder = true, builderClassName = "Builder")
     public record Entry(
             String file,
             String tool,
@@ -74,96 +76,12 @@ public final class AotManifest {
         }
 
         public static Builder builder(String file) {
-            return new Builder(file);
+            return new Builder().file(file);
         }
 
-        public Builder toBuilder() {
-            return new Builder(file)
-                    .tool(tool)
-                    .key(key)
-                    .status(status)
-                    .sizeBytes(sizeBytes)
-                    .jdkHome(jdkHome)
-                    .jdkVendor(jdkVendor)
-                    .jdkVersion(jdkVersion)
-                    .gc(gc)
-                    .classpath(classpath)
-                    .jvmFlags(jvmFlags)
-                    .jkVersion(jkVersion)
-                    .engineJar(engineJar)
-                    .engineJarSize(engineJarSize)
-                    .engineJarMtimeMs(engineJarMtimeMs)
-                    .created(created)
-                    .lastUsed(lastUsed);
-        }
-
-        public static final class Builder {
-            private final String file;
-            private String tool;
-            private String key;
-            private String status;
-            private Long sizeBytes;
-            private String jdkHome;
-            private String jdkVendor;
-            private String jdkVersion;
-            private String gc;
+        public static class Builder {
             private List<String> classpath = List.of();
             private List<String> jvmFlags = List.of();
-            private String jkVersion;
-            private String engineJar;
-            private Long engineJarSize;
-            private Long engineJarMtimeMs;
-            private String created;
-            private String lastUsed;
-
-            private Builder(String file) {
-                this.file = file;
-            }
-
-            public Builder tool(String v) {
-                this.tool = v;
-                return this;
-            }
-
-            public Builder key(String v) {
-                this.key = v;
-                return this;
-            }
-
-            public Builder status(String v) {
-                this.status = v;
-                return this;
-            }
-
-            public Builder sizeBytes(Long v) {
-                this.sizeBytes = v;
-                return this;
-            }
-
-            public Builder jdkHome(String v) {
-                this.jdkHome = v;
-                return this;
-            }
-
-            public Builder jdkVendor(String v) {
-                this.jdkVendor = v;
-                return this;
-            }
-
-            public Builder jdkVersion(String v) {
-                this.jdkVersion = v;
-                return this;
-            }
-
-            public Builder gc(String v) {
-                this.gc = v;
-                return this;
-            }
-
-            public Builder classpath(List<String> v) {
-                this.classpath = v == null ? List.of() : List.copyOf(v);
-                return this;
-            }
 
             /** Split a platform classpath string into entries. */
             public Builder classpathString(String cp) {
@@ -178,62 +96,6 @@ public final class AotManifest {
                 }
                 this.classpath = List.copyOf(parts);
                 return this;
-            }
-
-            public Builder jvmFlags(List<String> v) {
-                this.jvmFlags = v == null ? List.of() : List.copyOf(v);
-                return this;
-            }
-
-            public Builder jkVersion(String v) {
-                this.jkVersion = v;
-                return this;
-            }
-
-            public Builder engineJar(String v) {
-                this.engineJar = v;
-                return this;
-            }
-
-            public Builder engineJarSize(Long v) {
-                this.engineJarSize = v;
-                return this;
-            }
-
-            public Builder engineJarMtimeMs(Long v) {
-                this.engineJarMtimeMs = v;
-                return this;
-            }
-
-            public Builder created(String v) {
-                this.created = v;
-                return this;
-            }
-
-            public Builder lastUsed(String v) {
-                this.lastUsed = v;
-                return this;
-            }
-
-            public Entry build() {
-                return new Entry(
-                        file,
-                        tool,
-                        key,
-                        status,
-                        sizeBytes,
-                        jdkHome,
-                        jdkVendor,
-                        jdkVersion,
-                        gc,
-                        classpath,
-                        jvmFlags,
-                        jkVersion,
-                        engineJar,
-                        engineJarSize,
-                        engineJarMtimeMs,
-                        created,
-                        lastUsed);
             }
         }
     }

@@ -8,7 +8,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
-/** JK-1375: the shared list-command table renderer. */
+/** the shared list-command table renderer. */
 class BoxTableRenderTest {
 
     private static String stripAnsi(String s) {
@@ -57,7 +57,7 @@ class BoxTableRenderTest {
     }
 
     private static void assertUniformWidth(List<String> out) {
-        // Title bar included: JK-1437 widens the table when the chip would overhang.
+        // Title bar included:  widens the table when the chip would overhang.
         var widths =
                 out.stream().map(BoxTableRenderTest::visibleColumns).distinct().toList();
         assertThat(widths).hasSize(1);

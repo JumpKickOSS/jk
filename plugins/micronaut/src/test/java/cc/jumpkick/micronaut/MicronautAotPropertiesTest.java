@@ -8,7 +8,7 @@ import java.util.Properties;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1666: {@code effective-aot.properties} is the file you read to answer "what config did AOT
+ * {@code effective-aot.properties} is the file you read to answer "what config did AOT
  * actually run with?", and it is a declared step output. Two identical runs must produce identical
  * bytes.
  */

@@ -42,7 +42,6 @@ class BuildCleanRestoreTest {
 
     // No tests: the exact shape that used to forecast fully-CACHED after clean and skip.
     private static final String NO_TEST_MANIFEST = """
-            [project]
             name    = "cleanlib"
             group   = "com.example"
             version = "1.0.0"
@@ -126,7 +125,6 @@ class BuildCleanRestoreTest {
         Path project = Files.createDirectories(tmp.resolve("cleanapp"));
         Path cache = Path.of(System.getProperty("user.dir"), "build", "clean-restore-cache");
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name    = "cleanapp"
                 group   = "com.example"
                 version = "1.0.0"

@@ -14,7 +14,7 @@ import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
-/** JK-1468: the probe's 5s cap must hold whatever the helper does with its pipes. */
+/** The probe's 5s cap must hold whatever the helper does with its pipes. */
 @DisabledOnOs(OS.WINDOWS)
 class CliTokenProbeTest {
 

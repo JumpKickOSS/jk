@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
@@ -11,6 +12,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.jline.utils.AttributedStyle;
 import org.junit.jupiter.api.Test;
@@ -367,7 +369,7 @@ class JkManagerTest {
     @Test
     void same_second_reanchor_overwrites_a_committed_zero() {
         // Snap-to-zero commits instantly; a residual raise in the SAME second must repaint
-        // instead of holding 0s and bouncing 0s → Ns at the next second (JK-1850).
+        // instead of holding 0s and bouncing 0s → Ns at the next second.
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdFont = NerdFontCaps.NONE;
         cm.setEtaEstimate(30_000);
@@ -383,9 +385,8 @@ class JkManagerTest {
 
     @Test
     void identical_residual_reemits_do_not_reanchor_the_countdown() {
-        // Preflight ticks force-emit the unchanged seed residual every ~500 ms; each emit used to
-        // reset the anchor, so the countdown displayed a constant R0 for the whole prepare window
-        // instead of the promised open-loop decay (JK-1843).
+        // Preflight ticks force-emit the unchanged seed residual every ~500 ms; identical
+        // re-emits must not reset the countdown anchor.
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdFont = NerdFontCaps.NONE;
         cm.setEtaEstimate(30_000); // R0 seed anchors residual at ~0 elapsed
@@ -442,7 +443,7 @@ class JkManagerTest {
     void provisional_lock_window_seed_is_replaced_by_the_real_forecast_seed() {
         // Stale-lock builds get a coarse provisional ETA before preflight. Preflight progress
         // events (clock strategy active, work model published) must NOT freeze it: the real
-        // post-forecast seed replaces it, and only execute activity locks (JK-1806).
+        // post-forecast seed replaces it, and only execute activity locks.
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdFont = NerdFontCaps.NONE;
         cm.setEtaEstimate(138_000); // provisional: lockEta + history prior
@@ -846,6 +847,211 @@ class JkManagerTest {
                 JkManager.truncateVisible(cm.renderBuildPlanLines(cols, 0).get(1), paintCols);
         assertThat(TestAnsi.strip(painted)).contains("…");
         assertThat(TestAnsi.strip(painted)).endsWith("…");
+    }
+
+    @Test
+    void paint_picks_up_terminal_resize_and_rewrites_truncated_rows() {
+        // Mid-build maximize: SIGWINCH clears TerminalSize's cache. Paint must re-read size
+        // and force a full rewrite so a long test name is not left clipped.
+        var savedProbe = TerminalSize.probe;
+        try {
+            TerminalSize.probe = () -> new int[] {24, 40};
+            TerminalSize.reset();
+
+            var buf = new ByteArrayOutputStream();
+            // animate=true so tick paints; package ctor avoids starting the animator thread.
+            var cm = new JkManager(stream(buf), true, true, 40);
+            cm.height = 24;
+            cm.name = "Build";
+            cm.startNanos = System.nanoTime();
+            cm.nerdFont = NerdFontCaps.NONE;
+            cm.stepRunning("cc.jumpkick:jk-io", "run-tests", "test");
+            String longName = "EffectivePomBuilderTest.concurrent_walkers_on_a_parent_cycle_fail_loudly_in_ci";
+            cm.stepMessage("cc.jumpkick:jk-io", "run-tests", longName);
+
+            cm.tick();
+            assertThat(cm.width()).isEqualTo(40);
+            String narrow = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
+            assertThat(narrow).contains("…");
+            assertThat(narrow).doesNotContain(longName);
+
+            // Same as the SIGWINCH handler: drop the cache; next paint pays one re-probe.
+            TerminalSize.probe = () -> new int[] {24, 160};
+            TerminalSize.reset();
+            buf.reset();
+            cm.tick();
+
+            assertThat(cm.width()).isEqualTo(160);
+            String wide = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
+            assertThat(wide).contains(longName);
+            // Tree detail no longer needs an ellipsis at 160 columns.
+            assertThat(wide.lines()
+                            .filter(l -> l.contains("EffectivePomBuilderTest"))
+                            .findFirst())
+                    .isPresent()
+                    .get()
+                    .asString()
+                    .doesNotContain("…");
+        } finally {
+            TerminalSize.probe = savedProbe;
+            TerminalSize.reset();
+        }
+    }
+
+    @Test
+    void reflow_detection_is_env_driven_and_defaults_to_clipping() {
+        // overshooting the wipe on a clipping terminal destroys completed output, so
+        // unknown terminals must read as clipping.
+        Map<String, String> vte = Map.of("VTE_VERSION", "7802");
+        assertThat(TerminalReflow.detect(vte::get)).isTrue();
+        assertThat(TerminalReflow.detect(Map.of("TERM_PROGRAM", "WezTerm")::get))
+                .isTrue();
+        assertThat(TerminalReflow.detect(Map.of("WT_SESSION", "x")::get)).isTrue();
+        assertThat(TerminalReflow.detect(Map.of("TERM", "xterm-kitty")::get)).isTrue();
+        assertThat(TerminalReflow.detect(Map.of("TERM", "xterm-256color")::get)).isFalse();
+        assertThat(TerminalReflow.detect(Map.of("TERM", "screen")::get)).isFalse();
+        assertThat(TerminalReflow.detect(k -> null)).isFalse();
+    }
+
+    @Test
+    void shrink_wipe_climbs_only_the_logical_rows_on_clipping_terminals() {
+        // on a clipping terminal the wipe must be exactly lastLines.size() rows —
+        // the reflow estimate overshoots into (and erases) completed output above the region.
+        var savedProbe = TerminalSize.probe;
+        try {
+            TerminalSize.probe = () -> new int[] {24, 80};
+            TerminalSize.reset();
+            var buf = new ByteArrayOutputStream();
+            var cm = new JkManager(stream(buf), true, true, 80);
+            cm.height = 24;
+            cm.name = "Build";
+            cm.startNanos = System.nanoTime();
+            cm.nerdFont = NerdFontCaps.NONE;
+            cm.stepRunning("cc.jumpkick:jk-io", "run-tests", "test");
+            cm.stepMessage("cc.jumpkick:jk-io", "run-tests", "SomeVeryLongTestClassName.and_a_member_name_that_pads");
+            cm.tick();
+            int drawn = cm.view.renderBuildPlanLines(80, 0).size();
+
+            TerminalSize.probe = () -> new int[] {24, 40};
+            TerminalSize.reset();
+            buf.reset();
+
+            TerminalReflow.force(false); // clipping terminal
+            cm.tick();
+            String clipped = buf.toString(StandardCharsets.UTF_8);
+            assertThat(clipped).contains(Ansi.cursorUp(drawn));
+
+            // Reflowing terminal: same shrink climbs the (larger) estimated physical height.
+            TerminalSize.probe = () -> new int[] {24, 80};
+            TerminalSize.reset();
+            TerminalReflow.force(true);
+            cm.tick(); // repaint at 80 again
+            TerminalSize.probe = () -> new int[] {24, 40};
+            TerminalSize.reset();
+            List<String> last = cm.view.renderBuildPlanLines(80, 0);
+            int estimate = Math.max(JkManagerView.physicalRowsAfterReflow(last, 80, 40), last.size());
+            buf.reset();
+            cm.tick();
+            assertThat(buf.toString(StandardCharsets.UTF_8)).contains(Ansi.cursorUp(estimate));
+        } finally {
+            TerminalReflow.force(null);
+            TerminalSize.probe = savedProbe;
+            TerminalSize.reset();
+        }
+    }
+
+    @Test
+    void write_above_after_a_shrink_wipes_with_post_resize_geometry() {
+        // writeAbove used pre-resize linesDrawn for its erase; the reflow-aware sync
+        // must run first so no orphan rows survive above the emitted line.
+        var savedProbe = TerminalSize.probe;
+        try {
+            TerminalSize.probe = () -> new int[] {24, 80};
+            TerminalSize.reset();
+            var buf = new ByteArrayOutputStream();
+            var cm = new JkManager(stream(buf), true, true, 80);
+            cm.height = 24;
+            cm.name = "Build";
+            cm.startNanos = System.nanoTime();
+            cm.nerdFont = NerdFontCaps.NONE;
+            cm.stepRunning("cc.jumpkick:jk-io", "run-tests", "test");
+            cm.stepMessage("cc.jumpkick:jk-io", "run-tests", "SomeVeryLongTestClassName.and_a_member_name_that_pads");
+            cm.tick();
+            List<String> last = cm.view.renderBuildPlanLines(80, 0);
+
+            TerminalSize.probe = () -> new int[] {24, 40};
+            TerminalSize.reset();
+            TerminalReflow.force(true);
+            int estimate = Math.max(JkManagerView.physicalRowsAfterReflow(last, 80, 40), last.size());
+            buf.reset();
+            cm.view.writeAbove("WARN something happened");
+            String out = buf.toString(StandardCharsets.UTF_8);
+            // The reflow-aware climb ran before the text landed, and the text precedes the repaint.
+            assertThat(out).contains(Ansi.cursorUp(estimate));
+            assertThat(out.indexOf(Ansi.cursorUp(estimate))).isLessThan(out.indexOf("WARN something happened"));
+            assertThat(cm.width()).isEqualTo(40);
+        } finally {
+            TerminalReflow.force(null);
+            TerminalSize.probe = savedProbe;
+            TerminalSize.reset();
+        }
+    }
+
+    @Test
+    void physical_rows_after_reflow_grows_when_columns_shrink() {
+        // A line painted ~79 cols wide reflows to 2 physical rows at 40 cols.
+        String wide = "x".repeat(79);
+        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(wide), 80, 40)).isEqualTo(2);
+        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(wide, wide), 80, 40))
+                .isEqualTo(4);
+        // Widen / same width: still one physical row per logical line.
+        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(wide), 40, 80)).isEqualTo(1);
+        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(""), 80, 40)).isEqualTo(1);
+        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(), 80, 40)).isZero();
+    }
+
+    @Test
+    void paint_on_column_shrink_wipes_reflowed_physical_rows_before_repaint() {
+        // Shrink reflows long painted lines onto extra physical rows. cursorUp(logical) then
+        // undershoots and the next header stacks under the orphan. Wipe must cursor-up by the
+        // reflow estimate (≥ logical) and erase before painting the narrower region.
+        var savedProbe = TerminalSize.probe;
+        try {
+            TerminalSize.probe = () -> new int[] {24, 120};
+            TerminalSize.reset();
+
+            var buf = new ByteArrayOutputStream();
+            var cm = new JkManager(stream(buf), true, true, 120);
+            cm.height = 24;
+            cm.name = "Build";
+            cm.startNanos = System.nanoTime();
+            cm.nerdFont = NerdFontCaps.NONE;
+            cm.stepRunning("cc.jumpkick:jk-cli", "native-image", "native");
+            cm.stepMessage("cc.jumpkick:jk-cli", "native-image", "[5/8] Inlining methods...");
+            cm.tick();
+
+            List<String> painted = cm.lastLines;
+            assertThat(painted).isNotEmpty();
+            int expectedUp = Math.max(JkManagerView.physicalRowsAfterReflow(painted, 120, 50), painted.size());
+
+            TerminalSize.probe = () -> new int[] {24, 50};
+            TerminalSize.reset();
+            buf.reset();
+            cm.tick();
+
+            assertThat(cm.width()).isEqualTo(50);
+            String raw = buf.toString(StandardCharsets.UTF_8);
+            // Wipe path: cursor-up by physical reflow rows, then erase-display-to-end, then paint.
+            assertThat(raw).contains(cc.jumpkick.cli.Ansi.cursorUp(expectedUp));
+            assertThat(raw).contains("\r" + cc.jumpkick.cli.Ansi.ERASE_DISPLAY_TO_END);
+            // Only one Build header in the post-shrink frame (not a stacked orphan + new paint).
+            String visible = TestAnsi.strip(raw);
+            long buildHeaders = visible.lines().filter(l -> l.contains("Build")).count();
+            assertThat(buildHeaders).isEqualTo(1);
+        } finally {
+            TerminalSize.probe = savedProbe;
+            TerminalSize.reset();
+        }
     }
 
     @Test

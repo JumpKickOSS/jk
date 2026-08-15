@@ -43,7 +43,6 @@ class GroovyBuildE2eTest {
         Path project = Files.createDirectories(tmp.resolve("gapp"));
         Path cache = cache();
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name    = "gapp"
                 group   = "com.example"
                 version = "1.0.0"
@@ -81,7 +80,6 @@ class GroovyBuildE2eTest {
         Path project = Files.createDirectories(tmp.resolve("mixed"));
         Path cache = cache();
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name    = "mixed"
                 group   = "com.example"
                 version = "1.0.0"

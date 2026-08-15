@@ -4,12 +4,14 @@ package cc.jumpkick.cli.run;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import java.io.PrintStream;
+import lombok.RequiredArgsConstructor;
 
 /**
  * Quietest console listener: prints only the final pass/fail summary line and any structured
  * errors. Used when the user pipes output, passes {@code --quiet}, or when the plan is marked
  * {@link cc.jumpkick.run.BuildPlan#interactive interactive}.
  */
+@RequiredArgsConstructor
 public final class SilentListener implements BuildPlanListener {
 
     private final PrintStream out;
@@ -18,12 +20,6 @@ public final class SilentListener implements BuildPlanListener {
 
     public SilentListener(PrintStream out, PrintStream err) {
         this(out, err, false);
-    }
-
-    public SilentListener(PrintStream out, PrintStream err, boolean suppressDiagnostics) {
-        this.out = out;
-        this.err = err;
-        this.suppressDiagnostics = suppressDiagnostics;
     }
 
     @Override

@@ -10,8 +10,18 @@ import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import com.sun.net.httpserver.HttpServer;
-import java.io.*;
-import java.net.*;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.UncheckedIOException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.StandardProtocolFamily;
+import java.net.URI;
+import java.net.UnixDomainSocketAddress;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -22,7 +32,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
@@ -420,7 +435,6 @@ class EngineServerTest {
 
             Path project = shortTempDir();
             Files.writeString(project.resolve("jk.toml"), """
-                    [project]
                     group   = "com.example"
                     name    = "app"
                     version = "1.0.0"
@@ -635,7 +649,6 @@ class EngineServerTest {
     void rebuild_in_the_session_envelope_defeats_the_freshness_fast_path() throws Exception {
         Path project = shortTempDir();
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "app"
                 version = "1.0.0"
@@ -661,7 +674,7 @@ class EngineServerTest {
         EnginePaths.Paths p = paths(shortTempDir());
         // Real version, not a synthetic one: the first build freshens the stub lock and stamps
         // jk = { version = JkVersion.VERSION }; a differing server version would make request #2
-        // delegate to a non-materialized install instead of exercising the fast path (JK-1446).
+        // delegate to a non-materialized install instead of exercising the fast path.
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, cc.jumpkick.model.JkVersion.VERSION, null);
         Thread serverThread = runInBackground(server);
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
@@ -702,7 +715,6 @@ class EngineServerTest {
     void compile_request_compiles_the_project_over_the_socket() throws Exception {
         Path project = shortTempDir();
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "app"
                 version = "1.0.0"
@@ -861,7 +873,7 @@ class EngineServerTest {
      * {@code plan-finish}, that the stale files are gone, and that the {@code.prune.lock}
      * cross-process guard was created (the hosted path always takes it — the Wave-3 finding's fix).
      *
-     * <p>Both planted files are <strong>cache</strong> tier. Since the JK-1531 split a plain prune
+     * <p>Both planted files are <strong>cache</strong> tier. Since the  split a plain prune
      * owns the cache root only; store temps belong to `jk storage clean`, and `CacheCommandTest`
      * pins that half.
      */
@@ -932,7 +944,6 @@ class EngineServerTest {
         Path cache = shortTempDir();
         Path project = shortTempDir();
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "proj"
                 version = "0.1.0"

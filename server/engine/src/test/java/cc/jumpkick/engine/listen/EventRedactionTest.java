@@ -12,7 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** Truncation-seam masking on failure fields (JK-1960). */
+/** Truncation-seam masking on failure fields. */
 class EventRedactionTest {
 
     private static TestFailureInfo failure(String message, String stack) {
@@ -41,7 +41,7 @@ class EventRedactionTest {
 
     @Test
     void fail_open_warns_exactly_once_per_run() {
-        // JK-1965: redaction failing must never break a build, but a silently-disabled security
+        // redaction failing must never break a build, but a silently-disabled security
         // control has to announce itself — once, on stderr (merged into the engine log).
         var err = new ByteArrayOutputStream();
         var original = System.err;

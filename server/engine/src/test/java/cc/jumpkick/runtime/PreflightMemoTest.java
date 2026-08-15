@@ -197,7 +197,6 @@ class PreflightMemoTest {
         PreflightMemo.storeGraph(tmp, full);
 
         Files.writeString(tmp.resolve("a/jk.toml"), """
-                [project]
                 group = "t"
                 name = "a"
                 version = "0.2.0"
@@ -230,7 +229,6 @@ class PreflightMemoTest {
         PreflightMemo.storeGraph(tmp, full);
         // Drop b from the workspace list (folder still exists) — entry toml changes structure key.
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.1.0"
@@ -282,7 +280,6 @@ class PreflightMemoTest {
         Path mod = tmp.toAbsolutePath().normalize();
         PreflightMemo.storeShape(tmp, mod, false, new PreflightMemo.BuildPlanShape(10, 0, List.of()));
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "app"
                 version = "9.9.9"
@@ -328,7 +325,6 @@ class PreflightMemoTest {
         Files.createDirectories(a);
         Files.createDirectories(b);
         Files.writeString(a.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "a"
                 version = "1.0.0"
@@ -336,7 +332,6 @@ class PreflightMemoTest {
                 java = 25
                 """);
         Files.writeString(b.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "b"
                 version = "1.0.0"
@@ -412,7 +407,6 @@ class PreflightMemoTest {
         Files.createDirectories(dir.resolve("src"));
         Files.writeString(dir.resolve("src/App.java"), "class App {}\n");
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "app"
                 version = "0.1.0"
@@ -444,7 +438,6 @@ class PreflightMemoTest {
     private static void writeProject(Path dir) throws Exception {
         Files.createDirectories(dir.resolve("target"));
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "app"
                 version = "0.1.0"
@@ -463,7 +456,6 @@ class PreflightMemoTest {
 
     private static void writeWorkspace(Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.1.0"
@@ -481,7 +473,6 @@ class PreflightMemoTest {
             Files.createDirectories(dir.resolve("target").resolve(m));
             Files.createDirectories(md.resolve("src/main/java"));
             Files.writeString(md.resolve("jk.toml"), """
-                    [project]
                     group = "t"
                     name = "%s"
                     version = "0.1.0"

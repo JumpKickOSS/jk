@@ -32,7 +32,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -150,7 +154,7 @@ public final class BuildCommand implements CliCommand {
             }
             return finishSession(buildWorkspace(root));
         }
-        // Single project: -m/--affected-since still validate (JK-1366) — `-m bogus` must not
+        // Single project: -m/--affected-since still validate — `-m bogus` must not
         // silently build; a matching selector is just this project.
         if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
             Selection sel = resolveSelection(startDir, null);
@@ -237,7 +241,7 @@ public final class BuildCommand implements CliCommand {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
 
-        // --modules / --affected-since resolve identically for live and headless paths (JK-1363):
+        // --modules / --affected-since resolve identically for live and headless paths:
         // the CI-shaped `jk build -m api --output json` must not silently build everything.
         Selection sel = null;
         if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
@@ -349,7 +353,7 @@ public final class BuildCommand implements CliCommand {
                         buildOpts.skipTests,
                         global.verbose,
                         jobs, // -j / JK_JOBS / [engine] jobs (always ≥ 1)
-                        dirtyDirs, // -m/--affected-since hint; null → engine forecasts (JK-1363)
+                        dirtyDirs, // -m/--affected-since hint; null → engine forecasts
                         true, // single-process CLI: plan our own worker-JVM memory budget
                         true) // jk build: auto-freshen a stale workspace lock engine-side
                 .withVariant(variant, clientEnv);
@@ -386,10 +390,10 @@ public final class BuildCommand implements CliCommand {
 
                         @Override
                         public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
-                            // Durable run log, same as the old buffered path. Composed into the *returned*
-                            // listener (not attached to m.plan directly) since an engine-hosted module's
-                            // plan is a client-side reconstruction that's never run — only the returned
-                            // listener is actually driven by wire-replayed events either way.
+                            // Durable run log. Composed into the *returned* listener (not attached
+                            // to m.plan directly) since an engine-hosted module's plan is a
+                            // client-side reconstruction that's never run — only the returned
+                            // listener is driven by wire-replayed events.
                             var log = cc.jumpkick.cli.run.EventLogListener.open(
                                     m.cache(), m.plan().name());
                             cc.jumpkick.cli.run.JsonlShape.emitJsonl(
@@ -822,7 +826,7 @@ public final class BuildCommand implements CliCommand {
                         cc.jumpkick.engine.EnginePaths.current(), dir, cache, buildOpts.skipTests);
                 if (!forecast.hasErrors() && !forecast.empty() && forecast.fullyCached()) {
                     // Fast path skips JkManager (no live region) — must still printOk so the
-                    // leading blank matches the full build path (JK-1373).
+                    // leading blank matches the full build path.
                     String upToDate = buildOk() + ", project up to date " + elapsedSince(startNanos);
                     cc.jumpkick.cli.tui.CommandWedge.printOk("Build", upToDate);
                     if (session != null) session.module(target).wedge(upToDate);
@@ -1089,7 +1093,7 @@ public final class BuildCommand implements CliCommand {
 
     /**
      * Pre-computes hard-link destinations for all application module artifacts in a workspace.
-     * For each module dir (excluding {@code workspaceRoot} itself) with {@code project.main},
+     * For each module dir (excluding {@code workspaceRoot} itself) with {@code main},
      * maps each candidate artifact path to its link path under {@code workspaceRoot/target/}.
      * When two or more modules produce the same filename the link name is prefixed with the
      * module's group: {@code group-filename}.

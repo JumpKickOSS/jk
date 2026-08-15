@@ -15,7 +15,6 @@ class RepositoriesScanTest {
     void reads_all_three_documented_shapes(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("jk.toml");
         Files.writeString(toml, """
-                [project]
                 name = "demo"
 
                 [repositories]
@@ -49,7 +48,7 @@ class RepositoriesScanTest {
     void missing_file_and_missing_table_read_empty(@TempDir Path dir) throws Exception {
         assertThat(RepositoriesScan.scan(dir.resolve("nope.toml"))).isEmpty();
         Path toml = dir.resolve("jk.toml");
-        Files.writeString(toml, "[project]\nname = \"demo\"\n");
+        Files.writeString(toml, "name = \"demo\"\n");
         assertThat(RepositoriesScan.scan(toml)).isEmpty();
     }
 }

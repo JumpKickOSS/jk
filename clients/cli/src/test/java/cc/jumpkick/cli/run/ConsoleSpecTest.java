@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 /**
  * {@link ConsoleSpec#fmtDuration} is the one duration formatter in the CLI: bare millis below a
  * second, one-decimal seconds below a minute, then {@code m/h/d} compound forms — capping at days.
- * Also covers plain-mode {@link ConsoleSpec#took} (JK-1378).
+ * Also covers plain-mode {@link ConsoleSpec#took}.
  */
 class ConsoleSpecTest {
 

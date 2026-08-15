@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1360: {@code jk compile} and {@code jk image} consume the shared {@code -m/--modules}
+ * {@code jk compile} and {@code jk image} consume the shared {@code -m/--modules}
  * selection they advertise — an invalid selector fails fast instead of being silently ignored,
  * and {@code image} demands exactly one selected module.
  */
@@ -21,7 +21,6 @@ class ModuleFlagValidationTest {
 
     private static void workspace(Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
@@ -33,7 +32,6 @@ class ModuleFlagValidationTest {
             Path mod = dir.resolve("mods/" + m);
             Files.createDirectories(mod);
             Files.writeString(mod.resolve("jk.toml"), """
-                    [project]
                     group = "t"
                     name = "%s"
                     version = "0.0.1"
@@ -60,7 +58,7 @@ class ModuleFlagValidationTest {
 
     @Test
     void build_headless_rejects_an_unknown_selector(@TempDir Path dir) throws Exception {
-        // JK-1363: the CI shape `jk build -m … --output json` validates the selector (and honors
+        // the CI shape `jk build -m … --output json` validates the selector (and honors
         // it) instead of silently building everything.
         workspace(dir);
         Run r = run("build", "-C", dir.toString(), "-m", "bogus", "--output", "json");
@@ -78,9 +76,8 @@ class ModuleFlagValidationTest {
 
     @Test
     void single_project_build_and_native_reject_unknown_selectors(@TempDir Path dir) throws Exception {
-        // JK-1366: single-project trees validate -m like the workspace paths do.
+        // single-project trees validate -m like the workspace paths do.
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "solo"
                 version = "0.0.1"

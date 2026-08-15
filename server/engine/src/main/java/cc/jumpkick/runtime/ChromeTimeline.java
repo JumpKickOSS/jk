@@ -5,7 +5,11 @@ import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -32,7 +36,7 @@ public final class ChromeTimeline {
     /**
      * Appends dominate (one per step) and reads happen only at {@link #flush}, so a synchronized
      * ArrayList beats {@code CopyOnWriteArrayList}, whose per-add full-array copy makes recording
-     * O(n²) — a 50-module × 10-step build costs ~125k element copies (JK-1484).
+     * O(n²) — a 50-module × 10-step build costs ~125k element copies.
      */
     private final List<Event> events = Collections.synchronizedList(new ArrayList<>());
 

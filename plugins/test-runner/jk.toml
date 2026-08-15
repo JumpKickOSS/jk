@@ -1,4 +1,3 @@
-[project]
 name = "jk-test-runner"
 description = "JumpKick's JUnit Platform test-runner plugin"
 # Workers load on user JVMs (JDK 17+); stay on release 17.

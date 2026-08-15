@@ -65,7 +65,7 @@ class TestFailureSourceTest {
 
     @Test
     void non_utf8_bytes_before_the_window_do_not_drop_the_snippet(@TempDir Path mod) throws Exception {
-        // JK-1907: a Latin-1 'é' (0xE9) anywhere in the file used to throw MalformedInputException
+        // a Latin-1 'é' (0xE9) anywhere in the file used to throw MalformedInputException
         // in the strict decoder and lose the whole snippet; substitution keeps the window.
         Path src = mod.resolve("src/test/java/cc/jumpkick/runtime");
         Files.createDirectories(src);
@@ -97,7 +97,7 @@ class TestFailureSourceTest {
 
     @Test
     void hostile_class_names_return_empty_instead_of_throwing(@TempDir Path mod) throws Exception {
-        // JK-1908: the class name is worker wire input; NUL / '..' segments must degrade to
+        // the class name is worker wire input; NUL / '..' segments must degrade to
         // no-snippet, never throw InvalidPathException into the worker-drain thread.
         Files.createDirectories(mod.resolve("src/test/java"));
         String stack = "java.lang.AssertionError: x\n\tat evil.Foo.t(Foo.java:3)\n";

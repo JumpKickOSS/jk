@@ -20,7 +20,6 @@ class ToolRunModuleResolutionTest {
         Files.createDirectories(dir);
         String name = rel.substring(rel.lastIndexOf('/') + 1);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "%s"
                 version = "1.0.0"
@@ -36,7 +35,6 @@ class ToolRunModuleResolutionTest {
             list.append('"').append(m).append('"');
         }
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"

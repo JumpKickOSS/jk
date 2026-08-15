@@ -49,13 +49,11 @@ class AffectedModulesTest {
     void edgesFor_uses_workspace_sibling_deps() {
         // Minimal synthetic projects: app depends on lib by coordinate.
         JkBuild lib = JkBuildParser.parse("""
-                [project]
                 group = "com.example"
                 name = "lib"
                 version = "1.0.0"
                 """);
         JkBuild app = JkBuildParser.parse("""
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"

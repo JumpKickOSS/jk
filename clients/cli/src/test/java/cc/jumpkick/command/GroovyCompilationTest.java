@@ -116,7 +116,7 @@ class GroovyCompilationTest {
                 tempDir.toString());
         // Opt into Java too — a mixed module declares both java and groovy.
         Path toml = tempDir.resolve("jk.toml");
-        Files.writeString(toml, Files.readString(toml).replace("[project]\n", "[project]\njava = 25\n"));
+        Files.writeString(toml, Files.readString(toml).replace("", "java = 25\n"));
         // Groovy→Java: the Groovy class calls a Java helper (joint sweep).
         Path javaSrc = tempDir.resolve("src/main/java/com/example/Util.java");
         Files.createDirectories(javaSrc.getParent());
@@ -230,7 +230,7 @@ class GroovyCompilationTest {
             assertThat(jf.stream().anyMatch(e -> e.getName().startsWith("BOOT-INF/lib/spring-")))
                     .as("spring libs nested in the boot jar")
                     .isTrue();
-            // JK-1173: language runtime must nest so standalone java -jar can load Groovy classes.
+            // Language runtime must nest so standalone java -jar can load Groovy classes.
             assertThat(jf.stream().anyMatch(e -> {
                         String n = e.getName();
                         return n.startsWith("BOOT-INF/lib/") && n.contains("groovy-");

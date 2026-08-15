@@ -101,7 +101,7 @@ public final class BuildLogicSupport {
      * As {@link #run(Path, BuildLayout, ActionCache, Path, BuildLogicAnchor, java.util.function.Consumer,
      * java.util.concurrent.atomic.AtomicReference)}, with no cross-anchor token cache — this call
      * computes its own if it needs one. Fine for a single anchor; BuildPlanner uses the other
-     * overload to share one computation across a module's (up to four) anchor calls (JK-1655).
+     * overload to share one computation across a module's (up to four) anchor calls.
      */
     public static boolean run(
             Path projectDir,
@@ -161,18 +161,15 @@ public final class BuildLogicSupport {
         Path kotlinStdlib = null;
         // The loader must outlive discovery: a task body first-touches classes (a helper in
         // .jk-build/src, a kotlin.collections type, a lambda class in the stdlib jar) long after
-        // registration, and a closed URLClassLoader can define none of them (JK-1604). run() owns
+        // registration, and a closed URLClassLoader can define none of them. run() owns
         // the lifetime and closes it once every task for this anchor has run.
         URLClassLoader logicLoader = null;
         try {
             if (!javaSources.isEmpty() || !ktSources.isEmpty()) {
                 Path logicClasses = layout.generatedSourcesDir("jk-build-classes");
                 Path apiCp = apiClasspath();
-                // BuildPlanner calls run() once per anchor — four times per module per build — and
-                // this used to delete and recompile the whole logic tree every time, re-parsing
-                // jk.toml and re-resolving the Kotlin toolchain with it. Three of the four produce
-                // classes for anchors that register nothing. A stamp beside the classes makes the
-                // compile happen once per change instead (JK-1606).
+                // BuildPlanner calls run() once per anchor (four times per module per build).
+                // A stamp beside the classes compiles once per change instead of every anchor.
                 String stamp = logicStamp(c.logicDir(), javaSources, ktSources, apiCp);
                 Compiled compiled = readStamp(logicClasses);
                 if (compiled != null && compiled.stamp().equals(stamp)) {
@@ -247,13 +244,12 @@ public final class BuildLogicSupport {
         }
         sourceTokens.add("anchor:" + anchor.name());
         // A build-logic task reads the project, not only itself: BuildLogicContext hands it
-        // projectDir and classesDir. Keying on the logic sources alone made an edit to the
-        // product invisible, so the task reported `cache hit` and replayed a stale output —
-        // the shipped line-count example re-merged the old count into the jar (JK-1603).
-        //
+        // projectDir and classesDir. The input key includes product sources so an edit
+        // cannot replay a stale output.
+
         // Memoized in inputTokensRef: the source tree can't change mid-build, so whichever anchor
         // needs this first computes it and every later anchor in the same build reuses it instead
-        // of re-walking/re-hashing the same tree (JK-1655).
+        // of re-walking/re-hashing the same tree.
         List<String> inputTokens = inputTokensRef.get();
         if (inputTokens == null) {
             inputTokens = projectInputTokens(projectDir);
@@ -265,7 +261,7 @@ public final class BuildLogicSupport {
         // BEFORE_COMPILE is codegen: its output joins the compile source set (like KSP), it is
         // never merged into classes/. Merging there compiled nothing — a generated .java was
         // packaged verbatim as a data file — and any .class it staged was deleted by javac's
-        // full-compile sweep moments later (JK-1602).
+        // full-compile sweep moments later.
         boolean generatesSources = anchor == BuildLogicAnchor.BEFORE_COMPILE;
         for (RegisteredTask task : tasks) {
             String simple = task.name();
@@ -299,7 +295,7 @@ public final class BuildLogicSupport {
             deleteContents(outDir);
             Files.createDirectories(outDir);
             // No classesDir binding: outDir is the only surface the action cache captures,
-            // so it is the only place a task may write (JK-1614).
+            // so it is the only place a task may write.
             BuildLogicContext ctx = new BuildLogicContext(
                     projectDir.toAbsolutePath().normalize(),
                     outDir.toAbsolutePath().normalize());
@@ -700,7 +696,7 @@ public final class BuildLogicSupport {
      * What a build-logic task can read through {@link BuildLogicContext}, as cache-key tokens: the
      * module's source roots plus {@code jk.toml}/{@code jk-lock.toml} — {@code BuildLogicContext}
      * hands a task {@code projectDir} itself, and reading its own project file (e.g. to embed the
-     * declared version) is the obvious first thing a codegen task does with that (JK-1603).
+     * declared version) is the obvious first thing a codegen task does with that.
      *
      * <p>Conservative on purpose — a task declares no inputs, so the key covers every input it
      * <em>could</em> consume. Narrowing it needs a declared-input surface on the SPI.
@@ -710,7 +706,7 @@ public final class BuildLogicSupport {
      * self-referential: post-compile anchors merge their own output into it, so every run would
      * perturb its own next key and a cache hit could never happen.
      */
-    /** Test seam: counts real {@link #projectInputTokens} computations (JK-1655's "at most once per build" claim). */
+    /** Test seam: counts real {@link #projectInputTokens} computations (at most once per build). */
     static final java.util.concurrent.atomic.AtomicInteger PROJECT_INPUT_TOKENS_CALLS_FOR_TESTS =
             new java.util.concurrent.atomic.AtomicInteger();
 

@@ -28,7 +28,7 @@ public record Lockfile(
         JkToolchain jk,
         /** SHA-256 of every {@code jk.toml} that fed this lock; null on legacy locks. */
         String manifestsSha256,
-        /** Durable auto project identity; null until minted (JK-1728). */
+        /** Durable auto project identity; null until minted. */
         String projectId) {
 
     /**
@@ -39,7 +39,7 @@ public record Lockfile(
 
     /**
      * Resolved first-party project identity for one workspace member (or the standalone root at
-     * {@code path = "."}). Captures concrete values after {@code project.*.workspace = true}
+     * {@code path = "."}). Captures concrete values after {@code *.workspace = true}
      * inheritance so a re-lock is the only way those pins change.
      */
     public record ModuleEntry(

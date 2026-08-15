@@ -80,7 +80,12 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Routes every command through jk's own {@link ArgParser} + {@link HelpRenderer} (picocli is long
@@ -175,7 +180,7 @@ public final class CommandDispatch {
     }
 
     /** The ported commands — used to list them in the top-level (picocli) help. */
-    /** Top-level name/prefix resolution, exposed for tests (JK-1364 prefix regressions). */
+    /** Top-level name/prefix resolution, exposed for tests (prefix regressions). */
     static Abbreviations.Result<CliCommand> resolveName(String token) {
         return Abbreviations.resolve(token, BY_NAME);
     }

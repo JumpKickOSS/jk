@@ -93,7 +93,7 @@ class Giter8TemplateIndexTest {
 
     @Test
     void pass_two_probe_skips_ids_already_overlaid_in_pass_one(@TempDir Path temp) throws Exception {
-        // JK-1455: the pass-2 deep DFS must only run for ids pass 1 did not overlay.
+        // The pass-2 deep DFS must only run for ids pass 1 did not overlay.
         Path g8 = temp.resolve("ktor-3.g8");
         Files.createDirectories(g8);
         Files.writeString(g8.resolve("default.properties"), "jk_languages=kotlin\njk_layout=simple\n");

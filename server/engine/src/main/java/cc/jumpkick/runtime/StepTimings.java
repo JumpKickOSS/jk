@@ -10,7 +10,16 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalLong;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import org.tomlj.Toml;
@@ -52,7 +61,7 @@ public final class StepTimings {
     }
 
     /**
-     * Legacy path marker — production rates hydrate from harvested metrics (JK-1377).
+     * Production rates hydrate from harvested metrics.
      * Hermetic tests still use isolated roots via {@link #file(Path)}.
      */
     public static Path defaultFile() {
@@ -222,7 +231,7 @@ public final class StepTimings {
     public static void record(Path rootOrCache, List<Sample> samples, double alpha, long nowMillis) {
         if (samples == null || samples.isEmpty()) return;
         Path f = file(rootOrCache);
-        // Production: per-run metrics.toml + harvest own durable rates (JK-1377).
+        // Production: per-run metrics.toml + harvest own durable rates.
         if (f.equals(defaultFile()) || isLiveBuildsTimings(f)) {
             return;
         }

@@ -128,7 +128,7 @@ public final class TestFailureHighlight {
         Theme t = Theme.active();
         if (!t.isAnsi()) {
             String m = module == null || module.isBlank() ? "" : " in " + module;
-            // ASCII only: plain mode's consumers (dumb terminals, CI logs) are why it exists (JK-1910).
+            // ASCII only: plain mode's consumers (dumb terminals, CI logs) are why it exists.
             return "[Test] Failure" + m + " > " + count + " test" + (plural ? "s" : "") + " failed";
         }
         // Same red/white chip as DiagnosticReport Compile Java failures.
@@ -268,7 +268,7 @@ public final class TestFailureHighlight {
 
             // Bare exception locus on the no-snippet path ("    AssertionFailedError" between the
             // assertion body and the stack frames). It must flush the assertion buffer — buffered,
-            // it defeats the AssertJ reformat and paints as an actual-value line (JK-1883). Only a
+            // it defeats the AssertJ reformat and paints as an actual-value line. Only a
             // blank-line boundary qualifies, so an indented capitalized token inside a multi-line
             // assertion value stays part of the body.
             if (BARE_EXCEPTION.matcher(raw).matches()
@@ -356,7 +356,7 @@ public final class TestFailureHighlight {
         SyntaxHighlight.Language language = languageOf(lang);
 
         // Clamp to the terminal: one over-long source line otherwise pads EVERY row past the
-        // width, wrapping continuation rows without the rail and spilling the band (JK-1914).
+        // width, wrapping continuation rows without the rail and spilling the band.
         // Tabs expand first — the pad math is column-based, and a raw '\t' misaligns the band end.
         int budget = Math.max(40, cc.jumpkick.cli.tui.TerminalSize.columns() - ROW_OVERHEAD);
         List<SrcRow> rows = new ArrayList<>();
@@ -434,7 +434,7 @@ public final class TestFailureHighlight {
 
     private static String clampCode(String code, int budget, boolean ansi) {
         if (code.length() <= budget) return code;
-        // Plain mode stays pure ASCII (JK-1910/JK-1949): the clamp ran before the ANSI/plain fork
+        // Plain mode stays pure ASCII: the clamp ran before the ANSI/plain fork
         // and re-leaked U+2026 into output the ASCII pass had just cleaned. Reserve the marker's
         // own columns, and never cut a surrogate pair in half.
         String ellipsis = ansi ? "…" : "...";
@@ -777,7 +777,7 @@ public final class TestFailureHighlight {
 
     /**
      * The {@code path=} value runs to end-of-line (the emitter puts it last so paths with spaces
-     * survive the space-delimited header — JK-1905). Old-format headers carried path mid-line;
+     * survive the space-delimited header — ). Old-format headers carried path mid-line;
      * detect the trailing {@code line=} attr and fall back to the first-whitespace cut.
      */
     private static String pathAttr(String header) {

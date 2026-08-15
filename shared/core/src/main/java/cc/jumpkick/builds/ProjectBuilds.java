@@ -169,7 +169,7 @@ public final class ProjectBuilds {
      * {@code --job} child engines exist by design). With a JVM-only lock both could read {@code 7},
      * both write {@code 8}, and the second {@code runs/8} write would delete the first's completed
      * run tree. Threads first, then a file lock — the same nesting {@code AotManifest.withLock}
-     * uses, since a second {@code FileChannel.lock()} in one JVM throws (JK-1472).
+     * uses, since a second {@code FileChannel.lock()} in one JVM throws.
      */
     public static long allocateRunNumber(Path projectHome) throws IOException {
         Files.createDirectories(projectHome);
@@ -294,7 +294,7 @@ public final class ProjectBuilds {
      * (newest run's mtime), then run count. Recency outranks run count on equal-source ties: a
      * lock→lock re-key leaves the stale home with more accumulated runs than the active one, and
      * preferring raw count starved the active home of harvest until its samples were reaped
-     * (JK-1813). Run number is not comparable across homes (each restarts at 1), so wall mtime is
+     *. Run number is not comparable across homes (each restarts at 1), so wall mtime is
      * the recency signal.
      */
     static long metricsHomeScore(Path home, ProjectIdentity.IdentityFile idf) {
@@ -355,7 +355,7 @@ public final class ProjectBuilds {
             all.addAll(listRuns(home));
         }
         // Decorate-sort-undecorate: mtimeOf is a stat(2), and a comparator key extractor is
-        // re-evaluated O(n log n) times — ~44k syscalls for 2000 runs instead of 2000 (JK-1480).
+        // re-evaluated O(n log n) times — ~44k syscalls for 2000 runs instead of 2000.
         record Stamped(Path path, long mtime) {}
         List<Stamped> stamped = new ArrayList<>(all.size());
         for (Path p : all) stamped.add(new Stamped(p, mtimeOf(p)));

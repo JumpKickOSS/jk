@@ -10,7 +10,15 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -23,7 +31,7 @@ import java.util.regex.Pattern;
  */
 public final class JUnitLauncher {
 
-    /** Marker appended by {@code ResultAggregator.truncateStack}; {@code EventRedaction} keys the cut-seam masking off it (JK-1960). */
+    /** Marker appended by {@code ResultAggregator.truncateStack}; {@code EventRedaction} keys the cut-seam masking off it. */
     public static final String STACK_TRUNCATION_MARKER = "\n\t... stack truncated (";
 
     /** Marker appended by {@code ResultAggregator.truncateMessage}. */
@@ -227,7 +235,7 @@ public final class JUnitLauncher {
     /**
      * The concrete {@code quarkus-bom} version for the tooling POM. Maven has no caret, so the
      * {@code [quarkus] version = "3"} floor jk recommends cannot go in as written — {@code
-     * quarkus-bom:3} is a literal version that does not exist (JK-1669).
+     * quarkus-bom:3} is a literal version that does not exist.
      *
      * <p>The lock wins: this POM exists so {@code @QuarkusTest}'s bootstrap agrees with the
      * classpath jk built, and {@code jk-lock.toml} is what jk built from. A concrete {@code
@@ -276,7 +284,7 @@ public final class JUnitLauncher {
         Matcher table = Pattern.compile("(?m)^\\s*\\[quarkus]\\s*$").matcher(toml);
         if (!table.find()) return def;
         // Scan only until the next table header — a `version` in a later table (e.g.
-        // [project]) must not become the platform BOM version.
+        // project version) must not become the platform BOM version.
         String rest = toml.substring(table.end());
         Matcher nextTable = Pattern.compile("(?m)^\\s*\\[").matcher(rest);
         if (nextTable.find()) rest = rest.substring(0, nextTable.start());
@@ -405,7 +413,7 @@ public final class JUnitLauncher {
         classpathBase.add(testClassesDir);
         classpathBase.addAll(runtimeClasspath);
         // Thin pure-jk workers: expand .classpath sidecar / findPluginSdk so PluginMain is on -cp
-        // (JK-1347). Gradle-vendored runners already contain PluginMain; extra entries are harmless.
+        // . Gradle-vendored runners already contain PluginMain; extra entries are harmless.
         classpathBase.addAll(cc.jumpkick.compile.WorkerClasspath.paths(runnerJar));
         String classpath = joinClasspath(classpathBase);
         Path javaBinary = javaBinary(javaHome);
@@ -991,7 +999,7 @@ public final class JUnitLauncher {
             int cut = stack.lastIndexOf('\n', MAX_STACK_CHARS);
             if (cut <= 0) {
                 cut = MAX_STACK_CHARS;
-                // Hard cut (a single >32KB line): never leave a lone high surrogate (JK-1960).
+                // Hard cut (a single >32KB line): never leave a lone high surrogate.
                 if (Character.isHighSurrogate(stack.charAt(cut - 1))) cut--;
             }
             return stack.substring(0, cut) + STACK_TRUNCATION_MARKER + (stack.length() - cut) + " more chars)";
@@ -999,7 +1007,7 @@ public final class JUnitLauncher {
 
         /**
          * Bound for a single failure's message. Same rationale as {@link #MAX_STACK_CHARS}
-         * (JK-1948): the message is worker-controlled input that rides every downstream copy —
+         *: the message is worker-controlled input that rides every downstream copy —
          * wire, SSE, journal, web card — and an {@code assertEquals} diff of two multi-MB strings
          * otherwise puts hundreds of MB of transients through the engine for one bad suite. The
          * copy of the message inside the stack's first line was already bounded; the field itself

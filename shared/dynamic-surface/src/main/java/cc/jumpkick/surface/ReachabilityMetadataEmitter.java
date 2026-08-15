@@ -35,11 +35,11 @@ public final class ReachabilityMetadataEmitter {
                 case JNI_MEMBER -> jni.add(memberObject(entry));
                 case SERIALIZATION_TYPE -> serialization.add(serializationObject(entry));
                 // GraalVM's unified schema: resources are a flat glob array, and a proxy is a
-                // reflection entry with a map-shaped type (JK-1752).
+                // reflection entry with a map-shaped type.
                 case RESOURCE -> resources.add("{\"glob\":" + quote(entry.name()) + "}");
                 case PROXY_INTERFACE -> reflection.add(proxyObject(entry.name()));
                 // The unified schema has no regex resource form and no excludes; both ride in the
-                // split-format resource-config.json from emitResourceConfig (JK-1777, JK-1800).
+                // split-format resource-config.json from emitResourceConfig.
                 case RESOURCE_PATTERN, RESOURCE_EXCLUDE_PATTERN -> {}
                 // Graal keeps generic signatures without being told.
                 case GENERIC_REFLECTION -> {}
@@ -58,7 +58,7 @@ public final class ReachabilityMetadataEmitter {
      * {@link DynamicSurface.Kind#RESOURCE_PATTERN} and
      * {@link DynamicSurface.Kind#RESOURCE_EXCLUDE_PATTERN} entries as a legacy split-format
      * {@code resource-config.json}. The unified schema only has include globs: a regex emitted
-     * as a glob matches nothing (JK-1777), and excludes have no unified shape at all (JK-1800);
+     * as a glob matches nothing, and excludes have no unified shape at all;
      * native-image still honors the split form, so both ship in this sidecar. Empty string when
      * the surface has neither.
      */
@@ -81,7 +81,7 @@ public final class ReachabilityMetadataEmitter {
 
     /**
      * {@code name} is the ordered, comma-joined interface list of one proxy declaration —
-     * emitted whole, because Graal matches proxy registrations by exact ordered list (JK-1799).
+     * emitted whole, because Graal matches proxy registrations by exact ordered list.
      */
     private static String proxyObject(String name) {
         StringBuilder interfaces = new StringBuilder();
@@ -94,7 +94,7 @@ public final class ReachabilityMetadataEmitter {
 
     /**
      * A serialization registration, with its declared deserialization constructor when the entry
-     * carries a {@code c:}-tagged member (JK-1801). Merging can in principle union two different
+     * carries a {@code c:}-tagged member. Merging can in principle union two different
      * declarations; the first in sorted order wins — the schema has room for one.
      */
     private static String serializationObject(DynamicSurface.Entry entry) {

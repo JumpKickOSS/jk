@@ -28,7 +28,7 @@ class TaskPhasesTest {
         assertThat(TaskPhases.of(null)).isEqualTo(TaskPhases.OTHER);
     }
 
-    /** Regression (JK-1587): stamps calibrate with their compiles — explicit AND fallback. */
+    /** Regression: stamps calibrate with their compiles — explicit AND fallback. */
     @Test
     void write_stamps_are_compile_phase_in_both_arms() {
         assertThat(TaskPhases.of("write-stamp")).isEqualTo(TaskPhases.COMPILE);
@@ -37,7 +37,7 @@ class TaskPhasesTest {
         assertThat(TaskPhases.of("write-stamp-scala")).isEqualTo(TaskPhases.COMPILE);
     }
 
-    /** Regression (JK-1587): metrics phase agrees with the task's wire group ("package"). */
+    /** Regression: metrics phase agrees with the task's wire group ("package"). */
     @Test
     void build_logic_before_package_files_under_package() {
         assertThat(TaskPhases.of("build-logic-before-package")).isEqualTo(TaskPhases.PACKAGE);

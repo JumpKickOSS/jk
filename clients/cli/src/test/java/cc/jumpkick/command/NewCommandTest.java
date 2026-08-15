@@ -326,7 +326,6 @@ class NewCommandTest {
     @Test
     void new_inside_workspace_registers_module_and_skips_lock(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"

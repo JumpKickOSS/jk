@@ -116,7 +116,7 @@ public final class RunCommand {
                         && !global.outputIsJson();
                 cc.jumpkick.runtime.WorkspaceResult wr;
                 if (liveWorkspace) {
-                    // Same live chrome as `jk build` at a root (JK-1201): aggregate bar + module
+                    // Same live chrome as `jk build` at a root: aggregate bar + module
                     // chips from the engine tracker, completions collapse into the region.
                     wr = runWorkspaceLive(request);
                     if (wr == null) return 1; // failure already settled on the view
@@ -342,7 +342,7 @@ public final class RunCommand {
     }
 
     /**
-     * Workspace pre-build with the same live chrome as {@code jk build} at a root (JK-1201):
+     * Workspace pre-build with the same live chrome as {@code jk build} at a root:
      * engine-tracked aggregate bar, per-module step chips, buffered module output, completion
      * lines. Settles the region itself on failure/cancel and returns {@code null}; on success the
      * region settles to an exec-style chip so the run banner follows cleanly.

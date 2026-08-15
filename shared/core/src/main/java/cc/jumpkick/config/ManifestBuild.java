@@ -15,7 +15,15 @@ import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.NullMarked;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
@@ -33,7 +41,6 @@ public final class ManifestBuild {
 
     static Set<String> coreTables() {
         Set<String> out = new HashSet<>(Set.of(
-                "project",
                 "repositories",
                 "profiles",
                 "features",
@@ -69,14 +76,20 @@ public final class ManifestBuild {
         for (PluginDescriptor m : installed) owned.add(m.table());
         for (String key : root.keySet()) {
             if (owned.contains(key)) continue;
+            // Project identity keys (and Cargo-style inherit tables like group = { workspace = true }).
+            if (ManifestProject.PROJECT_KEYS.contains(key)) continue;
             if (!(root.get(key) instanceof TomlTable) && !(root.get(key) instanceof org.tomlj.TomlArray)) continue;
             StringBuilder known = new StringBuilder();
             for (PluginDescriptor m : installed) {
                 if (known.length() > 0) known.append(", ");
                 known.append('[').append(m.table()).append(']');
             }
+            if ("project".equals(key)) {
+                throw new JkBuildParseException("[project] was removed — move its keys to the top level of jk.toml"
+                        + " (e.g. name = \"…\", group = \"…\", version = \"…\")");
+            }
             if ("shrink".equals(key)) {
-                // The plugin was renamed (JK-1798); steer pre-rename projects the same way the
+                // The plugin was renamed; steer pre-rename projects the same way the
                 // `assembly = "shrink"` migration message does.
                 throw new JkBuildParseException(
                         "[shrink] was renamed — use a [minified] table (and `assembly = \"minified\"`)");
@@ -171,7 +184,7 @@ public final class ManifestBuild {
         TomlTable test = root.getTable("test");
         TomlTable resolve = root.getTable("resolve");
         // Dead/renamed [test] keys fail loudly: silently ignoring default-exclude-tags would run
-        // the slow/integration tests the config meant to exclude with no signal (JK-1825).
+        // the slow/integration tests the config meant to exclude with no signal.
         if (test != null) {
             if (test.contains("default-exclude-tags")) {
                 throw new JkBuildParseException("[test].default-exclude-tags was renamed to exclude-tags "

@@ -6,7 +6,13 @@ import cc.jumpkick.jdk.JdkRegistry;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Enumerates every JDK installed on the host for the {@code jk init} wizard's "Select a JDK" step.

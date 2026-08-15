@@ -24,7 +24,6 @@ class IdeIdeaGenerationTest {
     void workspace_sibling_becomes_an_idea_module(@TempDir Path tmp) throws IOException {
         // A local sibling is always a workspace module now, never a path dependency.
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
@@ -37,7 +36,6 @@ class IdeIdeaGenerationTest {
         Path lib = tmp.resolve("lib");
         Files.createDirectories(lib.resolve("src/main/java/lib"));
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "libcore"
                 version = "0.1.0"
@@ -48,7 +46,6 @@ class IdeIdeaGenerationTest {
         Path app = tmp.resolve("app");
         Files.createDirectories(app.resolve("src/main/java/app"));
         Files.writeString(app.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
@@ -106,7 +103,6 @@ class IdeIdeaGenerationTest {
         Path ws = tmp.resolve("ws");
         Files.createDirectories(ws);
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 group = "dev.example"
                 name = "widget"
                 version = "0.1.0"
@@ -159,7 +155,6 @@ class IdeIdeaGenerationTest {
         Path ws = tmp.resolve("ws");
         Files.createDirectories(ws);
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 group = "dev.example"
                 name = "root"
                 version = "0.1.0"
@@ -202,7 +197,6 @@ class IdeIdeaGenerationTest {
         Path ws = tmp.resolve("ws");
         Files.createDirectories(ws);
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 group = "dev.example"
                 name = "root"
                 version = "0.1.0"
@@ -216,7 +210,6 @@ class IdeIdeaGenerationTest {
         // does not exist. The IDE module edge must still be emitted.
         Files.createDirectories(ws.resolve("b"));
         Files.writeString(ws.resolve("b/jk.toml"), """
-                [project]
                 group = "dev.example"
                 name = "b"
                 version = "0.1.0"
@@ -249,7 +242,6 @@ class IdeIdeaGenerationTest {
         Files.createDirectories(ws.resolve("src/main/java/example"));
         Files.writeString(ws.resolve("src/main/java/example/Hello.java"), "package example;\npublic class Hello {}\n");
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 group = "dev.example"
                 name = "widget"
                 version = "0.1.0"
@@ -315,7 +307,6 @@ class IdeIdeaGenerationTest {
     private static void module(Path dir, String name, int jdk) throws IOException {
         Files.createDirectories(dir);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "dev.example"
                 name = "%s"
                 version = "0.1.0"

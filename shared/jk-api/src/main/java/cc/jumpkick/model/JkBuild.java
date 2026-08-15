@@ -2,7 +2,18 @@
 package cc.jumpkick.model;
 
 import cc.jumpkick.plugin.PluginConfig;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 
 /** Parsed contents of a project's {@code jk.toml}. */
 public record JkBuild(
@@ -439,7 +450,7 @@ public record JkBuild(
                 case "auto" -> AUTO;
                 default ->
                     throw new IllegalArgumentException(
-                            "project.layout must be \"simple\", \"traditional\", or \"auto\" (got: " + raw + ")");
+                            "layout must be \"simple\", \"traditional\", or \"auto\" (got: " + raw + ")");
             };
         }
 
@@ -467,7 +478,7 @@ public record JkBuild(
         }
     }
 
-    /** When a sources JAR is produced ({@code project.sources}): never / publish only / always. */
+    /** When a sources JAR is produced ({@code sources}): never / publish only / always. */
     public enum SourcesMode {
         DISABLED,
         /** Assembled during {@code jk publish} only. */
@@ -487,7 +498,7 @@ public record JkBuild(
     public static final String VERSION_FROM_WORKSPACE = "__jk.workspace__";
 
     /**
-     * {@code [project]} keys that may use Cargo-style {@code field.workspace = true}. {@code name} is
+     * Root-level project keys that may use Cargo-style {@code field.workspace = true}. {@code name} is
      * intentionally excluded — every module keeps its own artifact id.
      */
     public enum ProjectInherit {
@@ -521,11 +532,11 @@ public record JkBuild(
             Objects.requireNonNull(group, "group");
             Objects.requireNonNull(name, "name");
             Objects.requireNonNull(version, "version");
-            if (group.isBlank()) throw new IllegalArgumentException("project.group must not be blank");
-            if (name.isBlank()) throw new IllegalArgumentException("project.name must not be blank");
-            if (version.isBlank()) throw new IllegalArgumentException("project.version must not be blank");
+            if (group.isBlank()) throw new IllegalArgumentException("group must not be blank");
+            if (name.isBlank()) throw new IllegalArgumentException("name must not be blank");
+            if (version.isBlank()) throw new IllegalArgumentException("version must not be blank");
             if (java < 0) {
-                throw new IllegalArgumentException("project.java must be non-negative");
+                throw new IllegalArgumentException("java must be non-negative");
             }
             if (jdk != null && jdk.isBlank()) jdk = null;
             if (sourcesMode == null) sourcesMode = SourcesMode.DISABLED;
@@ -563,7 +574,7 @@ public record JkBuild(
                     Set.of());
         }
 
-        /** True when any {@code [project]} field still needs workspace-root resolution. */
+        /** True when any project identity field still needs workspace-root resolution. */
         public boolean inheritsFromWorkspace() {
             return !workspaceInherits.isEmpty();
         }
@@ -617,8 +628,7 @@ public record JkBuild(
             Objects.requireNonNull(root, "root");
             if (workspaceInherits.isEmpty()) return this;
             if (root.inheritsFromWorkspace()) {
-                throw new IllegalArgumentException(
-                        "workspace root still has unresolved project.*.workspace inheritance");
+                throw new IllegalArgumentException("workspace root still has unresolved *.workspace inheritance");
             }
             String g = inherits(ProjectInherit.GROUP) ? requireRoot(root.group(), "group") : group;
             String v = inherits(ProjectInherit.VERSION) ? requireRoot(root.version(), "version") : version;
@@ -638,8 +648,8 @@ public record JkBuild(
 
         private static String requireRoot(String value, String field) {
             if (value == null || value.isBlank() || VERSION_FROM_WORKSPACE.equals(value)) {
-                throw new IllegalArgumentException("module inherits project." + field
-                        + " from the workspace, but the root has no concrete " + field);
+                throw new IllegalArgumentException(
+                        "module inherits " + field + " from the workspace, but the root has no concrete " + field);
             }
             return value;
         }
@@ -647,7 +657,7 @@ public record JkBuild(
         /** Same project with a concrete {@code version} (workspace inheritance resolution). */
         public Project withVersion(String newVersion) {
             Objects.requireNonNull(newVersion, "version");
-            if (newVersion.isBlank()) throw new IllegalArgumentException("project.version must not be blank");
+            if (newVersion.isBlank()) throw new IllegalArgumentException("version must not be blank");
             if (newVersion.equals(this.version) && !inherits(ProjectInherit.VERSION)) return this;
             EnumSet<ProjectInherit> next = workspaceInherits.isEmpty()
                     ? EnumSet.noneOf(ProjectInherit.class)

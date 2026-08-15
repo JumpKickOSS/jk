@@ -1,4 +1,3 @@
-[project]
 group = "demo"
 name = "line-count-build"
 version = "0.0.1"

@@ -34,7 +34,7 @@ public final class CacheRoots {
      * Like {@link #collect(Cas, Path, Path)}, but treating {@code ignoreKeyFiles} as already
      * deleted. Dry-run parity: a dry Class-C purge leaves its key files on disk, and counting
      * them as roots hides every heavy blob from the following dry sweep — the real run then
-     * frees GiB a dry run reported as "40 MiB reclaimable" (JK-1770).
+     * frees GiB a dry run reported as "40 MiB reclaimable".
      */
     public static Set<String> collect(Cas cas, Path actionsDir, Path toolsDir, Set<Path> ignoreKeyFiles)
             throws IOException {

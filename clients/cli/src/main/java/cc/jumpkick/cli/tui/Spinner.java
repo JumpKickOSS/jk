@@ -110,7 +110,7 @@ public final class Spinner implements AutoCloseable {
 
     private final NerdFontCaps nerdFont;
 
-    /** Plain-mode still-working heartbeat interval (JK-1379). */
+    /** Plain-mode still-working heartbeat interval. */
     public static final long PLAIN_HEARTBEAT_MS = 60_000L;
 
     private volatile String message;
@@ -175,7 +175,7 @@ public final class Spinner implements AutoCloseable {
 
     private void start() {
         if (silent) return;
-        // Plain / --no-ansi: multi-line start + optional 60s heartbeats + done on close (JK-1379).
+        // Plain / --no-ansi: multi-line start + optional 60s heartbeats + done on close.
         if (!Theme.active().isAnsi()) {
             printPlainWorking(true);
             animator = new Thread(this::plainHeartbeatLoop, "jk-spinner-plain");
@@ -331,7 +331,7 @@ public final class Spinner implements AutoCloseable {
 
     private record PulseKey(int n, Rgb bright, Rgb dim, Theme theme) {}
 
-    /** A handful of (frame-count, color-pair) combos exist; live renders ask every frame (JK-1893). */
+    /** A handful of (frame-count, color-pair) combos exist; live renders ask every frame. */
     private static final java.util.concurrent.ConcurrentHashMap<PulseKey, AttributedStyle[]> PULSE_CACHE =
             new java.util.concurrent.ConcurrentHashMap<>();
 

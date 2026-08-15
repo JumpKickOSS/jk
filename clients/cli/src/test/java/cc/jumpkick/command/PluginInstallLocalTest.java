@@ -17,9 +17,8 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class PluginInstallLocalTest {
 
-    /** Thin PluginMain worker — no assembly (JK-1347). */
+    /** Thin PluginMain worker — no assembly. */
     private static final String WORKER_TOML = """
-            [project]
             group = "cc.jumpkick"
             name = "jk-test-runner"
             version = "0.12.0"
@@ -35,7 +34,6 @@ class PluginInstallLocalTest {
         Path mod = dir.resolve("plugins/worker");
         Files.createDirectories(mod);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
@@ -69,13 +67,12 @@ class PluginInstallLocalTest {
 
     @Test
     void reinstall_drops_stale_sidecar_entries(@TempDir Path dir) throws Exception {
-        // JK-1352: the lock closure is authoritative — a removed dep left in the previous
+        // the lock closure is authoritative — a removed dep left in the previous
         // sidecar must not survive regeneration.
         Path cache = dir.resolve("cache");
         Path mod = dir.resolve("plugins/worker");
         Files.createDirectories(mod);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
@@ -84,7 +81,6 @@ class PluginInstallLocalTest {
                 modules = ["plugins/worker"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "jk-test-runner"
                 version = "0.12.0"
@@ -153,7 +149,6 @@ class PluginInstallLocalTest {
         Path mod = dir.resolve("plugins/worker");
         Files.createDirectories(mod);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
@@ -188,7 +183,6 @@ class PluginInstallLocalTest {
         Files.createDirectories(a);
         Files.createDirectories(b);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
@@ -197,7 +191,6 @@ class PluginInstallLocalTest {
                 modules = ["plugins/alpha", "plugins/beta"]
                 """);
         Files.writeString(a.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "jk-alpha"
                 version = "0.12.0"
@@ -207,7 +200,6 @@ class PluginInstallLocalTest {
                 main = "cc.jumpkick.plugin.process.PluginMain"
                 """);
         Files.writeString(b.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "jk-beta"
                 version = "0.12.0"
@@ -239,13 +231,12 @@ class PluginInstallLocalTest {
 
     @Test
     void cache_dir_install_leaves_the_global_lib_untouched(@TempDir Path dir) throws Exception {
-        // JK-1354: an isolated --cache-dir install must not create or overwrite the shared
+        // an isolated --cache-dir install must not create or overwrite the shared
         // store/lib/<id>/ dir every ambient launch prefers.
         Path cache = dir.resolve("cache");
         Path mod = dir.resolve("plugins/worker");
         Files.createDirectories(mod);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
@@ -254,7 +245,6 @@ class PluginInstallLocalTest {
                 modules = ["plugins/worker"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "jk-iso-worker"
                 version = "0.12.0"
@@ -277,12 +267,11 @@ class PluginInstallLocalTest {
 
     @Test
     void uninstall_removes_local_repo_entries(@TempDir Path dir) throws Exception {
-        // JK-1353: `jk plugin uninstall` drops what install-local side-loaded.
+        // `jk plugin uninstall` drops what install-local side-loaded.
         Path cache = dir.resolve("cache");
         Path mod = dir.resolve("plugins/worker");
         Files.createDirectories(mod);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
@@ -313,7 +302,6 @@ class PluginInstallLocalTest {
     void no_plugin_main_modules_is_config_error(@TempDir Path dir) throws Exception {
         Path cache = dir.resolve("cache");
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "solo"
                 version = "0.0.1"

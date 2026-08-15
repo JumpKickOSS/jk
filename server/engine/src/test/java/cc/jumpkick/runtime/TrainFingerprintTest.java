@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1748: the train fingerprint must cover the profiles the run actually observed. A
+ * The train fingerprint must cover the profiles the run actually observed. A
  * {@code --profile smoke} run merges one profile's surface and must not satisfy the full-set
  * freshness check (`require-fresh`, and the up-to-date shortcut).
  */
@@ -23,7 +23,7 @@ class TrainFingerprintTest {
     @Test
     void filtered_profile_selection_changes_the_fingerprint(@TempDir Path tmp) throws Exception {
         Path toml = tmp.resolve("jk.toml");
-        Files.writeString(toml, "[project]\nname = \"app\"\ngroup = \"g\"\nversion = \"1\"\n");
+        Files.writeString(toml, "name = \"app\"\ngroup = \"g\"\nversion = \"1\"\n");
         JkBuild project = JkBuildParser.parse(toml);
         TrainConfig config = new TrainConfig(
                 null,

@@ -24,7 +24,7 @@ import org.tomlj.TomlTable;
  * }</pre>
  *
  * <p>Lenient: missing/malformed config never fails a command — falls back to the built-in official
- * URI and an empty third-party list. See JK-1380.
+ * URI and an empty third-party list.
  */
 public record JkTemplatesConfig(String officialUrl, List<Source> sources) {
 

@@ -6,7 +6,7 @@
  *
  * <p>Layered settings ({@code [config]}, {@code [forge]}): user-global → project
  * {@code jk.toml} → {@code JK_*} env → CLI flags. Machine-scoped settings
- * ({@code [global]}, {@code [cache]}, {@code [engine]}, {@code [http]},
+ * (root {@code nerd-font}, {@code [cache]}, {@code [engine]}, {@code [http]},
  * {@code [history]}) ignore project files; only user-global + env apply.
  * Malformed values are "unset", never a hard failure.
  */

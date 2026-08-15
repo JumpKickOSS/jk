@@ -37,7 +37,7 @@ public final class WorkspaceResolve {
                 // Standalone: optional-field auto-inherits (java/jdk/…) drop back to local defaults.
                 // group/version inheritance still requires a workspace.
                 if (module.project().requiresWorkspaceRoot()) {
-                    throw new JkBuildParseException("project.group/version inherit from the workspace"
+                    throw new JkBuildParseException("group/version inherit from the workspace"
                             + " (no enclosing workspace lists this module — set concrete"
                             + " group and version, or place this project under a workspace)");
                 }
@@ -47,7 +47,7 @@ public final class WorkspaceResolve {
                 return module;
             }
             // Failure scope matters: a member is only entitled to fail for problems in the
-            // pieces it actually needs. Root errors hit members with pending [project]
+            // pieces it actually needs. Root errors hit members with pending project
             // inherits; sibling errors hit members with workspace:<name> deps. A fully
             // concrete member mid-refactor keeps parsing either way — the broken file's
             // error belongs to whoever builds it.
@@ -95,7 +95,7 @@ public final class WorkspaceResolve {
      * member), or an empty set when {@code moduleDir} is standalone or the workspace cannot be
      * read. Publish paths use this to recognize sibling edges after
      * {@link WorkspaceMerge#resolveSiblingCoordinates} has rewritten them to real coordinates —
-     * e.g. to omit tests-kind sibling edges whose test-jar jk never produces (JK-1643).
+     * e.g. to omit tests-kind sibling edges whose test-jar jk never produces.
      */
     public static Set<String> siblingCoordinates(Path moduleDir) {
         try {

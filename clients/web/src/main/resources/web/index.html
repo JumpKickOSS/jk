@@ -111,7 +111,10 @@
             <template v-if="coordParts(card).group"><span class="cg">{{ coordParts(card).group }}</span><span class="csep">:</span></template>
             <span class="cn">{{ coordParts(card).name }}</span>
           </span>
-          <span class="kind">{{ card.kind }}</span>
+          <!-- Multi-module cards use a self-contained summary ("built 27 modules"); hide the raw
+               kind so it does not read as "build 27 modules" / "build built …". Finished builds
+               conjugate to "built" (incl. fully-cached / no module rows). -->
+          <span v-if="card.modules.length <= 1" class="kind">{{ kindLabel(card) }}</span>
           <span v-if="card.modules.length > 1" class="summary">{{ summary(card) }}</span>
           <span class="spacer"></span>
           <button v-if="outcome(card) === 'running' && card.id != null" class="rebuild icon danger"
@@ -286,15 +289,12 @@
 
     <main v-if="view === 'project'" class="project-detail" :class="{ 'code-view': filesOpen }">
       <div class="detail-head">
-        <!-- Files pane: chevron only, one level up to the project page. Otherwise: out to the list. -->
+        <!-- Chevron only: files pane → project page; project page → projects list. -->
         <button v-if="filesOpen" class="ghost back chevron-only" @click="closeCode()"
                 aria-label="Back to project" data-tip="Back to project"><jk-icon name="chevron-left"></jk-icon></button>
-        <button v-else class="ghost back" @click="setView('projects')"><jk-icon name="chevron-left"></jk-icon>Projects</button>
-        <span class="coord detail">
-          <template v-if="projectDetail && projectDetail.group"><span class="cg">{{ projectDetail.group }}</span><span class="csep">:</span></template>
-          <span class="cn">{{ projectDetail ? projectDetail.name : '' }}</span>
-        </span>
-        <span v-if="filesOpen && codePath" class="code-path-pill" :data-tip="codePath">{{ codePath }}</span>
+        <button v-else class="ghost back chevron-only" @click="setView('projects')"
+                aria-label="Back to projects" data-tip="Back to projects"><jk-icon name="chevron-left"></jk-icon></button>
+        <h2>{{ projectTitle() }}</h2>
         <span class="spacer"></span>
         <div class="detail-actions">
           <button
@@ -306,9 +306,6 @@
             :data-tip="projectGraphOpen ? 'Hide module dependency graph' : 'Show module dependency graph (loads on demand)'"
           >Dependencies</button>
           <button v-if="!filesOpen" class="ghost" data-tip="Coming soon" disabled>Trends</button>
-          <button v-if="filesOpen" class="ghost" :disabled="!codePath" @click="copyOpenFile()" data-tip="Copy file contents">
-            <jk-icon name="copy"></jk-icon>{{ $refs.codeView && $refs.codeView.copied ? 'Copied' : 'Copy' }}
-          </button>
           <!-- Not on the files pane itself — you are already browsing the codebase there. -->
           <button
             v-if="!filesOpen"
@@ -316,19 +313,22 @@
             class="browse"
             :disabled="!selectedProjectId"
             @click="browseCodebase"
-            aria-label="Browse this codebase"
-            data-tip="Browse this codebase"
-          ><jk-icon name="folder-open"></jk-icon></button>
-          <button v-if="projectDetail" @click="buildProject(projectDetail.dir)" data-tip="Build this project now"><jk-icon name="bolt"></jk-icon>Build</button>
+            aria-label="View/edit this codebase"
+            data-tip="View/edit this codebase"
+          ><jk-icon name="code"></jk-icon></button>
+          <button v-if="projectDetail" class="action-green" @click="buildProject(projectDetail.dir)" data-tip="Build this project now"><jk-icon name="bolt"></jk-icon>Build</button>
         </div>
       </div>
       <template v-if="filesOpen">
         <code-view ref="codeView" :project-id="selectedProjectId" :path="codePath" :line="codeLine"
+                   :line-err="codeLineErr"
                    :key="selectedProjectId" @navigate="onCodeNavigate"></code-view>
       </template>
       <template v-else>
-      <p v-if="projectDetail && projectDetail.description" class="proj-desc">{{ projectDetail.description }}</p>
-      <p v-else-if="projectDetail" class="proj-desc dim small">No description — add one under <code>[project]</code> in jk.toml.</p>
+      <p v-if="projectDetail && projectDetail.description" class="proj-desc">
+        <span class="proj-desc-q" aria-hidden="true">"</span><span class="proj-desc-body">{{ projectDetail.description }}</span><span class="proj-desc-q" aria-hidden="true">"</span>
+      </p>
+      <p v-else-if="projectDetail" class="proj-desc dim small">No description — add a top-level <code>description</code> key in jk.toml.</p>
 
       <template v-if="projectDetail && !projectDetail.empty">
         <div class="tiles">

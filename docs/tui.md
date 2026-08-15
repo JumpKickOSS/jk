@@ -150,7 +150,7 @@ A classic Powerline patch draws the triangles perfectly and the semi-circles as 
 `nerd-font = "wedge"` exists: under one boolean such a font would have to choose between tofu and no
 chrome at all.
 
-`[global].nerd-font` accepts `false`, `true`, `"auto"` (default), `"wedge"`, or `"pill"`.
+`nerd-font` accepts `false`, `true`, `"auto"` (default), `"wedge"`, or `"pill"`.
 Precedence: color/ANSI gate > `JK_NERD_FONT` > `NERD_FONT` > config > `auto` detection.
 
 Rules:

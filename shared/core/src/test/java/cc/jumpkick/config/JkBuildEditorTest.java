@@ -18,7 +18,6 @@ import org.junit.jupiter.api.Test;
 class JkBuildEditorTest {
 
     private static final String BASE = """
-            [project]
             group    = "com.example"
             name     = "widget"
             version  = "0.1.0"
@@ -277,7 +276,6 @@ class JkBuildEditorTest {
     @Test
     void add_preserves_user_comments_and_blank_lines() {
         String start = """
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "0.1.0"
@@ -306,7 +304,6 @@ class JkBuildEditorTest {
     // --- workspace modules -------------------------------------------------
 
     private static final String WS = """
-            [project]
             group    = "cc.jumpkick"
             name     = "jk"
             version  = "0.1.0"
@@ -331,7 +328,6 @@ class JkBuildEditorTest {
     @Test
     void add_module_to_empty_inline_array() {
         String start = """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
@@ -347,7 +343,6 @@ class JkBuildEditorTest {
     @Test
     void add_module_to_multiline_array_preserves_shape_and_comments() {
         String start = """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
@@ -368,7 +363,6 @@ class JkBuildEditorTest {
     @Test
     void add_module_to_multiline_array_without_trailing_comma() {
         String start = """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
@@ -386,7 +380,6 @@ class JkBuildEditorTest {
     @Test
     void add_module_when_no_modules_key_creates_one() {
         String start = """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
@@ -420,7 +413,6 @@ class JkBuildEditorTest {
     @Test
     void remove_module_from_multiline_array_drops_the_element_line() {
         String start = """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
@@ -455,7 +447,7 @@ class JkBuildEditorTest {
         String result = JkBuildEditor.registerWorkspaceModule(BASE, "core");
         assertThat(result).contains("[workspace]");
         assertThat(result).contains("modules = [\"core\"]");
-        // The original [project] block is preserved.
+        // The original project identity keys are preserved.
         assertThat(result).contains("name     = \"widget\"");
         JkBuild parsed = JkBuildParser.parse(result);
         assertThat(parsed.isWorkspaceRoot()).isTrue();

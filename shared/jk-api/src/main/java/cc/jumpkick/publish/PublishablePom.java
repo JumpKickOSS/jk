@@ -168,7 +168,7 @@ public final class PublishablePom {
                     continue;
                 }
                 // A tests-kind sibling edge names the sibling's test-jar — an artifact jk never
-                // publishes (JK-1643). Test scope is not transitive, so consumers lose nothing.
+                // publishes. Test scope is not transitive, so consumers lose nothing.
                 if (d.isTestsKind() && workspaceSiblings.contains(d.module())) {
                     continue;
                 }

@@ -21,7 +21,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.function.ObjIntConsumer;
@@ -39,8 +43,8 @@ public final class EngineClient {
     private static final int SOCKET_TIMEOUT_MILLIS = EngineWire.SOCKET_TIMEOUT_MILLIS;
 
     /**
-     * After force-stop / hard-kill, wait this long for the OS process to exit before escalating
-     * . Keeps the next client from racing a half-dead generation.
+     * After force-stop / hard-kill, wait this long for the OS process to exit before escalating.
+     * Keeps the next client from racing a half-dead generation.
      */
     private static final Duration STOP_DEATH_WAIT = Duration.ofMillis(1_500);
 
@@ -229,7 +233,7 @@ public final class EngineClient {
      * Last-resort SIGTERM→SIGKILL when a clean {@link #forceStop} can't reach a wedged engine. Never
      * targets the calling process (in-process {@code EngineServer} tests share this JVM's pid).
      *
-     * <p>Interrupt escalates immediately (JK-1956): a Ctrl-C during the 30s grace window means the
+     * <p>Interrupt escalates immediately: a Ctrl-C during the 30s grace window means the
      * user wants out now, so the wedged engine gets SIGKILL right away instead of the pre-peel
      * behavior of waiting out the full deadline with the interrupt flag parked. The target is
      * already known-wedged — there is no clean-exit path worth 30 more seconds of a held terminal.
@@ -450,7 +454,7 @@ public final class EngineClient {
     }
 
     /**
-     * run host hardware calibration on the engine. {@code engineColdStartMs} ≤0 omits the
+     * Run host hardware calibration on the engine. {@code engineColdStartMs} ≤0 omits the
      * client-measured cold-spawn component. Returns the {@code calibrate-ack} JSONL line, or empty
      * on protocol failure.
      */

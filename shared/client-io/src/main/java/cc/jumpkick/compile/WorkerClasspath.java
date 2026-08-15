@@ -16,13 +16,13 @@ import java.util.stream.Stream;
 /**
  * Resolves the JVM classpath for a thin plugin/worker jar.
  *
- * <p><strong>Preferred (JK-1348):</strong> {@code $JK_LIB_DIR/&lt;id&gt;/} (default {@code
+ * <p><strong>Preferred:</strong> {@code $JK_LIB_DIR/&lt;id&gt;/} (default {@code
  * store/lib/&lt;id&gt;/}, shared with installed tools) populated at install with hardlinked jars +
  * ordered {@code .classpath}. Compact paths in {@code ps}. Used only when the lib dir was
- * materialized from the exact jar being launched (inode match — JK-1349); otherwise the sidecar
+ * materialized from the exact jar being launched (inode match — ); otherwise the sidecar
  * fallback below wins so upgrades and {@code -Djk.*.plugin.jar} overrides are honored.
  *
- * <p><strong>Fallback (JK-1347):</strong> {@code <worker>.jar} plus optional sidecar {@code
+ * <p><strong>Fallback:</strong> {@code <worker>.jar} plus optional sidecar {@code
  * <worker>.jar.classpath} — one absolute jar path per line ({@code #} comments and blanks
  * ignored).
  *
@@ -49,7 +49,7 @@ public final class WorkerClasspath {
      */
     public static List<Path> paths(Path workerJar) {
         Path worker = workerJar.toAbsolutePath().normalize();
-        // JK-1348: short store/lib/<id>/ paths when materialize has run for this worker.
+        // short store/lib/<id>/ paths when materialize has run for this worker.
         List<Path> libPaths = WorkerLib.pathsIfPresent(worker);
         if (libPaths != null && !libPaths.isEmpty()) {
             return libPaths;

@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1767: the marker scan must be read-size independent — a marker straddling the first-chunk
+ * The marker scan must be read-size independent — a marker straddling the first-chunk
  * boundary or pushed past it by a long license header must still be seen, otherwise a KMP root
  * silently degrades to the plain Maven view (duplicate/missing classes, no diagnostic).
  */

@@ -70,7 +70,7 @@ class TerminalSizeTest {
     @Test
     @org.junit.jupiter.api.condition.DisabledOnOs(org.junit.jupiter.api.condition.OS.WINDOWS)
     void sigwinch_invalidates_the_cache_so_the_next_read_reprobes() throws Exception {
-        // JK-1966: a mid-build resize must reach post-resize rendering (failure snippets,
+        // a mid-build resize must reach post-resize rendering (failure snippets,
         // settle wedges) without waiting for the next plan start. The handler only drops the
         // cache; the next consumer pays the single re-probe.
         assertThat(TerminalSize.columns()).isEqualTo(120);
@@ -93,6 +93,26 @@ class TerminalSizeTest {
         Object signal = ctor.newInstance("WINCH");
         Method raise = signalClass.getMethod("raise", signalClass);
         raise.invoke(null, signal);
+    }
+
+    @Test
+    void winch_during_an_in_flight_probe_is_never_lost() {
+        // the resize lands between the ioctl and the cache store — the (possibly
+        // pre-resize) result must not be cached over the invalidation.
+        TerminalSize.probe = () -> {
+            probes.incrementAndGet();
+            TerminalSize.onResize(); // deterministic mid-probe WINCH
+            return new int[] {24, 80}; // pre-resize geometry
+        };
+        assertThat(TerminalSize.size()).containsExactly(24, 80); // best effort for this frame
+        // The cache stayed empty, so the next read re-probes and sees post-resize geometry.
+        TerminalSize.probe = () -> {
+            probes.incrementAndGet();
+            return new int[] {50, 100};
+        };
+        assertThat(TerminalSize.size()).containsExactly(50, 100);
+        assertThat(TerminalSize.size()).containsExactly(50, 100); // now cached
+        assertThat(probes.get()).isEqualTo(2);
     }
 
     @Test

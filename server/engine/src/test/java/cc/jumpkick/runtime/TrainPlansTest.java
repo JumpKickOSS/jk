@@ -17,7 +17,6 @@ class TrainPlansTest {
     @Test
     void train_plan_terminals_on_train_not_native(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "t"
                 version = "0.1.0"

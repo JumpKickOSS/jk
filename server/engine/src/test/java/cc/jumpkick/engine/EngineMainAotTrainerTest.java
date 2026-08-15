@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The sidecar AOT trainer's crash-safe publish (JK-1430): the recording assembles at a temp
+ * The sidecar AOT trainer's crash-safe publish: the recording assembles at a temp
  * sibling and only a clean, non-empty result is atomically promoted — a killed trainer (the
  * watchdog uses {@code Runtime.halt}) can never leave a partial file at the final path.
  */

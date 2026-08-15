@@ -1,4 +1,3 @@
-[project]
 name = "jk-groovy-compiler"
 description = "JumpKick's Groovy compiler plugin"
 

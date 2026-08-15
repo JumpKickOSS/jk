@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver.pubgrub;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
 
 /**
  * PubGrub assignment stack (decisions + derivations) with decision-level backtracking. Per-package
@@ -180,14 +186,14 @@ public final class PartialSolution {
             return term.effectiveVersions().contains(decided);
         }
         PackageState s = byPackage.get(term.pkg());
-        // Mirror of the absence guard in contradicts() (JK-1832): a package with no positive
+        // Mirror of the absence guard in contradicts(): a package with no positive
         // commitment — mentioned only negatively (e.g. ¬b{1.2} learned during conflict
         // resolution, the exact post-backjump state), or not mentioned at all — may end up
         // unselected entirely, and per the paper a negative assignment can never satisfy a
         // POSITIVE term. Without this, set projection alone reported such terms satisfied,
         // letting relationTo() misclassify a dependency incompatibility as SATISFIED (spurious
         // conflict → wrong learned inco/backjump) or ALMOST_SATISFIED toward over-resolution
-        // (JK-1835).
+        // .
         if (term.positive() && (s == null || !s.hasPositive)) return false;
         VersionSet effective = term.effectiveVersions();
         if (s == null) {
@@ -226,7 +232,7 @@ public final class PartialSolution {
         // end up unselected, so set-projection "contradiction" — which assumes presence — must
         // not fire. Without this, a dependency incompatibility {a, ¬b[range]} went permanently
         // INCONCLUSIVE after a backjump, b's positive term was never re-derived, and the solve
-        // terminated WITHOUT the mandatory subtree (JK-1832 / the JK-1811 silent drop).
+        // terminated WITHOUT the mandatory subtree.
         if (!term.positive() && !s.hasPositive) return false;
         String decided = decisionByPackage.get(term.pkg());
         if (decided != null) {

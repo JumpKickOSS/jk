@@ -37,7 +37,6 @@ class ProtobufPluginTest {
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
 
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name    = "pbdemo"
                 group   = "com.example"
                 version = "1.0.0"
@@ -132,7 +131,6 @@ class ProtobufPluginTest {
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
 
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name    = "pbkt"
                 group   = "com.example"
                 version = "1.0.0"

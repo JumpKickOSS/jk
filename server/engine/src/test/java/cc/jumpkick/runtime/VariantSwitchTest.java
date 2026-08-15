@@ -31,7 +31,6 @@ class VariantSwitchTest {
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
 
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name    = "ktswitch"
                 group   = "com.example"
                 version = "1.0.0"

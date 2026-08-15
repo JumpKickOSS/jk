@@ -114,8 +114,61 @@ function clearReloadLatch() {
   sessionStorage.removeItem(RELOAD_FLAG);
 }
 
-/** Full shell reload when the engine generation under this tab has changed. Loop-safe. */
+/**
+ * Unsaved-work probe (JK-1973). The editor owning a dirty buffer registers a zero-arg function
+ * returning truthy while unsaved edits exist; {@link hardRefreshForEpoch} then asks before
+ * discarding them instead of silently reloading over the buffer. One guard is enough — the Files
+ * pane is the only editable surface.
+ */
+let dirtyGuard = null;
+let epochReloadDeferred = false;
+
+export function registerDirtyGuard(fn) {
+  dirtyGuard = fn;
+}
+
+export function unregisterDirtyGuard(fn) {
+  if (dirtyGuard === fn) dirtyGuard = null;
+}
+
+/**
+ * The guard owner calls this when its buffer becomes clean (saved elsewhere, discarded, file
+ * closed). If an epoch reload was deferred behind the dirty buffer, it proceeds now.
+ */
+export function releaseDeferredEpochReload() {
+  if (!epochReloadDeferred) return;
+  epochReloadDeferred = false;
+  hardRefreshForEpoch();
+}
+
+function hasDirtyBuffer() {
+  if (!dirtyGuard) return false;
+  try {
+    return !!dirtyGuard();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Full shell reload when the engine generation under this tab has changed. Loop-safe. With a
+ * dirty editor buffer, asks once before discarding; a declined reload is deferred (background
+ * polls stop nagging) until the buffer is clean ({@link releaseDeferredEpochReload}) or the user
+ * reloads by hand.
+ */
 export function hardRefreshForEpoch() {
+  if (hasDirtyBuffer()) {
+    if (epochReloadDeferred) return;
+    const ok =
+      typeof window !== 'undefined' && typeof window.confirm === 'function'
+        ? window.confirm('The engine restarted and the page must reload. Discard unsaved changes?')
+        : true;
+    if (!ok) {
+      epochReloadDeferred = true;
+      return;
+    }
+  }
+  epochReloadDeferred = false;
   if (sessionStorage.getItem(RELOAD_FLAG) === '1') {
     // A reload for this mismatch is already in flight (or the last one failed to resolve it);
     // don't loop. The latch is cleared by the next epoch-consistent hydrate (noteEngineEpoch).
@@ -188,6 +241,33 @@ export async function post(path, body) {
   const json = await resp.json().catch(() => ({}));
   if (!resp.ok) throwHttp(resp, json);
   return json;
+}
+
+/** PUT a flat object to an /api path; returns parsed JSON, throws {status, error} on non-2xx. */
+export async function put(path, body) {
+  const resp = await fetch(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...headers(true) },
+    body: JSON.stringify(body),
+  });
+  if (await handleEpochConflict(resp)) throw { status: 409, error: 'engine-epoch-mismatch' };
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) throwHttp(resp, json);
+  return json;
+}
+
+/**
+ * GET an /api path as a Blob (raw file bytes for image Preview). Throws {status, error?} on
+ * non-2xx. Uses the same Authorization / epoch headers as other mutations.
+ */
+export async function getBlob(path, opts = {}) {
+  const resp = await fetch(path, { headers: headers(true), signal: opts.signal });
+  if (await handleEpochConflict(resp)) throw { status: 409, error: 'engine-epoch-mismatch' };
+  if (!resp.ok) {
+    const json = await resp.json().catch(() => ({}));
+    throwHttp(resp, json);
+  }
+  return resp.blob();
 }
 
 /** GET an /api path as plain text (the log tail). Throws {status} on any non-2xx. */

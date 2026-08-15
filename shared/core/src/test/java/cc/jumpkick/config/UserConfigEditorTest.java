@@ -8,14 +8,15 @@ import org.junit.jupiter.api.Test;
 class UserConfigEditorTest {
 
     @Test
-    void creates_global_block() {
+    void creates_root_level_key() {
         String out = UserConfigEditor.upsertNerdFont("", "true");
-        assertThat(out).contains("[global]").contains("nerd-font = true");
+        assertThat(out).isEqualTo("nerd-font = true\n");
+        assertThat(out).doesNotContain("[global]");
     }
 
     @Test
     void replaces_existing_line() {
-        String in = "[global]\nnerd-font = true\nother = 1\n";
+        String in = "nerd-font = true\nother = 1\n";
         String out = UserConfigEditor.upsertNerdFont(in, "false");
         assertThat(out).contains("nerd-font = false");
         assertThat(out).doesNotContain("nerd-font = true");
@@ -23,17 +24,18 @@ class UserConfigEditorTest {
     }
 
     @Test
-    void inserts_into_existing_global() {
-        String in = "[global]\ncolor = auto\n";
+    void inserts_at_top_when_missing() {
+        String in = "color = auto\n";
         String out = UserConfigEditor.upsertNerdFont(in, "false");
-        assertThat(out).contains("[global]").contains("nerd-font = false").contains("color = auto");
+        assertThat(out).startsWith("nerd-font = false\n");
+        assertThat(out).contains("color = auto");
     }
 
     @Test
     void replaces_a_quoted_mode_word_rather_than_duplicating_the_key() {
         // Re-running setup-terminal must not leave two nerd-font lines: the second would win on
         // re-read and the first would be a silent lie in the file the user edits.
-        String in = "[global]\nnerd-font = \"wedge\"\n";
+        String in = "nerd-font = \"wedge\"\n";
         String out = UserConfigEditor.upsertNerdFont(in, "\"pill\"");
         assertThat(out).contains("nerd-font = \"pill\"");
         assertThat(out).doesNotContain("wedge");
@@ -51,9 +53,9 @@ class UserConfigEditorTest {
 
     @Test
     void switching_between_boolean_and_word_forms_replaces_in_place() {
-        String toWord = UserConfigEditor.upsertNerdFont("[global]\nnerd-font = false\n", "\"auto\"");
+        String toWord = UserConfigEditor.upsertNerdFont("nerd-font = false\n", "\"auto\"");
         assertThat(toWord).contains("nerd-font = \"auto\"").doesNotContain("false");
-        String toBool = UserConfigEditor.upsertNerdFont("[global]\nnerd-font = \"auto\"\n", "true");
+        String toBool = UserConfigEditor.upsertNerdFont("nerd-font = \"auto\"\n", "true");
         assertThat(toBool).contains("nerd-font = true").doesNotContain("auto");
     }
 
@@ -62,11 +64,11 @@ class UserConfigEditorTest {
         String in = "[cache]\nauto-prune = true\n\n[toolchain]\njdk = \"temurin-25\"\n";
         String out = UserConfigEditor.upsertNerdFont(in, "\"auto\"");
         assertThat(out)
+                .startsWith("nerd-font = \"auto\"\n")
                 .contains("[cache]")
                 .contains("auto-prune = true")
                 .contains("[toolchain]")
-                .contains("jdk = \"temurin-25\"")
-                .contains("nerd-font = \"auto\"");
+                .contains("jdk = \"temurin-25\"");
     }
 
     private static int countOccurrences(String haystack, String needle) {

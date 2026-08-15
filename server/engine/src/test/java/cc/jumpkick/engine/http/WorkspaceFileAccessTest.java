@@ -22,7 +22,6 @@ class WorkspaceFileAccessTest {
         Files.createDirectories(root.resolve("src"));
         Files.writeString(root.resolve("src/Main.java"), "package demo;\nclass Main {}\n");
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "demo"
                 version = "1"
@@ -49,7 +48,7 @@ class WorkspaceFileAccessTest {
         assertThat(WorkspaceFileAccess.normalizeRel("src/./Main.java")).isNull();
         assertThat(WorkspaceFileAccess.normalizeRel("src//Main.java")).isNull();
         assertThat(WorkspaceFileAccess.normalizeRel("src\\Main.java")).isNull();
-        assertThat(WorkspaceFileAccess.normalizeRel("src/Ma\0in.java")).isNull(); // NUL byte (JK-1955)
+        assertThat(WorkspaceFileAccess.normalizeRel("src/Ma\0in.java")).isNull(); // NUL byte
         assertThat(WorkspaceFileAccess.read(root, "../x.java")).isInstanceOf(ReadResult.BadRequest.class);
         assertThat(WorkspaceFileAccess.read(root, "src/Ma\0in.java")).isInstanceOf(ReadResult.BadRequest.class);
         assertThat(WorkspaceFileAccess.read(root, "")).isInstanceOf(ReadResult.BadRequest.class);
@@ -57,7 +56,7 @@ class WorkspaceFileAccessTest {
 
     @Test
     void symlinked_directory_escape_is_not_found(@TempDir Path root, @TempDir Path outside) throws Exception {
-        // JK-1955: the real-path containment must also catch a symlinked PARENT directory —
+        // the real-path containment must also catch a symlinked PARENT directory —
         // src/link/Secret.java where link -> outside.
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("src"));
@@ -179,8 +178,76 @@ class WorkspaceFileAccessTest {
     }
 
     @Test
+    void preview_and_image_extensions_are_servable(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("docs"));
+        Files.writeString(root.resolve("docs/diagram.mmd"), "graph TD; A-->B");
+        Files.writeString(root.resolve("docs/g.dot"), "digraph { a -> b }");
+        Files.writeString(root.resolve("docs/note.adoc"), "= Title");
+        Files.writeString(root.resolve("docs/box.d2"), "a -> b");
+        Files.write(root.resolve("docs/logo.png"), new byte[] {(byte) 0x89, 'P', 'N', 'G', 0, 1, 2});
+        assertThat(WorkspaceFileAccess.langOf("diagram.mmd")).isEqualTo("mermaid");
+        assertThat(WorkspaceFileAccess.langOf("g.dot")).isEqualTo("graphviz");
+        assertThat(WorkspaceFileAccess.langOf("note.adoc")).isEqualTo("asciidoc");
+        assertThat(WorkspaceFileAccess.langOf("box.d2")).isEqualTo("d2");
+        assertThat(WorkspaceFileAccess.langOf("logo.png")).isEqualTo("image");
+        assertThat(WorkspaceFileAccess.read(root, "docs/diagram.mmd")).isInstanceOf(ReadResult.Ok.class);
+        assertThat(WorkspaceFileAccess.read(root, "docs/logo.png")).isInstanceOf(ReadResult.Binary.class);
+        var raw = WorkspaceFileAccess.readRaw(root, "docs/logo.png");
+        assertThat(raw).isInstanceOf(WorkspaceFileAccess.RawResult.Ok.class);
+        var body = ((WorkspaceFileAccess.RawResult.Ok) raw).body();
+        assertThat(body.contentType()).isEqualTo("image/png");
+        assertThat(body.bytes()).hasSize(7);
+    }
+
+    @Test
+    void write_replaces_text_file_atomically(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        Files.writeString(root.resolve("src/Main.java"), "class Main {}\n");
+        var written = WorkspaceFileAccess.write(root, "src/Main.java", "class Main { int x; }\n");
+        assertThat(written).isInstanceOf(WorkspaceFileAccess.WriteResult.Ok.class);
+        var ok = (WorkspaceFileAccess.WriteResult.Ok) written;
+        assertThat(ok.body().path()).isEqualTo("src/Main.java");
+        assertThat(ok.body().lines()).isEqualTo(1);
+        assertThat(ok.body().etag()).isNotBlank();
+        assertThat(Files.readString(root.resolve("src/Main.java"))).isEqualTo("class Main { int x; }\n");
+    }
+
+    @Test
+    void write_with_stale_etag_is_conflict(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        Files.writeString(root.resolve("src/Main.java"), "class Main {}\n");
+        var read = (WorkspaceFileAccess.ReadResult.Ok) WorkspaceFileAccess.read(root, "src/Main.java");
+        String etag = read.body().etag();
+        Files.writeString(root.resolve("src/Main.java"), "class Main { changed; }\n");
+        var conflict = WorkspaceFileAccess.write(root, "src/Main.java", "class Main { x; }\n", etag);
+        assertThat(conflict).isInstanceOf(WorkspaceFileAccess.WriteResult.Conflict.class);
+        var ok = WorkspaceFileAccess.write(
+                root,
+                "src/Main.java",
+                "class Main { x; }\n",
+                ((WorkspaceFileAccess.WriteResult.Conflict) conflict).currentEtag());
+        assertThat(ok).isInstanceOf(WorkspaceFileAccess.WriteResult.Ok.class);
+    }
+
+    @Test
+    void write_rejects_images_and_traversal(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("docs"));
+        Files.write(root.resolve("docs/logo.png"), new byte[] {1, 2, 3});
+        assertThat(WorkspaceFileAccess.write(root, "docs/logo.png", "nope"))
+                .isInstanceOf(WorkspaceFileAccess.WriteResult.NotWritable.class);
+        assertThat(WorkspaceFileAccess.write(root, "../x.java", "x"))
+                .isInstanceOf(WorkspaceFileAccess.WriteResult.BadRequest.class);
+        assertThat(WorkspaceFileAccess.write(root, "src/Missing.java", "x"))
+                .isInstanceOf(WorkspaceFileAccess.WriteResult.NotFound.class);
+    }
+
+    @Test
     void non_utf8_files_fall_back_to_latin1_with_the_encoding_flagged(@TempDir Path root) throws Exception {
-        // JK-1954: a Latin-1 source previously decoded with silent U+FFFD substitution and no
+        // a Latin-1 source previously decoded with silent U+FFFD substitution and no
         // indicator — corrupted content presented as the file's true text.
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("src"));
@@ -196,6 +263,42 @@ class WorkspaceFileAccessTest {
         var utf = ((ReadResult.Ok) WorkspaceFileAccess.read(root, "src/Utf.java")).body();
         assertThat(utf.encoding()).isEqualTo("utf-8");
         assertThat(utf.content()).contains("Café");
+    }
+
+    @Test
+    void latin1_read_write_round_trip_preserves_bytes(@TempDir Path root) throws Exception {
+        // a save under the encoding the file was read with must re-encode to the
+        // original bytes, never silently transcode the file to UTF-8.
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        byte[] latin1 = "class Café { /* naïve — déjà vu */ }".getBytes(StandardCharsets.ISO_8859_1);
+        Files.write(root.resolve("src/Latin.java"), latin1);
+        var body = ((ReadResult.Ok) WorkspaceFileAccess.read(root, "src/Latin.java")).body();
+        assertThat(body.encoding()).isEqualTo("iso-8859-1");
+        var saved = WorkspaceFileAccess.write(root, "src/Latin.java", body.content(), body.etag(), body.encoding());
+        assertThat(saved).isInstanceOf(WorkspaceFileAccess.WriteResult.Ok.class);
+        assertThat(Files.readAllBytes(root.resolve("src/Latin.java"))).isEqualTo(latin1);
+        // Unchanged content ⇒ unchanged etag: the round trip is byte-exact, not just lossless.
+        assertThat(((WorkspaceFileAccess.WriteResult.Ok) saved).body().etag()).isEqualTo(body.etag());
+    }
+
+    @Test
+    void latin1_write_rejects_unrepresentable_and_unknown_encodings(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        Files.write(root.resolve("src/Latin.java"), "x".getBytes(StandardCharsets.ISO_8859_1));
+        var snowman = WorkspaceFileAccess.write(root, "src/Latin.java", "class ☃ {}", null, "iso-8859-1");
+        assertThat(snowman).isInstanceOf(WorkspaceFileAccess.WriteResult.BadRequest.class);
+        assertThat(((WorkspaceFileAccess.WriteResult.BadRequest) snowman).error())
+                .contains("iso-8859-1");
+        var unknown = WorkspaceFileAccess.write(root, "src/Latin.java", "x", null, "utf-16");
+        assertThat(unknown).isInstanceOf(WorkspaceFileAccess.WriteResult.BadRequest.class);
+        assertThat(((WorkspaceFileAccess.WriteResult.BadRequest) unknown).error())
+                .contains("unsupported encoding");
+        // Blank/utf-8 spellings keep the default path.
+        assertThat(WorkspaceFileAccess.write(root, "src/Latin.java", "y", null, "UTF-8"))
+                .isInstanceOf(WorkspaceFileAccess.WriteResult.Ok.class);
+        assertThat(Files.readString(root.resolve("src/Latin.java"))).isEqualTo("y");
     }
 
     @Test
@@ -218,7 +321,7 @@ class WorkspaceFileAccessTest {
             return;
         }
         assertThat(WorkspaceFileAccess.read(root, "src/Leak.java")).isInstanceOf(ReadResult.NotFound.class);
-        // list/read parity (JK-1952): the escaping link must not be listed either …
+        // list/read parity: the escaping link must not be listed either …
         assertThat(WorkspaceFileAccess.list(root).files())
                 .noneMatch(f -> f.path().equals("src/Leak.java"));
         // … while an in-root symlink stays listed and readable.
@@ -227,6 +330,67 @@ class WorkspaceFileAccessTest {
         assertThat(WorkspaceFileAccess.list(root).files())
                 .anyMatch(f -> f.path().equals("src/Alias.java"));
         assertThat(WorkspaceFileAccess.read(root, "src/Alias.java")).isInstanceOf(ReadResult.Ok.class);
+    }
+
+    @Test
+    void depth_cap_reports_truncation(@TempDir Path root) throws Exception {
+        // files below MAX_WALK_DEPTH are readable via deep link but invisible in the
+        // tree — the UI must at least see the truncation hint.
+        writeJkToml(root, "demo");
+        StringBuilder relDir = new StringBuilder();
+        Path deep = root;
+        for (int i = 0; i < WorkspaceFileAccess.MAX_WALK_DEPTH + 2; i++) {
+            deep = deep.resolve("d" + i);
+            relDir.append(relDir.isEmpty() ? "" : "/").append("d").append(i);
+        }
+        Files.createDirectories(deep);
+        Files.writeString(deep.resolve("Deep.java"), "class Deep {}");
+        var list = WorkspaceFileAccess.list(root);
+        assertThat(list.truncated()).isTrue();
+        assertThat(list.files())
+                .extracting(WorkspaceFileAccess.ListedFile::path)
+                .doesNotContain(relDir + "/Deep.java");
+        assertThat(WorkspaceFileAccess.read(root, relDir + "/Deep.java")).isInstanceOf(ReadResult.Ok.class);
+    }
+
+    @Test
+    void in_root_directory_symlinks_are_listed_and_cycles_terminate(@TempDir Path root) throws Exception {
+        // read() serves files under an in-root dir symlink, so list must show them.
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("real"));
+        Files.writeString(root.resolve("real/A.java"), "class A {}");
+        try {
+            Files.createSymbolicLink(root.resolve("linkdir"), root.resolve("real"));
+            // A link back to the root would cycle the BFS without the visited set.
+            Files.createSymbolicLink(root.resolve("real/loop"), root);
+        } catch (UnsupportedOperationException | IOException unsupported) {
+            return;
+        }
+        var list = WorkspaceFileAccess.list(root);
+        // The target tree is walked exactly once, via whichever name the directory stream
+        // yielded first — either spelling is a correct listing, and reads serve both.
+        assertThat(list.files())
+                .extracting(WorkspaceFileAccess.ListedFile::path)
+                .anyMatch(p -> p.equals("real/A.java") || p.equals("linkdir/A.java"));
+        assertThat(WorkspaceFileAccess.read(root, "linkdir/A.java")).isInstanceOf(ReadResult.Ok.class);
+        assertThat(WorkspaceFileAccess.read(root, "real/A.java")).isInstanceOf(ReadResult.Ok.class);
+    }
+
+    @Test
+    void escaping_directory_symlinks_stay_unlisted_and_unreadable(@TempDir Path root, @TempDir Path outside)
+            throws Exception {
+        writeJkToml(root, "demo");
+        Files.writeString(outside.resolve("Secret.java"), "class Secret {}");
+        try {
+            Files.createSymbolicLink(root.resolve("esc"), outside);
+        } catch (UnsupportedOperationException | IOException unsupported) {
+            return;
+        }
+        var list = WorkspaceFileAccess.list(root);
+        assertThat(list.files())
+                .extracting(WorkspaceFileAccess.ListedFile::path)
+                .noneMatch(p -> p.startsWith("esc/"));
+        assertThat(WorkspaceFileAccess.read(root, "esc/Secret.java")).isInstanceOf(ReadResult.NotFound.class);
     }
 
     @Test
@@ -245,8 +409,7 @@ class WorkspaceFileAccessTest {
 
     @Test
     void truncation_never_drops_the_root_manifest(@TempDir Path root) throws Exception {
-        // JK-1944: the old walk sorted lexically and kept the first 2000, so 2000+ files sorting
-        // before "jk.toml" amputated the default file (empty pane) and the tail of the alphabet.
+        // Truncation must keep the workspace-root jk.toml even when 2000+ files sort before it.
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("aaa"));
         for (int i = 0; i < 2100; i++) {
@@ -305,7 +468,6 @@ class WorkspaceFileAccessTest {
     private static void writeJkToml(Path dir, String name) throws Exception {
         Files.createDirectories(dir);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "%s"
                 version = "1"

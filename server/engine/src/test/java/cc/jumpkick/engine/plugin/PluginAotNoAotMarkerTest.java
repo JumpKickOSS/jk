@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Read-time TTL on sticky {@code .noaot} markers (JK-1431): failures back off, but a marker
+ * Read-time TTL on sticky {@code .noaot} markers: failures back off, but a marker
  * older than {@link PluginAot#NOAOT_RETRY_MILLIS} expires so the key gets a fresh training
  * attempt — the sweep-side expiry only ever runs from a successful sibling train.
  */

@@ -117,7 +117,7 @@ class JobWorkersTest {
     }
 
     /**
-     * JK-1469: CPU steps run on a process-wide ForkJoinPool whose threads inherit whatever scope
+     * CPU steps run on a process-wide ForkJoinPool whose threads inherit whatever scope
      * was open when the pool created them. A fork must attach to the request that submitted the
      * work, not to that stale inherited one.
      */

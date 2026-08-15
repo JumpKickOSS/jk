@@ -8,7 +8,12 @@ import cc.jumpkick.run.TaskStatus;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Objects;
-import java.util.concurrent.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -23,7 +28,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * (latest wins). {@code output} is <em>queued</em>, not sampled: every line is delivered, batched
  * per cadence tick, because JSONL {@code output} is contractually "printed lines"
  * (docs/machine-output.md) — a test-failure report or native-image log emitted as a synchronous
- * burst must arrive complete (JK-1833). The queue is bounded ({@value #MAX_PENDING_OUTPUT_LINES}
+ * burst must arrive complete. The queue is bounded ({@value #MAX_PENDING_OUTPUT_LINES}
  * lines); a pathological storm drops the oldest lines and announces the gap with a marker line.
  *
  * <p>Applies to <em>all</em> engine-hosted plans (lock, build, test, plugins), not only resolve:
@@ -53,7 +58,7 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     private String labelStep;
     private String labelText;
 
-    /** Pending output lines in arrival order — bounded FIFO, never latest-wins (JK-1833). */
+    /** Pending output lines in arrival order — bounded FIFO, never latest-wins. */
     private final ArrayDeque<PendingOutput> outputQueue = new ArrayDeque<>();
 
     private long droppedOutputLines;
@@ -77,7 +82,7 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
      * connection's write monitor: a client that stops draining its socket (SIGSTOP'd, wedged
      * terminal) would park this thread and every other build's coalesced progress would go silent
      * until it emitted a structural event. The scheduled task therefore only hands the flush to
-     * {@link #FLUSHERS} (JK-1477).
+     * {@link #FLUSHERS}.
      */
     private static final ScheduledExecutorService SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "jk-wire-progress");
@@ -175,7 +180,7 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
         }
         // Queue, don't sample: cadence bounds frame *rate* (lines batch into one window), but
         // every line must arrive — a test-failure stack emitted as one synchronous burst would
-        // otherwise collapse to its final line (JK-1833).
+        // otherwise collapse to its final line.
         synchronized (lock) {
             if (outputQueue.size() >= MAX_PENDING_OUTPUT_LINES) {
                 outputQueue.pollFirst();
@@ -333,8 +338,7 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
 
     @Override
     public void close() {
-        // Flush BEFORE marking closed — flush no-ops once closed, so the old order
-        // silently dropped whatever was still pending.
+        // Flush BEFORE marking closed — flush no-ops once closed.
         flush();
         if (!closed.compareAndSet(false, true)) return;
         synchronized (lock) {

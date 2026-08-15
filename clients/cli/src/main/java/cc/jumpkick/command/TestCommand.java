@@ -31,7 +31,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -131,8 +136,8 @@ public final class TestCommand implements CliCommand {
 
         cc.jumpkick.model.JkBuild entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
 
-        // Workspace root: fan out to members (JK-1285). Bare `jk test` at the root used to run
-        // only the root module's (usually empty) suite and print a green "No tests".
+        // Workspace root: fan out to members so a bare `jk test` is not just the root
+        // module's (usually empty) suite.
         if (entry.isWorkspaceRoot()) {
             Set<Path> moduleDirs;
             boolean selective = (affectedSince != null && !affectedSince.isBlank())

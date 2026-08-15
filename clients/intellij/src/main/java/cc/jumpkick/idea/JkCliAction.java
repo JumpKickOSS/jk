@@ -86,7 +86,7 @@ public abstract class JkCliAction extends AnAction implements DumbAware {
                 .notify(project);
     }
 
-    /** Full Sync: print-model + ide --idea + bsp install + VFS refresh (JK-1511). */
+    /** Full Sync: print-model + ide --idea + bsp install + VFS refresh. */
     public static final class Sync extends AnAction implements DumbAware {
         public Sync() {
             super("Sync project");

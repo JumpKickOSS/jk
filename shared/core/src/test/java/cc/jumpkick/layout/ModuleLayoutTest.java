@@ -69,7 +69,6 @@ class ModuleLayoutTest {
 
     private static void writeToml(Path dir, String layout) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "app"
                 version = "1.0.0"

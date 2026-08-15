@@ -11,6 +11,7 @@ import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.jline.utils.Signals;
 
@@ -21,8 +22,10 @@ import org.jline.utils.Signals;
  * and no JLine terminal (JLine capability probes race the shell after a transient build-close).
  *
  * <p>The probe runs once and the result is reused; {@link #refresh()} re-probes at natural
- * boundaries (the start of a live plan), which also picks up a resize between builds. Render
- * paths run every animation frame and must never probe.
+ * boundaries (the start of a live plan), which also picks up a resize between builds. SIGWINCH
+ * only clears the cache — the next {@link #size()} / {@link #columns()} pays one native probe.
+ * Live plan paint and {@link RenderContext#current()} read that cache every frame; they must never
+ * call {@link #refresh()}.
  */
 public final class TerminalSize {
 
@@ -38,7 +41,7 @@ public final class TerminalSize {
             System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
 
     /**
-     * SIGWINCH invalidation (JK-1966): with the cache probed only at plan start, everything
+     * SIGWINCH invalidation: with the cache probed only at plan start, everything
      * rendered after a mid-build resize — failure-snippet budgets, settle wedges — used the stale
      * width until the next plan. The handler only drops the cache (never probes); the next
      * consumer pays one native ioctl per physical resize, not per frame. Installed lazily at
@@ -57,11 +60,24 @@ public final class TerminalSize {
         }
         try {
             // Same reflective path as GlobalCancel — avoids sun.misc compile warnings.
-            Signals.register("WINCH", () -> cached = null);
+            Signals.register("WINCH", TerminalSize::onResize);
         } catch (Throwable t) {
             // unsupported runtime — the plan-start refresh still applies
         }
     }
+
+    /**
+     * Resize invalidation. The generation bump comes FIRST: a probe that was already in flight
+     * when the resize landed re-checks the generation before caching, so its (possibly pre-resize)
+     * result cannot overwrite the invalidation. Bump-then-clear, because
+     * clear-then-bump reopens the window: the probe could store between the two.
+     */
+    static void onResize() {
+        resizeGeneration.incrementAndGet();
+        cached = null;
+    }
+
+    private static final AtomicInteger resizeGeneration = new AtomicInteger();
 
     private TerminalSize() {}
 
@@ -70,8 +86,11 @@ public final class TerminalSize {
         ensureWinchHandler();
         int[] s = cached;
         if (s == null) {
+            int gen = resizeGeneration.get();
             s = probe.get();
-            cached = s;
+            // A WINCH mid-probe means this result may be pre-resize: return it (best effort for
+            // this frame) but leave the cache empty so the next consumer re-probes.
+            if (resizeGeneration.get() == gen) cached = s;
         }
         return s;
     }
@@ -85,8 +104,10 @@ public final class TerminalSize {
 
     /** Re-probe and cache — call at plan start, never from a render path. */
     public static int[] refresh() {
+        ensureWinchHandler();
+        int gen = resizeGeneration.get();
         int[] s = probe.get();
-        cached = s;
+        if (resizeGeneration.get() == gen) cached = s;
         return s;
     }
 
@@ -144,23 +165,32 @@ public final class TerminalSize {
         if (posixInitAttempted) return;
         synchronized (TerminalSize.class) {
             if (posixInitAttempted) return;
-            posixInitAttempted = true;
-            Linker linker = Linker.nativeLinker();
-            SymbolLookup lookup = linker.defaultLookup();
-            posixOpen = linker.downcallHandle(
-                    lookup.findOrThrow("open"),
-                    FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-            posixClose = linker.downcallHandle(
-                    lookup.findOrThrow("close"), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
-            posixIsatty = linker.downcallHandle(
-                    lookup.findOrThrow("isatty"), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
-            // ioctl is variadic; third arg is the winsize pointer.
-            posixIoctl = linker.downcallHandle(
-                    lookup.findOrThrow("ioctl"),
-                    FunctionDescriptor.of(
-                            ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS),
-                    Linker.Option.firstVariadicArg(2));
-            posixTiocgwinsz = tiocgwinszConstant();
+            // The volatile flag is written LAST (finally): the unsynchronized fast path above
+            // reads it without the monitor, so publishing it before the handles let a second
+            // thread see attempted=true with null handles and cache the 80x24 env fallback as
+            // the process-wide size. finally keeps a linker failure from re-throwing
+            // on every later probe.
+            try {
+                Linker linker = Linker.nativeLinker();
+                SymbolLookup lookup = linker.defaultLookup();
+                posixOpen = linker.downcallHandle(
+                        lookup.findOrThrow("open"),
+                        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+                posixClose = linker.downcallHandle(
+                        lookup.findOrThrow("close"), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+                posixIsatty = linker.downcallHandle(
+                        lookup.findOrThrow("isatty"),
+                        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+                // ioctl is variadic; third arg is the winsize pointer.
+                posixIoctl = linker.downcallHandle(
+                        lookup.findOrThrow("ioctl"),
+                        FunctionDescriptor.of(
+                                ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS),
+                        Linker.Option.firstVariadicArg(2));
+                posixTiocgwinsz = tiocgwinszConstant();
+            } finally {
+                posixInitAttempted = true;
+            }
         }
     }
 

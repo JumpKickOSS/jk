@@ -21,7 +21,6 @@ class BspSessionIsolationTest {
     @Test
     void handler_io_exception_emits_jsonrpc_error_and_session_continues(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"

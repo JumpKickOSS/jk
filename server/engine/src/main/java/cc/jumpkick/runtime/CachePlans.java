@@ -105,7 +105,7 @@ public final class CachePlans {
                     }
                     // Run logs are store-tier (`jk storage`); their GC lives in sweepStore —
                     // running it here too double-counted dry-run FILES/BYTES on every
-                    // prune-with-sweep (JK-1526).
+                    // prune-with-sweep.
                     // Format stamps: 7d unused TTL + count-cap LRU (512k / 1M when CI=1|true).
                     var formatStampReport = cc.jumpkick.task.FormatStampGc.sweep(root, dryRun);
                     totalFiles += formatStampReport.deleted();
@@ -137,7 +137,7 @@ public final class CachePlans {
                     totalFiles += heavy.deletedKeys();
                     // Always reclaim unreferenced action payloads from the cache CAS. The dropped
                     // (or dry-run: would-be-dropped) Class-C keys are not roots — dry-run and the
-                    // real clean must report the same reclaimable bytes (JK-1770).
+                    // real clean must report the same reclaimable bytes.
                     var cacheLive = cc.jumpkick.task.CacheRoots.collect(
                             cacheCas, root.resolve("actions"), root.resolve("tools"), heavy.keyFiles());
                     var cacheSweep = cc.jumpkick.task.CasSweep.sweep(cacheCas, cacheLive, dryRun);
@@ -147,9 +147,9 @@ public final class CachePlans {
                         // Utilization surfaces (jk cache usage, /api/cache) measure index +
                         // stamps + blobs against this budget, but eviction can only shrink blobs.
                         // Aim the blob pool at what remains after the index overhead so a clean
-                        // can actually bring utilization back under 100% (JK-1526). Prefer Class-C
+                        // can actually bring utilization back under 100%. Prefer Class-C
                         // digests as victims so a hot native binary cannot displace cold class files
-                        // (JK-1721 recompute-cost-per-byte ranking).
+                        // (recompute-cost-per-byte ranking).
                         long overheadBytes =
                                 cc.jumpkick.cache.DiskUsage.of(actionsDir).bytes()
                                         + cc.jumpkick.cache.DiskUsage.of(root.resolve("format-stamps"))

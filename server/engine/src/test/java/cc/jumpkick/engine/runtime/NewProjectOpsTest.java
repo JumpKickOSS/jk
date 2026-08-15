@@ -53,7 +53,7 @@ class NewProjectOpsTest {
 
     @Test
     void symlinked_parent_pointing_outside_the_allowlist_is_refused(@TempDir Path temp) throws Exception {
-        // JK-1485: java.io.tmpdir is world-writable, so another local user can plant a link there;
+        // Java.io.tmpdir is world-writable, so another local user can plant a link there;
         // a lexical check would accept it and the scaffolder would write through it. The target
         // must be genuinely outside both roots — @TempDir usually lives under /tmp, so it is not.
         Path outside = Path.of("/etc");

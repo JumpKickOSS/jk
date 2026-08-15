@@ -5,7 +5,14 @@ import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Resolves the build graph for an entry project: the workspace root + its modules, as one
@@ -209,7 +216,7 @@ public final class BuildGraph {
     /**
      * The graph's node identity: real path when resolvable, else absolute-normalized. Callers
      * looking nodes/edges up by client-supplied dirs must canonicalize with this same function —
-     * a normalize-only lookup silently misses under symlinked checkouts (JK-1362).
+     * a normalize-only lookup silently misses under symlinked checkouts.
      */
     public static Path canonicalPath(Path p) {
         try {

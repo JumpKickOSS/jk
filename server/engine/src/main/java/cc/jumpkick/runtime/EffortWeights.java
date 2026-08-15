@@ -12,7 +12,13 @@ import cc.jumpkick.test.TestWorkers;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.function.ToDoubleFunction;
@@ -38,7 +44,7 @@ public final class EffortWeights {
 
     static {
         // BuildPlan.estimatedTotalWeight()/run() evaluate weight suppliers on JkThreads pool
-        // workers; the flag must ride that hop like the session context does (JK-1807). Capture
+        // workers; the flag must ride that hop like the session context does. Capture
         // happens on the submitting thread (inside withOverReserveTails), restore on the worker;
         // remove() in finally keeps shared cpu() workers clean.
         // SessionContext's static init uses bind() (displaces); force it to land before our add().
@@ -277,7 +283,7 @@ public final class EffortWeights {
                 // Reject last if it is a tiny fraction of mean (cache-restore / mostly-warmed
                 // noise). The old `|| last >= 5_000` escape made this rejection dead for heavy
                 // steps (their floor is already 5s), so one 6s over-floor outlier replaced a
-                // stable 60s native mean and under-reserved the slice ~10× (JK-1828).
+                // stable 60s native mean and under-reserved the slice ~10×.
                 if (mean == null || mean <= 0 || last >= mean * 0.25) {
                     return Math.round(last);
                 }
@@ -656,7 +662,7 @@ public final class EffortWeights {
             boolean useGroovy,
             boolean forceRebuild) {
         boolean rerun = in.session().config().rebuildOr(false) || forceRebuild;
-        // Same digest-only staleness predicate the build's freshen uses (JK-1358): a stale digest
+        // Same digest-only staleness predicate the build's freshen uses: a stale digest
         // means parse-lock will run a conservative re-lock, so forecast it.
         boolean lockStale = !rerun && AutoLock.isStale(in.dir(), in.lockFile());
         if (lockStale) rerun = true;

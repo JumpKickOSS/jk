@@ -22,7 +22,12 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Properties;
+import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -70,8 +75,8 @@ public final class QuarkusAugmentMain {
 
         // Reuse already-fetched jars: jk's repo mirrors are derived from the runtime jar paths
         // the engine handed us — they ARE store paths, and rebuilding product dirs from
-        // user.home guesses wrong the moment JK_STORE_DIR (or the platform default) differs
-        // (JK-1707). ~/.m2 honors maven.repo.local for the same reason.
+        // user.home guesses wrong the moment JK_STORE_DIR (or the platform default) differs.
+        // ~/.m2 honors maven.repo.local for the same reason.
         List<String> tails = new ArrayList<>();
         for (Path reposRoot : mirrorRepoRoots(runtime)) {
             tails.add(reposRoot.toString());

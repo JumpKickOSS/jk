@@ -43,7 +43,6 @@ class JdkFloorTest {
         String majorStr = Integer.toString(major);
 
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name    = "floor%s"
                 group   = "com.example"
                 version = "1.0.0"

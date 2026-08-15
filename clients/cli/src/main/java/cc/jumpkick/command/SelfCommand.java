@@ -49,7 +49,7 @@ public final class SelfCommand extends GroupCommand {
     }
 
     /**
-     * {@code jk self setup-terminal} — persist {@code [global].nerd-font} in {@code
+     * {@code jk self setup-terminal} — persist root-level {@code nerd-font} in {@code
      * ~/.config/jk/config.toml}. Also invoked from install.sh.
      *
      * <p>Writing {@code auto} is the useful default: detection now runs cheaply on every launch, so
@@ -65,7 +65,7 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Write [global].nerd-font (default: auto)";
+            return "Write nerd-font in config.toml (default: auto)";
         }
 
         @Override
@@ -157,11 +157,11 @@ public final class SelfCommand extends GroupCommand {
             }
             VersionStore.Materialized m = VersionStore.current()
                     .materializeFromFiles(cc.jumpkick.cli.Jk.VERSION, JkStores.cas(JkDirs.cache()), engineJar, client);
-            // JK-1452: install lands a new version — drop other versions' AOT; keep this line's.
+            // install lands a new version — drop other versions' AOT; keep this line's.
             VersionStore.wipeAotDirectory(JkDirs.state().resolve("aot"), cc.jumpkick.cli.Jk.VERSION);
             Path distLib = distLibFor(client);
             if (distLib != null) {
-                // Dev dogfood (JK-1412): the client is a Gradle start script whose classpath is
+                // Dev dogfood: the client is a Gradle start script whose classpath is
                 // "$APP_HOME/../lib/*.jar". Alone in the store it cannot start — sync its dist
                 // jars beside it and repoint PATH entrypoints as symlinks (a hardlinked script
                 // resolves APP_HOME to the bin dir of the LINK and dies the same way).

@@ -20,7 +20,6 @@ class BuildCommandTopoSortTest {
 
     private static JkBuild module(String name, String orderAfterToml) {
         return JkBuildParser.parse("""
-                [project]
                 group   = "g"
                 name    = "%s"
                 version = "1.0.0"

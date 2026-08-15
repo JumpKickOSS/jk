@@ -36,9 +36,9 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 
 ## CI
 
-- **PR / push unit:** `./gradlew test`  
-- **Integration:** on `main` always; on PR when `clients/cli`, `server/engine`, plugins, wire, etc. change (`dorny/paths-filter`)  
-- **OS nightly:** unit + integration for core modules  
+- **PR / push (`ci.yml`):** `./gradlew test` (unit tier) + commit-authorship scan  
+- **Nightly (`ci-nightly.yml`):** `./gradlew integrationTest` on Linux  
+- Local pre-merge when you touch wire/engine/CLI: `./gradlew checkAll` 
 
 ## Measuring integration wall time
 

@@ -45,7 +45,7 @@ class BuildStageTest {
         assertThat(t.stage()).isEqualTo(BuildStage.TEST);
     }
 
-    /** JK-1613: a typo must not become the one stage that opts out of ordering. */
+    /** a typo must not become the one stage that opts out of ordering. */
     @Test
     void task_builder_group_string_rejects_an_unknown_stage() {
         org.junit.jupiter.api.Assertions.assertThrows(
@@ -53,7 +53,7 @@ class BuildStageTest {
         Task explicit = Task.builder("y").stage(BuildStage.OTHER).build();
         assertThat(explicit.stage()).isEqualTo(BuildStage.OTHER);
         // OTHER folds per-step (empty group → step-key fallback), not into one "Other" row
-        // (JK-1612).
+        // .
         assertThat(explicit.group()).isEmpty();
     }
 
@@ -67,7 +67,7 @@ class BuildStageTest {
     }
 
     /**
-     * JK-1613: an OTHER hop must not launder a backward edge. `mayRequire` says yes to both halves
+     * an OTHER hop must not launder a backward edge. `mayRequire` says yes to both halves
      * on its own — the plan is what establishes the invariant across the graph.
      */
     @Test
@@ -117,7 +117,7 @@ class BuildStageTest {
     }
 
     /**
-     * JK-1611: assembly and native are both tails of packaging, and the join over them sits at the
+     * assembly and native are both tails of packaging, and the join over them sits at the
      * later of the two. This is the shape every Micronaut and Quarkus scaffold builds.
      */
     @Test

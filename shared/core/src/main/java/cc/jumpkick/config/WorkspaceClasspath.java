@@ -31,7 +31,7 @@ public final class WorkspaceClasspath {
      * Scopes through which a consumed sibling's MODULE (workspace) deps propagate to its
      * consumer's classpath. A sibling's {@code runtime-dependencies} that are themselves
      * workspace modules do NOT ride — only export/main module edges chain. This is the single
-     * source of truth: {@code jk tree}'s sibling walk mirrors it (JK-1962), so display and the
+     * source of truth: {@code jk tree}'s sibling walk mirrors it, so display and the
      * real classpath cannot drift apart again.
      */
     public static final List<Scope> SIBLING_MODULE_SCOPES = List.of(Scope.EXPORT, Scope.MAIN);
@@ -158,7 +158,7 @@ public final class WorkspaceClasspath {
                     && !cc.jumpkick.layout.Languages.anySourceUnder(missingSibDir.resolve("src"), ".kt")
                     && !cc.jumpkick.layout.Languages.anySourceUnder(missingSibDir.resolve("src"), ".groovy")) {
                 // Name the real cause: the sibling was never going to compile anything — its jar
-                // only appears once the module is scheduled and packages empty (JK-1648).
+                // only appears once the module is scheduled and packages empty.
                 missingLabel = module + " has no sources — jk packages an empty jar for it once the"
                         + " module is scheduled; expected at " + siblingJar;
             }

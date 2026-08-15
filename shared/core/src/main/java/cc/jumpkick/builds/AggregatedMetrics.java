@@ -5,14 +5,21 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.OptionalDouble;
+import java.util.OptionalLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
 
 /**
  * Read-only view of harvested {@code project-metrics.toml} + {@code host-metrics.toml} scalars.
  * Prefer {@code [last]} then {@code [mean]} for ETA ladders; {@code [count]} for confidence.
  */
+@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class AggregatedMetrics {
 
     private static final Pattern SECTION = Pattern.compile("(?m)^\\[([a-zA-Z0-9._-]+)\\]\\s*$");
@@ -23,14 +30,6 @@ public final class AggregatedMetrics {
     private final Map<String, Double> last;
     private final Map<String, Long> count;
     private final Map<String, Double> hostMean;
-
-    private AggregatedMetrics(
-            Map<String, Double> mean, Map<String, Double> last, Map<String, Long> count, Map<String, Double> hostMean) {
-        this.mean = mean;
-        this.last = last;
-        this.count = count;
-        this.hostMean = hostMean;
-    }
 
     public static AggregatedMetrics empty() {
         return new AggregatedMetrics(Map.of(), Map.of(), Map.of(), Map.of());
@@ -88,11 +87,8 @@ public final class AggregatedMetrics {
             Map<String, Double> srcMean,
             Map<String, Double> srcLast,
             Map<String, Long> srcCount) {
-        // Uniform per-key merge over the union of the source's keys (JK-1827): the old shape
-        // branched on whether srcMean was empty, dropping last-only keys in mixed files, leaving
-        // a loser's `last` beside a winner's mean, and letting a mean-less row's count beat real
-        // data. A key's mean/last/count now move together, and rows with a real mean outrank
-        // mean-less rows regardless of count (count describes the mean's sample size).
+        // Per-key merge over the union of source keys. mean/last/count move together; a row
+        // with a real mean outranks a mean-less row (count is the mean's sample size).
         LinkedHashSet<String> keys = new LinkedHashSet<>();
         if (srcMean != null) keys.addAll(srcMean.keySet());
         if (srcLast != null) keys.addAll(srcLast.keySet());

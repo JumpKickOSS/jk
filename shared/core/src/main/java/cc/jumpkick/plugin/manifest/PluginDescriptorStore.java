@@ -62,7 +62,7 @@ public final class PluginDescriptorStore {
         try {
             PluginDescriptor parsed = PluginDescriptors.parse(
                     Files.readString(file, StandardCharsets.UTF_8), decl.coordinateWithVersion() + "!jk-plugin.toml");
-            // Clear-on-overflow (ProjectIds idiom, JK-1942): a resident engine otherwise pins one
+            // Clear-on-overflow (ProjectIds idiom): a resident engine otherwise pins one
             // descriptor per plugin sha it ever met, across every checkout and upgrade.
             if (BY_SHA.size() >= 1_024) BY_SHA.clear();
             BY_SHA.put(sha, parsed);

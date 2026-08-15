@@ -26,14 +26,12 @@ class TaskForecasterDepScopeTest {
         Files.createDirectories(eng);
         Files.createDirectories(cli);
         Files.writeString(eng.resolve("jk.toml"), """
-                [project]
                 group = "cc.example"
                 name = "engine"
                 version = "1.0.0"
                 java = 25
                 """);
         Files.writeString(cli.resolve("jk.toml"), """
-                [project]
                 group = "cc.example"
                 name = "cli"
                 version = "1.0.0"
@@ -48,7 +46,6 @@ class TaskForecasterDepScopeTest {
         Path core = tmp.resolve("core");
         Files.createDirectories(core);
         Files.writeString(core.resolve("jk.toml"), """
-                [project]
                 group = "cc.example"
                 name = "core"
                 version = "1.0.0"
@@ -89,14 +86,12 @@ class TaskForecasterDepScopeTest {
         Files.createDirectories(lib);
         Files.createDirectories(app);
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 group = "cc.example"
                 name = "lib"
                 version = "1.0.0"
                 java = 25
                 """);
         Files.writeString(app.resolve("jk.toml"), """
-                [project]
                 group = "cc.example"
                 name = "app"
                 version = "1.0.0"
@@ -117,21 +112,18 @@ class TaskForecasterDepScopeTest {
     @Test
     void order_after_only_dirty_prereq_is_orderDepDirty(@TempDir Path tmp) throws Exception {
         // A dirty order-after-only sibling (incl. test-plugin-jars) prices no compile/test work
-        // but must schedule the dependent so real action keys re-check out-of-band outputs
-        // (JK-1810).
+        // but must schedule the dependent so real action keys re-check out-of-band outputs.
         Path gen = tmp.resolve("gen");
         Path app = tmp.resolve("app");
         Files.createDirectories(gen);
         Files.createDirectories(app);
         Files.writeString(gen.resolve("jk.toml"), """
-                [project]
                 group = "cc.example"
                 name = "gen"
                 version = "1.0.0"
                 java = 25
                 """);
         Files.writeString(app.resolve("jk.toml"), """
-                [project]
                 group = "cc.example"
                 name = "app"
                 version = "1.0.0"

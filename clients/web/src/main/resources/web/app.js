@@ -43,7 +43,8 @@ import {
   CodeView,
 } from './code.js';
 
-bootstrapToken();
+// Guarded so the module can be imported headlessly (node --test) — JK-1986.
+if (typeof document !== 'undefined') bootstrapToken();
 
 // The build **phase-chain**: a single horizontal strip of coarse plan phases (Resolve →
 // Compile → Test → …), never wrapping. New phases advance rightward and push earlier ones off the
@@ -84,6 +85,12 @@ const ICON_PATHS = {
   plus: 'M12 5v14M5 12h14',
   // Two overlapping rectangles — clipboard / copy affordance (lucide-style).
   copy: 'M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2M8 2h8a1 1 0 0 1 1 1v2H7V3a1 1 0 0 1 1-1z',
+  // Floppy-disk save affordance (Files toolbar).
+  save: 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8',
+  // Eye — Preview affordance (Files toolbar).
+  eye: 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+  // "</>" — code (View/edit this codebase on the project page).
+  code: 'M16 18l6-6-6-6M8 6l-6 6 6 6M14.5 4l-5 16',
 };
 // Icons that read better as a solid shape than an outline at small sizes.
 const ICON_SOLID = {
@@ -293,6 +300,7 @@ const FailReport = {
         files: true,
         path: this.codePath,
         line: this.rep.line || 0,
+        err: true, // red error-line highlight on the fail jump
       });
     },
   },
@@ -842,13 +850,15 @@ function fmtMillis(millis) {
   return Math.floor(totalSec / 60) + 'm ' + String(totalSec % 60).padStart(2, '0') + 's';
 }
 
-Vue.createApp({
+// Exported for the headless harness (app.test.mjs); the browser block below mounts it.
+export const appOptions = {
   data: () => ({
     view: routeFromHash().view, // 'activity' | 'projects' | 'project' | 'status'
     selectedProjectId: routeFromHash().projectId, // durable id (#project/<id>)
     filesOpen: !!routeFromHash().files, // #project/<id>/files[/<rel>]
     codePath: routeFromHash().path,
     codeLine: routeFromHash().line,
+    codeLineErr: !!routeFromHash().lineErr,
     selectedProjectDir: null, // checkout path resolved from project meta
     projectMeta: null, // live /api/project payload (coord + description + dir) for the open project
     // JK-1542: Dependencies panel on the Project page — closed by default; graph fetch + echarts
@@ -1327,6 +1337,10 @@ Vue.createApp({
 
     /** The files pane's Back control: up one level to the project page, not out to the list. */
     closeCode() {
+      const view = this.$refs.codeView;
+      if (view && view.dirty && typeof view.confirmDiscard === 'function' && !view.confirmDiscard()) {
+        return;
+      }
       if (this.selectedProjectId) this.openProject(this.selectedProjectId);
       else this.setView('projects');
     },
@@ -1347,6 +1361,7 @@ Vue.createApp({
       this.filesOpen = !!r.files;
       this.codePath = r.path;
       this.codeLine = r.line;
+      this.codeLineErr = !!r.lineErr;
       // Collapse the expensive graph panel when leaving project view or switching projects.
       if (r.view !== 'project' || idChanged || r.files) this.projectGraphOpen = false;
       // Project identity cannot change between two clicks on the same #project/<id> route, and
@@ -1367,7 +1382,7 @@ Vue.createApp({
       this.openCode({ projectId: this.selectedProjectId });
     },
 
-    openCode({ projectId, path, line, replace } = {}) {
+    openCode({ projectId, path, line, err, replace } = {}) {
       if (this.authModal) return;
       const id = projectId || this.selectedProjectId;
       if (!id) return;
@@ -1376,6 +1391,7 @@ Vue.createApp({
         files: true,
         path: path || null,
         line: line || 0,
+        err: !!err,
       });
       if (replace) {
         // replaceState does not fire hashchange — apply the route ourselves.
@@ -1395,14 +1411,14 @@ Vue.createApp({
       });
     },
 
-    copyOpenFile() {
-      const view = this.$refs.codeView;
-      if (view && typeof view.copy === 'function') view.copy();
-    },
-
     /** Toggle the Project-page Dependencies accordion (lazy graph load on open). */
     toggleProjectGraph() {
       this.projectGraphOpen = !this.projectGraphOpen;
+    },
+
+    /** The raw meta fetch — separated so the headless suite can control response timing. */
+    fetchProjectMeta(projectId) {
+      return get('/api/project?project=' + encodeURIComponent(projectId));
     },
 
     // Live coord + description for the open project (by durable id).
@@ -1410,11 +1426,17 @@ Vue.createApp({
       if (this.authModal) return;
       this.projectMeta = null;
       try {
-        this.projectMeta = await get('/api/project?project=' + encodeURIComponent(projectId));
-        if (this.projectMeta && this.projectMeta.dir) {
-          this.selectedProjectDir = this.projectMeta.dir;
+        const meta = await this.fetchProjectMeta(projectId);
+        // A slow response for a project the user already navigated away from must not
+        // overwrite the current project's state — with the JK-1945 guard suppressing
+        // same-project refetches, the stale data would stick until the next switch (JK-1995).
+        if (this.selectedProjectId !== projectId) return;
+        this.projectMeta = meta;
+        if (meta && meta.dir) {
+          this.selectedProjectDir = meta.dir;
         }
       } catch (e) {
+        if (this.selectedProjectId !== projectId) return;
         this.handleHttpError(e);
       }
       if (!this.projectHistory.length) this.loadProjectHistory(); // detail rows come from history
@@ -1623,6 +1645,24 @@ Vue.createApp({
 
     summary(card) {
       return moduleSummary(card);
+    },
+
+    /**
+     * Activity kind label. Wire kind stays {@code build}; finished runs use past tense so a
+     * fully-cached monorepo (no / few module rows, ~100ms) reads "built" not "build".
+     */
+    kindLabel(card) {
+      const k = (card && card.kind) || '';
+      if (k === 'build' && this.outcome(card) !== 'running') return 'built';
+      return k;
+    },
+
+    /** Project page title — plain {@code group:name} (or name alone), same weight as other view h2s. */
+    projectTitle() {
+      const p = this.projectDetail;
+      if (!p) return 'Project';
+      if (p.group) return p.group + ':' + p.name;
+      return p.name || 'Project';
     },
 
     // The capitalized phase a diagnostic belongs to, joined from the module's step rows (which carry
@@ -2239,13 +2279,19 @@ Vue.createApp({
 
     // ---- formatting helpers (templates keep zero logic beyond these) ----
     coordParts(card) {
-      // "group:name" → colored segments; fall back to the dir's last two path segments.
-      if (card.coord && card.coord.includes(':')) {
-        const i = card.coord.indexOf(':');
-        return { group: card.coord.slice(0, i), name: card.coord.slice(i + 1) };
+      // "group:name" → colored segments; fall back to the dir's last path segment.
+      // Guard null/undefined dir — projectMeta can land before a journal row has a path, and a
+      // files-pane open with only projectId used to throw on .split (README Preview flicker).
+      const c = card || {};
+      if (c.coord && String(c.coord).includes(':')) {
+        const i = String(c.coord).indexOf(':');
+        return { group: String(c.coord).slice(0, i), name: String(c.coord).slice(i + 1) };
       }
-      const parts = card.dir.split('/').filter(Boolean);
-      return { group: null, name: parts.length ? parts[parts.length - 1] : card.dir };
+      if (c.dir == null || c.dir === '') {
+        return { group: null, name: c.coord || 'project' };
+      }
+      const parts = String(c.dir).split('/').filter(Boolean);
+      return { group: null, name: parts.length ? parts[parts.length - 1] : String(c.dir) };
     },
     mib(bytes) {
       // Null guard: a thin cache SSE frame can land before the full REST snapshot on a hard load
@@ -2437,14 +2483,18 @@ Vue.createApp({
       }
     },
   },
-})
-  .component('jk-icon', JkIcon)
-  .component('phase-chain', PhaseChain)
-  .component('fail-report', FailReport)
-  .component('build-bars', BuildBars)
-  .component('module-dep-graph', ModuleDepGraph)
-  .component('code-view', CodeView)
-  .mount('#app');
+};
 
-// Themed tooltips for data-tip / title (native title= is unstyleable OS chrome — JK-1726).
-installTips(document);
+if (typeof Vue !== 'undefined' && typeof document !== 'undefined') {
+  Vue.createApp(appOptions)
+    .component('jk-icon', JkIcon)
+    .component('phase-chain', PhaseChain)
+    .component('fail-report', FailReport)
+    .component('build-bars', BuildBars)
+    .component('module-dep-graph', ModuleDepGraph)
+    .component('code-view', CodeView)
+    .mount('#app');
+
+  // Themed tooltips for data-tip / title (native title= is unstyleable OS chrome — JK-1726).
+  installTips(document);
+}

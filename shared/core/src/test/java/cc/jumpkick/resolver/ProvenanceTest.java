@@ -145,7 +145,6 @@ class ProvenanceTest {
         Path modDir = dir.resolve("mod-a");
         Files.createDirectories(modDir);
         Files.writeString(modDir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "mod-a"
                 version = "0.1.0"

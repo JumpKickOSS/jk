@@ -7,7 +7,11 @@ import cc.jumpkick.cli.tui.WizardStep;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.scaffold.NewInputs;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.NullMarked;
 
 /** Wizard construction and flag/name helpers for jk new. */
@@ -135,7 +139,7 @@ public final class NewWizard {
                 .when(a -> "kotlin".equals(a.get("lang")))
                 .build();
 
-        // Type-ahead library picker (JK-1197): catalog short names + free-form GAV.
+        // Type-ahead library picker: catalog short names + free-form GAV.
         var librariesStep = WizardStep.MultiSelectStep.vertical("libraries", "Libraries / dependencies:")
                 .choicesFn(a -> libraryPickerChoices())
                 .filterable(true)

@@ -25,7 +25,7 @@ class BuildJobFingerprintTest {
         String a = BuildJobFingerprint.of("build", dir.toString(), false, false, false, false, null, null, null);
         String b = BuildJobFingerprint.of("build", dir.toString(), true, false, false, false, null, null, null);
         assertThat(a).isNotEqualTo(b);
-        // JK-1291: ofRequest for build is project-scoped — rebuild must not allow a second concurrent writer.
+        // OfRequest for build is project-scoped — rebuild must not allow a second concurrent writer.
         String lineA = "{\"dir\":\"" + dir.toString().replace("\\", "\\\\") + "\",\"rebuild\":false}";
         String lineB = "{\"dir\":\"" + dir.toString().replace("\\", "\\\\") + "\",\"rebuild\":true}";
         assertThat(BuildJobFingerprint.ofRequest("build", lineA))

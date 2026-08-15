@@ -28,6 +28,19 @@ const {
   CONSOLE_BG_FALLBACK,
   HIGHLIGHT_MAX_BYTES,
   HIGHLIGHT_MAX_LINES,
+  isPreviewable,
+  previewKind,
+  isImagePath,
+  isTextWritableLang,
+  extractMermaidFences,
+  injectMermaidSvgs,
+  saveErrorMessage,
+  markedParse,
+  baseFileName,
+  resolveMarkdownImagePath,
+  resolveMarkdownLinkPath,
+  resolveWorkspaceRelPath,
+  isRemoteHttpUrl,
 } = await import(pathToFileURL(process.env.JK_CODE_MJS));
 
 test('routeFromHash nests files under #project/<id>', () => {
@@ -37,6 +50,7 @@ test('routeFromHash nests files under #project/<id>', () => {
     files: false,
     path: null,
     line: 0,
+    lineErr: false,
   });
   assert.deepEqual(routeFromHash('#project/ab12/files'), {
     view: 'project',
@@ -44,6 +58,7 @@ test('routeFromHash nests files under #project/<id>', () => {
     files: true,
     path: null,
     line: 0,
+    lineErr: false,
   });
   const r = routeFromHash('#project/ab12/files/src/Main.java?line=42');
   assert.equal(r.view, 'project');
@@ -51,6 +66,10 @@ test('routeFromHash nests files under #project/<id>', () => {
   assert.equal(r.files, true);
   assert.equal(r.path, 'src/Main.java');
   assert.equal(r.line, 42);
+  assert.equal(r.lineErr, false);
+  const err = routeFromHash('#project/ab12/files/src/Main.java?line=84&err=true');
+  assert.equal(err.line, 84);
+  assert.equal(err.lineErr, true);
   assert.equal(routeFromHash('#code').view, 'activity');
   assert.equal(routeFromHash('#project/').view, 'activity');
 });
@@ -69,14 +88,88 @@ test('buildProjectHash keeps slashes in the file path', () => {
     buildProjectHash({ projectId: 'ab', path: 'src/A+B.java', line: 3 }),
     '#project/ab/files/src/A%2BB.java?line=3',
   );
+  assert.equal(
+    buildProjectHash({ projectId: 'ab', path: 'src/Main.java', line: 84, err: true }),
+    '#project/ab/files/src/Main.java?line=84&err=true',
+  );
 });
 
 test('langFromPath is case-insensitive and closed', () => {
   assert.equal(langFromPath('Main.JAVA'), 'java');
   assert.equal(langFromPath('x.Kt'), 'kotlin');
   assert.equal(langFromPath('a.jsonl'), 'json');
+  assert.equal(langFromPath('diagram.mmd'), 'mermaid');
+  assert.equal(langFromPath('logo.PNG'), 'image');
   assert.equal(langFromPath('build.gradle'), null);
   assert.equal(langFromPath('pom.xml'), null);
+});
+
+test('preview eligibility is extension-driven', () => {
+  assert.equal(previewKind('README.md'), 'markdown');
+  assert.equal(previewKind('docs/flow.mmd'), 'mermaid');
+  assert.equal(previewKind('g.dot'), 'graphviz');
+  assert.equal(previewKind('note.adoc'), 'asciidoc');
+  assert.equal(previewKind('box.d2'), 'd2');
+  assert.equal(previewKind('logo.webp'), 'image');
+  assert.equal(isPreviewable('src/Main.java'), false);
+  assert.equal(isImagePath('assets/a.png'), true);
+  assert.equal(isTextWritableLang('java'), true);
+  assert.equal(isTextWritableLang('image'), false);
+  assert.equal(isTextWritableLang(null), false);
+});
+
+test('extractMermaidFences pulls fenced mermaid blocks out of markdown', () => {
+  const md = '# Title\n\n```mermaid\ngraph TD\n  A-->B\n```\n\nMore text.\n\n```js\nconst x = 1;\n```\n';
+  const { markdown, fences } = extractMermaidFences(md);
+  assert.equal(fences.length, 1);
+  assert.match(fences[0], /graph TD/);
+  assert.match(markdown, /JKMERMAIDPLACEHOLDER0X/);
+  assert.doesNotMatch(markdown, /```mermaid/);
+  assert.match(markdown, /```js/);
+  const html = injectMermaidSvgs('<p>JKMERMAIDPLACEHOLDER0X</p>', ['<svg></svg>']);
+  assert.equal(html, '<p><svg></svg></p>');
+});
+
+test('saveErrorMessage covers network and concurrency', () => {
+  assert.match(saveErrorMessage({ status: 409, error: 'file changed on disk' }), /changed on disk/i);
+  assert.match(saveErrorMessage({ name: 'TypeError' }), /engine/i);
+  assert.match(saveErrorMessage({ status: 401 }), /authorized/i);
+  assert.match(saveErrorMessage({ status: 413 }), /large/i);
+});
+
+test('markedParse accepts function or {parse} shapes', () => {
+  assert.equal(markedParse((s) => 'X' + s, 'hi'), 'Xhi');
+  assert.equal(markedParse({ parse: (s) => 'Y' + s }, 'hi'), 'Yhi');
+  assert.throws(() => markedParse(null, 'x'), /not loaded/);
+  assert.throws(() => markedParse({}, 'x'), /unavailable/);
+});
+
+test('baseFileName is the last path segment', () => {
+  assert.equal(baseFileName('AGENTS.md'), 'AGENTS.md');
+  assert.equal(baseFileName('docs/guide.md'), 'guide.md');
+  assert.equal(baseFileName('src/main/java/Main.java'), 'Main.java');
+  assert.equal(baseFileName(''), '');
+});
+
+test('resolveMarkdownImagePath joins relative to the open file', () => {
+  assert.equal(resolveMarkdownImagePath('README.md', 'docs/logo.png'), 'docs/logo.png');
+  assert.equal(resolveMarkdownImagePath('docs/guide.md', './img/a.png'), 'docs/img/a.png');
+  assert.equal(resolveMarkdownImagePath('docs/guide.md', '../logo.png'), 'logo.png');
+  assert.equal(resolveMarkdownImagePath('docs/guide.md', '/assets/icon.svg'), 'assets/icon.svg');
+  assert.equal(resolveMarkdownImagePath('docs/guide.md', '../../escape.png'), null);
+  assert.equal(resolveMarkdownImagePath('README.md', 'https://example.com/a.png'), null);
+  assert.equal(resolveMarkdownImagePath('README.md', 'notes.txt'), null);
+  assert.equal(isRemoteHttpUrl('https://github.com/user-attachments/assets/abc'), true);
+  assert.equal(isRemoteHttpUrl('//img.shields.io/badge/x-y.svg'), true);
+  assert.equal(isRemoteHttpUrl('docs/logo.png'), false);
+});
+
+test('resolveMarkdownLinkPath opens workspace paths (not only images)', () => {
+  assert.equal(resolveMarkdownLinkPath('README.md', 'docs/architecture.md'), 'docs/architecture.md');
+  assert.equal(resolveMarkdownLinkPath('README.md', 'docs/architecture.md#sec'), 'docs/architecture.md');
+  assert.equal(resolveMarkdownLinkPath('README.md', 'LICENSE'), 'LICENSE');
+  assert.equal(resolveWorkspaceRelPath('docs/a.md', '../b.md'), 'b.md');
+  assert.equal(resolveMarkdownLinkPath('README.md', 'https://openjdk.org/'), null);
 });
 
 test('codePathForFailure joins module-relative paths', () => {
@@ -173,19 +266,20 @@ test('the theme is vs-dark with only the background overridden', () => {
   assert.equal(consoleBackground({}), CONSOLE_BG_FALLBACK);
 });
 
-test('viewerOptions is a read-only viewer carrying content as a model value', () => {
+test('viewerOptions is an editable light editor carrying content as a model value', () => {
   const o = viewerOptions({ content: '<script>alert(1)</script>', lang: 'java' });
   assert.equal(o.value, '<script>alert(1)</script>');
   assert.equal(o.language, 'java');
   assert.equal(o.theme, MONACO_THEME);
-  assert.equal(o.readOnly, true);
-  assert.equal(o.domReadOnly, true);
+  assert.equal(o.readOnly, false);
+  assert.equal(o.domReadOnly, false);
   assert.equal(o.renderLineHighlight, 'none');
   assert.equal(viewerOptions().value, '');
   assert.equal(viewerOptions({ content: 'x' }).language, 'plaintext');
+  assert.equal(viewerOptions({ content: 'x', readOnly: true }).readOnly, true);
 });
 
-test('lineDecorations marks only the ?line= row', () => {
+test('lineDecorations: neutral vs error styles', () => {
   assert.deepEqual(lineDecorations(0), []);
   assert.deepEqual(lineDecorations('nope'), []);
   const [d] = lineDecorations(9);
@@ -197,6 +291,13 @@ test('lineDecorations marks only the ?line= row', () => {
   });
   assert.equal(d.options.isWholeLine, true);
   assert.equal(d.options.className, 'code-line-hl');
+  assert.equal(d.options.linesDecorationsClassName, 'code-line-hl-gutter');
+  assert.equal(d.options.overviewRuler, undefined);
+  const [e] = lineDecorations(84, true);
+  assert.equal(e.options.className, 'code-line-err');
+  assert.equal(e.options.linesDecorationsClassName, 'code-line-err-gutter');
+  assert.ok(e.options.overviewRuler);
+  assert.ok(e.options.minimap);
 });
 
 const TREE_PATHS = [

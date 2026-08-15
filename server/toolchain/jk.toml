@@ -1,4 +1,3 @@
-[project]
 name = "jk-toolchain"
 description = "Engine toolchain: tool installs and Maven/Gradle import"
 

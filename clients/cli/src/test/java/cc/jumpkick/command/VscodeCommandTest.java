@@ -23,7 +23,6 @@ class VscodeCommandTest {
     @Test
     void workspace_sibling_becomes_a_source_project(@TempDir Path tmp) throws IOException {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
@@ -36,7 +35,6 @@ class VscodeCommandTest {
         Path lib = tmp.resolve("lib");
         Files.createDirectories(lib.resolve("src/main/java/lib"));
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "libcore"
                 version = "0.1.0"
@@ -47,7 +45,6 @@ class VscodeCommandTest {
         Path app = tmp.resolve("app");
         Files.createDirectories(app.resolve("src/main/java/app"));
         Files.writeString(app.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
@@ -83,7 +80,6 @@ class VscodeCommandTest {
         Files.createDirectories(ws.resolve("src/main/java/example"));
         Files.writeString(ws.resolve("src/main/java/example/Hello.java"), "package example;\npublic class Hello {}\n");
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 group = "dev.example"
                 name = "widget"
                 version = "0.1.0"
@@ -127,7 +123,6 @@ class VscodeCommandTest {
         Path ws = tmp.resolve("ws");
         Files.createDirectories(ws);
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 group = "dev.example"
                 name = "root"
                 version = "0.1.0"
@@ -162,7 +157,6 @@ class VscodeCommandTest {
         Files.createDirectories(ws.resolve("src/main/java/example"));
         Files.writeString(ws.resolve("src/main/java/example/Hello.java"), "package example;\npublic class Hello {}\n");
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 group = "dev.example"
                 name = "widget"
                 version = "0.1.0"
@@ -210,7 +204,6 @@ class VscodeCommandTest {
         Files.createDirectories(ws.resolve("src/main/java/app"));
         Files.writeString(ws.resolve("src/main/java/app/Main.java"), "package app; public class Main {}");
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 group = "dev.example"
                 name = "app"
                 version = "0.1.0"
@@ -250,7 +243,6 @@ class VscodeCommandTest {
     private static void module(Path dir, String name, int jdk) throws IOException {
         Files.createDirectories(dir);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "dev.example"
                 name = "%s"
                 version = "0.1.0"

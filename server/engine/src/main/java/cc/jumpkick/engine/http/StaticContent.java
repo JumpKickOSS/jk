@@ -135,7 +135,7 @@ final class StaticContent {
         if (!file.startsWith(root) || !Files.isRegularFile(file)) return false;
         // Lexical containment is not enough: builds may write into web-root, so a symlink planted
         // there would resolve outside and be served *unauthenticated* (static content is never
-        // token-gated). Compare real paths (JK-1487).
+        // token-gated). Compare real paths.
         try {
             if (!file.toRealPath().startsWith(root.toRealPath())) return false;
         } catch (IOException e) {
@@ -150,7 +150,7 @@ final class StaticContent {
         }
         // Disk web-root is never token-gated, and builds may write arbitrary user content (HTML
         // reports) into it. Without a policy, such HTML is same-origin with the SPA and can read
-        // localStorage['jk-http-token'] — the sole credential (JK-1776). A bare CSP `sandbox`
+        // localStorage['jk-http-token'] — the sole credential. A bare CSP `sandbox`
         // renders it in a unique opaque origin with scripts, forms, and plugins disabled: styles
         // and images still work (reports stay readable), but nothing under web-root can script
         // the dashboard origin or exfiltrate the token.
@@ -193,7 +193,8 @@ final class StaticContent {
             }
         }
         // The shipped SPA's only external resources: Vue + ECharts + Monaco (lazy,
-        // #project/…/files) from unpkg (version-pinned; SRI on every static tag) and the JetBrains
+        // #project/…/files) + Preview CDNs (marked/mermaid/…, also lazy) from unpkg
+        // (version-pinned; SRI on every static tag where possible) and the JetBrains
         // Mono webfonts from Google Fonts (CSS on fonts.googleapis.com, font files on
         // fonts.gstatic.com). style-src includes unpkg for Monaco's editor.main.css, which its
         // loader injects itself.
@@ -204,14 +205,20 @@ final class StaticContent {
         //   'unsafe-inline' in style-src — the editor positions every view line, cursor and widget
         //     with inline style attributes (~100 per paint), which no hash or nonce can cover;
         //   data: in font-src — editor.main.css inlines the codicon font (gutter/find-widget icons).
-        // Disk web-root content gets a stricter sandboxing CSP in serveFromDisk (JK-1776) — only
+        // Disk web-root content gets a stricter sandboxing CSP in serveFromDisk — only
         // the shipped shell earns this policy.
         exchange.getResponseHeaders()
                 .set(
                         "Content-Security-Policy",
                         "default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com; "
                                 + "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
-                                + "font-src https://fonts.gstatic.com data:; worker-src blob:");
+                                + "font-src https://fonts.gstatic.com data:; worker-src blob:; "
+                                // Preview pane: auth-fetch → blob: for in-repo images; https: for badges /
+                                // remote README images (shields.io, etc.); data: for rare inlines.
+                                + "img-src 'self' blob: data: https: http:; "
+                                // No form ever submits from the shell; injected markup (rendered
+                                // previews) must not be able to add one that posts off-origin.
+                                + "form-action 'none';");
         if (snapshotVersion) {
             exchange.getResponseHeaders().set("Cache-Control", "no-cache"); // see snapshotVersion javadoc
         } else {

@@ -230,7 +230,7 @@ class AndroidSpikeTest {
     /**
      * apksig's verifier — proves v1+v2 without an emulator. apksig rides its own test
      * configuration: the plugin worker jar is non-transitive (it resolves deps from the store at
-     * run time), so it does not carry apksig's classes (JK-1449).
+     * run time), so it does not carry apksig's classes.
      */
     private static boolean verifiedByApksig(Path apk) throws Exception {
         String cp = System.getProperty("jk.android.apksig.classpath", "");
@@ -250,7 +250,6 @@ class AndroidSpikeTest {
 
     private static void writeProject(Path project) throws Exception {
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name    = "hello"
                 group   = "com.example"
                 version = "1.0.0"

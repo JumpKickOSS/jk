@@ -84,7 +84,7 @@ public record CacheSnapshot(
          * Explicit staleness flag. {@code System.nanoTime()} has an arbitrary — possibly
          * negative — origin, so an absolute sentinel like {@code deadlineNanos = 0} is not
          * reliably "expired": with a negative-origin clock {@code now - 0 < 0} held and
-         * {@link #invalidate()} became a permanent no-op (JK-1862).
+         * {@link #invalidate()} became a permanent no-op.
          */
         private boolean stale = true;
 
@@ -116,7 +116,7 @@ public record CacheSnapshot(
             // Exclusive walks allocate large temporary sets; SerialGC keeps "used" high until a
             // full collection. One post-walk GC after a fat capture keeps idle status honest —
             // OUTSIDE the memo lock, so coalesced callers return the just-published snapshot
-            // instead of blocking through a stop-the-world collection too (JK-1860). Under
+            // instead of blocking through a stop-the-world collection too. Under
             // -XX:+DisableExplicitGC this is a no-op and the idle figure simply waits for a
             // natural full collection.
             long usedAfter = rt.totalMemory() - rt.freeMemory();
@@ -281,7 +281,7 @@ public record CacheSnapshot(
     }
 
     /**
-     * Thin live payload for footer chrome (JK-1502): dual surfaces + budgets only. Section
+     * Thin live payload for footer chrome: dual surfaces + budgets only. Section
      * breakdown stays on REST / full {@link #toJson()}.
      */
     public JsonOut toThinJson() {

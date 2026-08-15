@@ -14,7 +14,6 @@ class LockFreshnessTest {
     @Test
     void needsRefresh_when_lock_missing(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "n"
                 version = "1"
@@ -26,7 +25,6 @@ class LockFreshnessTest {
     void digest_mismatch_is_stale(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("jk.toml");
         Files.writeString(toml, """
-                [project]
                 group = "g"
                 name = "n"
                 version = "1"
@@ -43,7 +41,6 @@ class LockFreshnessTest {
     @Test
     void missing_digest_is_always_stale(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "n"
                 version = "1"
@@ -63,7 +60,6 @@ class LockFreshnessTest {
     @Test
     void invalid_digest_is_stale(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "n"
                 version = "1"
@@ -79,7 +75,6 @@ class LockFreshnessTest {
     void matching_digest_is_fresh(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("jk.toml");
         Files.writeString(toml, """
-                [project]
                 group = "g"
                 name = "n"
                 version = "1"
@@ -99,7 +94,6 @@ class LockFreshnessTest {
     @Test
     void writer_stamps_digest_on_write(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "n"
                 version = "1"
@@ -114,9 +108,8 @@ class LockFreshnessTest {
     @Test
     void jk_libs_toml_edit_flips_staleness(@TempDir Path dir) throws Exception {
         // The workspace catalog layer changes short-name -> GA resolution, so a pin edit must
-        // stale the lock exactly like a manifest edit (JK-1864).
+        // stale the lock exactly like a manifest edit.
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "n"
                 version = "1"

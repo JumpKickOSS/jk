@@ -120,7 +120,7 @@ public final class MavenRepo {
     /**
      * Field-setting constructor. {@code httpOrNull} is the HTTP client when the repo is http(s)
      * (enabling the metadata cache), or {@code null} for a non-HTTP transport. {@code mirrorToM2}
-     * is the resolving project's {@code project.m2install} value — {@code false} for resolvers not
+     * is the resolving project's {@code m2install} value — {@code false} for resolvers not
      * tied to a specific project's declared dependencies (tool/plugin/script/git resolution).
      */
     private MavenRepo(
@@ -180,7 +180,7 @@ public final class MavenRepo {
 
     /**
      * As {@link #fetchArtifact(Coordinate)}, aborting cooperatively at leg boundaries when
-     * {@code abort} turns true (JK-1786: a lock that already failed must not start more
+     * {@code abort} turns true (a lock that already failed must not start more
      * downloads). A leg in progress always completes cleanly — the check runs only before the
      * network leg starts and right after the host permit is granted, never mid-download.
      */
@@ -277,12 +277,12 @@ public final class MavenRepo {
             Optional<Fetched> fromM2 = tryM2(coord, relativePath, uri);
             if (fromM2.isPresent()) return fromM2.get();
         }
-        // Per-host cap around the NETWORK leg onlywarm mirror hits short-circuit
+        // Per-host cap around the NETWORK leg only. Warm mirror hits short-circuit
         // above, so re-locks stay uncapped, but a cold lock's fan-out (hundreds of concurrent
         // virtual-thread downloads + sidecar GETs) is bounded to what the host tolerates.
-        // JK-1786: boundary checks before host-permit acquisition and again once the permit is
+        // boundary checks before host-permit acquisition and again once the permit is
         // granted — a task that queued behind slow downloads must not start a fetch for a lock
-        // that failed while it waited. Never checked mid-download (JK-1700: legs finish cleanly).
+        // that failed while it waited. Never checked mid-download (legs finish cleanly).
         checkAbort(abort, coord);
         Cas.Stored stored;
         try {
@@ -594,7 +594,7 @@ public final class MavenRepo {
 
     /**
      * Thrown when a fetch is cooperatively skipped at a leg boundary because the caller's abort
-     * signal (JK-1786: first materialize failure) turned true. Never wraps a real transfer
+     * signal (first materialize failure) turned true. Never wraps a real transfer
      * failure — callers use it to tell abort noise apart from the root cause.
      */
     public static final class FetchAbortedException extends IOException {

@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The relatime-style throttle on the cache-hit manifest touch (JK-1429): a hit must not pay a
+ * The relatime-style throttle on the cache-hit manifest touch: a hit must not pay a
  * full {@code aot.toml} lock/read/rewrite per worker fork just to refresh {@code last_used}.
  */
 class PluginAotRecordUseTest {

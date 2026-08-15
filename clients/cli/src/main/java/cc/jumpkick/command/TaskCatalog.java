@@ -13,8 +13,8 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * First-party build plan tasks for {@code jk tasks} / {@code jk show} / {@code jk inspect}
- * . Names align with {@link TaskNames} where possible; a few Mill-friendly aliases
+ * First-party build plan tasks for {@code jk tasks} / {@code jk show} / {@code jk inspect}.
+ * Names align with {@link TaskNames} where possible; a few Mill-friendly aliases
  * ({@code compile-main}, {@code package}) resolve to the same entry.
  */
 final class TaskCatalog {
@@ -93,7 +93,7 @@ final class TaskCatalog {
     }
 
     private static TaskDef def(String name, String description, Function<BuildLayout, Path> out, String... aliases) {
-        // Stage comes from the one taxonomy the whole system speaks (JK-1651): the catalog once
+        // Stage comes from the one taxonomy the whole system speaks: the catalog once
         // said `setup` where BuildStage says `resolve`, and hand-assigned stages drifted from
         // the inference (`write-stamp` is COMPILE, not package).
         return new TaskDef(

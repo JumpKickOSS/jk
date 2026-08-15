@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 /**
  * IDE config must file workspace-sibling lock rows as module deps, not external libraries. Lock
  * rows are keyed by full package id ({@code g:a:type:classifier}) while sibling coords are plain
- * {@code group:artifact} — a raw {@code contains(name())} never matched (JK-1343, same class of
+ * {@code group:artifact} — a raw {@code contains(name())} never matched (same class of
  * mismatch as the lockModules processor-dependency bug).
  */
 class IdeOpsSiblingFilterTest {

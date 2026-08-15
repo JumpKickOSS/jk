@@ -20,10 +20,10 @@ public final class DynamicSurfaceIo {
     private DynamicSurfaceIo() {}
 
     /**
-     * The {@code dynamic-surface.json} format version. Version 2 (JK-1802) added member tags —
-     * {@code f:}/{@code m:} for field/method kind (JK-1753), {@code c:} for a serialization
-     * {@code customTargetConstructorClass} (JK-1801) — and comma-joined ordered interface lists
-     * as PROXY_INTERFACE names (JK-1799). Version 1 files read cleanly: untagged members mean
+     * The {@code dynamic-surface.json} format version. Version 2 added member tags —
+     * {@code f:}/{@code m:} for field/method kind, {@code c:} for a serialization
+     * {@code customTargetConstructorClass} — and comma-joined ordered interface lists
+     * as PROXY_INTERFACE names. Version 1 files read cleanly: untagged members mean
      * "kind unknown" and single-interface proxy names are one-element lists.
      *
      * <p>Readers deliberately do not reject or warn on newer versions: shipped v1 readers
@@ -141,7 +141,7 @@ public final class DynamicSurfaceIo {
      * Write Graal unified reachability metadata under {@code dir} as {@code
      * reachability-metadata.json} (directory form for {@code -H:ConfigurationFileDirectories}).
      * Untranslatable legacy regex resource patterns ride alongside as a split-format {@code
-     * resource-config.json}, which native-image reads from the same directory (JK-1777).
+     * resource-config.json}, which native-image reads from the same directory.
      */
     public static void writeReachabilityDir(Path dir, DynamicSurface surface) throws IOException {
         Files.createDirectories(dir);

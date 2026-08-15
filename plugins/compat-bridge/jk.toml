@@ -1,4 +1,3 @@
-[project]
 name = "jk-compat-bridge"
 description = "JumpKick's Maven/Gradle compatibility plugin"
 

@@ -28,9 +28,11 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
 /** Fold live events into {@link BuildAccumulator} and persist the journal row. */
+@RequiredArgsConstructor
 public final class JournalWriter {
 
     private final JobSessions sessions;
@@ -40,23 +42,6 @@ public final class JournalWriter {
     private final LongSupplier clock;
     private final String version;
     private final Consumer<String> log;
-
-    public JournalWriter(
-            JobSessions sessions,
-            BuildJournal journal,
-            JkHistoryConfig historyConfig,
-            Supplier<Path> metricsFile,
-            LongSupplier clock,
-            String version,
-            Consumer<String> log) {
-        this.sessions = sessions;
-        this.journal = journal;
-        this.historyConfig = historyConfig;
-        this.metricsFile = metricsFile;
-        this.clock = clock;
-        this.version = version;
-        this.log = log;
-    }
 
     public void register(
             long requestId,
@@ -183,8 +168,8 @@ public final class JournalWriter {
 
     /**
      * A {@code history-diag} replay line carrying the FULL persisted shape — the journal keeps
-     * module/class/method/stack/snippet/worker (JK-1869) and replay must not flatten a failure
-     * back to task+message (JK-1909).
+     * module/class/method/stack/snippet/worker and replay must not flatten a failure
+     * back to task+message.
      */
     public static String historyDiagLine(BuildRecord.Diag d) {
         var o = JsonOut.object()
@@ -216,7 +201,7 @@ public final class JournalWriter {
      * <p>stderr is discarded at the OS level and stdout drained on a side thread, so the 1s cap
      * actually holds. Reading stdout to EOF inline deadlocks on a repo where git is chatty enough
      * to fill its stderr pipe: git can't exit, stdout never sees EOF, and waitFor is never
-     * reached — on the journal teardown path that hangs the whole request (JK-1473).
+     * reached — on the journal teardown path that hangs the whole request.
      */
     static @Nullable String gitCommit(String dir) {
         if (dir == null || dir.isEmpty()) return null;

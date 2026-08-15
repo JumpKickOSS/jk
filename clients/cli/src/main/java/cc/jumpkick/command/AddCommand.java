@@ -100,7 +100,7 @@ public final class AddCommand implements CliCommand {
         Path dir = global.workingDir();
 
         // Explicit coordinate flags mean the library/coord form: a bare name that happens to stat
-        // as a directory must not silently drop --group/--name/--ver/--ping (JK-1514). On
+        // as a directory must not silently drop --group/--name/--ver/--ping. On
         // explicit path syntax the combination is contradictory — refuse rather than guess.
         boolean coordFlags =
                 libraryFlag != null || groupFlag != null || nameFlag != null || versionFlag != null || ping;

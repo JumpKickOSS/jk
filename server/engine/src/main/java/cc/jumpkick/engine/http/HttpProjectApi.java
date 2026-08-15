@@ -6,7 +6,12 @@ import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
@@ -15,7 +20,7 @@ final class HttpProjectApi {
 
     /**
      * {@code GET /api/templates} response cache — building the index walks every template root
-     * (JK-1455). One immutable holder rather than two volatiles: a reader must never pair the old
+     *. One immutable holder rather than two volatiles: a reader must never pair the old
      * JSON with the new timestamp and serve stale rows for a full TTL.
      */
     private record TemplatesCache(String json, long atNanos) {}
@@ -30,7 +35,7 @@ final class HttpProjectApi {
     }
 
     /**
-     * {@code POST /api/projects} — scaffold a new project under {@code parentDir} (JK-1193). Same
+     * {@code POST /api/projects} — scaffold a new project under {@code parentDir}. Same
      * {@link cc.jumpkick.scaffold.NewScaffolder} path as {@code jk new}.
      */
     void handleNewProject(HttpExchange exchange) throws IOException {
@@ -49,7 +54,7 @@ final class HttpProjectApi {
                     new cc.jumpkick.engine.runtime.NewProjectOps.Request(
                             name, parentDir, group, lang, layout, template, executable, framework));
             // Resolve the durable projectId so the SPA can route #project/<id> immediately
-            // (JK-1775) — an absolute path in the hash 404s (isValidId rejects '/'). The
+            // — an absolute path in the hash 404s (isValidId rejects '/'). The
             // scaffolder writes no lock, so materialize identity.toml under the project home;
             // without it GET /api/project?project=<id> cannot map the id back to the checkout.
             String projectId = null;
@@ -125,7 +130,7 @@ final class HttpProjectApi {
             HttpEngineServer.sendJson(exchange, 200, cached.json());
             return;
         }
-        // Same roots the short-name resolver uses (JK-1458) — the picker must never list a
+        // Same roots the short-name resolver uses — the picker must never list a
         // template that then resolves differently, or miss one that would resolve.
         var entries =
                 cc.jumpkick.scaffold.Giter8TemplateIndex.build(cc.jumpkick.scaffold.Giter8TemplateIndex.searchRoots());
@@ -153,8 +158,17 @@ final class HttpProjectApi {
      */
     void handleProject(HttpExchange exchange) throws IOException {
         String q = exchange.getRequestURI().getRawQuery();
-        String projectId = HttpEngineServer.queryParam(q, "project");
-        String dir = HttpEngineServer.queryParam(q, "dir");
+        String projectId;
+        String dir;
+        try {
+            projectId = HttpEngineServer.queryParam(q, "project");
+            dir = HttpEngineServer.queryParam(q, "dir");
+        } catch (IllegalArgumentException e) {
+            // Malformed percent-encoding is the client's error, not a 500.
+            HttpEngineServer.sendJson(
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
+            return;
+        }
         if ((projectId == null || projectId.isBlank()) && (dir == null || dir.isBlank())) {
             HttpEngineServer.sendJson(
                     exchange,
@@ -180,7 +194,7 @@ final class HttpProjectApi {
         }
         // Resolve identity BEFORE the jk.toml parse: resolution succeeds without a parseable
         // manifest (lock / identity.toml / hash), so a ?dir= call on a broken or deleted
-        // workspace still gets its durable projectId in the fallback branch (JK-1796).
+        // workspace still gets its durable projectId in the fallback branch.
         String resolvedId = projectId;
         try {
             resolvedId =
@@ -213,7 +227,7 @@ final class HttpProjectApi {
 
     /**
      * {@code GET /api/project/graph?dir=…[&scopes=main,test][&transitive=0|1]} — dependency graph
-     * for the Project page ECharts panel (JK-1542).
+     * for the Project page ECharts panel.
      */
     void handleProjectGraph(HttpExchange exchange) throws IOException {
         String query = exchange.getRequestURI().getRawQuery();
@@ -236,7 +250,7 @@ final class HttpProjectApi {
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
-        boolean transitive = parseTruthy(HttpEngineServer.queryParam(query, "transitive"));
+        boolean transitive = parseTruthy(HttpEngineServer.queryParamLenient(query, "transitive"));
         cc.jumpkick.resolver.DependencyGraphModel.Graph data;
         try {
             data = cc.jumpkick.resolver.DependencyGraphModel.forProjectDir(projectDir, scopes, transitive);
@@ -410,8 +424,197 @@ final class HttpProjectApi {
                 body.put("bytes", b.bytes());
                 body.put("lines", b.lines());
                 body.put("encoding", b.encoding());
+                body.put("etag", b.etag());
                 body.put("content", b.content());
                 HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
+            }
+        }
+    }
+
+    /**
+     * {@code GET /api/project/file/raw?project=&lt;id&gt;&amp;path=&lt;rel&gt;} — raw bytes of one
+     * allow-listed file (images for the Preview pane). Same sandbox as the JSON body endpoint.
+     * Clients must {@code fetch} with the bearer token and build a blob URL — a bare
+     * {@code <img src>} cannot send Authorization.
+     */
+    void handleProjectFileRaw(HttpExchange exchange) throws IOException {
+        String projectId;
+        String path;
+        try {
+            String q = exchange.getRequestURI().getRawQuery();
+            projectId = HttpEngineServer.queryParam(q, "project");
+            path = HttpEngineServer.queryParam(q, "path");
+        } catch (IllegalArgumentException e) {
+            HttpEngineServer.sendJson(
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
+            return;
+        }
+        if (projectId == null || projectId.isBlank()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"project\"").toString());
+            return;
+        }
+        if (path == null || path.isBlank()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"path\"").toString());
+            return;
+        }
+        var root = WorkspaceFileAccess.resolveRoot(projectId);
+        if (root.isEmpty()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    404,
+                    JsonOut.object()
+                            .put("error", "unknown project id or checkout path missing: " + projectId)
+                            .put("projectId", projectId)
+                            .toString());
+            return;
+        }
+        switch (WorkspaceFileAccess.readRaw(root.get(), path)) {
+            case WorkspaceFileAccess.RawResult.BadRequest bad ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        400,
+                        JsonOut.object().put("error", bad.error()).toString());
+            case WorkspaceFileAccess.RawResult.NotFound ignored ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        404,
+                        JsonOut.object().put("error", "not found").toString());
+            case WorkspaceFileAccess.RawResult.TooLarge too ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        413,
+                        JsonOut.object()
+                                .put("error", "file too large")
+                                .put("bytes", too.bytes())
+                                .put("maxBytes", too.maxBytes())
+                                .toString());
+            case WorkspaceFileAccess.RawResult.Ok ok ->
+                HttpEngineServer.sendBytes(
+                        exchange, 200, ok.body().contentType(), ok.body().bytes());
+        }
+    }
+
+    /**
+     * {@code PUT /api/project/file} — replace a text-servable file under the identity checkout.
+     * Body JSON: {@code { "project", "path", "content", "etag"? }}. When {@code etag} is present it
+     * must match the current on-disk SHA-256 or the write is {@code 409}. Cap matches {@link
+     * WorkspaceFileAccess#MAX_FILE_BYTES} (not the smaller global POST body limit).
+     */
+    void handleProjectFilePut(HttpExchange exchange) throws IOException {
+        // File write can be up to 1 MiB of content plus JSON quoting overhead; read past the
+        // engine-wide 64 KiB mutation cap used for build/cancel/scaffold. Factor 6, not 3:
+        // JSON.stringify escapes each control char to six bytes (backslash-u form), and the
+        // binary probe only rejects NUL, so a legal control-char-heavy file under the 1 MiB
+        // write cap can escape past 3x.
+        int maxBody = WorkspaceFileAccess.MAX_FILE_BYTES * 6 + 4096;
+        byte[] raw = exchange.getRequestBody().readNBytes(maxBody + 1);
+        if (raw.length > maxBody) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    413,
+                    JsonOut.object()
+                            .put("error", "request body too large")
+                            .put("maxBytes", maxBody)
+                            .toString());
+            return;
+        }
+        String body = new String(raw, StandardCharsets.UTF_8);
+        String projectId = cc.jumpkick.plugin.protocol.Jsonl.topStr(body, "project");
+        String path = cc.jumpkick.plugin.protocol.Jsonl.topStr(body, "path");
+        String content = cc.jumpkick.plugin.protocol.Jsonl.topStr(body, "content");
+        String etag = cc.jumpkick.plugin.protocol.Jsonl.topStr(body, "etag");
+        String encoding = cc.jumpkick.plugin.protocol.Jsonl.topStr(body, "encoding");
+        if (projectId == null || projectId.isBlank()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"project\"").toString());
+            return;
+        }
+        if (path == null || path.isBlank()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"path\"").toString());
+            return;
+        }
+        if (content == null) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"content\"").toString());
+            return;
+        }
+        var root = WorkspaceFileAccess.resolveRoot(projectId);
+        if (root.isEmpty()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    404,
+                    JsonOut.object()
+                            .put("error", "unknown project id or checkout path missing: " + projectId)
+                            .put("projectId", projectId)
+                            .toString());
+            return;
+        }
+        switch (WorkspaceFileAccess.write(root.get(), path, content, etag, encoding)) {
+            case WorkspaceFileAccess.WriteResult.BadRequest bad ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        400,
+                        JsonOut.object().put("error", bad.error()).toString());
+            case WorkspaceFileAccess.WriteResult.NotFound ignored ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        404,
+                        JsonOut.object().put("error", "not found").toString());
+            case WorkspaceFileAccess.WriteResult.TooLarge too ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        413,
+                        JsonOut.object()
+                                .put("error", "file too large")
+                                .put("bytes", too.bytes())
+                                .put("maxBytes", too.maxBytes())
+                                .toString());
+            case WorkspaceFileAccess.WriteResult.NotWritable nw ->
+                HttpEngineServer.sendJson(
+                        exchange, 415, JsonOut.object().put("error", nw.error()).toString());
+            case WorkspaceFileAccess.WriteResult.Conflict conflict ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        409,
+                        JsonOut.object()
+                                .put("error", "file changed on disk")
+                                .put("etag", conflict.currentEtag())
+                                .toString());
+            case WorkspaceFileAccess.WriteResult.Failed failed ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        500,
+                        JsonOut.object().put("error", failed.error()).toString());
+            case WorkspaceFileAccess.WriteResult.Ok ok -> {
+                var w = ok.body();
+                Map<String, Object> resp = new LinkedHashMap<>();
+                resp.put("projectId", projectId);
+                resp.put("dir", w.root().toString());
+                resp.put("path", w.path());
+                resp.put("lang", w.lang());
+                resp.put("bytes", w.bytes());
+                resp.put("lines", w.lines());
+                resp.put("etag", w.etag());
+                // A manifest edit stales the lock's manifests-sha256 stamp: the next build pays a
+                // full re-resolve. Tell the pane so the user is not surprised.
+                String fileName = w.path().substring(w.path().lastIndexOf('/') + 1);
+                if (fileName.equals("jk.toml") || fileName.equals("jk-libs.toml")) {
+                    resp.put("lockStale", Boolean.TRUE);
+                }
+                HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(resp));
             }
         }
     }

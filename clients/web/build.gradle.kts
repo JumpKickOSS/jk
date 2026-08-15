@@ -18,6 +18,11 @@ tasks.named<Test>("test") {
                     "src/main/resources/web/fold.js",
                     "src/test/js/fold.test.mjs",
                     "src/main/resources/web/code.js",
-                    "src/test/js/code.test.mjs")
+                    "src/test/js/code.test.mjs",
+                    "src/main/resources/web/api.js",
+                    "src/test/js/api.test.mjs",
+                    "src/main/resources/web/app.js",
+                    "src/main/resources/web/tip.js",
+                    "src/test/js/app.test.mjs")
             .withPathSensitivity(PathSensitivity.RELATIVE)
 }

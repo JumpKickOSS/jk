@@ -46,7 +46,7 @@ class HeaderProgressStrategyTest {
     @Test
     void weighted_denominator_growth_does_not_paint_backwards() {
         // Calibrate grows the denominator (preflight 100/1000 → 100/5100 ≈ 2%): the displayed
-        // fraction must hold the 10% floor, not rebase down (JK-1815/JK-1823).
+        // fraction must hold the 10% floor, not rebase down.
         var w = new WeightedProgressStrategy();
         var st = new HeaderProgressState(0, 0, -1, 0, 0, -1, false);
         assertThat(w.onWeightProgress(st, 100, 1000)[0]).isEqualTo(100);
@@ -57,7 +57,7 @@ class HeaderProgressStrategyTest {
     @Test
     void clock_takeover_carries_the_weighted_peak() {
         // AUTO switch: weighted climbs to 10% during preflight, then R0 seeds and clock takes
-        // over near 0 elapsed — the shared peak keeps the paint monotonic (JK-1815).
+        // over near 0 elapsed — the shared peak keeps the paint monotonic.
         var peak = new SharedPeak();
         var w = new WeightedProgressStrategy(peak);
         var clock = new ClockProgressStrategy(peak);

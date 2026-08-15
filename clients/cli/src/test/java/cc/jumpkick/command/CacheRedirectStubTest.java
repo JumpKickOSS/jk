@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1436 — hidden redirect stubs / aliases for the pre-split spellings: {@code jk cache info}
+ * — hidden redirect stubs / aliases for the pre-split spellings: {@code jk cache info}
  * and {@code jk cache storage} (now {@code jk cache usage}) and {@code jk cache search} (now
  * {@code jk repo search}). Aliases keep working, stay out of {@code jk cache --help} when hidden,
  * and are listed in docs/aliases.md.

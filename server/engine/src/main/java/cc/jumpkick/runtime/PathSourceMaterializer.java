@@ -20,6 +20,8 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
 
 /**
  * Materializes a local-path dependency into a locally-published Maven artifact — the path-source
@@ -33,6 +35,7 @@ import java.util.stream.Stream;
  * artifact is rebuilt exactly when the sources change and reused otherwise. The repo lives under
  * {@code $JK_CACHE_DIR/path-artifacts/<pathHash>/<fingerprint>/repo}.
  */
+@RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 final class PathSourceMaterializer {
 
     /** Directory names never contributing to the fingerprint (build outputs, VCS/tool metadata). */
@@ -58,17 +61,6 @@ final class PathSourceMaterializer {
         this(lockRootDir, JkDirs.cache().resolve("path-artifacts"), cas, buildRepos, javaHome, jkVersion);
     }
 
-    /** Visible for tests — inject the artifacts root. */
-    PathSourceMaterializer(
-            Path lockRootDir, Path artifactsRoot, Cas cas, RepoGroup buildRepos, Path javaHome, String jkVersion) {
-        this.lockRootDir = lockRootDir;
-        this.artifactsRoot = artifactsRoot;
-        this.cas = cas;
-        this.buildRepos = buildRepos;
-        this.javaHome = javaHome;
-        this.jkVersion = jkVersion;
-    }
-
     Materialized materialize(PathSource source) throws IOException, InterruptedException {
         Path projectDir = lockRootDir.resolve(source.rawPath()).normalize();
         if (!Files.isDirectory(projectDir)) {
@@ -84,7 +76,7 @@ final class PathSourceMaterializer {
 
         boolean isJk = Files.isRegularFile(projectDir.resolve("jk.toml"));
 
-        // Coordinate: read cheaply from a jk target's [project]; a foreign target reveals it only
+        // Coordinate: read cheaply from a jk target's project identity; a foreign target reveals it only
         // after building (cached in the marker for a fingerprint hit).
         String group = null;
         String artifact = null;

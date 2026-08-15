@@ -97,7 +97,6 @@ class IdeChromeTest {
         Path ws = tmp.resolve("hello-http");
         Files.createDirectories(ws);
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 name = "hello-http"
                 """);
         Path bsp = ws.resolve(".bsp").resolve("jk.json");

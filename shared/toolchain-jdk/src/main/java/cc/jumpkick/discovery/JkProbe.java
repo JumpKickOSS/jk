@@ -35,7 +35,7 @@ public final class JkProbe implements LocalToolProbe {
     /**
      * Explicit root ({@code --jdks-dir} / {@link cc.jumpkick.jdk.JdkRegistry#JdkRegistry(Path)}):
      * the caller declared this whole directory as the JDK root, so every valid install in it is
-     * in scope — the ownership marker only disambiguates the <em>shared</em> root (JK-1444).
+     * in scope — the ownership marker only disambiguates the <em>shared</em> root.
      */
     public JkProbe(Path jdksRoot) {
         this(jdksRoot, false);

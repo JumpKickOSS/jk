@@ -73,7 +73,7 @@ public final class IdeCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws Exception {
-        // Machine path for IDE plugins (JK-1511): structured model without writing .iml/.vscode.
+        // Machine path for IDE plugins: structured model without writing .iml/.vscode.
         if (in.has("print-model")) {
             return printModel(in);
         }

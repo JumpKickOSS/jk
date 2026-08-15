@@ -13,11 +13,19 @@ import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
 import java.util.stream.Stream;
 
 /**
- * Micronaut build plugin: optional {@code micronaut-aot} step (JK-1536). Packaging stays
+ * Micronaut build plugin: optional {@code micronaut-aot} step. Packaging stays
  * declarative ({@code [application] assembly = true}); AOT outputs contribute classes/resources
  * that the engine merges into package-jar / assembly.
  */
@@ -64,7 +72,7 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
         }
 
         // Unset follows the project: a [native] build wants native-oriented AOT, and getting JIT
-        // optimizers into an image is what JK-1695 is about. An explicit value always wins.
+        // optimizers into an image is what  is about. An explicit value always wins.
         Optional<String> declared = exec.config().stringOpt("aot-runtime").filter(s -> !s.isBlank());
         String runtime = declared.map(s -> s.trim().toLowerCase(Locale.ROOT))
                 .orElse(exec.project().nativeDeclared() ? RUNTIME_NATIVE : RUNTIME_JIT);
@@ -185,7 +193,7 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
      * {@code Properties.store} always prepends a {@code #<current date>} line and writes keys in
      * unspecified {@code Hashtable} order, so two identical AOT runs would produce two different
      * files. jk fixes timestamps everywhere else it writes an output; this is that contract
-     * applied to a text file (JK-1666).
+     * applied to a text file.
      */
     static String renderProperties(Properties props) {
         StringBuilder sb = new StringBuilder("# Effective Micronaut AOT configuration (jk)\n");
@@ -236,7 +244,7 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
      * <p>An <em>unset</em> {@code aot-config} falls back: {@code aot.properties} if it happens to
      * be there, else defaults. An <em>explicitly set</em> one does not — a typo'd path would
      * otherwise produce a green build that silently optimized with jk's defaults instead of the
-     * configuration the user wrote, and nothing in the output would say so (JK-1662).
+     * configuration the user wrote, and nothing in the output would say so.
      */
     /**
      * The module-relative properties file this build reads: {@code aot-config} when set, else the
@@ -275,7 +283,7 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
         // Files.walk order is directory-iteration order — it varies by filesystem and by the
         // order entries were created. This list becomes both --classpath and the forked JVM's
         // -cp, so an unsorted closure hands AOT a different classpath on two machines holding
-        // identical jars, and a duplicate class resolves differently (JK-1665).
+        // identical jars, and a duplicate class resolves differently.
         out.sort(Comparator.comparing(Path::toString));
         return out;
     }

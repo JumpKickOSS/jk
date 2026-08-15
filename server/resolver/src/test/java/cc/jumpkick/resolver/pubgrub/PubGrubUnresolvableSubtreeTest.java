@@ -7,9 +7,9 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1832: a mandatory dependency whose entire subtree is unresolvable (a transitive package with
+ * a mandatory dependency whose entire subtree is unresolvable (a transitive package with
  * an empty version universe) must fail the solve — the sigstore-java lock silently dropped
- * grpc-netty-shaded's whole closure instead (JK-1811) while keeping the parent, an incomplete
+ * grpc-netty-shaded's whole closure instead while keeping the parent, an incomplete
  * solution that violated the parent's dependency incompatibility.
  */
 class PubGrubUnresolvableSubtreeTest {

@@ -6,14 +6,35 @@ import static cc.jumpkick.config.JkBuildParser.*;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.VersionSelector;
 import java.util.Locale;
+import java.util.Set;
 import org.jspecify.annotations.NullMarked;
 import org.tomlj.TomlTable;
 
 /**
- * [project] table for {@link JkBuildParser}: name, inheritance, JDK/language versions.
+ * Top-level project identity keys on {@code jk.toml} for {@link JkBuildParser}: name, inheritance,
+ * JDK/language versions. Keys live at the root (not under a {@code [project]} table).
  */
 @NullMarked
 public final class ManifestProject {
+
+    /**
+     * Known root-level project identity / toolchain keys. Used by unowned-table checks so Cargo-style
+     * inherit tables ({@code group = { workspace = true }}) are not rejected as plugin tables.
+     */
+    static final Set<String> PROJECT_KEYS = Set.of(
+            "name",
+            "group",
+            "version",
+            "jdk",
+            "java",
+            "kotlin",
+            "groovy",
+            "sources",
+            "description",
+            "m2install",
+            "layout",
+            "id",
+            "module");
 
     private ManifestProject() {}
 
@@ -25,21 +46,20 @@ public final class ManifestProject {
      *     concrete group+version (or fail if those were omitted).
      */
     static JkBuild.Project parseProject(TomlTable root, boolean workspaceRoot) {
-        TomlTable project = root.getTable("project");
-        if (project == null) {
-            throw new JkBuildParseException("jk.toml must declare a top-level `[project]` table");
-        }
         // name is the module identity — never workspace-inherited (Cargo package.name rule).
-        if (project.isTable("name")) {
+        if (root.isTable("name")) {
             throw new JkBuildParseException(
-                    "project.name cannot use workspace inheritance — every module must declare its own name");
+                    "name cannot use workspace inheritance — every module must declare its own name");
+        }
+        if (!root.contains("name")) {
+            throw new JkBuildParseException("jk.toml is missing required key `name`");
         }
         java.util.EnumSet<JkBuild.ProjectInherit> inherits = java.util.EnumSet.noneOf(JkBuild.ProjectInherit.class);
 
-        String name = requireString(project, "name", "project.name");
+        String name = requireString(root, "name", "name");
 
         String group = parseInheritableString(
-                project,
+                root,
                 "group",
                 JkBuild.ProjectInherit.GROUP,
                 inherits,
@@ -47,7 +67,7 @@ public final class ManifestProject {
                 /* requiredWhenRootOrStandalone */ true);
 
         String version = parseInheritableString(
-                project,
+                root,
                 "version",
                 JkBuild.ProjectInherit.VERSION,
                 inherits,
@@ -55,46 +75,46 @@ public final class ManifestProject {
                 /* requiredWhenRootOrStandalone */ true);
 
         String jdk;
-        if (isWorkspaceInherit(project, "jdk") || (!workspaceRoot && !project.contains("jdk"))) {
+        if (isWorkspaceInherit(root, "jdk") || (!workspaceRoot && !root.contains("jdk"))) {
             inherits.add(JkBuild.ProjectInherit.JDK);
             jdk = null;
         } else {
-            jdk = parseJdkSpec(project);
+            jdk = parseJdkSpec(root);
         }
 
         int java;
-        if (isWorkspaceInherit(project, "java") || (!workspaceRoot && !project.contains("java"))) {
+        if (isWorkspaceInherit(root, "java") || (!workspaceRoot && !root.contains("java"))) {
             inherits.add(JkBuild.ProjectInherit.JAVA);
             java = 0;
         } else {
-            java = parseJavaRelease(project);
-            requireSupportedMajor("project.java", java);
+            java = parseJavaRelease(root);
+            requireSupportedMajor("java", java);
         }
 
         VersionSelector kotlin;
-        if (isWorkspaceInherit(project, "kotlin") || (!workspaceRoot && !project.contains("kotlin"))) {
+        if (isWorkspaceInherit(root, "kotlin") || (!workspaceRoot && !root.contains("kotlin"))) {
             inherits.add(JkBuild.ProjectInherit.KOTLIN);
             kotlin = null;
         } else {
-            kotlin = parseKotlinVersion(project);
+            kotlin = parseKotlinVersion(root);
         }
 
         VersionSelector groovy;
-        if (isWorkspaceInherit(project, "groovy") || (!workspaceRoot && !project.contains("groovy"))) {
+        if (isWorkspaceInherit(root, "groovy") || (!workspaceRoot && !root.contains("groovy"))) {
             inherits.add(JkBuild.ProjectInherit.GROOVY);
             groovy = null;
         } else {
-            groovy = parseGroovyVersion(project);
+            groovy = parseGroovyVersion(root);
         }
 
         // sources = true → PUBLISH; sources = "always" → ALWAYS; absent/false → DISABLED
         // description is special: omit stays null (no auto-inherit). Explicit description.workspace = true ok.
         JkBuild.SourcesMode sourcesMode;
-        if (isWorkspaceInherit(project, "sources") || (!workspaceRoot && !project.contains("sources"))) {
+        if (isWorkspaceInherit(root, "sources") || (!workspaceRoot && !root.contains("sources"))) {
             inherits.add(JkBuild.ProjectInherit.SOURCES);
             sourcesMode = JkBuild.SourcesMode.DISABLED;
         } else {
-            Object sourcesRaw = project.get("sources");
+            Object sourcesRaw = root.get("sources");
             if ("always".equalsIgnoreCase(sourcesRaw instanceof String s ? s : "")) {
                 sourcesMode = JkBuild.SourcesMode.ALWAYS;
             } else if (Boolean.TRUE.equals(sourcesRaw)) {
@@ -105,29 +125,29 @@ public final class ManifestProject {
         }
 
         String description;
-        if (isWorkspaceInherit(project, "description")) {
+        if (isWorkspaceInherit(root, "description")) {
             inherits.add(JkBuild.ProjectInherit.DESCRIPTION);
             description = null;
         } else {
             // Omitted description stays unset — never auto-inherits from the workspace root.
-            description = project.getString("description");
+            description = root.getString("description");
         }
 
         boolean m2install;
-        if (isWorkspaceInherit(project, "m2install") || (!workspaceRoot && !project.contains("m2install"))) {
+        if (isWorkspaceInherit(root, "m2install") || (!workspaceRoot && !root.contains("m2install"))) {
             inherits.add(JkBuild.ProjectInherit.M2INSTALL);
             m2install = false;
         } else {
             // m2install defaults to false: ~/.cache/jk is primary. true mirrors into ~/.m2.
-            m2install = Boolean.TRUE.equals(project.getBoolean("m2install"));
+            m2install = Boolean.TRUE.equals(root.getBoolean("m2install"));
         }
 
         JkBuild.Layout layout;
-        if (isWorkspaceInherit(project, "layout") || (!workspaceRoot && !project.contains("layout"))) {
+        if (isWorkspaceInherit(root, "layout") || (!workspaceRoot && !root.contains("layout"))) {
             inherits.add(JkBuild.ProjectInherit.LAYOUT);
             layout = JkBuild.Layout.AUTO;
-        } else if (project.contains("layout")) {
-            String layoutRaw = project.getString("layout");
+        } else if (root.contains("layout")) {
+            String layoutRaw = root.getString("layout");
             try {
                 layout = JkBuild.Layout.parse(layoutRaw);
             } catch (IllegalArgumentException e) {
@@ -146,14 +166,14 @@ public final class ManifestProject {
      * → inherit; root → error if required).
      */
     static String parseInheritableString(
-            TomlTable project,
+            TomlTable root,
             String key,
             JkBuild.ProjectInherit inherit,
             java.util.EnumSet<JkBuild.ProjectInherit> inherits,
             boolean workspaceRoot,
             boolean required) {
-        String path = "project." + key;
-        if (isWorkspaceInherit(project, key)) {
+        String path = key;
+        if (isWorkspaceInherit(root, key)) {
             if (workspaceRoot) {
                 throw new JkBuildParseException("workspace root must set a concrete " + path + " (`" + key
                         + ".workspace = true` is only valid" + " on workspace modules)");
@@ -161,7 +181,7 @@ public final class ManifestProject {
             inherits.add(inherit);
             return JkBuild.VERSION_FROM_WORKSPACE;
         }
-        if (!project.contains(key)) {
+        if (!root.contains(key)) {
             if (workspaceRoot || required) {
                 // Members: omit → inherit. Roots: omit of group/version → error.
                 if (!workspaceRoot) {
@@ -174,7 +194,7 @@ public final class ManifestProject {
             }
             return null;
         }
-        String value = project.getString(key);
+        String value = root.getString(key);
         if (value == null) {
             throw new JkBuildParseException(path + " must be a string (e.g. \"1.0.0\") or `{ workspace = true }`");
         }
@@ -185,24 +205,20 @@ public final class ManifestProject {
     }
 
     /**
-     * Cargo-style {@code field.workspace = true} / {@code field = { workspace = true }} under
-     * {@code [project]}. Only the boolean {@code true} is legal; extra keys are rejected.
+     * Cargo-style {@code field.workspace = true} / {@code field = { workspace = true }} at the root
+     * of {@code jk.toml}. Only the boolean {@code true} is legal; extra keys are rejected.
      */
-    static boolean isWorkspaceInherit(TomlTable project, String key) {
-        if (!project.contains(key) || !project.isTable(key)) return false;
-        TomlTable t = project.getTable(key);
+    static boolean isWorkspaceInherit(TomlTable root, String key) {
+        if (!root.contains(key) || !root.isTable(key)) return false;
+        TomlTable t = root.getTable(key);
         Boolean ws = t.getBoolean("workspace");
         if (!Boolean.TRUE.equals(ws)) {
-            throw new JkBuildParseException("project."
-                    + key
-                    + ".workspace must be `true` (the only legal value), or set project."
-                    + key
-                    + " to a concrete value");
+            throw new JkBuildParseException(
+                    key + ".workspace must be `true` (the only legal value), or set " + key + " to a concrete value");
         }
         for (String k : t.keySet()) {
             if (!"workspace".equals(k)) {
-                throw new JkBuildParseException("project."
-                        + key
+                throw new JkBuildParseException(key
                         + " with workspace inheritance must only set `workspace = true` (unexpected key `"
                         + k
                         + "`)");
@@ -212,24 +228,24 @@ public final class ManifestProject {
     }
 
     /**
-     * {@code project.jdk}: vendor+major, bare major, unquoted int, or keyword
+     * {@code jdk}: vendor+major, bare major, unquoted int, or keyword
      * ({@code lts}/{@code stable}/{@code latest}/{@code native}). Point releases rejected.
      * Absent/blank → null.
      */
-    static String parseJdkSpec(TomlTable project) {
-        String spec = parseVersionSpec(project, "jdk", "project.jdk", "\"temurin-25\" or \"25\"");
+    static String parseJdkSpec(TomlTable root) {
+        String spec = parseVersionSpec(root, "jdk", "jdk", "\"temurin-25\" or \"25\"");
         if (spec == null || isVersionKeyword(spec)) return spec;
         int major = JkBuild.Project.majorOf(spec);
         if (major == 0) {
             throw new JkBuildParseException(
-                    "project.jdk = \"" + spec + "\" must include a major version (e.g. \"temurin-25\" or \"25\")");
+                    "jdk = \"" + spec + "\" must include a major version (e.g. \"temurin-25\" or \"25\")");
         }
-        requireSupportedMajor("project.jdk", major);
+        requireSupportedMajor("jdk", major);
         return spec;
     }
 
     /**
-     * {@code [native].graal}: same shape as {@code project.jdk}; {@code "native"} ≡ {@code "graalvm"}.
+     * {@code [native].graal}: same shape as {@code jdk}; {@code "native"} ≡ {@code "graalvm"}.
      * Point releases rejected. Absent/blank → null.
      */
     static String parseGraalSpec(TomlTable native_) {
@@ -272,12 +288,12 @@ public final class ManifestProject {
     }
 
     /**
-     * {@code project.java} accepts either an unquoted TOML integer or a quoted numeric string
+     * {@code java} accepts either an unquoted TOML integer or a quoted numeric string
      * (coerced). Absent → {@code 0} ({@code javaRelease} falls back to the {@code jdk} major).
      */
-    static int parseJavaRelease(TomlTable project) {
-        if (!project.contains("java")) return 0;
-        Object raw = project.get("java");
+    static int parseJavaRelease(TomlTable root) {
+        if (!root.contains("java")) return 0;
+        Object raw = root.get("java");
         long value;
         if (raw instanceof Long l) {
             value = l;
@@ -285,42 +301,42 @@ public final class ManifestProject {
             try {
                 value = Long.parseLong(s.trim());
             } catch (NumberFormatException e) {
-                throw new JkBuildParseException("project.java must be an integer, got: \"" + s + "\"");
+                throw new JkBuildParseException("java must be an integer, got: \"" + s + "\"");
             }
         } else {
-            throw new JkBuildParseException("project.java must be an integer");
+            throw new JkBuildParseException("java must be an integer");
         }
         if (value < 0 || value > Integer.MAX_VALUE) {
-            throw new JkBuildParseException("project.java out of range: " + value);
+            throw new JkBuildParseException("java out of range: " + value);
         }
         return (int) value;
     }
 
     /**
-     * {@code project.kotlin} is a Kotlin compiler version selector (string), parsed the same way as a
+     * {@code kotlin} is a Kotlin compiler version selector (string), parsed the same way as a
      * floating dependency version: bare {@code 2.3.21} → caret, {@code =2.3.21} pins. Absent → {@code
      * null} (a Java project).
      */
-    static VersionSelector parseKotlinVersion(TomlTable project) {
-        if (!project.contains("kotlin")) return null;
-        String raw = project.getString("kotlin");
+    static VersionSelector parseKotlinVersion(TomlTable root) {
+        if (!root.contains("kotlin")) return null;
+        String raw = root.getString("kotlin");
         if (raw == null) {
-            throw new JkBuildParseException("project.kotlin must be a version string, e.g. \"2.3.21\"");
+            throw new JkBuildParseException("kotlin must be a version string, e.g. \"2.3.21\"");
         }
         if (raw.isBlank()) return null;
         return VersionSelector.parseFloating(raw);
     }
 
     /**
-     * {@code project.groovy} is a Groovy compiler version selector (string), parsed the same way as
+     * {@code groovy} is a Groovy compiler version selector (string), parsed the same way as
      * a floating dependency version: bare {@code 5.0.4} → caret, {@code =5.0.4} pins. Absent →
      * {@code null} (not a Groovy project).
      */
-    static VersionSelector parseGroovyVersion(TomlTable project) {
-        if (!project.contains("groovy")) return null;
-        String raw = project.getString("groovy");
+    static VersionSelector parseGroovyVersion(TomlTable root) {
+        if (!root.contains("groovy")) return null;
+        String raw = root.getString("groovy");
         if (raw == null) {
-            throw new JkBuildParseException("project.groovy must be a version string, e.g. \"5.0.4\"");
+            throw new JkBuildParseException("groovy must be a version string, e.g. \"5.0.4\"");
         }
         if (raw.isBlank()) return null;
         return VersionSelector.parseFloating(raw);
@@ -340,7 +356,4 @@ public final class ManifestProject {
                     + "(LTS: 17, 21, 25, … plus the latest release).");
         }
     }
-
-    // Dependencies
-
 }

@@ -5,7 +5,14 @@ import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
@@ -390,7 +397,7 @@ public final class Wizard {
                 .renderLine(RenderContext.current());
     }
 
-    /** Visible (print-column) length of {@code s}: CSI and OSC stripped (JK-1967), raw chars counted. */
+    /** Visible (print-column) length of {@code s}: CSI and OSC stripped, raw chars counted. */
     private static int visibleLength(String s) {
         return RenderContext.stripAnsi(s).length();
     }
@@ -458,7 +465,7 @@ public final class Wizard {
 
         private final WizardStep step;
         private final StringBuilder input;
-        /** Type-to-filter buffer for filterable multi-select steps (JK-1197). */
+        /** Type-to-filter buffer for filterable multi-select steps. */
         private final StringBuilder filter = new StringBuilder();
 
         private int focus;
@@ -498,7 +505,7 @@ public final class Wizard {
             }
         }
 
-        /** Visible multi-select rows after optional type-to-filter (JK-1197). */
+        /** Visible multi-select rows after optional type-to-filter. */
         private List<Choice> multiVisible(WizardStep.MultiSelectStep ms) {
             List<Choice> all = ms.choicesFor(snapshot);
             if (!ms.filterable() || filter.isEmpty()) return all;
@@ -666,7 +673,7 @@ public final class Wizard {
                     if (onCustom) {
                         input.append(ch);
                     } else if (ms.filterable()) {
-                        // Type-to-filter (JK-1197); do not hijack 'a' for select-all.
+                        // Type-to-filter; do not hijack 'a' for select-all.
                         filter.append(ch);
                         focus = 0;
                     } else if (ch == 'a') {

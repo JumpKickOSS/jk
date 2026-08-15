@@ -54,7 +54,6 @@ for i in $(seq 1 "$MODULES"); do
  dir="$FIXTURE_DIR/$name"
  mkdir -p "$dir/src"
  cat >"$dir/jk.toml" <<EOF
-[project]
 group = "bench"
 name = "$name"
 version = "0.0.1"
@@ -72,7 +71,6 @@ EOF
 done
 
 cat >"$FIXTURE_DIR/jk.toml" <<EOF
-[project]
 group = "bench"
 name = "heap-monorepo"
 version = "0.0.1"
@@ -206,6 +204,8 @@ for i in $(seq 1 "$IDLE_WAIT_S"); do
  c=$(field "$j" heapCommittedBytes)
  u=$(field "$j" heapUsedBytes)
  [[ -z "$c" || -z "$u" ]] && continue
+ # A -1 sentinel means the ack lacked the field (JK-1971) — not a measurement.
+ [[ "$c" -lt 0 || "$u" -lt 0 ]] && continue
  if [[ -z "$best_c" || "$c" -lt "$best_c" ]]; then best_c=$c; fi
  if [[ -z "$best_u" || "$u" -lt "$best_u" ]]; then best_u=$u; fi
  if [[ -n "${GATE_COMMITTED_MIB:-}" ]]; then
@@ -225,7 +225,12 @@ echo "| best heapCommitted after idle | ${best_c:-?} | $(mib "${best_c:-0}") |"
 
 gate_ec=0
 if [[ -n "${GATE_COMMITTED_MIB:-}" || -n "${GATE_USED_MIB:-}" ]]; then
- if ! python3 - <<PY
+ if [[ -z "$best_c" || -z "$best_u" ]]; then
+  # No valid sample in IDLE_WAIT_S seconds (engine dead or status broken) is a gate
+  # failure, not a pass — the unmeasured case is the one most worth catching (JK-1971).
+  echo "GATE FAIL: no valid heap samples collected during idle settle (engine unreachable?)"
+  gate_ec=1
+ elif ! python3 - <<PY
 import sys
 c = int("${best_c:-0}" or 0)
 u = int("${best_u:-0}" or 0)

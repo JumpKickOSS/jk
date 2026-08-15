@@ -9,13 +9,12 @@ import java.util.HashMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** Replay re-redaction of pre-JK-1878 journal records (JK-1963). */
+/** Replay re-redaction of journal records written before write-time redaction. */
 class HttpHistoryApiTest {
 
     @Test
     void records_persisted_before_write_time_redaction_replay_masked(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "demo"
                 version = "1"
@@ -35,9 +34,34 @@ class HttpHistoryApiTest {
     }
 
     @Test
+    void secrets_with_json_escaped_characters_are_masked_in_the_escaped_document(@TempDir Path dir) throws Exception {
+        // the document is escaped JSON — a secret containing a backslash and a quote was
+        // persisted as pa\\ss"word → pa\\\\ss\\"word, which the raw-substring pass cannot match.
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "g"
+                name = "demo"
+                version = "1"
+                """);
+        String secret = "pa\\ss\"word-9";
+        // Single quotes: the .env dialect keeps the value literal (no escape processing).
+        Files.writeString(dir.resolve(".env"), "TOKEN='" + secret + "'\n");
+        String escaped = secret.replace("\\", "\\\\").replace("\"", "\\\"");
+        String raw = """
+                {
+                  "id": "x",
+                  "kind": "build",
+                  "dir": "%s",
+                  "projectId": "abc",
+                  "diagnostics": [{"severity": "error", "message": "leak %s here"}]
+                }
+                """.formatted(dir, escaped);
+        String out = HttpHistoryApi.redactRecordJson(raw, new HashMap<>());
+        assertThat(out).doesNotContain(escaped).contains("***");
+    }
+
+    @Test
     void records_with_no_env_pass_through_unchanged(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "demo"
                 version = "1"

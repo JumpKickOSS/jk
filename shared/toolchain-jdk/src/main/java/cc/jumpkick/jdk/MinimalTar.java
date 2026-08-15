@@ -141,7 +141,7 @@ public final class MinimalTar {
      * named {@code lib/passwd} whose write then lands outside the destination. Real JDK/tool
      * archives only ever link <em>within</em> the extracted tree ({@code jre/lib -> ../lib}), so
      * resolving the target against the link's own parent and requiring containment keeps every
-     * legitimate archive working while closing the escape (JK-1464).
+     * legitimate archive working while closing the escape.
      */
     public static void createSymlinkInside(Path destDir, Path out, String linkName) throws IOException {
         if (linkName == null || linkName.isBlank()) {
@@ -164,7 +164,7 @@ public final class MinimalTar {
     /**
      * Fail when {@code out}'s parent directories resolve (through symlinks) outside {@code
      * destDir} — the second half of the tar-symlink escape: a link entry planted earlier in the
-     * same archive must not become a write path out of the tree (JK-1464).
+     * same archive must not become a write path out of the tree.
      */
     public static void requireParentInside(Path destDir, Path out) throws IOException {
         Path parent = out.getParent();

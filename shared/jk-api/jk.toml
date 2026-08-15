@@ -1,4 +1,3 @@
-[project]
 name = "jk-model"
 description = "Domain model: dependencies, build plans, and coordinates"
 

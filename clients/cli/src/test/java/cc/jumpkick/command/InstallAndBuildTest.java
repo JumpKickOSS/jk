@@ -59,7 +59,6 @@ class InstallAndBuildTest {
         Files.createDirectories(projectDir);
         String sha256 = Hashing.sha256Hex(Files.readAllBytes(libJar));
         Files.writeString(projectDir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "0.1.0"
@@ -106,7 +105,6 @@ class InstallAndBuildTest {
         Files.createDirectories(projectDir);
         String sha256 = Hashing.sha256Hex(Files.readAllBytes(libJar));
         Files.writeString(projectDir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "proj"
                 version = "0.1.0"
@@ -159,7 +157,6 @@ class InstallAndBuildTest {
         Files.createDirectories(projectDir);
         String sha256 = Hashing.sha256Hex(Files.readAllBytes(libJar));
         Files.writeString(projectDir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "proj"
                 version = "0.1.0"

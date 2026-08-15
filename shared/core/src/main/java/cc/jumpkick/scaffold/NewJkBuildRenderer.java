@@ -31,7 +31,6 @@ public final class NewJkBuildRenderer {
 
     public static String render(NewInputs inputs) {
         var sb = new StringBuilder();
-        sb.append("[project]\n");
         sb.append("name     = \"").append(inputs.name()).append("\"\n");
         sb.append("group    = \"").append(inputs.group()).append("\"\n");
         sb.append("version  = \"0.1.0\"\n");
@@ -140,7 +139,7 @@ public final class NewJkBuildRenderer {
                 }
                 continue;
             }
-            // Library catalog short name → main dep floating to latest (JK-1197).
+            // Library catalog short name → main dep floating to latest.
             var hit = LibraryCatalog.bundled().lookup(id.strip()).orElse(null);
             if (hit != null) {
                 String coord = hit.group() + ":" + hit.artifact();

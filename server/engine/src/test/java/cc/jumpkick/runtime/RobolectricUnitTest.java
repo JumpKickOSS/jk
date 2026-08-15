@@ -97,7 +97,6 @@ class RobolectricUnitTest {
 
     private static void writeProject(Path project) throws Exception {
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name    = "robo"
                 group   = "com.example"
                 version = "1.0.0"

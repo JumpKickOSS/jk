@@ -49,7 +49,7 @@ public final class RepoCommand extends GroupCommand {
      *
      * <p>jk's mirror is first-write-wins: a stored coordinate keeps serving the bytes it was first
      * fetched with, which matches Maven Central's immutability contract. This is the escape hatch
-     * for the case where upstream genuinely republished different bytes (JK-1460; see
+     * for the case where upstream genuinely republished different bytes (see
      * {@code docs/mirror-verification-decision.md}).
      */
     public static final class RepoRefreshCommand implements CliCommand {
@@ -127,8 +127,7 @@ public final class RepoCommand extends GroupCommand {
     }
 
     /**
-     * {@code jk repo search} — search locally-mirrored coordinates by group/artifact substring
-     * (formerly {@code jk cache search}).
+     * {@code jk repo search} — search locally-mirrored coordinates by group/artifact substring.
      */
     public static final class RepoSearchCommand implements CliCommand {
         @Override

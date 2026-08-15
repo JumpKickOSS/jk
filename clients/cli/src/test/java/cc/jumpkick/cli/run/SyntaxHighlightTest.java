@@ -42,7 +42,7 @@ class SyntaxHighlightTest {
 
     @Test
     void groovy_single_quoted_strings_highlight_at_any_length() {
-        // JK-1912: Groovy single quotes are the default string form — the Java char-literal
+        // Groovy single quotes are the default string form — the Java char-literal
         // {1,6} bound had capped them at six characters.
         if (!Theme.active().isAnsi()) return;
         String styled =

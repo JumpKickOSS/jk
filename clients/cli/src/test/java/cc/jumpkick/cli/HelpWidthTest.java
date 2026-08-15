@@ -12,7 +12,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1442: lock in the 78-column help budget (5fe0aa0a). {@link HelpRenderer} does no wrapping, so
+ * Lock in the 78-column help budget (5fe0aa0a). {@link HelpRenderer} does no wrapping, so
  * any description edit that pushes a rendered row past the budget silently regresses every
  * terminal at the classic 80-col width — this test renders <em>every</em> registered command
  * model's help screen (top level plus each subcommand at any depth, via the same

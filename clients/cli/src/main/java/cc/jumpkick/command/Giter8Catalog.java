@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Giter8 short-name catalog and resolution (JK-1182 / JK-1380).
+ * Giter8 short-name catalog and resolution.
  *
  * <p>Resolution order for a short name (e.g. {@code java-cli}):
  *

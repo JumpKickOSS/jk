@@ -54,7 +54,7 @@ public final class AotTrainer {
 
     /**
      * Kill a live sidecar, clear the spawner, and suppress all AOT training so a lame-duck
-     * process cannot refill {@code state/aot} (JK-1452). Idempotent.
+     * process cannot refill {@code state/aot}. Idempotent.
      */
     public void stopQuietly() {
         cc.jumpkick.util.AotSettings.suppressTraining();

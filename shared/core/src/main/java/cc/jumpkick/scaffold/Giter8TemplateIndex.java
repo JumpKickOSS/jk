@@ -6,7 +6,16 @@ import java.io.InputStream;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.Set;
 
 /**
  * Builds the template picker list: official {@link Giter8ShortNames} catalog, then overlays / adds
@@ -51,7 +60,7 @@ public final class Giter8TemplateIndex {
             }
         }
         // Second pass: only ids pass 1 did NOT overlay get the (expensive) deep probe — the DFS
-        // walks every root to depth 5, so re-probing already-merged ids is pure rework (JK-1455).
+        // walks every root to depth 5, so re-probing already-merged ids is pure rework.
         if (roots != null && !roots.isEmpty()) {
             for (String id : idsNeedingProbe(byId.values(), overlaid)) {
                 Path found = findTemplateDir(roots, id);

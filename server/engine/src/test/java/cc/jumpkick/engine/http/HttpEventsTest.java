@@ -44,7 +44,7 @@ class HttpEventsTest {
         HttpEvents hub = new HttpEvents();
         try (HttpEvents.Subscription s = hub.subscribe()) {
             // Flood with low-priority output far past capacity; the SURVIVORS must be the newest
-            // frames (evict-oldest), not an hours-stale prefix (the old drop-newest, JK-1847).
+            // frames (evict-oldest), not an hours-stale prefix.
             int flood = 600; // > QUEUE_CAPACITY
             for (int i = 0; i < flood; i++) {
                 hub.publish("output", JsonOut.object().put("requestId", 1).put("line", "l-" + i));
@@ -61,7 +61,7 @@ class HttpEventsTest {
         HttpEvents.Subscription s = hub.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null);
         s.close();
         hub.attach(s);
-        assertThat(hub.hasSubscribers()).isFalse(); // JK-1523: no zombie keeps the sampler alive
+        assertThat(hub.hasSubscribers()).isFalse(); // no zombie keeps the sampler alive
     }
 
     @Test

@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
-/** JK-1474: late open after retire must not resurrect a session. */
+/** Late open after retire must not resurrect a session. */
 class JobSessionsTest {
 
     @Test

@@ -60,7 +60,7 @@ class JkM2ConfigTest {
 
     @Test
     void an_unrelated_table_is_ignored(@TempDir Path tmp) throws Exception {
-        Path f = toml(tmp, "[global]\nnerdfont = true\n\n[cache]\nauto-prune = false\n");
+        Path f = toml(tmp, "nerd-font = true\n\n[cache]\nauto-prune = false\n");
 
         assertThat(JkM2Config.fromToml(f)).isEqualTo(JkM2Config.DEFAULTS);
     }

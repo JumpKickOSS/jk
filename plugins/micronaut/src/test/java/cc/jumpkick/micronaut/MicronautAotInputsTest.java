@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1696: the AOT properties file is read by the step body, so it has to be in the step's action
+ * The AOT properties file is read by the step body, so it has to be in the step's action
  * key. Asserted on the describe protocol — that JSONL is what the engine fingerprints, so a test
  * against the plugin's own field would prove nothing about the cache.
  */

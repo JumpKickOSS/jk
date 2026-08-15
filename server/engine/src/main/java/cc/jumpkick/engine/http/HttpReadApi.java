@@ -10,10 +10,17 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryIteratorException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
 
 /** Read-tier status surfaces plus POST build/cancel. */
+@RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 final class HttpReadApi {
 
     /** Directory listings above this are truncated — a picker, not a filesystem dump. */
@@ -27,25 +34,6 @@ final class HttpReadApi {
     private final Supplier<List<cc.jumpkick.runtime.BuildMetrics.Entry>> metrics;
     private final Supplier<CacheSnapshot> cache;
     private final Supplier<String> url;
-
-    HttpReadApi(
-            JkHttpConfig config,
-            Path webRoot,
-            Path logFile,
-            Supplier<StatusSnapshot> status,
-            EngineHttpJobs jobs,
-            Supplier<List<cc.jumpkick.runtime.BuildMetrics.Entry>> metrics,
-            Supplier<CacheSnapshot> cache,
-            Supplier<String> url) {
-        this.config = config;
-        this.webRoot = webRoot;
-        this.logFile = logFile;
-        this.status = status;
-        this.jobs = jobs;
-        this.metrics = metrics;
-        this.cache = cache;
-        this.url = url;
-    }
 
     void handleStatus(HttpExchange exchange) throws IOException {
         StatusSnapshot s = status.get();
@@ -106,7 +94,8 @@ final class HttpReadApi {
      */
     void handleLog(HttpExchange exchange) throws IOException {
         int requested = 120;
-        String param = HttpEngineServer.queryParam(exchange.getRequestURI().getRawQuery(), "lines");
+        String param =
+                HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "lines");
         if (param != null) {
             try {
                 requested = Math.max(1, Math.min(400, Integer.parseInt(param)));
@@ -152,7 +141,8 @@ final class HttpReadApi {
      * {@code GET /api/fs?dir=…} — the workspace picker behind the dashboard's Browse button.
      */
     void handleFs(HttpExchange exchange) throws IOException {
-        String requested = HttpEngineServer.queryParam(exchange.getRequestURI().getRawQuery(), "dir");
+        String requested =
+                HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "dir");
         Path dir;
         try {
             dir = requested == null || requested.isBlank()
@@ -202,7 +192,8 @@ final class HttpReadApi {
      * {@code GET /api/metrics[?dir=…]} — running build aggregates as a flat JSON array.
      */
     void handleMetrics(HttpExchange exchange) throws IOException {
-        String dirFilter = HttpEngineServer.queryParam(exchange.getRequestURI().getRawQuery(), "dir");
+        String dirFilter =
+                HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "dir");
         StringBuilder body = new StringBuilder("[");
         for (cc.jumpkick.runtime.BuildMetrics.Entry e : metrics.get()) {
             if (dirFilter != null && !e.dir().isEmpty() && !e.dir().equals(dirFilter)) continue;

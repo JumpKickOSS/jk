@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1722: packaging can declare an app-dir/app-jar tree so images ship the packager layout
+ * Packaging can declare an app-dir/app-jar tree so images ship the packager layout
  * (Quarkus {@code quarkus-app/} + {@code quarkus-run.jar}) instead of a lock-derived classpath.
  */
 class QuarkusPackagingAppTreeTest {

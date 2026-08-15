@@ -25,7 +25,6 @@ class MainStampParityTest {
 
     private static BuildLayout layout(Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "mixed"
                 version = "1.0.0"

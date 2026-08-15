@@ -39,8 +39,7 @@ class PluginTableRegistryTest {
     void validate_enforces_required_with_example_and_hint() {
         var manifest = PluginTableRegistry.byTable("spring-boot").orElseThrow();
         // Assert against the schema's own example/hint, not copies of them: the invariant is
-        // "the error surfaces what the manifest says", and the manifest's wording is free to
-        // change (JK-1546 moved the example from "4.0.0" to the major-line floor "4").
+        // "the error surfaces what the manifest says".
         var version = manifest.schema().get("version");
         assertThat(version.example()).isNotBlank();
         assertThat(version.hint()).isNotBlank();

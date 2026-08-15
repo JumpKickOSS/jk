@@ -74,7 +74,6 @@ class TaskForecasterResourceTest {
         Files.createDirectories(module.resolve("src/main/java"));
         Files.createDirectories(module.resolve("src/main/resources"));
         Files.writeString(module.resolve("jk.toml"), """
-                [project]
                 group = "ex"
                 name = "mod"
                 version = "1.0.0"
@@ -110,7 +109,7 @@ class TaskForecasterResourceTest {
                 0,
                 true,
                 false);
-        assertThat(producer.dirty()).isTrue(); // still schedules the producer (JK-1808)
+        assertThat(producer.dirty()).isTrue(); // still schedules the producer
         assertThat(TaskForecaster.seedsCompileConsumerCascade(producer)).isFalse();
 
         // Real package miss still seeds cascade.

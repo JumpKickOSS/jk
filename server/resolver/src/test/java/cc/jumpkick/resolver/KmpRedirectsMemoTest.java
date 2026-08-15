@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1785: the process selection memo single-flights through futures — the network lookup runs
+ * The process selection memo single-flights through futures — the network lookup runs
  * outside the map, one lookup serves concurrent callers, and a slow key never blocks an
  * unrelated one.
  */

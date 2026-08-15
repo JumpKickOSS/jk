@@ -12,11 +12,13 @@ import java.nio.file.Path;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import lombok.RequiredArgsConstructor;
 
 /**
  * System default + per-project current JDK pointers under {@link JkDirs#data()}, with a config-file
  * record as the authoritative fallback when symlinks are unusable. Symlink writes are best-effort.
  */
+@RequiredArgsConstructor
 public final class GlobalDefaultJdk {
 
     private static final String DEFAULT_KEY = "default-jdk";
@@ -36,13 +38,6 @@ public final class GlobalDefaultJdk {
     private final Path currentSymlink;
     private final Path defaultGraalSymlink;
     private final Path configFile;
-
-    public GlobalDefaultJdk(Path defaultSymlink, Path currentSymlink, Path defaultGraalSymlink, Path configFile) {
-        this.defaultSymlink = defaultSymlink;
-        this.currentSymlink = currentSymlink;
-        this.defaultGraalSymlink = defaultGraalSymlink;
-        this.configFile = configFile;
-    }
 
     /** Derive the default-graal symlink as a sibling of the default. */
     public GlobalDefaultJdk(Path defaultSymlink, Path currentSymlink, Path configFile) {

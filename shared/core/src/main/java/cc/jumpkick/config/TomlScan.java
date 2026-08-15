@@ -13,23 +13,20 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
 
 /**
  * Line scanner for a handful of flat TOML scalars on hot, engine-free paths — not a full parser.
  * Tracks {@code [section]} headers; exotic TOML for a wanted key reads as absent, never a wrong
  * value. Stops early once every requested key is found.
  */
+@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class TomlScan {
 
     private final Map<String, String> values;
     private final Map<String, List<String>> arrays;
     private final Set<String> sections;
-
-    private TomlScan(Map<String, String> values, Map<String, List<String>> arrays, Set<String> sections) {
-        this.values = values;
-        this.arrays = arrays;
-        this.sections = sections;
-    }
 
     private static final Pattern QUOTED = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"");
 

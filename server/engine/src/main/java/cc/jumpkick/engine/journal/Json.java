@@ -134,7 +134,7 @@ final class Json {
             pm.put("stage", p.stage());
             pm.put("status", p.status());
             // Unknown duration (< 0) stays ABSENT on the wire: stamping it 0 made the SPA paint
-            // genuinely-worked steps as dashed cache-skips — 0 means a true no-op (JK-1855).
+            // genuinely-worked steps as dashed cache-skips — 0 means a true no-op.
             if (p.millis() >= 0) pm.put("millis", p.millis());
             out.add(pm);
         }
@@ -286,7 +286,7 @@ final class Json {
             String stage = strOr(pm, "stage", "group");
             if (stage == null || stage.isBlank()) stage = str(pm, "phase");
             // Missing millis = unknown duration, kept as -1 — NOT 0, which is the true-no-op
-            // signal the dashboard renders dashed (JK-1855).
+            // signal the dashboard renders dashed.
             steps.add(new BuildRecord.Task(
                     str(pm, "name"),
                     stage,

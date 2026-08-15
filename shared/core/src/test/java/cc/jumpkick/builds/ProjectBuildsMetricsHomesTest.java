@@ -44,7 +44,7 @@ class ProjectBuildsMetricsHomesTest {
     @Test
     void same_source_rekey_prefers_the_recently_active_home_over_run_count(@TempDir Path root) throws Exception {
         // lock→lock re-key: the stale home accumulated more runs, but the new home is the one
-        // still receiving builds — recency must outrank raw run count (JK-1813) or the active
+        // still receiving builds — recency must outrank raw run count or the active
         // home is never harvested.
         Path projects = root.resolve("projects");
         Path oldHome = projects.resolve("old-id");

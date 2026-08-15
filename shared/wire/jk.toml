@@ -1,4 +1,3 @@
-[project]
 name = "jk-engine-api"
 description = "Client–engine wire protocol and build DTOs"
 

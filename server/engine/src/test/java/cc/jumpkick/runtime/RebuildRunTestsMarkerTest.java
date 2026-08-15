@@ -43,7 +43,6 @@ class RebuildRunTestsMarkerTest {
         Path project = Files.createDirectories(tmp.resolve("markerapp"));
         Path cache = Path.of(System.getProperty("user.dir"), "build", "clean-restore-cache");
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name    = "markerapp"
                 group   = "com.example"
                 version = "1.0.0"

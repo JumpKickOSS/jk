@@ -10,8 +10,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * Engine-local exclusive slots for same-fingerprint build-like jobs plus a view of every
  * in-flight hold for durable history / dashboard.
  *
- * <p>Not a distributed lock: one resident engine process. Different engines on the same host are
- * out of scope for MVP (see.
+ * <p>Not a distributed lock: one resident engine process. Different engines on the same host
+ * are out of scope.
  */
 public final class InFlightBuilds {
 
@@ -41,7 +41,7 @@ public final class InFlightBuilds {
      * is the existing holder.
      */
     public Optional<Hold> tryAcquire(Hold candidate) {
-        if (candidate == null) return Optional.empty(); // nothing to track (JK-1492)
+        if (candidate == null) return Optional.empty(); // nothing to track
         if (candidate.fingerprint() == null || candidate.fingerprint().isEmpty()) {
             // Non-exclusive path: track by request only for list/running UI if needed.
             byRequestId.put(candidate.requestId(), candidate);

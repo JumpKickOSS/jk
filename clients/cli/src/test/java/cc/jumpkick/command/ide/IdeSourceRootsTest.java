@@ -14,7 +14,6 @@ class IdeSourceRootsTest {
     @Test
     void simple_layout_includes_integration_as_test(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "app"
                 version = "1.0.0"
@@ -39,7 +38,6 @@ class IdeSourceRootsTest {
     @Test
     void traditional_layout_includes_src_integration_java(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "app"
                 version = "1.0.0"
@@ -67,7 +65,6 @@ class IdeSourceRootsTest {
     @Test
     void traditional_groovy_module_surfaces_groovy_roots(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "app"
                 version = "1.0.0"
@@ -91,7 +88,6 @@ class IdeSourceRootsTest {
     @Test
     void reserved_top_level_dirs_are_not_suites(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "app"
                 version = "1.0.0"
@@ -109,7 +105,6 @@ class IdeSourceRootsTest {
     @Test
     void intellij_iml_contains_integration_root(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "app"
                 version = "1.0.0"

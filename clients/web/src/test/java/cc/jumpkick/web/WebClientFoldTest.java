@@ -53,7 +53,7 @@ class WebClientFoldTest {
     }
 
     /**
-     * Regression (JK-1579): the fold layer normalizes the wire's {@code task} vocabulary back to
+     * Regression: the fold layer normalizes the wire's {@code task} vocabulary back to
      * {@code step}/{@code steps} — app.js templates reading the FOLDED model must use the folded
      * names or they silently render empty (Vue resolves unknown fields to undefined).
      */

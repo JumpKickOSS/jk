@@ -91,7 +91,7 @@ class AggregatedMetricsMergeTest {
 
     @Test
     void partial_rows_merge_per_key_and_move_together() {
-        // JK-1827: (a) last-only keys fold even when the file has a [mean] section for OTHER
+        // (a) last-only keys fold even when the file has a [mean] section for OTHER
         // keys; (b) a count-winner missing [last] clears the loser's last (no mixed rows);
         // (c) a mean-less row never beats a row with a real mean, regardless of count.
         var mean = new LinkedHashMap<String, Double>();

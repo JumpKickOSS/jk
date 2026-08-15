@@ -41,7 +41,7 @@ class AotCacheTrainerTest {
                 .contains("directory");
     }
 
-    /** JK-1722/1723: a packager tree (Quarkus) is always a trainable shape. */
+    /** A packager tree (Quarkus) is always a trainable shape. */
     @Test
     void a_packager_app_tree_is_never_refused_for_layout() {
         ImageBuilder.Plan appTree = new ImageBuilder.Plan(

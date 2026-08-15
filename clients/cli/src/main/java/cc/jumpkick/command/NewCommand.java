@@ -28,7 +28,11 @@ import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.jline.terminal.Terminal;
 
@@ -106,7 +110,7 @@ public final class NewCommand implements CliCommand {
     boolean plugin;
     String templateRef;
     List<String> templateParams = List.of();
-    /** One-shot third-party git sources for short-name lookup (JK-1380). */
+    /** One-shot third-party git sources for short-name lookup. */
     List<String> templateSources = List.of();
 
     String depsCsv;
@@ -141,7 +145,7 @@ public final class NewCommand implements CliCommand {
     /** Global {@code default-jdk} id from {@code ~/.jk/config/jk.toml}, or empty. */
     private Optional<String> defaultJdk = Optional.empty();
 
-    /** Inherited context from the parent project's {@code [project]} block. */
+    /** Inherited context from the parent project's identity keys. */
     record ParentInfo(Path root, cc.jumpkick.engine.protocol.ProjectInfo info) {
         String displayName() {
             return info.name();
@@ -275,8 +279,7 @@ public final class NewCommand implements CliCommand {
     }
 
     /**
-     * {@code jk new --template <local-path|short-name|git-uri|owner/repo>} (JK-1182 / JK-1203 /
-     * JK-1380).
+     * {@code jk new --template <local-path|short-name|git-uri|owner/repo>}.
      */
     private int runTemplateBuildPlan(Path cwd) {
         if (spring || grails || quarkus || micronaut || plugin) {
@@ -774,7 +777,7 @@ public final class NewCommand implements CliCommand {
                 resolvedJavaRelease,
                 Optional.<String>empty(), // flag path doesn't resolve to a specific install
                 resolvedMain,
-                assembly, // NewInputs also forces it on for --plugin / --micronaut (JK-1671)
+                assembly, // NewInputs also forces it on for --plugin / --micronaut
                 nativeImage,
                 spring,
                 grails,

@@ -192,7 +192,6 @@ class JvmOptionsTest {
     void reads_jvm_table_from_toml(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("jk.toml");
         Files.writeString(toml, """
-                [project]
                 group = "x"
                 name = "y"
                 version = "1"
@@ -213,14 +212,13 @@ class JvmOptionsTest {
     @Test
     void missing_jvm_table_is_empty(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("jk.toml");
-        Files.writeString(toml, "[project]\ngroup=\"x\"\nname=\"y\"\nversion=\"1\"\n");
+        Files.writeString(toml, "group=\"x\"\nname=\"y\"\nversion=\"1\"\n");
         assertThat(cc.jumpkick.config.PluginTunings.fromToml(toml)).isEqualTo(PluginTuning.NONE);
     }
 
     @Test
     void cli_overrides_toml(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group="x"
                 name="y"
                 version="1"

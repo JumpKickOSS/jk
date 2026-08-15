@@ -12,7 +12,12 @@ import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
@@ -33,7 +38,7 @@ public final class CacheSync {
         this(cas, http, new cc.jumpkick.repo.RepoCredentialResolver(), false);
     }
 
-    /** As above, with the resolving project's {@code project.m2install} value. */
+    /** As above, with the resolving project's {@code m2install} value. */
     public CacheSync(Cas cas, Http http, boolean mirrorToM2) {
         this(cas, http, new cc.jumpkick.repo.RepoCredentialResolver(), mirrorToM2);
     }

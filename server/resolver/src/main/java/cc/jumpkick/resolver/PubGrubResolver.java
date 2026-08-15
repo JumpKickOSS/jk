@@ -181,7 +181,7 @@ public final class PubGrubResolver implements Resolver {
         // and the closure needs it — filtering here is what dropped logback-classic → logback-core
         // when an unrelated Micronaut edge excluded logback-core, and the assembly then shipped
         // without ch.qos.logback.core (ea6dc765). Do not reintroduce a per-edge exclusion filter
-        // below: `decisions.containsKey` is the whole rule (JK-1660).
+        // below: `decisions.containsKey` is the whole rule.
         Map<String, Set<String>> dependsOn = new HashMap<>();
         for (Map.Entry<String, String> e : decisions.entrySet()) {
             Set<String> deps = new LinkedHashSet<>();
@@ -214,7 +214,7 @@ public final class PubGrubResolver implements Resolver {
                     }
                     // The <message> is the mechanism's whole point for the user: upstream retired
                     // the coordinate and says what to do about it. Following the redirect silently
-                    // leaves jk.toml naming a dead artifact forever (JK-1709). Once per lock.
+                    // leaves jk.toml naming a dead artifact forever. Once per lock.
                     if (reportedRelocations.add(e.getKey() + "->" + toPkg)) {
                         String msg = moved.message();
                         System.err.println("jk: " + e.getKey() + "@" + e.getValue() + " has been relocated to "

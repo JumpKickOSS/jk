@@ -43,6 +43,8 @@ import org.openrewrite.config.YamlResourceLoader;
 import org.openrewrite.internal.InMemoryLargeSourceSet;
 import org.openrewrite.java.JavaParser;
 import org.openrewrite.java.ShortenFullyQualifiedTypeReferences;
+import org.openrewrite.java.style.ImportLayoutStyle;
+import org.openrewrite.style.NamedStyles;
 
 /**
  * {@code jk-formatter} plugin: optional OpenRewrite import pass, then Spotless. Host forks with a
@@ -208,12 +210,33 @@ public final class CodeFormatter implements Plugin {
      * Run the recipe against a single Java file. In apply mode the file is written back if the recipe
      * produced changes. Returns whether the file was (or would be) changed.
      */
+    /**
+     * Import layout with the star-collapse thresholds effectively disabled. OpenRewrite's default
+     * layout folds a package to {@code .*} at five imports, so the FQCN-shorten pass silently
+     * rewrote explicit imports into wildcards once it pushed a package over the threshold
+     *. jk's style is single-type imports, always.
+     */
+    private static final List<NamedStyles> NO_STAR_IMPORTS = List.of(new NamedStyles(
+            org.openrewrite.Tree.randomId(),
+            "cc.jumpkick.format.NoStarImports",
+            "jk import layout",
+            "Never collapse imports to wildcards",
+            Set.of(),
+            List.of(ImportLayoutStyle.builder()
+                    .classCountToUseStarImport(Integer.MAX_VALUE)
+                    .nameCountToUseStarImport(Integer.MAX_VALUE)
+                    .importAllOthers()
+                    .blankLine()
+                    .importStaticAllOthers()
+                    .build())));
+
     private static boolean applyRewrite(Recipe recipe, File file, boolean apply) throws IOException {
         ExecutionContext ctx = new InMemoryExecutionContext(e -> {});
         List<SourceFile> parsed;
         try {
             parsed = JavaParser.fromJavaVersion()
                     .logCompilationWarningsAndErrors(false)
+                    .styles(NO_STAR_IMPORTS)
                     .build()
                     .parse(List.of(file.toPath()), file.toPath().getParent(), ctx)
                     .toList();

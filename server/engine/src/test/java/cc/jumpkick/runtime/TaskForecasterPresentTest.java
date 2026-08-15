@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1529 extended {@link TaskForecaster#present} to verify CAS payloads — but run-tests
+ * {@link TaskForecaster#present} verifies CAS payloads — but run-tests
  * green markers store scalar counts, not digests. Those must still count as present.
  */
 class TaskForecasterPresentTest {

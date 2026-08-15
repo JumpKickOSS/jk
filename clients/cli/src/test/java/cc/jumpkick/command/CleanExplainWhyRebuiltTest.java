@@ -133,7 +133,6 @@ class CleanExplainWhyRebuiltTest {
     void explain_graph_dot_workspace_edge(@TempDir Path tempDir) throws Exception {
         // Minimal workspace: root + lib + app (app depends on lib)
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "ws"
                 version = "1.0.0"
@@ -143,14 +142,12 @@ class CleanExplainWhyRebuiltTest {
                 """);
         Files.createDirectories(tempDir.resolve("lib"));
         Files.writeString(tempDir.resolve("lib/jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "lib"
                 version = "1.0.0"
                 """);
         Files.createDirectories(tempDir.resolve("app"));
         Files.writeString(tempDir.resolve("app/jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"

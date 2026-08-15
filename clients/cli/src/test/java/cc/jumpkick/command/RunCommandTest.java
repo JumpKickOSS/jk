@@ -125,7 +125,6 @@ class RunCommandTest {
     @Test
     void project_mode_without_main_returns_data_error(@TempDir Path tempDir) throws Exception {
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group    = "com.example"
                 name     = "lib-only"
                 version  = "0.1.0"

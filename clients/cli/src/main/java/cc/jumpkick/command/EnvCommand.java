@@ -22,7 +22,7 @@ import java.util.TreeSet;
 
 /**
  * {@code jk env} — print the effective build environment for the current directory with source
- * attribution (JK-1273). Precedence matches {@link EnvLookup}: workspace {@code .env}, module
+ * attribution. Precedence matches {@link EnvLookup}: workspace {@code .env}, module
  * {@code .env}, then the real environment (shell / clientEnv).
  */
 public final class EnvCommand implements CliCommand {

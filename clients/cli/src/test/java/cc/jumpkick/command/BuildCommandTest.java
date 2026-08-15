@@ -120,8 +120,7 @@ class BuildCommandTest {
     @Test
     void build_without_lockfile_auto_locks(@TempDir Path tempDir) throws Exception {
         // jk build auto-resolves the lockfile when jk-lock.toml is absent.
-        Files.writeString(
-                tempDir.resolve("jk.toml"), "[project]\ngroup = \"com.example\"\nname = \"x\"\nversion = \"0.1\"\n");
+        Files.writeString(tempDir.resolve("jk.toml"), "group = \"com.example\"\nname = \"x\"\nversion = \"0.1\"\n");
         int exit = run(
                 "build",
                 "-C",
@@ -149,7 +148,6 @@ class BuildCommandTest {
     @Test
     void builds_a_workspace_with_independent_modules_in_parallel(@TempDir Path tempDir) throws Exception {
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "ws"
                 version = "1.0.0"
@@ -178,7 +176,7 @@ class BuildCommandTest {
         assertThat(exit).isEqualTo(0);
 
         // All three modules produced their jars (parallel default).
-        // Mill layout (JK-1198): workspace members build into <workspace>/target/<module>/.
+        // Mill layout: workspace members build into <workspace>/target/<module>/.
         assertThat(tempDir.resolve("target/liba/lib/liba-1.0.0.jar")).exists();
         assertThat(tempDir.resolve("target/libb/lib/libb-1.0.0.jar")).exists();
         assertThat(tempDir.resolve("target/app/lib/app-1.0.0.jar")).exists();
@@ -198,7 +196,6 @@ class BuildCommandTest {
     private static void module(Path dir, String name, String pkg, String cls, String extra) throws IOException {
         Files.createDirectories(dir.resolve("src/main/java/" + pkg));
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "%s"
                 version = "1.0.0"

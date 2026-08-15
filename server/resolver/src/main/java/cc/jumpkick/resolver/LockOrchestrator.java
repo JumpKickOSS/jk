@@ -30,7 +30,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
@@ -461,7 +465,7 @@ public final class LockOrchestrator {
             if (d.error != null) {
                 // Siblings are still on the io pool writing into the CAS. Let them wind down
                 // before the failure propagates — `failed` makes unstarted tasks return at once
-                // and in-flight ones abort at their next leg boundary (JK-1786), so this is
+                // and in-flight ones abort at their next leg boundary, so this is
                 // bounded by whatever is mid-download. Escaping here leaves threads mutating a
                 // store the caller believes it has finished with.
                 failed.set(true);
@@ -599,7 +603,7 @@ public final class LockOrchestrator {
         if (sharedSource != null && sharedPomBuilder != null) {
             sharedSource.setLockedVersionPrefs(prefs);
             sharedSource.setSnapshotPackages(snapshotModules(roots));
-            // JK-1787: exclusion state is per-graph; main's clean paths must not bleed into
+            // exclusion state is per-graph; main's clean paths must not bleed into
             // the test/processor solves.
             sharedSource.resetSolveScopedState();
             PubGrubResolver r = new PubGrubResolver(sharedSource, sharedPomBuilder, kmp).withOnDecision(liveGraph);
@@ -622,7 +626,7 @@ public final class LockOrchestrator {
      * Wait for every materialize task to finish, discarding outcomes. Called when the lock is
      * already lost, so the only thing that matters is that no task is still touching the CAS when
      * this returns. Bounded: unstarted tasks skip at their gate and in-flight ones abort at
-     * their next leg boundary (JK-1786) — only legs already in progress run to completion.
+     * their next leg boundary — only legs already in progress run to completion.
      */
     private static void settle(List<CompletableFuture<?>> inFlight) {
         for (CompletableFuture<?> f : inFlight) {
@@ -677,7 +681,7 @@ public final class LockOrchestrator {
             Map<String, String> constraintProvenance)
             throws IOException, InterruptedException {
         for (Dependency platformDep : project.dependencies().of(Scope.PLATFORM)) {
-            // JK-1545: resolve caret/tilde against repo metadata, then load *that* BOM's catalog.
+            // resolve caret/tilde against repo metadata, then load *that* BOM's catalog.
             // Exact pins skip metadata. latest/open ranges still rejected (R6b / PlatformBomVersions).
             String bomVersion =
                     PlatformBomVersions.resolve(repos, platformDep.group(), platformDep.name(), platformDep.version());
@@ -890,7 +894,7 @@ public final class LockOrchestrator {
             source = hit.repo().name() + "+" + hit.repo().baseUrl();
             checksum = "sha256:" + hit.fetched().sha256();
         } else if (!kmpAlias && !isPomOnlyPackage(coord, pomBuilder)) {
-            // JK-1649: a resolved package whose artifact 404s must not land as a checksum-less
+            // a resolved package whose artifact 404s must not land as a checksum-less
             // lock row that ClasspathResolver silently drops. KMP aliases and packaging=pom
             // (BOMs / aggregators) legitimately have no file; everything else fails the lock.
             throw unfetchableArtifact(coord, fallbackSource);
@@ -945,7 +949,7 @@ public final class LockOrchestrator {
     }
 
     /**
-     * Fail lock when a package resolved to a version but no repo served its artifact (JK-1649).
+     * Fail lock when a package resolved to a version but no repo served its artifact.
      * Names the coordinate, the Maven layout path tried, and the repositories consulted.
      */
     private IllegalStateException unfetchableArtifact(Coordinate coord, String fallbackSource) {
@@ -1098,7 +1102,7 @@ public final class LockOrchestrator {
             Map<String, String> bomConstraints, String module, VersionSelector declared, String fallbackMajor) {
         String lit = declared != null ? versionLiteral(declared) : null;
         if (lit != null && !lit.isBlank()) {
-            // Any [project] version literal (bare/caret/tilde all carry one) is a deliberate
+            // Any project version literal (bare/caret/tilde all carry one) is a deliberate
             // choice — same contract as the original inject.
             return VersionSelector.parse("=" + lit);
         }

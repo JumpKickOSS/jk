@@ -106,7 +106,7 @@ public final class HttpEngineServer implements AutoCloseable {
         this.onEventsConnect = onEventsConnect != null ? onEventsConnect : s -> {};
     }
 
-    /** Engine hook: bump the combined-connection high-water mark on every SSE admission (JK-1861). */
+    /** Engine hook: bump the combined-connection high-water mark on every SSE admission. */
     private volatile Runnable onSseAdmitted = () -> {};
 
     public void setOnSseAdmitted(Runnable onSseAdmitted) {
@@ -186,6 +186,8 @@ public final class HttpEngineServer implements AutoCloseable {
         api.register("GET", "/api/project/graph", projectApi::handleProjectGraph);
         api.register("GET", "/api/project/files", projectApi::handleProjectFiles);
         api.register("GET", "/api/project/file", projectApi::handleProjectFile);
+        api.register("PUT", "/api/project/file", projectApi::handleProjectFilePut);
+        api.register("GET", "/api/project/file/raw", projectApi::handleProjectFileRaw);
         api.register("POST", "/api/projects", projectApi::handleNewProject);
         api.register("GET", "/api/projects/defaults", projectApi::handleProjectDefaults);
         api.register("GET", "/api/templates", projectApi::handleTemplates);
@@ -335,7 +337,7 @@ public final class HttpEngineServer implements AutoCloseable {
     private void handle(HttpExchange exchange) throws IOException {
         // The catch sits INSIDE the try-with-resources: a resource is closed before the catch of
         // the same statement runs, so a 500 written outside would always go to a closed exchange
-        // and be swallowed — every handler bug read as a silent connection drop (JK-1476).
+        // and be swallowed — every handler bug read as a silent connection drop.
         try (exchange) {
             try {
                 // Snapshot: stop()/stopNow() nulls `server` while exchanges are still in flight
@@ -366,7 +368,7 @@ public final class HttpEngineServer implements AutoCloseable {
                     return;
                 }
                 // Peak must be observed at admission, not when a status snapshot happens to run —
-                // SSE spikes between snapshots were invisible to the high-water mark (JK-1861).
+                // SSE spikes between snapshots were invisible to the high-water mark.
                 if (sse) onSseAdmitted.run();
                 try {
                     dispatch(exchange);
@@ -394,7 +396,7 @@ public final class HttpEngineServer implements AutoCloseable {
             }
             // MCP is agent-facing; always token-gated (even loopback) — same CSRF posture as POST /api/build.
             if (!tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization")))
-                    && !tokenValid(queryParam(exchange.getRequestURI().getRawQuery(), "access_token"))) {
+                    && !tokenValid(queryParamLenient(exchange.getRequestURI().getRawQuery(), "access_token"))) {
                 exchange.getResponseHeaders().set("WWW-Authenticate", "Bearer");
                 sendText(exchange, 401, "missing or invalid bearer token\n");
                 return;
@@ -408,7 +410,7 @@ public final class HttpEngineServer implements AutoCloseable {
                 sendText(exchange, 401, "missing or invalid bearer token\n");
                 return;
             }
-            // Generation gate (JK-1724): fail-closed except bootstrap status + SSE (EventSource
+            // Generation gate: fail-closed except bootstrap status + SSE (EventSource
             // cannot send headers). Stale dashboards hard-refresh on 409.
             if (!engineEpochOk(exchange)) {
                 sendEngineEpochConflict(exchange);
@@ -538,7 +540,7 @@ public final class HttpEngineServer implements AutoCloseable {
      * leakage); open SSE after tools/call returns, or use {@code requestId} from the tool result.
      */
     Long resolveMcpEventFilter(String query) {
-        String rid = queryParam(query, "requestId");
+        String rid = queryParamLenient(query, "requestId");
         if (rid != null && !rid.isBlank()) {
             try {
                 return Long.parseLong(rid.trim());
@@ -546,7 +548,7 @@ public final class HttpEngineServer implements AutoCloseable {
                 return null;
             }
         }
-        String tok = queryParam(query, "progressToken");
+        String tok = queryParamLenient(query, "progressToken");
         if (tok != null && !tok.isBlank()) {
             Long bound = progressTokens.resolve(tok.trim());
             // -1 never appears as a real requestId; filtered stream stays quiet until bind lands
@@ -613,7 +615,7 @@ public final class HttpEngineServer implements AutoCloseable {
         boolean read = method.equals("GET") || method.equals("HEAD");
         return read
                 && exchange.getRequestURI().getPath().equals("/api/events")
-                && tokenValid(queryParam(exchange.getRequestURI().getRawQuery(), "access_token"));
+                && tokenValid(queryParamLenient(exchange.getRequestURI().getRawQuery(), "access_token"));
     }
 
     private static String bearerToken(String authorization) {
@@ -623,11 +625,8 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /**
      * The decoded value of {@code name} in a RAW query string ({@code getRawQuery()}), or null.
-     * Split first, decode each value exactly once (JK-1943): {@code getQuery()} already
-     * percent-decodes, so the old {@code decode(queryParam(getQuery()))} pattern double-decoded —
-     * a filename {@code A+B.java} arrived as {@code A B.java} and an encoded {@code &} truncated
-     * the value at the split. Decoding never maps {@code +} to space, matching the SPA's
-     * {@code encodeURIComponent} (which never emits {@code +} for a space).
+     * Split first, then decode each value once. Decoding never maps {@code +} to space (matches
+     * the SPA's {@code encodeURIComponent}).
      */
     static String queryParam(String rawQuery, String name) {
         if (rawQuery == null) return null;
@@ -641,6 +640,20 @@ public final class HttpEngineServer implements AutoCloseable {
     /** Percent-decode without the {@code application/x-www-form-urlencoded} {@code +}→space rule. */
     private static String decodeOnce(String raw) {
         return java.net.URLDecoder.decode(raw.replace("+", "%2B"), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * {@link #queryParam} that treats malformed percent-encoding as an absent parameter instead of
+     * throwing. For token / filter lookups where the caller's answer to garbage is "no" (401 /
+     * unfiltered), not a 500 from the generic handler. Handlers that owe the client a
+     * message keep the throwing form and map it to 400 themselves.
+     */
+    static String queryParamLenient(String rawQuery, String name) {
+        try {
+            return queryParam(rawQuery, name);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private boolean tokenValid(String presented) {
@@ -662,16 +675,16 @@ public final class HttpEngineServer implements AutoCloseable {
         // Detached until hydrated: broadcasts don't reach the subscription while the connect
         // snapshot is captured, and the engine's rehydrate callback attaches it under its
         // connect ordering lock — so no event can fall between the snapshot and the queue
-        // (JK-1837). If anything below throws before attach, the subscription was never in the
-        // hub, so hasSubscribers() cannot stay true for the process's life (JK-1523).
+        // . If anything below throws before attach, the subscription was never in the
+        // hub, so hasSubscribers() cannot stay true for the process's life.
         HttpEvents.Subscription subscription = events.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null);
         try {
             liveVitals.onSubscriberJoined();
             // Connect hydrate: deliver current vitals to THIS subscription only (change-gate
             // skipped) so the tab does not wait for the first 2s / 60s sampler tick — without
-            // re-broadcasting chrome to every open tab (JK-1523). Cache hydrate re-sends the last
+            // re-broadcasting chrome to every open tab. Cache hydrate re-sends the last
             // captured snapshot — the store walk must not delay the ": connected" write
-            // (JK-1513). Mid-flight catch-up is one compact run-snapshot per job delivered to
+            // . Mid-flight catch-up is one compact run-snapshot per job delivered to
             // THIS subscription only — never a broadcast phase replay (that filled the 256-frame
             // queue and froze the SPA for seconds behind live ticks).
             liveVitals.hydrateFor(subscription);
@@ -713,7 +726,7 @@ public final class HttpEngineServer implements AutoCloseable {
             liveVitals.onSubscriberLeft();
         }
     }
-    /** Test seam: rebind rules for in-flight history rows (JK-1522). */
+    /** Test seam: rebind rules for in-flight history rows. */
     HttpLive.Run matchLiveRun(java.util.Map<String, Object> rec) {
         return historyApi.matchLiveRun(rec);
     }
@@ -744,6 +757,19 @@ public final class HttpEngineServer implements AutoCloseable {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.sendResponseHeaders(status, bytes.length);
         exchange.getResponseBody().write(bytes);
+    }
+
+    /** Binary response with an explicit content type (image preview raw endpoint). */
+    static void sendBytes(HttpExchange exchange, int status, String contentType, byte[] body) throws IOException {
+        exchange.getResponseHeaders()
+                .set("Content-Type", contentType == null ? "application/octet-stream" : contentType);
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
+        if (exchange.getRequestMethod().equals("HEAD")) {
+            exchange.sendResponseHeaders(status, -1);
+            return;
+        }
+        exchange.sendResponseHeaders(status, body.length);
+        exchange.getResponseBody().write(body);
     }
 
     /** Test seam: the admission gate, so a saturated-server {@code 503} is deterministically testable. */

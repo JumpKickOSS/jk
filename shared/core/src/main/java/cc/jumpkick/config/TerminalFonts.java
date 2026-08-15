@@ -4,7 +4,11 @@ package cc.jumpkick.config;
 import cc.jumpkick.plugin.protocol.MiniJson;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 
 /**
@@ -76,7 +80,7 @@ public interface TerminalFonts {
 
         /**
          * First existing candidate wins, matching Alacritty's own resolution order. {@code import}
-         * chains are not followed (JK-1970 non-goal), so a font set only in an imported file reads
+         * chains are not followed (non-goal), so a font set only in an imported file reads
          * as absent.
          */
         @Override

@@ -7,7 +7,12 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkConfigLoader;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 /** jk CLI entrypoint — routes commands through {@link CommandDispatch}. */
 public final class Jk {
@@ -199,7 +204,7 @@ public final class Jk {
                 case "-r", "--redo", "--rebuild" -> rebuild = Optional.of(true);
                 case "--no-progress" -> noProgress = Optional.of(true);
                 // --no-ansi: strip ALL ANSI (color + bold/italic + CSI). Progress still runs as
-                // multi-line plain frames (JK-1379) — use --no-progress to silence chrome entirely.
+                // multi-line plain frames — use --no-progress to silence chrome entirely.
                 // Distinct from --color never which strips color but preserves text attributes.
                 case "--no-ansi" -> noAnsi = Optional.of(true);
                 case "--no-osc" -> noOsc = Optional.of(true);

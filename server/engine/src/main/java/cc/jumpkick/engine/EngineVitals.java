@@ -8,8 +8,10 @@ import com.sun.management.OperatingSystemMXBean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import lombok.RequiredArgsConstructor;
 
 /** Status snapshot for the socket {@code status-ack} and {@code /api/status}. */
+@RequiredArgsConstructor
 public final class EngineVitals {
 
     private final String version;
@@ -22,29 +24,6 @@ public final class EngineVitals {
     private final AtomicInteger activeBuildPlans;
     private final Supplier<HttpEngineServer> httpServer;
     private final LongSupplier aotTrainingPid;
-
-    public EngineVitals(
-            String version,
-            long pid,
-            long startedAtMillis,
-            String engineEpoch,
-            AtomicInteger peakActiveConnections,
-            AtomicInteger peakActiveBuildPlans,
-            AtomicInteger activeConnections,
-            AtomicInteger activeBuildPlans,
-            Supplier<HttpEngineServer> httpServer,
-            LongSupplier aotTrainingPid) {
-        this.version = version;
-        this.pid = pid;
-        this.startedAtMillis = startedAtMillis;
-        this.engineEpoch = engineEpoch;
-        this.peakActiveConnections = peakActiveConnections;
-        this.peakActiveBuildPlans = peakActiveBuildPlans;
-        this.activeConnections = activeConnections;
-        this.activeBuildPlans = activeBuildPlans;
-        this.httpServer = httpServer;
-        this.aotTrainingPid = aotTrainingPid;
-    }
 
     public StatusSnapshot snapshot() {
         Runtime rt = Runtime.getRuntime();

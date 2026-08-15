@@ -32,7 +32,6 @@ class BuildGraphTest {
     @Test
     void standalone_project_is_a_single_root_unit(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "app"
                 version = "1.0.0"
@@ -49,7 +48,6 @@ class BuildGraphTest {
     @Test
     void workspace_modules_become_units_in_dependency_order(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
@@ -61,7 +59,6 @@ class BuildGraphTest {
                 """);
         Files.createDirectories(tmp.resolve("core"));
         Files.writeString(tmp.resolve("core/jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "core"
                 version = "1.0.0"
@@ -71,7 +68,6 @@ class BuildGraphTest {
         // app depends on core (sibling), so core builds first.
         Files.createDirectories(tmp.resolve("app"));
         Files.writeString(tmp.resolve("app/jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
@@ -95,7 +91,6 @@ class BuildGraphTest {
         // Mill testModuleDeps: app has no main dep on lib, only kind=tests under test-deps.
         // ModuleOrder must still schedule lib before app so lib's test classes exist.
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
@@ -107,7 +102,6 @@ class BuildGraphTest {
                 """);
         Files.createDirectories(tmp.resolve("lib"));
         Files.writeString(tmp.resolve("lib/jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "lib"
                 version = "1.0.0"
@@ -116,7 +110,6 @@ class BuildGraphTest {
                 """);
         Files.createDirectories(tmp.resolve("app"));
         Files.writeString(tmp.resolve("app/jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
@@ -138,7 +131,6 @@ class BuildGraphTest {
     @Test
     void coordinator_workspace_root_without_sources_is_not_a_unit(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
@@ -151,7 +143,6 @@ class BuildGraphTest {
         Files.createDirectories(tmp.resolve("core/src"));
         Files.writeString(tmp.resolve("core/src/Main.java"), "class Main {}");
         Files.writeString(tmp.resolve("core/jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "core"
                 version = "1.0.0"
@@ -169,7 +160,6 @@ class BuildGraphTest {
     @Test
     void self_buildable_workspace_root_is_also_a_unit(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
@@ -185,7 +175,6 @@ class BuildGraphTest {
         Files.createDirectories(tmp.resolve("core/src"));
         Files.writeString(tmp.resolve("core/src/Core.java"), "class Core {}");
         Files.writeString(tmp.resolve("core/jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "core"
                 version = "1.0.0"
@@ -202,7 +191,6 @@ class BuildGraphTest {
     @Test
     void module_dependency_cycle_is_reported(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
@@ -214,7 +202,6 @@ class BuildGraphTest {
                 """);
         Files.createDirectories(tmp.resolve("a"));
         Files.writeString(tmp.resolve("a/jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "a"
                 version = "1.0.0"
@@ -226,7 +213,6 @@ class BuildGraphTest {
                 """);
         Files.createDirectories(tmp.resolve("b"));
         Files.writeString(tmp.resolve("b/jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "b"
                 version = "1.0.0"

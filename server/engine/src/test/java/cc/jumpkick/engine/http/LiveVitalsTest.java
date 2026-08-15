@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
-/** Change-gate and dual-surface fingerprint for live SSE vitals (JK-1495 / JK-1497). */
+/** Change-gate and dual-surface fingerprint for live SSE vitals. */
 class LiveVitalsTest {
 
     @Test
@@ -140,7 +140,7 @@ class LiveVitalsTest {
 
     @Test
     void mcp_only_subscription_neither_sustains_samplers_nor_receives_chrome() throws Exception {
-        // JK-1512: an MCP progress stream alone must not keep the vitals samplers alive, and
+        // an MCP progress stream alone must not keep the vitals samplers alive, and
         // status/cache chrome frames never land on MCP subscriptions.
         HttpEvents hub = new HttpEvents();
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
@@ -184,7 +184,7 @@ class LiveVitalsTest {
 
     @Test
     void hydrate_serves_last_snapshot_without_a_fresh_walk() throws Exception {
-        // JK-1513: connect hydrate must not run the store walk on the connect path. With a
+        // connect hydrate must not run the store walk on the connect path. With a
         // captured snapshot present, the frame arrives immediately even when a fresh capture
         // would take much longer than the read timeout.
         HttpEvents hub = new HttpEvents();
@@ -243,7 +243,7 @@ class LiveVitalsTest {
 
     @Test
     void hydrate_delivers_to_the_new_subscription_only() throws Exception {
-        // JK-1523: connect hydrate must not re-broadcast chrome to every open tab.
+        // connect hydrate must not re-broadcast chrome to every open tab.
         HttpEvents hub = new HttpEvents();
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
         AtomicReference<CacheSnapshot> cache =

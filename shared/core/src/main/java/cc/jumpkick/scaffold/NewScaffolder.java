@@ -23,7 +23,7 @@ import java.util.Map;
  * Maven coordinate + version + scope; both the renderer and the wizard's MultiSelect step pull from
  * it.
  *
- * <p>Shared by CLI {@code jk new} and engine {@code POST /api/projects} (JK-1193). Framework plugin
+ * <p>Shared by CLI {@code jk new} and engine {@code POST /api/projects}. Framework plugin
  * scaffolds ({@code --spring}/…​) use {@link FrameworkScaffoldSource} so the engine can call
  * {@code ScaffoldOps} in-process while the CLI still goes over the wire.
  */

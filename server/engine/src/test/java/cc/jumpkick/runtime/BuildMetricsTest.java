@@ -103,7 +103,7 @@ class BuildMetricsTest {
         try {
             Path checkout = state.resolve("checkout");
             Files.createDirectories(checkout);
-            Files.writeString(checkout.resolve("jk.toml"), "[project]\ngroup = \"g\"\nname = \"n\"\n");
+            Files.writeString(checkout.resolve("jk.toml"), "group = \"g\"\nname = \"n\"\n");
             // Resolve the identity home this checkout would use, write metrics only there.
             Path home = cc.jumpkick.builds.ProjectBuilds.projectHome(builds, null, checkout);
             Files.createDirectories(home);

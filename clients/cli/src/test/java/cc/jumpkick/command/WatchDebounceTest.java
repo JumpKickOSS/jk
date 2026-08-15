@@ -16,7 +16,6 @@ class WatchDebounceTest {
     @Test
     void bad_debounce_ms_is_usage_error(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"

@@ -22,7 +22,6 @@ class BspServerFramingTest {
     @Test
     void install_writes_bsp_config(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"

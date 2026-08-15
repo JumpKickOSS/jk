@@ -20,7 +20,13 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
@@ -43,11 +49,11 @@ public final class JkBuildParser {
      */
     // A plain (size, mtime) memo: the parse is a pure function of the file's bytes again, so
     // nothing environment-shaped belongs in the stamp.
-    //
+
     // Keyed by PATH, with the stamp in the value: keying by (path, size, mtime) would make every
     // save of a jk.toml a NEW key, stranding the superseded JkBuild for the engine's lifetime —
-    // unbounded growth across a long `jk watch` session. One entry per file, replaced in place
-    // (JK-1483).
+    // unbounded growth across a long `jk watch` session. One entry per file, replaced in place.
+
     private static final Map<Path, Cached> PARSE_CACHE = new ConcurrentHashMap<>();
 
     private record Cached(long size, FileTime modified, JkBuild value) {}
@@ -151,7 +157,8 @@ public final class JkBuildParser {
         // version".
         Interpolation.guard(result);
         rejectRemovedCatalogConfig(result);
-        // Workspace roots keep concrete [project] defaults; members may omit fields and inherit.
+        rejectRemovedProjectTable(result);
+        // Workspace roots keep concrete project defaults; members may omit fields and inherit.
         boolean workspaceRoot = hasWorkspaceModules(result);
         JkBuild.Project project = ManifestProject.parseProject(result, workspaceRoot);
         LibraryCatalog effective = catalog;
@@ -206,9 +213,9 @@ public final class JkBuildParser {
         }
         JkBuild.FormatConfig format = ManifestTables.parseFormat(result);
         Variants variants = ManifestTables.parseVariants(result, workspace, effective, installedManifests);
-        // project.*.workspace = true is for members only — the root is the inheritance source.
+        // *.workspace = true is for members only — the root is the inheritance source.
         if (project.inheritsFromWorkspace() && workspace != null && !workspace.isEmpty()) {
-            throw new JkBuildParseException("workspace root must set concrete [project] values"
+            throw new JkBuildParseException("workspace root must set concrete project values"
                     + " (`*.workspace = true` is only valid on workspace modules)");
         }
         return new JkBuild(
@@ -267,7 +274,7 @@ public final class JkBuildParser {
     /**
      * Parse the optional top-level {@code [manifest]} table — string-valued custom jar-manifest
      * attributes (e.g. {@code "Implementation-Title"}). {@code Main-Class} is intentionally
-     * <em>not</em> read here; it derives from {@code project.main}.
+     * <em>not</em> read here; it derives from {@code main}.
      */
     /**
      * Reject removed catalog knobs. Project short names live in workspace-root {@code jk-libs.toml};
@@ -284,6 +291,14 @@ public final class JkBuildParser {
                     "[libraries] in jk.toml was removed — put short-name → group:artifact entries in "
                             + LibraryCatalog.PROJECT_FILE
                             + " at the workspace root (standalone: project root)");
+        }
+    }
+
+    /** {@code [project]} is gone — identity keys are bare top-level fields. */
+    static void rejectRemovedProjectTable(TomlTable root) {
+        if (root.getTable("project") != null) {
+            throw new JkBuildParseException("[project] was removed — move its keys to the top level of jk.toml"
+                    + " (e.g. name = \"…\", group = \"…\", version = \"…\")");
         }
     }
 

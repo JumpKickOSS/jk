@@ -12,7 +12,16 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.ServiceLoader;
+import java.util.Set;
 import org.junit.platform.engine.ConfigurationParameters;
 import org.junit.platform.engine.DiscoveryFilter;
 import org.junit.platform.engine.DiscoverySelector;
@@ -470,7 +479,7 @@ public final class TestRunner implements Plugin {
                     // accepted but currently a no-op — wired in a follow-up
                 } else {
                     // A stale installed jk-test-runner driven by a newer engine lands here —
-                    // name the likely cause instead of a bare unknown-arg (JK-1825).
+                    // name the likely cause instead of a bare unknown-arg.
                     throw new IllegalArgumentException("unknown arg: " + a
                             + " (engine/test-runner version mismatch? reinstall jk so jk-test-runner"
                             + " matches the engine)");

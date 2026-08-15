@@ -19,7 +19,6 @@ class NativeWeightDirtyJarTest {
     @Test
     void nativeWeight_over_reserves_when_main_sources_are_dirty(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 name = "demo"
                 group = "t"
                 version = "0.0.1"
@@ -56,7 +55,6 @@ class NativeWeightDirtyJarTest {
     @Test
     void jar_dirty_implies_native_and_oci_dirty(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 name = "demo"
                 group = "t"
                 version = "0.0.1"
@@ -78,7 +76,6 @@ class NativeWeightDirtyJarTest {
     @Test
     void overReserveTails_forces_full_native_even_when_binary_looks_fresh(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 name = "demo"
                 group = "t"
                 version = "0.0.1"
@@ -106,7 +103,7 @@ class NativeWeightDirtyJarTest {
         assertThat(reserved).isGreaterThanOrEqualTo(100);
 
         // The production path (BuildPlan.estimatedTotalWeight) evaluates weight suppliers on
-        // JkThreads.io() workers — the flag must survive that hop (JK-1807).
+        // JkThreads.io() workers — the flag must survive that hop.
         int reservedViaPool = EffortWeights.withOverReserveTails(() -> CompletableFuture.supplyAsync(
                         () -> EffortWeights.nativeWeight(dir), cc.jumpkick.run.JkThreads.io())
                 .join());

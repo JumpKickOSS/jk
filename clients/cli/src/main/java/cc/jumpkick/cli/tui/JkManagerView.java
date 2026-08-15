@@ -15,8 +15,21 @@ final class JkManagerView {
 
     private final JkManager m;
 
+    /**
+     * When true, the next {@link #paintBuildPlan()} rewrites every row even if content is unchanged
+     * (terminal resize changed the truncation budget).
+     */
+    private boolean forceFullRepaint;
+
+    /**
+     * Terminal columns used for the last paint. On a shrink, already-drawn lines may reflow to more
+     * physical rows than {@code lastLines.size()}; wipe uses this to estimate how far to cursor-up.
+     */
+    private int paintedCols;
+
     JkManagerView(JkManager m) {
         this.m = m;
+        this.paintedCols = m.width;
     }
 
     // --- completion -------------------------------------------------------
@@ -150,7 +163,7 @@ final class JkManagerView {
     }
 
     /**
-     * Print the settled result line. Leading blank only (JK-1373): one blank before chrome starts,
+     * Print the settled result line. Leading blank only: one blank before chrome starts,
      * no automatic blank after the settle line — that looked like an extra line before the shell
      * prompt on {@code jk build}/{@code jk lock}/one-shot wedges. Callers that hand off to a
      * subprocess ({@code jk run}) add their own separator when needed.
@@ -171,7 +184,7 @@ final class JkManagerView {
                 m.out.print(Ansi.taskbarClear());
                 m.out.print(Ansi.SHOW_CURSOR);
             } else if (m.animate && !Theme.active().isAnsi()) {
-                // Plain multi-line: mandatory done line before the settle wedge (JK-1379).
+                // Plain multi-line: mandatory done line before the settle wedge.
                 m.printPlainDone();
             }
             // Deferred subprocess output (e.g. compiler warnings) prints as
@@ -187,7 +200,7 @@ final class JkManagerView {
         }
     }
 
-    // --- plain multi-line chrome (JK-1379) ---------------------------------
+    // --- plain multi-line chrome ---------------------------------
 
     /**
      * Emit plain progress lines for every newly crossed 20% step up to (and not past) 80%.
@@ -304,7 +317,7 @@ final class JkManagerView {
     }
 
     /**
-     * Leading blank once per command (JK-1373). Shared with prep spinners via
+     * Leading blank once per command. Shared with prep spinners via
      * {@link CommandWedge#envelopeStart(PrintStream)} so lock/analyze wedges and the live region
      * do not double-space.
      */
@@ -339,8 +352,16 @@ final class JkManagerView {
             }
             // Erase the live region back to its top.
             if (m.planMode) {
-                if (m.linesDrawn > 0) m.out.print(Ansi.cursorUp(m.linesDrawn));
-                m.out.print(Ansi.ERASE_DISPLAY_TO_END);
+                // Resize first: after a shrink the region reflowed to more physical
+                // rows than linesDrawn, so the logical-lines erase below would undershoot and —
+                // with lastLines cleared before repaint — the next syncTerminalSize would skip
+                // its reflow-aware wipe, stranding the region's top rows above the emitted text.
+                // syncTerminalSize wipes (and clears lastLines) itself when columns changed.
+                syncTerminalSize();
+                if (!m.lastLines.isEmpty()) {
+                    if (m.linesDrawn > 0) m.out.print(Ansi.cursorUp(m.linesDrawn));
+                    m.out.print(Ansi.ERASE_DISPLAY_TO_END);
+                }
             } else {
                 m.out.print(Ansi.CLEAR_LINE);
             }
@@ -368,8 +389,16 @@ final class JkManagerView {
      * below the region. We move up to the first line, walk down rewriting changed lines (and
      * advancing past unchanged ones with a bare newline), then clear any lines a now-shorter region
      * left behind.
+     *
+     * <p>Terminal size: re-read {@link TerminalSize} (cached; re-probes only after SIGWINCH). When
+     * columns or rows change, force a full rewrite — line <em>content</em> is often identical after a
+     * resize, but the truncation budget is not, so a content-only diff would leave the old clipped
+     * tree row on screen. A column <em>shrink</em> also reflows already-painted lines onto extra
+     * physical rows; a logical {@code cursorUp(lastLines.size())} then undershoots and the next
+     * paint stacks a second header under the orphan — so shrink wipes by estimated physical height.
      */
     void paintBuildPlan() {
+        syncTerminalSize();
         long elapsed = m.elapsedMillis();
         List<String> lines = m.renderBuildPlanLines(m.width, elapsed);
         // Keep the last terminal column free. Writing a full-width line leaves the cursor in
@@ -377,10 +406,12 @@ final class JkManagerView {
         // on the next row and be wiped by EL / the following tree line — so the row looks
         // hard-clipped with no ellipsis until the window is widened and the line reflows.
         int colBudget = JkManagerColor.rowColumnBudget(m.width);
+        boolean force = forceFullRepaint;
+        forceFullRepaint = false;
         int prev = m.lastLines.size();
         if (prev > 0) m.out.print(Ansi.cursorUp(prev)); // to the top of the region
         for (int i = 0; i < lines.size(); i++) {
-            boolean changed = i >= prev || !lines.get(i).equals(m.lastLines.get(i));
+            boolean changed = force || i >= prev || !lines.get(i).equals(m.lastLines.get(i));
             if (changed) {
                 m.out.print('\r');
                 m.out.print(JkManagerColor.truncateVisible(lines.get(i), colBudget));
@@ -400,6 +431,71 @@ final class JkManagerView {
         }
         m.lastLines = lines;
         m.linesDrawn = lines.size();
+        paintedCols = m.width;
+    }
+
+    /**
+     * Pull columns/rows from the process-wide cache (one ioctl only if SIGWINCH cleared it). On a
+     * real size change, mark a full rewrite so every row re-truncates under the new budget. On a
+     * column change with a live region, wipe first — after a shrink the terminal may have reflowed
+     * the old paint onto more physical rows than {@code lastLines.size()}.
+     */
+    private void syncTerminalSize() {
+        int[] size = TerminalSize.size();
+        int cols = size[1] > 0 ? size[1] : m.width;
+        int rows = size[0] > 0 ? size[0] : m.height;
+        if (cols == m.width && rows == m.height) return;
+        if (cols != m.width && !m.lastLines.isEmpty()) {
+            wipeReflowedRegion(paintedCols > 0 ? paintedCols : m.width, cols);
+        }
+        m.width = cols;
+        m.height = rows;
+        // Content often unchanged after a maximize; force rewrite so truncateVisible uses the
+        // new budget (and so a shrink re-clips + EL-clears the prior tail).
+        forceFullRepaint = true;
+    }
+
+    /**
+     * Move to the top of the (possibly reflowed) live region and erase it so the next paint does not
+     * stack under orphans. Cursor is left at the start of the former region — paint treats this as a
+     * first frame ({@code lastLines} cleared).
+     */
+    private void wipeReflowedRegion(int fromCols, int toCols) {
+        // Clipping terminals (xterm, linux console, screen, …) keep exactly one physical row per
+        // logical line: climbing the reflow estimate there overshoots into completed output above
+        // the region and ERASE_DISPLAY_TO_END destroys it. Only terminals known to
+        // rewrap get the reflow-height climb.
+        int up = m.lastLines.size();
+        if (TerminalReflow.reflows()) {
+            up = Math.max(physicalRowsAfterReflow(m.lastLines, fromCols, toCols), up);
+        }
+        if (up > 0) m.out.print(Ansi.cursorUp(up));
+        m.out.print('\r');
+        m.out.print(Ansi.ERASE_DISPLAY_TO_END);
+        m.lastLines = List.of();
+        m.linesDrawn = 0;
+    }
+
+    /**
+     * Physical rows occupied by {@code lines} after the terminal reflows from {@code fromCols} to
+     * {@code toCols}. Each line was painted at most {@link JkManagerColor#rowColumnBudget(int)} of
+     * {@code fromCols} wide (one row then); after a shrink, reflow wraps that text to
+     * {@code ceil(painted / toCols)} rows.
+     */
+    static int physicalRowsAfterReflow(List<String> lines, int fromCols, int toCols) {
+        if (lines == null || lines.isEmpty()) return 0;
+        int width = Math.max(1, toCols);
+        int fromBudget = JkManagerColor.rowColumnBudget(Math.max(1, fromCols));
+        int rows = 0;
+        for (String line : lines) {
+            int painted = Math.min(RenderContext.visibleWidth(line), fromBudget);
+            if (painted <= 0) {
+                rows += 1; // blank logical line still occupies a row
+            } else {
+                rows += (painted + width - 1) / width;
+            }
+        }
+        return rows;
     }
 
     /**
@@ -614,7 +710,7 @@ final class JkManagerView {
         long barNum = bd[0];
         long barDen = bd[1];
         // Sample worker-written state under the lock — the animator thread otherwise read
-        // m.denominator/m.solveLabel on plain JMM visibility (JK-1852).
+        // m.denominator/m.solveLabel on plain JMM visibility.
         long den;
         String sl;
         synchronized (m.lock) {
@@ -656,7 +752,7 @@ final class JkManagerView {
                 // holds until elapsedSec advances (or first paint / seed / snap-to-zero). One
                 // asymmetry is deliberate the other way: a re-anchor that RAISES the m.target in the
                 // same second a zero was committed repaints immediately — holding the 0s until the
-                // next second manufactured a 0s → Ns bounce (JK-1850).
+                // next second manufactured a 0s → Ns bounce.
                 if (m.countdownDisplayElapsedSec < 0
                         || elapsedSec != m.countdownDisplayElapsedSec
                         || targetSec == 0

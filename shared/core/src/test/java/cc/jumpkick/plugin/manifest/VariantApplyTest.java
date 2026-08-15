@@ -24,7 +24,6 @@ class VariantApplyTest {
 
     private static JkBuild parse(Path dir, String tail) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 name    = "app"
                 group   = "com.example"
                 version = "1.0.0"

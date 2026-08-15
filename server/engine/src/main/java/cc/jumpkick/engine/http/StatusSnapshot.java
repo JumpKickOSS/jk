@@ -44,7 +44,7 @@ public record StatusSnapshot(
         /**
          * High-water mark of {@link #activeRequests} (combined UDS + SSE surfaces) since engine
          * start — bumped at every admission point (UDS accept, SSE gate acquire) and on each
-         * status snapshot, so spikes between snapshots are counted (JK-1861).
+         * status snapshot, so spikes between snapshots are counted.
          */
         int peakActiveRequests,
         /** High-water mark of concurrent in-flight plans since engine start. */

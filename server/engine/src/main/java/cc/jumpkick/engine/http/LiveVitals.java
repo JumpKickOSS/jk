@@ -2,7 +2,11 @@
 package cc.jumpkick.engine.http;
 
 import java.util.Objects;
-import java.util.concurrent.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
@@ -12,7 +16,7 @@ import java.util.function.Supplier;
  * <p><strong>Sampled</strong> host/engine status (~2s) and optional cache (slow) run only while
  * {@link HttpEvents#hasDashboardSubscribers()} is true — an MCP progress stream alone neither
  * starts nor sustains the samplers, and chrome frames go to dashboard subscriptions only
- * (JK-1512). A tiny last-published fingerprint suppresses no-op frames (e.g. free RAM still
+ *. A tiny last-published fingerprint suppresses no-op frames (e.g. free RAM still
  * presents as the same MiB). This is <em>not</em> a server-side UI model — only the last telegram
  * we put on the wire (~tens of bytes).
  *
@@ -43,7 +47,7 @@ public final class LiveVitals implements AutoCloseable {
     /** Last published dual-surface cache totals (MiB quanta); null until first publish. */
     private final AtomicReference<PresentCache> lastCache = new AtomicReference<>();
 
-    /** Last captured full snapshot — serves connect hydrate without a fresh store walk (JK-1513). */
+    /** Last captured full snapshot — serves connect hydrate without a fresh store walk. */
     private final AtomicReference<CacheSnapshot> lastCacheSnapshot = new AtomicReference<>();
 
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -115,7 +119,7 @@ public final class LiveVitals implements AutoCloseable {
     /**
      * Force-publish current cache/storage snapshot (connect hydrate or post-build). Change-gated on
      * dual-surface MiB totals unless {@code force}. Live frames use the <strong>thin</strong>
-     * dual-surface payload (JK-1502); full section breakdown stays on {@code GET /api/cache}.
+     * dual-surface payload; full section breakdown stays on {@code GET /api/cache}.
      */
     public void publishCache(boolean force) {
         if (!force && !events.hasDashboardSubscribers()) return;
@@ -138,7 +142,7 @@ public final class LiveVitals implements AutoCloseable {
     /**
      * Post-build nudge: run the change-gated cache publish on the sampler thread instead of the
      * caller's. The capture walks the store; it must never sit on a request-finish path where it
-     * delays the journal write and the terminal frame (JK-1513).
+     * delays the journal write and the terminal frame.
      */
     public void nudgeCache() {
         if (!events.hasDashboardSubscribers()) return;
@@ -152,8 +156,8 @@ public final class LiveVitals implements AutoCloseable {
     /**
      * Connect hydrate for one new subscription: current status plus the last captured cache
      * snapshot, delivered to <em>that subscription only</em> — existing tabs already hold these
-     * facts, and re-broadcasting them duplicated chrome on every new tab (JK-1523). The cache side
-     * never walks the disk on the connect path (JK-1513): it re-sends a stored snapshot when one
+     * facts, and re-broadcasting them duplicated chrome on every new tab. The cache side
+     * never walks the disk on the connect path: it re-sends a stored snapshot when one
      * exists. It does <strong>not</strong> schedule a fresh walk — exclusive store walks allocate
      * tens of MiB and leave SerialGC committed heap expanded; first numbers come from
      * {@code GET /api/cache} (Status view), post-build {@link #nudgeCache()}, or the slow sampler.

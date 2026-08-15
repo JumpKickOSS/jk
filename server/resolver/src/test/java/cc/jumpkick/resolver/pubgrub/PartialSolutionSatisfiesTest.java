@@ -8,8 +8,8 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1835 — the positive-term absence guard in {@link PartialSolution#satisfies}, mirror of the
- * JK-1832 absence guard in {@code contradicts()}: a package holding only negative assignments
+ *  — the positive-term absence guard in {@link PartialSolution#satisfies}, mirror of the
+ *  absence guard in {@code contradicts()}: a package holding only negative assignments
  * (the post-backjump state) may end up unselected entirely, so no negative narrowing can satisfy
  * a POSITIVE term, no matter how tight the set projection looks.
  */

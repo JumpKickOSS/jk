@@ -56,7 +56,7 @@ class NewParentDirGuessTest {
 
     @Test
     void git_worktree_file_markers_count_as_repos(@TempDir Path temp) throws Exception {
-        // Linked worktrees mark the repo with a `.git` file, not a directory (JK-1459).
+        // Linked worktrees mark the repo with a `.git` file, not a directory.
         Path home = temp.resolve("home");
         Path trees = home.resolve("worktrees");
         Files.createDirectories(trees.resolve("wt1"));

@@ -1,14 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.model;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 
 /**
  * The {@code [variants]} block: product dimensions (axes) with named values, each an overlay
  * ({@code extra-src}, dependency additions, plugin config keys). Built-in {@link #BUILD_TYPE}
  * defaults to {@code debug}; a custom dimension without a default makes selection mandatory.
  * Overlays fold at parse time — custom dimensions first, then {@code build-type}.
- * {@code [project]}, repos, profiles, features, and toolchain flags are not overlayable.
+ * Project identity, repos, profiles, features, and toolchain flags are not overlayable.
  */
 public record Variants(List<Dimension> dimensions) {
 

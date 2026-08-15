@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.jdk.JdkProgressLabel;
 import java.util.Locale;
 import java.util.regex.Pattern;
 import org.jline.utils.AttributedStyle;
@@ -92,7 +93,7 @@ public final class JkManagerColor {
      * percent mid-gray, product name cyan, filled bar cells blue, empty cells dark gray.
      */
     static String colorJdkProgressDetail(String detail, Theme t) {
-        cc.jumpkick.jdk.JdkProgressLabel.Parsed p = cc.jumpkick.jdk.JdkProgressLabel.tryParse(detail);
+        JdkProgressLabel.Parsed p = JdkProgressLabel.tryParse(detail);
         if (p == null) return null;
         StringBuilder out = new StringBuilder(detail.length() + 64);
         out.append(Theme.colorize(p.verb(), t.midGray()));
@@ -102,8 +103,7 @@ public final class JkManagerColor {
             out.append(Theme.colorize(" ", t.midGray()));
             for (int i = 0; i < p.bar().length(); i++) {
                 char c = p.bar().charAt(i);
-                out.append(Theme.colorize(
-                        String.valueOf(c), c == cc.jumpkick.jdk.JdkProgressLabel.FILLED ? t.blue() : t.darkGray()));
+                out.append(Theme.colorize(String.valueOf(c), c == JdkProgressLabel.FILLED ? t.blue() : t.darkGray()));
             }
             out.append(Theme.colorize(" ", t.midGray()));
             out.append(Theme.colorize(p.percent() + "%", t.midGray()));
@@ -568,6 +568,7 @@ public final class JkManagerColor {
         StringBuilder sb = new StringBuilder(s.length());
         int visible = 0;
         boolean truncated = false;
+        boolean linkOpen = false;
         for (int i = 0; i < s.length(); ) {
             char c = s.charAt(i);
             if (c == '\033') { // copy the whole escape (CSI or OSC) verbatim — zero columns (JK-1967)
@@ -579,7 +580,14 @@ public final class JkManagerColor {
                                         || (j - 2 > i && s.charAt(j - 2) == '\u001b' && s.charAt(j - 1) == '\\')));
                 // A live unterminated OSC must never reach the terminal — it would swallow the
                 // following output up to the next BEL.
-                if (!unterminatedOsc) sb.append(s, i, j);
+                if (!unterminatedOsc) {
+                    sb.append(s, i, j);
+                    // Track OSC-8 hyperlink state: a cut inside the linked label drops the close
+                    // that follows it, and SGR RESET does not end a hyperlink — the ellipsis, EL,
+                    // and later rows would all become part of the link (JK-1974).
+                    int state = osc8LinkState(s, i, j);
+                    if (state != 0) linkOpen = state > 0;
+                }
                 i = j;
             } else {
                 // Reserve one column for … when more content remains after this code unit.
@@ -596,10 +604,30 @@ public final class JkManagerColor {
             }
         }
         if (truncated) {
+            if (linkOpen) sb.append("\u001b]8;;\u0007"); // synthetic close before the ellipsis
             sb.append(JkManager.ELLIPSIS);
             sb.append(Ansi.RESET);
         }
         return sb.toString();
+    }
+
+    /**
+     * Classifies a complete escape at {@code s[i..j)}: {@code 1} when it opens an OSC-8 hyperlink
+     * (non-empty URI), {@code -1} when it closes one (empty URI), {@code 0} for anything else.
+     */
+    private static int osc8LinkState(String s, int i, int j) {
+        if (j - i < 5 || s.charAt(i + 1) != ']' || s.charAt(i + 2) != '8' || s.charAt(i + 3) != ';') {
+            return 0;
+        }
+        int end = j;
+        if (s.charAt(end - 1) == '\u0007') {
+            end--;
+        } else if (end - 2 >= i && s.charAt(end - 2) == '\u001b' && s.charAt(end - 1) == '\\') {
+            end -= 2;
+        }
+        int semi = s.indexOf(';', i + 4); // end of the params section
+        if (semi < 0 || semi >= end) return 0; // malformed OSC-8 — no URI section
+        return semi + 1 < end ? 1 : -1;
     }
 
     /** True when {@code s[from..]} is only ANSI escapes (CSI or OSC — no more visible text). */

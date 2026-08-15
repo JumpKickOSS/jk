@@ -20,7 +20,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Stream;
 
 /**
@@ -353,7 +357,7 @@ public final class PlannerPlugin {
 
         // Coordinate-named runtime entries: lock artifacts + workspace sibling jars — the SAME
         // set steps see via In.runtimeEntries(). Packaging from the lock alone drops sibling
-        // module jars and ships a Boot/assembly artifact that cannot start (JK-1415).
+        // module jars and ships a Boot/assembly artifact that cannot start.
         List<PluginBuild.ProdEntry> entries =
                 PluginBuild.productionEntries(in.dir(), in.cache(), in.lockFile(), project);
         List<CycloneDxSbom.Component> sbomComponents = new ArrayList<>();
@@ -425,7 +429,7 @@ public final class PlannerPlugin {
         // The minified packager folds `jk train` observations into its keep rules out-of-band
         // (same path derivation as MinifiedJarPackager.produce). Absence and every content state
         // must be distinct keys — otherwise a post-train rebuild restores the pre-train jar as
-        // "up-to-date" and training never reaches the shipped artifact (JK-1751).
+        // "up-to-date" and training never reaches the shipped artifact.
         if ("minified-jar".equals(decls.packager().name())) {
             Path trainSurface = jarPath.getParent()
                     .resolve(cc.jumpkick.surface.TrainLayout.ROOT)

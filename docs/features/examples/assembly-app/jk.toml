@@ -1,4 +1,3 @@
-[project]
 group = "com.example"
 name = "assembly-app"
 version = "0.0.1"

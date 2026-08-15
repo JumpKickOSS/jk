@@ -22,7 +22,6 @@ class EnvLookupTest {
     /** A workspace with one module, each able to carry a .env. */
     private static Path workspace(Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "ws"
                 version = "1.0.0"
@@ -32,7 +31,6 @@ class EnvLookupTest {
                 """);
         Path module = Files.createDirectories(tmp.resolve("mod"));
         Files.writeString(module.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "mod"
                 version = "1.0.0"
@@ -122,7 +120,6 @@ class EnvLookupTest {
     void a_standalone_project_reads_only_its_own_env(@TempDir Path tmp) throws Exception {
         // No [workspace] anywhere: the module is the whole project.
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "solo"
                 version = "1.0.0"

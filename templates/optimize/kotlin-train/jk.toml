@@ -1,4 +1,3 @@
-[project]
 name = "kotlin-train"
 group = "cc.jumpkick.optimize"
 version = "0.0.1"

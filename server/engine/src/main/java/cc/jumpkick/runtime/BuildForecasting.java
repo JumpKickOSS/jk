@@ -195,7 +195,7 @@ public final class BuildForecasting {
 
     /**
      * Restrict an explain plan to the client's module selection so the ETA seed prices exactly
-     * the scheduled set (JK-1584). Edges are intersected with the selection; a hinted module
+     * the scheduled set. Edges are intersected with the selection; a hinted module
      * keeps its per-step cache verdicts, so a forecast-clean selected module contributes only
      * its cache-check cost — matching what scheduling will actually do.
      */

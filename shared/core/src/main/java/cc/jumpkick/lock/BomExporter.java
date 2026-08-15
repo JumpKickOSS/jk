@@ -4,7 +4,14 @@ package cc.jumpkick.lock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * Renders a Maven BOM ({@code packaging=pom} + {@code dependencyManagement}) from a resolved
