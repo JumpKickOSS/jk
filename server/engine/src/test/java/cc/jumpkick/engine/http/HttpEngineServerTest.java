@@ -301,20 +301,18 @@ class HttpEngineServerTest {
         HttpResponse<String> resp = get("/classpath-only.txt");
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.body()).isEqualTo("from classpath\n");
-        // The classpath ETag carries a content stamp after the version.
+        // Revalidate every load so a new engine jar is not hidden by a still-fresh max-age; the
+        // ETag carries a content stamp after the version so an unchanged jar is a 304.
         assertThat(resp.headers().firstValue("ETag").orElseThrow())
                 .startsWith("\"jk-9.9.9-test")
                 .endsWith("\"");
-        assertThat(resp.headers().firstValue("Cache-Control")).contains("max-age=3600");
+        assertThat(resp.headers().firstValue("Cache-Control")).contains("no-cache");
     }
 
     @Test
-    void snapshot_versions_revalidate_classpath_assets_every_load() throws Exception {
-        // A -SNAPSHOT jar swap doesn't move the version-derived ETag, so snapshot builds must not
-        // let the browser cache classpath assets — otherwise an upgraded engine serves last jar's
-        // dashboard for up to an hour.
-        // Version string must end with -SNAPSHOT so StaticContent sets no-cache (release pins use
-        // max-age + ETag). The status supplier's own version field is unrelated.
+    void snapshot_versions_use_the_same_revalidation_headers() throws Exception {
+        // -SNAPSHOT is not a distinct cache policy. The version string is only an ETag prefix;
+        // no-cache + stamp still revalidates after installLocal of the same snapshot line.
         HttpEngineServer snapshot = new HttpEngineServer(
                 httpConfig("127.0.0.1", 0, 16),
                 webRoot,
@@ -336,7 +334,9 @@ class HttpEngineServerTest {
                     HttpResponse.BodyHandlers.ofString());
             assertThat(resp.statusCode()).isEqualTo(200);
             assertThat(resp.headers().firstValue("Cache-Control")).contains("no-cache");
-            assertThat(resp.headers().firstValue("ETag")).isEmpty();
+            assertThat(resp.headers().firstValue("ETag").orElseThrow())
+                    .startsWith("\"jk-0.12.0-SNAPSHOT-")
+                    .endsWith("\"");
         } finally {
             snapshot.close();
         }

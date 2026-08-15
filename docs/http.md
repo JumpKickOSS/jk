@@ -91,7 +91,14 @@ images shipped in the jar) is served under the SPA's own CSP so it can show the 
 authorization dialog, while files under the on-disk `web-root` (user reports and other
 build-written content) are served with `Content-Security-Policy: sandbox` — a unique opaque
 origin with scripts and forms disabled, so nothing dropped into `web-root` can script the
-dashboard origin or read the stored bearer token. Non-loopback clients carry the token the same way; `EventSource`
+dashboard origin or read the stored bearer token.
+
+Classpath shell files are `Cache-Control: no-cache` plus a version+mtime `ETag`, so a new
+engine jar is visible on the next load (revalidate always; unchanged bytes are a `304`). Disk
+`web-root` is also `no-cache` (`Last-Modified`). `/api/*` is `no-store`. There is no
+`max-age` on the shell: a still-fresh cached copy would hide a replacement engine, including
+security patches, and `location.reload()` after an `engineEpoch` mismatch does not bust
+subresources the browser still considers fresh. Non-loopback clients carry the token the same way; `EventSource`
 cannot send headers, so SSE passes it as an `access_token` query parameter. The SPA bootstraps
 from a `#t=` fragment. **`jk web`** starts the engine if needed, prints the tokenized URL, and
 opens a browser (`$BROWSER` or the platform default).

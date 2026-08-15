@@ -201,7 +201,9 @@ blocks the shell before the panel opens.
 
 **Builds Running** stays in lockstep with Live activity (running card count while live). **API
 calls** after the first status hydrate send `X-Jk-Engine-Epoch`; a **409** or a changed epoch on
-status triggers a full page reload so static assets match the new engine.
+status triggers a full page reload so static assets match the new engine. Classpath shell
+files revalidate on every load (`Cache-Control: no-cache` plus a version+mtime `ETag`), so
+that reload is not served a still-fresh copy of the previous jar.
 
 While the stream is **live**, the SPA does **not** poll `/api/status` or `/api/cache` on a timer.
 REST hydrate runs on load/reconnect. **Offline** status fallback uses stepped backoff (5 s → 30 s

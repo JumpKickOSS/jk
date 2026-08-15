@@ -22,7 +22,8 @@ import java.util.Map;
 
 /**
  * Static files: disk {@code web-root} first (no-cache, size-snapshotted GET so concurrent appends
- * cannot corrupt framing), then classpath {@code /web} (version ETag). No directory listings.
+ * cannot corrupt framing), then classpath {@code /web} (no-cache, version+mtime ETag). No directory
+ * listings.
  */
 final class StaticContent {
 
@@ -53,23 +54,18 @@ final class StaticContent {
             Map.entry("wasm", "application/wasm"));
 
     private final Path root;
-    private final String classpathEtag;
 
     /**
-     * Snapshot builds revalidate classpath assets on every load: the version-derived ETag never
-     * moves between {@code -SNAPSHOT} jars, so an hour of {@code max-age} would keep serving the
-     * previous jar's dashboard from the browser cache after an upgrade. Releases bump the
-     * version, so they keep real caching. {@code installLocal} of the same version also changes
-     * the jar's {@code /web/index.html} mtime, which is folded into the ETag so a same-version
-     * bounce is not a perpetual 304 of the previous shell.
+     * {@code "jk-<version>-<mtime-hex>"}. Classpath assets always revalidate ({@code no-cache}) so
+     * a new engine jar is visible on the next load; the stamp is the jar (or {@code /web/index.html})
+     * mtime so {@code installLocal} of the same version is not a perpetual 304 of the previous shell.
      */
-    private final boolean snapshotVersion;
+    private final String classpathEtag;
 
     /** @param root the resolved {@code web-root} — need not exist (classpath still serves) */
     StaticContent(Path root, String version) {
         this.root = root.normalize();
         this.classpathEtag = "\"jk-" + version + "-" + classpathStamp() + "\"";
-        this.snapshotVersion = version.endsWith("-SNAPSHOT");
     }
 
     private static String classpathStamp() {
@@ -219,15 +215,13 @@ final class StaticContent {
                                 // No form ever submits from the shell; injected markup (rendered
                                 // previews) must not be able to add one that posts off-origin.
                                 + "form-action 'none';");
-        if (snapshotVersion) {
-            exchange.getResponseHeaders().set("Cache-Control", "no-cache"); // see snapshotVersion javadoc
-        } else {
-            exchange.getResponseHeaders().set("Cache-Control", "max-age=3600");
-            exchange.getResponseHeaders().set("ETag", classpathEtag);
-            if (classpathEtag.equals(exchange.getRequestHeaders().getFirst("If-None-Match"))) {
-                exchange.sendResponseHeaders(304, -1);
-                return true;
-            }
+        // no-cache = store but revalidate: a still-fresh max-age would keep the previous jar's
+        // dashboard after an upgrade. ETag makes the revalidation a 304 when the jar is unchanged.
+        exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+        exchange.getResponseHeaders().set("ETag", classpathEtag);
+        if (classpathEtag.equals(exchange.getRequestHeaders().getFirst("If-None-Match"))) {
+            exchange.sendResponseHeaders(304, -1);
+            return true;
         }
         exchange.getResponseHeaders().set("Content-Type", contentType(rel));
         if (head) {
