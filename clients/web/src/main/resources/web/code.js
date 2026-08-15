@@ -55,9 +55,19 @@ const LANG_BY_EXT = {
   '.kt': 'kotlin',
   '.kts': 'kotlin',
   '.groovy': 'groovy',
+  '.scala': 'scala',
+  '.sc': 'scala',
   '.toml': 'toml',
+  '.xml': 'xml',
+  '.yaml': 'yaml',
+  '.yml': 'yaml',
   '.json': 'json',
   '.jsonl': 'json',
+  '.sql': 'sql',
+  '.properties': 'properties',
+  '.sh': 'shell',
+  '.bash': 'shell',
+  '.zsh': 'shell',
   '.md': 'markdown',
   '.markdown': 'markdown',
   '.mmd': 'mermaid',
@@ -79,17 +89,23 @@ const LANG_BY_EXT = {
 };
 
 /**
- * Monaco language ids for the langs above. Monaco ships no Groovy or TOML grammar, so those fall
- * back to the closest one it has: Java (C-like — comments, strings, numbers, most keywords) and
- * ini (`[section]`, `key = value`, `#` comments). Anything unknown tokenizes as plain text rather
- * than handing Monaco an unregistered id.
+ * Monaco language ids for the langs above. Monaco ships no Groovy, TOML, or Java properties
+ * grammar, so those fall back to the closest one it has: Java (C-like), and ini (`[section]`,
+ * `key = value`, `#` comments). Anything unknown tokenizes as plain text rather than handing
+ * Monaco an unregistered id.
  */
 const MONACO_LANG = {
   java: 'java',
   kotlin: 'kotlin',
   groovy: 'java',
+  scala: 'scala',
   toml: 'ini',
+  xml: 'xml',
+  yaml: 'yaml',
   json: 'json',
+  sql: 'sql',
+  properties: 'ini',
+  shell: 'shell',
   markdown: 'markdown',
   mermaid: 'plaintext',
   graphviz: 'plaintext',
@@ -1727,7 +1743,7 @@ export const CodeView = {
           <input class="code-filter" v-model="filter" placeholder="Filter files" spellcheck="false"
                  aria-label="Filter files">
         </div>
-        <p v-if="truncated" class="warn">File list truncated at 2000</p>
+        <p v-if="truncated" class="warn">File list truncated at 5000</p>
         <p v-if="loadingList" class="empty">Listing…</p>
         <p v-else-if="!treeRows.length" class="empty">{{ filtering ? 'No matching files' : 'No files' }}</p>
         <button v-for="row in treeRows" :key="row.path" type="button"

@@ -811,7 +811,10 @@ class HttpEngineServerTest {
                     """);
             Files.writeString(checkout.resolve("src/Main.java"), "class Main {}\n");
             Files.createDirectories(checkout.resolve("target"));
+            Files.createDirectories(checkout.resolve("build"));
             Files.writeString(checkout.resolve("target/Gen.java"), "class Gen {}");
+            Files.writeString(checkout.resolve("target/report.md"), "# report\n");
+            Files.writeString(checkout.resolve("build/Skip.java"), "class Skip {}");
             Files.writeString(checkout.resolve(".env"), "SECRET=1");
             var identity = cc.jumpkick.builds.ProjectIdentity.resolve(checkout);
             cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(
@@ -842,7 +845,9 @@ class HttpEngineServerTest {
                     .contains("\"path\":\"src/Main.java\"")
                     .contains("\"lang\":\"java\"")
                     .contains("\"path\":\"jk.toml\"")
-                    .doesNotContain("target/Gen.java")
+                    .contains("target/Gen.java")
+                    .contains("target/report.md")
+                    .doesNotContain("build/Skip.java")
                     .doesNotContain(".env");
 
             HttpResponse<String> file = get("/api/project/file?project=" + id + "&path=src%2FMain.java");
@@ -850,6 +855,9 @@ class HttpEngineServerTest {
             assertThat(file.body()).contains("class Main").contains("\"lang\":\"java\"");
 
             assertThat(get("/api/project/file?project=" + id + "&path=target%2FGen.java")
+                            .statusCode())
+                    .isEqualTo(200);
+            assertThat(get("/api/project/file?project=" + id + "&path=build%2FSkip.java")
                             .statusCode())
                     .isEqualTo(404);
             assertThat(get("/api/project/file?project=" + id + "&path=.env").statusCode())

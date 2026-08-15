@@ -114,7 +114,7 @@ case-insensitively. `buildFileTree` **compacts single-child directory chains** i
 node keys off its deepest path, which is what `ancestorDirs` yields for files under it. Folders are
 closed by default, except the ancestors of the open file — so a `?line=` deep link or a fail-report
 jump lands with its file revealed and selected. `visibleRows` flattens only the open parts, so the
-whole tree is one non-recursive `v-for` (2000 paths, no recursive components). Typing in the filter
+whole tree is one non-recursive `v-for` (up to 5000 paths, no recursive components). Typing in the filter
 box switches to a **flat list of matching full paths** — the tree is for browsing, the filter
 answers like GitHub's file finder; every row carries its full path as a `data-tip`.
 

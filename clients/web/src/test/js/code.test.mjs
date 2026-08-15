@@ -153,8 +153,19 @@ test('langFromPath is case-insensitive and closed', () => {
   assert.equal(langFromPath('a.jsonl'), 'json');
   assert.equal(langFromPath('diagram.mmd'), 'mermaid');
   assert.equal(langFromPath('logo.PNG'), 'image');
+  assert.equal(langFromPath('pom.xml'), 'xml');
+  assert.equal(langFromPath('Logback.XML'), 'xml');
+  assert.equal(langFromPath('config.yaml'), 'yaml');
+  assert.equal(langFromPath('config.YML'), 'yaml');
+  assert.equal(langFromPath('schema.sql'), 'sql');
+  assert.equal(langFromPath('app.properties'), 'properties');
+  assert.equal(langFromPath('setup.sh'), 'shell');
+  assert.equal(langFromPath('run.bash'), 'shell');
+  assert.equal(langFromPath('env.zsh'), 'shell');
+  assert.equal(langFromPath('Main.scala'), 'scala');
+  assert.equal(langFromPath('Scratch.sc'), 'scala');
   assert.equal(langFromPath('build.gradle'), null);
-  assert.equal(langFromPath('pom.xml'), null);
+  assert.equal(langFromPath('notes.txt'), null);
 });
 
 test('preview eligibility is extension-driven', () => {

@@ -34,7 +34,7 @@ import org.jspecify.annotations.Nullable;
 final class WorkspaceFileAccess {
 
     static final int MAX_FILE_BYTES = 1024 * 1024;
-    static final int MAX_LIST_FILES = 2000;
+    static final int MAX_LIST_FILES = 5000;
     static final int MAX_WALK_DEPTH = 32;
     static final int BINARY_PROBE_BYTES = 8192;
 
@@ -43,9 +43,19 @@ final class WorkspaceFileAccess {
             Map.entry(".kt", "kotlin"),
             Map.entry(".kts", "kotlin"),
             Map.entry(".groovy", "groovy"),
+            Map.entry(".scala", "scala"),
+            Map.entry(".sc", "scala"),
             Map.entry(".toml", "toml"),
+            Map.entry(".xml", "xml"),
+            Map.entry(".yaml", "yaml"),
+            Map.entry(".yml", "yaml"),
             Map.entry(".json", "json"),
             Map.entry(".jsonl", "json"),
+            Map.entry(".sql", "sql"),
+            Map.entry(".properties", "properties"),
+            Map.entry(".sh", "shell"),
+            Map.entry(".bash", "shell"),
+            Map.entry(".zsh", "shell"),
             Map.entry(".md", "markdown"),
             Map.entry(".markdown", "markdown"),
             // Preview-oriented text (dashboard Preview pane; still UTF-8 sources).
@@ -193,14 +203,17 @@ final class WorkspaceFileAccess {
     }
 
     /**
-     * Output dir of a module root — not a reserved path segment. A workspace member named
-     * {@code build/} that contains {@code jk.toml} is itself a module root and is not skipped.
+     * Gradle/Mill-style output dir of a module root — not a reserved path segment. JumpKick's
+     * own {@code target/} is listable (reports, diagrams, and other allow-listed artifacts). A
+     * workspace member named {@code build/} that contains {@code jk.toml} is itself a module root
+     * and is not skipped.
      */
     static boolean isSkippedOutputDir(Path dir) {
         Path name = dir.getFileName();
         if (name == null) return false;
         String n = name.toString();
-        if (!n.equals("target") && !n.equals("build") && !n.equals("out")) return false;
+        // target/ is JumpKick's module output and often holds viewable .md / .mmd / etc.
+        if (!n.equals("build") && !n.equals("out")) return false;
         Path parent = dir.getParent();
         if (parent == null) return false;
         return isModuleRoot(parent) && !isModuleRoot(dir);

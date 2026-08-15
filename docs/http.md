@@ -154,11 +154,14 @@ Allow-listed source paths under the identity checkout (`ProjectIdentity.pathForI
 fallback — a tree that merely contains a `jk.toml` is not enough.
 
 Response: `{ projectId, dir, truncated, files: [{ path, lang }] }`. `path` is workspace-relative
-with `/` separators. `lang` is `java` / `kotlin` / `groovy` / `toml` / `json` / `markdown` /
-`mermaid` / `graphviz` / `asciidoc` / `d2` / `image` (plus the usual source extensions). Hidden
-segments, `node_modules`, module-root `target`/`build`/`out`, and unknown extensions are omitted.
-The walk is breadth-first, capped at 2000 files and 32 directory levels, so truncation drops
-the deepest paths first; the workspace-root `jk.toml` is always included when it exists.
+with `/` separators. `lang` is `java` / `kotlin` / `groovy` / `scala` / `toml` / `xml` / `yaml` /
+`json` / `sql` / `properties` / `shell` / `markdown` / `mermaid` / `graphviz` / `asciidoc` / `d2` /
+`image` (plus the usual source extensions). Hidden
+segments, `node_modules`, module-root `build`/`out`, and unknown extensions are omitted.
+JumpKick's own `target/` is included when present (allow-listed files only — e.g. reports and
+diagrams; `.class` and other unknown extensions stay out). The walk is breadth-first, capped at
+5000 files and 32 directory levels, so truncation drops the deepest paths first; the
+workspace-root `jk.toml` is always included when it exists.
 In-root directory symlinks are walked (once — cycles are guarded by real path); links whose
 target escapes the workspace are omitted, matching the read endpoints. Entries are sorted by
 path; `truncated: true` means more remain (file cap or depth cap — deeper files stay readable
