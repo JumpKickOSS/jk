@@ -27,6 +27,20 @@ public interface EngineHttpJobs extends BuildTrigger {
     long triggerLock(String dir);
 
     /**
+     * Start a job from MCP {@code jk_run} (kind, modules, tags). Default routes to the simple
+     * verbs so tests that only stub build/test/lock keep working.
+     */
+    default long trigger(HttpJobSpec spec) {
+        String kind = spec == null ? "build" : spec.kind();
+        String dir = spec == null ? "" : spec.dir();
+        return switch (kind) {
+            case "test" -> triggerTest(dir);
+            case "lock", "update" -> triggerLock(dir);
+            default -> triggerBuild(dir);
+        };
+    }
+
+    /**
      * Cooperative cancel + worker grace→force for an HTTP/MCP request id. Returns {@code
      * false} if the id is unknown or already finished.
      */

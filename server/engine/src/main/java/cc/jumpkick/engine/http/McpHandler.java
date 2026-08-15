@@ -418,12 +418,14 @@ public final class McpHandler {
                         Map.of("type", "boolean")))));
         tools.add(tool(
                 "jk_jdk",
-                "List installed JDKs. install/update/uninstall still use jk jdk (JK-2022).",
+                "List, install, or uninstall JDKs. uninstall and older_than require confirm=true.",
                 objectSchema(Map.of(
                         "action",
-                        Map.of("type", "string", "description", "list (default)"),
+                        Map.of("type", "string", "description", "list (default) | install | uninstall"),
                         "spec",
-                        Map.of("type", "string"),
+                        Map.of("type", "string", "description", "lts / latest / temurin-26 / 26"),
+                        "older_than",
+                        Map.of("type", "integer", "description", "uninstall jk-owned majors below this"),
                         "confirm",
                         Map.of("type", "boolean")))));
         tools.add(tool("jk_doctor", "Host health snapshot (config + disk).", objectSchema(Map.of())));
@@ -442,9 +444,12 @@ public final class McpHandler {
                 Map<String, Object> st = statusPayload();
                 yield ok(st, statusSummary(st));
             }
-            case "jk_build" -> ok(jobPayload("build", args, jobs::triggerBuild, progressToken), "build accepted");
-            case "jk_test" -> ok(jobPayload("test", args, jobs::triggerTest, progressToken), "test accepted");
-            case "jk_lock" -> ok(jobPayload("lock", args, jobs::triggerLock, progressToken), "lock accepted");
+            case "jk_build" ->
+                ok(jobPayload(HttpJobSpec.of("build", resolveDir(args, true)), progressToken), "build accepted");
+            case "jk_test" ->
+                ok(jobPayload(HttpJobSpec.of("test", resolveDir(args, true)), progressToken), "test accepted");
+            case "jk_lock" ->
+                ok(jobPayload(HttpJobSpec.of("lock", resolveDir(args, true)), progressToken), "lock accepted");
             case "jk_cancel" -> cancelResult(args);
             case "jk_bind" -> bindResult(args);
             case "jk_project" -> projectResult(args);
@@ -541,25 +546,29 @@ public final class McpHandler {
         return one;
     }
 
-    private Map<String, Object> jobPayload(
-            String kind, Map<String, Object> args, Function<String, Long> trigger, String progressToken) {
-        String dir = resolveDir(args, true);
+    private Map<String, Object> jobPayload(HttpJobSpec spec, String progressToken) {
         try {
-            long requestId = trigger.apply(dir);
+            long requestId = jobs.trigger(spec);
             if (progressToken != null) progressTokens.bind(progressToken, requestId);
             Map<String, Object> fields = new LinkedHashMap<>();
-            fields.put("kind", kind);
+            fields.put("kind", spec.kind());
             fields.put("requestId", requestId);
             fields.put("jid", requestId);
-            fields.put("dir", dir);
+            fields.put("dir", spec.dir());
             fields.put("events", "/api/events");
             fields.put("mcpEvents", "GET /mcp?requestId=" + requestId);
+            if (!spec.modules().isEmpty()) fields.put("modules", spec.modules());
+            if (spec.hasTestFilter()) {
+                fields.put("include_tags", spec.includeTags());
+                fields.put("exclude_tags", spec.excludeTags());
+                fields.put("suites", spec.suites());
+            }
             if (progressToken != null) {
                 fields.put("progressToken", progressToken);
                 fields.put("mcpEventsByToken", "GET /mcp?progressToken=" + progressToken);
             }
             return McpEnvelope.of(
-                    kind + "-accepted",
+                    spec.kind() + "-accepted",
                     fields,
                     false,
                     null,
@@ -707,30 +716,27 @@ public final class McpHandler {
     private Map<String, Object> runResult(Map<String, Object> args, String progressToken) {
         String kind = string(args.get("kind"));
         if (kind == null || kind.isBlank()) kind = "build";
-        kind = kind.toLowerCase(Locale.ROOT);
+        HttpJobSpec spec = new HttpJobSpec(
+                kind,
+                resolveDir(args, true),
+                stringList(args.get("modules")),
+                stringList(args.get("include_tags")),
+                stringList(args.get("exclude_tags")),
+                stringList(args.get("suites")),
+                Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("skip_tests"))));
         boolean wait = !Boolean.FALSE.equals(McpHistoryViews.parseBool(args.get("wait")));
         int timeoutS = intArg(args.get("timeout_s"), 600, 1, 24 * 3600);
-        long jid =
-                switch (kind) {
-                    case "build", "assemble", "compile", "clean" ->
-                        jobPayloadId("build", args, jobs::triggerBuild, progressToken);
-                    case "test" -> jobPayloadId("test", args, jobs::triggerTest, progressToken);
-                    case "lock", "update" -> jobPayloadId("lock", args, jobs::triggerLock, progressToken);
-                    default ->
-                        throw new McpError(
-                                -32602, "kind not hosted yet: " + kind + " (use build|test|lock; see JK-2021)");
-                };
+        long jid = jobPayloadId(spec, progressToken);
         Map<String, Object> fields = new LinkedHashMap<>();
-        fields.put("kind", kind);
+        fields.put("kind", spec.kind());
         fields.put("jid", jid);
         fields.put("requestId", jid);
-        fields.put("dir", resolveDir(args, true));
-        Object mods = args.get("modules");
-        if (mods != null) fields.put("modules", mods);
-        Object tags = args.get("include_tags");
-        if (tags != null) {
-            fields.put("include_tags", tags);
-            fields.put("note", "include_tags accepted; engine apply is JK-2021");
+        fields.put("dir", spec.dir());
+        if (!spec.modules().isEmpty()) fields.put("modules", spec.modules());
+        if (spec.hasTestFilter()) {
+            fields.put("include_tags", spec.includeTags());
+            fields.put("exclude_tags", spec.excludeTags());
+            fields.put("suites", spec.suites());
         }
         if (!wait) {
             fields.put("mcpEvents", "GET /mcp?requestId=" + jid);
@@ -758,9 +764,8 @@ public final class McpHandler {
         return ok(McpEnvelope.of("job", fields), done ? "finished " + jid : "jid " + jid);
     }
 
-    private long jobPayloadId(
-            String kind, Map<String, Object> args, Function<String, Long> trigger, String progressToken) {
-        Map<String, Object> accepted = jobPayload(kind, args, trigger, progressToken);
+    private long jobPayloadId(HttpJobSpec spec, String progressToken) {
+        Map<String, Object> accepted = jobPayload(spec, progressToken);
         Object jid = accepted.get("jid");
         if (jid instanceof Number n) return n.longValue();
         throw new McpError(-32603, "job did not return jid");
@@ -906,28 +911,33 @@ public final class McpHandler {
 
     private Map<String, Object> jdkResult(Map<String, Object> args) {
         String action = string(args.get("action"));
-        if (action == null || action.isBlank() || "list".equals(action)) {
+        if (action == null || action.isBlank()) action = "list";
+        if ("list".equals(action)) {
             return ok(McpEnvelope.of("jdk", McpMachine.jdkList()), "jdk list");
         }
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("error", "install/uninstall not executed from MCP yet — use jk jdk " + action);
-        return ok(McpEnvelope.of("jdk", m), "not implemented");
+        Integer olderThan = null;
+        Object raw = args.get("older_than");
+        if (raw instanceof Number n) olderThan = n.intValue();
+        boolean confirm = Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("confirm")));
+        Map<String, Object> m = McpMachine.jdkAction(action, string(args.get("spec")), olderThan, confirm);
+        String summary = m.containsKey("error")
+                ? String.valueOf(m.get("error"))
+                : Boolean.TRUE.equals(m.get("preview")) ? "confirm required" : action;
+        return ok(McpEnvelope.of("jdk", m), summary);
     }
 
     private Map<String, Object> diskResult(Map<String, Object> args) {
         String action = string(args.get("action"));
-        if (action == null || action.isBlank() || "usage".equals(action)) {
+        if (action == null || action.isBlank()) action = "usage";
+        if ("usage".equals(action)) {
             return ok(McpEnvelope.of("disk", McpMachine.diskUsage()), "disk usage");
         }
         boolean confirm = Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("confirm")));
-        if (!confirm) {
-            Map<String, Object> preview = McpMachine.diskUsage();
-            preview.put("note", "pass confirm=true to " + action + " (cache tier only for nuke)");
-            return ok(McpEnvelope.of("disk", preview), "confirm required");
-        }
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("error", "clean/nuke not executed from MCP yet — use jk cache clean / jk cache nuke");
-        return ok(McpEnvelope.of("disk", m), "not implemented");
+        Map<String, Object> m = McpMachine.diskAction(action, confirm);
+        String summary = m.containsKey("error")
+                ? String.valueOf(m.get("error"))
+                : Boolean.TRUE.equals(m.get("preview")) ? "confirm required" : action;
+        return ok(McpEnvelope.of("disk", m), summary);
     }
 
     private static List<String> stringList(Object raw) {

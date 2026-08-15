@@ -167,9 +167,11 @@ MCP can be disabled machine-wide with `[mcp] enabled = false` in `~/.config/jk/c
 (404s `/mcp`; web dashboard unaffected — `mcpUrl` reports `null`).
 
 **Tools (agent catalog):** `jk_bind`, `jk_status`, `jk_project`, `jk_history` (summaries),
-`jk_diagnostics`, `jk_run` / `jk_job` (aliases: `jk_build`, `jk_test`, `jk_lock`, `jk_cancel`),
+`jk_diagnostics`, `jk_run` / `jk_job` (kinds: build|test|lock|update|format|native|image|assemble|compile|clean;
+aliases: `jk_build`, `jk_test`, `jk_lock`, `jk_cancel`),
 `jk_why`, `jk_explain`, `jk_outdated`, `jk_deps`, `jk_workspace`, `jk_manifest`, `jk_config`,
-`jk_disk`, `jk_doctor`. Results use `structuredContent` plus a short `content` text summary.
+`jk_disk` (usage / clean / nuke with `confirm=true`), `jk_jdk` (list / install / uninstall),
+`jk_doctor`. Results use `structuredContent` plus a short `content` text summary.
 Do not dump full journal records — start with `jk_diagnostics` for failures.
 
 **Live progress (MCP SSE):** `GET {httpUrl}/mcp` with `Accept: text/event-stream` and bearer

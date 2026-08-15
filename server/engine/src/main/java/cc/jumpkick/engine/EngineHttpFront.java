@@ -5,9 +5,13 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.HttpEvents;
+import cc.jumpkick.engine.http.HttpJobSelect;
+import cc.jumpkick.engine.http.HttpJobSpec;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobRequest;
@@ -17,14 +21,26 @@ import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildMetrics;
 import cc.jumpkick.runtime.BuildService;
+import cc.jumpkick.runtime.CachePlans;
+import cc.jumpkick.runtime.CompilePlans;
+import cc.jumpkick.runtime.FormatPlans;
+import cc.jumpkick.runtime.ImagePlans;
+import cc.jumpkick.runtime.LockPlans;
+import cc.jumpkick.runtime.NativePlans;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
@@ -125,17 +141,22 @@ public final class EngineHttpFront {
         return new EngineHttpJobs() {
             @Override
             public long triggerBuild(String dir) {
-                return triggerWorkspace(dir, "build", false, false);
+                return trigger(HttpJobSpec.of("build", dir));
             }
 
             @Override
             public long triggerTest(String dir) {
-                return triggerWorkspace(dir, "test", false, true);
+                return trigger(HttpJobSpec.of("test", dir));
             }
 
             @Override
             public long triggerLock(String dir) {
-                return EngineHttpFront.this.triggerLock(dir);
+                return trigger(HttpJobSpec.of("lock", dir));
+            }
+
+            @Override
+            public long trigger(HttpJobSpec spec) {
+                return EngineHttpFront.this.trigger(spec);
             }
 
             @Override
@@ -145,33 +166,99 @@ public final class EngineHttpFront {
         };
     }
 
-    /** {@code POST /api/build} / MCP: same JobEnvelope as CLI, FireAndForget. */
-    private long triggerWorkspace(String dirStr, String kind, boolean skipTests, boolean testOnly) {
-        Path entryDir = cc.jumpkick.util.PathUtil.resolveUserPath(dirStr);
-        if (!Files.isRegularFile(entryDir.resolve("jk.toml"))) {
-            throw new IllegalArgumentException("no jk.toml in " + entryDir);
-        }
-        String line = "{\"type\":\"build-request\",\"dir\":"
-                + cc.jumpkick.plugin.protocol.Jsonl.quote(entryDir.toString())
-                + ",\"trigger\":\"web\"}";
+    /** {@code POST /api/build} / MCP {@code jk_run}: same JobEnvelope as CLI, FireAndForget. */
+    private long trigger(HttpJobSpec spec) {
+        Path entryDir = requireProject(spec.dir());
+        JkBuild entry = parseEntry(entryDir);
+        Set<Path> dirty = HttpJobSelect.dirtyHint(entryDir, entry, spec.modules());
+        TestSelection tags = HttpJobSelect.testSelection(spec.includeTags(), spec.excludeTags(), spec.suites());
+        return switch (spec.kind()) {
+            case "build" -> triggerWorkspace(entryDir, "build", spec.skipTests(), false, dirty, tags);
+            case "assemble" -> triggerWorkspace(entryDir, "build", true, false, dirty, tags);
+            case "test" -> triggerWorkspace(entryDir, "test", false, true, dirty, tags);
+            case "lock" -> triggerPlan(entryDir, "lock", (l, tok, w) -> runLock(entryDir, tok));
+            case "update" -> triggerPlan(entryDir, "update", (l, tok, w) -> runUpdate(entryDir, tok));
+            case "format" -> triggerPlan(entryDir, "format", (l, tok, w) -> runFormat(entryDir, tok));
+            case "compile" ->
+                triggerExclusive(entryDir, "compile", (l, tok, w) -> runCompile(entryDir, dirty, tok), true, false);
+            case "image" ->
+                triggerExclusive(
+                        entryDir, "image", (l, tok, w) -> runImage(entryDir, dirty, tok), spec.skipTests(), false);
+            case "native" ->
+                triggerExclusive(
+                        entryDir,
+                        "native",
+                        (l, tok, w) -> runNative(entryDir, entry, dirty, spec.modules(), tok),
+                        spec.skipTests(),
+                        false);
+            case "clean" ->
+                jobs.submitAsync(
+                        requestLine("cache-clear-request", entryDir),
+                        JobRequest.maintenance(
+                                "clean", "jk-engine-http-clean-", (l, tok, w) -> runClean(entryDir, tok)),
+                        "");
+            default -> throw new IllegalArgumentException("kind not hosted: " + spec.kind());
+        };
+    }
+
+    private long triggerWorkspace(
+            Path entryDir, String kind, boolean skipTests, boolean testOnly, Set<Path> dirty, TestSelection tags) {
         JobRequest req = JobRequest.workspace(
-                kind, "jk-engine-http-" + kind + "-", (l, tok, w) -> runWorkspace(entryDir, skipTests, testOnly, tok));
-        return jobs.submitAsync(line, req, BuildJobFingerprint.ofHttp(kind, entryDir, skipTests, testOnly));
+                kind,
+                "jk-engine-http-" + kind + "-",
+                (l, tok, w) -> runWorkspace(entryDir, skipTests, testOnly, dirty, tags, tok));
+        return jobs.submitAsync(
+                requestLine("build-request", entryDir),
+                req,
+                BuildJobFingerprint.ofHttp(kind, entryDir, skipTests, testOnly));
     }
 
-    private long triggerLock(String dirStr) {
+    private long triggerPlan(Path entryDir, String kind, cc.jumpkick.engine.jobs.JobBody body) {
+        return jobs.submitAsync(
+                requestLine(kind + "-request", entryDir),
+                JobRequest.plan(kind, "jk-engine-http-" + kind + "-", body),
+                "");
+    }
+
+    private long triggerExclusive(
+            Path entryDir, String kind, cc.jumpkick.engine.jobs.JobBody body, boolean skipTests, boolean testOnly) {
+        return jobs.submitAsync(
+                requestLine(kind + "-request", entryDir),
+                JobRequest.plan(kind, "jk-engine-http-" + kind + "-", body),
+                BuildJobFingerprint.ofHttp(kind, entryDir, skipTests, testOnly));
+    }
+
+    private static String requestLine(String type, Path entryDir) {
+        return "{\"type\":"
+                + cc.jumpkick.plugin.protocol.Jsonl.quote(type)
+                + ",\"dir\":"
+                + cc.jumpkick.plugin.protocol.Jsonl.quote(entryDir.toString())
+                + ",\"trigger\":\"web\"}";
+    }
+
+    private static Path requireProject(String dirStr) {
         Path entryDir = cc.jumpkick.util.PathUtil.resolveUserPath(dirStr);
         if (!Files.isRegularFile(entryDir.resolve("jk.toml"))) {
             throw new IllegalArgumentException("no jk.toml in " + entryDir);
         }
-        String line = "{\"type\":\"lock-request\",\"dir\":"
-                + cc.jumpkick.plugin.protocol.Jsonl.quote(entryDir.toString())
-                + ",\"trigger\":\"web\"}";
-        return jobs.submitAsync(
-                line, JobRequest.plan("lock", "jk-engine-http-lock-", (l, tok, w) -> runLock(entryDir, tok)), "");
+        return entryDir;
     }
 
-    private boolean runWorkspace(Path entryDir, boolean skipTests, boolean testOnly, Session.CancelToken cancelToken) {
+    private static JkBuild parseEntry(Path entryDir) {
+        try {
+            return JkBuildParser.parse(entryDir.resolve("jk.toml"));
+        } catch (IOException | RuntimeException e) {
+            throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
+        }
+    }
+
+    private boolean runWorkspace(
+            Path entryDir,
+            boolean skipTests,
+            boolean testOnly,
+            Set<Path> dirtyHint,
+            TestSelection tags,
+            Session.CancelToken cancelToken) {
         try {
             JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve("jk.toml"));
             Path cache = cc.jumpkick.util.JkDirs.cache();
@@ -186,7 +273,7 @@ public final class EngineHttpFront {
                             skipTests,
                             false,
                             0,
-                            null,
+                            dirtyHint,
                             false,
                             true)
                     .withTestOnly(testOnly);
@@ -194,6 +281,7 @@ public final class EngineHttpFront {
                     .withWorkingDir(entryDir)
                     .withCacheDir(cache)
                     .withJdksDir(jdksDir)
+                    .withTestSelection(tags == null ? TestSelection.DEFAULT : tags)
                     .withCancel(cancelToken);
             long rid = eventRequestId.getAsLong();
             if (rid > 0) sessions.progressRoot(rid, entryDir.toString());
@@ -211,43 +299,207 @@ public final class EngineHttpFront {
             }
             return result.success();
         } catch (Exception e) {
-            journalWriter.accOutcome(eventRequestId.getAsLong(), false, 1);
-            log.accept("jk engine: http-triggered job of " + entryDir + " failed: "
-                    + EventRedaction.redactEnv(entryDir.toString(), String.valueOf(e.getMessage())));
-            sse.publishRequestError(eventRequestId.getAsLong(), entryDir.toString(), String.valueOf(e.getMessage()));
-            return false;
+            return fail(entryDir, "job", e);
         }
     }
 
     private boolean runLock(Path entryDir, Session.CancelToken cancelToken) {
         try {
             Path cache = cc.jumpkick.util.JkDirs.cache();
-            var scope = cc.jumpkick.runtime.LockPlans.lockScope(entryDir);
+            var scope = LockPlans.lockScope(entryDir);
             Path lockDir = scope.lockDir();
             Session session = Session.defaults()
                     .withWorkingDir(lockDir)
                     .withCacheDir(cache)
                     .withCancel(cancelToken);
-            cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.LockPlans.lockBuildPlan(
+            BuildPlan plan = LockPlans.lockBuildPlan(
                     lockDir, scope.effective(), cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
-            plan.addListener(listeners.hubPlan(lockDir.toString()));
-            cc.jumpkick.run.BuildPlanResult result;
-            synchronized (cc.jumpkick.runtime.LockGate.monitorFor(lockDir)) {
-                result = SessionContext.where(session, plan::run);
-            }
-            journalWriter.accOutcome(eventRequestId.getAsLong(), result.success(), result.success() ? 0 : 1);
-            if (!result.success()) {
-                for (var d : result.errors().stream().limit(5).toList()) {
-                    sse.publishRequestError(eventRequestId.getAsLong(), entryDir.toString(), d.message());
-                }
-            }
-            return result.success();
+            return runLocked(entryDir, lockDir, session, plan);
         } catch (Exception e) {
-            journalWriter.accOutcome(eventRequestId.getAsLong(), false, 1);
-            log.accept("jk engine: http-triggered lock of " + entryDir + " failed: "
-                    + EventRedaction.redactEnv(entryDir.toString(), String.valueOf(e.getMessage())));
-            sse.publishRequestError(eventRequestId.getAsLong(), entryDir.toString(), String.valueOf(e.getMessage()));
-            return false;
+            return fail(entryDir, "lock", e);
         }
+    }
+
+    private boolean runUpdate(Path entryDir, Session.CancelToken cancelToken) {
+        try {
+            Path cache = cc.jumpkick.util.JkDirs.cache();
+            var scope = LockPlans.lockScope(entryDir);
+            Path lockDir = scope.lockDir();
+            Session session = Session.defaults()
+                    .withWorkingDir(lockDir)
+                    .withCacheDir(cache)
+                    .withCancel(cancelToken);
+            BuildPlan plan = LockPlans.updateBuildPlan(lockDir, scope.effective(), cache, null, List.of(), true);
+            return runLocked(entryDir, lockDir, session, plan);
+        } catch (Exception e) {
+            return fail(entryDir, "update", e);
+        }
+    }
+
+    private boolean runLocked(Path entryDir, Path lockDir, Session session, BuildPlan plan) {
+        plan.addListener(listeners.hubPlan(lockDir.toString()));
+        BuildPlanResult result;
+        synchronized (cc.jumpkick.runtime.LockGate.monitorFor(lockDir)) {
+            try {
+                result = SessionContext.where(session, plan::run);
+            } catch (Exception e) {
+                return fail(entryDir, "lock", e);
+            }
+        }
+        return finishPlan(entryDir, result);
+    }
+
+    private boolean runFormat(Path entryDir, Session.CancelToken cancelToken) {
+        try {
+            Path cache = cc.jumpkick.util.JkDirs.cache();
+            Session session = Session.defaults()
+                    .withWorkingDir(entryDir)
+                    .withCacheDir(cache)
+                    .withCancel(cancelToken);
+            BuildPlan plan = SessionContext.where(
+                    session,
+                    () -> FormatPlans.formatBuildPlan(
+                            entryDir, cache, false, null, null, true, true, true, null, (p, s, m, i, t) -> {}));
+            plan.addListener(listeners.hubPlan(entryDir.toString()));
+            return finishPlan(entryDir, SessionContext.where(session, plan::run));
+        } catch (Exception e) {
+            return fail(entryDir, "format", e);
+        }
+    }
+
+    private boolean runCompile(Path entryDir, Set<Path> dirty, Session.CancelToken cancelToken) {
+        try {
+            Path cache = cc.jumpkick.util.JkDirs.cache();
+            Session session = Session.defaults()
+                    .withWorkingDir(entryDir)
+                    .withCacheDir(cache)
+                    .withJdksDir(cc.jumpkick.util.JkDirs.jdks())
+                    .withCancel(cancelToken);
+            List<Path> dirs = compileDirs(entryDir, dirty);
+            return SessionContext.where(session, () -> {
+                for (Path dir : dirs) {
+                    BuildPlan plan = CompilePlans.compileBuildPlan(dir, cache, null, false);
+                    plan.addListener(listeners.hubPlan(dir.toString()));
+                    BuildPlanResult result = plan.run();
+                    if (!result.success()) return finishPlan(entryDir, result);
+                }
+                journalWriter.accOutcome(eventRequestId.getAsLong(), true, 0);
+                return true;
+            });
+        } catch (Exception e) {
+            return fail(entryDir, "compile", e);
+        }
+    }
+
+    private static List<Path> compileDirs(Path entryDir, Set<Path> dirty) {
+        if (dirty != null) return List.copyOf(dirty);
+        return List.of(entryDir);
+    }
+
+    private boolean runImage(Path entryDir, Set<Path> dirty, Session.CancelToken cancelToken) {
+        try {
+            Path cache = cc.jumpkick.util.JkDirs.cache();
+            Path jdksDir = cc.jumpkick.util.JkDirs.jdks();
+            Path target = dirty == null || dirty.isEmpty()
+                    ? entryDir
+                    : dirty.iterator().next();
+            Session session = Session.defaults()
+                    .withWorkingDir(target)
+                    .withCacheDir(cache)
+                    .withJdksDir(jdksDir)
+                    .withCancel(cancelToken);
+            BuildPlan plan = SessionContext.where(
+                    session,
+                    () -> ImagePlans.imageBuildPlan(target, cache, jdksDir, true, false, null, null, null, null, null));
+            plan.addListener(listeners.hubPlan(target.toString()));
+            return finishPlan(entryDir, SessionContext.where(session, plan::run));
+        } catch (Exception e) {
+            return fail(entryDir, "image", e);
+        }
+    }
+
+    private boolean runNative(
+            Path entryDir, JkBuild entry, Set<Path> dirty, List<String> modules, Session.CancelToken cancelToken) {
+        try {
+            Path cache = cc.jumpkick.util.JkDirs.cache();
+            Path jdksDir = cc.jumpkick.util.JkDirs.jdks();
+            Path graal = graalHome();
+            Session session = Session.defaults()
+                    .withWorkingDir(entryDir)
+                    .withCacheDir(cache)
+                    .withJdksDir(jdksDir)
+                    .withCancel(cancelToken);
+            return SessionContext.where(session, () -> {
+                Map<Path, JkBuild> scopes = nativeScopes(entryDir, entry, dirty);
+                Set<Path> selected = HttpJobSelect.selected(entryDir, entry, modules);
+                for (var e : scopes.entrySet()) {
+                    Path dir = e.getKey();
+                    boolean allowNative = selected == null || selected.contains(BuildGraph.canonicalPath(dir));
+                    BuildPlan plan = NativePlans.moduleBuildPlan(
+                            dir, e.getValue(), cache, jdksDir, graal, null, List.of(), true, false, allowNative);
+                    plan.addListener(listeners.hubPlan(dir.toString()));
+                    BuildPlanResult result = plan.run();
+                    if (!result.success()) return finishPlan(entryDir, result);
+                }
+                journalWriter.accOutcome(eventRequestId.getAsLong(), true, 0);
+                return true;
+            });
+        } catch (Exception e) {
+            return fail(entryDir, "native", e);
+        }
+    }
+
+    private static Map<Path, JkBuild> nativeScopes(Path entryDir, JkBuild entry, Set<Path> dirty) throws IOException {
+        if (!entry.isWorkspaceRoot()) {
+            return Map.of(entryDir, entry);
+        }
+        Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(entryDir, entry);
+        if (dirty != null) {
+            Map<Path, JkBuild> filtered = new LinkedHashMap<>();
+            for (var e : modules.entrySet()) {
+                if (dirty.contains(BuildGraph.canonicalPath(e.getKey()))) filtered.put(e.getKey(), e.getValue());
+            }
+            modules = filtered;
+        }
+        Map<Path, JkBuild> ordered = new LinkedHashMap<>();
+        for (Path dir : BuildGraph.orderModules(modules)) ordered.put(dir, modules.get(dir));
+        return ordered;
+    }
+
+    private boolean runClean(Path entryDir, Session.CancelToken cancelToken) {
+        try {
+            Path cache = cc.jumpkick.util.JkDirs.cache();
+            Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);
+            BuildPlan plan = CachePlans.clearBuildPlan(cache, entryDir, false);
+            plan.addListener(listeners.hubPlan(entryDir.toString()));
+            return finishPlan(entryDir, SessionContext.where(session, plan::run));
+        } catch (Exception e) {
+            return fail(entryDir, "clean", e);
+        }
+    }
+
+    private static Path graalHome() {
+        String g = System.getenv("GRAALVM_HOME");
+        if (g == null || g.isBlank()) return null;
+        Path p = Path.of(g);
+        return Files.isDirectory(p) ? p : null;
+    }
+
+    private boolean finishPlan(Path entryDir, BuildPlanResult result) {
+        journalWriter.accOutcome(eventRequestId.getAsLong(), result.success(), result.success() ? 0 : 1);
+        if (!result.success()) {
+            for (var d : result.errors().stream().limit(5).toList()) {
+                sse.publishRequestError(eventRequestId.getAsLong(), entryDir.toString(), d.message());
+            }
+        }
+        return result.success();
+    }
+
+    private boolean fail(Path entryDir, String kind, Exception e) {
+        journalWriter.accOutcome(eventRequestId.getAsLong(), false, 1);
+        log.accept("jk engine: http-triggered " + kind + " of " + entryDir + " failed: "
+                + EventRedaction.redactEnv(entryDir.toString(), String.valueOf(e.getMessage())));
+        sse.publishRequestError(eventRequestId.getAsLong(), entryDir.toString(), String.valueOf(e.getMessage()));
+        return false;
     }
 }

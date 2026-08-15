@@ -4,6 +4,7 @@ package cc.jumpkick.engine.http.mcp;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.http.EngineHttpJobs;
+import cc.jumpkick.engine.http.HttpJobSpec;
 import cc.jumpkick.engine.http.McpHandler;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.plugin.protocol.MiniJson;
@@ -41,6 +42,8 @@ class McpContractTest {
                     + "\"success\":true,\"exitCode\":0,\"millis\":5,\"coord\":\"g:b\","
                     + "\"modules\":[],\"diagnostics\":[]}";
 
+    private HttpJobSpec lastSpec;
+
     private final EngineHttpJobs jobs = new EngineHttpJobs() {
         @Override
         public long triggerBuild(String dir) {
@@ -55,6 +58,16 @@ class McpContractTest {
         @Override
         public long triggerLock(String dir) {
             return 44L;
+        }
+
+        @Override
+        public long trigger(HttpJobSpec spec) {
+            lastSpec = spec;
+            return switch (spec.kind()) {
+                case "test" -> 43L;
+                case "lock", "update" -> 44L;
+                default -> 45L;
+            };
         }
 
         @Override
@@ -136,6 +149,21 @@ class McpContractTest {
         Map<String, Object> r = call("jk_run", "{\"kind\":\"test\",\"dir\":\"/tmp\",\"wait\":true,\"timeout_s\":2}");
         assertThat(r.get("type")).isIn("job", "job-accepted", "test-accepted");
         assertThat(r.get("jid")).isNotNull();
+    }
+
+    @Test
+    void run_hosts_format_and_applies_tags() {
+        Map<String, Object> r = call("jk_run", "{\"kind\":\"format\",\"dir\":\"/tmp\",\"wait\":false}");
+        assertThat(r.get("type")).isEqualTo("job-accepted");
+        assertThat(((Number) r.get("jid")).longValue()).isEqualTo(45L);
+        assertThat(lastSpec.kind()).isEqualTo("format");
+
+        call(
+                "jk_run",
+                "{\"kind\":\"test\",\"dir\":\"/tmp\",\"wait\":false,\"include_tags\":[\"network\"],\"modules\":[\"api\"]}");
+        assertThat(lastSpec.kind()).isEqualTo("test");
+        assertThat(lastSpec.includeTags()).containsExactly("network");
+        assertThat(lastSpec.modules()).containsExactly("api");
     }
 
     @Test
