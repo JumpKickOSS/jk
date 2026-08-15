@@ -51,7 +51,7 @@ class JUnitUniqueIdTest {
 
     @Test
     void nested_dynamic_containers_compose_their_indices() {
-        // JK-1904: sibling containers' leaves both end in [dynamic-test:#2]; dropping the
+        // Sibling containers' leaves both end in [dynamic-test:#2]; dropping the
         // container index made them label identically.
         var a = JUnitUniqueId.parse(
                 "[engine:junit-jupiter]/[class:C]/[test-factory:m()]" + "/[dynamic-container:#1]/[dynamic-test:#2]");

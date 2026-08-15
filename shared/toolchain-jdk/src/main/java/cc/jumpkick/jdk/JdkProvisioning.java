@@ -10,6 +10,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.function.Function;
+import lombok.RequiredArgsConstructor;
 
 /**
  * Resolves a {@link JdkSpec} to an already-on-disk {@link InstalledJdk}, without downloading.
@@ -23,6 +24,7 @@ import java.util.function.Function;
  *   <li>Empty — caller decides whether to invoke {@link JdkInstaller}.
  * </ol>
  */
+@RequiredArgsConstructor
 public final class JdkProvisioning {
 
     public record Result(InstalledJdk jdk, Source source, String detail) {
@@ -46,19 +48,6 @@ public final class JdkProvisioning {
 
     public JdkProvisioning(JdkRegistry registry) {
         this(registry, new JdkCatalogClient(), System::getenv, HostPlatform.currentOs(), HostPlatform.currentArch());
-    }
-
-    public JdkProvisioning(
-            JdkRegistry registry,
-            JdkCatalogClient catalogClient,
-            Function<String, String> env,
-            String os,
-            String arch) {
-        this.registry = registry;
-        this.catalogClient = catalogClient;
-        this.env = env;
-        this.os = os;
-        this.arch = arch;
     }
 
     public Optional<Result> resolve(JdkSpec spec) throws IOException {

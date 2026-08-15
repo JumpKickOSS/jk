@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1648: a registered workspace module with no sources was forecast as a "source-less
+ * A registered workspace module with no sources was forecast as a "source-less
  * aggregator — nothing to package", so it never scheduled, never produced its (empty) jar, and any
  * sibling depending on it failed with a misleading "sibling not built". The forecast must keep the
  * module dirty until its jar exists; once packaged, it goes back to clean.

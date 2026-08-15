@@ -72,7 +72,7 @@ public final class Jsonl {
             case 'b' -> sb.append('\b');
             case 'f' -> sb.append('\f');
             case 'u' -> {
-                // Explicit hex check (JK-1961): Integer.parseInt accepts a leading +/- sign, so a
+                // Explicit hex check: Integer.parseInt accepts a leading +/- sign, so a
                 // malformed backslash-u-123 escape would otherwise decode to garbage and eat 4
                 // chars instead of being kept literally as the javadoc promises.
                 if (i + 4 < s.length() && isHex4(s, i + 1)) {

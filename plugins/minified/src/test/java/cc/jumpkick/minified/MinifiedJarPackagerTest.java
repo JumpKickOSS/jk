@@ -40,7 +40,7 @@ class MinifiedJarPackagerTest {
     void output_jar_synthesizes_parent_directory_entries(@TempDir Path tmp) throws Exception {
         // R8's output carries no directory entries, but frameworks enumerate resource
         // directories via them (Micronaut SoftServiceLoader over META-INF/micronaut/...) —
-        // the -min.jar owes the same contract as thin and fat jars (JK-1755).
+        // the -min.jar owes the same contract as thin and fat jars.
         Path shrunk = tmp.resolve("shrunk.jar");
         try (OutputStream out = Files.newOutputStream(shrunk);
                 JarOutputStream jos = new JarOutputStream(out)) {

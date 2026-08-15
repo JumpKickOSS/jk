@@ -15,12 +15,12 @@ import java.util.jar.JarFile;
 /**
  * Builds the plugin worker command line every plugin fork uses. Workers are <strong>thin
  * jars</strong> launched as {@code java [jvmFlags] -cp <worker>:<deps…>
- * cc.jumpkick.plugin.process.PluginMain <spec>} (JK-1347). Heap sizing goes through {@link
+ * cc.jumpkick.plugin.process.PluginMain <spec>}. Heap sizing goes through {@link
  * JvmOptions}' shared plan.
  *
  * <p>Classpath resolution: prefer {@code $JK_LIB_DIR/&lt;id&gt;/} hardlinks (default {@code
- * store/lib/&lt;id&gt;/}, same tree as installed tools) when install materialised them (JK-1348);
- * else the optional {@code <worker>.jar.classpath} sidecar (JK-1347).
+ * store/lib/&lt;id&gt;/}, same tree as installed tools) when install materialised them;
+ * else the optional {@code <worker>.jar.classpath} sidecar.
  */
 final class PluginLaunch {
 
@@ -50,7 +50,7 @@ final class PluginLaunch {
      * The jar's own {@code Main-Class} when it declares one, else the SDK host. First-party workers
      * declare {@link PluginLoader#WORKER_MAIN} and are unaffected; a third-party plugin that
      * hand-rolls its entry point must not be launched under the SDK host, which would
-     * {@code ServiceLoader}-look for a {@code Plugin} the jar never registers and exit 70 (JK-1449).
+     * {@code ServiceLoader}-look for a {@code Plugin} the jar never registers and exit 70.
      */
     private static String mainClassOf(Path workerJar) {
         try (var jar = new JarFile(workerJar.toFile())) {

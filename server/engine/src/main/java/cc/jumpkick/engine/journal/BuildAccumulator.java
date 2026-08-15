@@ -46,7 +46,7 @@ public final class BuildAccumulator {
 
     // Plain lists under their own monitor (snapshot to iterate): CopyOnWriteArrayList copied the
     // whole backing array per append — O(n²) array churn for a build with many modules or
-    // diagnostics, on the engine heap (JK-1942).
+    // diagnostics, on the engine heap.
     private final List<ModuleOutcome> modules = new ArrayList<>();
     // Steps per module dir (name → Step, arrival order, last status wins). The single-plan path
     // uses the "" (SINGLE_PLAN_DIR) bucket; workspace modules use their real dir. Rendered as a
@@ -160,7 +160,7 @@ public final class BuildAccumulator {
      * the socket the instant it reads a terminal failure, and that EOF must not re-label a
      * test/compile failure as cancelled. An {@code explicit} signal (BUILD_CANCEL, dashboard
      * cancel, wall deadline) is not that race — a genuine abort after a module failure still
-     * journals as cancelled (JK-1521).
+     * journals as cancelled.
      */
     public void markUserCancelled(boolean explicit) {
         if (success != null) return;
@@ -176,7 +176,7 @@ public final class BuildAccumulator {
     }
 
     /**
-     * Journal-path diagnostics cap. Wire and SSE bound theirs at capture (JK-1880); the journal
+     * Journal-path diagnostics cap. Wire and SSE bound theirs at capture; the journal
      * previously kept every row, so one pathological plan could persist an unbounded record.
      * Overflow is dropped with an explicit {@code +N more} marker row at record time.
      */

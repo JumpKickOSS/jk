@@ -19,9 +19,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
 /** Dashboard SSE fan-out and workspace-progress emit. */
+@RequiredArgsConstructor
 public final class SsePublisher {
 
     public interface Acc {
@@ -39,25 +41,6 @@ public final class SsePublisher {
 
     public static final int MAX_DIAGNOSTIC_EVENTS = 8;
     public static final int MAX_TEST_FAILURE_EVENTS = 100;
-
-    public SsePublisher(
-            JobSessions sessions,
-            InFlightBuilds inFlight,
-            @Nullable HttpEvents events,
-            Supplier<HttpEngineServer> http,
-            LongSupplier clock,
-            AtomicInteger activePlans,
-            ReentrantReadWriteLock sseConnect,
-            Acc acc) {
-        this.sessions = sessions;
-        this.inFlight = inFlight;
-        this.events = events;
-        this.http = http;
-        this.clock = clock;
-        this.activePlans = activePlans;
-        this.sseConnect = sseConnect;
-        this.acc = acc;
-    }
 
     private @Nullable JobSession open(long id) {
         return sessions.open(id);
@@ -148,7 +131,7 @@ public final class SsePublisher {
      * As {@link #publishEvent(String, cc.jumpkick.engine.http.JsonOut)}; {@code dashboardOnly}
      * frames (SSE-connect rehydrate replays) skip MCP subscriptions — the dashboard folds a
      * duplicate {@code request-start} idempotently, but an MCP agent treating it as "job began"
-     * would double-count (JK-1523).
+     * would double-count.
      */
     public void publishEvent(String type, cc.jumpkick.engine.http.JsonOut payload, boolean dashboardOnly) {
         sseConnect.readLock().lock();
@@ -158,7 +141,7 @@ public final class SsePublisher {
                 else events.publish(type, payload);
             }
             // Sampled chrome (status/cache SSE) is change-gated; nudge it when jobs start/finish so
-            // Builds Running and storage totals do not wait for the next timer tick (JK-1495/1497).
+            // Builds Running and storage totals do not wait for the next timer tick.
             HttpEngineServer server = http.get();
             if (server != null && ("request-start".equals(type) || "request-finish".equals(type))) {
                 server.notifyLiveStatus();
@@ -218,9 +201,9 @@ public final class SsePublisher {
         cc.jumpkick.runtime.RemainingWork rw = remaining(requestId);
         if (rw != null && dir != null) {
             // Atomic update+recompute+note per request: two scheduler threads interleaving
-            // (T1 computes 10s, T2 computes 9s and notes it, T1 notes 10s last) regressed the
-            // wire remainingMs (JK-1830). rw's own methods synchronize on rw, so this monitor
-            // is reentrant and orders the notes with their computations.
+            // (T1 computes 10s, T2 computes 9s and notes it, T1 notes 10s last) can regress
+            // wire remainingMs. rw's own methods synchronize on rw, so this monitor is
+            // reentrant and orders the notes with their computations.
             synchronized (rw) {
                 rw.moduleProgress(Path.of(dir), frac);
                 tracker(requestId).noteRemaining(rw.remaining(), rw.R0());
@@ -253,7 +236,7 @@ public final class SsePublisher {
     public void emitWorkspaceProgress(long requestId, BufferedWriter writer, boolean force, boolean dashboardOnly) {
         if (requestId <= 0) return;
         // A straggler from an abandoned job must not re-register the maps teardown just cleared,
-        // nor take a fresh emit lock that no longer serializes against anything (JK-1474).
+        // nor take a fresh emit lock that no longer serializes against anything.
         if (sessions.retired(requestId)) return;
         Object lock = emitLock(requestId);
         synchronized (lock) {
@@ -262,9 +245,9 @@ public final class SsePublisher {
             var snap = tracker.snapshot();
             double heldPct = Double.NaN;
             if (snap.hasPercent()) {
-                // Peak-hold machine progressnever publish a lower % than already
-                // emitted — but rebase when the denominator grew (calibrate), or the preflight
-                // peak pins the rider for the whole execute phase.
+                // Peak-hold machine progress: never publish a lower % than already emitted —
+                // rebase when the denominator grew (calibrate), or the preflight peak pins the
+                // rider for the whole execute phase.
                 Double prevPct = lastProgress(requestId);
                 Long prevDen = lastProgressDen(requestId);
                 heldPct = snap.percent();
@@ -282,8 +265,7 @@ public final class SsePublisher {
             long den = snap.denominator();
             long rem = snap.remainingMs();
             long r0 = snap.R0ms();
-            // The HELD percent goes on both wire surfaces — the JSONL line used to carry the raw
-            // (possibly regressing) value while SSE got the held one via withProgress (JK-1821).
+            // Held percent on both wire surfaces (JSONL and SSE).
             double pct = heldPct;
             String line = ProtoEvents.workspaceProgress(
                     dir, num, den, snap.phase(), snap.modulesComplete(), snap.modulesTotal(), rem, r0, pct);
@@ -369,8 +351,8 @@ public final class SsePublisher {
         if (buildNumber > 0) payload = payload.put("buildNumber", buildNumber);
         if (startedAt > 0) {
             payload = payload.put("startedAt", startedAt);
-            // Engine "now" beside engine startedAt: elapsed = serverNow - startedAt is skew-free,
-            // and the SPA re-anchors it to its own clock at receipt (JK-1839).
+            // Engine "now" beside engine startedAt: elapsed = serverNow - startedAt is skew-free;
+            // the SPA re-anchors it to its own clock at receipt.
             payload = payload.put("serverNow", clock.getAsLong());
         }
         payload = payload.put("activeBuildPlans", activePlans.get());

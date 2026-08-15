@@ -18,7 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * {@code BEFORE_COMPILE} is the documented codegen anchor, so a {@code .java} it writes must reach
  * javac and end up in the jar as a class — not copied verbatim into {@code classes/} as a data
- * file, which is what merging into the classes tree did (JK-1602).
+ * file, which is what merging into the classes tree did.
  *
  * <p>The second build matters as much as the first: the anchor's output is action-cached, so a
  * cache hit has to leave the source root in the same state a real run does, or the artifact

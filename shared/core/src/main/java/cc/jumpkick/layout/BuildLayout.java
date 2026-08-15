@@ -99,7 +99,7 @@ public final class BuildLayout {
 
     /** Memoized {@link #moduleTargetDir()} — every layout accessor funnels through it, and the
      * alias-fallback path costs filesystem walks; both roots are final, so the answer is stable
-     * for the instance's life (JK-1528). */
+     * for the instance's life. */
     private volatile Path cachedModuleTargetDir;
 
     /**
@@ -124,7 +124,7 @@ public final class BuildLayout {
      * would relocate its outputs to a module-local {@code target/}). Only on a lexical miss does
      * {@link #absoluteKey} reconcile symlink alias pairs ({@code /var} vs {@code /private/var} on
      * macOS). The returned path keeps the caller's {@code workspaceRoot} form (absolute +
-     * normalize) so it matches other paths the caller already holds (JK-1528).
+     * normalize) so it matches other paths the caller already holds.
      */
     public static Path moduleTargetDir(Path workspaceRoot, Path moduleRoot) {
         Path wsOut = workspaceRoot.toAbsolutePath().normalize();
@@ -208,7 +208,7 @@ public final class BuildLayout {
     public Path jdtClassesDir() {
         // Module-LOCAL on purpose (unlike buildDir's Mill-style central tree): Eclipse JDT
         // requires output folders inside the project, and a workspace member's central dir would
-        // render as an invalid "../target/…" entry in .classpath (JK-1344). jk's own outputs
+        // render as an invalid "../target/…" entry in .classpath. jk's own outputs
         // never live here, so the isolation contract holds either way.
         return moduleRoot().resolve("target").resolve("jdt").resolve("classes").resolve("main");
     }

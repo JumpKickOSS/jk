@@ -95,7 +95,7 @@ public final class WorkspaceResolve {
      * member), or an empty set when {@code moduleDir} is standalone or the workspace cannot be
      * read. Publish paths use this to recognize sibling edges after
      * {@link WorkspaceMerge#resolveSiblingCoordinates} has rewritten them to real coordinates —
-     * e.g. to omit tests-kind sibling edges whose test-jar jk never produces (JK-1643).
+     * e.g. to omit tests-kind sibling edges whose test-jar jk never produces.
      */
     public static Set<String> siblingCoordinates(Path moduleDir) {
         try {

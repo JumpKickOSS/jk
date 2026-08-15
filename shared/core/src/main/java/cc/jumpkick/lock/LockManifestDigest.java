@@ -64,7 +64,7 @@ public final class LockManifestDigest {
         }
         // The workspace catalog layer (jk-libs.toml) changes how short names resolve to
         // group:artifact, so a pin edit must flip staleness exactly like a manifest edit —
-        // without this the lock kept resolving the old GA while looking fresh (JK-1864).
+        // without this the lock kept resolving the old GA while looking fresh.
         Path libs = owner.resolve("jk-libs.toml");
         if (Files.isRegularFile(libs)) {
             parts.put("jk-libs.toml", normalized(Files.readAllBytes(libs)));
@@ -74,7 +74,7 @@ public final class LockManifestDigest {
 
     /**
      * First-level path-source dependency manifests: their versions and deps feed the lock exactly
-     * like member manifests do, so an edit must flip staleness (JK-1357).
+     * like member manifests do, so an edit must flip staleness.
      */
     private static void addPathDepManifests(Map<String, byte[]> parts, Path owner, Path declaringDir, JkBuild build)
             throws IOException {

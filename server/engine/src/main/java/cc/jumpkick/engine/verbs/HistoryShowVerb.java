@@ -82,9 +82,9 @@ public final class HistoryShowVerb implements HostedVerb {
                             .put("coveredSkips", b != null ? b.coveredSkips() : -1)
                             .put("totalSkips", b != null ? b.totalSkips() : -1)
                             .toString());
-            // Defense in depth (JK-1963): records persisted before write-time redaction (JK-1878)
+            // Defense in depth: records persisted before write-time redaction
             // may carry .env secrets — re-redact on replay against the record's own dir. Hoisted
-            // above the step loops so labels get the same coverage as diagnostics (JK-1975).
+            // above the step loops so labels get the same coverage as diagnostics.
             cc.jumpkick.config.SecretRedactor redactor = replayRedactor(r.dir());
             int stepCount = 0;
             for (BuildRecord.Module m : r.modules()) {

@@ -138,7 +138,7 @@ class FileHashMemoTest {
 
     @Test
     void clearAllThreadCaches_drops_another_threads_walk_cache(@TempDir Path dir) throws Exception {
-        // The idle boundary (IdleHousekeeping.dropHeapResidue, JK-1942) clears from the
+        // The idle boundary (IdleHousekeeping.dropHeapResidue) clears from the
         // housekeeping thread; entries on the immortal pool threads must not survive it.
         Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
         long mtime = System.currentTimeMillis() - 60_000;

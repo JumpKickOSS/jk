@@ -109,7 +109,7 @@ class TaskForecasterResourceTest {
                 0,
                 true,
                 false);
-        assertThat(producer.dirty()).isTrue(); // still schedules the producer (JK-1808)
+        assertThat(producer.dirty()).isTrue(); // still schedules the producer
         assertThat(TaskForecaster.seedsCompileConsumerCascade(producer)).isFalse();
 
         // Real package miss still seeds cascade.

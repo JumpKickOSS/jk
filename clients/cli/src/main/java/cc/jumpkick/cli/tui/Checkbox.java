@@ -25,7 +25,7 @@ public final class Checkbox implements Widget {
         String glyph = checked ? Rail.CHECKBOX_ON : Rail.CHECKBOX_OFF;
         if (!ctx.ansi()) {
             // ASCII directly — plain mode's contract is ASCII-only, and widgets rendered outside
-            // the CliOutput boundary never pass through PlainAscii.transform (JK-1892).
+            // the CliOutput boundary never pass through PlainAscii.transform.
             String plain = checked ? "[x]" : "[ ]";
             return List.of(plain + " " + label + (hint.isEmpty() ? "" : "  " + hint));
         }

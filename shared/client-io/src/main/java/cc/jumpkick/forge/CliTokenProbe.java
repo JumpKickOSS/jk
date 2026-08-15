@@ -26,7 +26,7 @@ public interface CliTokenProbe {
      * is real. Reading stdout to EOF inline would deadlock on a helper that fills its stderr pipe
      * (nothing drains it, so the child never exits, so stdout never sees EOF) and the {@code
      * waitFor} sequenced after the read would never be reached — an unbounded hang, not a 5s one
-     * (JK-1468). stderr is discarded rather than merged: it must never end up inside the token.
+     *. stderr is discarded rather than merged: it must never end up inside the token.
      */
     CliTokenProbe REAL = argv -> {
         if (argv == null || argv.isEmpty()) return Optional.empty();

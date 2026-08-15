@@ -9,7 +9,7 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1521: the user-cancel stamp guard. An EOF after a reported module failure is the
+ * The user-cancel stamp guard. An EOF after a reported module failure is the
  * terminal-read race and must not re-label the failure as cancelled — but an explicit signal
  * (BUILD_CANCEL, dashboard cancel, wall deadline) is a genuine abort even when a module already
  * failed, and the journal must say cancelled.

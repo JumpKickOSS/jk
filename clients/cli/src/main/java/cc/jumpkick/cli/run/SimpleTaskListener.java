@@ -6,6 +6,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import java.io.PrintStream;
+import lombok.RequiredArgsConstructor;
 
 /**
  * Console listener for simple-task commands: drives a {@link JkManager} in simple mode — an
@@ -17,6 +18,7 @@ import java.io.PrintStream;
  * planFinish}, <em>after</em> the spinner has been stopped — never mid-run — so nothing interleaves
  * with the live animation.
  */
+@RequiredArgsConstructor
 public final class SimpleTaskListener implements BuildPlanListener {
 
     private final PrintStream out;
@@ -25,13 +27,6 @@ public final class SimpleTaskListener implements BuildPlanListener {
     private final boolean animate;
 
     private JkManager cm;
-
-    public SimpleTaskListener(PrintStream out, PrintStream err, ConsoleSpec spec, boolean animate) {
-        this.out = out;
-        this.err = err;
-        this.spec = spec;
-        this.animate = animate;
-    }
 
     @Override
     public void planStart(BuildPlanView view) {

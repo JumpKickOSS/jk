@@ -17,7 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class PluginInstallLocalTest {
 
-    /** Thin PluginMain worker — no assembly (JK-1347). */
+    /** Thin PluginMain worker — no assembly. */
     private static final String WORKER_TOML = """
             group = "cc.jumpkick"
             name = "jk-test-runner"
@@ -67,7 +67,7 @@ class PluginInstallLocalTest {
 
     @Test
     void reinstall_drops_stale_sidecar_entries(@TempDir Path dir) throws Exception {
-        // JK-1352: the lock closure is authoritative — a removed dep left in the previous
+        // the lock closure is authoritative — a removed dep left in the previous
         // sidecar must not survive regeneration.
         Path cache = dir.resolve("cache");
         Path mod = dir.resolve("plugins/worker");
@@ -231,7 +231,7 @@ class PluginInstallLocalTest {
 
     @Test
     void cache_dir_install_leaves_the_global_lib_untouched(@TempDir Path dir) throws Exception {
-        // JK-1354: an isolated --cache-dir install must not create or overwrite the shared
+        // an isolated --cache-dir install must not create or overwrite the shared
         // store/lib/<id>/ dir every ambient launch prefers.
         Path cache = dir.resolve("cache");
         Path mod = dir.resolve("plugins/worker");
@@ -267,7 +267,7 @@ class PluginInstallLocalTest {
 
     @Test
     void uninstall_removes_local_repo_entries(@TempDir Path dir) throws Exception {
-        // JK-1353: `jk plugin uninstall` drops what install-local side-loaded.
+        // `jk plugin uninstall` drops what install-local side-loaded.
         Path cache = dir.resolve("cache");
         Path mod = dir.resolve("plugins/worker");
         Files.createDirectories(mod);

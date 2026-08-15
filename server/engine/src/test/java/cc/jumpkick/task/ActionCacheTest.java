@@ -79,7 +79,7 @@ class ActionCacheTest {
     }
 
     /**
-     * JK-1712: CAS blobs carry no mode. Without the record carrying it, a native binary is
+     * CAS blobs carry no mode. Without the record carrying it, a native binary is
      * runnable on the build that produced it and 0644 on every build after — with the build
      * still reporting success.
      */

@@ -71,9 +71,8 @@ final class AotCacheTrainer {
 
     /** Why an AOT cache cannot be trained for this image, or null when it can. */
     static String unsupportedReason(ImageBuilder.Plan plan) {
-        // The runtime probe applies to EVERY layout — an app tree trains in a container exactly
-        // like a jar layout when the host cannot execute the image's JVM, and skipping the probe
-        // used to surface as a raw `Cannot run program "docker"` mid-train (JK-1759).
+        // The runtime probe applies to every layout — an app tree trains in a container exactly
+        // like a jar layout when the host cannot execute the image's JVM.
         if (containerRuntime(plan.config().dockerExecutable()) == null
                 && !BaseJre.hostCanExecute(plan.config().platforms())) {
             return "this host can neither run the image's JVM directly (it builds for "
@@ -137,7 +136,7 @@ final class AotCacheTrainer {
         stamp(staging);
         // Snapshot what was staged before any training process runs: whatever the app writes
         // during record/assemble (logs, embedded-DB files) is not application content and must
-        // not become image bytes (JK-1758).
+        // not become image bytes.
         java.util.Set<String> stagedFiles = snapshotRelative(staging);
 
         // A container has to be addressable to be stopped; the local path signals the process
@@ -321,7 +320,7 @@ final class AotCacheTrainer {
         List<String> cmd = new ArrayList<>(List.of(runtime, "run", "--rm", "--name", name));
         // Rootful docker writes app.aot/app.aotconf into the bind mount as root:root — the
         // follow-up setLastModifiedTime/delete then fails AFTER a successful training run, and
-        // the root-owned staging dir breaks the next build's cleanup (JK-1760). Rootless podman
+        // the root-owned staging dir breaks the next build's cleanup. Rootless podman
         // and rootless docker map container-root to the invoking user, so --user there would
         // remap through subuids and break instead — only rootful docker gets the flag.
         if (rootfulDocker(runtime)) {
@@ -382,14 +381,14 @@ final class AotCacheTrainer {
      * A line proving the JVM refused the cache, or null. Matches the specific refusal shapes
      * {@code -Xlog:aot} emits (cache not loaded/used/mapped, identity mismatches) rather than any
      * line containing "failed" — AOT logging also narrates non-fatal per-item failures ("failed to
-     * load class ...") on runs where the cache itself mapped fine (JK-1783).
+     * load class ...") on runs where the cache itself mapped fine.
      */
     static String refusal(String log) {
         for (String line : log.split("\n")) {
             if (!line.contains("[aot")) continue;
             String lower = line.toLowerCase(Locale.ROOT);
             // The refusal shapes -Xlog:aot emits — but not per-item noise like "failed to
-            // load class X", which appears on runs where the cache mapped fine (JK-1783).
+            // load class X", which appears on runs where the cache mapped fine.
             if (lower.contains("mismatch")
                     || lower.contains("different version")
                     || lower.contains("unable to map")

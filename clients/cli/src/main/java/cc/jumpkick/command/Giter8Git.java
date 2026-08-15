@@ -13,7 +13,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Fetch remote Giter8 templates via {@code git clone} into {@code ~/.cache/jk/templates/} (JK-1203).
+ * Fetch remote Giter8 templates via {@code git clone} into {@code ~/.cache/jk/templates/}.
  *
  * <p>Supported refs:
  *

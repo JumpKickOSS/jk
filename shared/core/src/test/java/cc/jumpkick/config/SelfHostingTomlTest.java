@@ -121,8 +121,7 @@ class SelfHostingTomlTest {
     void short_name_manifests_do_not_use_removed_catalog_pin() throws Exception {
         // catalog = … and host-local libs.toml are gone; short names resolve through the layered
         // catalog (project jk-libs.toml → global → bundled). Self-host manifests must not
-        // resurrect the old per-manifest pin — the workspace-root jk-libs.toml pins them instead
-        // (JK-1840, see catalog_pins_cover_every_self_host_short_name).
+        // set a per-manifest pin — the workspace-root jk-libs.toml pins them instead.
         for (String rel : List.of(
                 "jk.toml",
                 "clients/cli/jk.toml",
@@ -137,12 +136,9 @@ class SelfHostingTomlTest {
     }
 
     /**
-     * JK-1840 — the anti-repoint guard. The downloaded registry catalog (libs.global.toml)
-     * shadows the bundled floor, so without a project-layer pin a registry edit/compromise or a
-     * stale mirror could silently repoint jk's own dependencies at the next re-lock (the
-     * JK-1811/JK-1812 hazard). The workspace root jk-libs.toml must pin every catalog-resolved
-     * short name any workspace manifest uses, each to the bundled coordinate, and the layered
-     * chain must actually serve those pins from the project layer.
+     * The workspace-root jk-libs.toml must pin every catalog-resolved short name any workspace
+     * manifest uses, each to the bundled coordinate, so a registry edit cannot silently
+     * repoint them. The layered chain must serve those pins from the project layer.
      */
     @Test
     void catalog_pins_cover_every_self_host_short_name() throws Exception {
@@ -195,10 +191,10 @@ class SelfHostingTomlTest {
     }
 
     /**
-     * JK-1863 — the re-lock-in-the-same-commit guard, automated. Any jk.toml / jk-libs.toml edit
+     *  — the re-lock-in-the-same-commit guard, automated. Any jk.toml / jk-libs.toml edit
      * must land with a re-stamped jk-lock.toml: a stale stamp costs every fresh checkout an ~18s
      * re-resolve, and staleness detection is what stands between an edited catalog pin and a
-     * silently wrong resolution (JK-1864). Runs in CI via the plain unit tier.
+     * silently wrong resolution. Runs in CI via the plain unit tier.
      */
     @Test
     void lock_stamp_matches_manifests() throws Exception {
@@ -259,7 +255,7 @@ class SelfHostingTomlTest {
 
     @Test
     void thin_worker_plugins_have_plugin_main_without_fat_assembly() throws Exception {
-        // JK-1347: workers are thin jars + classpath sidecars, not assembly fat jars.
+        // workers are thin jars + classpath sidecars, not assembly fat jars.
         // Only the engine stays assembly = true for ship.
         for (String module : List.of("plugins/test-runner", "plugins/java-compiler")) {
             JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
@@ -288,7 +284,7 @@ class SelfHostingTomlTest {
             JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
             assertThat(p.mainClass()).as(module).isEqualTo("cc.jumpkick.plugin.process.PluginMain");
             assertThat(p.assembly())
-                    .as(module + " must not set assembly (JK-1347 thin workers)")
+                    .as(module + " must not set assembly (thin workers)")
                     .isFalse();
         }
     }

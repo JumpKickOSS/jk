@@ -12,7 +12,7 @@ import org.jline.utils.AttributedStyle;
  * rounded into a pill: powerline half-circle caps {@code U+E0B6} / {@code U+E0B4} (drawn in the
  * chip's background color) flank the bare label. Otherwise the label is space-padded to give the
  * chip width. Those two codepoints exist only in Nerd Font v2+ / Powerline-Extra, which is why they
- * are gated separately from the wedge triangles (JK-1970).
+ * are gated separately from the wedge triangles.
  */
 public final class Badge {
 

@@ -7,7 +7,7 @@ import cc.jumpkick.cli.Ansi;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1887: OSC sequences (OSC-8 hyperlinks, taskbar progress) are invisible, but JLine's
+ * OSC sequences (OSC-8 hyperlinks, taskbar progress) are invisible, but JLine's
  * {@code stripAnsi} leaves them in place — a link span inside a width-managed widget would
  * inflate the measured width by the URL plus escape bytes and blow out column sizing.
  */

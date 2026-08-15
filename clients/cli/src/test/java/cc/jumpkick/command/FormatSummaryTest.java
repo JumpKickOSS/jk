@@ -6,8 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1670: {@code jk format --check} exits 1 on drift, so its closing wedge has to agree with its
- * exit code. It used to print a green {@code ✓ Format  14 to format, …} and return 1.
+ * {@code jk format --check} exits 1 on drift, so its closing wedge has to agree with its
+ * exit code.
  */
 class FormatSummaryTest {
 

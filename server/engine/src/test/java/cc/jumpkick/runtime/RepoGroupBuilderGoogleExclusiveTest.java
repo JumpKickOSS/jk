@@ -28,7 +28,7 @@ class RepoGroupBuilderGoogleExclusiveTest {
     @Test
     void user_explicit_groups_on_google_extend_the_defaults() {
         // Additive, not replacing: binding one extra group must not silently re-open the
-        // AndroidX namespace to other repos (JK-1744).
+        // AndroidX namespace to other repos.
         RepositorySpec custom = new RepositorySpec(
                 "google",
                 URI.create("https://dl.google.com/dl/android/maven2/"),

@@ -119,7 +119,7 @@ public final class LockFlow {
         // inside WorkspaceMerge (idempotent either way).
         effective = Variants.unionDependencies(effective);
 
-        // Serialize per lock dir (JK-1356). A conservative freshen that waited here may find the
+        // Serialize per lock dir. A conservative freshen that waited here may find the
         // lock already fresh — a concurrent job won the flight; skip the duplicate resolve.
         synchronized (LockGate.monitorFor(lockDir)) {
             if (conservative && Files.exists(lockFile) && !cc.jumpkick.lock.LockFreshness.isStale(lockDir, lockFile)) {
@@ -161,7 +161,7 @@ public final class LockFlow {
             boolean workspaceLock)
             throws Exception {
         // Capture the manifests digest before resolving: an edit that lands mid-resolution must
-        // leave the written lock stale, not stamp itself fresh from the live files (JK-1357).
+        // leave the written lock stale, not stamp itself fresh from the live files.
         String manifestsSha = cc.jumpkick.lock.LockManifestDigest.compute(lockDir);
         Cas cas = JkStores.cas(cache);
         RepoGroup baseRepos =
@@ -248,7 +248,7 @@ public final class LockFlow {
             lock = lock.withKotlin(existing.kotlin());
         }
         // First lock of a Kotlin project (nothing to carry): resolve the pin like lockBuildPlan
-        // does — a lock written without it loses compiler provisioning (JK-1371).
+        // does — a lock written without it loses compiler provisioning.
         if (lock.kotlin() == null) {
             String kotlinVersion = LockPlans.resolveKotlinVersion(effective, pathPrep.repos());
             if (kotlinVersion != null) lock = lock.withKotlin(kotlinVersion);

@@ -44,7 +44,7 @@ public final class KeepRuleEmitter {
                 // `*** name(...);` any method. Tagged members (`f:`/`m:`) emit the one form they
                 // name; an untagged name (older surface JSON) does not say which, so emit both
                 // rather than guess and drop the one that mattered.
-                //
+
                 // Initializers are the exception — they have no return type, and Graal's
                 // reflect-config lists constructors under `methods` as `<init>`.
                 StringJoiner members = new StringJoiner(" ");
@@ -66,7 +66,7 @@ public final class KeepRuleEmitter {
             }
             case PROXY_INTERFACE -> {
                 // One proxy declaration carries its whole ordered interface list, comma-joined
-                // (JK-1799); R8 has no proxy concept, so each interface gets its own keep.
+                // ; R8 has no proxy concept, so each interface gets its own keep.
                 StringBuilder rules = new StringBuilder();
                 for (String iface : entry.name().split(",")) {
                     String cls = className(iface);
@@ -84,7 +84,7 @@ public final class KeepRuleEmitter {
                         .append(" { java.lang.Object writeReplace(); java.lang.Object readResolve();")
                         .append(" <init>(...); }");
                 // The declared deserialization constructor lives on another class ("c:" member,
-                // JK-1801); its constructors are invoked reflectively, so they need keeping too.
+                // ); its constructors are invoked reflectively, so they need keeping too.
                 for (String member : entry.members()) {
                     String ctor = member.startsWith("c:") ? className(member.substring(2)) : null;
                     if (ctor != null) {
@@ -108,7 +108,7 @@ public final class KeepRuleEmitter {
      * The class a keep rule can name for a metadata entry, or null when there is none. Library
      * metadata routinely registers arrays ({@code {"name":"byte[]"}}, {@code [Ljava.lang.String;})
      * and primitives; interpolated verbatim they produce {@code -keep class byte[]}, which is not
-     * ProGuard syntax and aborts R8 (JK-1754). Primitives and primitive arrays need no keeping;
+     * ProGuard syntax and aborts R8. Primitives and primitive arrays need no keeping;
      * a reference array keeps its element class. The reachability emitter is untouched — Graal
      * accepts the original names, so they pass through verbatim there.
      */

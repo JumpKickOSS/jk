@@ -67,7 +67,7 @@ class MemoryProbeTest {
         // when the host is cache-heavy (MemAvailable > 2× MemFree).
         // The probe re-reads /proc/meminfo, so this compares two samples of a counter that moves
         // with system activity. A fixed 1 MiB epsilon failed whenever a build was running on the
-        // same machine (JK-1650); scale the slack to the host instead. The property under test is
+        // same machine; scale the slack to the host instead. The property under test is
         // qualitative — "available tracks MemAvailable, not MemFree" — and the midpoint assertion
         // below is what actually pins it.
         long drift = Math.max(64L * 1024 * 1024, m.totalBytes() / 100);

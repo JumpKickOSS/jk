@@ -103,7 +103,7 @@ class NativeWeightDirtyJarTest {
         assertThat(reserved).isGreaterThanOrEqualTo(100);
 
         // The production path (BuildPlan.estimatedTotalWeight) evaluates weight suppliers on
-        // JkThreads.io() workers — the flag must survive that hop (JK-1807).
+        // JkThreads.io() workers — the flag must survive that hop.
         int reservedViaPool = EffortWeights.withOverReserveTails(() -> CompletableFuture.supplyAsync(
                         () -> EffortWeights.nativeWeight(dir), cc.jumpkick.run.JkThreads.io())
                 .join());

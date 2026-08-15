@@ -19,7 +19,7 @@ public final class ClockProgressStrategy implements HeaderProgressStrategy {
     public static final double DISPLAY_CAP = 0.99;
     private static final long SCALE = 1000L;
 
-    /** Cross-strategy monotonic floor — shared with the paired weighted strategy (JK-1815). */
+    /** Cross-strategy monotonic floor — shared with the paired weighted strategy. */
     private final SharedPeak peak;
 
     public ClockProgressStrategy() {

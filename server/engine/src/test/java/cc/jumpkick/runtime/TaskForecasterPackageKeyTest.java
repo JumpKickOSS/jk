@@ -58,10 +58,10 @@ class TaskForecasterPackageKeyTest {
 
     @Test
     void post_clean_sibling_fingerprints_in_the_live_file_form(@TempDir Path tmp) throws Exception {
-        // JK-1369: a jk-clean-wiped sibling recovered from the CAS must fingerprint as
+        // a jk-clean-wiped sibling recovered from the CAS must fingerprint as
         // "file:<sha>" (what the live step stored for the on-disk jar), not "cas:<blob path>" —
         // otherwise the post-clean assembly forecast can never key-match.
-        // JK-1511: the pinned sha names a payload blob in the CACHE-tier pool the action records
+        // the pinned sha names a payload blob in the CACHE-tier pool the action records
         // write to — recovery must consult the action cache's own CAS, not the artifact store.
         byte[] bytes = "sibling-jar-bytes".getBytes(StandardCharsets.UTF_8);
         String sha = cc.jumpkick.util.Hashing.sha256Hex(bytes);
@@ -83,7 +83,7 @@ class TaskForecasterPackageKeyTest {
 
     @Test
     void present_requires_payload_blobs_not_just_the_record(@TempDir Path tmp) throws Exception {
-        // JK-1529: LRU eviction removes cache-CAS payloads while records live on (TTL). A record
+        // LRU eviction removes cache-CAS payloads while records live on (TTL). A record
         // whose blobs are gone cannot restore, so the forecast must report RUN, not CACHED.
         Path cacheRoot = tmp.resolve("cache");
         var ac = new cc.jumpkick.task.ActionCache(
@@ -111,7 +111,7 @@ class TaskForecasterPackageKeyTest {
     @Test
     void assembly_forecast_tokens_match_build_pipelines_recipe(@TempDir Path tmp) throws Exception {
         // Regression: forecast used whole-lock RUNTIME + all sibling lock RUNTIME jars while
-        // assemblyStep (JK-1345) uses ModuleRuntimeClasspath — permanent "repackage" on explain.
+        // assemblyStep uses ModuleRuntimeClasspath — permanent "repackage" on explain.
         Path classes = Files.createDirectories(tmp.resolve("classes"));
         Path classFile = classes.resolve("App.class");
         Files.writeString(classFile, "fake");

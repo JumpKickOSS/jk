@@ -46,7 +46,7 @@ class LockManifestDigestTest {
 
     @Test
     void crlf_manifest_hashes_like_lf(@TempDir Path dir) throws Exception {
-        // JK-1357: autocrlf checkouts must not read as permanently stale.
+        // autocrlf checkouts must not read as permanently stale.
         String lf = """
                 group = "com.example"
                 name = "app"
@@ -61,7 +61,7 @@ class LockManifestDigestTest {
 
     @Test
     void path_dep_manifest_feeds_the_digest(@TempDir Path dir) throws Exception {
-        // JK-1357: a path-source dep's jk.toml feeds the lock, so editing it flips the digest.
+        // a path-source dep's jk.toml feeds the lock, so editing it flips the digest.
         Path app = dir.resolve("app");
         Path lib = dir.resolve("lib");
         Files.createDirectories(app);
@@ -90,7 +90,7 @@ class LockManifestDigestTest {
 
     @Test
     void unreadable_manifest_fails_loud(@TempDir Path dir) throws Exception {
-        // JK-1357: never silently produce an unstamped (permanently stale) digest — an I/O
+        // never silently produce an unstamped (permanently stale) digest — an I/O
         // failure reading a contributing manifest must surface, not vanish into a missing stamp.
         org.junit.jupiter.api.Assumptions.assumeTrue(
                 dir.getFileSystem().supportedFileAttributeViews().contains("posix"));
@@ -116,7 +116,7 @@ class LockManifestDigestTest {
 
     @Test
     void manifest_edited_mid_lock_reads_stale(@TempDir Path dir) throws Exception {
-        // JK-1357 TOCTOU: the stamp reflects the bytes that fed resolution, not the live files.
+        //  TOCTOU: the stamp reflects the bytes that fed resolution, not the live files.
         Files.writeString(dir.resolve("jk.toml"), """
                 group = "com.example"
                 name = "app"

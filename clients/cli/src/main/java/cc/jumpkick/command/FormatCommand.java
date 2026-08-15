@@ -129,7 +129,7 @@ public final class FormatCommand implements CliCommand {
                     if (!global.outputIsJson()) {
                         // Under --check a changed file is a finding, not an accomplishment: the
                         // command is about to exit non-zero *because* of these lines, so they must
-                        // not wear the success glyph (JK-1670).
+                        // not wear the success glyph.
                         String mark = check
                                 ? (Theme.active().isAnsi()
                                         ? Theme.colorize(
@@ -342,7 +342,7 @@ public final class FormatCommand implements CliCommand {
      *
      * <p>{@code --check} answers a yes/no question and exits 1 on drift, so drift renders as a
      * failure and names the command that fixes it — a green wedge there sends a contributor who
-     * ran it locally to a red CI job with no idea why (JK-1670). Without {@code --check},
+     * ran it locally to a red CI job with no idea why. Without {@code --check},
      * reformatting files is work done, not a problem.
      */
     static Summary summarize(boolean check, int changed, int clean, int errors, String took) {

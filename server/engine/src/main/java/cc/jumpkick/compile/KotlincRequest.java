@@ -5,13 +5,15 @@ import cc.jumpkick.jdk.SupportedJdk;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import lombok.Builder;
 
 /**
  * Input to {@link KotlincDriver} (forks {@code jk-kotlin-compiler} / Build Tools API).
- * {@code workerClasspath} is the plugin jar + BTA closure; {@code workingDir} null means full
- * (non-incremental) compile. Compiler plugins must use {@link Plugin}, not raw {@code -Xplugin}
- * in {@code extraArgs} (BTA ignores those).
+ * {@code workerClasspath} is the plugin jar + BTA closure; a null {@code workingDir} is a full
+ * compile. Compiler plugins must use {@link Plugin}, not raw {@code -Xplugin} in
+ * {@code extraArgs} (BTA ignores those).
  */
+@Builder
 public record KotlincRequest(
         List<Path> sources,
         List<Path> classpath,
@@ -29,7 +31,7 @@ public record KotlincRequest(
          */
         String moduleName) {
 
-    /** One compiler plugin: its id, jar, and {@code key=value} options. */
+    /** One compiler plugin: id, jar, and {@code key=value} options. */
     public record Plugin(String id, Path jar, List<String> options) {
 
         public Plugin {
@@ -59,146 +61,16 @@ public record KotlincRequest(
         }
     }
 
-    /** Back-compat constructor: no module name. */
-    public KotlincRequest(
-            List<Path> sources,
-            List<Path> classpath,
-            Path outputDir,
-            int jvmTarget,
-            List<Path> workerClasspath,
-            Path javaHome,
-            Path workingDir,
-            Path snapshotDir,
-            List<String> extraArgs,
-            List<Plugin> plugins) {
-        this(
-                sources,
-                classpath,
-                outputDir,
-                jvmTarget,
-                workerClasspath,
-                javaHome,
-                workingDir,
-                snapshotDir,
-                extraArgs,
-                plugins,
-                null);
-    }
-
-    /** Back-compat constructor: no compiler plugins. */
-    public KotlincRequest(
-            List<Path> sources,
-            List<Path> classpath,
-            Path outputDir,
-            int jvmTarget,
-            List<Path> workerClasspath,
-            Path javaHome,
-            Path workingDir,
-            Path snapshotDir,
-            List<String> extraArgs) {
-        this(
-                sources,
-                classpath,
-                outputDir,
-                jvmTarget,
-                workerClasspath,
-                javaHome,
-                workingDir,
-                snapshotDir,
-                extraArgs,
-                List.of(),
-                null);
+    public static class KotlincRequestBuilder {
+        private List<Path> sources = List.of();
+        private List<Path> classpath = List.of();
+        private int jvmTarget = 21;
+        private List<Path> workerClasspath = List.of();
+        private List<String> extraArgs = List.of();
+        private List<Plugin> plugins = List.of();
     }
 
     public boolean incremental() {
         return workingDir != null;
-    }
-
-    public static Builder builder() {
-        return new Builder();
-    }
-
-    public static final class Builder {
-        private List<Path> sources = List.of();
-        private List<Path> classpath = List.of();
-        private Path outputDir;
-        private int jvmTarget = 21;
-        private List<Path> workerClasspath = List.of();
-        private Path javaHome;
-        private Path workingDir;
-        private Path snapshotDir;
-        private List<String> extraArgs = List.of();
-        private List<Plugin> plugins = List.of();
-        private String moduleName;
-
-        public Builder sources(List<Path> v) {
-            this.sources = v;
-            return this;
-        }
-
-        public Builder classpath(List<Path> v) {
-            this.classpath = v;
-            return this;
-        }
-
-        public Builder outputDir(Path v) {
-            this.outputDir = v;
-            return this;
-        }
-
-        public Builder jvmTarget(int v) {
-            this.jvmTarget = v;
-            return this;
-        }
-
-        public Builder workerClasspath(List<Path> v) {
-            this.workerClasspath = v;
-            return this;
-        }
-
-        public Builder javaHome(Path v) {
-            this.javaHome = v;
-            return this;
-        }
-
-        public Builder workingDir(Path v) {
-            this.workingDir = v;
-            return this;
-        }
-
-        public Builder snapshotDir(Path v) {
-            this.snapshotDir = v;
-            return this;
-        }
-
-        public Builder extraArgs(List<String> v) {
-            this.extraArgs = v;
-            return this;
-        }
-
-        public Builder plugins(List<Plugin> v) {
-            this.plugins = v;
-            return this;
-        }
-
-        public Builder moduleName(String v) {
-            this.moduleName = v;
-            return this;
-        }
-
-        public KotlincRequest build() {
-            return new KotlincRequest(
-                    sources,
-                    classpath,
-                    outputDir,
-                    jvmTarget,
-                    workerClasspath,
-                    javaHome,
-                    workingDir,
-                    snapshotDir,
-                    extraArgs,
-                    plugins,
-                    moduleName);
-        }
     }
 }

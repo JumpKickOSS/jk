@@ -225,7 +225,7 @@ public final class InstallPlans {
 
     /**
      * See {@link cc.jumpkick.repo.RepoArtifactStore#writeToLocalStore} — the one shared
-     * local-install write, routed to the store root (JK-1445): the resolver reads
+     * local-install write, routed to the store root: the resolver reads
      * {@code repos/local/} from the store since the cache/store split, so writing to the raw
      * cache root strands the artifact.
      */

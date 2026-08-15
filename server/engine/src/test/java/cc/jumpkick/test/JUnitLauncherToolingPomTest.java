@@ -79,7 +79,7 @@ class JUnitLauncherToolingPomTest {
 
     @Test
     void a_major_line_floor_never_reaches_the_pom_as_a_literal_version(@TempDir Path dir) throws IOException {
-        // JK-1669: `version = "3"` is a caret floor in jk.toml. Maven has no caret, so writing it
+        // `version = "3"` is a caret floor in jk.toml. Maven has no caret, so writing it
         // through would import io.quarkus.platform:quarkus-bom:3 — a version that does not exist.
         module(dir, "name = \"svc\"\n\n[quarkus]\nversion = \"3\"\n");
         JUnitLauncher.ensureQuarkusToolingPom(dir);

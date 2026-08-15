@@ -479,7 +479,7 @@ public final class TestRunner implements Plugin {
                     // accepted but currently a no-op — wired in a follow-up
                 } else {
                     // A stale installed jk-test-runner driven by a newer engine lands here —
-                    // name the likely cause instead of a bare unknown-arg (JK-1825).
+                    // name the likely cause instead of a bare unknown-arg.
                     throw new IllegalArgumentException("unknown arg: " + a
                             + " (engine/test-runner version mismatch? reinstall jk so jk-test-runner"
                             + " matches the engine)");

@@ -674,7 +674,7 @@ class EngineServerTest {
         EnginePaths.Paths p = paths(shortTempDir());
         // Real version, not a synthetic one: the first build freshens the stub lock and stamps
         // jk = { version = JkVersion.VERSION }; a differing server version would make request #2
-        // delegate to a non-materialized install instead of exercising the fast path (JK-1446).
+        // delegate to a non-materialized install instead of exercising the fast path.
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, cc.jumpkick.model.JkVersion.VERSION, null);
         Thread serverThread = runInBackground(server);
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
@@ -873,7 +873,7 @@ class EngineServerTest {
      * {@code plan-finish}, that the stale files are gone, and that the {@code.prune.lock}
      * cross-process guard was created (the hosted path always takes it — the Wave-3 finding's fix).
      *
-     * <p>Both planted files are <strong>cache</strong> tier. Since the JK-1531 split a plain prune
+     * <p>Both planted files are <strong>cache</strong> tier. Since the  split a plain prune
      * owns the cache root only; store temps belong to `jk storage clean`, and `CacheCommandTest`
      * pins that half.
      */

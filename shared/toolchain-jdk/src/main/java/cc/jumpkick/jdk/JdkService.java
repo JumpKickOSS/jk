@@ -101,7 +101,7 @@ public final class JdkService {
         InstalledJdk installed = installer.extractInstalled(entry, archive);
         // Journal the install for the JDK-usage stats that feed future wizards. The ledger lives
         // beside the installs it describes: derive it from the registry's root, not the default
-        // path, so an overridden jdks dir (JK_JDKS_DIR / tests) journals in its own tree (JK-1951).
+        // path, so an overridden jdks dir (JK_JDKS_DIR / tests) journals in its own tree.
         new JdkAccessLedger(registry.jdksRoot().resolve(JdkAccessLedger.FILE_NAME))
                 .touch(
                         installed.home(),

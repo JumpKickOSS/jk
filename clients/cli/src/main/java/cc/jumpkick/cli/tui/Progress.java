@@ -7,7 +7,7 @@ import cc.jumpkick.cli.theme.Theme;
  * Bounded progress: bar + derived percent + optional suffix. Snapshot renderer; live cadence
  * (plain 20% steps) is {@link #plainDecade} / {@link #shouldEmitPlain}.
  */
-public final class Progress {
+public record Progress(long numerator, long denominator, RichText suffix, Look look, int segments) {
 
     public enum Look {
         /** Underlined block bar used on the plan header ({@code █}). */
@@ -21,22 +21,14 @@ public final class Progress {
     /** Plain live updates fire at these percents (0 is the start line; 100 is settle-only). */
     public static final int PLAIN_STEP_PERCENT = 20;
 
-    private final long numerator;
-    private final long denominator;
-    private final RichText suffix;
-    private final Look look;
-    private final int segments;
+    public Progress {
+        suffix = suffix == null ? RichText.empty() : suffix;
+        look = look == null ? Look.PLAN : look;
+        segments = segments <= 0 ? DEFAULT_SEGMENTS : segments;
+    }
 
     public Progress(long numerator, long denominator) {
         this(numerator, denominator, RichText.empty(), Look.PLAN, DEFAULT_SEGMENTS);
-    }
-
-    private Progress(long numerator, long denominator, RichText suffix, Look look, int segments) {
-        this.numerator = numerator;
-        this.denominator = denominator;
-        this.suffix = suffix == null ? RichText.empty() : suffix;
-        this.look = look == null ? Look.PLAN : look;
-        this.segments = segments <= 0 ? DEFAULT_SEGMENTS : segments;
     }
 
     public Progress suffix(RichText text) {
@@ -53,26 +45,6 @@ public final class Progress {
 
     public Progress segments(int n) {
         return new Progress(numerator, denominator, suffix, look, n);
-    }
-
-    public long numerator() {
-        return numerator;
-    }
-
-    public long denominator() {
-        return denominator;
-    }
-
-    public RichText suffix() {
-        return suffix;
-    }
-
-    public Look look() {
-        return look;
-    }
-
-    public int segments() {
-        return segments;
     }
 
     public int percent() {

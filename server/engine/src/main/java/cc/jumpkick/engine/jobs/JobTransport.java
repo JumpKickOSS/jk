@@ -14,7 +14,7 @@ public sealed interface JobTransport {
     /** CLI: connection owns the job; watch BUILD_CANCEL / EOF; join before return. */
     record SocketWatch(BufferedReader reader, BufferedWriter writer) implements JobTransport {}
 
-    /** HTTP/MCP: return request id immediately; progress is the sink (SSE). JK-1928. */
+    /** HTTP/MCP: return request id immediately; progress is the sink (SSE).. */
     record FireAndForget() implements JobTransport {}
 
     static @Nullable BufferedWriter writerOf(JobTransport t) {

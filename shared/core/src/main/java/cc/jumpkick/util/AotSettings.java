@@ -28,7 +28,7 @@ public final class AotSettings {
     /**
      * Process-local kill switch for <em>all</em> AOT training (engine sidecar + workers). Set when
      * this engine is displaced/orphaned so it cannot refill {@code state/aot} after the new primary
-     * wiped the directory (JK-1452). Not an env/property — only the running process flips it.
+     * wiped the directory. Not an env/property — only the running process flips it.
      */
     private static volatile boolean trainingSuppressed;
 
@@ -54,7 +54,7 @@ public final class AotSettings {
 
     /**
      * Permanently (for this process) forbid AOT training. Used by a displaced or orphaned engine
-     * so missing caches after a primary wipe are not recreated while draining (JK-1452).
+     * so missing caches after a primary wipe are not recreated while draining.
      */
     public static void suppressTraining() {
         trainingSuppressed = true;

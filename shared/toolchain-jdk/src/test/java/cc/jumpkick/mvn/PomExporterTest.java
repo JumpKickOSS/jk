@@ -97,7 +97,7 @@ class PomExporterTest {
     @Test
     void locked_version_matches_full_package_keys_for_plain_and_tests_kind() {
         // The engine's lock map keys on the full package id (g:a:type:classifier) — the
-        // exporter must hit it for the plain jar AND the tests-kind test-jar edge (JK-1642).
+        // exporter must hit it for the plain jar AND the tests-kind test-jar edge.
         JkBuild b = parse("""
                 group = "com.example"
                 name  = "app"
@@ -169,7 +169,7 @@ class PomExporterTest {
     }
 
     /**
-     * Regression (JK-1580): plugin executions must use Maven's OWN element vocabulary —
+     * Regression: plugin executions must use Maven's OWN element vocabulary —
      * {@code <phase>}/{@code <goals>}/{@code <goal>}. A domain-vocabulary rename once rewrote
      * these literals to {@code <step>}/{@code <pipelines>}, producing poms Maven rejects with
      * "Unrecognised tag".

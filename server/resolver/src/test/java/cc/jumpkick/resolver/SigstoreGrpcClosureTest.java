@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1811: sigstore-java's non-optional runtime dep {@code grpc-netty-shaded} (and its closure —
+ * Sigstore-java's non-optional runtime dep {@code grpc-netty-shaded} (and its closure —
  * grpc-core, com.google.android:annotations, perfmark) must survive the lock. The b1a1e7d9 re-lock
  * silently dropped the whole subtree: an unresolvable transitive must fail the solve loudly, never
  * vanish.

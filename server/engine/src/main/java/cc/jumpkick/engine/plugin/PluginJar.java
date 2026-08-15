@@ -165,7 +165,7 @@ public enum PluginJar {
      * group:artifact:version} per line — see {@code jk.plugin-conventions} installLocal and
      * {@code scripts/publish-maven-repo.sh}). Resolve every coordinate — first-party from the
      * official repo, the rest from Maven Central — and write the absolute-path launch sidecar next
-     * to the fetched jar so a thin worker starts on a cold store (JK-1351). A missing {@code .deps}
+     * to the fetched jar so a thin worker starts on a cold store. A missing {@code .deps}
      * means a legacy fat jar: nothing to do. A listed-but-unfetchable dep fails the whole fetch —
      * a thin worker without its classpath would only die later with a bare CNFE.
      */

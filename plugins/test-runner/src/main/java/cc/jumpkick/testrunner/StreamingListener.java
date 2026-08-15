@@ -112,7 +112,7 @@ final class StreamingListener implements EngineExecutionListener {
 
     /**
      * Bound for a failure message on the wire — keep in lock-step with the engine aggregator's
-     * {@code JUnitLauncher.ResultAggregator.MAX_MESSAGE_CHARS} (JK-1948). Capping here bounds the
+     * {@code JUnitLauncher.ResultAggregator.MAX_MESSAGE_CHARS}. Capping here bounds the
      * JSONL line itself; the engine re-caps for workers that predate this.
      */
     private static final int MAX_MESSAGE_CHARS = 8_192;
@@ -179,7 +179,7 @@ final class StreamingListener implements EngineExecutionListener {
     /**
      * Structured identity from the uniqueId, plus the human display name when the engine has no
      * class/method segments (Spock spec/feature, Cucumber feature/scenario) — without it, progress
-     * and FAILED labels regress to the raw bracketed uniqueId (JK-1903).
+     * and FAILED labels regress to the raw bracketed uniqueId.
      */
     private static void putIdentityWithDisplay(TestDescriptor descriptor, Map<String, Object> payload) {
         JUnitUniqueId.parse(descriptor.getUniqueId().toString()).putIdentity(payload);

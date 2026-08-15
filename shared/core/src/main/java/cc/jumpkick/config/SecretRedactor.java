@@ -62,7 +62,7 @@ public final class SecretRedactor {
     /**
      * Mask a trailing fragment of {@code text} that is a leading prefix (≥ {@link
      * #MIN_SECRET_LENGTH} chars, shorter than the whole value) of any secret. Capture-time
-     * truncation can cut mid-value (JK-1960); the surviving prefix no longer matches the
+     * truncation can cut mid-value; the surviving prefix no longer matches the
      * exact-substring pass in {@link #redact}, so the seam is masked separately by callers that
      * know where the cut landed.
      */
@@ -140,7 +140,7 @@ public final class SecretRedactor {
     }
 
     /**
-     * A redactor that additionally matches each secret's JSON-string-escaped rendering (JK-1975).
+     * A redactor that additionally matches each secret's JSON-string-escaped rendering.
      *
      * <p>Replay paths re-redact <em>escaped JSON documents</em>: a secret containing {@code "},
      * {@code \}, or a control character was persisted through {@code Jsonl.quote} in escaped form,

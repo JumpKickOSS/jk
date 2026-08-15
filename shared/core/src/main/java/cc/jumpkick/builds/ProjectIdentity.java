@@ -28,13 +28,13 @@ import java.util.stream.Stream;
  * <ol>
  *   <li>Explicit root-level {@code id} in {@code jk.toml} (rare override)
  *   <li>{@code project-id} in root {@code jk-lock.toml} (normal auto-id)
- *   <li>Recovered id from an existing {@code identity.toml} (path or git match — JK-1794)
+ *   <li>Recovered id from an existing {@code identity.toml} (path or git match — )
  *   <li>Git remote + path relative to worktree root
  *   <li>Absolute path (last resort)
  * </ol>
  *
  * <p>Coord ({@code group:name}) is display metadata and is deliberately absent from the hash
- * material — renaming a project must not split its identity (JK-1794).
+ * material — renaming a project must not split its identity.
  *
  * <p>The opaque {@link #id()} is URL-safe and is the sole key under {@code builds/projects/&lt;id&gt;/}.
  * Absolute path is operational (where to build), not the identity.
@@ -83,7 +83,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
         // path or git match). This keeps locked/previously-built projects on one id even when the
         // checkout has no lock right now — including dead checkouts (deleted workspace) whose
         // history rows must still route to the existing project home, not a fresh
-        // unknown:unknown hash (JK-1794).
+        // unknown:unknown hash.
         Optional<String> recovered = recoverId(abs, git);
         if (recovered.isPresent()) {
             if (git.isPresent()) {
@@ -99,7 +99,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
         }
 
         // Coord (group:name) is display metadata, NOT identity material: hashing it in
-        // would split a lockless project's identity on rename (JK-1794). The remote+relPath (GIT)
+        // would split a lockless project's identity on rename. The remote+relPath (GIT)
         // or the absolute path (PATH) alone are the identity.
         if (git.isPresent()) {
             GitInfo g = git.get();

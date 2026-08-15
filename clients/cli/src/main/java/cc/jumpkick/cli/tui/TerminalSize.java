@@ -41,7 +41,7 @@ public final class TerminalSize {
             System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
 
     /**
-     * SIGWINCH invalidation (JK-1966): with the cache probed only at plan start, everything
+     * SIGWINCH invalidation: with the cache probed only at plan start, everything
      * rendered after a mid-build resize — failure-snippet budgets, settle wedges — used the stale
      * width until the next plan. The handler only drops the cache (never probes); the next
      * consumer pays one native ioctl per physical resize, not per frame. Installed lazily at
@@ -69,7 +69,7 @@ public final class TerminalSize {
     /**
      * Resize invalidation. The generation bump comes FIRST: a probe that was already in flight
      * when the resize landed re-checks the generation before caching, so its (possibly pre-resize)
-     * result cannot overwrite the invalidation (JK-1988). Bump-then-clear, because
+     * result cannot overwrite the invalidation. Bump-then-clear, because
      * clear-then-bump reopens the window: the probe could store between the two.
      */
     static void onResize() {
@@ -89,7 +89,7 @@ public final class TerminalSize {
             int gen = resizeGeneration.get();
             s = probe.get();
             // A WINCH mid-probe means this result may be pre-resize: return it (best effort for
-            // this frame) but leave the cache empty so the next consumer re-probes (JK-1988).
+            // this frame) but leave the cache empty so the next consumer re-probes.
             if (resizeGeneration.get() == gen) cached = s;
         }
         return s;
@@ -168,7 +168,7 @@ public final class TerminalSize {
             // The volatile flag is written LAST (finally): the unsynchronized fast path above
             // reads it without the monitor, so publishing it before the handles let a second
             // thread see attempted=true with null handles and cache the 80x24 env fallback as
-            // the process-wide size (JK-1987). finally keeps a linker failure from re-throwing
+            // the process-wide size. finally keeps a linker failure from re-throwing
             // on every later probe.
             try {
                 Linker linker = Linker.nativeLinker();

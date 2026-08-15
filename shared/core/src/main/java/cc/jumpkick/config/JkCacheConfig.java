@@ -86,7 +86,7 @@ public record JkCacheConfig(
 
     /** Effective machine config: user-global file + env overrides + CI/disk defaults. */
     public static JkCacheConfig resolve() {
-        // Each tier's clamp probes its own volume — JK_STORE_DIR may live elsewhere (JK-1772).
+        // Each tier's clamp probes its own volume — JK_STORE_DIR may live elsewhere.
         return resolve(
                 JkDirs.userConfigFile(),
                 System::getenv,
@@ -179,7 +179,7 @@ public record JkCacheConfig(
         }
         // The tier's own footprint counts as reclaimable headroom — clamping on raw free makes
         // the budget shrink as the tier fills (evict → free rises → budget grows → refill) and
-        // converge far below the 80%-of-free intent (JK-1772). The usage walk runs only on
+        // converge far below the 80%-of-free intent. The usage walk runs only on
         // small volumes, where the tier is small by construction.
         long own = tierUsedBytes == null ? 0L : Math.max(0L, tierUsedBytes.getAsLong());
         double shareGb = ((disk.freeBytes() + own) * 0.8) / 2.0 / (double) GIB;
@@ -264,7 +264,7 @@ public record JkCacheConfig(
         int ttl = nonNegative(scanInt(scan, "cache.record-ttl-days")).orElse(DEFAULTS.recordTtlDays());
         OptionalDouble cacheGb = positiveDouble(scanDouble(scan, "cache.max-cache-size-gb"));
         // Pre-rename `-mb` keys still pin the budget (converted) — ignoring them silently would
-        // grow a deliberately small cache to the multi-GiB default on upgrade (JK-1790).
+        // grow a deliberately small cache to the multi-GiB default on upgrade.
         if (storeGb.isEmpty()) {
             storeGb = legacyMbAsGb(scan, "cache.max-store-size-mb");
         }

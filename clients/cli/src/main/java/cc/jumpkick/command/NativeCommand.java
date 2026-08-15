@@ -129,7 +129,7 @@ public final class NativeCommand implements CliCommand {
             }
         }
 
-        // Single project: -m/--affected-since still validate (JK-1366).
+        // Single project: -m/--affected-since still validate.
         if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {
             var entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
             var sel = cc.jumpkick.config.ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affectedSince);
@@ -265,7 +265,7 @@ public final class NativeCommand implements CliCommand {
         if (mode != BuildPlanConsole.Mode.AUTO && mode != BuildPlanConsole.Mode.QUIET) {
             int[] idx = {0};
             // Engine-corrected denominator: with -m the engine adds transitive prereqs the client
-            // never counted, so the plan's modulesTotal wins over the client-side guess (JK-1361).
+            // never counted, so the plan's modulesTotal wins over the client-side guess.
             int[] total = {totalModules};
             boolean json = mode == BuildPlanConsole.Mode.JSON;
             var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {

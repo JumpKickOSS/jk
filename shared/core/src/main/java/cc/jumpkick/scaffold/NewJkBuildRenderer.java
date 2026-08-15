@@ -139,7 +139,7 @@ public final class NewJkBuildRenderer {
                 }
                 continue;
             }
-            // Library catalog short name → main dep floating to latest (JK-1197).
+            // Library catalog short name → main dep floating to latest.
             var hit = LibraryCatalog.bundled().lookup(id.strip()).orElse(null);
             if (hit != null) {
                 String coord = hit.group() + ":" + hit.artifact();

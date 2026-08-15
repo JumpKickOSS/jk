@@ -29,7 +29,7 @@ class JkBuildParserTest {
 
     @Test
     void dead_test_tag_keys_fail_with_a_migration_message() {
-        // JK-1825: silently ignoring the renamed keys would run the tests the config excluded.
+        // silently ignoring the renamed keys would run the tests the config excluded.
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
                         [test]
                         default-exclude-tags = ["slow"]
@@ -2025,7 +2025,7 @@ class JkBuildParserTest {
     }
 
     /**
-     * JK-1483: the parse memo must hold one entry per file. Keying it by (path, size, mtime) made
+     * the parse memo must hold one entry per file. Keying it by (path, size, mtime) made
      * every save of a jk.toml strand the previous JkBuild for the process's lifetime.
      *
      * <p>The memo is process-wide, so other tests may already hold entries — assert rewrites do not

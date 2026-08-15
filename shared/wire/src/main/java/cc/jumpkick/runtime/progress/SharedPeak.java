@@ -2,7 +2,7 @@
 package cc.jumpkick.runtime.progress;
 
 /**
- * Monotonic displayed-fraction floor shared by a clock/weighted strategy pair (JK-1815).
+ * Monotonic displayed-fraction floor shared by a clock/weighted strategy pair.
  *
  * <p>Each strategy held a private peak, so the AUTO takeover (weighted preflight climbs to ~10%,
  * R0 seed switches to clock starting near 0) visibly repainted the bar backwards on every seeded

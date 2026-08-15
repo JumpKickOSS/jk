@@ -33,9 +33,8 @@ import java.util.Map;
  * {@code jk plugin …} — first-party worker packaging helpers for self-host / dogfood.
  *
  * <p>{@code install-local} side-loads workspace <strong>thin</strong> PluginMain jars into the
- * local Maven layout, writes a {@code .classpath} sidecar of runtime deps (JK-1347), and
- * hard-links worker + deps into {@code $JK_STORE_DIR/lib/&lt;id&gt;/} for compact launch paths
- * (JK-1348).
+ * local Maven layout, writes a {@code .classpath} sidecar of runtime deps, and
+ * hard-links worker + deps into {@code $JK_STORE_DIR/lib/&lt;id&gt;/} for compact launch paths.
  */
 public final class PluginCommand extends GroupCommand {
 
@@ -56,7 +55,7 @@ public final class PluginCommand extends GroupCommand {
 
     /**
      * {@code jk plugin uninstall <artifactId>} — drop a side-loaded worker: its
-     * {@code store/lib/<id>/} hardlink dir (unpins CAS inodes for GC — JK-1353) and its
+     * {@code store/lib/<id>/} hardlink dir (unpins CAS inodes for GC — ) and its
      * {@code repos/local} Maven entries.
      */
     static final class UninstallSub implements CliCommand {
@@ -198,10 +197,9 @@ public final class PluginCommand extends GroupCommand {
                     deps = List.of();
                 }
                 // Sidecar must not list the worker jar itself (resolve() prepends it).
-                // The lock closure is authoritative when non-empty — merging the old sidecar back
-                // in would carry removed/upgraded deps forever (JK-1352). Only an empty closure
-                // falls back to WorkerClasspath.paths (findPluginSdk) so pure-jk thin jars never
-                // ship an empty .classpath (JK-1347).
+                // The lock closure is authoritative when non-empty. Only an empty closure
+                // falls back to WorkerClasspath.paths (findPluginSdk) so thin jars never
+                // ship an empty .classpath.
                 List<Path> sideDeps = new ArrayList<>();
                 Path sourceAbs = source.toAbsolutePath().normalize();
                 for (Path d : deps) {
@@ -229,9 +227,9 @@ public final class PluginCommand extends GroupCommand {
                 WorkerClasspath.writeSidecar(dest, sideDeps);
                 // Also write sidecar next to the build output so -Djk.*.plugin.jar overrides work.
                 WorkerClasspath.writeSidecar(source, sideDeps);
-                // JK-1348: short store/lib/<id>/ hardlinks for ps-friendly -cp (prefer over
+                // short store/lib/<id>/ hardlinks for ps-friendly -cp (prefer over
                 // sidecar). WorkerLib is rooted in the global store, so an isolated --cache-dir
-                // install must not touch it (JK-1354) — sidecar absolute paths still launch.
+                // install must not touch it — sidecar absolute paths still launch.
                 Path libDir = null;
                 if (!in.value("cache-dir").isPresent()) {
                     try {

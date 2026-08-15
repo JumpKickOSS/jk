@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1526: a prune pass runs {@link CasSweep} then {@link LruEvictor} over the same pool. In a
+ * A prune pass runs {@link CasSweep} then {@link LruEvictor} over the same pool. In a
  * real run the sweep's victims are gone before the evictor walks; in a dry run they are still on
  * disk, so without the excluded-shas hand-off the same blob was counted by both and dry-run
  * FILES/BYTES over-reported.

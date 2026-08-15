@@ -27,9 +27,11 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
 /** {@link VerbHost} wiring from the engine composition root. */
+@RequiredArgsConstructor
 public final class EngineVerbBridge implements VerbHost {
 
     private final LongSupplier eventRequestId;
@@ -46,37 +48,6 @@ public final class EngineVerbBridge implements VerbHost {
     private final JkHistoryConfig historyConfig;
     private final Supplier<Path> metricsFile;
     private final InFlightBuilds inFlight;
-
-    public EngineVerbBridge(
-            LongSupplier eventRequestId,
-            JobSessions sessions,
-            EngineListeners listeners,
-            JobEnvelope jobs,
-            JournalWriter journalWriter,
-            SsePublisher sse,
-            IdleHousekeeping idle,
-            ReentrantReadWriteLock cacheGate,
-            AtomicInteger activeBuildPlans,
-            LongSupplier clock,
-            BuildJournal journal,
-            JkHistoryConfig historyConfig,
-            Supplier<Path> metricsFile,
-            InFlightBuilds inFlight) {
-        this.eventRequestId = eventRequestId;
-        this.sessions = sessions;
-        this.listeners = listeners;
-        this.jobs = jobs;
-        this.journalWriter = journalWriter;
-        this.sse = sse;
-        this.idle = idle;
-        this.cacheGate = cacheGate;
-        this.activeBuildPlans = activeBuildPlans;
-        this.clock = clock;
-        this.journal = journal;
-        this.historyConfig = historyConfig;
-        this.metricsFile = metricsFile;
-        this.inFlight = inFlight;
-    }
 
     @Override
     public long eventRequestId() {

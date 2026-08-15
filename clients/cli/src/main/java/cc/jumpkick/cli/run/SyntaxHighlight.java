@@ -147,7 +147,7 @@ public final class SyntaxHighlight {
             BLOCK_COMMENT,
             LINE_COMMENT,
             OPEN_COMMENT,
-            Rule.of("'(?:\\\\.|[^'\\\\\\r\\n])+'", Role.STRING), // strings, not char literals: unbounded (JK-1912)
+            Rule.of("'(?:\\\\.|[^'\\\\\\r\\n])+'", Role.STRING), // strings, not char literals: unbounded
             Rule.of("'''[\\s\\S]*?'''", Role.STRING),
             Rule.of("\"\"\"[\\s\\S]*?\"\"\"", Role.STRING),
             Rule.of("\"(?:\\\\.|[^\"\\\\\\r\\n])*\"", Role.STRING),

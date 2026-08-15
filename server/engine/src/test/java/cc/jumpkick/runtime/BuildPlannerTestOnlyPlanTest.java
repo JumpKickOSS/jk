@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Regression (JK-1575): testOnly plans must construct valid. run-tests requires the plugin tasks
+ * Regression: testOnly plans must construct valid. run-tests requires the plugin tasks
  * that are test-only or contribute to the test classpath, so those tasks (and the plugin tasks
  * they transitively require) must be in the plan even though the packaging-feeding rest stay
  * out; and appendDeclaredTails must not re-root a test/compile plan onto package tails that
@@ -190,7 +190,7 @@ class BuildPlannerTestOnlyPlanTest {
     }
 
     /**
-     * Regression (JK-1593): compile-test's classpath includes classes/main, which copy-resources
+     * Regression: compile-test's classpath includes classes/main, which copy-resources
      * writes — without this edge the two are racing siblings under build-logic-after-compile and
      * the fingerprint intermittently walks a half-copied dir (`jk build -r` on resource modules).
      */

@@ -67,8 +67,7 @@ public final class LockPlans {
 
     /**
      * Cross-step key: manifests digest captured at parse time — the write step stamps this instead
-     * of re-reading live files, so a manifest edited mid-resolution leaves a stale-reading lock
-     * (JK-1357).
+     * of re-reading live files, so a manifest edited mid-resolution leaves a stale-reading lock.
      */
     public static final BuildPlanKey<String> MANIFESTS_SHA = BuildPlanKey.of("manifests-sha", String.class);
 
@@ -476,8 +475,7 @@ public final class LockPlans {
                                                 pathPrep.project().build().unmappedPolicy())
                                         .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures));
                         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
-                        // jk update floats everything — including the Kotlin compiler pin, which
-                        // this plan used to drop from the lock entirely (JK-1371).
+                        // jk update floats everything, including the Kotlin compiler pin.
                         String kotlinVersion = resolveKotlinVersion(eff, pathPrep.repos());
                         if (kotlinVersion != null) {
                             ctx.label("resolved kotlin " + kotlinVersion);
@@ -594,7 +592,7 @@ public final class LockPlans {
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         Lockfile oldLock = Files.exists(lockFile) ? LockfileReader.read(lockFile) : null;
 
-        // Digest captured before resolving (JK-1357).
+        // Digest captured before resolving.
         String manifestsSha = cc.jumpkick.lock.LockManifestDigest.compute(dir);
         Cas cas = JkStores.cas(cache);
         RepoGroup baseRepos = RepoGroupBuilder.buildFor(effective, repoUrl, cas);
@@ -779,7 +777,7 @@ public final class LockPlans {
     /**
      * Resolve the project's {@code kotlin} version selector to a concrete Kotlin compiler release.
      * Returns {@code null} for a Java project or when resolution can't complete. Shared with
-     * {@link LockFlow} and the update plan so every lock-write path stamps the pin (JK-1371).
+     * {@link LockFlow} and the update plan so every lock-write path stamps the pin.
      */
     static String resolveKotlinVersion(JkBuild effective, RepoGroup repos) {
         if (!effective.project().isKotlin()) return null;
@@ -811,7 +809,7 @@ public final class LockPlans {
      * coordinate but under different bytes than the lock pins, "isn't cached" is misleading — the
      * artifact is right there, it simply is not the one the lockfile named. Say so and name the
      * escape hatch, since `jk sync` alone will not resolve a first-write-wins mirror entry
-     * (JK-1462; see docs/mirror-verification-decision.md).
+     * (see docs/mirror-verification-decision.md).
      *
      * @return a clause to append to the message, or "" when the mirror has nothing to say
      */
@@ -867,7 +865,7 @@ public final class LockPlans {
             String checksum = pkg.checksum();
             if (checksum == null) {
                 // Nothing to materialize for POM-only rows. Still say so — a checksum-less
-                // jar row is how JK-1649 used to hide a missing artifact.
+                // jar row must not be silently treated as present.
                 System.err.println("jk: note: lock row "
                         + pkg.name()
                         + "@"

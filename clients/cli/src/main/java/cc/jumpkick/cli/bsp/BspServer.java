@@ -697,7 +697,7 @@ public final class BspServer {
         return b.toString();
     }
 
-    /** Compiled once, not per JSON-RPC message (JK-1490): the field set is small and fixed. */
+    /** Compiled once, not per JSON-RPC message: the field set is small and fixed. */
     private static final Map<String, Pattern> STRING_FIELD_PATTERNS = new ConcurrentHashMap<>();
 
     private static final Pattern ID_PATTERN = Pattern.compile("\"id\"\\s*:\\s*(\"[^\"]*\"|\\d+)");

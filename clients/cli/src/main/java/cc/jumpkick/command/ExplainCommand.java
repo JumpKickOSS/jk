@@ -58,7 +58,7 @@ public final class ExplainCommand implements CliCommand {
 
     // Hidden aliases plan / why-rebuilt live in Jk.VERB_ALIASES (exact-token rewrite before
     // dispatch) — never here: dispatcher aliases join the unique-prefix candidate set and would
-    // make `jk pl` ambiguous with plugin and `jk wh` with why (JK-1364).
+    // make `jk pl` ambiguous with plugin and `jk wh` with why.
 
     @Override
     public String description() {
@@ -392,7 +392,7 @@ public final class ExplainCommand implements CliCommand {
             case COMPILE -> {
                 // An incremental recompile must read as one: the forecast step text carries the
                 // real changed count ("3 sources changed"); the module total would overstate the
-                // work (JK-1897).
+                // work.
                 int changed = changedSourceCount(m);
                 if (changed >= 0) yield fmtCount(changed, "source changed", "sources changed");
                 yield m.sourceCount() > 0 ? fmtCount(m.sourceCount(), "source", "sources") : null;
@@ -402,7 +402,7 @@ public final class ExplainCommand implements CliCommand {
         };
     }
 
-    /** {@code "N source(s) changed"} from {@code JavaIncrementalCompile}, digit-guarded (JK-1836). */
+    /** {@code "N source(s) changed"} from {@code JavaIncrementalCompile}, digit-guarded. */
     private static final java.util.regex.Pattern CHANGED_SOURCES =
             java.util.regex.Pattern.compile("(?<!\\d)(\\d+) sources? changed");
 

@@ -44,7 +44,7 @@ class JUnitLauncherAggregatorTest {
     @Test
     void pathological_stacks_are_truncated_at_capture() {
         // The stack is worker-controlled input copied onto wire, SSE, and journal — a
-        // deep-recursion failure must not ride megabytes of frames through the pipeline (JK-1880).
+        // deep-recursion failure must not ride megabytes of frames through the pipeline.
         String frame = "\tat C.recurse(C.java:2)\n";
         String stack = "StackOverflowError\n" + frame.repeat(200_000 / frame.length());
         String truncated = JUnitLauncher.ResultAggregator.truncateStack(stack);
@@ -57,7 +57,7 @@ class JUnitLauncherAggregatorTest {
 
     @Test
     void pathological_messages_are_truncated_at_capture() {
-        // Same rationale as the stack cap (JK-1948): an assertEquals diff of two multi-MB
+        // Same rationale as the stack cap: an assertEquals diff of two multi-MB
         // strings is a single-line message that rides wire, SSE, journal, and web card.
         String message = "expected: <" + "x".repeat(3_000_000) + "> but was: <y>";
         String truncated = JUnitLauncher.ResultAggregator.truncateMessage(message);
@@ -87,7 +87,7 @@ class JUnitLauncherAggregatorTest {
     @Test
     void engines_without_class_method_segments_keep_their_display_label() {
         // Spock/Cucumber uniqueIds have no [class:]/[method:] segments; the worker sends the
-        // display name for those and labels must use it — not the raw bracketed id (JK-1903).
+        // display name for those and labels must use it — not the raw bracketed id.
         var agg = new JUnitLauncher.ResultAggregator();
         agg.accept("{\"event\":\"finished\",\"uniqueId\":\"[engine:spock]/[spec:LockSpec]/[feature:floats the lock]\","
                 + "\"testEngine\":\"spock\",\"display\":\"floats the lock\","

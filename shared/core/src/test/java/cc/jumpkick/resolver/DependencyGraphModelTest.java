@@ -21,7 +21,7 @@ class DependencyGraphModelTest {
         assertThat(DependencyGraphModel.parseScopes("")).containsExactly(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);
         assertThat(DependencyGraphModel.parseScopes("test,main")).containsExactly(Scope.MAIN, Scope.TEST);
         // An unknown token is an error, not a silent fallback: swallowing it hid the endpoint's
-        // missing percent-decode for a whole release (JK-1607).
+        // missing percent-decode for a whole release.
         org.junit.jupiter.api.Assertions.assertThrows(
                 IllegalArgumentException.class, () -> DependencyGraphModel.parseScopes("bogus"));
         assertThat(DependencyGraphModel.validScopes()).contains("main").contains("test");
@@ -137,7 +137,7 @@ class DependencyGraphModelTest {
                 .contains("com.acme:app→org.eclipse.jgit:org.eclipse.jgit");
     }
 
-    // JK-1638: one default scope set, shared by jk tree and the graph endpoint from one definition.
+    // one default scope set, shared by jk tree and the graph endpoint from one definition.
     @Test
     void default_scopes_are_the_jk_tree_defaults_from_one_definition(@TempDir Path dir) throws Exception {
         assertThat(DependencyGraphModel.defaultScopes()).isEqualTo(DependencyTree.defaultScopeOrder());
@@ -154,7 +154,7 @@ class DependencyGraphModelTest {
     }
 
     /**
-     * JK-1623: a declared external whose TOML table key equals a workspace module's name must stay
+     * a declared external whose TOML table key equals a workspace module's name must stay
      * an external artifact — the coordinate decides, exactly like {@code ModuleOrder}. The old
      * {@code idByName.get(d.library())} fallback drew a module edge and hid the published artifact.
      */
@@ -197,7 +197,7 @@ class DependencyGraphModelTest {
         assertThat(pairs).doesNotContain("cc.jumpkick:compat→cc.jumpkick:jk-api");
     }
 
-    // JK-1624: a workspace member whose jk.toml is gone is an ERROR naming the module, never an
+    // a workspace member whose jk.toml is gone is an ERROR naming the module, never an
     // empty graph ("your project has no dependencies").
     @Test
     void missing_module_jk_toml_throws_instead_of_returning_empty(@TempDir Path root) throws Exception {
@@ -235,7 +235,7 @@ class DependencyGraphModelTest {
     }
 
     /**
-     * JK-1625: the transitive closure is walked once (shared seen), and expansion stops at the
+     * the transitive closure is walked once (shared seen), and expansion stops at the
      * node cap with {@code truncated} set instead of handing the browser an unbounded graph.
      */
     @Test
@@ -292,7 +292,7 @@ class DependencyGraphModelTest {
     }
 
     /**
-     * JK-1636: one GA declared as both the main jar and {@code kind = "tests"} keeps two distinct
+     * one GA declared as both the main jar and {@code kind = "tests"} keeps two distinct
      * nodes (package-key identity), two edges, and both lock subtrees expanded.
      */
     @Test
@@ -363,7 +363,7 @@ class DependencyGraphModelTest {
         assertThat(labels(g)).contains("com.foo:main-leaf").contains("com.foo:test-leaf");
     }
 
-    /** JK-1639: the workspace root's own [dependencies] appear, hanging off a root node. */
+    /** the workspace root's own [dependencies] appear, hanging off a root node. */
     @Test
     void workspace_root_dependencies_appear_with_a_root_node(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("jk.toml"), """
@@ -400,7 +400,7 @@ class DependencyGraphModelTest {
                 .isEqualTo(".");
     }
 
-    /** JK-1639: a graph built from a MODULE dir draws sibling deps as modules, not externals. */
+    /** a graph built from a MODULE dir draws sibling deps as modules, not externals. */
     @Test
     void module_dir_draws_siblings_as_modules(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("jk.toml"), """

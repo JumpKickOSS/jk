@@ -19,8 +19,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1659: the package staging dir is what the jar and its cache key are taken from, so a file
- * left behind by a previous build must never survive into it. JK-1658: it is staged at most once
+ * the package staging dir is what the jar and its cache key are taken from, so a file
+ * left behind by a previous build must never survive into it. it is staged at most once
  * per build, and never when packaging is going to be restored from cache.
  */
 class BuildPlannerStagedClassesTest {

@@ -62,7 +62,7 @@ class ConfirmTest {
 
     @Test
     void raw_mode_needs_both_a_promptable_human_and_ansi() {
-        // JK-1420: --no-ansi (or TERM=dumb etc.) must take the cooked line-input path even when a
+        // --no-ansi (or TERM=dumb etc.) must take the cooked line-input path even when a
         // human is on a TTY — raw keystroke intercept and the CSI settle assume ANSI capability.
         assertThat(Confirm.rawEligible(true, true)).isTrue();
         assertThat(Confirm.rawEligible(true, false)).isFalse();

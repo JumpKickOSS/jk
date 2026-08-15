@@ -53,7 +53,7 @@ class LruEvictorTest {
 
     @Test
     void preferEvict_beats_recent_atime(@TempDir Path tempDir) throws IOException {
-        // JK-1721: a hot Class-C native must not displace a cold class blob under size pressure.
+        // A hot Class-C native must not displace a cold class blob under size pressure.
         Cas cas = new Cas(tempDir);
         Path classBlob = cas.put("class-bytes-payload".getBytes());
         Path nativeBlob = cas.put("native-binary-payload-xxxxxxxx".getBytes());

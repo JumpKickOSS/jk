@@ -11,7 +11,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** JK-1934: Java samples are a record + optional {@code @NullMarked}, never {@code @Data}. */
+/** Java samples are a record + optional {@code @NullMarked}, never {@code @Data}. */
 class NewScaffolderSampleTest {
 
     @Test

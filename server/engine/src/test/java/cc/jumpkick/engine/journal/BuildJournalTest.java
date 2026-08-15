@@ -71,8 +71,7 @@ class BuildJournalTest {
      * The rollup buckets by the stage the plan <em>declared</em>, not by re-guessing from the task
      * name. Those disagreed: a plugin source generator reports {@code generate} on the wire and was
      * bucketed {@code compile} here, and every {@code stage(RESOLVE)} task in ScriptPlans landed in
-     * {@code other} — so the priors were fed by a different task set than the UI displayed
-     * (JK-1610).
+     * {@code other} — so the priors were fed by a different task set than the UI displayed.
      */
     @Test
     void metrics_bucket_by_the_declared_stage_not_the_task_name() throws Exception {
@@ -92,7 +91,7 @@ class BuildJournalTest {
     }
 
     /**
-     * Regression (JK-1587): {@code phase.*.wall-ms} is one summed key per run — duplicate
+     * Regression: {@code phase.*.wall-ms} is one summed key per run — duplicate
      * per-task keys would be folded as a MEAN by MetricsHarvest, deflating the phase priors.
      */
     @Test
@@ -234,10 +233,10 @@ class BuildJournalTest {
     }
 
     /**
-     * JK-1471: build numbers are per project, so deleting "8" must not resolve into whichever
+     * build numbers are per project, so deleting "8" must not resolve into whichever
      * project home happens to sort first.
      */
-    /** JK-1491: an in-flight run's stub must survive a prune that runs alongside it. */
+    /** an in-flight run's stub must survive a prune that runs alongside it. */
     @Test
     void prune_never_reaps_a_running_entry() {
         BuildJournal j = new BuildJournal(dir);
@@ -249,7 +248,7 @@ class BuildJournalTest {
         assertThat(j.get(live)).isPresent();
     }
 
-    /** JK-1479/JK-1481: the limited views must agree with the full list, just truncated. */
+    /** the limited views must agree with the full list, just truncated. */
     @Test
     void limited_list_and_raw_records_match_the_full_list() {
         BuildJournal j = new BuildJournal(dir);

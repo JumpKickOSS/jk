@@ -8,7 +8,7 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** JK-1412: start-script clients must materialize with their dist jars, not as a lone script. */
+/** Start-script clients must materialize with their dist jars, not as a lone script. */
 class SelfMaterializeDevDistTest {
 
     @TempDir

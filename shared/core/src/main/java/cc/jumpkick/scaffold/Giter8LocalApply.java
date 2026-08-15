@@ -75,7 +75,7 @@ public final class Giter8LocalApply {
                 }
                 // A template is untrusted input (any git ref a user names). Never read through a
                 // symlink in the template tree — that would copy host files (SSH keys, tokens)
-                // into the generated project (JK-1465).
+                // into the generated project.
                 if (!attrs.isRegularFile() || Files.isSymbolicLink(file)) {
                     return FileVisitResult.CONTINUE;
                 }
@@ -86,7 +86,7 @@ public final class Giter8LocalApply {
                 // and the on-disk path share one prefix.
                 Path out = destReal.resolve(renderedRel).normalize();
                 // The rendered name carries template-controlled property values, so it can spell
-                // `../..` or an absolute path — every write must stay under dest (JK-1463).
+                // `../..` or an absolute path — every write must stay under dest.
                 requireInside(destReal, out, renderedRel);
                 Files.createDirectories(out.getParent());
                 requireInside(destReal, out.getParent().toRealPath().resolve(out.getFileName()), renderedRel);

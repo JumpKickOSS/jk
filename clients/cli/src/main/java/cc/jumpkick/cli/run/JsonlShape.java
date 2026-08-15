@@ -252,7 +252,7 @@ public final class JsonlShape {
 
     /**
      * Enriched test-failure error for details.jsonl / --output json: module, engine, class, method,
-     * exceptionClass, and a single top-level stack (no nested throwable duplicate — JK-1880).
+     * exceptionClass, and a single top-level stack (no nested throwable duplicate —).
      */
     static String error(String step, String code, String msg, cc.jumpkick.run.TestFailureInfo failure) {
         if (failure == null) return error(step, code, msg);

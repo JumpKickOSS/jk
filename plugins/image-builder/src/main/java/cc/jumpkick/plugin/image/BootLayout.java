@@ -67,7 +67,7 @@ final class BootLayout {
                 dest.toAbsolutePath().toString());
         Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
         // Drain on a separate thread: readAllBytes() on this thread blocks to EOF, which makes
-        // the timeout below unreachable while the child holds its pipe open (JK-1761).
+        // the timeout below unreachable while the child holds its pipe open.
         StringBuilder captured = new StringBuilder();
         Thread reader = Thread.ofVirtual().start(() -> {
             try (var in = process.inputReader(StandardCharsets.UTF_8)) {

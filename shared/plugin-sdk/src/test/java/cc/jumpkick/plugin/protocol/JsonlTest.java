@@ -95,7 +95,7 @@ class JsonlTest {
 
     @Test
     void controlCharsRoundTripThroughEveryStringReader() {
-        // quote() emits \\uXXXX for control chars; every decoder must read them back (JK-1879) —
+        // quote() emits \\uXXXX for control chars; every decoder must read them back —
         // an assertion message with ESC or a vertical tab crosses worker → engine → CLI intact.
         String raw = "esc \u001b vt \u000b bell \u0007 end";
         String quoted = Jsonl.quote(raw);
@@ -114,7 +114,7 @@ class JsonlTest {
     void malformedUnicodeEscapesAreKeptLiterally() {
         assertThat(Jsonl.str("{\"v\":\"a\\uzzzz b\"}", "v")).isEqualTo("a\\uzzzz b");
         assertThat(Jsonl.str("{\"v\":\"tail\\u12\"}", "v")).isEqualTo("tail\\u12");
-        // Signed "hex" is malformed too (JK-1961): Integer.parseInt would accept it and decode
+        // Signed "hex" is malformed too: Integer.parseInt would accept it and decode
         // garbage while eating four chars.
         assertThat(Jsonl.str("{\"v\":\"a\\u-123 b\"}", "v")).isEqualTo("a\\u-123 b");
         assertThat(Jsonl.str("{\"v\":\"a\\u+0AB b\"}", "v")).isEqualTo("a\\u+0AB b");

@@ -19,7 +19,7 @@ class ProgressBarTest {
         if (cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
             assertThat(visible).startsWith("█".repeat(18) + " ".repeat(22));
         } else {
-            // Plain / CI: ASCII #/- (JK-1376)
+            // Plain / CI: ASCII #/-
             assertThat(visible).startsWith("#".repeat(18) + "-".repeat(22));
         }
         assertThat(visible).contains("45%");

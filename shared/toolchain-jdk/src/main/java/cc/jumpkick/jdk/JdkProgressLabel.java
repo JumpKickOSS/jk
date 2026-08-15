@@ -39,7 +39,7 @@ public final class JdkProgressLabel {
     /**
      * {@code 0..100}, or {@code -1} when {@code total} is unknown. Floors rather than rounds:
      * "100%" means the last byte arrived, never "99.5% and still downloading" — the
-     * downloading/installing boundary the label design hinges on (JK-1951).
+     * downloading/installing boundary the label design hinges on.
      */
     public static int percent(long read, long total) {
         if (total <= 0) return -1;

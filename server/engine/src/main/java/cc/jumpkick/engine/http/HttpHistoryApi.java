@@ -54,7 +54,7 @@ final class HttpHistoryApi {
                             new HashMap<>()));
             return;
         }
-        // Single pass, single parse, streamed out (JK-1942): the kind gate and the "does this row
+        // Single pass, single parse, streamed out: the kind gate and the "does this row
         // even need enrichment" checks are lexical scans over the raw JSON, so a finished,
         // id-stamped record — the overwhelming majority — is written through verbatim without ever
         // being parsed; only in-flight or legacy rows pay MiniJson. The response is chunked
@@ -85,7 +85,7 @@ final class HttpHistoryApi {
     }
 
     /**
-     * Defense in depth (JK-1963): records persisted before write-time redaction (JK-1878) may
+     * Defense in depth: records persisted before write-time redaction may
      * carry {@code .env} secrets in message/stack, and this endpoint streams record bodies
      * verbatim. Re-redact against each record's own dir; {@code cache} amortises the env lookup
      * per distinct dir across one response (rows overwhelmingly share a dir).
@@ -102,7 +102,7 @@ final class HttpHistoryApi {
                 }
             });
             // The document is escaped JSON: match escaped renderings too, or a secret containing
-            // a quote/backslash/control char streams through verbatim (JK-1975).
+            // a quote/backslash/control char streams through verbatim.
             return redactor.forEscapedJson().redact(raw);
         } catch (RuntimeException e) {
             return raw;
@@ -173,10 +173,10 @@ final class HttpHistoryApi {
             if (!(parsed instanceof Map<?, ?> m0)) return raw;
             @SuppressWarnings("unchecked")
             Map<String, Object> m = (Map<String, Object>) m0;
-            // Durable project id for dashboard routing (JK-1727+). New rows are stamped at
-            // journal.begin (JK-1750); only legacy rows resolve here, through the process memo —
+            // Durable project id for dashboard routing. New rows are stamped at
+            // journal.begin; only legacy rows resolve here, through the process memo —
             // a bare resolve is two TOML parses plus up to three git subprocesses per row.
-            // resolve() recovers an existing identity.toml id before hashing (JK-1794), so a
+            // resolve() recovers an existing identity.toml id before hashing, so a
             // dead checkout's rows route to its recorded project home instead of minting a
             // fresh unknown:unknown id that 404s on the detail page.
             if (!(m.get("projectId") instanceof String pid) || pid.isBlank()) {
@@ -194,7 +194,7 @@ final class HttpHistoryApi {
             m.put("jid", match.requestId());
             if (match.startedAt() > 0) {
                 m.put("startedAt", match.startedAt());
-                // Engine "now" beside engine startedAt — skew-free elapsed for the SPA (JK-1839).
+                // Engine "now" beside engine startedAt — skew-free elapsed for the SPA.
                 m.put("serverNow", System.currentTimeMillis());
             }
             if (!Double.isNaN(match.progress())) m.put("progress", match.progress());
@@ -224,7 +224,7 @@ final class HttpHistoryApi {
             mm.put("dir", mod.dir() == null ? "" : mod.dir());
             if (mod.coord() != null && !mod.coord().isBlank()) mm.put("coord", mod.coord());
             // Explicit lifecycle bit: success=false alone was ambiguous between "still
-            // running" and "failed" (JK-1846) — the SPA guessed from task statuses and
+            // running" and "failed" — the SPA guessed from task statuses and
             // misclassified module-level failures with no FAIL task.
             mm.put("finished", mod.finished());
             mm.put("success", mod.finished() && mod.success());
@@ -250,7 +250,7 @@ final class HttpHistoryApi {
     }
 
     /**
-     * Package-private for direct unit testing of the rebind rules (JK-1522).
+     * Package-private for direct unit testing of the rebind rules.
      */
     HttpLive.@Nullable Run matchLiveRun(Map<String, Object> rec) {
         List<HttpLive.Run> live = liveRuns.get();
@@ -266,7 +266,7 @@ final class HttpHistoryApi {
         // Single live job with matching dir — only for records that carry no buildNumber (older
         // stubs). A record WITH a buildNumber that failed the strict match is a different run
         // (e.g. a stale running stub from a crashed engine) and must not rebind to the current
-        // one's stream (JK-1522).
+        // one's stream.
         if (dir != null && buildNumber <= 0) {
             HttpLive.Run only = null;
             for (HttpLive.Run h : live) {

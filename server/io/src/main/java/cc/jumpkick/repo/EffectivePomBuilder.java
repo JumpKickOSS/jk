@@ -316,7 +316,7 @@ public final class EffectivePomBuilder {
         // managed list (~2k entries for quarkus-bom parents) on every GAV dominated engine heap.
         List<Pom.Dep> retainedManaged = "pom".equalsIgnoreCase(child.packaging()) ? mergedManaged : List.of();
 
-        // Same rule for properties (JK-1942): the flattened ancestor map is only read when this
+        // Same rule for properties: the flattened ancestor map is only read when this
         // POM serves as a parent or BOM — always packaging=pom (Maven rejects non-pom parents).
         // Jar/war artifacts had ${…} substitution applied into their dep lists above; retaining
         // the whole ancestor flatten (~200 entries for spring/quarkus parents) on every GAV in
@@ -380,7 +380,7 @@ public final class EffectivePomBuilder {
         Map<String, EffectivePom> out = new LinkedHashMap<>();
         Thread self = Thread.currentThread();
         for (var e : futures.entrySet()) {
-            // Register the join in the waits-for graph (JK-1804): a worker whose own await chain
+            // Register the join in the waits-for graph: a worker whose own await chain
             // reaches this thread could not see joins through these futures, so neither side
             // detected the cycle — the worker parked for the full JOIN_FALLBACK_MS while this
             // thread sat in an unbounded join(). With the edge recorded, the worker's

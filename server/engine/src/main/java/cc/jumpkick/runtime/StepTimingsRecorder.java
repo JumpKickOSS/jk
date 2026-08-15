@@ -12,16 +12,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import lombok.RequiredArgsConstructor;
 
 /**
  * Records per-unit {@link StepTimings.Sample}s from one module's real (non-skip) step runs into a
  * shared sink; caller folds via {@link StepTimings#record} at build end. Also emits absolute-ms
  * {@link HostLearnedRates.HostSample}s for continuous host {@link Calibration}.
  *
- * <p>for {@code run-tests}, prefer the actual {@link TestSummary} method count (and class
+ * <p>For {@code run-tests}, prefer the actual {@link TestSummary} method count (and class
  * count when available via display names) over planned ticks so the next plan's learned rate
  * matches real suite size.
  */
+@RequiredArgsConstructor
 public final class StepTimingsRecorder implements BuildPlanListener {
 
     /** Cap a single hung suite from poisoning host method averages (~5 min/method). */
@@ -45,17 +47,6 @@ public final class StepTimingsRecorder implements BuildPlanListener {
 
     public StepTimingsRecorder(String moduleKey, List<StepTimings.Sample> sink, Supplier<TestSummary> testSummary) {
         this(moduleKey, sink, testSummary, null);
-    }
-
-    public StepTimingsRecorder(
-            String moduleKey,
-            List<StepTimings.Sample> sink,
-            Supplier<TestSummary> testSummary,
-            List<HostLearnedRates.HostSample> hostSink) {
-        this.moduleKey = moduleKey;
-        this.sink = sink;
-        this.testSummary = testSummary;
-        this.hostSink = hostSink;
     }
 
     @Override

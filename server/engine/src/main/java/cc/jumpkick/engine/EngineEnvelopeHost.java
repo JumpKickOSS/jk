@@ -16,9 +16,11 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
+import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
 /** {@link JobEnvelope.Host} wiring from the engine composition root. */
+@RequiredArgsConstructor
 public final class EngineEnvelopeHost implements JobEnvelope.Host {
 
     private final BooleanSupplier tryStart;
@@ -39,45 +41,6 @@ public final class EngineEnvelopeHost implements JobEnvelope.Host {
     private final String version;
     private final JkHistoryConfig historyConfig;
     private final BuildJournal journal;
-
-    public EngineEnvelopeHost(
-            BooleanSupplier tryStart,
-            Runnable abandon,
-            Runnable noteFinished,
-            BooleanSupplier draining,
-            AtomicLong requestIds,
-            LongSupplier clock,
-            JobSessions sessions,
-            SsePublisher sse,
-            JournalWriter journalWriter,
-            ReentrantReadWriteLock cacheGate,
-            ThreadLocal<Long> currentEventRequestId,
-            InFlightBuilds inFlight,
-            AtomicInteger activeBuildPlans,
-            IdleHousekeeping idle,
-            Consumer<String> log,
-            String version,
-            JkHistoryConfig historyConfig,
-            BuildJournal journal) {
-        this.tryStart = tryStart;
-        this.abandon = abandon;
-        this.noteFinished = noteFinished;
-        this.draining = draining;
-        this.requestIds = requestIds;
-        this.clock = clock;
-        this.sessions = sessions;
-        this.sse = sse;
-        this.journalWriter = journalWriter;
-        this.cacheGate = cacheGate;
-        this.currentEventRequestId = currentEventRequestId;
-        this.inFlight = inFlight;
-        this.activeBuildPlans = activeBuildPlans;
-        this.idle = idle;
-        this.log = log;
-        this.version = version;
-        this.historyConfig = historyConfig;
-        this.journal = journal;
-    }
 
     @Override
     public boolean tryStartBuildPlan() {

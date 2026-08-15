@@ -174,7 +174,7 @@ public final class RepoGroup {
     }
 
     /**
-     * As {@link #tryFetchArtifact(Coordinate)} with a cooperative abort signal (JK-1786): once
+     * As {@link #tryFetchArtifact(Coordinate)} with a cooperative abort signal: once
      * {@code abort} turns true the fetch stops at the next leg boundary — after a local probe,
      * before the network leg, before/after host-permit acquisition — with a
      * {@link MavenRepo.FetchAbortedException}. Legs in progress always complete cleanly.
@@ -354,7 +354,7 @@ public final class RepoGroup {
             if (local.isPresent()) {
                 return Optional.of(new RepoFetched(repo, local.get()));
             }
-            // JK-1786: boundary between the local-probe leg and the network leg — a lock that
+            // boundary between the local-probe leg and the network leg — a lock that
             // already failed must not start another download; the probe above still completed.
             if (abort.getAsBoolean()) {
                 throw new MavenRepo.FetchAbortedException(

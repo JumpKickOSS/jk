@@ -9,7 +9,7 @@ import java.util.HashMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** Replay re-redaction of pre-JK-1878 journal records (JK-1963). */
+/** Replay re-redaction of journal records written before write-time redaction. */
 class HttpHistoryApiTest {
 
     @Test
@@ -35,7 +35,7 @@ class HttpHistoryApiTest {
 
     @Test
     void secrets_with_json_escaped_characters_are_masked_in_the_escaped_document(@TempDir Path dir) throws Exception {
-        // JK-1975: the document is escaped JSON — a secret containing a backslash and a quote was
+        // the document is escaped JSON — a secret containing a backslash and a quote was
         // persisted as pa\\ss"word → pa\\\\ss\\"word, which the raw-substring pass cannot match.
         Files.writeString(dir.resolve("jk.toml"), """
                 group = "g"

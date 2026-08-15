@@ -47,7 +47,7 @@ public final class Glyphs {
     /** Pulse / spinner circle (U+25CF) — open and chip spinners. */
     public static final String PULSE = "●";
 
-    // ASCII fallbacks for --no-ansi / plain mode (JK-1376).
+    // ASCII fallbacks for --no-ansi / plain mode.
     public static final String CHECK_PLAIN = "+";
     public static final String CROSS_PLAIN = "!";
     public static final String BANG_PLAIN = "!";
@@ -73,7 +73,7 @@ public final class Glyphs {
     // Paint the cap in the badge's *background* color (as foreground) so it reads
     // as the chip's rounded edge. Without a Nerd Font there's no good half-circle,
     // so badges fall back to a plain padded chip (no caps). These two live only in
-    // Nerd Font v2+ / Powerline-Extra, unlike the triangles below (JK-1970).
+    // Nerd Font v2+ / Powerline-Extra, unlike the triangles below.
     /** Nerd Font powerline left solid half-circle (U+E0B6). */
     public static final String PILL_LEFT_NERD = "";
 

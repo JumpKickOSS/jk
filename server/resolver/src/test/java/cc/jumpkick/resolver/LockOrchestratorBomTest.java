@@ -95,7 +95,7 @@ class LockOrchestratorBomTest {
         serveJar(group, artifact, version);
     }
 
-    /** Minimal empty jar so lock materialize can pin a checksum (JK-1649). */
+    /** Minimal empty jar so lock materialize can pin a checksum. */
     private void serveJar(String group, String artifact, String version) {
         String path = "/"
                 + group.replace('.', '/')
@@ -404,7 +404,7 @@ class LockOrchestratorBomTest {
 
     @Test
     void declared_dep_with_pom_but_no_jar_fails_lock(@TempDir Path tempDir) {
-        // JK-1649: POM resolves, jar 404s → lock must fail (not write a checksum-less row).
+        // POM resolves, jar 404s → lock must fail (not write a checksum-less row).
         // servePath only (not servePom) so no auto-jar is registered.
         serveMetadata("/com/foo/ghost/maven-metadata.xml", "com.foo", "ghost", List.of("1.0"));
         servePath("/com/foo/ghost/1.0/ghost-1.0.pom", """
@@ -452,7 +452,7 @@ class LockOrchestratorBomTest {
 
     @Test
     void caret_platform_bom_loads_management_from_highest_matching_release(@TempDir Path tempDir) throws Exception {
-        // JK-1545: version = "1.0" (caret) must use 1.5's dependencyManagement, not the 1.0 anchor.
+        // version = "1.0" (caret) must use 1.5's dependencyManagement, not the 1.0 anchor.
         serveMetadata("/org/example/the-bom/maven-metadata.xml", "org.example", "the-bom", List.of("1.0", "1.5"));
         servePom("org.example", "the-bom", "1.0", """
                 <project>
@@ -596,7 +596,7 @@ class LockOrchestratorBomTest {
                 + version
                 + ".pom";
         servePath(path, body);
-        // Non-pom packaging needs a jar for lock materialize (JK-1649). packaging=pom rows
+        // Non-pom packaging needs a jar for lock materialize. packaging=pom rows
         // legitimately have no artifact — leave them jar-less so the lock path stays honest.
         if (!body.contains("<packaging>pom</packaging>")) {
             serveJar(group, artifact, version);

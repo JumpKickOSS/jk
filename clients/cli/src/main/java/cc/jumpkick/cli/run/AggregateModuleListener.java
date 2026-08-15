@@ -80,7 +80,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
 
     private String paintOutputLine(String line) {
         if (TestFailureHighlight.isHeader(line)) {
-            // A second header must not reset() away an un-flushed first block (JK-1915).
+            // A second header must not reset() away an un-flushed first block.
             flushBufferedFailure();
             inTestFailure = true;
             testFailStream.reset();
@@ -141,7 +141,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
         cm.stepDone(module, step, ok, group == null ? "" : group);
     }
 
-    /** Paint any buffered failure block now — already-received lines must not be dropped (JK-1915). */
+    /** Paint any buffered failure block now — already-received lines must not be dropped. */
     private void flushBufferedFailure() {
         if (inTestFailure && outBuffer == null) {
             for (String painted : testFailStream.finish()) emit(painted);

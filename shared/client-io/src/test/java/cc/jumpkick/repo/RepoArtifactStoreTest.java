@@ -128,7 +128,7 @@ class RepoArtifactStoreTest {
         assertThat(Files.readString(artifact)).isEqualTo("shared-bytes");
     }
 
-    /** JK-1460: the first-write-wins escape hatch — evict drops both files so the next resolve refetches. */
+    /** The first-write-wins escape hatch — evict drops both files so the next resolve refetches. */
     @Test
     void evict_removes_the_artifact_and_its_sidecar(@TempDir Path dir) throws IOException {
         Path cache = dir.resolve("cache");

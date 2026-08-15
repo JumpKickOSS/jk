@@ -37,7 +37,7 @@ class WorkspaceProgressTrackerTest {
     void reseed_reanchors_the_clock_base_at_any_elapsed() {
         // The old `seedAtElapsedMs == 0` guard conflated "never seeded" with "seeded at elapsed
         // 0": a first seed landing at nonzero elapsed pinned the anchor forever and a refined
-        // re-seed inherited stale elapsed, diverging SSE percent from the TUI bar (JK-1851).
+        // re-seed inherited stale elapsed, diverging SSE percent from the TUI bar.
         WorkspaceProgressTracker t = new WorkspaceProgressTracker();
         t.elapsedEpochNanos = System.nanoTime() - 2_000_000_000L; // first seed at ~2s elapsed
         t.seedWall(10_000, 2);

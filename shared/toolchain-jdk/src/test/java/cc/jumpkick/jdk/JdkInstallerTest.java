@@ -272,7 +272,7 @@ class JdkInstallerTest {
 
     @Test
     void service_install_journals_the_ledger_under_the_registry_root(@TempDir Path tempDir) throws Exception {
-        // JK-1951: an overridden jdks dir must journal MRU rows in its own tree, not the
+        // An overridden jdks dir must journal MRU rows in its own tree, not the
         // default location's ledger.
         byte[] archive = buildTarGz(
                 "jdk-21.0.5+11",

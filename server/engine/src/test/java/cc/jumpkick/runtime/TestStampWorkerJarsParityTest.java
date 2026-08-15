@@ -47,8 +47,7 @@ class TestStampWorkerJarsParityTest {
                 """);
         // The root manifest needs identity keys: JkBuildParser rejects a name-less jk.toml, so
         // a workspace-only root would make WorkspaceLocator.findRoot silently fail and sibling
-        // discovery return nothing (the old fixture had exactly that bug, masked by the ambient
-        // host jar — JK-1917).
+        // discovery return nothing.
         Files.writeString(tmp.resolve("jk.toml"), """
                 group = "cc.jumpkick"
                 name = "ws"
@@ -65,7 +64,7 @@ class TestStampWorkerJarsParityTest {
         assertThat(BuildPlanner.needsNestedEngineIsolation(project)).isTrue();
 
         // Confine host fallback to the empty tmp tree so a warm dev checkout cannot mask a
-        // broken sibling-discovery path (JK-1917).
+        // broken sibling-discovery path.
         BuildPlanner.hostEngineSearchOverride = tmp;
         Map<String, String> workers;
         try {
@@ -86,9 +85,7 @@ class TestStampWorkerJarsParityTest {
 
     @Test
     void nested_engine_env_does_not_point_cache_or_store_at_host() throws Exception {
-        // Regression: JK_CACHE_DIR / JK_STORE_DIR used to be the host trees, so SelfPurge
-        // during pure-jk monorepo tests wiped the developer's real action cache and
-        // install-local workers mid-build.
+        // Nested engine env must not point JK_CACHE_DIR / JK_STORE_DIR at the host trees.
         Path cli = tmp.resolve("clients/cli");
         Files.createDirectories(cli);
         Map<String, String> env = BuildPlanner.nestedEngineTestEnv(cli);
@@ -160,8 +157,7 @@ class TestStampWorkerJarsParityTest {
                 """);
         // The root manifest needs identity keys: JkBuildParser rejects a name-less jk.toml, so
         // a workspace-only root would make WorkspaceLocator.findRoot silently fail and sibling
-        // discovery return nothing (the old fixture had exactly that bug, masked by the ambient
-        // host jar — JK-1917).
+        // discovery return nothing.
         Files.writeString(tmp.resolve("jk.toml"), """
                 group = "cc.jumpkick"
                 name = "ws"
@@ -174,9 +170,9 @@ class TestStampWorkerJarsParityTest {
         // Seed a monorepo-shaped host jar INSIDE @TempDir and confine discovery to it. Never
         // write into the real checkout: a planted near-empty jar under
         // server/engine/build/libs is a production discovery path — a dogfooded build would
-        // hand it to nested engine workers (JK-1885). The override also makes this
+        // hand it to nested engine workers. The override also makes this
         // deterministic on warm developer trees, where the process/VersionStore probes would
-        // otherwise satisfy the assertion even if monorepo fallback broke (JK-1917).
+        // otherwise satisfy the assertion even if monorepo fallback broke.
         String ver = cc.jumpkick.model.JkVersion.VERSION;
         Path seed = tmp.resolve("server/engine/build/libs/jk-engine-" + ver + ".jar");
         Files.createDirectories(seed.getParent());

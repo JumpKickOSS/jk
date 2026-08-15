@@ -177,7 +177,7 @@ public final class GlobalConfig {
      *
      * <p>The stamp lives in the value, not the key: with it in the key every config rewrite minted
      * a new entry and nothing ever removed the old one — and this cache had no clear path at all,
-     * so it grew for the life of the process (JK-1483).
+     * so it grew for the life of the process.
      */
     private static final ConcurrentHashMap<String, Stamped<Optional<String>>> SCAN_CACHE = new ConcurrentHashMap<>();
 

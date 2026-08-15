@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1356: {@code LockfileWriter.write} must be atomic — a reader polling {@code jk-lock.toml}
+ * {@code LockfileWriter.write} must be atomic — a reader polling {@code jk-lock.toml}
  * during repeated writes never observes a truncated or half-written file.
  */
 class LockfileWriterAtomicTest {

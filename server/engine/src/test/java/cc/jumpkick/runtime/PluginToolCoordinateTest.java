@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1657: a tool coordinate in a {@code jk-plugin.toml} is written by the plugin author, so a
+ * A tool coordinate in a {@code jk-plugin.toml} is written by the plugin author, so a
  * bare version is an exact pin — only an explicit caret/tilde floats. This is the opposite of the
  * {@code jk.toml} dependency convention, and deliberately so: android's r8/aapt2/manifest-merger
  * literals track one AGP tools line and must not drift off it.

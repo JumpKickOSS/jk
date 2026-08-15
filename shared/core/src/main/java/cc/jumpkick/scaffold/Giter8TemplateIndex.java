@@ -60,7 +60,7 @@ public final class Giter8TemplateIndex {
             }
         }
         // Second pass: only ids pass 1 did NOT overlay get the (expensive) deep probe — the DFS
-        // walks every root to depth 5, so re-probing already-merged ids is pure rework (JK-1455).
+        // walks every root to depth 5, so re-probing already-merged ids is pure rework.
         if (roots != null && !roots.isEmpty()) {
             for (String id : idsNeedingProbe(byId.values(), overlaid)) {
                 Path found = findTemplateDir(roots, id);

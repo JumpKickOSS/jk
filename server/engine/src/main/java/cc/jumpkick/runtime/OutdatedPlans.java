@@ -208,7 +208,7 @@ public final class OutdatedPlans {
     private static Map<String, String> reverseCatalog(Path dir) {
         Map<String, String> reverse = new HashMap<>();
         // Full chain incl. the workspace jk-libs.toml layer — the system-only view hid
-        // project-layer names and showed stale system mappings for overridden ones (JK-1856).
+        // project-layer names and showed stale system mappings for overridden ones.
         LibraryCatalog catalog = LibraryCatalog.forProject(dir);
         for (String name : catalog.names()) {
             var mod = catalog.lookup(name);

@@ -51,7 +51,7 @@ public final class HttpEvents {
     /**
      * True when any {@link FrameStyle#DASHBOARD} subscription is attached. The vitals sampler
      * lifecycle keys off this — an MCP progress stream alone must not keep status/cache sampling
-     * (and its 60s store walk) alive (JK-1512).
+     * (and its 60s store walk) alive.
      */
     public boolean hasDashboardSubscribers() {
         for (Subscription s : subscriptions) {
@@ -67,8 +67,7 @@ public final class HttpEvents {
 
     /**
      * As {@link #publish} but delivered to {@link FrameStyle#DASHBOARD} subscriptions only —
-     * engine chrome ({@code status}/{@code cache} vitals) that the MCP surface never advertised
-     * (JK-1512).
+     * engine chrome ({@code status}/{@code cache} vitals) that the MCP surface never advertised.
      */
     public void publishDashboard(String type, JsonOut payload) {
         publish(type, payload, true);
@@ -77,7 +76,7 @@ public final class HttpEvents {
     /**
      * Deliver one frame to a single subscription — connect hydrate / mid-flight run-snapshot,
      * never a broadcast. Existing subscribers already hold live facts; re-broadcasting them
-     * duplicated chrome and could queue-stall a late tab (JK-1523).
+     * duplicated chrome and could queue-stall a late tab.
      */
     public void deliverTo(Subscription s, String type, JsonOut payload) {
         long id = seq.incrementAndGet();
@@ -122,7 +121,7 @@ public final class HttpEvents {
      * hydrates it (vitals + one {@code run-snapshot} per in-flight job via {@link #deliverTo})
      * and only then {@link #attach}es it, under the engine's connect ordering lock — so every
      * event is either reflected in the snapshot or delivered to the queue, never lost in the
-     * subscribe→snapshot window (JK-1837).
+     * subscribe→snapshot window.
      */
     Subscription subscribeDetached(FrameStyle style, Long requestIdFilter) {
         return new Subscription(this, style == null ? FrameStyle.DASHBOARD : style, requestIdFilter);
@@ -131,13 +130,13 @@ public final class HttpEvents {
     /**
      * Register a (detached) subscription for broadcasts. Idempotent; a subscription closed
      * before attach stays out of the hub. Public so the engine can attach inside its connect
-     * ordering lock (JK-1837).
+     * ordering lock.
      */
     public void attach(Subscription s) {
         if (s == null || s.closed) return;
         subscriptions.add(s);
         // close() may have raced between the check and the add; never leave a closed
-        // subscription in the hub (hasSubscribers() would stay true forever, JK-1523).
+        // subscription in the hub (hasSubscribers() would stay true forever).
         if (s.closed) subscriptions.remove(s);
     }
 
@@ -294,7 +293,7 @@ public final class HttpEvents {
 
         /**
          * Enqueue {@code wire} for event {@code type}. Never blocks the publisher. When full:
-         * the OLDEST low-priority frame is evicted so the freshest sample survives (JK-1847);
+         * the OLDEST low-priority frame is evicted so the freshest sample survives;
          * an incoming low-priority frame is dropped only when the queue is all critical, and a
          * critical frame then evicts the oldest critical (classic drop-oldest).
          */
@@ -307,7 +306,7 @@ public final class HttpEvents {
                 if (frames.size() >= QUEUE_CAPACITY) {
                     // Evict the OLDEST low-priority frame in either case: dropping the incoming
                     // frame kept hours-stale output/label frames while discarding fresh ones,
-                    // inverting the coalescer's "latest wins" sampling upstream (JK-1847).
+                    // inverting the coalescer's "latest wins" sampling upstream.
                     if (!evictOldestNonCriticalLocked()) {
                         if (!critical) {
                             // Queue is all critical — a low-priority frame loses to structure.

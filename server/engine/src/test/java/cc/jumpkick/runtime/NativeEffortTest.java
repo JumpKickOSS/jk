@@ -22,7 +22,7 @@ class NativeEffortTest {
     @BeforeEach
     void isolateHostState() {
         // Pin state + builds so host-metrics.toml (cpuScale, learned native rates) cannot leak
-        // into assertions (JK-1818). JK_BUILDS_DIR is required too: a set JK_HOME would otherwise
+        // into assertions. JK_BUILDS_DIR is required too: a set JK_HOME would otherwise
         // ignore JK_STATE_DIR for builds/. The dogfood-conditional test opts back in explicitly.
         prevStateDir = System.getProperty("jk.env.JK_STATE_DIR");
         prevBuildsDir = System.getProperty("jk.env.JK_BUILDS_DIR");

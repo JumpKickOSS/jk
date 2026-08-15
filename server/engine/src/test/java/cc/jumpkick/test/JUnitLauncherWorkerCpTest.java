@@ -10,7 +10,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** Thin pure-jk test-runner jars need WorkerClasspath expansion for PluginMain (JK-1347). */
+/** Thin pure-jk test-runner jars need WorkerClasspath expansion for PluginMain. */
 class JUnitLauncherWorkerCpTest {
 
     @Test

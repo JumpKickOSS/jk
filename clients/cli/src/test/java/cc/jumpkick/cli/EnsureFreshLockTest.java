@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1355 failure policy: freshen failure with an existing readable lock is soft (warn, exit 0) so
+ * Failure policy: freshen failure with an existing readable lock is soft (warn, exit 0) so
  * read-only commands keep answering from the stale lock; no lock at all or a genuinely
  * unsatisfiable manifest stays a hard failure.
  */

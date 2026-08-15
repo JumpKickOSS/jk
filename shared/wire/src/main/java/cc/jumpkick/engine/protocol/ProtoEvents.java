@@ -76,8 +76,7 @@ public final class ProtoEvents {
     /**
      * Remaining wall-work {@code R(t)} in ms. {@code millis} duplicates {@code remainingMs} for
      * older readers. No {@code R0} field: nothing consumed it (the CLI seeds from remainingMs,
-     * the web from workspace-progress), and at emit time it either equaled remainingMs or was 0
-     * (JK-1831).
+     * the web from workspace-progress), and at emit time it either equaled remainingMs or was 0.
      */
     public static String eta(long remainingMs) {
         return eta(remainingMs, -1);

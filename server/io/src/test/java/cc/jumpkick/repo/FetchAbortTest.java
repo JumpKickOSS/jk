@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1786: the abort signal stops artifact fetches at the leg boundary between the local probe
+ * The abort signal stops artifact fetches at the leg boundary between the local probe
  * and the network leg — an aborted fetch never touches the network, but a warm local hit still
  * completes (legs finish cleanly; abort only prevents starting the next one).
  */

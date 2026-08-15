@@ -197,7 +197,7 @@ class TestFailureHighlightTest {
 
     @Test
     void snippet_rows_clamp_to_terminal_width_and_expand_tabs() {
-        // JK-1914: one over-long source line must not pad every row past the terminal; tabs
+        // one over-long source line must not pad every row past the terminal; tabs
         // expand so the band pad math is column-based.
         String longLine = "        assertThat(x)" + ".describedAs(\"padding\")".repeat(20) + ";";
         List<String> raw = List.of(
@@ -230,8 +230,8 @@ class TestFailureHighlightTest {
 
     @Test
     void plain_mode_snippet_clamp_stays_pure_ascii() throws Exception {
-        // JK-1949: clampCode appended U+2026 before the ANSI/plain fork, re-leaking a non-ASCII
-        // char into output JK-1910 had just made pure ASCII on CI/dumb terminals.
+        // clampCode appended U+2026 before the ANSI/plain fork, re-leaking a non-ASCII
+        // char into output  had just made pure ASCII on CI/dumb terminals.
         String longLine = "        assertThat(x)" + ".describedAs(\"padding\")".repeat(20) + ";";
         List<String> raw = List.of(
                 "Test Failure",
@@ -262,7 +262,7 @@ class TestFailureHighlightTest {
 
     @Test
     void source_paths_with_spaces_render_intact() {
-        // JK-1905: the emitter puts path= last (to end-of-line); old mid-line form still parses.
+        // the emitter puts path= last (to end-of-line); old mid-line form still parses.
         List<String> raw = List.of(
                 "Test Failure",
                 "1 test failed",
@@ -304,7 +304,7 @@ class TestFailureHighlightTest {
     void no_snippet_failure_keeps_assertj_reformat_and_type_colored_exception() {
         // The engine's no-snippet shape (escape-rejected, moved/generated, inherited test): bare
         // "    ExceptionClass" between assertion body and frames — it must flush the assertion
-        // buffer, not ride into it and defeat the AssertJ reformat (JK-1883).
+        // buffer, not ride into it and defeat the AssertJ reformat.
         List<String> raw = List.of(
                 "Test Failure",
                 "module: cc.jumpkick:jk-engine",

@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Stable short classpaths for thin plugin/tool workers (JK-1348).
+ * Stable short classpaths for thin plugin/tool workers.
  *
  * <p>On install, each worker's main jar and runtime deps are hard-linked into {@link
  * JkDirs#lib()}{@code /&lt;id&gt;/} (default {@code ~/.local/share/jk/store/lib/&lt;id&gt;/} — same tree as
@@ -77,7 +77,7 @@ public final class WorkerLib {
     /**
      * Materialize {@code workerJar} + {@code depJars} into {@code store/lib/&lt;id&gt;/} as
      * hardlinks (copy fallback). Writes {@link #ORDER_FILE} for launch order (worker first).
-     * Replaces any previous contents of the lib dir via temp-dir + rename (JK-1353), so a
+     * Replaces any previous contents of the lib dir via temp-dir + rename, so a
      * concurrent launcher observes the old dir, no dir at all (brief swap window → sidecar
      * fallback), or the complete new dir — never a partial one.
      *
@@ -129,7 +129,7 @@ public final class WorkerLib {
     /**
      * If {@code store/lib/&lt;id&gt;/} has a complete {@link #ORDER_FILE}, return absolute paths in
      * launch order; otherwise {@code null} (caller falls back to sidecar/CAS paths). Strict on
-     * purpose (JK-1353): no order file means the dir is not a materialized worker (e.g. an
+     * purpose: no order file means the dir is not a materialized worker (e.g. an
      * installed tool's bin dir sharing {@code lib/}), and a missing listed entry means a partial
      * or damaged dir — neither may ever launch as a worker classpath.
      */
@@ -158,7 +158,7 @@ public final class WorkerLib {
      * else {@code null}. Lib entries are hardlinks of their sources, so the requested jar must
      * share an inode with one of them ({@link Files#isSameFile}) — a version bump, a freshly built
      * workspace jar, or a {@code -Djk.*.plugin.jar} override points at different content and must
-     * launch via the sidecar path instead of a stale lib dir (JK-1349). A copy-fallback
+     * launch via the sidecar path instead of a stale lib dir. A copy-fallback
      * materialization (cross-device store) fails the check and simply keeps long-path launches.
      */
     public static List<Path> pathsIfPresent(Path workerJar) {
@@ -219,7 +219,7 @@ public final class WorkerLib {
     /**
      * The version part of {@code artifact-<version>[.jar]} — multi-segment qualifiers included
      * ({@code jk-foo-0.10.1-SNAPSHOT.jar} → {@code 0.10.1-SNAPSHOT}) — or {@code null} when the
-     * name carries none. The single parser for jar-name versions (JK-1368): {@code
+     * name carries none. The single parser for jar-name versions: {@code
      * stripJarVersion} and install-side m2 placement must never disagree on where the version
      * starts.
      */

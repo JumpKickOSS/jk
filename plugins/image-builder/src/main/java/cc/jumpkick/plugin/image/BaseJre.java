@@ -70,7 +70,7 @@ final class BaseJre {
      * Materialize {@code base}'s JRE under {@code cacheRoot} and return its {@code java}, or null
      * when the image carries none. Cached by image reference, validated by the <em>resolved</em>
      * digest: a republished tag must not keep training (and verifying!) with the previous JVM —
-     * the shipped image would carry an AOT cache the runtime silently rejects (JK-1757).
+     * the shipped image would carry an AOT cache the runtime silently rejects.
      * Digest-pinned references never re-validate; mutable tags re-resolve after
      * {@link #REVALIDATE_MILLIS} (Jib's layer cache makes an unchanged re-pull cheap).
      */

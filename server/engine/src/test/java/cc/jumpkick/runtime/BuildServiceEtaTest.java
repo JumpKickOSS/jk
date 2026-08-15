@@ -133,7 +133,7 @@ class BuildServiceEtaTest {
         assertThat(BuildService.hasLocalCompileContent(resourceOnly)).isFalse();
         assertThat(BuildService.hasResourceDriftWork(resourceOnly)).isTrue();
 
-        // JK-1842: a test-resource edit reruns the suite for real (test action keys hash test
+        // a test-resource edit reruns the suite for real (test action keys hash test
         // resources), so run-tests must never be discounted for it — main-resource drift keeps
         // its dogfood-validated discount.
         var testResourceOnly = new TaskForecast.Module(
@@ -171,7 +171,7 @@ class BuildServiceEtaTest {
                 false);
         assertThat(BuildService.hasLocalCompileContent(local)).isTrue();
 
-        // JK-1836: counts ending in 0 contain the substring "0 source" — a naive contains()
+        // counts ending in 0 contain the substring "0 source" — a naive contains()
         // treated a 10/20/100-source edit as zero-source and discounted the whole suite.
         var tenSources = new TaskForecast.Module(
                 Path.of("/engine"),

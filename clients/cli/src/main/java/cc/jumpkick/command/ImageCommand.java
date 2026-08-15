@@ -86,7 +86,7 @@ public final class ImageCommand implements CliCommand {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Image", jkBuildPath + " not found."));
             return Exit.NO_INPUT;
         }
-        // -m/--modules: an image is built for exactly one module — redirect to it (JK-1360).
+        // -m/--modules: an image is built for exactly one module — redirect to it.
         String modulesSpec = in.value("modules").orElse(null);
         String affectedSince = in.value("affected-since").orElse(null);
         if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {

@@ -26,7 +26,7 @@ class WorkerLibTest {
 
     @Test
     void snapshot_style_versions_parse_consistently() {
-        // JK-1368: one parser for jar-name versions — id derivation and m2 placement agree on
+        // one parser for jar-name versions — id derivation and m2 placement agree on
         // multi-segment qualifiers.
         assertThat(WorkerLib.stripJarVersion("jk-foo-0.12.0-SNAPSHOT.jar")).isEqualTo("jk-foo");
         assertThat(WorkerLib.jarVersion("jk-foo-0.12.0-SNAPSHOT.jar")).isEqualTo("0.12.0-SNAPSHOT");
@@ -111,7 +111,7 @@ class WorkerLibTest {
 
     @Test
     void stale_lib_is_ignored_for_a_newer_worker_jar() throws Exception {
-        // JK-1349: lib dir materialized from v1 must not hijack a v2 launch of the same worker id.
+        // lib dir materialized from v1 must not hijack a v2 launch of the same worker id.
         Path src = storeSideSrc();
         Path v1 = src.resolve("jk-stale-1.0.jar");
         Path v2 = src.resolve("jk-stale-2.0.jar");
@@ -141,7 +141,7 @@ class WorkerLibTest {
 
     @Test
     void override_jar_with_same_name_is_not_hijacked_by_lib() throws Exception {
-        // JK-1349: -Djk.*.plugin.jar override — same filename, different file → lib must not win.
+        // -Djk.*.plugin.jar override — same filename, different file → lib must not win.
         Path src = storeSideSrc();
         Path installed = src.resolve("installed/jk-ovr-1.0.jar");
         Path override = src.resolve("custom/jk-ovr-1.0.jar");
@@ -169,7 +169,7 @@ class WorkerLibTest {
 
     @Test
     void partial_or_foreign_lib_dirs_are_rejected() throws Exception {
-        // JK-1353: no order file (e.g. an installed tool's bin dir) or a missing listed entry
+        // no order file (e.g. an installed tool's bin dir) or a missing listed entry
         // (partial/damaged dir) must never resolve as a worker classpath.
         String id = "jk-partial-test-" + System.nanoTime();
         Path d = WorkerLib.dir(id);
@@ -208,7 +208,7 @@ class WorkerLibTest {
     @Test
     void worker_classpath_prefers_lib_when_materialized() throws Exception {
         // Store-side sources: real installs hardlink store → store/lib on one filesystem, and the
-        // JK-1349 inode guard only accepts a lib dir materialized from the exact jar launched.
+        //  inode guard only accepts a lib dir materialized from the exact jar launched.
         Path src = storeSideSrc();
         Path worker = src.resolve("w/jk-pref-1.0.jar");
         Path dep = src.resolve("d/extra.jar");

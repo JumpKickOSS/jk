@@ -109,8 +109,7 @@ public final class PluginAot {
      *
      * <p>{@code tool} is a short prefix ({@code kotlinc}, {@code java-compiler}, {@code formatter})
      * so caches do not collide across plugin kinds that share a jar path shape. File names are
-     * {@code <tool>-<jk-version>-<16hex>.aot} so a primary wipe can keep the live product line
-     * (JK-1452).
+     * {@code <tool>-<jk-version>-<16hex>.aot} so a primary wipe can keep the live product line.
      */
     public static List<String> pluginWorkerFlags(
             String tool, Path javaHome, String workerClasspath, TrainerCommand trainer) {
@@ -452,7 +451,7 @@ public final class PluginAot {
                 p.destroyForcibly();
                 // NO sticky marker: an overrun is usually transient (first Kotlin compile on a
                 // loaded machine), and a sticky .noaot here would disable AOT for the key
-                // permanently (JK-1431). Refresh and KEEP the claim file instead — fresh claims
+                // permanently. Refresh and KEEP the claim file instead — fresh claims
                 // block retrains until CLAIM_STALE_MILLIS, a bounded backoff, not a life sentence.
                 touch(claim);
                 keepClaim = true;

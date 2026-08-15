@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <tr><td>json</td><td>{@code --output json}</td><td>no wedge — structured events only</td></tr>
  * </table>
  *
- * <h2>Blank-line envelope (JK-1373)</h2>
+ * <h2>Blank-line envelope</h2>
  *
  * <p>Human wedge-bearing commands print exactly <strong>one blank line before</strong> the first
  * chrome line of the invocation (prep spinner, live bar, or settle chip — whichever comes first).

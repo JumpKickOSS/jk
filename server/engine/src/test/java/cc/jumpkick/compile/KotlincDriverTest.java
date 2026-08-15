@@ -14,7 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 class KotlincDriverTest {
 
     /**
-     * JK-1434: the AOT trainer runs on the PROJECT's kotlinc worker classpath, and older Kotlin
+     * the AOT trainer runs on the PROJECT's kotlinc worker classpath, and older Kotlin
      * lines reject unknown JVM targets ("Unknown JVM target: 25"). The trainer spec must carry the
      * request's own jvmTarget — the value that project's Kotlin provably accepts — never a
      * hardcoded host-side constant.
@@ -45,7 +45,7 @@ class KotlincDriverTest {
         assertThat(jvmTargetIn(spec)).isEqualTo(String.valueOf(KotlincDriver.TRAINER_FALLBACK_JVM_TARGET));
         // Intent pin: 21 is the newest target every supported Kotlin line accepts. Do not bump
         // this alongside the host JDK — pre-2.2.20 Kotlin rejects newer targets and the AOT
-        // cache silently never trains (JK-1434).
+        // cache silently never trains.
         assertThat(KotlincDriver.TRAINER_FALLBACK_JVM_TARGET).isEqualTo(21);
     }
 

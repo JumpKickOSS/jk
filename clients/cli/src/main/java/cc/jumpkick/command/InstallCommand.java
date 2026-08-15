@@ -114,8 +114,8 @@ public final class InstallCommand {
         Files.createDirectories(cache);
         Coordinate coord = Coordinate.of(group, artifact, version);
         // File-install writes directly to repos/local/ (the JAR is already on disk, no project
-        // metadata for a POM, so ~/.m2 write is not appropriate here). Route to the store root
-        // (JK-1445/JK-1450): resolvers read repos/local and the classpath CAS from the store.
+        // metadata for a POM, so ~/.m2 write is not appropriate here). Route to the store root:
+        // resolvers read repos/local and the classpath CAS from the store.
         cc.jumpkick.repo.RepoArtifactStore.writeToLocalStore(
                 cc.jumpkick.cache.JkStores.storeRootFor(cache), MavenLayout.artifactPath(coord), filePath);
 

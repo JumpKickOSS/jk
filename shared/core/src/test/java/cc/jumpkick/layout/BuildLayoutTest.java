@@ -121,7 +121,7 @@ class BuildLayoutTest {
 
     @Test
     void member_symlinked_into_the_tree_keeps_the_central_target(@TempDir Path tmp) throws IOException {
-        // JK-1528: lexical membership decides first. A member whose directory is a symlink to a
+        // Lexical membership decides first. A member whose directory is a symlink to a
         // physical location outside the workspace is still <ws>/core to every caller — its
         // outputs must stay under <ws>/target/core, not silently relocate to the physical
         // location's module-local target/ (which would also invalidate its action-cache tags).

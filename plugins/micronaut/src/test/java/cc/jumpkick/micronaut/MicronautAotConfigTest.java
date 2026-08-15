@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1662: which optimizers AOT ran with is invisible in the build output, so a mistyped
+ * Which optimizers AOT ran with is invisible in the build output, so a mistyped
  * {@code aot-config} must fail rather than quietly fall back to jk's defaults.
  */
 class MicronautAotConfigTest {

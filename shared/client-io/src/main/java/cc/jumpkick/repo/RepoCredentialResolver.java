@@ -11,11 +11,13 @@ import java.net.URI;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Function;
+import lombok.RequiredArgsConstructor;
 
 /**
  * Resolves {@link RepoCredential}: inline → env → {@code jk repo login} store → Maven settings →
  * forge-token bridge last. Collaborators injected for tests.
  */
+@RequiredArgsConstructor
 public final class RepoCredentialResolver {
 
     private final Function<String, String> env;
@@ -32,19 +34,6 @@ public final class RepoCredentialResolver {
     public static RepoCredentialResolver withEnv(Function<String, String> env) {
         return new RepoCredentialResolver(
                 env, MavenSettings.load(), new RepoCredentialStore(), new ForgeAuth(), ForgeIdentity.real());
-    }
-
-    public RepoCredentialResolver(
-            Function<String, String> env,
-            MavenSettings settings,
-            RepoCredentialStore store,
-            ForgeAuth forgeAuth,
-            ForgeIdentity identity) {
-        this.env = env;
-        this.settings = settings;
-        this.store = store;
-        this.forgeAuth = forgeAuth;
-        this.identity = identity;
     }
 
     /**

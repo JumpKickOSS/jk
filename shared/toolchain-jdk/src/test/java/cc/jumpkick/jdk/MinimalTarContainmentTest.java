@@ -13,7 +13,7 @@ import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1464: the tar extractors' entry-name check is lexical, so a symlink entry pointing outside the
+ * The tar extractors' entry-name check is lexical, so a symlink entry pointing outside the
  * destination — followed by a file entry written through it — escaped the tree. These cover the
  * containment helpers both extractors now share.
  */

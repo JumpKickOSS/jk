@@ -75,8 +75,8 @@ public final class QuarkusAugmentMain {
 
         // Reuse already-fetched jars: jk's repo mirrors are derived from the runtime jar paths
         // the engine handed us — they ARE store paths, and rebuilding product dirs from
-        // user.home guesses wrong the moment JK_STORE_DIR (or the platform default) differs
-        // (JK-1707). ~/.m2 honors maven.repo.local for the same reason.
+        // user.home guesses wrong the moment JK_STORE_DIR (or the platform default) differs.
+        // ~/.m2 honors maven.repo.local for the same reason.
         List<String> tails = new ArrayList<>();
         for (Path reposRoot : mirrorRepoRoots(runtime)) {
             tails.add(reposRoot.toString());

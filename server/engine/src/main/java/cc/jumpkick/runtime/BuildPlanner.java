@@ -101,7 +101,7 @@ public final class BuildPlanner {
     public static final BuildPlanKey<String> GROOVY_OUTCOME = BuildPlanKey.of("groovy-outcome", String.class);
     public static final BuildPlanKey<Path> JAR_PATH = BuildPlanKey.of("jar-path", Path.class);
 
-    /** Fingerprint of last {@code target/package-classes} staging (JK-1658). */
+    /** Fingerprint of last {@code target/package-classes} staging. */
     public static final BuildPlanKey<String> STAGED_CLASSES_INPUTS =
             BuildPlanKey.of("staged-classes-inputs", String.class);
 
@@ -483,7 +483,7 @@ public final class BuildPlanner {
         // each call BuildLogicSupport.run() independently; a module registering tasks at more
         // than one anchor used to hash its whole source tree once per anchor with tasks. Shared
         // here the same lazy-init-race pattern as javaMainSrcRef above: computed once by whichever
-        // anchor task needs it first, reused by the rest (JK-1655).
+        // anchor task needs it first, reused by the rest.
         final AtomicReference<List<String>> buildLogicInputTokensRef = new AtomicReference<>();
         final Path javaMainSrcDir = compact ? in.dir().resolve("src") : in.dir().resolve("src/main/java");
 

@@ -44,7 +44,7 @@ class JarPackagerTest {
     @Test
     void writes_directory_entries_for_resource_dir_scans(@TempDir Path tempDir) throws IOException {
         // Micronaut's SoftServiceLoader resolves META-INF/micronaut/<service>/ as a directory
-        // resource; a jar with file entries only makes that lookup come back empty (JK-1414).
+        // resource; a jar with file entries only makes that lookup come back empty.
         Path input = tempDir.resolve("classes");
         Files.createDirectories(input.resolve("META-INF/micronaut/io.micronaut.inject.BeanDefinitionReference"));
         Files.writeString(

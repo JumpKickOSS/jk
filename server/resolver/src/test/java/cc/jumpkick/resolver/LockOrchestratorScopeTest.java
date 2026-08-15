@@ -226,7 +226,7 @@ class LockOrchestratorScopeTest {
                 artifact,
                 List.of(version));
         servePom(group, artifact, version, emptyPom(group, artifact, version));
-        // Empty EOCD zip so lock materialize pins a checksum (JK-1649).
+        // Empty EOCD zip so lock materialize pins a checksum.
         String jarPath = "/"
                 + group.replace('.', '/')
                 + "/"
@@ -248,7 +248,7 @@ class LockOrchestratorScopeTest {
     private void servePom(String group, String artifact, String version, String body) {
         String base = "/" + group.replace('.', '/') + "/" + artifact + "/" + version + "/" + artifact + "-" + version;
         servePath(base + ".pom", body);
-        // JK-1649: lock materialize requires the artifact for non-pom packaging.
+        // lock materialize requires the artifact for non-pom packaging.
         if (!body.contains("<packaging>pom</packaging>")) {
             served.put(
                     base + ".jar",

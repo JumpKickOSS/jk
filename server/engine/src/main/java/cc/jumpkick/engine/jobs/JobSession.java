@@ -11,7 +11,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * One request-scoped row. Teardown is {@link #retire()}: late {@code computeIfAbsent} must not
- * resurrect maps (JK-1474).
+ * resurrect maps.
  */
 public final class JobSession {
     private final long id;
@@ -63,7 +63,7 @@ public final class JobSession {
 
     /**
      * Workspace tracker. After {@link #retire()}, a fresh detached tracker (never stored) so
-     * callers skip null checks and the update goes nowhere (JK-1474).
+     * callers skip null checks and the update goes nowhere.
      */
     public @Nullable WorkspaceProgressTracker existingTracker() {
         return tracker;

@@ -174,7 +174,7 @@ class EngineProtocolTest {
     }
 
     /**
-     * Regression (JK-1588): invocation-phase wire names come from the enum, and every enum
+     * Regression: invocation-phase wire names come from the enum, and every enum
      * value's wire name round-trips through {@code fromWire} — no hardcoded producer strings
      * that a future consumer's parse would miss.
      */

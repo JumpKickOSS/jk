@@ -12,9 +12,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.LongSupplier;
+import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
-/** In-flight run snapshots for dashboard SSE connect (JK-1837 / JK-1846). */
+/** In-flight run snapshots for dashboard SSE connect. */
+@RequiredArgsConstructor
 public final class LiveRuns {
 
     private final InFlightBuilds inFlight;
@@ -22,19 +24,6 @@ public final class LiveRuns {
     private final @Nullable HttpEvents events;
     private final ReentrantReadWriteLock sseConnect;
     private final LongSupplier clock;
-
-    public LiveRuns(
-            InFlightBuilds inFlight,
-            JobSessions sessions,
-            @Nullable HttpEvents events,
-            ReentrantReadWriteLock sseConnect,
-            LongSupplier clock) {
-        this.inFlight = inFlight;
-        this.sessions = sessions;
-        this.events = events;
-        this.sseConnect = sseConnect;
-        this.clock = clock;
-    }
 
     public List<HttpLive.Run> snapshot() {
         List<HttpLive.Run> out = new ArrayList<>();

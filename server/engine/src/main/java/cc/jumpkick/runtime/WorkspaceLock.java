@@ -26,14 +26,14 @@ public final class WorkspaceLock {
     /**
      * As {@link #ensureWorkspaceLockFresh(Path, JkBuild, Path)} with the staleness answer already
      * computed — callers that just priced the re-lock for the ETA pass it in instead of
-     * re-hashing every manifest (JK-1359).
+     * re-hashing every manifest.
      */
     public static BuildService.LockGuard ensureWorkspaceLockFresh(Path root, Path cache, boolean stale) {
         if (!stale) return BuildService.LockGuard.OK;
         long t0 = System.nanoTime();
         try {
             // noDefaultFeatures=false: every freshen resolves with the same feature selection as
-            // explicit `jk lock`, so lock content never depends on which path freshened (JK-1358).
+            // explicit `jk lock`, so lock content never depends on which path freshened.
             LockFlow.Result r = LockFlow.run(root, cache, List.of(), false, null, /* conservative */ true);
             if (r.status() == 0) {
                 recordLockSuccess(root, (System.nanoTime() - t0) / 1_000_000L);

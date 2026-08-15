@@ -41,7 +41,7 @@ public final class KmpRedirects {
      * .module} is fetched depends on the repo set. No TTL: release GAV content is immutable; force
      * / {@link #clearProcessCache} drop the memo.
      *
-     * <p>Values are futures, not results (JK-1785): the winner parks a future and runs the
+     * <p>Values are futures, not results: the winner parks a future and runs the
      * network lookup <em>outside</em> the map, so unrelated keys sharing a CHM bin never
      * serialize behind a slow {@code .module} fetch the way {@code computeIfAbsent} made them.
      * Completed futures stay as the memo. Bounded like the sibling process memos; past the cap
@@ -131,7 +131,7 @@ public final class KmpRedirects {
     /**
      * Future-based single-flight around {@link #lookup}: joiners wait on the winner's future
      * while the network lookup runs outside any map lock. No cycle risk here (unlike the
-     * EffectivePomBuilder single-flight, JK-1764): lookup never re-enters {@code selectionFor}.
+     * EffectivePomBuilder single-flight): lookup never re-enters {@code selectionFor}.
      * {@code lookup} is fail-soft, so the future always completes normally; the finally guard
      * only fires on an {@link Error}, unparking joiners without memoizing a guess.
      */

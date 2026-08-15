@@ -214,7 +214,7 @@ public final class CodeFormatter implements Plugin {
      * Import layout with the star-collapse thresholds effectively disabled. OpenRewrite's default
      * layout folds a package to {@code .*} at five imports, so the FQCN-shorten pass silently
      * rewrote explicit imports into wildcards once it pushed a package over the threshold
-     * (JK-1985). jk's style is single-type imports, always.
+     *. jk's style is single-type imports, always.
      */
     private static final List<NamedStyles> NO_STAR_IMPORTS = List.of(new NamedStyles(
             org.openrewrite.Tree.randomId(),

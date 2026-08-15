@@ -28,7 +28,7 @@ public record Lockfile(
         JkToolchain jk,
         /** SHA-256 of every {@code jk.toml} that fed this lock; null on legacy locks. */
         String manifestsSha256,
-        /** Durable auto project identity; null until minted (JK-1728). */
+        /** Durable auto project identity; null until minted. */
         String projectId) {
 
     /**

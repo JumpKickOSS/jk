@@ -111,7 +111,7 @@ final class DefaultTaskContext implements TaskContext {
         long old = weight;
         // Shrink-only, enforced: the reservation was priced at plan time; a runtime re-estimate
         // (e.g. native-image sized against the post-package jar) may only release weight. Growing
-        // the plan denominator mid-run backslides the workspace bar (JK-1819).
+        // the plan denominator mid-run backslides the workspace bar.
         if (newWeight > old) return;
         if (newWeight == old) return;
         plan.denominatorRef().add(newWeight - old);

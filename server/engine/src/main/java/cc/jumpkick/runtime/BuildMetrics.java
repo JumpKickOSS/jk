@@ -141,7 +141,7 @@ public final class BuildMetrics {
     }
 
     /**
-     * Legacy path marker — production ETA hydrates from harvested project/host metrics (JK-1377).
+     * Legacy path marker — production ETA hydrates from harvested project/host metrics.
      * Hermetic tests still pass isolated temp files to {@link #load}/{@link #record}.
      */
     public static Path defaultFile() {
@@ -197,7 +197,7 @@ public final class BuildMetrics {
      *
      * <p>Memoized for a short TTL keyed by (builds root, working dir): every priced step consults
      * this (own + host tiers), so one ETA seed on a dirty monorepo issued hundreds of identical
-     * TOML parses (JK-1818). Harvest rewrites land between builds, well past the TTL.
+     * TOML parses. Harvest rewrites land between builds, well past the TTL.
      */
     static cc.jumpkick.builds.AggregatedMetrics aggregatesForSession() {
         Path builds = JkDirs.builds();
@@ -399,7 +399,7 @@ public final class BuildMetrics {
     /** As {@link #record(Path, Outcome, long)} with a start-time assigned build number. */
     public static long record(Path file, Outcome o, long nowMillis, long assignedBuildNumber) {
         if (o == null || o.kind() == null || o.dir() == null || o.dir().isEmpty()) return 0;
-        // Production path: per-run metrics.toml + MetricsHarvest own durable aggregates (JK-1377).
+        // Production path: per-run metrics.toml + MetricsHarvest own durable aggregates.
         if (file != null && isDefaultMetricsPath(file)) {
             return assignedBuildNumber > 0 ? assignedBuildNumber : 0;
         }

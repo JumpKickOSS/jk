@@ -23,7 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** JK-1545: platform BOM selectors resolve to a concrete catalog version before management load. */
+/** Platform BOM selectors resolve to a concrete catalog version before management load. */
 class PlatformBomVersionsTest {
 
     private HttpServer server;

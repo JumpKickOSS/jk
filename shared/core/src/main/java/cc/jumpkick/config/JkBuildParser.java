@@ -49,11 +49,11 @@ public final class JkBuildParser {
      */
     // A plain (size, mtime) memo: the parse is a pure function of the file's bytes again, so
     // nothing environment-shaped belongs in the stamp.
-    //
+
     // Keyed by PATH, with the stamp in the value: keying by (path, size, mtime) would make every
     // save of a jk.toml a NEW key, stranding the superseded JkBuild for the engine's lifetime —
-    // unbounded growth across a long `jk watch` session. One entry per file, replaced in place
-    // (JK-1483).
+    // unbounded growth across a long `jk watch` session. One entry per file, replaced in place.
+
     private static final Map<Path, Cached> PARSE_CACHE = new ConcurrentHashMap<>();
 
     private record Cached(long size, FileTime modified, JkBuild value) {}

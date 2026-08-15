@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@link BuildPlanner#effectiveSelection} must honor an explicitly cleared tag list (JK-1809): a
+ * {@link BuildPlanner#effectiveSelection} must honor an explicitly cleared tag list: a
  * profile's {@code exclude-tags = []} resolves to empty lists with {@code tagsResolved}, and the
  * engine must not fold the module's own {@code [test]} tags back in.
  */

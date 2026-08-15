@@ -24,7 +24,7 @@ public record HeaderProgressState(
 
     public long elapsedSinceSeed() {
         // Residual-only (forced clock with no R0 seed): elapsed still advances from the tracker
-        // base, otherwise the clock fill froze at 0% forever (JK-1816).
+        // base, otherwise the clock fill froze at 0% forever.
         if (r0Ms < 0 && residualRemainingMs < 0) return 0;
         return Math.max(0L, elapsedMs - seedAtElapsedMs);
     }

@@ -31,9 +31,11 @@ import java.util.function.IntSupplier;
 import java.util.function.LongPredicate;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
 /** Embedded HTTP bind + dashboard/MCP job triggers (FireAndForget JobEnvelope). */
+@RequiredArgsConstructor
 public final class EngineHttpFront {
 
     private final @Nullable JkHttpConfig config;
@@ -57,45 +59,6 @@ public final class EngineHttpFront {
 
     private volatile @Nullable HttpEngineServer server;
     private volatile @Nullable String error;
-
-    public EngineHttpFront(
-            @Nullable JkHttpConfig config,
-            EnginePaths.Paths paths,
-            String version,
-            @Nullable HttpEvents events,
-            BuildJournal journal,
-            Supplier<Path> metricsFile,
-            Consumer<String> log,
-            Supplier<StatusSnapshot> status,
-            LiveRuns liveRuns,
-            AtomicInteger peakActiveConnections,
-            IntSupplier liveConnections,
-            JobEnvelope jobs,
-            JobSessions sessions,
-            SsePublisher sse,
-            JournalWriter journalWriter,
-            LongSupplier eventRequestId,
-            EngineListeners listeners,
-            LongPredicate cancelJob) {
-        this.config = config;
-        this.paths = paths;
-        this.version = version;
-        this.events = events;
-        this.journal = journal;
-        this.metricsFile = metricsFile;
-        this.log = log;
-        this.status = status;
-        this.liveRuns = liveRuns;
-        this.peakActiveConnections = peakActiveConnections;
-        this.liveConnections = liveConnections;
-        this.jobs = jobs;
-        this.sessions = sessions;
-        this.sse = sse;
-        this.journalWriter = journalWriter;
-        this.eventRequestId = eventRequestId;
-        this.listeners = listeners;
-        this.cancelJob = cancelJob;
-    }
 
     public @Nullable HttpEngineServer server() {
         return server;
@@ -132,7 +95,7 @@ public final class EngineHttpFront {
         // delivers one compact run-snapshot per job to the new subscription only.
         candidate.setLiveRunSupport(liveRuns::snapshot, liveRuns::rehydrate);
         // Combined-connection peak observed at every admission point (UDS accept bumps it too) —
-        // not only when a status snapshot happens to run (JK-1861).
+        // not only when a status snapshot happens to run.
         candidate.setOnSseAdmitted(() -> peakActiveConnections.accumulateAndGet(liveConnections.getAsInt(), Math::max));
         try {
             candidate.start();

@@ -16,7 +16,7 @@ import java.util.TreeSet;
  *
  * <p>Two admissions with the same fingerprint must not run at once on one engine. For every
  * {@linkplain BuildHistoryKinds build-history kind}, the key is <strong>project directory +
- * kind only</strong> (JK-1291 extended): overlapping work that shares a {@code target/} tree must
+ * kind only</strong>: overlapping work that shares a {@code target/} tree must
  * not interleave, even when flags differ ({@code --rebuild}, {@code -m}, …). Non-build kinds
  * ({@code lock}, {@code format}, …) never take a slot.
  *
@@ -70,7 +70,7 @@ public final class BuildJobFingerprint {
 
     /**
      * Project-scoped exclusivity for build-like kinds: same canonical dir + kind cannot run two
-     * jobs at once (JK-1291).
+     * jobs at once.
      */
     public static String ofProject(String kind, String dir) {
         String canon = canonicalDir(dir);

@@ -160,7 +160,7 @@ class ExplainCommandEstimateTest {
 
     @Test
     void dirty_compile_shows_the_changed_count_not_the_module_total() {
-        // JK-1897: an incremental recompile must read as one — the forecast says how many
+        // an incremental recompile must read as one — the forecast says how many
         // sources actually changed; the module's full source count overstates the work.
         var module = TaskForecast.Module.fromWire(
                 Path.of("/tmp/m"),
@@ -180,7 +180,7 @@ class ExplainCommandEstimateTest {
 
     @Test
     void single_changed_source_and_single_test_are_singular() {
-        // JK-1897/JK-1898: "1 source changed", "~1 test" — never "~1 tests".
+        // "1 source changed", "~1 test" — never "~1 tests".
         var module = TaskForecast.Module.fromWire(
                 Path.of("/tmp/m"),
                 "com.example:app",

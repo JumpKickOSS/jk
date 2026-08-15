@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1769: a release-promoted blob's only other root is the Class-C action key, which
+ * A release-promoted blob's only other root is the Class-C action key, which
  * {@code jk cache clean} unconditionally drops — the promotion marker must keep the store blob
  * alive through the documented {@code cache clean} → {@code storage clean} sequence, and expire
  * by its own TTL rather than living forever.

@@ -32,7 +32,7 @@ class AddRemoveParseTest {
 
     @Test
     void isLocalPathArg_separators_win_over_at_and_colon() {
-        // JK-1514: coords/versions never contain path separators, so a separator always means a
+        // Coords/versions never contain path separators, so a separator always means a
         // path — Windows absolute paths and @-containing nested paths must not fall into the
         // Maven-coord / library branches.
         Path cwd = Path.of(".");

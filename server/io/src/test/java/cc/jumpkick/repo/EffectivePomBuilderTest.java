@@ -126,7 +126,7 @@ class EffectivePomBuilderTest {
     void jar_packaging_retains_only_its_own_properties(@TempDir Path tempDir) throws Exception {
         // The flattened ancestor map is only consumed when a POM serves as parent/BOM
         // (packaging=pom); retaining it on every jar GAV multiplied parent maps across the
-        // process memo (JK-1942). Substitution into dep fields happens before the trim.
+        // process memo. Substitution into dep fields happens before the trim.
         registerPom("org.example", "parent", "1.0", """
                 <project>
                   <groupId>org.example</groupId>
@@ -447,7 +447,7 @@ class EffectivePomBuilderTest {
     void concurrent_walkers_on_a_parent_cycle_fail_loudly_instead_of_deadlocking(@TempDir Path tempDir)
             throws Exception {
         // a's parent is b and b's parent is a. Two concurrent builders each claim one half of the
-        // cycle in the IN_FLIGHT map, then cross-join the other's flight — before JK-1764 both
+        // cycle in the IN_FLIGHT map, then cross-join the other's flight — before  both
         // parked forever. The waits-for check must degrade one (or both) to an in-line walk whose
         // visiting set throws the loud cycle diagnostic, which then propagates to the joiner too.
         registerPom("org.example", "a", "1.0", """
@@ -506,7 +506,7 @@ class EffectivePomBuilderTest {
 
     @Test
     void bom_import_join_cycle_fails_loudly_instead_of_stalling(@TempDir Path tempDir) throws Exception {
-        // JK-1804: builder1 walks `a`, whose TWO bom imports (x, y) expand on pool workers via
+        // builder1 walks `a`, whose TWO bom imports (x, y) expand on pool workers via
         // futures builder1 then joins; builder2 walks `x` directly, and x's parent is `a`. The
         // waits-for graph could not see builder1's future joins, so builder2 parked for the full
         // join-fallback bound instead of detecting the loop and degrading to the in-line walk

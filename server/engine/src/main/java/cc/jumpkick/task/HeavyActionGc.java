@@ -117,7 +117,7 @@ public final class HeavyActionGc {
 
     /**
      * Digests still referenced by live Class-C action keys. Used by size-cap eviction so heavy ship
-     * outputs are preferred victims over modular compile/test blobs (JK-1721).
+     * outputs are preferred victims over modular compile/test blobs.
      */
     public static Set<String> liveClassCShas(Path cacheRoot, Cas cacheCas) throws IOException {
         Path keysDir = cacheRoot.resolve("actions").resolve("keys");
@@ -176,7 +176,7 @@ public final class HeavyActionGc {
             // Atomic like the writer side (ActionCache.trimGenerations): this engine's GC holds
             // cacheGate + .prune.lock, but a SECOND engine (upgrade window, different jk version,
             // same cache) takes neither — a torn plain write here could clobber its concurrent
-            // gens update (JK-1792). The pointer compare-and-delete above stays inherently racy
+            // gens update. The pointer compare-and-delete above stays inherently racy
             // on POSIX; losing that race only costs a re-run of one heavy task.
             if (kept.isEmpty()) Files.deleteIfExists(gens);
             else cc.jumpkick.util.AtomicWrites.replace(gens, String.join("\n", kept) + "\n");

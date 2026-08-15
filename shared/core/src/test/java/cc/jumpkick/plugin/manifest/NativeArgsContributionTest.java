@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1694: class-initialization policy is not reachability metadata. Plugins declare what their
+ * Class-initialization policy is not reachability metadata. Plugins declare what their
  * framework needs; the user's {@code [native] args} still wins because the engine appends it after.
  */
 class NativeArgsContributionTest {

@@ -321,7 +321,7 @@ public final class Tree implements Widget {
     }
 
     private static int skipEscape(String s, int i) {
-        // Shared scanner: CSI and OSC alike (JK-1967) — a private CSI-only copy counted an
+        // Shared scanner: CSI and OSC alike — a private CSI-only copy counted an
         // OSC payload as visible columns.
         return RenderContext.skipEscape(s, i);
     }

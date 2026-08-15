@@ -24,8 +24,7 @@ import java.util.Set;
 /**
  * Runtime jars for one module: lockfile transitive closure of declared external deps (and of
  * workspace siblings' main/export/runtime externals) plus sibling thin jars. Shared by packaging
- * (assembly) and thin-worker install (classpath sidecars) — never the whole workspace lock
- * (JK-1345 / JK-1347).
+ * (assembly) and thin-worker install (classpath sidecars) — never the whole workspace lock.
  */
 public final class ModuleRuntimeClasspath {
 
@@ -57,7 +56,7 @@ public final class ModuleRuntimeClasspath {
         LinkedHashSet<String> roots = new LinkedHashSet<>();
         roots.addAll(ClasspathResolver.declaredExternalRoots(project, ClasspathResolver.RUNTIME));
         // Language runtimes are lock-injected (LockOrchestrator) but not always declared in
-        // jk.toml — seed them so assembly/fat jars nest groovy/kotlin-stdlib (JK-1173).
+        // jk.toml — seed them so assembly/fat jars nest groovy/kotlin-stdlib.
         seedLanguageRuntimeRoots(moduleDir, project, roots);
         for (JkBuild sib : siblingBuilds(moduleDir, project, siblings.siblingCoords())) {
             roots.addAll(
