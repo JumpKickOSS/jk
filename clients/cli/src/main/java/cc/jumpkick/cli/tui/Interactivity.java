@@ -67,11 +67,16 @@ public final class Interactivity {
             //   the timeout, once JLine has restored ECHO, so the tty echoes it as an ANSI flash. jk
             //   renders only single-codepoint glyphs, so grapheme-cluster width mode is unused — the
             //   probe is pure cost. Disabling it removes the flash and speeds up terminal open.
+            // nativeSignals(false): JLine's default is SIG_DFL for INT/TERM/…, which
+            // overwrites {@link GlobalCancel}'s pretty Ctrl-C handler. Wizards that need
+            // JLine to own SIGINT call {@code terminal.handle} themselves.
             probe = TerminalBuilder.builder()
                     .system(true)
                     .dumb(true)
                     .graphemeCluster(false)
+                    .nativeSignals(false)
                     .build();
+            GlobalCancel.install();
             String type = probe.getType();
             if (Terminal.TYPE_DUMB.equals(type) || Terminal.TYPE_DUMB_COLOR.equals(type)) {
                 probe.close(); // a dumb terminal owns nothing worth reusing

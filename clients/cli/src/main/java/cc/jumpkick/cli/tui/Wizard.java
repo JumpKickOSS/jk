@@ -72,10 +72,15 @@ public final class Wizard {
             // terminals when the reply outruns the probe timeout, and jk's single-codepoint glyphs
             // never need grapheme-cluster width mode. (The common path reuses the already-probed
             // shared terminal above; this fallback build must disable it too.)
+            // nativeSignals(false): do not replace {@link GlobalCancel} with SIG_DFL.
+            // {@link #run} calls {@code terminal.handle(INT, …)} when the wizard should
+            // own Ctrl-C, then re-installs GlobalCancel in {@code finally}.
             terminal = TerminalBuilder.builder()
                     .system(true)
                     .graphemeCluster(false)
+                    .nativeSignals(false)
                     .build();
+            GlobalCancel.install();
         }
         var attrs = terminal.getAttributes();
         attrs.setLocalFlag(Attributes.LocalFlag.ECHO, false);

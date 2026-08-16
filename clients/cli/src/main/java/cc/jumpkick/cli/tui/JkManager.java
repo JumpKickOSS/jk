@@ -1099,8 +1099,11 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             Attributes raw = new Attributes(saved);
             raw.setLocalFlag(Attributes.LocalFlag.ICANON, false);
             raw.setLocalFlag(Attributes.LocalFlag.ECHO, false);
-            // ISIG remains: Ctrl-C → SIGINT → GlobalCancel.
+            // ISIG remains: Ctrl-C → SIGINT → GlobalCancel. Do not call
+            // {@code terminal.handle(INT, …)} — that would steal the signal from GlobalCancel
+            // the same way JLine's default native SIG_DFL handlers did.
             t.setAttributes(raw);
+            GlobalCancel.install();
             Wizard.drainInput(t.reader(), 40L);
             keyTerminal = t;
             keyAttrsSaved = saved;
