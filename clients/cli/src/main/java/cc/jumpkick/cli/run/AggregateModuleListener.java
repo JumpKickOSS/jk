@@ -70,12 +70,38 @@ public final class AggregateModuleListener implements BuildPlanListener {
 
     @Override
     public void output(String step, String line) {
-        // Buffered path keeps raw lines; paint when the buffer is flushed (BuildCommand/TestCommand).
-        if (outBuffer != null) {
-            emit(line);
+        // Test-failure blocks: keep the curated path (raw lines in outBuffer or stream paint).
+        // Do not feed the Ctrl-O peek ring (and never force-show for tests).
+        if (TestFailureHighlight.isHeader(line) || inTestFailure) {
+            if (TestFailureHighlight.isHeader(line)) {
+                flushBufferedFailure();
+                inTestFailure = true;
+                testFailStream.reset();
+            }
+            if (outBuffer != null) {
+                synchronized (outBuffer) {
+                    outBuffer.add(line);
+                }
+                if (line != null && TestFailureHighlight.FOOTER_SENTINEL.equals(line.strip())) {
+                    inTestFailure = false;
+                }
+                return;
+            }
+            emit(paintOutputLine(line));
             return;
         }
-        emit(paintOutputLine(line));
+
+        // Tool/process chatter (native-image, compilers, …): always feed the live peek ring so
+        // Ctrl-O works mid-step. When animating a workspace build, do NOT also park lines in
+        // outBuffer — that list is settled as a bulk dump and would re-print the whole Graal log
+        // after a successful native-image.
+        String painted = StackTraceHighlight.line(line);
+        cm.writeAbove(painted);
+        if (outBuffer != null && !cm.animating()) {
+            synchronized (outBuffer) {
+                outBuffer.add(line);
+            }
+        }
     }
 
     private String paintOutputLine(String line) {
@@ -107,7 +133,15 @@ public final class AggregateModuleListener implements BuildPlanListener {
         // Do not also print a second report — keep the diagnostic for JSON.
         if ("test-failure".equals(code)) return;
         String report = ConsoleSpec.renderError(step, code, message, module);
-        if (report != null && !report.isEmpty()) emit(report);
+        if (report != null && !report.isEmpty()) {
+            // Peek ring always; settle dump only when not animating (same as process output).
+            cm.writeAbove(report);
+            if (outBuffer != null && !cm.animating()) {
+                synchronized (outBuffer) {
+                    outBuffer.add(report);
+                }
+            }
+        }
         if (JkManager.forceShowOnStepFailure(step, null)) {
             cm.showProcessFailureOutput();
         }

@@ -5,7 +5,6 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
@@ -346,10 +345,15 @@ public final class PlannerNative {
                                         .orElse("plugin")
                                 + " sources");
                     }
-                    // Capture Graal stdout/stderr for progress parsing + a durable report.
-                    // Console: only --verbose or a non-zero exit (happy path stays quiet).
+                    // Capture Graal stdout/stderr for progress parsing, a durable report, and the
+                    // plan output channel. The CLI buffers output for Ctrl-O peek (hidden by
+                    // default); --verbose streams it live. Do not gate on verbose/failure only —
+                    // that left the peek buffer empty during a successful native-image run.
                     java.util.List<String> niLog = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
-                    int exit = cc.jumpkick.tool.NativeImageDriver.run(request, listener, niLog::add);
+                    int exit = cc.jumpkick.tool.NativeImageDriver.run(request, listener, line -> {
+                        niLog.add(line);
+                        ctx.output(line);
+                    });
                     Path niReport = layout.reportsDir().resolve("native-image.out");
                     try {
                         Files.createDirectories(niReport.getParent());
@@ -357,10 +361,6 @@ public final class PlannerNative {
                         Files.writeString(niReport, body);
                     } catch (IOException ioe) {
                         // Best-effort report; never fail the image over log write.
-                    }
-                    boolean showNiLog = SessionContext.current().verbose() || exit != 0;
-                    if (showNiLog) {
-                        for (String line : niLog) ctx.output(line);
                     }
                     if (exit != 0) {
                         ctx.error(

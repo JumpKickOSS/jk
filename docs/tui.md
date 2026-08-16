@@ -37,7 +37,8 @@ API: `cc.jumpkick.cli.tui.JkWedge` (`CommandWedge` is envelope + printOk).
 
 On an interactive TTY live plan (`jk build`, `jk test`, `jk lock`, …), worker and tool stdout/stderr
 are buffered in a **sliding window of at most 200 lines**, hidden by default so the wedge + progress
-stay clean.
+stay clean. Long tools (e.g. `native-image`) stream into this channel live — not only on
+`--verbose` or failure — so Ctrl-O can show them mid-run.
 
 | Action | Behavior |
 |--------|----------|
