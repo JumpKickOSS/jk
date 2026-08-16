@@ -71,18 +71,7 @@ class BuildNotifyTest {
 
     @Test
     void desktopNotify_empty_when_no_osc() {
-        var noOsc = new cc.jumpkick.config.JkConfig(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.of(true),
-                Optional.empty());
+        var noOsc = cc.jumpkick.config.JkConfig.empty().withNoOsc(Optional.of(true));
         cc.jumpkick.config.SessionContext.runWhere(
                 cc.jumpkick.config.Session.defaults().withConfig(noOsc), () -> {
                     assertThat(Ansi.oscEnabled()).isFalse();

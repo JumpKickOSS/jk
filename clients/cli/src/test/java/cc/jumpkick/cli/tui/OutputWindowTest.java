@@ -8,6 +8,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class OutputWindowTest {
@@ -67,6 +68,39 @@ class OutputWindowTest {
         assertThat(w.visible()).isFalse();
         w.show();
         assertThat(w.visible()).isTrue();
+    }
+
+    @Test
+    void plan_opens_peek_when_config_build_output_true() {
+        CommandWedge.resetEnvelope();
+        var prev = cc.jumpkick.config.SessionContext.current();
+        try {
+            cc.jumpkick.config.SessionContext.installConfig(
+                    cc.jumpkick.config.JkConfig.empty().withBuildOutput(Optional.of(true)));
+            var buf = new ByteArrayOutputStream();
+            var cm = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
+            assertThat(cm.outputWindow().visible()).isTrue();
+            List<String> lines = cm.renderBuildPlanLines(80, 0);
+            assertThat(TestAnsi.strip(lines.get(0))).contains("output");
+            cm.close();
+        } finally {
+            cc.jumpkick.config.SessionContext.install(prev);
+        }
+    }
+
+    @Test
+    void plan_keeps_peek_closed_by_default() {
+        CommandWedge.resetEnvelope();
+        var prev = cc.jumpkick.config.SessionContext.current();
+        try {
+            cc.jumpkick.config.SessionContext.installConfig(cc.jumpkick.config.JkConfig.empty());
+            var buf = new ByteArrayOutputStream();
+            var cm = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
+            assertThat(cm.outputWindow().visible()).isFalse();
+            cm.close();
+        } finally {
+            cc.jumpkick.config.SessionContext.install(prev);
+        }
     }
 
     @Test

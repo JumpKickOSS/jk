@@ -56,6 +56,7 @@ public final class GitFetchVerb implements HostedVerb {
                         Optional.of(refresh),
                         Optional.empty(),
                         Optional.empty(),
+                        Optional.empty(),
                         Optional.empty());
                 Session session = Session.defaults()
                         .withConfig(config)

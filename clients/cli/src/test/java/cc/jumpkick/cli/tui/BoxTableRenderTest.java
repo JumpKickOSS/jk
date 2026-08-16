@@ -128,18 +128,7 @@ class BoxTableRenderTest {
     }
 
     private static <T> T withNoAnsi(Supplier<T> body) throws Exception {
-        cc.jumpkick.config.JkConfig noAnsi = new cc.jumpkick.config.JkConfig(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.of(true),
-                Optional.empty(),
-                Optional.empty());
+        cc.jumpkick.config.JkConfig noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
         cc.jumpkick.config.Session original = cc.jumpkick.config.SessionContext.current();
         try {
             return cc.jumpkick.config.SessionContext.where(original.withConfig(noAnsi), body::get);

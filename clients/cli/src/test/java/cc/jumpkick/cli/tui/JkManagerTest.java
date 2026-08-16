@@ -530,18 +530,7 @@ class JkManagerTest {
     @Test
     void window_title_suppressed_in_no_ansi_mode() {
         // --no-ansi on a real TTY: still animated, but ANSI sequences are promised away.
-        var noAnsi = new cc.jumpkick.config.JkConfig(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.of(true), // noAnsi
-                Optional.empty(),
-                Optional.empty()); // noOsc
+        var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
         cc.jumpkick.config.SessionContext.runWhere(
                 cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
                     var buf = new ByteArrayOutputStream();
@@ -554,18 +543,7 @@ class JkManagerTest {
 
     @Test
     void plain_progress_emits_decades_then_100_done() {
-        var noAnsi = new cc.jumpkick.config.JkConfig(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.of(true),
-                Optional.empty(),
-                Optional.empty());
+        var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
         cc.jumpkick.config.SessionContext.runWhere(
                 cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
                     var buf = new ByteArrayOutputStream();

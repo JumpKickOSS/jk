@@ -778,6 +778,7 @@ no-progress = false     # hide bars/spinners; also suppresses build notification
 no-ansi = false         # ASCII-only; implies no-progress
 no-osc = false          # no window title, taskbar progress, or desktop notifications
 notify = "auto"         # auto | always | never   (booleans: true=always, false=never)
+build-output = false    # open live-plan process-output peek by default (Ctrl-O)
 force = false
 # directory = "/path"   # optional default -C
 ```
@@ -789,6 +790,7 @@ force = false
 | `no-ansi` | `--no-ansi` | `JK_NO_ANSI` |
 | `no-osc` | `--no-osc` | `JK_NO_OSC` |
 | `notify` | `--notify` / `--no-notify` | `JK_NOTIFY` |
+| `build-output` | — | `JK_BUILD_OUTPUT` |
 | `quiet` / `verbose` / `offline` / `force` | `-q` / `-v` / `--offline` / `-F` | `JK_QUIET` / `JK_VERBOSE` / `JK_OFFLINE` / `JK_FORCE` |
 
 **`notify`:** `auto` (default) sends an OSC desktop notification when a build’s ETA **or**

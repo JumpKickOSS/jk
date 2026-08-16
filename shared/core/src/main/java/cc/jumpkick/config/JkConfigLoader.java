@@ -25,6 +25,7 @@ public final class JkConfigLoader {
     private static final String ENV_NO_ANSI = "JK_NO_ANSI";
     private static final String ENV_NO_OSC = "JK_NO_OSC";
     private static final String ENV_NOTIFY = "JK_NOTIFY";
+    private static final String ENV_BUILD_OUTPUT = "JK_BUILD_OUTPUT";
 
     private JkConfigLoader() {}
 
@@ -60,7 +61,8 @@ public final class JkConfigLoader {
                 "config.force",
                 "config.no-ansi",
                 "config.no-osc",
-                "config.notify");
+                "config.notify",
+                "config.build-output");
         return new JkConfig(
                 Optional.ofNullable(scan.get("config.color")).flatMap(JkConfig.ColorChoice::parse),
                 scanBool(scan, "config.offline"),
@@ -72,7 +74,8 @@ public final class JkConfigLoader {
                 scanBool(scan, "config.force"),
                 scanBool(scan, "config.no-ansi"),
                 scanBool(scan, "config.no-osc"),
-                Optional.ofNullable(scan.get("config.notify")).flatMap(JkConfig.NotifyChoice::parse));
+                Optional.ofNullable(scan.get("config.notify")).flatMap(JkConfig.NotifyChoice::parse),
+                scanBool(scan, "config.build-output"));
     }
 
     /** A scanned TOML boolean: strictly {@code true}/{@code false}, anything else = absent. */
@@ -108,6 +111,7 @@ public final class JkConfigLoader {
                 force,
                 EnvValues.bool(env, ENV_NO_ANSI),
                 EnvValues.bool(env, ENV_NO_OSC),
-                notify);
+                notify,
+                EnvValues.bool(env, ENV_BUILD_OUTPUT));
     }
 }

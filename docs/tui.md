@@ -43,6 +43,7 @@ stay clean. Long tools (e.g. `native-image`) stream into this channel live — n
 | Action | Behavior |
 |--------|----------|
 | **Ctrl-O** | Toggle process-output peek. When **on**: buffered lines are committed above a full-width braille rule (`⠒… ↑ output ↑ …⠒`); only the rule + wedge/tree is the live region (normal spinner line-diff). New output lifts that small region, appends one line, and repaints the wedge — no full-screen redraw. When **off**: the rule is **replaced by a blank line** (not deleted); already-printed lines stay in scrollback. Always keep either the rule or that blank between process output and the wedge. |
+| **`[config] build-output = true`** (or `JK_BUILD_OUTPUT=true`) | Start with the peek **open** on live plans. Default **`false`** (hidden until Ctrl-O or force-show). Machine or project `[config]`. |
 | **Failed tool/worker** (non-zero sub-process exit, e.g. `native-image`) | Force-opens the pane while the plan is still live. |
 | **Test failures** | Do **not** force-open — curated test-failure chrome owns that path. |
 | Plan settle | Does **not** dump the buffer. If process lines were committed (pane open or force-show), they stay in scrollback; the live region is wiped; **one blank** is printed between that output and the settle chip. |

@@ -38,7 +38,13 @@ public record JkConfig(
          * Desktop notification policy for long builds ({@code config.notify} /
          * {@code --notify}/{@code --no-notify} / {@code JK_NOTIFY}).
          */
-        Optional<NotifyChoice> notifyPolicy) {
+        Optional<NotifyChoice> notifyPolicy,
+        /**
+         * Open the live-plan process-output peek by default ({@code config.build-output} /
+         * {@code JK_BUILD_OUTPUT}). Default {@code false}: hidden until Ctrl-O or a failed
+         * tool/worker force-show.
+         */
+        Optional<Boolean> buildOutput) {
 
     public enum ColorChoice {
         AUTO,
@@ -88,6 +94,7 @@ public record JkConfig(
         Objects.requireNonNull(noAnsi, "noAnsi");
         Objects.requireNonNull(noOsc, "noOsc");
         Objects.requireNonNull(notifyPolicy, "notifyPolicy");
+        Objects.requireNonNull(buildOutput, "buildOutput");
     }
 
     /** Empty config — every setting unset. Used as the seed before layers merge. */
@@ -103,62 +110,170 @@ public record JkConfig(
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
     }
 
     // --- withers: one-field copies so callers (tests especially) never restate the
-    // 11-positional-Optional constructor. ---
+    // 12-positional-Optional constructor. ---
 
     public JkConfig withColor(Optional<ColorChoice> v) {
         return new JkConfig(
-                v, offline, rebuild, noProgress, quiet, verbose, directory, force, noAnsi, noOsc, notifyPolicy);
+                v,
+                offline,
+                rebuild,
+                noProgress,
+                quiet,
+                verbose,
+                directory,
+                force,
+                noAnsi,
+                noOsc,
+                notifyPolicy,
+                buildOutput);
     }
 
     public JkConfig withOffline(Optional<Boolean> v) {
         return new JkConfig(
-                color, v, rebuild, noProgress, quiet, verbose, directory, force, noAnsi, noOsc, notifyPolicy);
+                color,
+                v,
+                rebuild,
+                noProgress,
+                quiet,
+                verbose,
+                directory,
+                force,
+                noAnsi,
+                noOsc,
+                notifyPolicy,
+                buildOutput);
     }
 
     public JkConfig withRebuild(Optional<Boolean> v) {
         return new JkConfig(
-                color, offline, v, noProgress, quiet, verbose, directory, force, noAnsi, noOsc, notifyPolicy);
+                color,
+                offline,
+                v,
+                noProgress,
+                quiet,
+                verbose,
+                directory,
+                force,
+                noAnsi,
+                noOsc,
+                notifyPolicy,
+                buildOutput);
     }
 
     public JkConfig withNoProgress(Optional<Boolean> v) {
-        return new JkConfig(color, offline, rebuild, v, quiet, verbose, directory, force, noAnsi, noOsc, notifyPolicy);
+        return new JkConfig(
+                color, offline, rebuild, v, quiet, verbose, directory, force, noAnsi, noOsc, notifyPolicy, buildOutput);
     }
 
     public JkConfig withQuiet(Optional<Boolean> v) {
         return new JkConfig(
-                color, offline, rebuild, noProgress, v, verbose, directory, force, noAnsi, noOsc, notifyPolicy);
+                color,
+                offline,
+                rebuild,
+                noProgress,
+                v,
+                verbose,
+                directory,
+                force,
+                noAnsi,
+                noOsc,
+                notifyPolicy,
+                buildOutput);
     }
 
     public JkConfig withVerbose(Optional<Boolean> v) {
         return new JkConfig(
-                color, offline, rebuild, noProgress, quiet, v, directory, force, noAnsi, noOsc, notifyPolicy);
+                color,
+                offline,
+                rebuild,
+                noProgress,
+                quiet,
+                v,
+                directory,
+                force,
+                noAnsi,
+                noOsc,
+                notifyPolicy,
+                buildOutput);
     }
 
     public JkConfig withDirectory(Optional<Path> v) {
-        return new JkConfig(color, offline, rebuild, noProgress, quiet, verbose, v, force, noAnsi, noOsc, notifyPolicy);
+        return new JkConfig(
+                color,
+                offline,
+                rebuild,
+                noProgress,
+                quiet,
+                verbose,
+                v,
+                force,
+                noAnsi,
+                noOsc,
+                notifyPolicy,
+                buildOutput);
     }
 
     public JkConfig withForce(Optional<Boolean> v) {
         return new JkConfig(
-                color, offline, rebuild, noProgress, quiet, verbose, directory, v, noAnsi, noOsc, notifyPolicy);
+                color,
+                offline,
+                rebuild,
+                noProgress,
+                quiet,
+                verbose,
+                directory,
+                v,
+                noAnsi,
+                noOsc,
+                notifyPolicy,
+                buildOutput);
     }
 
     public JkConfig withNoAnsi(Optional<Boolean> v) {
         return new JkConfig(
-                color, offline, rebuild, noProgress, quiet, verbose, directory, force, v, noOsc, notifyPolicy);
+                color,
+                offline,
+                rebuild,
+                noProgress,
+                quiet,
+                verbose,
+                directory,
+                force,
+                v,
+                noOsc,
+                notifyPolicy,
+                buildOutput);
     }
 
     public JkConfig withNoOsc(Optional<Boolean> v) {
         return new JkConfig(
-                color, offline, rebuild, noProgress, quiet, verbose, directory, force, noAnsi, v, notifyPolicy);
+                color,
+                offline,
+                rebuild,
+                noProgress,
+                quiet,
+                verbose,
+                directory,
+                force,
+                noAnsi,
+                v,
+                notifyPolicy,
+                buildOutput);
     }
 
     public JkConfig withNotifyPolicy(Optional<NotifyChoice> v) {
-        return new JkConfig(color, offline, rebuild, noProgress, quiet, verbose, directory, force, noAnsi, noOsc, v);
+        return new JkConfig(
+                color, offline, rebuild, noProgress, quiet, verbose, directory, force, noAnsi, noOsc, v, buildOutput);
+    }
+
+    public JkConfig withBuildOutput(Optional<Boolean> v) {
+        return new JkConfig(
+                color, offline, rebuild, noProgress, quiet, verbose, directory, force, noAnsi, noOsc, notifyPolicy, v);
     }
 
     /**
@@ -177,7 +292,8 @@ public record JkConfig(
                 over.force.or(() -> this.force),
                 over.noAnsi.or(() -> this.noAnsi),
                 over.noOsc.or(() -> this.noOsc),
-                over.notifyPolicy.or(() -> this.notifyPolicy));
+                over.notifyPolicy.or(() -> this.notifyPolicy),
+                over.buildOutput.or(() -> this.buildOutput));
     }
 
     /** Convenience: color with a fallback when empty. */
@@ -230,5 +346,13 @@ public record JkConfig(
     /** Notify policy with fallback (default {@link NotifyChoice#AUTO}). */
     public NotifyChoice notifyOr(NotifyChoice fallback) {
         return notifyPolicy.orElse(fallback);
+    }
+
+    /**
+     * True when live-plan process output should start open ({@code config.build-output} /
+     * {@code JK_BUILD_OUTPUT}). Default {@code false}.
+     */
+    public boolean buildOutputOr(boolean fallback) {
+        return buildOutput.orElse(fallback);
     }
 }

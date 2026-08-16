@@ -270,6 +270,10 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         cm.startNanos = System.nanoTime();
         LiveRegion.setActive(cm);
         cm.ensureLeadingBlank(); // blank line before human chrome
+        // config.build-output / JK_BUILD_OUTPUT: start with the process-output peek open.
+        if (cc.jumpkick.config.SessionContext.current().config().buildOutputOr(false)) {
+            cm.outputWindow.show();
+        }
         if (animate && Theme.active().isAnsi()) {
             out.print(Ansi.HIDE_CURSOR);
             out.flush();

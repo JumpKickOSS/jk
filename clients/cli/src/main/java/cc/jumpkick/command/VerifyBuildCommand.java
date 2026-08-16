@@ -265,6 +265,7 @@ public final class VerifyBuildCommand implements CliCommand {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
     }
 
