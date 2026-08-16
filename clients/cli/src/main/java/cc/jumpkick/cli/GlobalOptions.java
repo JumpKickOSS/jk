@@ -247,7 +247,7 @@ public final class GlobalOptions {
                 Opt.flag("Suppress informational output", "-q", "--quiet"),
                 Opt.flag("Print additional diagnostic output", "-v", "--verbose"),
                 Opt.flag("Disable all progress bars and spinners", "--no-progress"),
-                Opt.flag("Skip writing target/jk-chrome-profile.json", "--no-timeline"),
+                Opt.flag("Skip writing target/jk-profile.json", "--no-timeline"),
                 Opt.flag("Disable all ANSI/color/Unicode; ASCII-only output", "--no-ansi"),
                 Opt.flag("Disable OSC (title, taskbar, notifications)", "--no-osc"),
                 Opt.flag("Always notify when a build finishes", "--notify"),

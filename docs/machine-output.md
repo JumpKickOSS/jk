@@ -117,7 +117,7 @@ samples (CLI residual decay; web clock/residual).
 ### Deep timing: chrome timeline
 
 ```text
-target/jk-chrome-profile.json
+target/jk-profile.json
 ```
 
 Disable: `--no-timeline` / `JK_CHROME_PROFILE=off`. Linked from docs; not duplicated into every JSONL tick.

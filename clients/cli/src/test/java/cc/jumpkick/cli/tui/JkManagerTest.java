@@ -692,11 +692,10 @@ class JkManagerTest {
                 .contains("1m 52s")
                 .doesNotContain("acme:api"); // module lives on the tree row, not the header
         assertThat(all).contains("45%");
-        // Only running Compile stays; Resolve succeeded and is gone. Module + phase on the row.
-        assertThat(all).contains("acme:api").contains("Compile").contains("·");
+        // Only running Compile stays; Resolve succeeded and is gone. Module › phase on the row.
+        assertThat(all).contains("acme:api").contains("Compile").contains("›");
         assertThat(all).doesNotContain("Resolve");
         assertThat(all).containsAnyOf("├─", "╰─", "+-", "`-");
-        assertThat(all).doesNotContain("›");
     }
 
     @Test
@@ -750,13 +749,13 @@ class JkManagerTest {
         String joined = String.join("\n", raw);
         String visible = String.join("\n", stripAll(raw));
         Theme t = Theme.active();
-        // Compact module · phase: no bg pills / powerline caps on the tree.
-        assertThat(visible).contains("com.foo:bar").contains("·").contains("Compile");
+        // Compact module › phase: no bg pills / powerline caps on the tree.
+        assertThat(visible).contains("com.foo:bar").contains("›").contains("Compile");
         assertThat(visible).contains("com.foo:baz").contains("Test");
         // Running phase is bold blue (web parity); failed phase stays red.
         assertThat(joined).contains(Theme.colorize("Compile", t.blue().bold()));
         assertThat(joined).contains(Theme.colorize("Test", t.error()));
-        assertThat(joined).contains(Theme.colorize("·", t.darkGray()));
+        assertThat(joined).contains(Theme.colorize("›", t.darkGray()));
         assertThat(joined).doesNotContain(Glyphs.PILL_LEFT_NERD);
         // Running row uses fill-circle (○) in constant blue — not the solid ● pulse glyph.
         assertThat(visible).contains("\u25CB"); // ○ frame 0
@@ -785,11 +784,12 @@ class JkManagerTest {
         cm.stepMessage("cc.jumpkick:jk-java-compiler", "package-jar", "shrinking jar");
 
         String all = String.join("\n", stripAll(cm.renderBuildPlanLines(120, 0)));
-        // ● module · Package · shrinking jar
+        // ● module › Package › shrinking jar
         assertThat(all)
                 .contains("cc.jumpkick:jk-java-compiler")
                 .contains("Package")
-                .contains("shrinking jar");
+                .contains("shrinking jar")
+                .contains("›");
         assertThat(all.indexOf("Package")).isLessThan(all.indexOf("shrinking jar"));
     }
 
@@ -1428,8 +1428,8 @@ class JkManagerTest {
         var lines = stripAll(cm.renderBuildPlanLines(120, 0));
         // header + two tree rows only (no leading │, no blank │ between).
         assertThat(lines).hasSize(3);
-        assertThat(lines.get(1)).matches(" [├+].*").contains("com.foo").contains("·");
-        assertThat(lines.get(2)).matches(" [╰`].*").contains("com.foo").contains("·");
+        assertThat(lines.get(1)).matches(" [├+].*").contains("com.foo").contains("›");
+        assertThat(lines.get(2)).matches(" [╰`].*").contains("com.foo").contains("›");
         for (String line : lines) {
             assertThat(line.strip()).isNotEqualTo("│");
         }

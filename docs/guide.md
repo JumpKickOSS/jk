@@ -737,7 +737,7 @@ export JK_OUTPUT=json        # same for any command that uses BuildPlanConsole
   with web SSE and **MCP** (`POST /mcp`; `jk engine status` prints **MCP**).
 - Session log (same JSONL shape, live append) lands in the project run dir under
   `~/.local/state/jk/builds/projects/<key>/runs/<id>/details.jsonl` (jid + ETA included)
-  (below). Deep timings: `target/jk-chrome-profile.json`.
+  (below). Deep timings: `target/jk-profile.json`.
 
 ### CLI UX (human-first)
 
@@ -978,7 +978,7 @@ jk tasks show package-jar --modules 'libs/*'
 ### Build timeline (chrome tracing)
 
 Every `jk build` / `jk test` has the **engine** write a Chrome Trace Event file at
-`target/jk-chrome-profile.json` (no terminal noise). Spans use the same step durations as
+`target/jk-profile.json` (no terminal noise). Spans use the same step durations as
 build metrics. Open the file in Perfetto or `chrome://tracing`. **CI tip:** archive that
 path as a build artifact.
 

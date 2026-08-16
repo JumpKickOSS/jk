@@ -594,7 +594,7 @@ final class JkManagerView {
      * tail). Pure — no cursor control. Package-private for tests.
      *
      * <p>Tree (newest at top): only <em>running</em> and <em>failed</em> work — successful steps drop
-     * stdout. Each row is {@code ├─ ● group:name · Phase · detail} with a blue pulse spinner while
+     * stdout. Each row is {@code ├─ ● group:name › Phase › detail} with a blue pulse spinner while
      * running (no background pills). The trailing detail is the latest step {@link #stepMessage}
      * (test class, package sub-task, fetch artifact, …). Failed rows use a red cross and keep a
      * one-line brief under the branch. No blank spacer rails between rows — vertically compact.
@@ -698,7 +698,7 @@ final class JkManagerView {
     /**
      * Step label for the tree detail segment. Strips a leading {@code module:: } prefix when the
      * engine label already embeds the coordinate (test progress labels) so the row does not read
-     * {@code g:a · Test · g:a:: FooTest}.
+     * {@code g:a › Test › g:a:: FooTest}.
      */
     static String detailForDisplay(String module, String message) {
         return JkManagerColor.detailForDisplay(module, message);
@@ -707,6 +707,9 @@ final class JkManagerView {
     static String renderBriefErrorLine(boolean last, String brief) {
         return JkManagerColor.renderBriefErrorLine(last, brief);
     }
+
+    /** Dim segment separator between module, phase, and detail on a work row. */
+    private static final String WORK_ROW_SEP = "›";
 
     private String renderWorkRow(String module, String displayPhase, boolean failed, String detail) {
         Theme t = Theme.active();
@@ -722,17 +725,18 @@ final class JkManagerView {
             phaseStyle = t.blue().bold();
         }
         String phase = displayPhase == null || displayPhase.isEmpty() ? "?" : displayPhase;
+        String sep = Theme.colorize(WORK_ROW_SEP, t.darkGray());
         StringBuilder sb = new StringBuilder();
         sb.append(' ').append(icon).append(' ');
         if (module != null && !module.isEmpty()) {
             sb.append(JkManagerColor.coloredModule(module))
                     .append(' ')
-                    .append(Theme.colorize("·", t.darkGray()))
+                    .append(sep)
                     .append(' ');
         }
         sb.append(Theme.colorize(phase, phaseStyle));
         if (detail != null && !detail.isBlank()) {
-            sb.append(' ').append(Theme.colorize("·", t.darkGray())).append(' ').append(colorDetail(phase, detail, t));
+            sb.append(' ').append(sep).append(' ').append(colorDetail(phase, detail, t));
         }
         return sb.toString();
     }
