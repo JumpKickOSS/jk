@@ -16,8 +16,8 @@ How `jumpkick.build` is wired (JK-1066 ops).
 | Layer | What |
 |-------|------|
 | **Firebase Hosting** | Static site + `install.sh` + Firebase edge CDN for those files |
-| **GCS** `gs://jkbuild-releases` | Release binaries (`releases/<ver>/…`) |
-| **Hosting redirects** | `/releases/**` → `https://storage.googleapis.com/jkbuild-releases/releases/**` |
+| **GCS** `gs://jumpkick` | Release binaries (`releases/<ver>/…`) |
+| **Hosting redirects** | `/releases/**` → `https://storage.googleapis.com/jumpkick/releases/**` |
 | **Blaze** | Project `jkbuild` is on GCP billing (required for Hosting custom domains / future Cloud products) |
 
 Firebase Hosting does **not** store multi‑MB native archives; it redirects to GCS. Google’s multi‑region
@@ -32,8 +32,8 @@ optional later if you want zero redirect hop.
 | https://jkbuild.web.app/install.sh | Installer script |
 | https://jkbuild.web.app/releases/latest/VERSION | Redirect → GCS releases |
 | https://jkbuild.web.app/repo/… | Redirect → official Maven repo |
-| https://storage.googleapis.com/jkbuild-releases/releases/ | Direct GCS releases |
-| https://storage.googleapis.com/jkbuild-releases/repo/ | Direct GCS Maven repo |
+| https://storage.googleapis.com/jumpkick/releases/ | Direct GCS releases |
+| https://storage.googleapis.com/jumpkick/repo/ | Direct GCS Maven repo |
 
 ## DNS for `jumpkick.build` (you apply at the registrar)
 
@@ -69,6 +69,23 @@ firebase deploy --only hosting --project jkbuild
 ```
 
 Sources: `hosting/public/`, `firebase.json`, `.firebaserc`.
+
+### Brand assets (favicon, logo)
+
+Canonical art lives with the engine Web UI:
+
+`clients/web/src/main/resources/web/` (`jk-logo.svg`, `jumpkick-logo.webp`).
+
+Hosting keeps **committed copies** under `hosting/public/` so deploy needs no build step.
+After changing logos in the web client, re-sync and commit both trees:
+
+```bash
+scripts/sync-hosting-brand.sh          # copy into hosting/public/
+scripts/sync-hosting-brand.sh --check  # fail if copies drift
+```
+
+The landing page reuses a **token subset** of the dashboard CSS (Jk Dark / JetBrains Mono,
+neon cyan accents) — not the full `style.css` app sheet.
 
 ## Install after DNS is live
 
