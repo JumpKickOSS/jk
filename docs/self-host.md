@@ -1,46 +1,40 @@
-# Self-hosting JumpKick (`jk-jk`)
+# Self-hosting JumpKick
 
-Build JumpKick with JumpKick. **Gradle and pure-jk coexist** in this tree for now: Gradle is
-bootstrap + parity oracle; day-to-day monorepo dogfood is pure-jk (`jk build` / `jk test` /
-`jk release`). A full cut-over (Gradle only in a sibling `jk-gradle` checkout, product tree
-Gradle-free) is **backlog** — see [Future cut-over](#future-cut-over-backlog).
+This repository is a **dual-build tree**: the same product sources build under **Gradle**
+(bootstrap + parity) and under **JumpKick** (self-host / day-to-day dogfood). Root
+**`jk.toml`** is a full workspace (members under `shared/`, `server/`, `clients/`,
+`plugins/*`). There is no separate `jk.jk` tree and no second product checkout required.
 
-## Worktree layout
+| System | Config | Typical output | Role today |
+|--------|--------|----------------|------------|
+| **Gradle** | `gradlew`, `build.gradle.kts`, `buildSrc/` | `*/build/` | Bootstrap `jk`, unit/integration CI, parity oracle |
+| **JumpKick** | `jk.toml`, module manifests, `jk-libs.toml`, `jk-lock.toml` | `target/` | Self-host compile/package/test/release, worker install |
 
-Recommended dual-checkout setup:
-
-| Path | Role |
-|---|---|
-| `…/oss/jk` | Primary product tree (Gradle + `jk.toml` dual-build) |
-| `…/oss/jk-jk` | Optional worktree for pure-jk-only dogfood |
-
-```bash
-# From the primary clone (once):
-git worktree add -b self-host-jk-jk ../jk-jk main
-```
-
-Both trees share history; use **one Gradle build at a time** in `jk` only. Prefer `jk` for
-compile/package dogfood in `jk-jk`.
+Do not treat dual-build as temporary scaffolding you must hide: both layouts live in this
+repo until a deliberate Gradle cut-over (backlog below).
 
 ## Bootstrap (chicken-egg)
 
-You need a working `jk` binary before the worktree can build itself.
+You need a working `jk` before pure-jk can build the monorepo.
 
 ```bash
-# In …/oss/jk (needs Graal for native dist; or use the thin path in CONTRIBUTING)
+# In this clone (Graal for native dist; thin path in CONTRIBUTING)
 ./gradlew dist installLocal
 ./install.sh build/dist/jk
-export PATH="$HOME/.local/bin:$PATH"   # or data versions/<v>/bin
+export PATH="$HOME/.local/bin:$PATH"
 jk engine status
 ```
 
-Thin JVM alternative (no Graal): see [CONTRIBUTING.md](../CONTRIBUTING.md) path B
+Thin JVM alternative (no Graal): [CONTRIBUTING.md](../CONTRIBUTING.md) path B
 (`:cli:installDist` + `:engine:shadowJar` + `jk self materialize`).
 
-## Dogfood in `jk-jk` (or primary tree)
+Helper: `./scripts/bootstrap-from-gradle.sh`.
+
+## Dogfood (same tree)
+
+After `jk` is on `PATH`, stay in this checkout:
 
 ```bash
-cd ../jk-jk   # or stay in jk after install
 jk lock
 jk build --skip-tests
 jk plugin install-local
@@ -52,39 +46,50 @@ jk release --skip-tests
 ./install.sh target/dist/jk
 ```
 
-Current workspace: libraries, `clients/cli`, `clients/web`, `server/engine` (assembly fat jar),
-and **all** first-party `plugins/*` workers (`assembly` + `PluginMain`).
+Workspace members: libraries, `clients/cli`, `clients/web`, `server/engine` (assembly fat
+jar), and all first-party `plugins/*` workers (`assembly` + `PluginMain`).
 
-### `jk test` coverage notes
+### `jk test` coverage
 
 | Modules | Under `jk test` |
 |---|---|
 | `shared/*`, `server/{io,resolver,toolchain,engine}`, `plugins/*`, `clients/cli` | **Green** dogfood / CI (CLI uses isolated nested engines) |
+
+Gradle tests remain the pre-merge bar for many paths (`./gradlew test` / `checkAll` —
+see [AGENTS.md](../AGENTS.md) and [test-suite-tiers.md](perf/test-suite-tiers.md)).
+
+## Coexistence notes
+
+- **Two output roots** — Gradle writes under `build/`; JumpKick under `target/`. They do
+  not share class trees. Clean one system does not wipe the other.
+- **One Gradle daemon build at a time** per checkout (OS lock in `settings.gradle.kts`).
+  Parallel Gradle work needs a **git worktree**, not a second tool name.
+- **Optional pure-jk worktree** — still fine for isolation (`git worktree add …`), but not
+  required for self-host. Prefer dogfooding in the primary clone after bootstrap.
+- **Catalog pins** — workspace short names used by self-host manifests are pinned in
+  root **`jk-libs.toml`** (name → `group:artifact`; versions stay in manifests / lock).
 
 ## Default repositories
 
 With no `[repositories]` table, remotes are **Maven Central then Google Maven** (local CAS /
 `repos/*` / `~/.m2` still win first). R8 and Android coords do not need an extra google stanza.
 
-## Still Gradle (by design, for now)
-
-Dual-build is intentional: the same sources build under Gradle **and** pure-jk. Do not remove
-Gradle files until the cut-over epic lands.
+## Still Gradle (by design)
 
 | Task | Why |
 |---|---|
 | Full `./gradlew test` | Parity oracle + bootstrap CI source of truth |
 | `./gradlew dist` / `nativeCompile` | Bootstrap binary when no prior `jk` install exists |
-| `./gradlew installLocal` | Or `jk plugin install-local` after pure-jk build |
+| `./gradlew installLocal` | Workers + engine materialize/bounce; or `jk plugin install-local` after pure-jk build |
 
 ### Future cut-over (backlog)
 
 Not started — keep dual-build green until this epic is scheduled:
 
-1. **Bootstrap without in-tree Gradle** — install `jk` from a release (or a sibling `jk-gradle`
+1. **Bootstrap without in-tree Gradle** — install `jk` from a release (or a sibling Gradle-only
    checkout) so a clean product tree never needs `./gradlew`.
 2. **CI primary = pure-jk** — Gradle job becomes optional `parity`.
-3. **Relocate Gradle** to `jk-gradle` (or a comparison repo) for oracle builds only.
+3. **Relocate Gradle** for oracle builds only (if still wanted).
 4. **Product tree Gradle-free** — delete `gradlew`, `buildSrc/`, module `build.gradle.kts`.
 
 Until then: pure-jk dogfood is required for product tickets that touch runtime; Gradle remains
@@ -93,7 +98,7 @@ valid for bootstrap and comparison.
 ## Side-load workers (no Gradle)
 
 After `jk build` produces thin PluginMain jars under `plugins/*/target/` (or
-`target/plugins/…` for pure-jk):
+`target/plugins/…`):
 
 ```bash
 jk plugin install-local
@@ -105,13 +110,12 @@ For each PluginMain worker:
 
 1. Thin jar → `~/.local/share/jk/store/repos/local/cc/jumpkick/jk-<name>/<ver>/` (Maven layout;
    same as Gradle `installLocal`).
-2. Runtime deps → `.classpath` sidecar next to the jar (JK-1347).
+2. Runtime deps → `.classpath` sidecar next to the jar.
 3. Worker + deps hard-linked into `~/.local/share/jk/store/lib/jk-<name>/` (same
    `JK_LIB_DIR` tree as `jk tool install` / `jk install` apps — default
-   `$JK_STORE_DIR/lib`). Launch uses those short paths in `ps` (JK-1348). A
-   normal CAS/`repos/` sweep that unlinks repo materializations leaves these
-   hardlinks; the inode stays until you uninstall (remove that lib dir) or
-   reinstall.
+   `$JK_STORE_DIR/lib`). Launch uses those short paths in `ps`. A normal CAS/`repos/`
+   sweep that unlinks repo materializations leaves these hardlinks; the inode stays until
+   you uninstall (remove that lib dir) or reinstall.
 
 ## Ship layout (`jk release` / `jk dist`)
 
@@ -142,6 +146,8 @@ Also runs `jk plugin install-local` for workspace PluginMain workers.
 
 Flags: `--out <dir>`, `--skip-tests`, `--skip-native`, `--dry-run`, `--modules <sel>`.
 
+Gradle still produces a comparable bootstrap layout at `build/dist/` via `./gradlew dist`.
+
 ## AOT during self-host / CI
 
 Live engines train AOT on miss by default. Nested engines under `jk test` and short-lived CI
@@ -162,12 +168,11 @@ Pure-jk test forks set `-Djk.aot.train=off` automatically. For host engines in C
 3. ~~`jk plugin install-local`~~ (done)
 4. ~~`jk release` / `jk dist`~~ (done)
 5. ~~All first-party plugins on the workspace~~ (done)
-6. ~~Curated `jk test` + CI self-host dogfood~~ (done: shared/* + server libs)
+6. ~~Curated `jk test` + CI self-host dogfood~~ (done)
 7. ~~Engine + plugins under pure-jk `jk test`~~ (done)
-8. ~~Native CLI via `jk native` / `jk release` (auto-native when eligible)~~ (done)
+8. ~~Native CLI via `jk native` / `jk release`~~ (done)
 9. ~~`clients/cli` under pure-jk `jk test` (nested-engine isolation)~~ (done)
-10. **Mill-class test parallelism** — isolation + default `-w` / `--parallel-tests` policy
+10. ~~Same-repo dual-build (`jk.toml` + Gradle; no `jk.jk`)~~ (done)
+11. **Mill-class test parallelism** — isolation + default `-w` / `--parallel-tests` policy
     ([test-parallelization.md](perf/test-parallelization.md))
-11. **Gradle cut-over** — backlog ([above](#future-cut-over-backlog))
-
-Details: session plan *Self-host JumpKick in ../jk-jk*.
+12. **Gradle cut-over** — backlog ([above](#future-cut-over-backlog))

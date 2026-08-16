@@ -1122,6 +1122,15 @@ export const CodeView = {
       }
     };
     window.addEventListener('beforeunload', this._beforeUnload);
+    // Capture phase so Ctrl/Cmd+S wins over Monaco and the browser "Save page" default.
+    this._onSaveKey = (e) => {
+      if (e.defaultPrevented) return;
+      if (!(e.key === 's' || e.key === 'S')) return;
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      e.preventDefault();
+      this.requestSave();
+    };
+    window.addEventListener('keydown', this._onSaveKey, true);
     await this.loadList();
     await this.loadFile();
   },
@@ -1133,6 +1142,10 @@ export const CodeView = {
       if (this._beforeUnload) {
         window.removeEventListener('beforeunload', this._beforeUnload);
         this._beforeUnload = null;
+      }
+      if (this._onSaveKey) {
+        window.removeEventListener('keydown', this._onSaveKey, true);
+        this._onSaveKey = null;
       }
       if (this._api && this._dirtyProbe) {
         this._api.unregisterDirtyGuard(this._dirtyProbe);
@@ -1288,6 +1301,21 @@ export const CodeView = {
     confirmDiscard() {
       if (typeof window === 'undefined' || !window.confirm) return true;
       return window.confirm('Discard unsaved changes?');
+    },
+    confirmSave() {
+      if (typeof window === 'undefined' || !window.confirm) return true;
+      return window.confirm('Are you sure you want to save?');
+    },
+    /** Save button + Ctrl/Cmd+S: confirm, then PUT when the buffer is dirty and writable. */
+    async requestSave() {
+      if (!this.canSave || this._savePromptOpen) return;
+      this._savePromptOpen = true;
+      try {
+        if (!this.confirmSave()) return;
+        await this.save();
+      } finally {
+        this._savePromptOpen = false;
+      }
     },
     fileName(p) {
       return baseFileName(p);
@@ -1490,6 +1518,10 @@ export const CodeView = {
       }
       if (!this._editor) {
         this._editor = monaco.editor.create(host, options);
+        // Monaco-local binding so Ctrl/Cmd+S still works when the editor owns focus.
+        this._editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+          this.requestSave();
+        });
         // create() can land before the host's box is measurable, and a viewport-less editor
         // reveals ?line= at the top instead of the middle. Measure now, and again after layout
         // settles (flex + tab strip can still be sizing on the first paint).
@@ -1777,8 +1809,8 @@ export const CodeView = {
                     :data-tip="previewable ? (previewOpen ? 'Back to source' : 'Preview this file') : 'Preview not available for this file type'">
               <jk-icon name="eye"></jk-icon>{{ previewOpen ? 'Source' : 'Preview' }}
             </button>
-            <button type="button" class="action-cyan" :disabled="!canSave" @click="save()"
-                    :data-tip="canSave ? 'Save changes' : (saving ? 'Saving…' : (saved ? 'Saved' : 'No unsaved changes'))">
+            <button type="button" class="action-cyan" :disabled="!canSave" @click="requestSave()"
+                    :data-tip="canSave ? 'Save changes (Ctrl/⌘S)' : (saving ? 'Saving…' : (saved ? 'Saved' : 'No unsaved changes'))">
               <jk-icon name="save"></jk-icon>{{ saving ? 'Saving…' : (saved ? 'Saved' : 'Save') }}
             </button>
           </div>

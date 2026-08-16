@@ -121,7 +121,7 @@ both tools’ worst ergonomics.
 | **Finite shape** | Convention-over-configuration; plugins extend a known model instead of inventing a new graph every repo. |
 | **Lockfile is law** | `jk-lock.toml` at the workspace root; `jk build` does not re-resolve when the lock is valid. |
 | **Correct resolve you can read** | PubGrub; highest-wins without a platform BOM; enforced platforms when BOMs are present; `jk why` / conflict prose. |
-| **Cargo / uv ergonomics** | Native CLI, `jk add` / `remove` / `update` / `tree` / `outdated`, sub-second cold start ambitions. |
+| **Cargo / uv ergonomics** | Native CLI, `jk add` / `remove` / `update` / `tree` / `outdated`, sub-second cold starts. |
 | **Maven Central native** | Same GAV coordinates and repository gravity; adoption path via import / `jk mvn` / `jk gradle` when you are not ready to rewrite. |
 | **Power without polluting the manifest** | Advanced behavior lives in plugins and intentional escape hatches **outside** TOML — never “the build file became an app.” |
 
@@ -133,7 +133,7 @@ version = "0.1.0"
 java    = 25
 
 [dependencies]
-jackson3-databind = "latest"
+jnats = "latest"
 
 [platform-dependencies]
 spring-boot-dependencies = "4.1.0"
@@ -150,16 +150,16 @@ than a POM” — **without** answering “so write Kotlin to compile Java.”
 |---|---|---|---|
 | Build is… | Data (XML) | Code (Groovy/Kotlin) | Data (TOML) |
 | Shape | Finite lifecycle | Open-ended graph | Finite + conventions |
-| Everyday ergonomics | Weak CLI, heavy files | Powerful, high ceremony | Cargo/uv-style CLI |
+| Everyday ergonomics | Weak CLI, heavy files | Powerful, high ceremony | Beautiful, intuitive CLI |
 | Flexibility | Plugins, limited | Near-unlimited | Plugins + hatch outside TOML |
 | Reproducibility | Possible | Possible | **Default** (lockfile law) |
 | Market fit today | **#1 Java overall** | **#2; #1 Android** | The declarative successor |
-| Migration story | — | Foreign to many Maven shops | Central-compatible; import path |
+| Migration story | — | Foreign to many Maven shops | Import from Maven/Gradle |
 
 **One line:** Maven proved the market wants a **predictable build**. Gradle proved some
-teams need a **programmable build**. JumpKick is for the majority path — **predictable,
-modern, and pleasant** — without making every repository maintain a second codebase just
-to ship classes.
+teams need **power when the default isn’t enough**. JumpKick does both better than either:
+a modern, pleasant, declarative default for everyday work, with real customizations
+**isolated outside the manifest** so the build never becomes a second product.
 
 ---
 

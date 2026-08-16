@@ -58,7 +58,7 @@ Campaign epic JK-1923 preempts other work until it closes.
 
 ### Self-host (phase 2+) — workspace modules + thin workers with jk
 
-Long-form dogfood and the `jk-jk` worktree: **[docs/self-host.md](docs/self-host.md)**.
+Long-form dogfood (Gradle + pure-jk in this same repo): **[docs/self-host.md](docs/self-host.md)**.
 Bootstrap helper: `./scripts/bootstrap-from-gradle.sh`.
 
 Catalog short names resolve through the **system catalog** (downloaded global registry +

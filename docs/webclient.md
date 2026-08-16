@@ -133,7 +133,8 @@ tab bar: [ file-name-pill ]   [ Copy ] [ Preview ] [ Save ]
   (same geometry as Build: `inline-flex`, `gap: 6px`, shimmer on hover, shared `min-width`).
 - **Build** stays in the project header (green primary).
 - **Save** is disabled until the Monaco buffer differs from the last load/save; oversized plain-text
-  fallback and image-only opens are not editable. On success the label flips to **Saved** briefly
+  fallback and image-only opens are not editable. **Ctrl+S / ⌘S** (and the Save button) prompt with
+  a simple “Are you sure?” confirm before writing. On success the label flips to **Saved** briefly
   (same pattern as Copy → Copied). Failures use plain-language messages (engine down, unauthorized,
   too large, concurrency). Saves send the load-time `etag`; a **409 file changed on disk** means
   another tab or process rewrote the file — reload to continue.
