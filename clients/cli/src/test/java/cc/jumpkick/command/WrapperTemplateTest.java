@@ -30,6 +30,9 @@ class WrapperTemplateTest {
         assertThat(sh).contains("versions/$VERSION/bin/jk");
         // …and the sha pin gates the download.
         assertThat(sh).contains("sha256");
+        // Unix wrapper matches install.sh: .xz, inflated with system xz. No zip.
+        assertThat(sh).contains("jk-$OS-$ARCH.xz").contains("xz -dc");
+        assertThat(sh).doesNotContain(".zip");
         // Workspace member wrappers walk up to the root lock, and a pinless
         // bootstrap warns instead of silently trusting the download.
         assertThat(sh).contains("$SEARCH/jk-lock.toml").contains("WARNING");
@@ -44,6 +47,9 @@ class WrapperTemplateTest {
         assertThat(bat).contains("jk-lock.toml").contains("latest/VERSION");
         assertThat(bat).contains("versions\\%VERSION%\\bin");
         assertThat(bat).contains("SHA256");
+        // Windows wrapper matches install.ps1: .zip (no system xz). Not .exe.zip.
+        assertThat(bat).contains("jk-windows-x86_64.zip");
+        assertThat(bat).doesNotContain(".exe.zip").doesNotContain(".xz");
         assertThat(bat).doesNotContain(".sock").doesNotContain("endpoint");
     }
 }

@@ -23,22 +23,22 @@
     "redirects": [
       {
         "source": "/releases",
-        "destination": "https://storage.googleapis.com/jkbuild-releases/releases/",
+        "destination": "https://storage.googleapis.com/jumpkick/releases/",
         "type": 302
       },
       {
         "source": "/releases/:path*",
-        "destination": "https://storage.googleapis.com/jkbuild-releases/releases/:path*",
+        "destination": "https://storage.googleapis.com/jumpkick/releases/:path*",
         "type": 302
       },
       {
         "source": "/repo",
-        "destination": "https://storage.googleapis.com/jkbuild-releases/repo/",
+        "destination": "https://storage.googleapis.com/jumpkick/repo/",
         "type": 302
       },
       {
         "source": "/repo/:path*",
-        "destination": "https://storage.googleapis.com/jkbuild-releases/repo/:path*",
+        "destination": "https://storage.googleapis.com/jumpkick/repo/:path*",
         "type": 302
       }
     ],

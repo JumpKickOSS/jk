@@ -18,6 +18,7 @@ asm = "latest"
 asm-tree = "latest"
 asm-commons = "latest"
 jgit = "latest"
+xz = "latest"
 
 [test-dependencies]
 assertj-core = "latest"

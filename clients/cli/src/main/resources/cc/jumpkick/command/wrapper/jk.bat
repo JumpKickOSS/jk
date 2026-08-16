@@ -27,7 +27,7 @@ if "%VERSION%"=="" (
 set "BIN=%JK_HOME%\versions\%VERSION%\bin\jk.exe"
 if not exist "%BIN%" (
   echo jk wrapper: fetching jk %VERSION% ... 1>&2
-  set "URL=%JK_RELEASES_URL%/%VERSION%/jk-windows-x86_64.exe.zip"
+  set "URL=%JK_RELEASES_URL%/%VERSION%/jk-windows-x86_64.zip"
   set "TMP=%TEMP%\jk-wrapper-%RANDOM%"
   mkdir "!TMP!"
   powershell -NoProfile -Command "Invoke-WebRequest -UseBasicParsing '!URL!' -OutFile '!TMP!\jk.zip'; Expand-Archive '!TMP!\jk.zip' '!TMP!'" || exit /b 1

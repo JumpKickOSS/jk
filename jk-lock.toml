@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
 jk = { version = "0.12.0", sha256 = "d70cc07cbced0223892dd04170fc3ea26d9dd96ad79eb0b83f7dac3748fbbae1" }
-manifests-sha256 = "226252aa478e8c0eb05520db87ba8d768d8670262ac1a0bcf29b67713309a201"
+manifests-sha256 = "3c47d9afb7d7c9996b2345a17a3d5d36b70a3bd40c38be2c83cbf26d55684604"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [[artifact]]
@@ -2018,6 +2018,13 @@ deps = [
   "org.antlr:antlr4-runtime:jar:@4.13.2",
   "org.checkerframework:checker-qual:jar:@4.2.2",
 ]
+
+[[artifact]]
+name     = "org.tukaani:xz:jar:"
+version  = "1.12"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:3e158a87bd73d8afb4b6e8239c013b7d049c48563f45860ce99cd2e448cf4a6b"
+scopes   = ["main"]
 
 [[artifact]]
 name     = "org.yaml:snakeyaml:jar:"

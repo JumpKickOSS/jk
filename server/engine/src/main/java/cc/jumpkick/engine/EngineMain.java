@@ -41,7 +41,31 @@ public final class EngineMain {
         if (args.length > 0 && "--aot-training".equals(args[0])) {
             System.exit(runAotTraining());
         }
+        // --inflate-xz: one-shot, no daemon. The native CLI shells this out so tukaani
+        // stays out of the Graal image. In and out are filesystem paths (a native
+        // client is several MiB; this is not a stdio job).
+        if (args.length > 0 && "--inflate-xz".equals(args[0])) {
+            System.exit(runInflateXz(args));
+        }
         System.exit(run());
+    }
+
+    /**
+     * {@code EngineMain --inflate-xz <in.xz> <out>} — inflate a release client {@code .xz} to
+     * the raw binary. Returns 2 on usage error, 1 on inflate failure, 0 on success.
+     */
+    static int runInflateXz(String[] args) {
+        if (args.length != 3) {
+            System.err.println("usage: EngineMain --inflate-xz <in.xz> <out>");
+            return 2;
+        }
+        try {
+            Xz.inflate(Path.of(args[1]), Path.of(args[2]));
+            return 0;
+        } catch (IOException e) {
+            System.err.println("jk engine (inflate-xz): " + e.getMessage());
+            return 1;
+        }
     }
 
     /** One request over stdin/stdout; engine-lifecycle logging stays on stderr. */

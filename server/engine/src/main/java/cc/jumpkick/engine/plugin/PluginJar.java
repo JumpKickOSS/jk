@@ -220,7 +220,6 @@ public enum PluginJar {
         if (env != null && !env.isBlank()) {
             return URI.create(env.endsWith("/") ? env : env + "/");
         }
-        // Prefer jumpkick.build once DNS works (Firebase redirects to GCS); GCS origin always works.
         return RepositorySpec.JUMPKICK.url();
     }
 

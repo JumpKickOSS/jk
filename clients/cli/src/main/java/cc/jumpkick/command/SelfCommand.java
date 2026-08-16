@@ -23,6 +23,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -320,13 +321,16 @@ public final class SelfCommand extends GroupCommand {
                 verifier.verify(sums, new String(sig, StandardCharsets.UTF_8));
             }
 
-            // Engine jar (platform-neutral) + the platform client (.zip — the one archive format
-            // the JDK opens natively; releases.md ships it on every platform).
+            // Engine jar (platform-neutral) + the platform client. Prefer the .xz (every OS,
+            // including Windows); Windows releases also ship a .zip for install.ps1 / jk.bat,
+            // which have no system xz. The native CLI never inflates xz — the engine jar does.
             String jarName = "jk-engine-" + version + ".jar";
             byte[] jar = verified(get(http, dir.resolve(jarName), "engine jar"), sums, jarName);
-            String clientName = clientArtifactName(version);
-            byte[] clientZip = verified(get(http, dir.resolve(clientName), "client binary"), sums, clientName);
-            Path client = unzipSingleBinary(clientZip);
+            String clientName = pickClientArtifact(sums);
+            byte[] clientArchive = verified(get(http, dir.resolve(clientName), "client binary"), sums, clientName);
+            Path client = clientName.endsWith(".xz")
+                    ? inflateXzViaEngine(jar, clientArchive)
+                    : unzipSingleBinary(clientArchive);
 
             String jarSha = Hashing.sha256Hex(jar);
             cas.put(jar, jarSha);
@@ -335,12 +339,106 @@ public final class SelfCommand extends GroupCommand {
             return store.materialize(version, cas, jarSha, clientSha);
         }
 
-        /** {@code jk-<os>-<arch>.zip} in HostPlatform's release vocabulary (releases.md). */
-        private static String clientArtifactName(String version) {
+        /**
+         * {@code jk-<os>-<arch>.xz} when the sums list it, else the Windows {@code .zip}.
+         * Unix releases do not ship a zip.
+         */
+        static String pickClientArtifact(byte[] sums) throws IOException {
             String os = cc.jumpkick.jdk.HostPlatform.currentOs().toLowerCase(Locale.ROOT);
             String arch = cc.jumpkick.jdk.HostPlatform.currentArch();
-            String suffix = "windows".equals(os) ? ".exe.zip" : ".zip";
-            return "jk-" + os + "-" + arch + suffix;
+            return pickClientArtifact(new String(sums, StandardCharsets.UTF_8), os, arch);
+        }
+
+        /** Visible for tests — pass HostPlatform vocabulary already lower-cased. */
+        static String pickClientArtifact(String sumsText, String os, String arch) throws IOException {
+            String base = "jk-" + os + "-" + arch;
+            String xz = base + ".xz";
+            if (sumHas(sumsText, xz)) return xz;
+            if ("windows".equals(os)) {
+                String zip = base + ".zip";
+                if (sumHas(sumsText, zip)) return zip;
+            }
+            throw new IOException("release SHA256SUMS has no " + xz
+                    + ("windows".equals(os) ? " (or " + base + ".zip)" : "")
+                    + " — refusing to install an unverifiable client binary");
+        }
+
+        private static boolean sumHas(String sumsText, String name) {
+            for (String line : sumsText.split("\n")) {
+                String[] parts = line.trim().split("\\s+");
+                if (parts.length == 2 && parts[1].equals(name)) return true;
+            }
+            return false;
+        }
+
+        /**
+         * Inflate {@code xz} by launching {@code EngineMain --inflate-xz} on the just-downloaded
+         * engine jar (or the running version's jar). tukaani stays out of the native image.
+         */
+        private static Path inflateXzViaEngine(byte[] engineJar, byte[] xz) throws IOException {
+            Path engineTmp = Files.createTempFile("jk-engine-", ".jar");
+            Path xzTmp = Files.createTempFile("jk-self-", ".xz");
+            Path out = Files.createTempFile("jk-self-", ".bin");
+            try {
+                Path inflater = inflaterEngineJar(engineJar, engineTmp);
+                Files.write(xzTmp, xz);
+                Path java = cc.jumpkick.cli.engine.EngineSpawn.engineJava();
+                Process p = new ProcessBuilder(
+                                java.toString(),
+                                "-cp",
+                                inflater.toString(),
+                                "cc.jumpkick.engine.EngineMain",
+                                "--inflate-xz",
+                                xzTmp.toAbsolutePath().toString(),
+                                out.toAbsolutePath().toString())
+                        .redirectErrorStream(true)
+                        .start();
+                String err = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                int rc;
+                try {
+                    rc = p.waitFor();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("interrupted inflating the client binary", e);
+                }
+                if (rc != 0) {
+                    throw new IOException(
+                            "engine xz inflate failed (exit " + rc + ")" + (err.isBlank() ? "" : ": " + err.strip()));
+                }
+                return out;
+            } catch (IOException e) {
+                Files.deleteIfExists(out);
+                throw e;
+            } finally {
+                Files.deleteIfExists(engineTmp);
+                Files.deleteIfExists(xzTmp);
+            }
+        }
+
+        /**
+         * Engine jar that implements {@code --inflate-xz}. An older jar ignores unknown flags and
+         * would start the daemon — never hand it this role. Prefer the just-downloaded jar (the
+         * version being installed); if that line predates inflate, fall back to the running
+         * version's jar.
+         */
+        private static Path inflaterEngineJar(byte[] downloadedJar, Path downloadedTmp) throws IOException {
+            Files.write(downloadedTmp, downloadedJar);
+            if (hasInflateXz(downloadedTmp)) return downloadedTmp;
+            var current = VersionStore.current().resolve(cc.jumpkick.cli.Jk.VERSION);
+            if (current.isPresent()) {
+                Path jar = current.get().engineJar();
+                if (Files.isRegularFile(jar) && hasInflateXz(jar)) return jar;
+            }
+            throw new IOException(
+                    "neither the downloaded engine jar nor the running jk-engine implements --inflate-xz");
+        }
+
+        private static boolean hasInflateXz(Path engineJar) {
+            try (var jar = new JarFile(engineJar.toFile())) {
+                return jar.getEntry("cc/jumpkick/engine/Xz.class") != null;
+            } catch (IOException e) {
+                return false;
+            }
         }
 
         private static Path unzipSingleBinary(byte[] zip) throws IOException {

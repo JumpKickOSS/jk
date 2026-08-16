@@ -11,7 +11,7 @@
 #   JK_ARCHIVE_URL   Override the archive URL to download. Supports .xz and
 #                    .zip (a plain uncompressed binary also works for local
 #                    files). Defaults to the latest release matching this
-#                    machine's OS/arch and available extractor.
+#                    machine's OS/arch (.xz).
 #   JK_RELEASES_URL  Override the release site root (mirrors).
 #   JK_VERSION       Install a specific version instead of the latest.
 #   JK_INSTALL_DIR   Override the install directory (default: ~/.local/bin,
@@ -119,18 +119,13 @@ detect_target() {
   printf '%s-%s' "$os" "$arch"
 }
 
-# Archive format for auto URL resolution: releases publish exactly two
-# formats (docs/releases.md) — .xz, and .zip as the fallback for hosts
-# without xz. Only needed for the download flow, so failing here must not
-# break a local-file install.
+# Archive format for auto URL resolution: Linux/macOS releases are .xz
+# only (docs/releases.md). Windows uses scripts/install.ps1 and a .zip —
+# this script never runs there. JK_ARCHIVE_URL / a local file may still be
+# .zip. Missing xz must not fall through to a .zip we do not host.
 detect_ext() {
-  if have xz; then
-    printf 'xz'
-  elif have unzip; then
-    printf 'zip'
-  else
-    die "neither xz nor unzip found on PATH; install one and re-run."
-  fi
+  have xz || die "xz is not installed; install xz (xz-utils) and re-run."
+  printf 'xz'
 }
 
 # ---- resolve source (URL or local file) ------------------------------------
