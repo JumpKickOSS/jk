@@ -182,11 +182,11 @@ final class JkManagerView {
             LiveRegion.clearActive(m);
             m.clearWindowTitle();
             if (m.animate && Theme.active().isAnsi()) {
-                // If the peek pane was open (user toggle or force-show on tool failure), leave
-                // those lines in scrollback before wiping the live region.
+                // Drop rule bookkeeping; leave committed process lines in scrollback.
                 if (m.planMode) m.flushVisibleOutputToScrollback();
                 // Simple mode keeps the settled spinner line and prints the
-                // result below it; plan mode replaces the whole region.
+                // result below it; plan mode replaces the whole region (cursor lands on the
+                // first wiped row — immediately under the last process line, no extra blank).
                 if (m.planMode) m.wipeRegion();
                 else m.freezeSpinnerLine();
                 m.out.print(Ansi.taskbarClear());
@@ -199,12 +199,18 @@ final class JkManagerView {
             // scrollback above the result line, with a blank separator, so the
             // settle line stays the last thing on screen.
             if (above != null && !above.isEmpty()) {
-                for (String s : above) m.out.println(s);
-                m.out.println();
+                boolean printedAbove = false;
+                for (String s : above) {
+                    if (s == null || s.isBlank()) continue;
+                    m.out.println(s);
+                    printedAbove = true;
+                }
+                if (printedAbove) m.out.println();
             }
             m.ensureLeadingBlank(); // quiet / late m.settle still gets the leading blank
             m.out.println(line);
             m.out.flush();
+            m.outputWindow.resetCommitted();
         }
     }
 
@@ -363,7 +369,10 @@ final class JkManagerView {
                 return;
             }
             if (m.planMode) {
+                int before = m.outputWindow.size();
                 m.outputWindow.append(text);
+                // Blank/duplicate strips may no-op the append.
+                if (m.outputWindow.size() == before) return;
                 if (!m.animate) {
                     m.out.println(text);
                     m.out.flush();
@@ -451,6 +460,7 @@ final class JkManagerView {
             m.out.print(Ansi.ERASE_LINE_TO_END);
             m.out.print('\n');
         }
+        m.outputWindow.noteCommitted(pane.size());
         writeLiveRegion(liveRegionLines(chrome, m.width));
         m.out.flush();
     }
@@ -490,6 +500,7 @@ final class JkManagerView {
         m.out.print(painted);
         m.out.print(Ansi.ERASE_LINE_TO_END);
         m.out.print('\n');
+        m.outputWindow.noteCommitted(1);
         List<String> chrome = renderChromeLines(m.width, m.elapsedMillis());
         writeLiveRegion(liveRegionLines(chrome, m.width));
         m.out.flush();

@@ -27,14 +27,34 @@ public final class OutputWindow {
 
     private final ArrayList<String> lines = new ArrayList<>();
     private boolean visible;
+    /**
+     * Process lines committed to terminal scrollback above the live region this plan (open-peek dump
+     * + live appends). Used to put one breathing-room blank before the settle chip.
+     */
+    private int committedScrollbackLines;
 
     /** Append one logical line; evicts the oldest when over {@link #MAX_LINES}. */
     public synchronized void append(String line) {
         if (line == null) return;
         // Normalize: strip a single trailing CR left by some tools.
         if (line.endsWith("\r")) line = line.substring(0, line.length() - 1);
+        // Skip pure blank lines — they only create visual gaps before the rule / settle chip.
+        if (line.isBlank()) return;
         lines.add(line);
         while (lines.size() > MAX_LINES) lines.remove(0);
+    }
+
+    /** Record that {@code n} process lines were written into terminal scrollback. */
+    public synchronized void noteCommitted(int n) {
+        if (n > 0) committedScrollbackLines += n;
+    }
+
+    public synchronized int committedScrollbackLines() {
+        return committedScrollbackLines;
+    }
+
+    public synchronized void resetCommitted() {
+        committedScrollbackLines = 0;
     }
 
     public synchronized void clear() {

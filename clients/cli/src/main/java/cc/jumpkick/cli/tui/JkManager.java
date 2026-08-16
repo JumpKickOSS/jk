@@ -1311,6 +1311,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             String s = buf.toString(StandardCharsets.UTF_8);
             buf.reset();
             if (s.endsWith("\r")) s = s.substring(0, s.length() - 1);
+            if (s.isBlank()) return; // do not inject empty lines into the peek / settle layout
             cm.writeAbove(s);
         }
     }
