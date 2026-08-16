@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
@@ -83,7 +82,7 @@ public final class ImageCommand implements CliCommand {
         VariantSelection.install(in, projectDir);
         Path jkBuildPath = projectDir.resolve("jk.toml");
         if (!Files.exists(jkBuildPath)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Image", jkBuildPath + " not found."));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Image", jkBuildPath + " not found.");
             return Exit.NO_INPUT;
         }
         // -m/--modules: an image is built for exactly one module — redirect to it.
@@ -94,15 +93,15 @@ public final class ImageCommand implements CliCommand {
             var selected =
                     cc.jumpkick.config.ModuleSelection.resolveOptional(projectDir, entry, modulesSpec, affectedSince);
             if (selected != null && !selected.ok()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Image", selected.errorMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Image", selected.errorMessage());
                 return Exit.CONFIG;
             }
             if (selected != null) {
                 if (selected.moduleDirs().size() != 1) {
-                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    cc.jumpkick.cli.tui.CommandWedge.printFail(
                             "Image",
                             "an image is built for exactly one module — the selector matched "
-                                    + selected.moduleDirs().size()));
+                                    + selected.moduleDirs().size());
                     return Exit.USAGE;
                 }
                 projectDir = selected.moduleDirs().iterator().next();
@@ -153,7 +152,7 @@ public final class ImageCommand implements CliCommand {
                     steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, module),
                     summary);
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Image", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Image", e.getMessage());
             return Exit.SOFTWARE;
         }
         testResult = summary[0] != null ? summary[0].testResult() : null;

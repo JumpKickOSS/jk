@@ -283,9 +283,9 @@ public final class NewCommand implements CliCommand {
      */
     private int runTemplateBuildPlan(Path cwd) {
         if (spring || grails || quarkus || micronaut || plugin) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "New",
-                    "--template cannot be combined with --spring, --grails, --quarkus, --micronaut, or --plugin"));
+                    "--template cannot be combined with --spring, --grails, --quarkus, --micronaut, or --plugin");
             return Exit.USAGE;
         }
         Path template = Path.of(templateRef);
@@ -316,20 +316,19 @@ public final class NewCommand implements CliCommand {
                 } else if (Giter8Git.looksRemote(templateRef)) {
                     template = Giter8Git.fetch(templateRef, Giter8Git.defaultCacheRoot());
                 } else {
-                    CliOutput.err(
-                            cc.jumpkick.cli.tui.CommandWedge.fail(
-                                    "New",
-                                    "template not found: "
-                                            + templateRef
-                                            + (Giter8Catalog.isShortName(templateRef)
-                                                    ? " ("
-                                                            + Giter8Catalog.helpKnown(cfg)
-                                                            + "; see docs/features/giter8-templates.md)"
-                                                    : " (use a path, short name, owner/repo, or git URL — see docs/features/giter8-templates.md)")));
+                    cc.jumpkick.cli.tui.CommandWedge.printFail(
+                            "New",
+                            "template not found: "
+                                    + templateRef
+                                    + (Giter8Catalog.isShortName(templateRef)
+                                            ? " ("
+                                                    + Giter8Catalog.helpKnown(cfg)
+                                                    + "; see docs/features/giter8-templates.md)"
+                                            : " (use a path, short name, owner/repo, or git URL — see docs/features/giter8-templates.md)"));
                     return Exit.USAGE;
                 }
             } catch (IOException e) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", e.getMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("New", e.getMessage());
                 return Exit.SOFTWARE;
             }
         }
@@ -337,7 +336,7 @@ public final class NewCommand implements CliCommand {
         for (String p : templateParams) {
             int eq = p.indexOf('=');
             if (eq <= 0) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", "--param expects key=value, got: " + p));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("New", "--param expects key=value, got: " + p);
                 return Exit.USAGE;
             }
             params.put(p.substring(0, eq), p.substring(eq + 1));
@@ -366,7 +365,7 @@ public final class NewCommand implements CliCommand {
                     return Exit.CONFIG;
                 }
             } catch (IOException e) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", e.getMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("New", e.getMessage());
                 return Exit.SOFTWARE;
             }
         }
@@ -380,7 +379,7 @@ public final class NewCommand implements CliCommand {
                     "Applied template (" + n + " files) → " + target.getFileName()));
             return Exit.SUCCESS;
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("New", e.getMessage());
             return Exit.SOFTWARE;
         } finally {
             if (extractScratch != null) {
@@ -579,11 +578,11 @@ public final class NewCommand implements CliCommand {
         try {
             inputs = fromFlags(cwd);
         } catch (IllegalArgumentException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("New", e.getMessage());
             return Exit.USAGE;
         }
         if (assembly && inputs.main().isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", "--assembly requires --executable"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("New", "--assembly requires --executable");
             return Exit.USAGE;
         }
         if (Files.exists(inputs.directory().resolve("jk.toml"))) {
@@ -841,10 +840,12 @@ public final class NewCommand implements CliCommand {
 
         if (terminal != null) {
             var writer = terminal.writer();
+            cc.jumpkick.cli.tui.CommandWedge.markEnvelopeStarted();
             writer.println(warnLine);
             writer.println(chipLine);
             writer.flush();
         } else {
+            cc.jumpkick.cli.tui.CommandWedge.envelopeStartErr();
             CliOutput.err(warnLine);
             CliOutput.err(chipLine);
         }
@@ -855,6 +856,7 @@ public final class NewCommand implements CliCommand {
         var warn = Theme.active().warning();
         var label = Theme.active().activeStep();
         var body = Theme.active().normalGray();
+        cc.jumpkick.cli.tui.CommandWedge.envelopeStartErr();
         CliOutput.err(Theme.colorize(Glyphs.BANG, warn)
                 + " "
                 + Theme.colorize("Jk", label)
@@ -980,7 +982,7 @@ public final class NewCommand implements CliCommand {
                 }
             }
         } catch (Exception e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", "failed to install JDK: " + e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("New", "failed to install JDK: " + e.getMessage());
             return Optional.empty();
         }
     }
@@ -1134,12 +1136,14 @@ public final class NewCommand implements CliCommand {
 
     private static void emitSuccessOnTerminal(NewInputs inputs, Terminal terminal, Module module, boolean isInit) {
         var writer = terminal.writer();
+        // Wizard already opened the envelope (leading blank + closing spacer).
+        cc.jumpkick.cli.tui.CommandWedge.markEnvelopeStarted();
         writer.println(successLine(inputs, module, isInit));
         writer.flush();
     }
 
     private static void emitSuccessPlain(NewInputs inputs, Module module, boolean isInit) {
-        CliOutput.out(successLine(inputs, module, isInit));
+        cc.jumpkick.cli.tui.CommandWedge.printLine(successLine(inputs, module, isInit));
     }
 
     private static String successLine(NewInputs inputs, Module module, boolean isInit) {

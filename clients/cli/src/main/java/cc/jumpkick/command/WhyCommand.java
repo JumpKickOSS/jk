@@ -42,16 +42,15 @@ public final class WhyCommand implements CliCommand {
         Path dir = global.workingDir();
         Path buildFile = dir.resolve("jk.toml");
         if (!Files.exists(buildFile)) {
-            CliOutput.err(
-                    cc.jumpkick.cli.tui.CommandWedge.fail("Why", "project must have jk.toml (run `jk init` first)"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Why", "project must have jk.toml (run `jk init` first)");
             return Exit.CONFIG;
         }
         int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cc.jumpkick.util.JkDirs.cache(), global, "Why");
         if (lockCode != 0) return lockCode;
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         if (!Files.exists(lockFile)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Why", "project must have jk-lock.toml (lock refresh did not produce one)"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "Why", "project must have jk-lock.toml (lock refresh did not produce one)");
             return Exit.CONFIG;
         }
 
@@ -60,11 +59,11 @@ public final class WhyCommand implements CliCommand {
         WhyReport report =
                 cc.jumpkick.cli.engine.EngineClient.why(cc.jumpkick.engine.EnginePaths.current(), dir, query);
         if (report.error() != null) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Why", report.error()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Why", report.error());
             return Exit.CONFIG;
         }
         if (report.matchNames().isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Why", query + " is not in jk-lock.toml"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Why", query + " is not in jk-lock.toml");
             return 1;
         }
 

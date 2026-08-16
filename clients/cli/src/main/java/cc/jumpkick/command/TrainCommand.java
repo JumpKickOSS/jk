@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
@@ -92,7 +91,7 @@ public final class TrainCommand implements CliCommand {
                             global.verbose),
                     steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target));
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Train", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Train", e.getMessage());
             return Exit.SOFTWARE;
         }
         return result.success() ? 0 : 1;

@@ -21,8 +21,7 @@ public record ProjectContext(Path dir, Path buildFile, Path lockFile) {
     public static Optional<ProjectContext> require(Path dir, String command) {
         Path buildFile = dir.resolve("jk.toml");
         if (!Files.exists(buildFile)) {
-            CliOutput.err(
-                    cc.jumpkick.cli.tui.CommandWedge.fail(command, "no jk.toml in " + PathDisplay.styledRaw(dir)));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(command, "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Optional.empty();
         }
         return Optional.of(new ProjectContext(dir, buildFile, cc.jumpkick.lock.LockPaths.lockFile(dir)));

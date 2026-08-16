@@ -25,11 +25,15 @@ public interface Widget {
 
     /** Like {@link #print()} but each line goes to stderr (failures). */
     default void printErr() {
-        if (!CommandWedge.envelopeStarted()) {
-            CommandWedge.envelopeStart();
-        }
+        // First line is wedge chrome — open the envelope on stderr (not stdout).
+        boolean first = true;
         for (String line : render(RenderContext.current())) {
-            CliOutput.err(line);
+            if (first) {
+                CommandWedge.printErrLine(line);
+                first = false;
+            } else {
+                CliOutput.err(line);
+            }
         }
     }
 }

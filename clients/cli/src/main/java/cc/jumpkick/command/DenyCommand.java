@@ -44,7 +44,7 @@ public final class DenyCommand implements CliCommand {
         Path projectDir = global.workingDir();
         Path jkBuild = projectDir.resolve("jk.toml");
         if (!Files.exists(jkBuild)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Deny", jkBuild + " not found."));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Deny", jkBuild + " not found.");
             return Exit.NO_INPUT;
         }
         Path cache = JkDirs.cache();
@@ -52,10 +52,10 @@ public final class DenyCommand implements CliCommand {
         if (lockCode != 0) return lockCode;
         Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
         if (!Files.exists(lockPath)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "Deny",
                     "no jk-lock.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir)
-                            + " (lock refresh did not produce one)."));
+                            + " (lock refresh did not produce one).");
             return Exit.CONFIG;
         }
 
@@ -81,7 +81,7 @@ public final class DenyCommand implements CliCommand {
                         "Deny", report.checked() + " package(s) checked — no violations.");
             return 0;
         }
-        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Deny", report.violationCount() + " violation(s):"));
+        cc.jumpkick.cli.tui.CommandWedge.printFail("Deny", report.violationCount() + " violation(s):");
         for (int i = 0; i < report.violationCount(); i++) {
             CliOutput.err("  "
                     + Coords.module(report.modules().get(i), report.versions().get(i)) + " — "

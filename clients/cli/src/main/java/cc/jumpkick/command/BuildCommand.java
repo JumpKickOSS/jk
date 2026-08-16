@@ -119,8 +119,8 @@ public final class BuildCommand implements CliCommand {
         Path startDir = global.workingDir();
         Path buildFile = startDir.resolve("jk.toml");
         if (!Files.exists(buildFile)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Build", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(startDir)));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "Build", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(startDir));
             return Exit.CONFIG;
         }
         // Variant selection (--release / --variant <dim>=<value>): rides the request as a compact
@@ -136,9 +136,9 @@ public final class BuildCommand implements CliCommand {
 
         if (peek != null && peek.workspaceRoot()) {
             if (aotCache) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                cc.jumpkick.cli.tui.CommandWedge.printFail(
                         "Build",
-                        "--aot-cache packages a single application project;" + " run it from the module directory."));
+                        "--aot-cache packages a single application project;" + " run it from the module directory.");
                 return finishSession(Exit.USAGE);
             }
             return finishSession(buildWorkspace(startDir));
@@ -148,9 +148,9 @@ public final class BuildCommand implements CliCommand {
                 && !peek.workspaceRootDir().equals(startDir.toString())) {
             Path root = Path.of(peek.workspaceRootDir());
             if (!global.outputIsJson()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                cc.jumpkick.cli.tui.CommandWedge.printFail(
                         "Build",
-                        "building workspace from " + root.getFileName() + " (module: " + startDir.getFileName() + ")"));
+                        "building workspace from " + root.getFileName() + " (module: " + startDir.getFileName() + ")");
             }
             return finishSession(buildWorkspace(root));
         }
@@ -159,7 +159,7 @@ public final class BuildCommand implements CliCommand {
         if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
             Selection sel = resolveSelection(startDir, null);
             if (sel.error() != null) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", sel.error()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Build", sel.error());
                 return finishSession(Exit.CONFIG);
             }
             if (sel.empty()) {
@@ -253,7 +253,7 @@ public final class BuildCommand implements CliCommand {
             // workspace build (BuildService.buildWorkspace — resolve graph, memory plan, schedule,
             // run each module's plan); this listener renders the append-only block + [k/N] line.
             if (sel != null && sel.error() != null) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", sel.error()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Build", sel.error());
                 return Exit.CONFIG;
             }
             if (sel != null && sel.empty()) {
@@ -458,7 +458,8 @@ public final class BuildCommand implements CliCommand {
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsed, total[0]), json);
             if (!json) {
                 String took = ConsoleSpec.took(Duration.ofMillis(elapsed));
-                CliOutput.out(JkWedge.cancelledJobLine("Build", GlobalConfig.nerdFont(), false, took));
+                cc.jumpkick.cli.tui.CommandWedge.printLine(
+                        JkWedge.cancelledJobLine("Build", GlobalConfig.nerdFont(), false, took));
             }
             if (session != null) session.wedge("Build job was cancelled");
             notifyBuild(BuildNotify.Outcome.CANCELLED, entryDir, entryBuild, 0, elapsed);
@@ -467,7 +468,7 @@ public final class BuildCommand implements CliCommand {
             long elapsed = (System.nanoTime() - start) / 1_000_000;
             cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsed, total[0]), json);
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Build", e.getMessage());
             if (session != null) session.error(e.getMessage());
             notifyBuild(BuildNotify.Outcome.FAILED, entryDir, entryBuild, 0, elapsed);
             return Exit.SOFTWARE;
@@ -482,7 +483,8 @@ public final class BuildCommand implements CliCommand {
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), json);
             if (!json) {
                 String took = ConsoleSpec.took(Duration.ofMillis(elapsedMs));
-                CliOutput.out(JkWedge.cancelledJobLine("Build", GlobalConfig.nerdFont(), false, took));
+                cc.jumpkick.cli.tui.CommandWedge.printLine(
+                        JkWedge.cancelledJobLine("Build", GlobalConfig.nerdFont(), false, took));
             }
             if (session != null) session.wedge("Build job was cancelled");
             notifyBuild(BuildNotify.Outcome.CANCELLED, entryDir, entryBuild, 0, elapsedMs);
@@ -513,7 +515,7 @@ public final class BuildCommand implements CliCommand {
             if (!json) {
                 result.modules().stream().filter(m -> !m.success()).findFirst().ifPresent(f -> {
                     String msg = f.coord() + " failed (exit " + f.exitCode() + ")";
-                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", msg));
+                    cc.jumpkick.cli.tui.CommandWedge.printFail("Build", msg);
                     if (session != null) session.error(msg).wedge(msg);
                 });
             }
@@ -805,8 +807,8 @@ public final class BuildCommand implements CliCommand {
         long startNanos = System.nanoTime(); // captured before the forecast so timing includes it
         Path buildFile = dir.resolve("jk.toml");
         if (!Files.exists(buildFile)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Build", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir)));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "Build", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir));
             return Exit.CONFIG;
         }
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
@@ -881,11 +883,12 @@ public final class BuildCommand implements CliCommand {
                     testResultHolder,
                     buildOutcomeHolder);
         } catch (cc.jumpkick.cli.engine.JobCancelledException e) {
-            CliOutput.out(JkWedge.cancelledJobLine("Build", GlobalConfig.nerdFont(), false, ""));
+            cc.jumpkick.cli.tui.CommandWedge.printLine(
+                    JkWedge.cancelledJobLine("Build", GlobalConfig.nerdFont(), false, ""));
             if (session != null) session.wedge("Build job was cancelled");
             return 1;
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Build", e.getMessage());
             if (session != null) session.error(e.getMessage());
             return Exit.SOFTWARE;
         }

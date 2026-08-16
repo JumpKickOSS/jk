@@ -70,14 +70,13 @@ public final class FormatCommand implements CliCommand {
         Path projectDir = global.workingDir();
         Path buildFile = projectDir.resolve("jk.toml");
         if (!Files.exists(buildFile)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Format", "no jk.toml in " + PathDisplay.styledRaw(projectDir)));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Format", "no jk.toml in " + PathDisplay.styledRaw(projectDir));
             return Exit.CONFIG;
         }
         cc.jumpkick.engine.protocol.ProjectInfo build = BuildCommand.projectInfoOrNull(projectDir);
         if (build == null) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Format", "could not read the project summary (is the engine reachable?)"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "Format", "could not read the project summary (is the engine reachable?)");
             return Exit.CONFIG;
         }
 
@@ -109,7 +108,7 @@ public final class FormatCommand implements CliCommand {
                             build.formatImportOrder(),
                             build.formatRemoveUnusedImports()));
         } catch (IllegalArgumentException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Format", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Format", e.getMessage());
             return Exit.USAGE;
         }
         // Supplying --rewrite-config implicitly enables optimize-imports when neither
@@ -169,12 +168,12 @@ public final class FormatCommand implements CliCommand {
                         observer,
                         chatterListener(global, line -> CliOutput.err("  [formatter] " + line)));
             } catch (IOException e) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Format", e.getMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Format", e.getMessage());
                 return Exit.SOFTWARE;
             }
             if (!o.result().success()) {
                 for (BuildPlanResult.Diagnostic d : o.result().errors()) {
-                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Format", d.message()));
+                    cc.jumpkick.cli.tui.CommandWedge.printFail("Format", d.message());
                 }
                 return 1;
             }

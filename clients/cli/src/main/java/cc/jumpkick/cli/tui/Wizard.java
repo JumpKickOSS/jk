@@ -234,6 +234,8 @@ public final class Wizard {
         var answers = new LinkedHashMap<String, Object>(preset.asMap());
 
         writer.println();
+        // Wizard is first chrome for interactive commands — open the blank-line envelope.
+        CommandWedge.markEnvelopeStarted();
         String hdr = headerLine();
         writer.println(hdr);
         // Box opener: ╭ followed by dashes to match the header's visual width.

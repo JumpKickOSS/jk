@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.model.command.Arity;
@@ -50,13 +49,13 @@ public final class InspectCommand implements CliCommand {
         var proj = ProjectContext.require(startDir, "inspect").orElse(null);
         if (proj == null) return Exit.CONFIG;
         if (in.positionals().isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Inspect", "expected a task name (try `jk tasks`)"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Inspect", "expected a task name (try `jk tasks`)");
             return Exit.USAGE;
         }
         try {
             return TasksCommand.showOrInspect("inspect", in.positionals().getFirst(), in, startDir, proj.buildFile());
         } catch (IllegalStateException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Inspect", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Inspect", e.getMessage());
             return Exit.CONFIG;
         }
     }

@@ -136,7 +136,7 @@ public final class EnsureFreshLock {
             CliOutput.err("    Run `jk lock` to resolve manually.");
             return Exit.SUCCESS;
         }
-        CliOutput.err(CommandWedge.fail(chip, err));
+        CommandWedge.printFail(chip, err);
         return exitCode != 0 ? exitCode : Exit.CONFIG;
     }
 

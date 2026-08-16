@@ -51,6 +51,8 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         boolean silent = cc.jumpkick.config.SessionContext.current().config().noProgressOr(false);
         NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
         JdkDownloadBar db = new JdkDownloadBar(out, displayName, nerdFont, silent);
+        // Leading blank of the human chrome envelope (idempotent per command).
+        CommandWedge.envelopeStart(out);
         LiveRegion.setActive(db);
         if (!silent) {
             out.print(Ansi.HIDE_CURSOR);
@@ -80,6 +82,8 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
         JdkDownloadBar db = new JdkDownloadBar(out, displayName, nerdFont, silent);
         db.installing = true;
+        // Same envelope as show() — first chrome may be the installing chip alone.
+        CommandWedge.envelopeStart(out);
         LiveRegion.setActive(db);
         if (!silent) {
             out.print(Ansi.HIDE_CURSOR);

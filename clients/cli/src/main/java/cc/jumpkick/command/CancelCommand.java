@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
@@ -70,11 +69,11 @@ public final class CancelCommand implements CliCommand {
             try {
                 jid = Long.parseLong(jidArg.get());
             } catch (NumberFormatException e) {
-                CliOutput.err(CommandWedge.fail("Cancel", "jid must be a number (got `" + jidArg.get() + "`)"));
+                CommandWedge.printFail("Cancel", "jid must be a number (got `" + jidArg.get() + "`)");
                 return Exit.USAGE;
             }
             if (jid < 0) {
-                CliOutput.err(CommandWedge.fail("Cancel", "jid must be non-negative"));
+                CommandWedge.printFail("Cancel", "jid must be non-negative");
                 return Exit.USAGE;
             }
             ack = EngineClient.cancel(EnginePaths.current(), jid);
@@ -83,7 +82,7 @@ public final class CancelCommand implements CliCommand {
         }
 
         if (ack.isEmpty()) {
-            CliOutput.err(CommandWedge.fail("Cancel", "engine did not acknowledge cancel"));
+            CommandWedge.printFail("Cancel", "engine did not acknowledge cancel");
             return Exit.SOFTWARE;
         }
         String line = ack.get();
@@ -97,7 +96,7 @@ public final class CancelCommand implements CliCommand {
             return 0;
         }
         String fail = note != null && !note.isBlank() ? note : "no running job matched";
-        CliOutput.err(CommandWedge.fail("Cancel", fail));
+        CommandWedge.printFail("Cancel", fail);
         // Unknown jid is a soft user error (not a crash).
         return jidArg.isPresent() ? Exit.DATA_ERR : 0;
     }

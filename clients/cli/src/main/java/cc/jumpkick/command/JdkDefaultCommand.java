@@ -67,22 +67,22 @@ public final class JdkDefaultCommand implements CliCommand {
 
         if (lts) {
             if (spec != null && !spec.isBlank()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "--lts and <spec> are mutually exclusive."));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("JDK", "--lts and <spec> are mutually exclusive.");
                 return Exit.USAGE;
             }
             return applyLts(registry, defaults, CliOutput.stdout(), CliOutput.stderr()) ? 0 : 1;
         }
         if (spec == null || spec.isBlank()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "<spec> required (or pass --lts)."));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("JDK", "<spec> required (or pass --lts).");
             return Exit.USAGE;
         }
         Optional<JdkHit> match = cc.jumpkick.jdk.JdkKeywords.isKeyword(spec)
                 ? cc.jumpkick.jdk.JdkKeywords.bestInstalledMatch(spec, registry.listHits())
                 : registry.findHitBySpec(spec);
         if (match.isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "JDK",
-                    "no installed JDK matches `" + spec + "` (try `jk jdk list` or `jk jdk install " + spec + "`)"));
+                    "no installed JDK matches `" + spec + "` (try `jk jdk list` or `jk jdk install " + spec + "`)");
             return 1;
         }
         applyDefault(match.get(), defaults, CliOutput.stdout());

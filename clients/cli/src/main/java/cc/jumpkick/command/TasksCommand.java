@@ -85,8 +85,8 @@ public final class TasksCommand implements CliCommand {
                 if (TaskCatalog.find(action).isPresent()) {
                     return showOrInspect("show", action, in, startDir, proj.buildFile());
                 }
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                        "Tasks", "unknown action `" + action + "` (list | show | inspect)"));
+                cc.jumpkick.cli.tui.CommandWedge.printFail(
+                        "Tasks", "unknown action `" + action + "` (list | show | inspect)");
                 return Exit.USAGE;
             }
             if (action.equals("ls")) action = "list";
@@ -95,19 +95,19 @@ public final class TasksCommand implements CliCommand {
                 case "list" -> list(in, startDir, proj.buildFile());
                 case "show", "inspect" -> {
                     if (pos.size() < 2) {
-                        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                                "Tasks", action + " expects a task name (e.g. package-jar)"));
+                        cc.jumpkick.cli.tui.CommandWedge.printFail(
+                                "Tasks", action + " expects a task name (e.g. package-jar)");
                         yield Exit.USAGE;
                     }
                     yield showOrInspect(action, pos.get(1), in, startDir, proj.buildFile());
                 }
                 default -> {
-                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tasks", "unknown action `" + action + "`"));
+                    cc.jumpkick.cli.tui.CommandWedge.printFail("Tasks", "unknown action `" + action + "`");
                     yield Exit.USAGE;
                 }
             };
         } catch (IllegalStateException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tasks", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Tasks", e.getMessage());
             return Exit.CONFIG;
         }
     }
@@ -115,7 +115,7 @@ public final class TasksCommand implements CliCommand {
     static int list(Invocation in, Path startDir, Path buildFile) throws Exception {
         Map<Path, JkBuild> modules = resolveModules(in, startDir, buildFile);
         if (modules.isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tasks", "no modules selected"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Tasks", "no modules selected");
             return Exit.CONFIG;
         }
         boolean multi = modules.size() > 1;
@@ -153,14 +153,14 @@ public final class TasksCommand implements CliCommand {
             throws Exception {
         Optional<TaskCatalog.TaskDef> def = TaskCatalog.find(stepName);
         if (def.isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Tasks", "unknown task `" + stepName + "` — run `jk tasks` for names"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "Tasks", "unknown task `" + stepName + "` — run `jk tasks` for names");
             return Exit.CONFIG;
         }
         TaskCatalog.TaskDef task = def.get();
         Map<Path, JkBuild> modules = resolveModules(in, startDir, buildFile);
         if (modules.isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tasks", "no modules selected"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Tasks", "no modules selected");
             return Exit.CONFIG;
         }
         boolean inspect = "inspect".equals(action);
@@ -197,8 +197,8 @@ public final class TasksCommand implements CliCommand {
             } else {
                 // show: path only (Mill-like), one line per module
                 if (out.isEmpty()) {
-                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                            "Show", "task `" + task.name() + "` has no primary output path"));
+                    cc.jumpkick.cli.tui.CommandWedge.printFail(
+                            "Show", "task `" + task.name() + "` has no primary output path");
                     return Exit.CONFIG;
                 }
                 if (modules.size() > 1) {

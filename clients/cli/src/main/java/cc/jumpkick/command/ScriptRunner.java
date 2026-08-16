@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
@@ -77,7 +76,7 @@ final class ScriptRunner {
 
     private int runJavaScript(Path script, List<String> args) throws IOException, InterruptedException {
         if (!Files.isRegularFile(script)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "script not found: " + script));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", "script not found: " + script);
             return Exit.NO_INPUT;
         }
         ScriptHeader header = readHeader(script);
@@ -90,7 +89,7 @@ final class ScriptRunner {
 
     private int runKotlinScript(Path script, List<String> args) throws IOException, InterruptedException {
         if (!Files.isRegularFile(script)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "script not found: " + script));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", "script not found: " + script);
             return Exit.NO_INPUT;
         }
         ScriptHeader header = readHeader(script);
@@ -108,7 +107,7 @@ final class ScriptRunner {
 
     private int runKtsScript(Path script, List<String> args) throws IOException, InterruptedException {
         if (!Files.isRegularFile(script)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "script not found: " + script));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", "script not found: " + script);
             return Exit.NO_INPUT;
         }
         EngineRequests.ScriptPrepareOutcome prep = prepare("kts", script);
@@ -162,7 +161,7 @@ final class ScriptRunner {
 
     private int runJar(Path jar, List<String> args) throws IOException, InterruptedException {
         if (!Files.isRegularFile(jar)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "jar not found: " + jar));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", "jar not found: " + jar);
             return Exit.NO_INPUT;
         }
         EngineRequests.ScriptPrepareOutcome prep = prepare("jar", jar);

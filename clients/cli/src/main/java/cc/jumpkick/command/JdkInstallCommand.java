@@ -115,12 +115,12 @@ public final class JdkInstallCommand implements CliCommand {
         this.cacheFile = in.value("cache-file").map(Path::of).orElse(null);
 
         if (!HostPlatform.supported()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "JDK",
                     "host " + System.getProperty("os.name")
                             + "/"
                             + System.getProperty("os.arch")
-                            + " is not covered by the JetBrains JDK feed. Set JAVA_HOME explicitly."));
+                            + " is not covered by the JetBrains JDK feed. Set JAVA_HOME explicitly.");
             return 1;
         }
         String os = HostPlatform.currentOs();
@@ -138,10 +138,10 @@ public final class JdkInstallCommand implements CliCommand {
         // Pre-plan sanity: when no spec and no TTY, we can't go further.
         boolean haveSpec = spec != null && !spec.isBlank();
         if (!haveSpec && !isInteractiveTerminal()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "JDK",
                     "stdin is not a TTY — pass `lts` / `latest` "
-                            + "or a <spec> (e.g. `jk jdk install temurin-21`) or run interactively."));
+                            + "or a <spec> (e.g. `jk jdk install temurin-21`) or run interactively.");
             return Exit.USAGE;
         }
 
@@ -214,7 +214,7 @@ public final class JdkInstallCommand implements CliCommand {
                     ctx.put(ENTRY, entry);
                     ctx.put(WANT_DEFAULT, wantDefault);
                     if (global != null && global.verbose) {
-                        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                        cc.jumpkick.cli.tui.CommandWedge.printFail(
                                 "JDK",
                                 "resolved spec='" + effective
                                         + "' to "
@@ -227,7 +227,7 @@ public final class JdkInstallCommand implements CliCommand {
                                         + os
                                         + "/"
                                         + arch
-                                        + ")"));
+                                        + ")");
                     }
                     ctx.progress(1);
                 })
@@ -389,9 +389,9 @@ public final class JdkInstallCommand implements CliCommand {
         if (resolved == null) {
             // A keyword resolved to nothing: lts/stable with no LTS major, or
             // `native` with no Oracle GraalVM, for this host.
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "JDK",
-                    "could not resolve `" + raw.trim() + "` against the JetBrains feed for " + os + "/" + arch + "."));
+                    "could not resolve `" + raw.trim() + "` against the JetBrains feed for " + os + "/" + arch + ".");
         }
         return resolved;
     }
@@ -468,6 +468,8 @@ public final class JdkInstallCommand implements CliCommand {
 
         @Override
         public void onAlreadyInstalled(InstalledJdk jdk) {
+            // No download bar on this path — open the envelope for the settle chip.
+            cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
             CliOutput.out(doneLine(label, jdk.home(), "is already installed at"));
         }
 
@@ -494,6 +496,8 @@ public final class JdkInstallCommand implements CliCommand {
                 bar = null;
             }
             // Print after the spinner is wiped so the done line takes its place.
+            // envelopeStart is a no-op when the download bar already opened it.
+            cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
             CliOutput.out(doneLine(label, jdk.home(), "has been installed to"));
         }
 

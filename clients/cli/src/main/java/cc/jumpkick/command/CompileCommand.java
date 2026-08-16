@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
@@ -69,7 +68,7 @@ public final class CompileCommand implements CliCommand {
             cc.jumpkick.model.JkBuild entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
             var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(dir, entry, modulesSpec, affectedSince);
             if (selected != null && !selected.ok()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Compile", selected.errorMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Compile", selected.errorMessage());
                 return Exit.CONFIG;
             }
             if (selected != null) {
@@ -97,7 +96,7 @@ public final class CompileCommand implements CliCommand {
                                 moduleDir, cache, profileName, session.offline(), session.force(), global.verbose),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target));
             } catch (IOException e) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Compile", e.getMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Compile", e.getMessage());
                 return Exit.SOFTWARE;
             }
             if (!result.success()) return 1;

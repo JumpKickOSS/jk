@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.command.ide.IdeChrome;
 import cc.jumpkick.command.ide.IdeGeneration;
 import cc.jumpkick.command.ide.IdeGenerator;
@@ -139,7 +138,7 @@ public final class IdeCommand implements CliCommand {
             return 0;
         } catch (IdeSupport.IdeException e) {
             if (e.getMessage() != null && !e.getMessage().isBlank()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("IDE", e.getMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("IDE", e.getMessage());
             }
             return e.code();
         }

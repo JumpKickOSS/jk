@@ -99,8 +99,7 @@ public final class ExplainCommand implements CliCommand {
         String graphFmt = in.value("graph").orElse(null);
         boolean hasGraph = graphFmt != null && !graphFmt.isBlank();
         if (in.isSet("run") && hasGraph) {
-            CliOutput.err(
-                    cc.jumpkick.cli.tui.CommandWedge.fail("Explain", "cannot combine --run with --graph (pick one)"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Explain", "cannot combine --run with --graph (pick one)");
             return Exit.USAGE;
         }
         if (in.isSet("run")) {
@@ -142,7 +141,7 @@ public final class ExplainCommand implements CliCommand {
                 var selected =
                         cc.jumpkick.config.ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affectedSince);
                 if (selected != null && !selected.ok()) {
-                    CliOutput.err(CommandWedge.fail("Explain", selected.errorMessage()));
+                    CommandWedge.printFail("Explain", selected.errorMessage());
                     return Exit.CONFIG;
                 }
                 if (selected != null) {
@@ -161,7 +160,7 @@ public final class ExplainCommand implements CliCommand {
                     }
                 }
             } catch (Exception e) {
-                CliOutput.err(CommandWedge.fail("Explain", "module selection failed: " + e.getMessage()));
+                CommandWedge.printFail("Explain", "module selection failed: " + e.getMessage());
                 return Exit.CONFIG;
             }
         }
@@ -680,10 +679,10 @@ public final class ExplainCommand implements CliCommand {
             throws Exception {
         String fmt = format.trim().toLowerCase(Locale.ROOT);
         if (!ModuleDotGraph.isSupportedFormat(fmt)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "Explain",
                     "unsupported --graph format '" + format + "' (supported: "
-                            + String.join(" | ", ModuleDotGraph.FORMATS) + ")"));
+                            + String.join(" | ", ModuleDotGraph.FORMATS) + ")");
             return Exit.CONFIG;
         }
         JkBuild entry = JkBuildParser.parse(buildFile);
@@ -694,7 +693,7 @@ public final class ExplainCommand implements CliCommand {
             ModuleSelection.Result selected =
                     ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affectedSince);
             if (selected != null && !selected.ok()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Explain", selected.errorMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Explain", selected.errorMessage());
                 return Exit.CONFIG;
             }
             Set<Path> only = selected != null ? selected.moduleDirs() : null;
@@ -713,7 +712,7 @@ public final class ExplainCommand implements CliCommand {
                 ModuleSelection.Result selected =
                         ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affectedSince);
                 if (selected != null && !selected.ok()) {
-                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Explain", selected.errorMessage()));
+                    cc.jumpkick.cli.tui.CommandWedge.printFail("Explain", selected.errorMessage());
                     return Exit.CONFIG;
                 }
             }
@@ -725,8 +724,8 @@ public final class ExplainCommand implements CliCommand {
             Path parent = out.getParent();
             if (parent != null) Files.createDirectories(parent);
             Files.writeString(out, graph);
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Explain", "wrote " + out.toAbsolutePath().normalize()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "Explain", "wrote " + out.toAbsolutePath().normalize());
         } else {
             CliOutput.out(graph.endsWith("\n") ? graph.substring(0, graph.length() - 1) : graph);
         }

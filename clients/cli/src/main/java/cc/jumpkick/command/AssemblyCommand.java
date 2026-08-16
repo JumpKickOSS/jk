@@ -60,8 +60,7 @@ public final class AssemblyCommand implements CliCommand {
         Path dir = global.workingDir();
         Path toml = dir.resolve("jk.toml");
         if (!Files.isRegularFile(toml)) {
-            CliOutput.err(
-                    cc.jumpkick.cli.tui.CommandWedge.fail("Assemble", "no jk.toml in " + PathDisplay.styledRaw(dir)));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Assemble", "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Exit.CONFIG;
         }
 
@@ -69,13 +68,11 @@ public final class AssemblyCommand implements CliCommand {
         boolean minified = in.isSet("minified");
         boolean writeConfig = in.isSet("write-config");
         if (fat && minified) {
-            CliOutput.err(
-                    cc.jumpkick.cli.tui.CommandWedge.fail("Assemble", "choose one of --fat or --minified (not both)"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Assemble", "choose one of --fat or --minified (not both)");
             return Exit.USAGE;
         }
         if (writeConfig && !fat && !minified) {
-            CliOutput.err(
-                    cc.jumpkick.cli.tui.CommandWedge.fail("Assemble", "--write-config requires --fat or --minified"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Assemble", "--write-config requires --fat or --minified");
             return Exit.USAGE;
         }
 

@@ -795,7 +795,7 @@ public final class CacheCommand extends GroupCommand {
                         CacheCommand::printWait,
                         summary);
             } catch (IOException e) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Cache", e.getMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Cache", e.getMessage());
                 return cc.jumpkick.model.command.Exit.SOFTWARE;
             }
             if (summary[0] != null) warnReachableEvicted(summary[0].reachableEvicted());

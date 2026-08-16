@@ -252,11 +252,11 @@ public final class LockCommand implements CliCommand {
         try {
             outcome = EngineClient.runLock(cc.jumpkick.engine.EnginePaths.current(), lockRequest(dir, cache), handler);
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Lock", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Lock", e.getMessage());
             return Exit.SOFTWARE;
         }
         for (String err : outcome.errors()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Lock", err));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Lock", err);
         }
         return outcome.exitCode();
     }

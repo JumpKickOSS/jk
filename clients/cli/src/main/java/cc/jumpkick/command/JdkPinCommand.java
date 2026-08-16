@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -60,16 +59,16 @@ public final class JdkPinCommand implements CliCommand {
                 ? cc.jumpkick.jdk.JdkKeywords.bestInstalledMatch(spec, registry.listHits())
                 : registry.findHitBySpec(spec);
         if (hit.isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "JDK", "no installed JDK matches `" + spec + "` (try `jk jdk list`)"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "JDK", "no installed JDK matches `" + spec + "` (try `jk jdk list`)");
             return 1;
         }
         // .jdk-version pins <vendor>-<major>, never a patch — jk keeps the patch
         // version current via the stable pointer.
         String pin = pinName(hit.get());
         if (pin == null) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "JDK", "could not derive a <vendor>-<major> name from `" + spec + "`"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "JDK", "could not derive a <vendor>-<major> name from `" + spec + "`");
             return 1;
         }
         Files.writeString(projectDir.resolve(".jdk-version"), pin + "\n", StandardCharsets.UTF_8);

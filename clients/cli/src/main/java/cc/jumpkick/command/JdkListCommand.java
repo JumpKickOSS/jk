@@ -183,6 +183,7 @@ public final class JdkListCommand implements CliCommand {
         }
 
         String title = all ? "All OpenJDKs" : "Installed OpenJDKs";
+        cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
         for (String line : renderTable(rows, title)) {
             CliOutput.out(line);
         }
@@ -555,8 +556,8 @@ public final class JdkListCommand implements CliCommand {
             return client.fetch(refresh, /* firstClassOnly= */ false);
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "JDK", "JetBrains feed unreachable (" + e.getMessage() + "); showing installed JDKs only."));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "JDK", "JetBrains feed unreachable (" + e.getMessage() + "); showing installed JDKs only.");
             return null;
         }
     }

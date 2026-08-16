@@ -86,8 +86,8 @@ public final class SelfCommand extends GroupCommand {
             String raw = in.value("mode").orElse("auto");
             var mode = parseMode(raw);
             if (mode.isEmpty()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                        "Self", "unknown --mode " + raw + " (expected auto|on|off|wedge|pill)"));
+                cc.jumpkick.cli.tui.CommandWedge.printFail(
+                        "Self", "unknown --mode " + raw + " (expected auto|on|off|wedge|pill)");
                 return Exit.USAGE;
             }
             Path cfg = JkDirs.userConfigFile();
@@ -153,7 +153,7 @@ public final class SelfCommand extends GroupCommand {
             Path client = Path.of(in.positionals().get(0));
             Path engineJar = Path.of(in.positionals().get(1));
             if (!Files.isRegularFile(engineJar)) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Self", "engine jar not found: " + engineJar));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Self", "engine jar not found: " + engineJar);
                 return Exit.SOFTWARE;
             }
             VersionStore.Materialized m = VersionStore.current()
@@ -272,7 +272,7 @@ public final class SelfCommand extends GroupCommand {
                         .trim();
             }
             if (target.isEmpty()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Self", "could not resolve a target version"));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Self", "could not resolve a target version");
                 return Exit.SOFTWARE;
             }
             VersionStore store = VersionStore.current();

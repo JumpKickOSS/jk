@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
@@ -52,7 +51,7 @@ public final class EngineStartCommand implements CliCommand {
             CommandWedge.printOk("Engine", message);
             return Exit.SUCCESS;
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Engine", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Engine", e.getMessage());
             return Exit.SOFTWARE;
         }
     }

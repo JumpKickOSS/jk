@@ -56,23 +56,23 @@ public final class AuditCommand implements CliCommand {
         String severity = in.value("severity").orElse("LOW");
         Path projectDir = global.workingDir();
         if (!Files.exists(projectDir.resolve("jk.toml"))) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Audit", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir)));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "Audit", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir));
             return Exit.CONFIG;
         }
         int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(projectDir, JkDirs.cache(), global, "Audit");
         if (lockCode != 0) return lockCode;
         Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
         if (!Files.exists(lockPath)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "Audit",
                     "no jk-lock.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir)
-                            + " (lock refresh did not produce one)."));
+                            + " (lock refresh did not produce one).");
             return Exit.CONFIG;
         }
         if (global.offline) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Audit", "--offline is set; OSV queries require network access."));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "Audit", "--offline is set; OSV queries require network access.");
             return 1;
         }
         Path cache = JkDirs.cache();
@@ -98,7 +98,7 @@ public final class AuditCommand implements CliCommand {
                     steps -> BuildPlanConsole.chooseConsoleListener("audit", steps, mode),
                     observer);
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Audit", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Audit", e.getMessage());
             return Exit.SOFTWARE;
         }
 
@@ -111,8 +111,8 @@ public final class AuditCommand implements CliCommand {
 
         List<AuditReport.Finding> blocking = report.filterAtLeast(threshold);
         if (!blocking.isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Audit", blocking.size() + " finding(s) at or above " + threshold + " — failing."));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "Audit", blocking.size() + " finding(s) at or above " + threshold + " — failing.");
             return 1;
         }
         return 0;

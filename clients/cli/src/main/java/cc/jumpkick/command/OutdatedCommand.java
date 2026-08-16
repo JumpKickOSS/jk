@@ -71,8 +71,7 @@ public final class OutdatedCommand implements CliCommand {
 
         Path dir = global.workingDir();
         if (!Files.exists(dir.resolve("jk.toml"))) {
-            CliOutput.err(
-                    cc.jumpkick.cli.tui.CommandWedge.fail("Outdated", "no jk.toml in " + PathDisplay.styledRaw(dir)));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Outdated", "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Exit.CONFIG;
         }
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
@@ -87,7 +86,7 @@ public final class OutdatedCommand implements CliCommand {
                         dir, cache, repoUrl, global.offline, global.force));
 
         if (report.error() != null) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Outdated", report.error()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Outdated", report.error());
             return Exit.CONFIG;
         }
 
@@ -107,6 +106,7 @@ public final class OutdatedCommand implements CliCommand {
             CliOutput.out(excludeUpToDate ? "(no outdated dependencies)" : "(no dependencies to check)");
             return Exit.SUCCESS;
         }
+        cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
         for (String line : renderTable(rows, report.workspace(), showTip, "Dependency versions")) {
             CliOutput.out(line);
         }
