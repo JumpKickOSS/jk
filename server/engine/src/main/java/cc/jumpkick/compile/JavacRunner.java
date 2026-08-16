@@ -51,7 +51,9 @@ public final class JavacRunner {
                 // up) — they must be direct command-line arguments.
                 List<String> command = new ArrayList<>();
                 command.add(javac.toString());
-                command.addAll(JvmOptions.launcherFlags(1));
+                // -J flags land on this javac's host JVM (project pin), not the engine's — gate
+                // JEP 498 allow by that home's feature so JDK 17/21 pins do not abort at startup.
+                command.addAll(JvmOptions.launcherFlags(1, JvmOptions.hostFeature(javaHome)));
                 // No PluginAot on bare `javac` — AOT is for `java … PluginMain` workers only
                 // (jk-java-compiler ToolProvider host and kotlin-compiler). See PluginAot.
                 command.add("@" + argfile);

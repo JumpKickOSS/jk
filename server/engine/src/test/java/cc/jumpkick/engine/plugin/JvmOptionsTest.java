@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.SessionContext;
@@ -99,6 +100,23 @@ class JvmOptionsTest {
                 .allMatch(f -> f.startsWith("-J-"))
                 .hasSameSizeAs(JvmOptions.batchFlags(1))
                 .contains("-J-XX:+UseParallelGC");
+        // JEP 498 allow is host-feature gated; pin ≥ 23 so this assertion is stable on any runner.
+        assertThat(JvmOptions.launcherFlags(1, 25)).contains("-J" + JvmOptions.JEP498_UNSAFE_MEMORY_ACCESS_ALLOW);
+    }
+
+    @Test
+    void host_feature_reads_release_file(@TempDir Path tmp) throws Exception {
+        Path home = tmp.resolve("jdk-17");
+        Files.createDirectories(home);
+        Files.writeString(home.resolve("release"), "JAVA_VERSION=\"17.0.13\"\n");
+        assertThat(JvmOptions.hostFeature(home)).isEqualTo(17);
+
+        Path j25 = tmp.resolve("jdk-25");
+        Files.createDirectories(j25);
+        Files.writeString(j25.resolve("release"), "JAVA_VERSION=\"25.0.1\"\n");
+        assertThat(JvmOptions.hostFeature(j25)).isEqualTo(25);
+        assertThat(JvmOptions.hostFeatureFromExe(j25.resolve("bin").resolve("javac")))
+                .isEqualTo(25);
     }
 
     @Test
@@ -107,6 +125,29 @@ class JvmOptionsTest {
         // workers ride the JVM's own default so user code sees the GC every other runner gives it.
         assertThat(JvmOptions.batchFlags(1)).contains("-XX:+UseParallelGC");
         assertThat(JvmOptions.workerFlags(1)).noneMatch(f -> f.startsWith("-XX:+Use") && f.endsWith("GC"));
+    }
+
+    @Test
+    void batch_flags_acknowledge_jep498_unsafe_memory_access() {
+        // Compilers host Lombok / KSP and friends; without allow, HotSpot dumps a four-line
+        // terminal-deprecation banner on every compile. Test workers stay strict (user code).
+        // Flag only exists on JDK 23+ — gate by host feature so older pins do not abort.
+        assumeTrue(
+                Runtime.version().feature() >= JvmOptions.JEP498_UNSAFE_MEMORY_ACCESS_MIN_FEATURE,
+                "running JDK must be ≥ 23 for the default overload to emit the flag");
+        assertThat(JvmOptions.batchFlags(1)).contains(JvmOptions.JEP498_UNSAFE_MEMORY_ACCESS_ALLOW);
+        assertThat(JvmOptions.workerFlags(1)).doesNotContain(JvmOptions.JEP498_UNSAFE_MEMORY_ACCESS_ALLOW);
+    }
+
+    @Test
+    void jep498_allow_is_gated_by_host_feature() {
+        assertThat(JvmOptions.batchFlags(1, 17)).doesNotContain(JvmOptions.JEP498_UNSAFE_MEMORY_ACCESS_ALLOW);
+        assertThat(JvmOptions.batchFlags(1, 21)).doesNotContain(JvmOptions.JEP498_UNSAFE_MEMORY_ACCESS_ALLOW);
+        assertThat(JvmOptions.batchFlags(1, 22)).doesNotContain(JvmOptions.JEP498_UNSAFE_MEMORY_ACCESS_ALLOW);
+        assertThat(JvmOptions.batchFlags(1, 23)).contains(JvmOptions.JEP498_UNSAFE_MEMORY_ACCESS_ALLOW);
+        assertThat(JvmOptions.batchFlags(1, 25)).contains(JvmOptions.JEP498_UNSAFE_MEMORY_ACCESS_ALLOW);
+        assertThat(JvmOptions.launcherFlags(1, 17)).doesNotContain("-J" + JvmOptions.JEP498_UNSAFE_MEMORY_ACCESS_ALLOW);
+        assertThat(JvmOptions.launcherFlags(1, 25)).contains("-J" + JvmOptions.JEP498_UNSAFE_MEMORY_ACCESS_ALLOW);
     }
 
     @Test

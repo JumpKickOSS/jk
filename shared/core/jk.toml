@@ -6,6 +6,12 @@ jk-model.workspace = true
 tomlj = "latest"
 maven-artifact = "latest"
 
+[provided-dependencies]
+lombok = "latest"
+
+[processor-dependencies]
+lombok = "latest"
+
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"

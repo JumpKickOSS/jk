@@ -14,6 +14,10 @@ jline-terminal-ffm = "latest"
 
 [provided-dependencies]
 graalvm-nativeimage = "latest"
+lombok = "latest"
+
+[processor-dependencies]
+lombok = "latest"
 
 [test-dependencies]
 jk-engine.workspace = true
