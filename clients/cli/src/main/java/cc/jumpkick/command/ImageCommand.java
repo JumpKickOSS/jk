@@ -232,6 +232,7 @@ public final class ImageCommand implements CliCommand {
         cc.jumpkick.cli.tui.JkManager view =
                 cc.jumpkick.cli.tui.JkManager.plan(cc.jumpkick.cli.CliOutput.stdout(), "Image", animate);
         cc.jumpkick.cli.run.AggregateContext agg = new cc.jumpkick.cli.run.AggregateContext(view);
+        int[] finished = {0};
         long start = System.nanoTime();
         cc.jumpkick.runtime.WorkspaceResult result;
         try {
@@ -248,6 +249,16 @@ public final class ImageCommand implements CliCommand {
                         public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
                             return new cc.jumpkick.cli.run.AggregateModuleListener(
                                     agg, m.coord(), m.plan().steps(), m.weight());
+                        }
+
+                        @Override
+                        public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
+                            int n = ++finished[0];
+                            String completion =
+                                    BuildCommand.completionLine(o.success(), n, Math.max(n, 1), o.coord(), o.millis());
+                            if (view.animating()) {
+                                view.addCompletion(completion);
+                            }
                         }
                     });
         } catch (IOException e) {

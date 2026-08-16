@@ -359,6 +359,7 @@ public final class NativeCommand implements CliCommand {
         JkManager view = JkManager.plan(CliOutput.stdout(), "Build", animate);
         cc.jumpkick.cli.run.AggregateContext agg = new cc.jumpkick.cli.run.AggregateContext(view);
         int[] built = {0};
+        int[] finished = {0};
         var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
             @Override
             public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
@@ -377,6 +378,12 @@ public final class NativeCommand implements CliCommand {
             @Override
             public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
                 if (o.success()) built[0]++;
+                int n = ++finished[0];
+                String completion =
+                        BuildCommand.completionLine(o.success(), n, Math.max(totalModules, n), o.coord(), o.millis());
+                if (view.animating()) {
+                    view.addCompletion(completion);
+                }
             }
         };
         cc.jumpkick.runtime.WorkspaceResult result;

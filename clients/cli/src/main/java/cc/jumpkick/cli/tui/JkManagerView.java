@@ -640,7 +640,13 @@ final class JkManagerView {
         RenderContext frameCtx = RenderContext.current().withWidth(cols);
         chrome.add(planHeader(frameCtx, elapsedMillis));
 
-        int budget = Math.max(1, m.height - 2);
+        int rowsAfterHeader = Math.max(1, m.height - 2);
+        // Shrink the work tree so ✓ [N of M] still fits under the wedge (live region only).
+        int completionSlots = 0;
+        if (m.completedCount > 0 && rowsAfterHeader > 1) {
+            completionSlots = Math.min(JkManager.MAX_COMPLETIONS + 1, Math.max(1, rowsAfterHeader / 2));
+        }
+        int budget = Math.max(1, rowsAfterHeader - completionSlots);
         List<JkManager.TreeEntry> visible = collectVisibleTree();
         Tree work = Tree.untitled().gap(Tree.Gap.NONE);
         int shown = 0;
@@ -661,17 +667,20 @@ final class JkManagerView {
         }
         chrome.addAll(work.render(frameCtx));
 
-        if (m.completedCount > 0 && budget > 0) {
-            boolean overflow = m.completedCount > Math.min(JkManager.MAX_COMPLETIONS, budget);
-            int cap = Math.max(0, Math.min(JkManager.MAX_COMPLETIONS, overflow ? budget - 1 : budget));
-            int compShown = Math.min(m.recentCompletions.size(), cap);
-            int have = m.recentCompletions.size();
-            for (int i = 0; i < compShown; i++) {
-                chrome.add("    " + m.recentCompletions.get(have - 1 - i));
-            }
-            int more = m.completedCount - compShown;
-            if (more > 0) {
-                chrome.add(Theme.colorize("      … plus " + more + " more …", dim.italic()));
+        if (m.completedCount > 0) {
+            int room = Math.max(0, rowsAfterHeader - (chrome.size() - 1));
+            if (room > 0) {
+                boolean overflow = m.completedCount > Math.min(JkManager.MAX_COMPLETIONS, room);
+                int cap = Math.max(0, Math.min(JkManager.MAX_COMPLETIONS, overflow ? room - 1 : room));
+                int have = m.recentCompletions.size();
+                int compShown = Math.min(have, cap);
+                for (int i = 0; i < compShown; i++) {
+                    chrome.add("    " + m.recentCompletions.get(have - 1 - i));
+                }
+                int more = m.completedCount - compShown;
+                if (more > 0) {
+                    chrome.add(Theme.colorize("      … plus " + more + " more …", dim.italic()));
+                }
             }
         }
         return chrome;

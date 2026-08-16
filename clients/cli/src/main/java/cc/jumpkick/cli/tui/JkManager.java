@@ -718,10 +718,11 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Record a finished unit's pre-formatted completion line in the live completed-tail rendered
-     * below the active rows (newest first, capped to {@link #MAX_COMPLETIONS}; the rest collapse into
-     * a "… plus N more …" footer). Callers that aren't animating should print append-only instead
-     * (see {@link #animating}) — this only feeds the live region.
+     * Record a finished unit's pre-formatted completion line in the live tail under the wedge
+     * (newest first, capped to {@link #MAX_COMPLETIONS}; the rest collapse into a
+     * {@code … plus N more …} footer). Does not write to the terminal or to process-output
+     * scrollback — the next plan paint includes it in the live region. Callers that aren't
+     * animating should print append-only instead (see {@link #animating}).
      */
     public void addCompletion(String line) {
         synchronized (lock) {

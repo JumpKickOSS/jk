@@ -1449,6 +1449,54 @@ class JkManagerTest {
     }
 
     @Test
+    void addCompletion_does_not_print_into_scrollback() {
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(stream(buf), true, true, 80);
+        cm.name = "Build";
+        cm.startNanos = System.nanoTime();
+        cm.stepRunning("m", "compile");
+        cm.tick();
+        buf.reset();
+
+        cm.addCompletion("✓ [01 of 3] ex:lib took 1s");
+
+        assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8))).doesNotContain("✓ [01 of 3] ex:lib took 1s");
+        assertThat(stripAll(cm.renderBuildPlanLines(80, 0)).stream()
+                        .anyMatch(l -> l.contains("✓ [01 of 3] ex:lib took 1s")))
+                .isTrue();
+    }
+
+    @Test
+    void completed_tail_is_wiped_on_settle_not_copied_above_chrome() {
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(stream(buf), true, true, 80);
+        cm.name = "Build";
+        cm.startNanos = System.nanoTime();
+        cm.stepRunning("m", "compile");
+        cm.addCompletion("✓ [01 of 3] ex:lib took 1s");
+        cm.tick();
+        buf.reset();
+
+        cm.finishBuildPlanSuccess("built 3 modules");
+
+        assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8))).doesNotContain("✓ [01 of 3] ex:lib took 1s");
+    }
+
+    @Test
+    void completed_tail_is_not_starved_by_a_full_work_tree() {
+        var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdFont = NerdFontCaps.NONE;
+        cm.height = 10;
+        for (int i = 0; i < 8; i++) {
+            cm.stepRunning("g:m" + i, "compile");
+        }
+        cm.addCompletion("✓ [01 of 3] g:a took 1s");
+
+        var all = String.join("\n", stripAll(cm.renderBuildPlanLines(120, 0)));
+        assertThat(all).contains("✓ [01 of 3] g:a took 1s");
+    }
+
+    @Test
     void completed_tail_caps_and_collapses_overflow_into_a_footer() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.stepRunning("m", "compile");

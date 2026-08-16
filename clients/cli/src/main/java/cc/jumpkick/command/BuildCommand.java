@@ -544,10 +544,10 @@ public final class BuildCommand implements CliCommand {
     /**
      * Live aggregate scheduler: one {@link JkManager} (plan mode) shows a spinner header + a
      * single bar calibrated to the whole graph + a tree of the modules building <em>right now</em>;
-     * the tree grows to the parallelism limit and shrinks back to 0 as units drain. Each unit's
-     * process output is buffered and flushed (with a ✓/✗ {@code [k/N]} line) above the region when it
-     * completes — so concurrent logs never interleave. On a non-interactive terminal nothing
-     * animates; the same blocks + lines print append-only.
+     * the tree grows to the parallelism limit and shrinks back to 0 as units drain. Finished
+     * modules appear as a live {@code ✓ [k of N]} tail under the wedge — not terminal scrollback
+     * and not the process-output peek. On a non-interactive terminal nothing animates; the same
+     * blocks + completion lines print append-only.
      */
     private int runGraphLive(
             JkManager view,
@@ -594,6 +594,7 @@ public final class BuildCommand implements CliCommand {
                 @Override
                 public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
                     agg.applySnapshot(snap);
+                    if (snap.modulesTotal() > total[0]) total[0] = snap.modulesTotal();
                     cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                             cc.jumpkick.cli.run.JsonlShape.workspaceProgress(
                                     entryDir.toString(),
@@ -771,7 +772,7 @@ public final class BuildCommand implements CliCommand {
     }
 
     /**
-     * A finished unit's scroll-back line: {@code ✓ [01 of 16] group:artifact took 16ms}. No leading
+     * A finished unit's live-tail line: {@code ✓ [01 of 16] group:artifact took 16ms}. No leading
      * indent (it's complete, not active); the numerator is zero-padded to the denominator's width;
      * the duration is normalized like every other jk duration ({@link ConsoleSpec#took}). Colors:
      * green check, bright-black brackets around a plain {@code NN of MM} count, the

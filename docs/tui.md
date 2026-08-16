@@ -51,6 +51,13 @@ stay clean. Long tools (e.g. `native-image`) stream into this channel live — n
 
 Document only — no on-screen “press Ctrl-O” hint. InheritIO handoffs (`jk run`, `jshell`, …) are out of scope.
 
+### Completed-module tail
+
+Workspace plans (`jk build`, `jk test`, `jk run`, `jk native`, `jk image`) keep the last few
+`✓ [N of M] group:artifact took …` lines **in the live region under the wedge**, newest first.
+They are not written into terminal scrollback and they are not part of the process-output peek.
+Settle wipes the live region, so those lines do not remain after the result chip.
+
 ### Blank-line envelope (JK-1373)
 
 Every **wedge-bearing** human command prints:

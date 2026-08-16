@@ -325,6 +325,7 @@ public final class TestCommand implements CliCommand {
                         @Override
                         public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
                             agg.applySnapshot(snap);
+                            if (snap.modulesTotal() > total[0]) total[0] = snap.modulesTotal();
                             JsonlShape.emitJsonl(
                                     JsonlShape.workspaceProgress(
                                             entryDir.toString(),
