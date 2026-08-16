@@ -830,7 +830,12 @@ export function ensureMonaco() {
     return monacoPromise;
   }
   monacoPromise = (async () => {
-    await loadScript(MONACO_LOADER);
+    // A partial-failure retry (loader OK, editor.main rejected) finds the AMD loader already
+    // installed — re-injecting loader.js would append a duplicate tag and redefine
+    // require/define, so only load it when require is absent.
+    if (!window.require || typeof window.require.config !== 'function') {
+      await loadScript(MONACO_LOADER);
+    }
     if (!window.require || typeof window.require.config !== 'function') {
       throw new Error('monaco loader did not install require');
     }

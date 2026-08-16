@@ -195,6 +195,50 @@ test('extractMermaidFences pulls fenced mermaid blocks out of markdown', () => {
   assert.equal(html, '<p><svg></svg></p>');
 });
 
+test('monaco partial-failure retry does not re-inject loader.js', async () => {
+  // loader.js loads and installs AMD require, but editor.main rejects once; the retry must
+  // reuse the installed loader instead of appending a duplicate script tag. Fresh module
+  // instance: a successful load memoizes, which would latch the shared instance's memo.
+  const { ensureMonaco } = await import(pathToFileURL(process.env.JK_CODE_MJS).href + '?jk-monaco-retry');
+  const tags = [];
+  let mainLoads = 0;
+  let failFirst = true;
+  const fakeRequire = Object.assign(
+    (deps, resolve, reject) => {
+      mainLoads++;
+      if (failFirst) {
+        failFirst = false;
+        reject(new Error('editor.main network hiccup'));
+        return;
+      }
+      globalThis.window.monaco = { editor: { defineTheme() {} } };
+      resolve();
+    },
+    { config() {} },
+  );
+  globalThis.document = {
+    createElement: () => ({ remove() {} }),
+    head: {
+      appendChild(s) {
+        tags.push(s);
+        globalThis.window.require = fakeRequire;
+        s.onload();
+      },
+    },
+  };
+  globalThis.window = {};
+  try {
+    await assert.rejects(ensureMonaco(), /hiccup/);
+    const monaco = await ensureMonaco();
+    assert.equal(monaco, globalThis.window.monaco);
+    assert.equal(tags.length, 1, 'loader.js injected exactly once across the retry');
+    assert.equal(mainLoads, 2, 'editor.main was retried');
+  } finally {
+    delete globalThis.document;
+    delete globalThis.window;
+  }
+});
+
 test('sanitizeDiagramSvg is the DOMPurify chokepoint with the SVG profiles', () => {
   const calls = [];
   const purify = {
