@@ -578,9 +578,15 @@ public final class McpHandler {
         return summarizeJob(McpDiagnostics.findNewest(historyRaw.get(), boundDir));
     }
 
-    private @org.jspecify.annotations.Nullable Map<String, Object> finishedJob(long jid, String dir) {
+    private @org.jspecify.annotations.Nullable Map<String, Object> finishedJob(long jid, String dir, long triggeredAt) {
         Map<String, Object> rec = waitForJournal(jid);
-        if (rec == null) rec = McpDiagnostics.findNewest(historyRaw.get(), dir);
+        if (rec == null) {
+            // Newest-row fallback covers records written without a requestId stamp. A row that
+            // started before this job was triggered (delayed complete(), history disabled) is a
+            // previous run's outcome and must not be attributed to this jid.
+            Map<String, Object> newest = McpDiagnostics.findNewest(historyRaw.get(), dir);
+            if (newest != null && McpHistoryViews.lng(newest, "startedAt") >= triggeredAt) rec = newest;
+        }
         return summarizeJob(rec);
     }
 
@@ -798,6 +804,7 @@ public final class McpHandler {
                 Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("skip_tests"))));
         boolean wait = !Boolean.FALSE.equals(McpHistoryViews.parseBool(args.get("wait")));
         int timeoutS = intArg(args.get("timeout_s"), 600, 1, MAX_WAIT_S);
+        long triggeredAt = System.currentTimeMillis();
         long jid = jobPayloadId(spec, progressToken);
         Map<String, Object> fields = new LinkedHashMap<>();
         fields.put("kind", spec.kind());
@@ -824,7 +831,7 @@ public final class McpHandler {
                     McpEnvelope.of("job", fields, false, null, "jk_job action=wait jid=" + jid),
                     "still running " + jid);
         }
-        Map<String, Object> last = admissionYield.yielding(() -> finishedJob(jid, resolveDir(args, false)));
+        Map<String, Object> last = admissionYield.yielding(() -> finishedJob(jid, resolveDir(args, false), triggeredAt));
         if (last != null) {
             fields.put("result", last);
             if (Boolean.FALSE.equals(last.get("success"))) {

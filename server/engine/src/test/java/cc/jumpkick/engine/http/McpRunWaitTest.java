@@ -100,4 +100,27 @@ class McpRunWaitTest {
         assertThat(((Number) result.get("requestId")).longValue()).isEqualTo(JID);
         assertThat(historyScans).hasValue(0);
     }
+
+    @Test
+    void wait_with_no_journal_row_never_reports_a_previous_runs_outcome() {
+        // History disabled: no row for this jid; the newest row on disk is an old success.
+        String stale = "{\"id\":\"old\",\"kind\":\"build\",\"dir\":\"/ws\",\"success\":true,"
+                + "\"exitCode\":0,\"startedAt\":1700000000000,\"modules\":[],\"diagnostics\":[]}";
+        McpHandler mcp = handler(() -> List.of(stale), jid -> null);
+        Map<String, Object> fields = structured(runWait(mcp));
+        assertThat(fields.get("finished")).isEqualTo(true);
+        assertThat(fields).doesNotContainKey("result");
+    }
+
+    @Test
+    void wait_fallback_accepts_an_unstamped_row_started_after_the_trigger() {
+        String fresh = "{\"id\":\"new\",\"kind\":\"build\",\"dir\":\"/ws\",\"success\":true,"
+                + "\"exitCode\":0,\"startedAt\":" + (System.currentTimeMillis() + 60_000)
+                + ",\"modules\":[],\"diagnostics\":[]}";
+        McpHandler mcp = handler(() -> List.of(fresh), jid -> null);
+        Map<String, Object> fields = structured(runWait(mcp));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) fields.get("result");
+        assertThat(result.get("id")).isEqualTo("new");
+    }
 }
