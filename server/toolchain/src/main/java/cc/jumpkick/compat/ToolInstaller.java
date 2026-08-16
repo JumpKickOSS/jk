@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -64,16 +65,23 @@ public final class ToolInstaller {
             Files.write(archive, body);
             cc.jumpkick.config.SessionContext.current().io().remoteDown(archive);
 
-            Path stagingDir = Files.createTempDirectory("jk-tool-stage-");
+            // Stage NEXT TO the target (same filesystem): the install is then one atomic
+            // rename, so a crash or a racing provision never leaves a partial tree at target
+            // — and a cross-filesystem /tmp (tmpfs) can't fail the per-directory moves
+            // (Files.move of a non-empty dir across filesystems always throws).
+            Path stagingDir = Files.createTempDirectory(target.getParent(), "jk-tool-stage-");
             try {
                 extract(archive, stagingDir, dist.archiveType());
                 Path effectiveRoot = flattenedRoot(stagingDir);
-                moveInto(effectiveRoot, target);
+                try {
+                    Files.move(effectiveRoot, target, StandardCopyOption.ATOMIC_MOVE);
+                } catch (IOException moveFailed) {
+                    // A concurrent provision published first — its tree is complete; use it.
+                    if (!Files.isDirectory(target)) throw moveFailed;
+                }
                 ensureBinaryExecutable(target, dist.tool());
-            } catch (IOException | RuntimeException e) {
-                deleteRecursively(stagingDir);
-                deleteRecursively(target);
-                throw e;
+            } finally {
+                deleteRecursively(stagingDir); // leftover shell when the root was nested, or on failure
             }
         } finally {
             Files.deleteIfExists(archive);
@@ -161,16 +169,6 @@ public final class ToolInstaller {
             return children.getFirst();
         }
         return stagingDir;
-    }
-
-    private static void moveInto(Path source, Path target) throws IOException {
-        Files.createDirectories(target);
-        try (var stream = Files.list(source)) {
-            for (Path child : (Iterable<Path>) stream::iterator) {
-                Files.move(child, target.resolve(child.getFileName()));
-            }
-        }
-        Files.deleteIfExists(source);
     }
 
     private static void deleteRecursively(Path root) {
