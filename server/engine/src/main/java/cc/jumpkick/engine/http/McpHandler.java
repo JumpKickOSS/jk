@@ -48,9 +48,13 @@ public final class McpHandler {
     private final ProgressTokenRegistry progressTokens;
     private final McpSession session = new McpSession();
     private final Supplier<List<HttpLive.Run>> liveRuns;
+    private final AdmissionYield admissionYield;
 
     /** Age after which a live job with no progress is marked stalled. */
     static final long STALL_MS = 60_000;
+
+    /** Hard cap on a single wait; agents re-issue {@code jk_job action=wait} to keep waiting. */
+    static final int MAX_WAIT_S = 3600;
 
     static final String INSTRUCTIONS = "Bind first: jk_bind {dir}. "
             + "Failing build / where is it failing → jk_diagnostics. "
@@ -90,6 +94,18 @@ public final class McpHandler {
             String version,
             ProgressTokenRegistry progressTokens,
             Supplier<List<HttpLive.Run>> liveRuns) {
+        this(status, jobs, projectLookup, historyRaw, version, progressTokens, liveRuns, AdmissionYield.NONE);
+    }
+
+    public McpHandler(
+            Supplier<StatusSnapshot> status,
+            EngineHttpJobs jobs,
+            Function<String, Map<String, Object>> projectLookup,
+            Supplier<List<String>> historyRaw,
+            String version,
+            ProgressTokenRegistry progressTokens,
+            Supplier<List<HttpLive.Run>> liveRuns,
+            AdmissionYield admissionYield) {
         this.status = Objects.requireNonNull(status);
         this.jobs = Objects.requireNonNull(jobs);
         this.projectLookup = Objects.requireNonNull(projectLookup);
@@ -97,6 +113,7 @@ public final class McpHandler {
         this.version = version == null ? "0" : version;
         this.progressTokens = progressTokens == null ? new ProgressTokenRegistry() : progressTokens;
         this.liveRuns = liveRuns == null ? List::of : liveRuns;
+        this.admissionYield = admissionYield == null ? AdmissionYield.NONE : admissionYield;
     }
 
     /**
@@ -329,7 +346,7 @@ public final class McpHandler {
                         "wait",
                         Map.of("type", "boolean", "description", "Block until finish (default true)"),
                         "timeout_s",
-                        Map.of("type", "integer", "description", "Wait timeout seconds (default 600)"),
+                        Map.of("type", "integer", "description", "Wait timeout seconds (default 600, max 3600)"),
                         "aot_cache",
                         Map.of("type", "boolean")))));
         tools.add(tool(
@@ -750,7 +767,7 @@ public final class McpHandler {
                 stringList(args.get("suites")),
                 Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("skip_tests"))));
         boolean wait = !Boolean.FALSE.equals(McpHistoryViews.parseBool(args.get("wait")));
-        int timeoutS = intArg(args.get("timeout_s"), 600, 1, 24 * 3600);
+        int timeoutS = intArg(args.get("timeout_s"), 600, 1, MAX_WAIT_S);
         long jid = jobPayloadId(spec, progressToken);
         Map<String, Object> fields = new LinkedHashMap<>();
         fields.put("kind", spec.kind());
@@ -768,7 +785,8 @@ public final class McpHandler {
             return ok(
                     McpEnvelope.of("job-accepted", fields, false, null, "jk_job action=wait jid=" + jid), "jid " + jid);
         }
-        boolean done = waitUntilGone(jid, timeoutS * 1000L);
+        // Parked waits yield their RPC admission permit — 16 waiting agents must not 503 the surface.
+        boolean done = admissionYield.yielding(() -> waitUntilGone(jid, timeoutS * 1000L));
         fields.put("waited", true);
         fields.put("finished", done);
         if (!done) {
@@ -776,7 +794,7 @@ public final class McpHandler {
                     McpEnvelope.of("job", fields, false, null, "jk_job action=wait jid=" + jid),
                     "still running " + jid);
         }
-        Map<String, Object> last = finishedJob(jid, resolveDir(args, false));
+        Map<String, Object> last = admissionYield.yielding(() -> finishedJob(jid, resolveDir(args, false)));
         if (last != null) {
             fields.put("result", last);
             if (Boolean.FALSE.equals(last.get("success"))) {
@@ -815,8 +833,9 @@ public final class McpHandler {
             return ok(McpEnvelope.of("job", Map.of("live", false)), "no live job");
         }
         if ("wait".equals(action)) {
-            int timeoutS = intArg(args.get("timeout_s"), 600, 1, 24 * 3600);
-            boolean done = waitUntilGone(jid, timeoutS * 1000L);
+            int timeoutS = intArg(args.get("timeout_s"), 600, 1, MAX_WAIT_S);
+            long waitJid = jid;
+            boolean done = admissionYield.yielding(() -> waitUntilGone(waitJid, timeoutS * 1000L));
             Map<String, Object> fields = new LinkedHashMap<>();
             fields.put("jid", jid);
             fields.put("finished", done);

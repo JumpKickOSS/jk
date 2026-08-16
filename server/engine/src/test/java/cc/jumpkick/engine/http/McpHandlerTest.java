@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.plugin.protocol.MiniJson;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -123,8 +125,11 @@ class McpHandlerTest {
         @SuppressWarnings("unchecked")
         String text = (String)
                 ((List<Map<String, Object>>) result.get("content")).getFirst().get("text");
-        assertThat(text).contains("\"requestId\":42");
-        assertThat(text).contains("\"type\":\"build-accepted\"");
+        assertThat(text).isEqualTo("build accepted"); // summary only; payload is structured
+        @SuppressWarnings("unchecked")
+        Map<String, Object> structured = (Map<String, Object>) result.get("structuredContent");
+        assertThat(structured.get("type")).isEqualTo("build-accepted");
+        assertThat(((Number) structured.get("requestId")).longValue()).isEqualTo(42L);
     }
 
     @Test
@@ -145,6 +150,35 @@ class McpHandlerTest {
                 + "\"params\":{\"name\":\"jk_cancel\",\"arguments\":{\"requestId\":42}}}");
         assertThat(cancelBody).contains("cancelled");
         assertThat(cancelBody).contains("true");
+    }
+
+    @Test
+    void run_wait_parks_inside_the_admission_yield_scope() {
+        AtomicInteger polls = new AtomicInteger();
+        AtomicInteger yields = new AtomicInteger();
+        HttpLive.Run live = new HttpLive.Run(
+                42L, 1L, "build", "/tmp/demo", "com.example:demo", 1L, 50.0, "j-1", 0, 0, 1, 2, List.of(), List.of());
+        McpHandler waiting = new McpHandler(
+                () -> new StatusSnapshot("0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30),
+                jobs,
+                dir -> Map.of(),
+                List::of,
+                "0.12.0",
+                new ProgressTokenRegistry(),
+                // Live for the first two polls, then gone — the wait loop must see both states.
+                () -> polls.incrementAndGet() <= 2 ? List.of(live) : List.of(),
+                new AdmissionYield() {
+                    @Override
+                    public <T> T yielding(Supplier<T> blocking) {
+                        yields.incrementAndGet();
+                        return blocking.get();
+                    }
+                });
+        String body = waiting.handleBody("{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_run\",\"arguments\":{\"dir\":\"/tmp/demo\",\"wait\":true}}}");
+        assertThat(body).contains("\"finished\":true");
+        // Both the live-run park and the journal lookup ran with the RPC permit yielded.
+        assertThat(yields.get()).isGreaterThanOrEqualTo(2);
     }
 
     @Test

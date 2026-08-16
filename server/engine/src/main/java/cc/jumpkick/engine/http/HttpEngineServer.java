@@ -172,7 +172,8 @@ public final class HttpEngineServer implements AutoCloseable {
                         () -> journal.rawRecords(200),
                         version,
                         progressTokens,
-                        () -> this.liveRuns.get())
+                        () -> this.liveRuns.get(),
+                        this::yieldingAdmission)
                 : null;
         this.historyApi = new HttpHistoryApi(journal, () -> this.liveRuns.get());
         this.projectApi = new HttpProjectApi(journal);
@@ -777,6 +778,21 @@ public final class HttpEngineServer implements AutoCloseable {
         }
         exchange.sendResponseHeaders(status, body.length);
         exchange.getResponseBody().write(body);
+    }
+
+    /**
+     * {@link AdmissionYield} over the RPC gate: MCP long-polls park here after releasing their
+     * permit, so 16 waiting agents cannot 503 the surface (including the {@code jk_cancel} that
+     * would un-wedge them). Reacquire is uninterruptible — the balancing {@code release()} in
+     * {@link #handle} must never release a permit this thread does not hold.
+     */
+    private <T> T yieldingAdmission(java.util.function.Supplier<T> blocking) {
+        admission.release();
+        try {
+            return blocking.get();
+        } finally {
+            admission.acquireUninterruptibly();
+        }
     }
 
     /** Test seam: the admission gate, so a saturated-server {@code 503} is deterministically testable. */

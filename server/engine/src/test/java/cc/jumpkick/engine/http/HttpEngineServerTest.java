@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -1453,6 +1455,77 @@ class HttpEngineServerTest {
             assertThat(rpc.statusCode()).isEqualTo(200); // RPC admission untouched by the streams
         } finally {
             streams.forEach(r -> r.body().close());
+            tiny.close();
+        }
+    }
+
+    @Test
+    void mcp_wait_parks_without_holding_the_only_admission_permit() throws Exception {
+        // RPC budget of 1: pre-JK-2028 a parked jk_job wait held the permit, so every other
+        // request (including the jk_cancel that could un-wedge it) 503'd until timeout.
+        HttpEngineServer tiny = new HttpEngineServer(
+                httpConfig("127.0.0.1", 0, 1),
+                webRoot,
+                stateDir.resolve("wait.http-token"),
+                stateDir.resolve("wait.log"),
+                "9.9.9-test",
+                () -> SNAPSHOT,
+                new HttpEvents(),
+                stubJobs,
+                testJournal(),
+                List::of,
+                () -> EMPTY_CACHE,
+                null);
+        AtomicBoolean live = new AtomicBoolean(true);
+        AtomicInteger livePolls = new AtomicInteger();
+        HttpLive.Run run =
+                new HttpLive.Run(7L, 1L, "build", "/tmp/x", "c", 1L, 50.0, "j-1", 0, 0, 1, 2, List.of(), List.of());
+        tiny.setLiveRunSupport(
+                () -> {
+                    livePolls.incrementAndGet();
+                    return live.get() ? List.of(run) : List.of();
+                },
+                null);
+        try {
+            tiny.start();
+            String url = tiny.url();
+            String tok = Files.readString(stateDir.resolve("wait.http-token")).trim();
+            CompletableFuture<HttpResponse<String>> parked = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return client.send(
+                            HttpRequest.newBuilder(URI.create(url + "mcp"))
+                                    .header("Authorization", "Bearer " + tok)
+                                    .POST(
+                                            HttpRequest.BodyPublishers.ofString(
+                                                    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":"
+                                                            + "{\"name\":\"jk_job\",\"arguments\":{\"action\":\"wait\",\"jid\":7,\"timeout_s\":30}}}"))
+                                    .build(),
+                            HttpResponse.BodyHandlers.ofString());
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            // Wait until the request is provably parked inside the wait loop (it polls the live
+            // view) with the only permit back in the semaphore — then probe. Probing earlier
+            // would race the parked request's own pre-park admission on the budget of one.
+            long deadline = System.currentTimeMillis() + 5_000;
+            while ((livePolls.get() < 2 || tiny.admission().availablePermits() < 1)
+                    && System.currentTimeMillis() < deadline) {
+                Thread.sleep(10);
+            }
+            assertThat(livePolls.get()).isGreaterThanOrEqualTo(2); // inside waitUntilGone
+            assertThat(tiny.admission().availablePermits()).isEqualTo(1); // permit yielded
+            HttpResponse<String> probe = client.send(
+                    HttpRequest.newBuilder(URI.create(url + "api/status"))
+                            .header("Authorization", "Bearer " + tok)
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(probe.statusCode()).isEqualTo(200); // surface alive while the wait parks
+            live.set(false); // job "finishes"; the parked wait completes and reacquires
+            HttpResponse<String> done = parked.get(10, TimeUnit.SECONDS);
+            assertThat(done.statusCode()).isEqualTo(200);
+            assertThat(done.body()).contains("\"finished\":true");
+        } finally {
             tiny.close();
         }
     }
