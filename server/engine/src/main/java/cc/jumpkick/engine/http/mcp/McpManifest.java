@@ -19,6 +19,9 @@ public final class McpManifest {
 
     private static final Pattern JAVA_LINE = Pattern.compile("(?m)^([ \\t]*)java[ \\t]*=[ \\t]*\\d+[ \\t]*$");
 
+    /** First TOML table header — root-level keys must be inserted before it. */
+    private static final Pattern FIRST_TABLE = Pattern.compile("(?m)^[ \\t]*\\[");
+
     private McpManifest() {}
 
     public static Map<String, Object> deps(
@@ -95,7 +98,12 @@ public final class McpManifest {
             if (m.find()) {
                 after = m.replaceFirst(m.group(1) + "java = " + java);
             } else {
-                after = before.stripTrailing() + "\njava = " + java + "\n";
+                // `java` is a root-level key: appending after a table header would bury it inside
+                // that table, so insert before the first table (or append when none exists).
+                Matcher table = FIRST_TABLE.matcher(before);
+                after = table.find()
+                        ? before.substring(0, table.start()) + "java = " + java + "\n\n" + before.substring(table.start())
+                        : before.stripTrailing() + "\njava = " + java + "\n";
             }
             out.put("changed", !after.equals(before));
             out.put("preview", after);
