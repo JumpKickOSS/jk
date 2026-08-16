@@ -235,6 +235,40 @@ class McpContractTest {
     }
 
     @Test
+    void empty_batch_is_a_single_invalid_request_error_object() {
+        String body = mcp.handleBody("[]");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> err = (Map<String, Object>) resp.get("error");
+        assertThat(err.get("code")).isEqualTo(-32600.0);
+        assertThat(resp.get("id")).isNull();
+    }
+
+    @Test
+    void all_notifications_batch_has_no_response_body() {
+        String body = mcp.handleBody("[{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"},"
+                + "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}]");
+        assertThat(body).isEmpty(); // transport answers 202 with no body
+    }
+
+    @Test
+    void non_object_batch_entries_get_per_item_errors_with_null_ids() {
+        String body = mcp.handleBody("[1,2]");
+        Object parsed = MiniJson.parse(body);
+        assertThat(parsed).isInstanceOf(List.class);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) parsed;
+        assertThat(rows).hasSize(2);
+        for (Map<String, Object> row : rows) {
+            assertThat(row.get("id")).isNull();
+            @SuppressWarnings("unchecked")
+            Map<String, Object> err = (Map<String, Object>) row.get("error");
+            assertThat(err.get("code")).isEqualTo(-32600.0);
+        }
+    }
+
+    @Test
     void config_get_has_rows() {
         Map<String, Object> c = call("jk_config", "{\"action\":\"get\"}");
         assertThat(c.get("type")).isEqualTo("config");

@@ -170,6 +170,11 @@ public final class McpHandler {
             return error(null, -32700, "parse error: " + e.getMessage());
         }
         if (parsed instanceof List<?> batch) {
+            // JSON-RPC 2.0 batch: [] is a single -32600 error object, non-object entries answer
+            // per-item -32600 (id null), and an all-notifications batch has no response body.
+            if (batch.isEmpty()) {
+                return error(null, -32600, "invalid request: empty batch");
+            }
             List<Object> out = new ArrayList<>();
             for (Object item : batch) {
                 if (item instanceof Map<?, ?> m) {
@@ -177,8 +182,11 @@ public final class McpHandler {
                     Map<String, Object> req = (Map<String, Object>) m;
                     Object resp = dispatchOne(req);
                     if (resp != null) out.add(resp);
+                } else {
+                    out.add(errorMap(null, -32600, "invalid request: expected object"));
                 }
             }
+            if (out.isEmpty()) return ""; // all notifications — caller responds 202, no body
             return MiniJson.write(out);
         }
         if (parsed instanceof Map<?, ?> m) {
