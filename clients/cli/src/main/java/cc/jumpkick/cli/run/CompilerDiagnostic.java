@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.diagnostic.CompilerLocus;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,12 +23,10 @@ public final class CompilerDiagnostic {
 
     private CompilerDiagnostic() {}
 
-    /** {@code <path ending in a source ext>:<line>[:<col>]:<rest>}. */
-    private static final Pattern HEADER = Pattern.compile(
-            "^(?<file>.+?\\.(?:java|kt|kts|groovy|gvy|gy)):(?<line>\\d+)(?::(?<col>\\d+))?:(?<rest>.*)$");
+    /** Header and caret shapes come from the shared locus parser — one definition repo-wide. */
+    private static final Pattern HEADER = CompilerLocus.HEADER;
 
-    /** A caret line: optional indent, a single {@code ^}, optional trailing space. */
-    private static final Pattern CARET = Pattern.compile("^(\\s*)\\^\\s*$");
+    private static final Pattern CARET = CompilerLocus.CARET;
 
     /**
      * An indented {@code label: value} trailer ({@code symbol:}, {@code location:}, {@code
@@ -65,8 +64,8 @@ public final class CompilerDiagnostic {
             return;
         }
         String file = header.group("file");
-        int lineNo = parsePositive(header.group("line"));
-        int col1 = parsePositive(header.group("col"));
+        int lineNo = CompilerLocus.parsePositive(header.group("line"));
+        int col1 = CompilerLocus.parsePositive(header.group("col"));
         String rest = header.group("rest") == null ? "" : header.group("rest").strip();
 
         List<Kv> kvs = new ArrayList<>();
@@ -241,16 +240,6 @@ public final class CompilerDiagnostic {
             return SyntaxHighlight.Language.GROOVY;
         }
         return SyntaxHighlight.Language.JAVA;
-    }
-
-    private static int parsePositive(String raw) {
-        if (raw == null || raw.isBlank()) return 0;
-        try {
-            int n = Integer.parseInt(raw.strip());
-            return n > 0 ? n : 0;
-        } catch (NumberFormatException e) {
-            return 0;
-        }
     }
 
     private static String padLeft(String s, int width) {

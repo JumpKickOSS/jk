@@ -11,12 +11,15 @@ import java.util.regex.Pattern;
  */
 public record CompilerLocus(String file, int line, int col) {
 
-    /** {@code <path ending in a source ext>:<line>[:<col>]:<rest>}. */
-    private static final Pattern HEADER = Pattern.compile(
+    /**
+     * {@code <path ending in a source ext>:<line>[:<col>]:<rest>}. The single definition — CLI
+     * rendering ({@code CompilerDiagnostic}) matches against it too.
+     */
+    public static final Pattern HEADER = Pattern.compile(
             "^(?<file>.+?\\.(?:java|kt|kts|groovy|gvy|gy)):(?<line>\\d+)(?::(?<col>\\d+))?:(?<rest>.*)$");
 
     /** A caret line: optional indent, a single {@code ^}, optional trailing space. */
-    private static final Pattern CARET = Pattern.compile("^(\\s*)\\^\\s*$");
+    public static final Pattern CARET = Pattern.compile("^(\\s*)\\^\\s*$");
 
     /**
      * First header in {@code raw} (whole block or first line), with caret column when the header
@@ -49,7 +52,8 @@ public record CompilerLocus(String file, int line, int col) {
         return new CompilerLocus(header.file, header.line, caretCol);
     }
 
-    private static int parsePositive(String raw) {
+    /** {@code raw} as a positive int; 0 for blank, negative, or unparseable input. */
+    public static int parsePositive(String raw) {
         if (raw == null || raw.isBlank()) return 0;
         try {
             int n = Integer.parseInt(raw.strip());
