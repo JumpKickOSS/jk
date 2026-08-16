@@ -334,9 +334,23 @@ public final class SelfCommand extends GroupCommand {
 
             String jarSha = Hashing.sha256Hex(jar);
             cas.put(jar, jarSha);
-            String clientSha = Hashing.sha256Hex(client);
-            cas.putFile(client, clientSha);
+            String clientSha = ingestClient(cas, client);
             return store.materialize(version, cas, jarSha, clientSha);
+        }
+
+        /**
+         * CAS-ingest the inflated client and reclaim its temp file: {@link Cas#putFile} copies
+         * (temp + atomic move), so the multi-MB {@code jk-self-*.bin} would otherwise be
+         * stranded in the system temp dir on every update — xz and zip paths alike.
+         */
+        static String ingestClient(Cas cas, Path client) throws IOException {
+            try {
+                String clientSha = Hashing.sha256Hex(client);
+                cas.putFile(client, clientSha);
+                return clientSha;
+            } finally {
+                Files.deleteIfExists(client);
+            }
         }
 
         /**
