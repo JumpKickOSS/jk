@@ -38,6 +38,7 @@ const {
   isTextWritableLang,
   extractMermaidFences,
   injectMermaidSvgs,
+  sanitizeDiagramSvg,
   saveErrorMessage,
   markedParse,
   baseFileName,
@@ -192,6 +193,22 @@ test('extractMermaidFences pulls fenced mermaid blocks out of markdown', () => {
   assert.match(markdown, /```js/);
   const html = injectMermaidSvgs('<p>JKMERMAIDPLACEHOLDER0X</p>', ['<svg></svg>']);
   assert.equal(html, '<p><svg></svg></p>');
+});
+
+test('sanitizeDiagramSvg is the DOMPurify chokepoint with the SVG profiles', () => {
+  const calls = [];
+  const purify = {
+    sanitize(html, opts) {
+      calls.push({ html, opts });
+      return '[clean]' + html;
+    },
+  };
+  assert.equal(sanitizeDiagramSvg(purify, '<svg onload="x()"></svg>'), '[clean]<svg onload="x()"></svg>');
+  assert.equal(sanitizeDiagramSvg(purify, null), '[clean]');
+  assert.equal(calls.length, 2);
+  for (const c of calls) {
+    assert.deepEqual(c.opts, { USE_PROFILES: { svg: true, svgFilters: true } });
+  }
 });
 
 test('saveErrorMessage covers network and concurrency', () => {

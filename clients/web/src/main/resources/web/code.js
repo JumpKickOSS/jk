@@ -262,6 +262,16 @@ export function injectMermaidSvgs(html, svgs) {
   return out;
 }
 
+/**
+ * One DOMPurify chokepoint for renderer SVG (mermaid, graphviz, d2): SVG profile plus filters.
+ * Renderer output derives from workspace source text — never inject it unsanitized.
+ */
+export function sanitizeDiagramSvg(purify, svg) {
+  return purify.sanitize(svg == null ? '' : String(svg), {
+    USE_PROFILES: { svg: true, svgFilters: true },
+  });
+}
+
 /** Human-readable save failure (network / auth / concurrency). */
 export function saveErrorMessage(e) {
   if (!e) return 'Failed to save file';
@@ -1696,7 +1706,7 @@ export const CodeView = {
               try {
                 const id = 'jk-md-mmd-' + gen + '-' + i;
                 const { svg } = await mermaid.render(id, fences[i]);
-                svgs.push('<div class="code-preview-diagram">' + svg + '</div>');
+                svgs.push('<div class="code-preview-diagram">' + sanitizeDiagramSvg(purify, svg) + '</div>');
               } catch (err) {
                 const msg = (err && err.message) || 'Mermaid diagram failed';
                 svgs.push('<pre class="code-preview-diagram-err">' + escapeHtml(msg) + '</pre>');
@@ -1712,13 +1722,13 @@ export const CodeView = {
           if (gen !== this._previewGen) return;
           this.previewHtml = html;
         } else if (kind === 'mermaid') {
-          const mermaid = await ensureCdn('mermaid');
+          const [mermaid, purify] = await Promise.all([ensureCdn('mermaid'), ensureCdn('purify')]);
           if (gen !== this._previewGen) return;
           mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' });
           const id = 'jk-mmd-' + gen;
           const { svg } = await mermaid.render(id, this.currentContent());
           if (gen !== this._previewGen) return;
-          this.previewHtml = '<div class="code-preview-diagram">' + svg + '</div>';
+          this.previewHtml = '<div class="code-preview-diagram">' + sanitizeDiagramSvg(purify, svg) + '</div>';
         } else if (kind === 'graphviz') {
           // Sanitize like markdown/asciidoc (JK-1976): .dot files from a cloned repo control
           // the SVG (URL= attrs, arbitrary markup) — one DOMPurify chokepoint for all renderers.
@@ -1728,9 +1738,7 @@ export const CodeView = {
           if (gen !== this._previewGen) return;
           this.previewHtml =
             '<div class="code-preview-diagram">' +
-            purify.sanitize(viz.renderSVGElement(this.currentContent()).outerHTML, {
-              USE_PROFILES: { svg: true, svgFilters: true },
-            }) +
+            sanitizeDiagramSvg(purify, viz.renderSVGElement(this.currentContent()).outerHTML) +
             '</div>';
         } else if (kind === 'asciidoc') {
           const Asciidoctor = await ensureCdn('asciidoctor');
@@ -1751,9 +1759,7 @@ export const CodeView = {
           if (gen !== this._previewGen) return;
           this.previewHtml =
             '<div class="code-preview-diagram">' +
-            purify.sanitize(typeof rendered === 'string' ? rendered : String(rendered), {
-              USE_PROFILES: { svg: true, svgFilters: true },
-            }) +
+            sanitizeDiagramSvg(purify, rendered) +
             '</div>';
         } else {
           this.previewError = 'No preview for this file type';
