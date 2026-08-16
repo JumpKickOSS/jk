@@ -282,6 +282,20 @@ class McpContractTest {
     }
 
     @Test
+    void tool_level_failures_set_is_error_and_successes_do_not() {
+        String failing = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_jdk\",\"arguments\":{\"action\":\"install\",\"spec\":\"\"}}}");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(failing);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) resp.get("result");
+        assertThat(result.get("isError")).isEqualTo(true);
+        String okBody = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_status\",\"arguments\":{}}}");
+        assertThat(okBody).doesNotContain("isError");
+    }
+
+    @Test
     void config_get_has_rows() {
         Map<String, Object> c = call("jk_config", "{\"action\":\"get\"}");
         assertThat(c.get("type")).isEqualTo("config");

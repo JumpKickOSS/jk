@@ -36,7 +36,11 @@ public final class McpEnvelope {
         return m;
     }
 
-    /** MCP tools/call result: short text + structured envelope. */
+    /**
+     * MCP tools/call result: short text + structured envelope. An envelope carrying an {@code
+     * error} field sets {@code isError: true} — hosts surface that flag to the model, and without
+     * it a failed install/action reads as success to generic clients.
+     */
     public static Map<String, Object> toolResult(Map<String, Object> envelope, String summary) {
         Map<String, Object> content = new LinkedHashMap<>();
         content.put("type", "text");
@@ -44,6 +48,7 @@ public final class McpEnvelope {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("content", List.of(content));
         result.put("structuredContent", envelope);
+        if (envelope != null && envelope.get("error") != null) result.put("isError", true);
         return result;
     }
 }
