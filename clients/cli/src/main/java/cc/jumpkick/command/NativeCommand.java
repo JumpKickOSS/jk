@@ -28,9 +28,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * {@code jk native} — GraalVM native-image of modules that have a unique main. Pre-fails when
- * {@code GRAALVM_HOME} is missing, {@code native-image} is not under it, or no / several mains
- * are found. {@code [native] always = true} is only the {@code jk build} tail — not this gate.
+ * {@code jk native} — GraalVM native-image for opted-in modules. Pre-fails when {@code
+ * GRAALVM_HOME} is missing, {@code native-image} is not under it, or no eligible main is found.
+ *
+ * <p>Workspace eligibility: modules with {@code [native]} enabled ({@code true} or {@code
+ * "always"}) and a unique main. When none declare {@code [native]}, fall back to unique-main
+ * discovery. Cascade is the dependency closure of those targets only (prereqs package/test;
+ * targets end at {@code native-image}) — siblings outside the cone are not built.
  */
 public final class NativeCommand implements CliCommand {
 
@@ -211,35 +215,65 @@ public final class NativeCommand implements CliCommand {
             }
         }
 
-        Map<Path, Path> graalHomes = new HashMap<>();
-        long nativeCount = 0;
+        List<Path> candidates = new ArrayList<>();
         int considered = 0;
         for (String rel : rootInfo.moduleDirs()) {
             Path moduleDir = wsRoot.resolve(rel).toAbsolutePath().normalize();
             if (selectedDirs != null && !selectedDirs.contains(moduleDir)) continue;
             considered++;
-            var main = cc.jumpkick.layout.NativePreflight.resolveMain(moduleDir, mainClass);
-            if (main instanceof cc.jumpkick.layout.NativePreflight.Main.None) continue;
-            if (main instanceof cc.jumpkick.layout.NativePreflight.Main.Ambiguous) {
-                return failPreflight(cc.jumpkick.layout.NativePreflight.MANY_MAINS);
-            }
-            nativeCount++;
-            graalHomes.put(moduleDir, graalHome);
+            candidates.add(moduleDir);
         }
         if (selectedDirs != null && considered == 0) {
             CliOutput.out("(no modules matched selection)");
             return 0;
         }
+        Map<Path, Path> graalHomes;
+        try {
+            graalHomes = graalHomesForModules(candidates, graalHome, mainClass);
+        } catch (AmbiguousMainException e) {
+            return failPreflight(cc.jumpkick.layout.NativePreflight.MANY_MAINS);
+        }
         if (graalHomes.isEmpty()) return failPreflight(cc.jumpkick.layout.NativePreflight.NO_MAIN);
+        // Always pass native targets as the engine selection: expands transitive build prereqs only.
+        // Never cascade the whole workspace (sibling modules outside the native dependency cone).
+        List<Path> cascadeRoots = List.copyOf(graalHomes.keySet());
         return runWorkspaceHosted(
-                wsRoot,
-                cache,
-                graalHomes,
-                selectedDirs,
-                mode,
-                buildStart,
-                selectedDirs != null ? considered : rootInfo.moduleDirs().size(),
-                nativeCount);
+                wsRoot, cache, graalHomes, cascadeRoots, mode, buildStart, cascadeRoots.size(), graalHomes.size());
+    }
+
+    /**
+     * Map each native-eligible module dir to {@code graalHome}. Prefers modules that declare
+     * {@code [native]} so workspace plugin harness mains do not each start a native-image run.
+     * When none declare the table, every module with a unique main is eligible.
+     */
+    static Map<Path, Path> graalHomesForModules(List<Path> moduleDirs, Path graalHome, String mainOverride)
+            throws AmbiguousMainException {
+        Map<Path, Path> withTable = new HashMap<>();
+        Map<Path, Path> withMain = new HashMap<>();
+        for (Path moduleDir : moduleDirs) {
+            boolean hasNativeTable = false;
+            try {
+                var build = cc.jumpkick.config.JkBuildParser.parse(moduleDir.resolve("jk.toml"));
+                hasNativeTable = build.nativeImage();
+            } catch (Exception ignored) {
+                // Unreadable module toml — still try main discovery below.
+            }
+            var main = cc.jumpkick.layout.NativePreflight.resolveMain(moduleDir, mainOverride);
+            if (main instanceof cc.jumpkick.layout.NativePreflight.Main.None) continue;
+            if (main instanceof cc.jumpkick.layout.NativePreflight.Main.Ambiguous) {
+                throw new AmbiguousMainException();
+            }
+            withMain.put(moduleDir, graalHome);
+            if (hasNativeTable) withTable.put(moduleDir, graalHome);
+        }
+        return withTable.isEmpty() ? withMain : withTable;
+    }
+
+    /** Checked-style signal for multiple discovered mains in one module. */
+    static final class AmbiguousMainException extends Exception {
+        AmbiguousMainException() {
+            super(cc.jumpkick.layout.NativePreflight.MANY_MAINS);
+        }
     }
 
     /**

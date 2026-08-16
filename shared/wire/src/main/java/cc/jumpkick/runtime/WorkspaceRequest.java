@@ -38,7 +38,16 @@ public record WorkspaceRequest(
          * with a scratch path that can never recur, so tasks must not persist action-cache records
          * or incremental state — reads may still bypass per {@code rebuild}.
          */
-        boolean ephemeralActions) {
+        boolean ephemeralActions,
+        /**
+         * Target basket + optional module cone. Default {@link WorkspaceSpec#DEFAULT} is package /
+         * whole graph — same as historical {@code jk build}.
+         */
+        WorkspaceSpec spec) {
+
+    public WorkspaceRequest {
+        if (spec == null) spec = WorkspaceSpec.DEFAULT;
+    }
 
     /** Defaults testOnly=false, variant empty, clientEnv empty. */
     public WorkspaceRequest(
@@ -70,7 +79,8 @@ public record WorkspaceRequest(
                 false,
                 "",
                 Map.of(),
-                false);
+                false,
+                WorkspaceSpec.DEFAULT);
     }
 
     /** Pre-ephemeralActions canonical shape (defaults false — persistent caches). */
@@ -106,7 +116,8 @@ public record WorkspaceRequest(
                 testOnly,
                 variant,
                 clientEnv,
-                false);
+                false,
+                WorkspaceSpec.DEFAULT);
     }
 
     /** This request with a variant selection + client-resolved env attached. */
@@ -127,7 +138,8 @@ public record WorkspaceRequest(
                 testOnly,
                 variant == null ? "" : variant,
                 clientEnv == null ? Map.of() : clientEnv,
-                ephemeralActions);
+                ephemeralActions,
+                spec);
     }
 
     /** Copy with {@link #testOnly()} set (HTTP/MCP {@code jk_test} true test-only path). */
@@ -148,7 +160,8 @@ public record WorkspaceRequest(
                 testOnly,
                 variant,
                 clientEnv,
-                ephemeralActions);
+                ephemeralActions,
+                spec);
     }
 
     /** Copy with {@link #ephemeralActions()} set ({@code jk verify} scratch rebuild). */
@@ -169,6 +182,35 @@ public record WorkspaceRequest(
                 testOnly,
                 variant,
                 clientEnv,
-                ephemeralActions);
+                ephemeralActions,
+                spec);
+    }
+
+    /** Copy with target / selection (native, image, compile, …). */
+    public WorkspaceRequest withSpec(WorkspaceSpec spec) {
+        return new WorkspaceRequest(
+                entryDir,
+                entryBuild,
+                cache,
+                jdksDir,
+                workers,
+                profile,
+                skipTests,
+                verbose,
+                maxModuleConcurrency,
+                dirtyHint,
+                applyMemoryPlan,
+                freshenLock,
+                testOnly,
+                variant,
+                clientEnv,
+                ephemeralActions,
+                spec == null ? WorkspaceSpec.DEFAULT : spec);
+    }
+
+    /** Effective target: explicit spec, else TEST when {@link #testOnly}. */
+    public WorkspaceTarget target() {
+        WorkspaceSpec s = spec == null ? WorkspaceSpec.DEFAULT : spec;
+        return s.effectiveTarget(testOnly);
     }
 }

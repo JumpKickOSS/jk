@@ -29,7 +29,7 @@ bcpg-jdk18on = "latest"
 main-class = "cc.jumpkick.cli.Jk"
 
 [native]
-always = true
+enabled = "always"
 # Installable client binary (PATH entry is `jk` / `jk.exe`), not the Maven artifact name.
 name = "jk"
 args = [

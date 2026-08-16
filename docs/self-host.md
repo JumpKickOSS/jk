@@ -127,7 +127,7 @@ After a bootstrap `jk` is on PATH (GraalVM on PATH for the native step):
 ```bash
 jk release --skip-tests
 # alias: jk dist --skip-tests
-# If no native CLI is present yet and clients/cli has [native] always = true,
+# If no native CLI is present yet and clients/cli has [native] enabled = "always",
 # release runs `jk native --skip-tests` first. Use --skip-native to stage the
 # currently running jk as a bootstrap client only.
 ./install.sh target/dist/jk

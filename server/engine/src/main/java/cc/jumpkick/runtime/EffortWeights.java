@@ -941,7 +941,7 @@ public final class EffortWeights {
         return !(artifactFresh(dir, BuildLayout::nativeBinary) || artifactFresh(dir, BuildLayout::nativeLibrary));
     }
 
-    /** {@code [native] always = true} — module may produce a native-image tail. */
+    /** {@code [native] enabled = "always"} — module may produce a native-image tail. */
     static boolean producesNativeImage(Path dir) {
         try {
             if (dir == null || !Files.isDirectory(dir)) return false;

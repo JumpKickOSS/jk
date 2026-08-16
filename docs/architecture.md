@@ -10,6 +10,9 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
 4. **Diagnostics as product** — PubGrub prose, `jk why` / `jk explain`, machine-readable output.
 5. **Adoption first** — `jk mvn` / `jk gradle`, import/export, Maven Central semantics.
 6. **Resist plugin sprawl** — first-party batteries; no public marketplace before a frozen SPI.
+7. **One build orchestrator** — `jk build` / `test` / `native` / `image` (workspace) share
+   `WorkspaceExecute.buildWorkspace`. Commands differ by **target** and **module cone**, not by
+   a second dirty/ETA/schedule loop. See [features/build-plan.md](features/build-plan.md#one-orchestrator-invariant).
 
 ## Process model
 

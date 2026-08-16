@@ -170,7 +170,7 @@ public final class ReleaseCommand implements CliCommand {
         if (clientBin == null || !Files.isRegularFile(clientBin)) {
             cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "Release",
-                    "no client binary — run `jk native` (clients/cli has [native] always = true), "
+                    "no client binary — run `jk native` (clients/cli has [native] enabled = \"always\"), "
                             + "or ensure `jk` is on PATH for a bootstrap client");
             return Exit.FAILURE;
         }
@@ -328,7 +328,7 @@ public final class ReleaseCommand implements CliCommand {
     }
 
     /**
-     * Workspace module paths minus every {@code [native] always = true} module — not just the
+     * Workspace module paths minus every {@code [native] enabled = "always"} module — not just the
      * discovered CLI module — so {@code --skip-native} never re-enters any of them.
      */
     static List<String> modulesWithoutNativeAlways(Path workspaceRoot, JkBuild root) {

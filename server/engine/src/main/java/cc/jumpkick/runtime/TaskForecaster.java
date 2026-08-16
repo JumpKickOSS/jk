@@ -53,6 +53,16 @@ public final class TaskForecaster {
      */
     public static List<TaskForecast.Module> of(
             BuildGraph.Result graph, Cas cas, ActionCache actionCache, Path cache, boolean skipTests) {
+        return of(graph, cas, actionCache, cache, skipTests, WorkspaceTarget.PACKAGE);
+    }
+
+    public static List<TaskForecast.Module> of(
+            BuildGraph.Result graph,
+            Cas cas,
+            ActionCache actionCache,
+            Path cache,
+            boolean skipTests,
+            WorkspaceTarget target) {
         List<TaskForecast.Module> out = new ArrayList<>();
         // --force/--rerun bypasses jk's build caches, so every step runs — the forecast must say
         // so too (otherwise the plan tree renders "Fully Cached" while the ETA, which honors force,
@@ -81,7 +91,8 @@ public final class TaskForecaster {
             DepDirtiness dep =
                     depDirtiness(u, graph.edges().getOrDefault(u.dir(), Set.of()), dirty, dirByCoord, dirByName);
             long t0 = Perf.start();
-            TaskForecast.Module m = forecastModule(u, dep, force, skipTests, cas, actionCache, cache, restoredJarShas);
+            TaskForecast.Module m =
+                    forecastModule(u, dep, force, skipTests, cas, actionCache, cache, restoredJarShas, target);
             Perf.end("forecast " + u.coord(), t0);
             // Seed main-output dirtiness for *compile* consumers only when this module's
             // consumed jar/classes will change — not when only test-scope work is dirty.
@@ -248,7 +259,8 @@ public final class TaskForecaster {
             Cas cas,
             ActionCache actionCache,
             Path cache,
-            Map<Path, String> restoredJarShas) {
+            Map<Path, String> restoredJarShas,
+            WorkspaceTarget target) {
         if (dep == null) dep = DepDirtiness.NONE;
         boolean compileDepDirty = dep.compileDepDirty();
         boolean testDepDirty = dep.testDepDirty();
@@ -620,11 +632,12 @@ public final class TaskForecaster {
                 }
             }
 
-            // ---- native-image — [native] always = true (same opt-in as jk build) ----
+            // ---- native-image — [native] enabled = "always" (same opt-in as jk build) ----
             // Hard cascade: jar dirty ⇒ native dirty. Never forecast package-jar RUN +
             // native-image CACHED (binary mtime vs pre-build jar is not an independent skip).
-            if (project.nativeMode() == cc.jumpkick.model.JkBuild.NativeMode.ALWAYS
-                    && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
+            boolean nativeOnBuild = project.nativeMode() == cc.jumpkick.model.JkBuild.NativeMode.ALWAYS;
+            boolean nativeOnNativeCmd = target == WorkspaceTarget.NATIVE && project.nativeImage();
+            if ((nativeOnBuild || nativeOnNativeCmd) && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
                 boolean jarDirty = steps.stream().anyMatch(s -> "package-jar".equals(s.name()) && !s.cached());
                 Path nativeOut = layout.nativeBinary();
                 boolean binaryPresent = Files.isRegularFile(nativeOut) || Files.isRegularFile(layout.nativeLibrary());

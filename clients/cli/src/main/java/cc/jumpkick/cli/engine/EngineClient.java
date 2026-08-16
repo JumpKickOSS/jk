@@ -529,6 +529,13 @@ public final class EngineClient {
         return EngineBuildListenerAdapter.buildWorkspace(paths, req, listener);
     }
 
+    /** Workspace-member {@code jk image} — workspace events, image terminal on the module. */
+    public static WorkspaceResult runImageWorkspace(
+            EnginePaths.Paths paths, EngineRequests.ImageRequest req, WorkspaceBuildListener listener)
+            throws IOException {
+        return EngineBuildListenerAdapter.runImageWorkspace(paths, req, listener);
+    }
+
     /**
      * Run a single project's test plan against the engine (Task 3) — see {@link
      * EngineBuildListenerAdapter#runTest} for the exact contract.

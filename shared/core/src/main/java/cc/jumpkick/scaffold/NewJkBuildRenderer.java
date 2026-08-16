@@ -61,7 +61,7 @@ public final class NewJkBuildRenderer {
         }
         if (inputs.nativeImage()) {
             sb.append("\n[native]\n");
-            sb.append("always     = true\n");
+            sb.append("enabled    = \"always\"\n");
         }
 
         if (inputs.plugin()) {

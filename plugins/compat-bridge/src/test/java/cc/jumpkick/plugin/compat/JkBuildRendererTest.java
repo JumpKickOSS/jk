@@ -41,7 +41,7 @@ class JkBuildRendererTest {
                         .kotlin(VersionSelector.parseFloating("=2.3.21"))
                         .build())
                 .application(new JkBuild.Application("com.example.App", true))
-                .nativeConfig(new JkBuild.NativeConfig(null, null, List.of(), null, false))
+                .nativeConfig(new JkBuild.NativeConfig(null, null, List.of(), null, JkBuild.NativeMode.SUPPORTED))
                 .build();
         String out = JkBuildRenderer.render(model);
         assertThat(out).contains("kotlin   = \"=2.3.21\"");

@@ -445,11 +445,21 @@ public final class EngineHttpFront {
             return SessionContext.where(session, () -> {
                 Map<Path, JkBuild> scopes = nativeScopes(entryDir, entry, dirty);
                 Set<Path> selected = HttpJobSelect.selected(entryDir, entry, modules);
+                // Prefer modules with a [native] table (same rule as CLI workspace cascade).
+                boolean anyNativeTable = false;
+                for (JkBuild b : scopes.values()) {
+                    if (b.nativeImage()) {
+                        anyNativeTable = true;
+                        break;
+                    }
+                }
                 for (var e : scopes.entrySet()) {
                     Path dir = e.getKey();
-                    boolean allowNative = selected == null || selected.contains(BuildGraph.canonicalPath(dir));
+                    boolean inSelection = selected == null || selected.contains(BuildGraph.canonicalPath(dir));
+                    boolean allowNative = inSelection && (e.getValue().nativeImage() || !anyNativeTable);
+                    Path moduleGraal = allowNative ? graal : null;
                     BuildPlan plan = NativePlans.moduleBuildPlan(
-                            dir, e.getValue(), cache, jdksDir, graal, null, List.of(), true, false, allowNative);
+                            dir, e.getValue(), cache, jdksDir, moduleGraal, null, List.of(), true, false, allowNative);
                     plan.addListener(listeners.hubPlan(dir.toString()));
                     BuildPlanResult result = plan.run();
                     if (!result.success()) return finishPlan(entryDir, result);

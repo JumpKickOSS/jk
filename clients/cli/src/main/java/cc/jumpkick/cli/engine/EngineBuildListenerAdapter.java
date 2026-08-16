@@ -287,6 +287,43 @@ final class EngineBuildListenerAdapter {
     }
 
     /**
+     * Workspace-member {@code jk image}: {@code IMAGE_REQUEST} on the module dir; the engine
+     * expands the workspace cone and streams workspace events (same as {@link #runNative}).
+     */
+    static WorkspaceResult runImageWorkspace(
+            EnginePaths.Paths paths, EngineRequests.ImageRequest req, WorkspaceBuildListener listener)
+            throws IOException {
+        EngineClient.ensureRunning(paths, Jk.VERSION);
+        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+            BufferedWriter writer =
+                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
+            BufferedReader reader = EngineClient.protocolReader(ch);
+            writer.write(ProtoSession.withSession(
+                    ProtoJobs.imageRequest(
+                            req.entryDir().toString(),
+                            req.cache().toString(),
+                            req.jdksDir() != null ? req.jdksDir().toString() : null,
+                            req.mainClass(),
+                            req.registry(),
+                            req.tag(),
+                            req.tarballArg(),
+                            req.dockerExecutable(),
+                            req.skipTests(),
+                            req.offline(),
+                            req.force(),
+                            req.verbose()),
+                    SessionContext.current().variant(),
+                    SessionContext.current().clientEnv(),
+                    SessionContext.current().jvm(),
+                    SessionContext.current().config().rebuildOr(false),
+                    cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
+            writer.write('\n');
+            writer.flush();
+            return streamEvents(reader, listener, req.cache());
+        }
+    }
+
+    /**
      * Run {@code jk install}'s hosted build + cache-install plan against the engine — {@link
      * #runTest}'s exact shape ({@code testResultOut} settles before the terminal {@code
      * plan-finish} reaches the listener); the launcher-writing "make install" half runs in the

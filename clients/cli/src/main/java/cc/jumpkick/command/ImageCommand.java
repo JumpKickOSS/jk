@@ -109,6 +109,18 @@ public final class ImageCommand implements CliCommand {
             }
         }
         Path cache = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
+        var wsRoot = cc.jumpkick.config.WorkspaceLocator.findRoot(projectDir);
+        if (wsRoot.isPresent()) {
+            cc.jumpkick.model.JkBuild rootBuild =
+                    cc.jumpkick.config.JkBuildParser.parse(wsRoot.get().resolve("jk.toml"));
+            if (rootBuild.isWorkspaceRoot()
+                    && !wsRoot.get()
+                            .toAbsolutePath()
+                            .normalize()
+                            .equals(projectDir.toAbsolutePath().normalize())) {
+                return runWorkspaceImage(wsRoot.get(), rootBuild, projectDir, cache);
+            }
+        }
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         String module = BuildCommand.buildTarget(jkBuildPath, projectDir);
 
@@ -192,5 +204,61 @@ public final class ImageCommand implements CliCommand {
                     + daemonExe;
         }
         return "Pushed " + Theme.colorize(ref != null ? ref : "", Theme.active().path());
+    }
+
+    /**
+     * Workspace member: same {@code buildWorkspace} path as {@code jk build}, image terminal on
+     * this module, prereqs package. Aggregate TUI matches native/build.
+     */
+    private int runWorkspaceImage(Path wsRoot, cc.jumpkick.model.JkBuild rootBuild, Path moduleDir, Path cache)
+            throws IOException {
+        var session = cc.jumpkick.config.SessionContext.current();
+        var imageReq = new cc.jumpkick.cli.engine.EngineRequests.ImageRequest(
+                moduleDir,
+                cache,
+                jdksDir,
+                mainClass,
+                registry,
+                tag,
+                tarballArg,
+                dockerExecutableArg,
+                buildOpts.skipTests,
+                session.offline(),
+                session.force(),
+                session.config().rebuildOr(false),
+                global.verbose);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
+        cc.jumpkick.cli.tui.JkManager view =
+                cc.jumpkick.cli.tui.JkManager.plan(cc.jumpkick.cli.CliOutput.stdout(), "Image", animate);
+        cc.jumpkick.cli.run.AggregateContext agg = new cc.jumpkick.cli.run.AggregateContext(view);
+        long start = System.nanoTime();
+        cc.jumpkick.runtime.WorkspaceResult result;
+        try {
+            result = cc.jumpkick.cli.engine.EngineClient.runImageWorkspace(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    imageReq,
+                    new cc.jumpkick.runtime.WorkspaceBuildListener() {
+                        @Override
+                        public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
+                            agg.applySnapshot(snap);
+                        }
+
+                        @Override
+                        public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
+                            return new cc.jumpkick.cli.run.AggregateModuleListener(
+                                    agg, m.coord(), m.plan().steps(), m.weight());
+                        }
+                    });
+        } catch (IOException e) {
+            view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
+            return Exit.SOFTWARE;
+        }
+        if (!result.success()) {
+            view.finishBuildPlanFailure("image failed " + BuildCommand.elapsedSince(start));
+            return result.exitCode() == 0 ? 1 : result.exitCode();
+        }
+        view.finishBuildPlanSuccess("image built " + BuildCommand.elapsedSince(start));
+        return 0;
     }
 }

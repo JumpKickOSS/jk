@@ -56,6 +56,30 @@ public final class BuildGraph {
         public int maxReadyWidth() {
             return BuildGraph.maxReadyWidth(topoOrder, edges);
         }
+
+        /**
+         * Subgraph of {@code keep} dirs (identity via {@link BuildGraph#canonicalPath}). Edges that
+         * leave the set are dropped. Errors are copied (caller should not restrict a failed graph).
+         */
+        public Result restrict(Set<Path> keep) {
+            if (keep == null || keep.isEmpty()) return this;
+            Set<Path> canon = new HashSet<>();
+            for (Path p : keep) canon.add(BuildGraph.canonicalPath(p));
+            List<BuildUnit> units = new ArrayList<>();
+            for (BuildUnit u : topoOrder) {
+                if (canon.contains(BuildGraph.canonicalPath(u.dir()))) units.add(u);
+            }
+            Map<Path, Set<Path>> e = new LinkedHashMap<>();
+            for (var en : edges.entrySet()) {
+                if (!canon.contains(BuildGraph.canonicalPath(en.getKey()))) continue;
+                Set<Path> pr = new LinkedHashSet<>();
+                for (Path p : en.getValue()) {
+                    if (canon.contains(BuildGraph.canonicalPath(p))) pr.add(p);
+                }
+                e.put(en.getKey(), pr);
+            }
+            return new Result(units, e, errors);
+        }
     }
 
     private BuildGraph() {}

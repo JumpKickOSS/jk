@@ -511,10 +511,11 @@ jk new --template quarkus my-api # Giter8 short name (same single-module shape)
 - Default package is **fast-jar** (`quarkus-run.jar` + `lib/` + `quarkus-app/`). Set
   `package = "uber-jar"` for a single runner. Packaging uses pure bootstrap (no permanent
   `mvn` CLI).
-- **Native:** `[native] always = true` builds the binary through Quarkus's own native-image
-  command. Quarkus computes the argument list — the generated `--features` entry point, the runner
-  jar, the Netty flags — and jk runs it with its own GraalVM toolchain. Nothing jk composes is
-  added on top, because that list is already complete; `[native] args` still applies.
+- **Native:** `[native] enabled = "always"` (or a bare `[native]` / `enabled = true` for
+  `jk native` only) builds the binary through Quarkus's own native-image command. Quarkus computes
+  the argument list — the generated `--features` entry point, the runner jar, the Netty flags —
+  and jk runs it with its own GraalVM toolchain. Nothing jk composes is added on top, because that
+  list is already complete; `[native] args` still applies.
 - Use a plain `main` + `Quarkus.run` (as scaffolded). Avoid `@QuarkusMain` under jk’s
   `target/classes/main` layout — `@QuarkusTest` can report two mains with the same name.
 - Keep `quarkus-junit5` / RestAssured on **`[test-dependencies]`** only so MAIN does not pull
@@ -699,7 +700,7 @@ jk audit                     # OSV
 jk deny                      # apply [deny.sources] host denylist (see Deny policy)
 jk publish                   # optional --sign / --sigstore / --slsa / --sbom
 jk image                     # OCI (daemonless)
-jk native                    # GraalVM native-image
+jk native                    # GraalVM native-image ([native] enabled; else unique main)
 jk verify                    # rebuild in a scratch dir and compare hashes
 jk new --template quarkus x  # Giter8 short name (or local path)
 jk jobs                      # running + recent engine jobs (jid, build #); alias: builds
@@ -1180,7 +1181,11 @@ jk build -m :server:engine
 
 # The same -m/--modules and --affected-since flags work across the build family:
 # build, test, explain, native, compile, image, show, tasks, inspect.
-# jk native -m compiles only the selection to native; prereqs build to jars.
+# jk native builds only native-eligible modules plus their dependency closure
+# (then native-image). With tests on, the cone includes test/dev workspace deps
+# so a dirty harness (e.g. test-only engine) is rebuilt first. --skip-tests uses
+# production scopes only. Prefer modules with [native] enabled (true or "always").
+# -m further restricts which native targets are considered.
 
 # Intersection when both flags set
 jk build -m 'libs/*' --affected-since=origin/main

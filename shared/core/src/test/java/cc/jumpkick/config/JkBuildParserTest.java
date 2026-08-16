@@ -1756,9 +1756,19 @@ class JkBuildParserTest {
     }
 
     @Test
-    void native_absent_means_disabled_present_means_supported_or_always() {
+    void native_enabled_modes() {
         assertThat(JkBuildParser.parse(PROJECT).nativeMode()).isEqualTo(JkBuild.NativeMode.DISABLED);
+        // Table presence == enabled true
         assertThat(JkBuildParser.parse(PROJECT + "\n[native]\n").nativeMode()).isEqualTo(JkBuild.NativeMode.SUPPORTED);
+        assertThat(JkBuildParser.parse(PROJECT + "\n[native]\nenabled = true\n").nativeMode())
+                .isEqualTo(JkBuild.NativeMode.SUPPORTED);
+        assertThat(JkBuildParser.parse(PROJECT + "\n[native]\nenabled = false\n")
+                        .nativeMode())
+                .isEqualTo(JkBuild.NativeMode.DISABLED);
+        assertThat(JkBuildParser.parse(PROJECT + "\n[native]\nenabled = \"always\"\n")
+                        .nativeMode())
+                .isEqualTo(JkBuild.NativeMode.ALWAYS);
+        // Legacy always = true
         assertThat(JkBuildParser.parse(PROJECT + "\n[native]\nalways = true\n").nativeMode())
                 .isEqualTo(JkBuild.NativeMode.ALWAYS);
     }
@@ -1768,18 +1778,33 @@ class JkBuildParserTest {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
 
                 [native]
+                enabled    = "always"
                 main-class = "com.example.NativeMain"
                 name       = "myapp"
                 args       = ["-O3", "--gc=serial"]
-                always     = true
                 """);
         assertThat(parsed.nativeConfig()).isPresent();
         JkBuild.NativeConfig nc = parsed.nativeConfig().orElseThrow();
         assertThat(nc.mainClass()).isEqualTo("com.example.NativeMain");
         assertThat(nc.name()).isEqualTo("myapp");
         assertThat(nc.args()).containsExactly("-O3", "--gc=serial");
+        assertThat(nc.enabled()).isEqualTo(JkBuild.NativeMode.ALWAYS);
         assertThat(nc.always()).isTrue();
         assertThat(nc.graal()).isEqualTo("graalvm"); // defaulted — no graal key given
+    }
+
+    @Test
+    void native_enabled_false_keeps_table_but_disables_native_command() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+
+                [native]
+                enabled = false
+                name = "myapp"
+                """);
+        assertThat(parsed.nativeConfig()).isPresent();
+        assertThat(parsed.nativeMode()).isEqualTo(JkBuild.NativeMode.DISABLED);
+        assertThat(parsed.nativeImage()).isFalse();
+        assertThat(parsed.nativeConfig().orElseThrow().name()).isEqualTo("myapp");
     }
 
     @Test

@@ -1,8 +1,8 @@
 version = 1
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
-jk = { version = "0.12.0", sha256 = "fc8ed9d1268a1faf23b1a2282ca7c26b71ba7e36ac773dad6dd7f0fb76d7c2f6" }
-manifests-sha256 = "ba2697298e8a75693ef517f5275acd40862d62e03fdaea80a90b0e602bce89f9"
+jk = { version = "0.12.0", sha256 = "ce2933be6ff5b481265ab26d0ed0aa0f0fbde5bc0065d6329c183171cc8aaf19" }
+manifests-sha256 = "d0c1b1930add6d3c64d35b55ea276594fe6630c9b5dfc3e1e6862564ab502e42"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [[artifact]]

@@ -344,7 +344,7 @@ class NewScaffolderTest {
         NewScaffolder.write(on);
         assertThat(Files.readString(sub.resolve("jk.toml")))
                 .contains("[native]")
-                .contains("always     = true");
+                .contains("enabled    = \"always\"");
     }
 
     @Test

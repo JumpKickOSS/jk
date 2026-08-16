@@ -74,6 +74,11 @@ public final class BuildForecasting {
      * (fingerprinting after the build records mid-build edits as clean).
      */
     static Preflight forecastWithFingerprints(BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
+        return forecastWithFingerprints(graph, cache, skipTests, entryDir, WorkspaceTarget.PACKAGE);
+    }
+
+    static Preflight forecastWithFingerprints(
+            BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir, WorkspaceTarget target) {
         Set<Path> all = new HashSet<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) all.add(u.dir());
         // --force / --redo: every module runs — skip the expensive per-step forecast walk for dirty
@@ -101,7 +106,8 @@ public final class BuildForecasting {
         try {
             Cas cas = JkStores.cas(cache); // artifact CAS for classpath fingerprints
             ActionCache ac = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
-            List<TaskForecast.Module> modules = TaskForecaster.of(graph, cas, ac, cache, skipTests);
+            List<TaskForecast.Module> modules = TaskForecaster.of(
+                    graph, cas, ac, cache, skipTests, target == null ? WorkspaceTarget.PACKAGE : target);
             Set<Path> dirty = new HashSet<>();
             for (TaskForecast.Module m : modules) {
                 if (m.dirty()) dirty.add(m.dir());

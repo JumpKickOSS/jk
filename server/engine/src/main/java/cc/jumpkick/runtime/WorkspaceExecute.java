@@ -169,6 +169,14 @@ public final class WorkspaceExecute {
             listener.onWorkspaceFinish(r);
             return r;
         }
+        // Selection cone (native/image/-m): filter before dirty forecast and ETA.
+        graph = applySelectionCone(graph, req);
+        units = graph.topoOrder();
+        if (units.isEmpty()) {
+            WorkspaceResult r = new WorkspaceResult(true, 0, List.of(), List.of());
+            listener.onWorkspaceFinish(r);
+            return r;
+        }
         // Size worker-JVM heaps/concurrency from free memory before any fork (engine resource plan).
         int cap = Runtime.getRuntime().availableProcessors();
         boolean parallelTests = SessionContext.current().parallelTests();
@@ -197,7 +205,8 @@ public final class WorkspaceExecute {
                     "checking", 1, 1, dirty.isEmpty() ? "Nothing dirty" : dirty.size() + " module(s) dirty");
         } else {
             listener.onPreflight("checking", 0, 0, "Checking cache…");
-            preflight = BuildForecasting.forecastWithFingerprints(graph, req.cache(), req.skipTests(), req.entryDir());
+            preflight = BuildForecasting.forecastWithFingerprints(
+                    graph, req.cache(), req.skipTests(), req.entryDir(), req.target());
             dirty = preflight.dirty();
             listener.onPreflight(
                     "checking", 1, 1, dirty.isEmpty() ? "All modules up to date" : dirty.size() + " module(s) dirty");
@@ -243,6 +252,8 @@ public final class WorkspaceExecute {
         } else {
             // Memo hit with dirty set but no modules, or force/rebuild: one explain walk.
             etaPlan = BuildForecasting.explainFromGraph(graph, req.cache(), req.skipTests());
+            // explainFromGraph uses package tails; native/image extra work is in the live
+            // prepare weights. Dirty set already used target-aware forecast above.
         }
         if (req.dirtyHint() != null) {
             etaPlan = BuildForecasting.restrictToSelection(etaPlan, dirty);
@@ -474,21 +485,7 @@ public final class WorkspaceExecute {
         Path dir = u.dir();
         Path buildFile = dir.resolve("jk.toml");
         if (!Files.exists(buildFile)) return null;
-        BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
-                        dir,
-                        req.cache(),
-                        req.workers() > 0 ? req.workers() : 1,
-                        req.jdksDir(),
-                        req.profile(),
-                        req.skipTests(),
-                        req.verbose(),
-                        moduleDirs,
-                        req.testOnly())
-                .withVariant(req.variant(), req.clientEnv())
-                .withEphemeralActions(req.ephemeralActions());
-        BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, forceRebuild);
-        BuildPlanner.appendDeclaredTails(b, inputs);
-        BuildPlan plan = b.build();
+        BuildPlan plan = assemblePlan(u, req, moduleDirs, forceRebuild);
         // Bar weight must be live estimatedTotalWeight for dirty prepares: shape-memo weights ignore
         // source/upstream freshness and under-counted native-image (SKIP while Graal still runs).
         // Over-reserve tails so native/assembly/OCI reserve full learned walls up front when this
@@ -515,6 +512,80 @@ public final class WorkspaceExecute {
         }
         // Dirty ⇒ not fullyCached for calibration / skip-rate sampling.
         return new ModulePlan(u.dir(), u.coord(), plan, weight, false, req.cache());
+    }
+
+    /**
+     * Restrict {@code graph} to the request's selected module cone. Empty selection = whole graph.
+     * Tests on → all dependency scopes (so dirty test harnesses rebuild); {@code skipTests} →
+     * production scopes only.
+     */
+    static BuildGraph.Result applySelectionCone(BuildGraph.Result graph, WorkspaceRequest req) {
+        WorkspaceSpec spec = req.spec();
+        if (spec == null || !spec.hasSelection()) return graph;
+        Map<Path, JkBuild> byDir = new LinkedHashMap<>();
+        for (BuildGraph.BuildUnit u : graph.topoOrder()) byDir.put(u.dir(), u.manifest());
+        var scopes = req.skipTests()
+                ? cc.jumpkick.config.ModuleOrder.PRODUCTION_SCOPES
+                : List.of(cc.jumpkick.model.Scope.values());
+        Set<Path> cone = cc.jumpkick.config.WorkspaceCone.expand(byDir, spec.selectedModules(), scopes);
+        return graph.restrict(cone);
+    }
+
+    static BuildPlan assemblePlan(
+            BuildGraph.BuildUnit u, WorkspaceRequest req, Set<Path> moduleDirs, boolean forceRebuild) {
+        Path dir = u.dir();
+        WorkspaceTarget target = req.target();
+        WorkspaceSpec spec = req.spec() == null ? WorkspaceSpec.DEFAULT : req.spec();
+        boolean selected = !spec.hasSelection()
+                || spec.selectedModules().stream()
+                        .anyMatch(p -> BuildGraph.canonicalPath(p).equals(BuildGraph.canonicalPath(dir)));
+        if (target == WorkspaceTarget.NATIVE) {
+            Path graal = GraalHomes.lookup(dir, spec.graalByDir());
+            boolean allowNative = selected && graal != null;
+            return NativePlans.moduleBuildPlan(
+                    dir,
+                    u.manifest(),
+                    req.cache(),
+                    req.jdksDir(),
+                    graal,
+                    spec.nativeMain(),
+                    spec.nativeExtraArgs(),
+                    req.skipTests(),
+                    req.verbose(),
+                    allowNative);
+        }
+        if (target == WorkspaceTarget.IMAGE && selected) {
+            return ImagePlans.imageBuildPlan(
+                    dir,
+                    req.cache(),
+                    req.jdksDir(),
+                    req.skipTests(),
+                    req.verbose(),
+                    spec.imageMain(),
+                    spec.imageRegistry(),
+                    spec.imageTag(),
+                    spec.imageTarball(),
+                    spec.imageDocker());
+        }
+        if (target == WorkspaceTarget.COMPILE) {
+            return CompilePlans.compileBuildPlan(dir, req.cache(), req.profile(), req.verbose());
+        }
+        boolean testOnly = target.testOnly() || req.testOnly();
+        BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
+                        dir,
+                        req.cache(),
+                        req.workers() > 0 ? req.workers() : 1,
+                        req.jdksDir(),
+                        req.profile(),
+                        req.skipTests(),
+                        req.verbose(),
+                        moduleDirs,
+                        testOnly)
+                .withVariant(req.variant(), req.clientEnv())
+                .withEphemeralActions(req.ephemeralActions());
+        BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, forceRebuild);
+        if (!testOnly) BuildPlanner.appendDeclaredTails(b, inputs);
+        return b.build();
     }
 
     /**learn run-tests rates from actual TestSummary counts when present. */
