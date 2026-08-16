@@ -33,6 +33,22 @@ API: `cc.jumpkick.cli.tui.JkWedge` (`CommandWedge` is envelope + printOk).
 | Indeterminate / short | Spinner-only wedge (`CommandWedge.analyzing` / `Spinner.showWedge`) |
 | Settled | Static icon — `CommandWedge.ok` / `fail` / `chip` (never leave a spinner running) |
 
+### Process-output peek (Ctrl-O)
+
+On an interactive TTY live plan (`jk build`, `jk test`, `jk lock`, …), worker and tool stdout/stderr
+are buffered in a **sliding window of at most 200 lines**, hidden by default so the wedge + progress
+stay clean.
+
+| Action | Behavior |
+|--------|----------|
+| **Ctrl-O** | Toggle the peek pane **above** the live Wedge+Progress. When shown with content: newest lines that fit the free rows (recomputed each paint from terminal height − chrome − 1), then **one blank line**, then the plan header. Empty buffer → no pane (visual no-op). |
+| **Failed tool/worker** (non-zero sub-process exit, e.g. `native-image`) | Force-opens the pane while the plan is still live. |
+| **Test failures** | Do **not** force-open — curated test-failure chrome owns that path. |
+| Plan settle | Does **not** dump the buffer. If the pane was open (toggle or force-show), its lines are left in scrollback before the region is wiped. |
+| `-v` / non-TTY / `--no-progress` / JSONL | Unchanged; no key listener. |
+
+Document only — no on-screen “press Ctrl-O” hint. InheritIO handoffs (`jk run`, `jshell`, …) are out of scope.
+
 ### Blank-line envelope (JK-1373)
 
 Every **wedge-bearing** human command prints:

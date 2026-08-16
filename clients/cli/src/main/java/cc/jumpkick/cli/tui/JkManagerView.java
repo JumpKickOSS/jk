@@ -32,6 +32,11 @@ final class JkManagerView {
         this.paintedCols = m.width;
     }
 
+    /** Request a full rewrite on the next paint (Ctrl-O toggle, force-show, resize). */
+    void requestFullRepaint() {
+        forceFullRepaint = true;
+    }
+
     // --- completion -------------------------------------------------------
 
     /** Settle with {@code ✔ <plan> Successful: <message>} (the head in green). */
@@ -177,6 +182,9 @@ final class JkManagerView {
             LiveRegion.clearActive(m);
             m.clearWindowTitle();
             if (m.animate && Theme.active().isAnsi()) {
+                // If the peek pane was open (user toggle or force-show on tool failure), leave
+                // those lines in scrollback before wiping the live region.
+                if (m.planMode) m.flushVisibleOutputToScrollback();
                 // Simple mode keeps the settled spinner line and prints the
                 // result below it; plan mode replaces the whole region.
                 if (m.planMode) m.wipeRegion();
@@ -339,43 +347,46 @@ final class JkManagerView {
     }
 
     /**
-     * Print {@code text} as a permanent line <em>above</em> the live region, then repaint the region
-     * just below it — so process/step output scrolls up and the {@code JkManager} view stays
-     * pinned to the bottom. No-op-ish (plain {@code println}) when not animating or already settled.
+     * Route process/step output through the sliding {@link OutputWindow}. In plan mode the line is
+     * always buffered (≤200 lines); when the pane is <em>shown</em> the live region is repainted so
+     * the newest lines appear above the wedge (with a blank padding row). When hidden, nothing is
+     * painted (Ctrl-O reveals). Simple mode keeps the old permanent-above-region behavior.
      */
     public void writeAbove(String text) {
         synchronized (m.lock) {
-            if (m.done || !m.animate) {
+            if (m.done) {
                 m.out.println(text);
                 m.out.flush();
                 return;
             }
-            // Erase the live region back to its top.
             if (m.planMode) {
-                // Resize first: after a shrink the region reflowed to more physical
-                // rows than linesDrawn, so the logical-lines erase below would undershoot and —
-                // with lastLines cleared before repaint — the next syncTerminalSize would skip
-                // its reflow-aware wipe, stranding the region's top rows above the emitted text.
-                // syncTerminalSize wipes (and clears lastLines) itself when columns changed.
-                syncTerminalSize();
-                if (!m.lastLines.isEmpty()) {
-                    if (m.linesDrawn > 0) m.out.print(Ansi.cursorUp(m.linesDrawn));
-                    m.out.print(Ansi.ERASE_DISPLAY_TO_END);
+                // Always buffer in plan mode (Ctrl-O peek / force-show).
+                m.outputWindow.append(text);
+                if (!m.animate) {
+                    // --no-progress / tests without a live region: still print for diagnostics.
+                    m.out.println(text);
+                    m.out.flush();
+                    return;
                 }
-            } else {
-                m.out.print(Ansi.CLEAR_LINE);
+                if (!m.outputWindow.visible()) {
+                    return; // buffered only — Ctrl-O reveals
+                }
+                // Pane open: full repaint so the ring updates in place.
+                forceFullRepaint = true;
+                paintBuildPlan();
+                m.out.flush();
+                return;
             }
-            // Emit the text where the region's top was — it becomes scrollback.
+            if (!m.animate) {
+                m.out.println(text);
+                m.out.flush();
+                return;
+            }
+            // Simple mode: permanent line above the spinner (unchanged).
+            m.out.print(Ansi.CLEAR_LINE);
             m.out.print(text);
             m.out.print('\n');
-            // Repaint the region fresh, immediately below the emitted text.
-            if (m.planMode) {
-                m.lastLines = List.of();
-                m.linesDrawn = 0;
-                paintBuildPlan();
-            } else {
-                paintSimple();
-            }
+            paintSimple();
             m.out.flush();
         }
     }
@@ -510,13 +521,13 @@ final class JkManagerView {
      */
     public List<String> renderBuildPlanLines(int cols, long elapsedMillis) {
         AttributedStyle dim = Theme.active().darkGray();
-        List<String> lines = new ArrayList<>();
+        List<String> chrome = new ArrayList<>();
 
         // One width per frame: every widget renders at the sampled cols. Re-reading
         // TerminalSize mid-frame races SIGWINCH against the truncation budget, paintedCols,
         // and the reflow-wipe estimate paintBuildPlan derives from the same sample.
         RenderContext frameCtx = RenderContext.current().withWidth(cols);
-        lines.add(planHeader(frameCtx, elapsedMillis));
+        chrome.add(planHeader(frameCtx, elapsedMillis));
 
         int budget = Math.max(1, m.height - 2);
         List<JkManager.TreeEntry> visible = collectVisibleTree();
@@ -537,7 +548,7 @@ final class JkManagerView {
             work.child(node);
             if (shown >= JkManager.MAX_ROWS) break;
         }
-        lines.addAll(work.render(frameCtx));
+        chrome.addAll(work.render(frameCtx));
 
         if (m.completedCount > 0 && budget > 0) {
             boolean overflow = m.completedCount > Math.min(JkManager.MAX_COMPLETIONS, budget);
@@ -545,13 +556,25 @@ final class JkManagerView {
             int compShown = Math.min(m.recentCompletions.size(), cap);
             int have = m.recentCompletions.size();
             for (int i = 0; i < compShown; i++) {
-                lines.add("    " + m.recentCompletions.get(have - 1 - i));
+                chrome.add("    " + m.recentCompletions.get(have - 1 - i));
             }
             int more = m.completedCount - compShown;
             if (more > 0) {
-                lines.add(Theme.colorize("      … plus " + more + " more …", dim.italic()));
+                chrome.add(Theme.colorize("      … plus " + more + " more …", dim.italic()));
             }
         }
+
+        // Optional process-output pane above chrome: newest lines + one blank padding.
+        List<String> lines = new ArrayList<>();
+        if (m.outputWindow.visible() && !m.outputWindow.isEmpty()) {
+            int paneBudget = OutputWindow.displayBudget(m.height, chrome.size());
+            List<String> pane = m.outputWindow.linesForDisplay(paneBudget);
+            if (!pane.isEmpty()) {
+                lines.addAll(pane);
+                lines.add(""); // blank between pane and wedge header
+            }
+        }
+        lines.addAll(chrome);
         return lines;
     }
 

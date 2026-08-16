@@ -143,6 +143,10 @@ public final class CommandManagerListener implements BuildPlanListener {
         if ("test-failure".equals(code)) return;
         String report = ConsoleSpec.renderError(step, code, message, module);
         if (report != null && !report.isEmpty()) cm.writeAbove(report);
+        // Non-test diagnostic: treat as tool/worker failure — force-open the process-output pane.
+        if (JkManager.forceShowOnStepFailure(step, null)) {
+            cm.showProcessFailureOutput();
+        }
     }
 
     @Override
@@ -163,6 +167,11 @@ public final class CommandManagerListener implements BuildPlanListener {
         // SKIPPED = cache hit / up-to-date — green terminal, same as SUCCESS.
         boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;
         cm.stepDone(module, step, ok, group == null ? "" : group);
+        // Failed tool/worker (e.g. native-image): force-open the process-output peek. Test-runner
+        // failures keep curated chrome and do not force-open.
+        if (!ok && JkManager.forceShowOnStepFailure(step, group)) {
+            cm.showProcessFailureOutput();
+        }
     }
 
     @Override

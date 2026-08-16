@@ -108,6 +108,9 @@ public final class AggregateModuleListener implements BuildPlanListener {
         if ("test-failure".equals(code)) return;
         String report = ConsoleSpec.renderError(step, code, message, module);
         if (report != null && !report.isEmpty()) emit(report);
+        if (JkManager.forceShowOnStepFailure(step, null)) {
+            cm.showProcessFailureOutput();
+        }
     }
 
     private void emit(String line) {
@@ -139,6 +142,9 @@ public final class AggregateModuleListener implements BuildPlanListener {
         // succeeded.
         boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;
         cm.stepDone(module, step, ok, group == null ? "" : group);
+        if (!ok && JkManager.forceShowOnStepFailure(step, group)) {
+            cm.showProcessFailureOutput();
+        }
     }
 
     /** Paint any buffered failure block now — already-received lines must not be dropped. */

@@ -19,7 +19,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jline.terminal.Attributes;
+import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedStyle;
+import org.jline.utils.NonBlockingReader;
 
 /**
  * Live console for long-running commands: simple pulse-circle task mode, or plan mode (header
@@ -201,6 +204,18 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     volatile LineSink sink; // read by the animator thread for stale flushing
     boolean capturing;
 
+    /**
+     * Sliding process-output buffer for plan mode (Ctrl-O peek / force-show on tool failure). Always
+     * present; only plan+animate installs the key listener.
+     */
+    final OutputWindow outputWindow = new OutputWindow();
+
+    // Ctrl-O key listener (plan mode, interactive TTY only)
+    private Terminal keyTerminal;
+    private Attributes keyAttrsSaved;
+    private Thread keyThread;
+    private volatile boolean keysStopped;
+
     JkManager(PrintStream out, boolean animate, boolean planMode, int width) {
         // PlainAscii.wrap is identity under ANSI; under --no-ansi rewrites …/•/● in messages.
         this.out = PlainAscii.wrap(out);
@@ -259,9 +274,46 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             out.print(Ansi.HIDE_CURSOR);
             out.flush();
             cm.startAnimator();
+            cm.startKeyListener();
         }
         // Plain plan: no start line until progress() or settle (message may not exist yet).
         return cm;
+    }
+
+    /** Sliding process-output window for this plan (tests / force-show). */
+    public OutputWindow outputWindow() {
+        return outputWindow;
+    }
+
+    /**
+     * Force-open the process-output pane (non-zero tool/worker exit). No-op when not animating a
+     * plan. Does not run for test failures — callers must not invoke this for run-tests.
+     */
+    public void showProcessFailureOutput() {
+        if (!planMode) return;
+        synchronized (lock) {
+            if (done) return;
+            outputWindow.show();
+            if (animate && Theme.active().isAnsi()) {
+                view.requestFullRepaint();
+                paintBuildPlan();
+                out.flush();
+            }
+        }
+    }
+
+    /** Toggle the process-output pane (Ctrl-O). */
+    public void toggleOutputWindow() {
+        if (!planMode) return;
+        synchronized (lock) {
+            if (done) return;
+            outputWindow.toggle();
+            if (animate && Theme.active().isAnsi()) {
+                view.requestFullRepaint();
+                paintBuildPlan();
+                out.flush();
+            }
+        }
     }
 
     /** Current terminal width in columns (updates on the next paint after a resize). */
@@ -763,6 +815,16 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         view.writeAbove(text);
     }
 
+    /**
+     * True when a failed step should force-open the process-output pane (tool/worker crash), not
+     * when the failure is a curated test-runner result.
+     */
+    public static boolean forceShowOnStepFailure(String step, String group) {
+        // Only the test-runner step uses curated failure chrome; everything else is a tool/worker.
+        if (step == null) return true;
+        return !step.equals(cc.jumpkick.run.TaskNames.RUN_TESTS) && !step.startsWith("run-tests");
+    }
+
     public List<String> renderBuildPlanLines(int cols, long elapsedMillis) {
         return view.renderBuildPlanLines(cols, elapsedMillis);
     }
@@ -805,6 +867,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             if (!animate) return false;
             if (planMode) {
                 if (Theme.active().isAnsi()) {
+                    flushVisibleOutputToScrollback();
                     wipeRegion();
                     out.print(Ansi.taskbarClear());
                     out.print(Ansi.SHOW_CURSOR);
@@ -995,6 +1058,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
 
     void stopAnimator() {
         stopped = true;
+        stopKeyListener();
         Thread a;
         synchronized (lock) {
             a = animator;
@@ -1007,6 +1071,110 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+        }
+    }
+
+    /**
+     * Non-blocking Ctrl-O listener on the controlling TTY. ISIG stays on so Ctrl-C still raises
+     * SIGINT for {@link GlobalCancel}. Best-effort: if the terminal cannot be opened, peek is
+     * unavailable for this plan.
+     */
+    private void startKeyListener() {
+        if (!planMode || !animate || !Interactivity.canPrompt()) return;
+        try {
+            Terminal t = Interactivity.takeSharedTerminal();
+            if (t == null) {
+                t = Wizard.openTerminal();
+            }
+            Attributes saved = t.getAttributes();
+            Attributes raw = new Attributes(saved);
+            raw.setLocalFlag(Attributes.LocalFlag.ICANON, false);
+            raw.setLocalFlag(Attributes.LocalFlag.ECHO, false);
+            // ISIG remains: Ctrl-C → SIGINT → GlobalCancel.
+            t.setAttributes(raw);
+            Wizard.drainInput(t.reader(), 40L);
+            keyTerminal = t;
+            keyAttrsSaved = saved;
+            keysStopped = false;
+            keyThread = new Thread(this::readKeys, "jk-output-keys");
+            keyThread.setDaemon(true);
+            keyThread.start();
+        } catch (Exception ignored) {
+            // Peek is optional — plan continues without Ctrl-O.
+            keyTerminal = null;
+            keyAttrsSaved = null;
+        }
+    }
+
+    private void stopKeyListener() {
+        keysStopped = true;
+        Thread kt = keyThread;
+        keyThread = null;
+        if (kt != null) {
+            kt.interrupt();
+            try {
+                kt.join(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        Terminal t = keyTerminal;
+        Attributes saved = keyAttrsSaved;
+        keyTerminal = null;
+        keyAttrsSaved = null;
+        if (t != null && saved != null) {
+            try {
+                Wizard.restoreCooked(t, saved);
+            } catch (RuntimeException ignored) {
+                // best-effort
+            }
+            try {
+                t.close();
+            } catch (Exception ignored) {
+                // best-effort
+            }
+        }
+    }
+
+    private void readKeys() {
+        Terminal t = keyTerminal;
+        if (t == null) return;
+        NonBlockingReader reader = t.reader();
+        while (!keysStopped && !stopped && !done) {
+            try {
+                KeyReader.Key key = KeyReader.readOrNull(reader, 100L);
+                if (key instanceof KeyReader.Key.CtrlO) {
+                    toggleOutputWindow();
+                }
+                // Ctrl-C is handled by the signal path (ISIG); ignore other keys.
+            } catch (RuntimeException e) {
+                return; // reader closed / failed
+            }
+        }
+    }
+
+    /**
+     * If the output pane is open, permanently print its displayed lines into scrollback before the
+     * live region is wiped on settle/cancel — so force-shown tool failures remain readable.
+     */
+    void flushVisibleOutputToScrollback() {
+        synchronized (lock) {
+            if (!outputWindow.visible() || outputWindow.isEmpty()) return;
+            // Budget from current geometry; use chrome estimate of 1 (header) so we flush what was
+            // roughly visible. Exact match to last paint is not required.
+            int budget = OutputWindow.displayBudget(height, Math.max(1, linesDrawn > 0 ? 1 : 1));
+            // Prefer the full ring up to MAX when flushing failures — user already opened the pane.
+            List<String> lines = outputWindow.linesForDisplay(OutputWindow.MAX_LINES);
+            if (lines.isEmpty()) return;
+            // Wipe live region first so println lands in scrollback above the eventual settle.
+            if (planMode && Theme.active().isAnsi() && linesDrawn > 0) {
+                wipeRegion();
+            }
+            for (String line : lines) {
+                out.println(line);
+            }
+            out.println(); // padding blank before settle chrome (matches live pane padding)
+            outputWindow.hide();
         }
     }
 
