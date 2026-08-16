@@ -41,6 +41,8 @@ public record CompilerLocus(String file, int line, int col) {
                 if (at >= 0) caretCol = at + 1;
                 break;
             }
+            // A later unit's caret belongs to its own header, never to this one.
+            if (HEADER.matcher(line).matches()) break;
         }
         if (header == null) return null;
         if (header.col > 0 || caretCol <= 0) return header;
