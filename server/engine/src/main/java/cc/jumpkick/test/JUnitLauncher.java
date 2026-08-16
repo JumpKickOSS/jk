@@ -1018,9 +1018,31 @@ public final class JUnitLauncher {
 
         static String truncateMessage(String message) {
             if (message == null || message.length() <= MAX_MESSAGE_CHARS) return message;
+            if (workerCapped(message)) return message;
             int cut = MAX_MESSAGE_CHARS;
             if (Character.isHighSurrogate(message.charAt(cut - 1))) cut--;
             return message.substring(0, cut) + MESSAGE_TRUNCATION_MARKER + (message.length() - cut) + " more chars)";
+        }
+
+        /**
+         * A worker-capped message is cap-sized content + marker + remainder count. It exceeds the
+         * cap only by the marker's own tail, and re-cutting would replace the worker's accurate
+         * remainder count with the marker's length — so it passes through verbatim. The marker
+         * position is bounded by the cap, keeping the accepted form itself bounded.
+         */
+        private static boolean workerCapped(String message) {
+            String tail = " more chars)";
+            if (!message.endsWith(tail)) return false;
+            int at = message.lastIndexOf(MESSAGE_TRUNCATION_MARKER);
+            if (at < 0 || at > MAX_MESSAGE_CHARS) return false;
+            int digitsFrom = at + MESSAGE_TRUNCATION_MARKER.length();
+            int digitsTo = message.length() - tail.length();
+            if (digitsTo <= digitsFrom) return false;
+            for (int i = digitsFrom; i < digitsTo; i++) {
+                char c = message.charAt(i);
+                if (c < '0' || c > '9') return false;
+            }
+            return true;
         }
 
         synchronized TestSummary toResult(int exitCode) {
