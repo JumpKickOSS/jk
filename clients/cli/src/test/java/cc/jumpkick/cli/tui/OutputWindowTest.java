@@ -26,9 +26,27 @@ class OutputWindowTest {
 
     @Test
     void display_budget_clamps_to_max_and_free_rows() {
-        assertThat(OutputWindow.displayBudget(40, 5)).isEqualTo(34); // 40 - 5 - 1
+        // rows - chrome - rule - cursor-park
+        assertThat(OutputWindow.displayBudget(40, 5)).isEqualTo(33); // 40 - 5 - 2
         assertThat(OutputWindow.displayBudget(300, 1)).isEqualTo(OutputWindow.MAX_LINES);
         assertThat(OutputWindow.displayBudget(10, 20)).isEqualTo(0); // no free rows
+        assertThat(OutputWindow.maxRegionLines(24)).isEqualTo(23);
+    }
+
+    @Test
+    void render_region_never_fills_full_terminal_height() {
+        CommandWedge.resetEnvelope();
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+        cm.name = "Build";
+        cm.height = 20;
+        cm.startNanos = System.nanoTime();
+        cm.outputWindow().show();
+        for (int i = 0; i < 100; i++) cm.writeAbove("line-" + i);
+        List<String> lines = cm.renderBuildPlanLines(80, 0);
+        assertThat(lines.size()).isLessThanOrEqualTo(OutputWindow.maxRegionLines(20));
+        assertThat(TestAnsi.strip(String.join("\n", lines))).contains("output");
+        cm.close();
     }
 
     @Test

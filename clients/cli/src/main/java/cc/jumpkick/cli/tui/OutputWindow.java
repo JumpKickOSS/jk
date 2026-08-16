@@ -80,8 +80,13 @@ public final class OutputWindow {
     }
 
     /**
-     * Display budget from terminal geometry: free rows above plan chrome, minus one for the
-     * on-state rule line, clamped to {@code [0, MAX_LINES]}.
+     * Display budget from terminal geometry: free rows above plan chrome for process lines.
+     *
+     * <p>Reserves: plan chrome + the on-state rule (1) + <strong>one cursor-park row</strong>. The
+     * live region always ends with {@code \n} after its last line; if that parks the cursor past
+     * the bottom of the viewport, the terminal scrolls and {@code cursorUp(lastLines)} overshoots
+     * — stacking wedge headers into scrollback. Keeping region height ≤ {@code rows - 1} prevents
+     * that.
      *
      * @param terminalRows full terminal height
      * @param planChromeRows header + tree (+ completions) lines that form the live plan chrome
@@ -89,10 +94,15 @@ public final class OutputWindow {
     public static int displayBudget(int terminalRows, int planChromeRows) {
         int rows = Math.max(1, terminalRows);
         int chrome = Math.max(0, planChromeRows);
-        // Leave room for chrome + the peek rule line above the wedge.
-        int free = rows - chrome - 1;
+        // rule (1) + cursor park (1) so the final \n after the region never scrolls the viewport
+        int free = rows - chrome - 2;
         if (free < 1) return 0;
         return Math.min(MAX_LINES, free);
+    }
+
+    /** Max logical lines the live region may occupy (always leave one row for the cursor). */
+    public static int maxRegionLines(int terminalRows) {
+        return Math.max(1, Math.max(1, terminalRows) - 1);
     }
 
     /**

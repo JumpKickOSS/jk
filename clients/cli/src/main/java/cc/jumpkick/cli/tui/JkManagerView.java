@@ -419,18 +419,21 @@ final class JkManagerView {
         boolean force = forceFullRepaint;
         forceFullRepaint = false;
         int prev = m.lastLines.size();
-        // Peek pane: height and every pane row churn when new process lines arrive. Line-diff
-        // cursor-up is fragile under that load (and under firehose re-paints), so wipe the whole
-        // previous region then paint clean — same cursor invariant, no stacked wedges.
-        boolean wipeRegion = force && m.outputWindow.visible() && prev > 0;
+        // Never climb more rows than the viewport — if a prior paint scrolled, lastLines can
+        // overstate what's still on-screen; overshooting eats scrollback and stacks wedges.
+        int maxUp = OutputWindow.maxRegionLines(m.height);
+        int up = Math.min(prev, maxUp);
+        // Peek pane: always wipe+redraw. Pane height/content churn; line-diff cursor bookkeeping
+        // cannot recover once a single full-height paint has scrolled.
+        boolean wipeRegion = m.outputWindow.visible() && up > 0;
         if (wipeRegion) {
-            m.out.print(Ansi.cursorUp(prev));
+            m.out.print(Ansi.cursorUp(up));
             m.out.print('\r');
             m.out.print(Ansi.ERASE_DISPLAY_TO_END);
             prev = 0; // full rewrite into cleared space
             force = true;
-        } else if (prev > 0) {
-            m.out.print(Ansi.cursorUp(prev)); // to the top of the region
+        } else if (up > 0) {
+            m.out.print(Ansi.cursorUp(up)); // to the top of the region
         }
         for (int i = 0; i < lines.size(); i++) {
             boolean changed = force || i >= prev || !lines.get(i).equals(m.lastLines.get(i));
@@ -585,6 +588,13 @@ final class JkManagerView {
             lines.add(OutputWindow.ruleLine(cols));
         }
         lines.addAll(chrome);
+        // Never fill the full viewport: paint ends with \n below the last row, which scrolls the
+        // top of a full-height region into scrollback and desyncs cursorUp bookkeeping.
+        int maxRegion = OutputWindow.maxRegionLines(m.height);
+        if (lines.size() > maxRegion) {
+            // Keep the bottom (chrome + rule); drop oldest pane lines from the top.
+            lines = new ArrayList<>(lines.subList(lines.size() - maxRegion, lines.size()));
+        }
         return lines;
     }
 
