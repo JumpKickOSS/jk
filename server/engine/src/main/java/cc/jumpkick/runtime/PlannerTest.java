@@ -152,7 +152,8 @@ public final class PlannerTest {
                         cc.jumpkick.task.GroovyCompile.Result gr = compileGroovySources(
                                 ctx, in, cas, actionCache, gvTest, baseCp, gvTestOut, gvTaskId, gvJavaRoots, null);
                         if (!gr.success()) {
-                            ctx.error("groovyc", gr.output());
+                            PlannerSupport.forwardWorkerDiagnostics(
+                                    ctx, "groovyc", gr.diagnostics(), "groovyc failed without diagnostics");
                             throw new RuntimeException("test groovyc reported errors");
                         }
                     }
@@ -180,7 +181,8 @@ public final class PlannerTest {
                                 ktWorkingDir,
                                 mixedTest ? List.of(javaTestSrc) : null);
                         if (!kr.success()) {
-                            ctx.error("kotlinc", kr.output());
+                            PlannerSupport.forwardWorkerDiagnostics(
+                                    ctx, "kotlinc", kr.diagnostics(), "kotlinc failed without diagnostics");
                             throw new RuntimeException("test kotlinc reported errors");
                         }
                     }

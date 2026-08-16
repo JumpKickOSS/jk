@@ -186,6 +186,10 @@ public final class JavacRunner {
                     // Snippet, caret, symbol:/location:, or wrapped message — keep verbatim.
                     block.append('\n').append(line);
                 } else if ((bare = BARE_DIAGNOSTIC.matcher(line)).matches()) {
+                    // HotSpot JEP 498 banners (lombok.permit, KSP IntelliJ containers, …) look
+                    // like "WARNING: …" and would otherwise flood the warning channel. Real
+                    // javac header-less warnings stay ("warning: [options] …").
+                    if (isJvmHostNoise(line)) continue;
                     diagnostics.add(new CompileResult.Diagnostic(parseSeverity(bare.group("sev")), null, -1, -1, line));
                 } else if (line.startsWith("javac: ")) {
                     // Launcher-level failure (invalid flag, file not found, bad argfile).
@@ -211,6 +215,19 @@ public final class JavacRunner {
             case "note" -> CompileResult.Severity.NOTE;
             default -> CompileResult.Severity.OTHER;
         };
+    }
+
+    /**
+     * HotSpot host banners about memory-access {@code sun.misc.Unsafe} (JEP 498), not javac
+     * diagnostics. The four-line form names the caller on one line and asks maintainers on
+     * another; match all of them so none leak into the UI.
+     */
+    static boolean isJvmHostNoise(String line) {
+        String lower = line.toLowerCase(Locale.ROOT);
+        if (!lower.startsWith("warning:")) return false;
+        return lower.contains("sun.misc.unsafe")
+                || lower.contains("terminally deprecated method")
+                || lower.contains("please consider reporting this to the maintainers of class");
     }
 
     private static boolean hasErrors(List<CompileResult.Diagnostic> diagnostics) {
