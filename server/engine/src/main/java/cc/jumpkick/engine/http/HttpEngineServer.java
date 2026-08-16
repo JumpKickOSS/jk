@@ -176,6 +176,8 @@ public final class HttpEngineServer implements AutoCloseable {
                         this::yieldingAdmission,
                         jid -> journal.rawFinishedRecordByRequestId(jid).orElse(null))
                 : null;
+        // jk_disk / jk_doctor / jk://disk read the same memoized walk as GET /api/cache.
+        if (this.mcp != null) this.mcp.cacheSnapshot(cache);
         this.historyApi = new HttpHistoryApi(journal, () -> this.liveRuns.get());
         this.projectApi = new HttpProjectApi(journal);
         this.readApi = new HttpReadApi(config, webRoot, logFile, status, jobs, metrics, cache, this::url);

@@ -5,6 +5,7 @@ import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.config.EffectiveUserConfig;
 import cc.jumpkick.config.NerdFontMode;
 import cc.jumpkick.config.UserConfigEditor;
+import cc.jumpkick.engine.http.CacheSnapshot;
 import cc.jumpkick.util.JkDirs;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -13,8 +14,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /** Config, disk, and doctor snapshots for MCP. */
 public final class McpMachine {
@@ -76,17 +79,21 @@ public final class McpMachine {
         return m;
     }
 
-    public static Map<String, Object> diskUsage() {
+    /**
+     * Cache-tier vs artifact-store bytes for {@code jk_disk} / {@code jk_doctor} / {@code
+     * jk://disk}. Reads the shared {@link CacheSnapshot} supplier (memoized single-flight walk,
+     * same exclusive CAS-first accounting as {@code GET /api/cache}); a fresh capture only when
+     * no supplier is wired.
+     */
+    public static Map<String, Object> diskUsage(@Nullable Supplier<CacheSnapshot> cache) {
         Map<String, Object> m = new LinkedHashMap<>();
         try {
-            Path cache = JkDirs.cache();
-            Path store = JkDirs.store();
-            DiskUsage.Stats cs = DiskUsage.of(cache);
-            DiskUsage.Stats ss = DiskUsage.of(store);
-            m.put("cacheDir", cache.toString());
-            m.put("cacheBytes", cs.bytes());
-            m.put("storeDir", store.toString());
-            m.put("storeBytes", ss.bytes());
+            CacheSnapshot snap = cache == null ? null : cache.get();
+            if (snap == null) snap = CacheSnapshot.capture(JkDirs.cache());
+            m.put("cacheDir", JkDirs.cache().toString());
+            m.put("cacheBytes", snap.cacheBytes());
+            m.put("storeDir", JkDirs.store().toString());
+            m.put("storeBytes", snap.artifactStorageBytes());
             m.put("hint", "jk_disk action=clean then nuke if you still need space");
         } catch (Exception e) {
             m.put("error", String.valueOf(e.getMessage()));
@@ -243,7 +250,7 @@ public final class McpMachine {
     }
 
     static Map<String, Object> diskAction(String action, boolean confirm, Path cache) {
-        if (action == null || action.isBlank() || "usage".equals(action)) return diskUsage();
+        if (action == null || action.isBlank() || "usage".equals(action)) return diskUsage(null);
         Map<String, Object> preview = diskUsageOf(cache);
         if ("clean".equals(action) || "nuke".equals(action)) {
             if (!confirm) {
@@ -298,10 +305,10 @@ public final class McpMachine {
         return m;
     }
 
-    public static Map<String, Object> doctor() {
+    public static Map<String, Object> doctor(@Nullable Supplier<CacheSnapshot> cache) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("config", configGet());
-        m.put("disk", diskUsage());
+        m.put("disk", diskUsage(cache));
         return m;
     }
 

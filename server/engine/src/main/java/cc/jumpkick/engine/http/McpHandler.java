@@ -57,6 +57,13 @@ public final class McpHandler {
      */
     private final java.util.function.LongFunction<String> finishedRecords;
 
+    /**
+     * Shared memoized cache/store walker (same supplier as {@code GET /api/cache}) — {@code
+     * jk_disk}/{@code jk_doctor}/{@code jk://disk} must not re-walk multi-GiB stores per call.
+     * Optional wiring; {@code null} falls back to a fresh exclusive capture.
+     */
+    private volatile Supplier<CacheSnapshot> cacheSnapshot;
+
     /** Age after which a live job with no progress is marked stalled. */
     static final long STALL_MS = 60_000;
 
@@ -140,6 +147,11 @@ public final class McpHandler {
                     Map<String, Object> rec = McpDiagnostics.findByRequestId(this.historyRaw.get(), jid);
                     return rec == null ? null : MiniJson.write(rec);
                 };
+    }
+
+    /** Wire the shared cache/store snapshot supplier (memoized in the live engine). Optional. */
+    public void cacheSnapshot(Supplier<CacheSnapshot> cacheSnapshot) {
+        this.cacheSnapshot = cacheSnapshot;
     }
 
     /**
@@ -513,7 +525,7 @@ public final class McpHandler {
             case "jk_config" -> configResult(args);
             case "jk_disk" -> diskResult(args);
             case "jk_jdk" -> jdkResult(args);
-            case "jk_doctor" -> ok(McpEnvelope.of("doctor", McpMachine.doctor()), "doctor");
+            case "jk_doctor" -> ok(McpEnvelope.of("doctor", McpMachine.doctor(cacheSnapshot)), "doctor");
             default -> throw new McpError(-32602, "unknown tool: " + name);
         };
     }
@@ -1033,10 +1045,13 @@ public final class McpHandler {
         String action = string(args.get("action"));
         if (action == null || action.isBlank()) action = "usage";
         if ("usage".equals(action)) {
-            return ok(McpEnvelope.of("disk", McpMachine.diskUsage()), "disk usage");
+            return ok(McpEnvelope.of("disk", McpMachine.diskUsage(cacheSnapshot)), "disk usage");
         }
         boolean confirm = Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("confirm")));
         Map<String, Object> m = McpMachine.diskAction(action, confirm);
+        if (confirm && cacheSnapshot instanceof CacheSnapshot.Memoizing memo) {
+            memo.invalidate(); // clean/nuke moved bytes; the next read must re-walk
+        }
         String summary = m.containsKey("error")
                 ? String.valueOf(m.get("error"))
                 : Boolean.TRUE.equals(m.get("preview")) ? "confirm required" : action;
@@ -1077,7 +1092,7 @@ public final class McpHandler {
                                 ? Map.of("records", List.of())
                                 : Map.of("record", McpHistoryViews.summarize(parseRecord(raw.getFirst())));
                     }
-                    case "jk://disk" -> McpMachine.diskUsage();
+                    case "jk://disk" -> McpMachine.diskUsage(cacheSnapshot);
                     case "jk://config" -> McpMachine.configGet();
                     default -> throw new McpError(-32602, "unknown resource: " + uri);
                 };
