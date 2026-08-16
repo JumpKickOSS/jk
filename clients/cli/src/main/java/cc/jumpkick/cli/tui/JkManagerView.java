@@ -97,8 +97,8 @@ final class JkManagerView {
     }
 
     /**
-     * Settle as a remote engine cancel ({@code jk cancel} / web): {@code Build job was cancelled
-     * took …} — no "by user".
+     * Settle as a remote engine cancel ({@code jk cancel} / web): gray {@code ‼ Build} chip, then
+     * {@code job was cancelled took …} — no "by user".
      */
     public void finishBuildPlanCancelled(List<String> above) {
         String took = cc.jumpkick.cli.run.ConsoleSpec.took(Duration.ofMillis(m.elapsedMillis()));

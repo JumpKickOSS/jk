@@ -88,7 +88,8 @@ public sealed interface EngineEvent {
 
     record ModuleStart(String dir) implements EngineEvent {}
 
-    record ModuleFinish(String dir, String coord, boolean success, int exitCode, long millis, boolean didWork)
+    record ModuleFinish(
+            String dir, String coord, boolean success, int exitCode, long millis, boolean didWork, boolean cancelled)
             implements EngineEvent {}
 
     record Eta(long remainingMs) implements EngineEvent {}

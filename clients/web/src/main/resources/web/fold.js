@@ -294,9 +294,17 @@ export function foldEvent(cards, event) {
         const row = moduleRow(card, d.dir, event.at);
         // didWork=false → pure cache check (JK-1296); treat as success but label checked.
         row.didWork = d.didWork !== false;
-        row.state = d.success ? (row.didWork ? 'success' : 'checked') : 'failed';
+        row.state = d.success
+          ? row.didWork
+            ? 'success'
+            : 'checked'
+          : d.cancelled
+            ? 'cancelled'
+            : 'failed';
         row.millis = d.millis ?? row.millis;
         if (d.coord) row.coord = d.coord;
+        // User-cancel stamp as soon as a module reports it — do not wait for request-finish.
+        if (d.cancelled) card.cancelled = true;
       }
       break;
     }
@@ -764,7 +772,9 @@ function historyModules(rec) {
             ? m.didWork === false
               ? 'checked'
               : 'success'
-            : 'failed';
+            : rec.cancelled || m.cancelled || steps.some((s) => s.state === 'cancelled')
+              ? 'cancelled'
+              : 'failed';
       } else if (running && !m.success && steps.some((s) => s.state === 'running')) {
         state = 'running';
       } else if (running && !m.success && steps.length > 0 && !steps.every((s) => s.state === 'failed' || s.state === 'cancelled')) {
@@ -860,9 +870,8 @@ function hasFailedStep(card) {
  * builds do), else derived from module rows (socket requests encode their outcome in wire
  * messages, not events): any failed module → failed; all finished and some succeeded → success.
  *
- * <p>FAIL steps / failed modules take priority over {@code cancelled}. Cooperative fail-fast and
- * post-finish socket EOF can leave {@code cancelled=true} on a run that actually finished with
- * test/compile failures — those must read as failed, not cancelled.
+ * <p>A real test/compile FAIL recorded before cancel still reads as failed. Modules that ended
+ * because the session was cancelled ({@code state === 'cancelled'}) do not flip the badge.
  */
 export function outcomeOf(card) {
   if (card.state === 'running') return 'running';

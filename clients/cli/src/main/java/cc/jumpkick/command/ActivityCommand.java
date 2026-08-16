@@ -155,7 +155,7 @@ public final class ActivityCommand implements CliCommand {
         return switch (outcome) {
             case SUCCESS -> Pill.success(label);
             case FAILURE -> Pill.fail(label);
-            case CANCELLED -> Pill.warning(label);
+            case CANCELLED -> Pill.cancelled(label);
             case RUNNING -> Pill.running(label);
         };
     }

@@ -627,7 +627,7 @@ public final class SsePublisher {
 
     public void publishModuleFinish(
             long requestId, String dir, String coord, boolean success, long millis, boolean didWork) {
-        publishModuleFinish(requestId, dir, coord, success, millis, didWork, false);
+        publishModuleFinish(requestId, dir, coord, success, millis, didWork, false, false);
     }
 
     public void publishModuleFinish(
@@ -637,6 +637,18 @@ public final class SsePublisher {
             boolean success,
             long millis,
             boolean didWork,
+            boolean cancelled) {
+        publishModuleFinish(requestId, dir, coord, success, millis, didWork, cancelled, false);
+    }
+
+    public void publishModuleFinish(
+            long requestId,
+            String dir,
+            String coord,
+            boolean success,
+            long millis,
+            boolean didWork,
+            boolean cancelled,
             boolean dashboardOnly) {
         if (!eventsWanted()) return;
         publishEvent(
@@ -650,7 +662,8 @@ public final class SsePublisher {
                                 .put("coord", coord)
                                 .put("success", success)
                                 .put("millis", millis)
-                                .put("didWork", didWork),
+                                .put("didWork", didWork)
+                                .put("cancelled", cancelled),
                         requestId),
                 dashboardOnly);
     }

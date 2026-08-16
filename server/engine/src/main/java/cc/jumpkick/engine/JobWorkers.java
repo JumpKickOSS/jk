@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -150,6 +151,16 @@ public final class JobWorkers {
         BY_REQUEST.computeIfAbsent(id, k -> ConcurrentHashMap.newKeySet()).add(process);
     }
 
+    /**
+     * {@link ProcessBuilder#start()} then {@link #register}. No-op register when no request scope
+     * is open (probes, engine spawn, tests).
+     */
+    public static Process start(ProcessBuilder pb) throws IOException {
+        Process p = pb.start();
+        register(p);
+        return p;
+    }
+
     /** Stop tracking {@code process} (e.g. after it exits normally). */
     public static void unregister(Process process) {
         if (process == null) return;
@@ -195,13 +206,13 @@ public final class JobWorkers {
         if (set == null || set.isEmpty()) return 0;
         int aliveAtStart = 0;
         boolean soft = graceMs > 0;
-        // Phase 1: signal everyone first (simultaneous for practical purposes).
+        // Phase 1: signal everyone first (simultaneous for practical purposes), including
+        // grandchildren (native-image under a plugin JVM, etc.).
         for (Process p : set) {
             try {
                 if (p.isAlive()) {
                     aliveAtStart++;
-                    if (soft) p.destroy();
-                    else p.destroyForcibly();
+                    signalTree(p, !soft);
                 }
             } catch (RuntimeException ignored) {
                 // best-effort
@@ -221,7 +232,7 @@ public final class JobWorkers {
             }
             for (Process p : set) {
                 try {
-                    if (p.isAlive()) p.destroyForcibly();
+                    if (p.isAlive() || anyDescendantAlive(p)) signalTree(p, true);
                 } catch (RuntimeException ignored) {
                     // best-effort
                 }
@@ -233,12 +244,47 @@ public final class JobWorkers {
     private static boolean anyAlive(Set<Process> set) {
         for (Process p : set) {
             try {
-                if (p.isAlive()) return true;
+                if (p.isAlive() || anyDescendantAlive(p)) return true;
             } catch (RuntimeException ignored) {
                 // treat as dead
             }
         }
         return false;
+    }
+
+    private static boolean anyDescendantAlive(Process p) {
+        try {
+            return p.descendants().anyMatch(ProcessHandle::isAlive);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** SIGTERM (or SIGKILL when {@code force}) the process and every live descendant. */
+    private static void signalTree(Process p, boolean force) {
+        try {
+            if (force) {
+                p.descendants().forEach(h -> {
+                    try {
+                        h.destroyForcibly();
+                    } catch (RuntimeException ignored) {
+                        // best-effort
+                    }
+                });
+                if (p.isAlive()) p.destroyForcibly();
+            } else {
+                if (p.isAlive()) p.destroy();
+                p.descendants().forEach(h -> {
+                    try {
+                        h.destroy();
+                    } catch (RuntimeException ignored) {
+                        // best-effort
+                    }
+                });
+            }
+        } catch (RuntimeException ignored) {
+            // best-effort
+        }
     }
 
     /**

@@ -58,10 +58,18 @@ public final class JavacRunner {
                 // (jk-java-compiler ToolProvider host and kotlin-compiler). See PluginAot.
                 command.add("@" + argfile);
                 ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
-                Process process = pb.start();
+                Process process = cc.jumpkick.engine.JobWorkers.start(pb);
                 List<String> stray = new ArrayList<>();
-                List<CompileResult.Diagnostic> diagnostics = parseStream(process, stray);
-                int exit = process.waitFor();
+                List<CompileResult.Diagnostic> diagnostics;
+                int exit;
+                try {
+                    diagnostics = parseStream(process, stray);
+                    exit = process.waitFor();
+                } catch (InterruptedException e) {
+                    process.destroyForcibly();
+                    Thread.currentThread().interrupt();
+                    throw new IOException("javac was interrupted", e);
+                }
                 if (exit != 0 && !hasErrors(diagnostics)) {
                     // javac died without any per-source diagnostic (bad flag, unreadable
                     // classpath entry it didn't attribute, a crash, …). Surface whatever it
@@ -79,9 +87,6 @@ public final class JavacRunner {
             } finally {
                 Files.deleteIfExists(argfile);
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("javac was interrupted", e);
         } finally {
             if (scratch != null) PathUtil.deleteRecursively(scratch);
         }

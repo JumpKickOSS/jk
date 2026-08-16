@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.run.SessionCancel;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -14,6 +15,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
 /**
@@ -56,7 +58,8 @@ public final class WorkspaceScheduler {
     /**
      * Schedule {@code units} over {@code edges} (unit dir → deps) with at most {@code maxConcurrency}
      * in flight ({@code <= 0} = unbounded batch-per-level; {@code 1} = serial). Fail-fast when
-     * {@code sink} returns non-null; otherwise {@code null} when all units finish.
+     * {@code sink} returns non-null; otherwise {@code null} when all units finish. Stops admitting
+     * (and does not join the remaining DAG) when {@link SessionCancel} is set.
      */
     public static <U, R> R run(
             List<U> units,
@@ -65,13 +68,30 @@ public final class WorkspaceScheduler {
             UnitTask<U, R> task,
             LevelSink<U, R> sink,
             int maxConcurrency) {
+        return run(units, dirOf, edges, task, sink, maxConcurrency, SessionCancel::cancelled);
+    }
+
+    /**
+     * As {@link #run(List, Function, Map, UnitTask, LevelSink, int)} with an explicit cancel probe
+     * (tests). When {@code cancelled} is true, no further units start and in-flight futures are
+     * {@code cancel(true)}'d — the method returns {@code null} without waiting for them.
+     */
+    public static <U, R> R run(
+            List<U> units,
+            Function<U, Path> dirOf,
+            Map<Path, Set<Path>> edges,
+            UnitTask<U, R> task,
+            LevelSink<U, R> sink,
+            int maxConcurrency,
+            BooleanSupplier cancelled) {
+        BooleanSupplier stop = cancelled == null ? () -> false : cancelled;
         Set<Path> unitDirs = new HashSet<>();
         for (U u : units) unitDirs.add(dirOf.apply(u));
         Set<Path> done = ConcurrentHashMap.newKeySet();
         if (maxConcurrency <= 0) {
-            // Unbounded: batch-per-level (unchanged from the original scheduler).
             List<U> remaining = new ArrayList<>(units);
             while (!remaining.isEmpty()) {
+                if (stop.getAsBoolean()) return null;
                 List<U> ready = remaining.stream()
                         .filter(u -> edges.getOrDefault(dirOf.apply(u), Set.of()).stream()
                                 .filter(unitDirs::contains)
@@ -83,23 +103,38 @@ public final class WorkspaceScheduler {
                     throw unsatisfiable(remaining, dirOf, edges, unitDirs, done);
                 }
                 List<CompletableFuture<R>> futures = new ArrayList<>();
-                for (U u : ready) futures.add(CompletableFuture.supplyAsync(() -> task.run(u), JkThreads.io()));
+                for (U u : ready) {
+                    if (stop.getAsBoolean()) {
+                        cancelAll(futures);
+                        return null;
+                    }
+                    futures.add(CompletableFuture.supplyAsync(() -> task.run(u), JkThreads.io()));
+                }
                 List<R> results = new ArrayList<>(futures.size());
-                for (CompletableFuture<R> f : futures) results.add(f.join());
+                for (CompletableFuture<R> f : futures) {
+                    if (stop.getAsBoolean()) {
+                        cancelAll(futures);
+                        return null;
+                    }
+                    results.add(f.join());
+                }
                 for (U u : ready) done.add(dirOf.apply(u));
                 remaining.removeAll(ready);
-                R stop = sink.after(ready, results, remaining);
-                if (stop != null) return stop;
+                R sinkStop = sink.after(ready, results, remaining);
+                if (sinkStop != null) return sinkStop;
             }
             return null;
         }
-        // Bounded: rolling window of at most maxConcurrency in-flight units, admitted across levels.
         List<U> notStarted = new ArrayList<>(units);
         BlockingQueue<Done<U, R>> completed = new LinkedBlockingQueue<>();
+        Set<CompletableFuture<?>> inflight = ConcurrentHashMap.newKeySet();
         int inFlight = 0;
         while (true) {
-            // Admit ready, not-yet-started units until the concurrency window is full.
-            while (inFlight < maxConcurrency) {
+            if (stop.getAsBoolean()) {
+                cancelAll(inflight);
+                return null;
+            }
+            while (inFlight < maxConcurrency && !stop.getAsBoolean()) {
                 U next = null;
                 for (U u : notStarted) {
                     boolean ready = edges.getOrDefault(dirOf.apply(u), Set.of()).stream()
@@ -110,15 +145,22 @@ public final class WorkspaceScheduler {
                         break;
                     }
                 }
-                if (next == null) break; // nothing else admittable right now
+                if (next == null) break;
                 notStarted.remove(next);
                 U unit = next;
-                CompletableFuture.supplyAsync(() -> task.run(unit), JkThreads.io())
-                        .whenComplete((r, ex) -> completed.add(new Done<>(unit, r, ex)));
+                CompletableFuture<R> f = CompletableFuture.supplyAsync(() -> task.run(unit), JkThreads.io());
+                inflight.add(f);
+                f.whenComplete((r, ex) -> {
+                    inflight.remove(f);
+                    completed.add(new Done<>(unit, r, ex));
+                });
                 inFlight++;
             }
+            if (stop.getAsBoolean()) {
+                cancelAll(inflight);
+                return null;
+            }
             if (inFlight == 0) {
-                // Drained cleanly, or unsatisfiable (cycle / missing dep) with work left.
                 if (!notStarted.isEmpty()) {
                     throw unsatisfiable(notStarted, dirOf, edges, unitDirs, done);
                 }
@@ -126,9 +168,11 @@ public final class WorkspaceScheduler {
             }
             Done<U, R> d;
             try {
-                d = completed.take(); // wait for the next unit to finish
+                d = completed.take();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                cancelAll(inflight);
+                if (stop.getAsBoolean()) return null;
                 throw new CompletionException(e);
             }
             inFlight--;
@@ -136,8 +180,17 @@ public final class WorkspaceScheduler {
                 throw d.error() instanceof CompletionException ce ? ce : new CompletionException(d.error());
             }
             done.add(dirOf.apply(d.unit()));
-            R stop = sink.after(List.of(d.unit()), Collections.singletonList(d.result()), List.copyOf(notStarted));
-            if (stop != null) return stop; // fail-fast; any in-flight units drain in the background
+            R sinkStop = sink.after(List.of(d.unit()), Collections.singletonList(d.result()), List.copyOf(notStarted));
+            if (sinkStop != null) {
+                cancelAll(inflight);
+                return sinkStop;
+            }
+        }
+    }
+
+    private static void cancelAll(Iterable<? extends CompletableFuture<?>> futures) {
+        for (CompletableFuture<?> f : futures) {
+            f.cancel(true);
         }
     }
 

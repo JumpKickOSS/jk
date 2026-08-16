@@ -299,7 +299,7 @@ public final class PlannerKsp {
 
                     ProcessBuilder pb =
                             new ProcessBuilder(cmd).directory(in.dir().toFile()).redirectErrorStream(true);
-                    Process proc = pb.start();
+                    Process proc = cc.jumpkick.engine.JobWorkers.start(pb);
                     // Read on a drainer thread and bound the wait: on an internal error KSP's JVM
                     // can linger (non-daemon compiler pools survive the main thread's exception),
                     // which would hang a plain readAllBytes forever.

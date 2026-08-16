@@ -35,6 +35,21 @@ class JobWorkersTest {
     }
 
     @Test
+    void start_registers_when_a_request_scope_is_open() throws Exception {
+        long req = 55L;
+        JobWorkers.open(req);
+        Process p = JobWorkers.start(new ProcessBuilder("sleep", "30"));
+        try {
+            assertThat(JobWorkers.trackedCount(req)).isEqualTo(1);
+            assertThat(p.isAlive()).isTrue();
+        } finally {
+            if (p.isAlive()) p.destroyForcibly();
+            JobWorkers.close();
+            JobWorkers.clear(req);
+        }
+    }
+
+    @Test
     void register_without_scope_is_noop() throws Exception {
         Process p = new ProcessBuilder("sleep", "1").start();
         try {

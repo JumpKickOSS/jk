@@ -300,6 +300,12 @@ public final class WorkspaceExecute {
         // still re-anchors the painted countdown mid-run).
         listener.onEtaEstimate(etaMs);
 
+        if (cc.jumpkick.run.SessionCancel.cancelled()) {
+            WorkspaceResult r = new WorkspaceResult(false, 1, List.of(), List.of(), true);
+            listener.onWorkspaceFinish(r);
+            return r;
+        }
+
         // Workspace artifact links for the whole graph (clean modules still own jars from prior builds).
         Map<Path, Path> wsLinks = computeWorkspaceLinks(moduleDirs, req.entryDir());
         for (BuildGraph.BuildUnit u : cleanUnits) {
@@ -389,6 +395,7 @@ public final class WorkspaceExecute {
             Map<Path, ModulePlan> plans = new LinkedHashMap<>();
             int prepared = 0;
             for (BuildGraph.BuildUnit u : dirtyUnits) {
+                if (cc.jumpkick.run.SessionCancel.cancelled()) break;
                 ModulePlan p = prepareModule(u, req, moduleDirs, true);
                 prepared++;
                 listener.onPreflight(
@@ -404,8 +411,10 @@ public final class WorkspaceExecute {
         Map<Path, ModulePlan> plans = new ConcurrentHashMap<>();
         List<CompletableFuture<Void>> futures = new ArrayList<>(dirtyUnits.size());
         for (BuildGraph.BuildUnit u : dirtyUnits) {
+            if (cc.jumpkick.run.SessionCancel.cancelled()) break;
             futures.add(CompletableFuture.runAsync(
                     () -> {
+                        if (cc.jumpkick.run.SessionCancel.cancelled()) return;
                         ModulePlan p = prepareModule(u, req, moduleDirs, true);
                         if (p == null) throw new PrepareFailed(u.coord(), u.dir());
                         p.plan().addListener(timingsRecorder(p, timingSamples, hostSamples));
@@ -610,16 +619,19 @@ public final class WorkspaceExecute {
             // cache hit; never grow the bar mid-run.
             BuildPlanResult r = EffortWeights.withOverReserveTails(module.plan()::run);
             long ms = (System.nanoTime() - t0) / 1_000_000;
-            int exit = r.success() ? 0 : exitCodeFor(module.plan());
+            boolean cancelled = r.userCancelled() || cc.jumpkick.run.SessionCancel.cancelled();
+            int exit = r.success() && !cancelled ? 0 : exitCodeFor(module.plan());
             // Failures always count as work; successes count only when a productive step ran
             // (not pure cache hits / no-ops —.
-            boolean didWork = !r.success() || BuildService.moduleDidWork(r);
-            ModuleOutcome o = new ModuleOutcome(module.coord(), module.dir(), r.success(), exit, ms, didWork);
+            boolean didWork = !r.success() || cancelled || BuildService.moduleDidWork(r);
+            ModuleOutcome o = new ModuleOutcome(
+                    module.coord(), module.dir(), r.success() && !cancelled, exit, ms, didWork, cancelled);
             listener.onModuleFinish(o);
             return o;
         } catch (RuntimeException e) {
             long ms = (System.nanoTime() - t0) / 1_000_000;
-            ModuleOutcome o = new ModuleOutcome(module.coord(), module.dir(), false, 1, ms, true);
+            boolean cancelled = cc.jumpkick.run.SessionCancel.cancelled();
+            ModuleOutcome o = new ModuleOutcome(module.coord(), module.dir(), false, 1, ms, true, cancelled);
             listener.onModuleFinish(o);
             return o;
         }

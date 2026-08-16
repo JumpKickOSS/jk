@@ -360,7 +360,7 @@ public final class TrainRunner {
         create.addAll(launch);
         ProcessBuilder pb2 =
                 new ProcessBuilder(create).redirectErrorStream(true).directory(moduleDir.toFile());
-        Process p = pb2.start();
+        Process p = cc.jumpkick.engine.JobWorkers.start(pb2);
         // Drain the pipe: a chatty assembler fills the 64K buffer, stalls, gets force-killed at
         // the timeout, and is then misreported as "did not produce a cache".
         StringBuilder createOut = new StringBuilder();
@@ -387,7 +387,7 @@ public final class TrainRunner {
 
     private static Output runUntilSettled(ProcessBuilder pb, Consumer<String> log)
             throws IOException, InterruptedException {
-        Process process = pb.start();
+        Process process = cc.jumpkick.engine.JobWorkers.start(pb);
         StringBuilder out = new StringBuilder();
         java.util.concurrent.atomic.AtomicLong lastOutput =
                 new java.util.concurrent.atomic.AtomicLong(System.nanoTime());

@@ -863,7 +863,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         // Ctrl-C: hand the streams back so any buffered output flushes above the
         // region, stop animating, then settle. BuildPlan mode replaces the wiped region
         // in place with the same cancelled-job wedge as a remote `jk cancel` / web cancel
-        // ("✘ Build job was cancelled by user took …") and returns true so GlobalCancel
+        // ("‼ Build  job was cancelled by user took …") and returns true so GlobalCancel
         // suppresses its generic notice. Simple / non-animating modes just settle and let
         // the handler print the notice.
         restoreStreams();

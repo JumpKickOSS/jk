@@ -987,7 +987,8 @@ final class EngineBuildListenerAdapter {
                                 Jsonl.bool(line, "success", false),
                                 Jsonl.intValue(line, "exitCode", 1),
                                 Jsonl.longValue(line, "millis", 0),
-                                Jsonl.bool(line, "didWork", true));
+                                Jsonl.bool(line, "didWork", true),
+                                Jsonl.bool(line, "cancelled", false));
                         outcomes.add(outcome);
                         listener.onModuleFinish(outcome);
                     }

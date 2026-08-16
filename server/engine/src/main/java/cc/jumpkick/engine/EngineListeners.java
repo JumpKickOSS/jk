@@ -139,7 +139,8 @@ public final class EngineListeners {
             @Override
             public void moduleFinished(ModuleOutcome o) {
                 journal.accModule(rid, o);
-                sse.publishModuleFinish(rid, o.dir().toString(), o.coord(), o.success(), o.millis(), o.didWork());
+                sse.publishModuleFinish(
+                        rid, o.dir().toString(), o.coord(), o.success(), o.millis(), o.didWork(), o.cancelled());
             }
 
             @Override

@@ -92,7 +92,8 @@ public final class WireEventSink implements EventSink {
             case EngineEvent.PlanDone e -> ProtoEvents.planDone(e.modules());
             case EngineEvent.ModuleStart e -> ProtoEvents.moduleStart(e.dir());
             case EngineEvent.ModuleFinish e ->
-                ProtoEvents.moduleFinish(e.dir(), e.coord(), e.success(), e.exitCode(), e.millis(), e.didWork());
+                ProtoEvents.moduleFinish(
+                        e.dir(), e.coord(), e.success(), e.exitCode(), e.millis(), e.didWork(), e.cancelled());
             case EngineEvent.Eta e -> ProtoEvents.eta(e.remainingMs());
         };
     }

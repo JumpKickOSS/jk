@@ -22,8 +22,10 @@ public final class Pill implements Widget {
         SUCCESS,
         /** Black on failure red. */
         FAIL,
-        /** Black on warning amber — cancelled jobs. */
+        /** Black on warning amber. */
         WARNING,
+        /** Black on badge gray — cancelled jobs; same fill as {@code jk explain} pills. */
+        CANCELLED,
         /** White on plan blue — running jobs. */
         RUNNING
     }
@@ -77,6 +79,10 @@ public final class Pill implements Widget {
         return new Pill(RichText.plain(label == null ? "" : label), null, null, Look.WARNING);
     }
 
+    public static Pill cancelled(String label) {
+        return new Pill(RichText.plain(label == null ? "" : label), null, null, Look.CANCELLED);
+    }
+
     public static Pill running(String label) {
         return new Pill(RichText.plain(label == null ? "" : label), null, null, Look.RUNNING);
     }
@@ -114,6 +120,7 @@ public final class Pill implements Widget {
             case SUCCESS -> filled(theme, theme.planChipColor(), false);
             case FAIL -> filled(theme, theme.planFailColor(), false);
             case WARNING -> filled(theme, JkDarkTheme.NORMAL_YELLOW, false);
+            case CANCELLED -> new Fill(theme.scopeBadge(), theme.gray());
         };
     }
 

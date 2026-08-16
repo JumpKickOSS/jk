@@ -10,6 +10,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
@@ -129,6 +130,46 @@ class WorkspaceSchedulerTest {
         assertThat(stop).isEqualTo("FAILED");
         // Serial + fail-fast: nothing past the failing unit's dependents should have started.
         assertThat(ran).containsExactly("a");
+    }
+
+    @Test
+    void bounded_stops_admitting_when_cancelled() {
+        AtomicInteger started = new AtomicInteger();
+        AtomicBoolean cancelled = new AtomicBoolean();
+        String stop = WorkspaceScheduler.run(
+                diamondUnits(),
+                WorkspaceSchedulerTest::p,
+                diamondEdges(),
+                unit -> {
+                    started.incrementAndGet();
+                    if ("a".equals(unit)) cancelled.set(true);
+                    return unit;
+                },
+                (justCompleted, results, remaining) -> null,
+                1,
+                cancelled::get);
+        assertThat(stop).isNull();
+        assertThat(started.get()).isEqualTo(1);
+    }
+
+    @Test
+    void unbounded_does_not_start_the_next_level_when_cancelled() {
+        AtomicInteger started = new AtomicInteger();
+        AtomicBoolean cancelled = new AtomicBoolean();
+        String stop = WorkspaceScheduler.run(
+                diamondUnits(),
+                WorkspaceSchedulerTest::p,
+                diamondEdges(),
+                unit -> {
+                    started.incrementAndGet();
+                    if ("a".equals(unit)) cancelled.set(true);
+                    return unit;
+                },
+                (justCompleted, results, remaining) -> null,
+                0,
+                cancelled::get);
+        assertThat(stop).isNull();
+        assertThat(started.get()).isEqualTo(1);
     }
 
     @Test

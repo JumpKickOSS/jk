@@ -164,6 +164,11 @@ public final class JkDarkTheme implements Theme {
     }
 
     @Override
+    public Rgb grayColor() {
+        return GRAY;
+    }
+
+    @Override
     public AttributedStyle activeStep() {
         return withColor(AttributedStyle.DEFAULT, BRIGHT_CYAN);
     }

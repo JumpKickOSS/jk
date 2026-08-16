@@ -1267,6 +1267,22 @@ test('FAIL steps beat a cancelled bit on the card (test failure must not read as
   assert.equal(outcomeOf(cards[0]), 'failed');
 });
 
+test('cancelled module-finish after user cancel does not flip the card to failed', () => {
+  const cards = [];
+  foldEvent(cards, start(1, '/w'));
+  foldEvent(cards, {
+    type: 'module-finish',
+    data: { requestId: 1, dir: '/w/a', success: true, millis: 10 },
+  });
+  foldEvent(cards, {
+    type: 'module-finish',
+    data: { requestId: 1, dir: '/w/b', success: false, cancelled: true, millis: 5 },
+  });
+  foldEvent(cards, finish(1, { success: false, cancelled: true }));
+  assert.equal(cards[0].modules.find((m) => m.dir === '/w/b').state, 'cancelled');
+  assert.equal(outcomeOf(cards[0]), 'cancelled');
+});
+
 test('cancelled without FAIL steps still reads as cancelled', () => {
   const cards = [];
   seedFromHistory(cards, [

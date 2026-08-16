@@ -255,8 +255,11 @@ public final class JobEnvelope {
                 runner.run(requestLine, cancelToken, writer);
             } finally {
                 cc.jumpkick.task.IoLedger.close();
+                // Kill leftovers — never clear() the registry without shutdown, or a racing
+                // cancel thread's shutdownForRequest finds an empty set and plugin/javac
+                // children keep running.
+                JobWorkers.shutdownForRequest(eventRequestId, 0L);
                 JobWorkers.close();
-                JobWorkers.clear(eventRequestId);
                 host.unbindEventRequestId();
                 if (plan) host.cacheGate().readLock().unlock();
                 // Free exclusive fingerprint as soon as plan work ends — before the
@@ -477,6 +480,8 @@ public final class JobEnvelope {
         cancelToken.cancel();
         markUserCancelled(eventRequestId, explicit);
         Thread.ofVirtual().name("jk-cancel-" + eventRequestId, 0).start(() -> {
+            // Workers first (SIGTERM → grace → SIGKILL), then interrupt the runner so
+            // the scheduler does not join the rest of the DAG.
             int killed = JobWorkers.shutdownForRequest(eventRequestId, cancelGraceMs);
             interruptRunner(runnerRef != null ? runnerRef.get() : null);
             if (killed > 0) {

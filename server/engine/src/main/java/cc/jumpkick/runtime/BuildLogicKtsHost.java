@@ -52,7 +52,7 @@ final class BuildLogicKtsHost {
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectErrorStream(true);
             pb.directory(projectDir.toFile());
-            Process p = pb.start();
+            Process p = cc.jumpkick.engine.JobWorkers.start(pb);
             String log = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             int exit = p.waitFor();
             if (exit != 0) {

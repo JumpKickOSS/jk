@@ -44,6 +44,9 @@ public interface Theme {
     /** Medium gray — the shared badge/chip background (and its powerline caps). */
     AttributedStyle gray();
 
+    /** The {@link #gray()} color as an {@link Rgb} — chip fill and the powerline cap that closes it. */
+    Rgb grayColor();
+
     /** Active rail / step bullet — bright cyan highlight. */
     AttributedStyle activeStep();
 
