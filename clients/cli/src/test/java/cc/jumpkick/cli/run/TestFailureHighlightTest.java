@@ -229,6 +229,43 @@ class TestFailureHighlightTest {
     }
 
     @Test
+    void cjk_snippet_rows_clamp_by_columns_not_code_units() {
+        // A CJK comment measures ~half its real width in UTF-16 code units: measured by
+        // code units it escaped the clamp, padded every row past the terminal, and wrapped
+        // the band without the rail.
+        String cjkLine = "        int x = 1; // " + "构建工具诊断".repeat(20);
+        List<String> raw = List.of(
+                "Test Failure",
+                "1 test failed",
+                "",
+                "FAILED Foo.bar()",
+                "",
+                "@@source line=2 start=1 lang=java path=Foo.java",
+                "@@src 1|int ok = 1;",
+                "@@src 2*|" + cjkLine,
+                "@@src-end",
+                "Test Failure end");
+        List<String> painted = TestFailureHighlight.paintLines(raw);
+        int widest = painted.stream()
+                .map(TestFailureHighlightTest::plain)
+                .mapToInt(cc.jumpkick.cli.tui.RenderContext::visibleWidth)
+                .max()
+                .orElse(0);
+        assertThat(widest).isLessThanOrEqualTo(cc.jumpkick.cli.tui.TerminalSize.columns());
+        // No lone surrogate survives the cut.
+        for (String line : painted) {
+            String p = plain(line);
+            for (int i = 0; i < p.length(); i++) {
+                if (Character.isHighSurrogate(p.charAt(i))) {
+                    assertThat(i + 1 < p.length() && Character.isLowSurrogate(p.charAt(i + 1)))
+                            .as("lone high surrogate in: %s", p)
+                            .isTrue();
+                }
+            }
+        }
+    }
+
+    @Test
     void plain_mode_snippet_clamp_stays_pure_ascii() throws Exception {
         // clampCode appended U+2026 before the ANSI/plain fork, re-leaking a non-ASCII
         // char into output  had just made pure ASCII on CI/dumb terminals.

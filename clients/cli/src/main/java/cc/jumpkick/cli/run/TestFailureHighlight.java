@@ -369,7 +369,7 @@ public final class TestFailureHighlight {
             String code = clampCode(expandTabs(row.code), budget, t.isAnsi());
             row = new SrcRow(row.num, row.error, code, row.markCol);
             rows.add(row);
-            maxCode = Math.max(maxCode, row.code.length());
+            maxCode = Math.max(maxCode, columns(row.code));
         }
 
         int line = parsePositiveInt(attr(header, "line"));
@@ -446,7 +446,7 @@ public final class TestFailureHighlight {
             String num = Integer.toString(snippetOnly ? err : line);
             SrcRow row = new SrcRow(num, isErr, code, mark);
             rows.add(row);
-            maxCode = Math.max(maxCode, row.code.length());
+            maxCode = Math.max(maxCode, columns(row.code));
         }
         List<String> out = new ArrayList<>();
         if (!t.isAnsi()) {
@@ -538,14 +538,37 @@ public final class TestFailureHighlight {
     }
 
     private static String clampCode(String code, int budget, boolean ansi) {
-        if (code.length() <= budget) return code;
+        // Budget is in terminal COLUMNS: CJK code points are two wide and combining marks are
+        // zero, so measuring UTF-16 code units let wide lines escape the clamp and pad every
+        // row past the terminal (the band then wraps without the rail).
+        if (columns(code) <= budget) return code;
         // Plain mode stays pure ASCII: the clamp ran before the ANSI/plain fork
         // and re-leaked U+2026 into output the ASCII pass had just cleaned. Reserve the marker's
-        // own columns, and never cut a surrogate pair in half.
+        // own columns; cutting by code point never splits a surrogate pair.
         String ellipsis = ansi ? "…" : "...";
-        int cut = Math.max(1, budget - ellipsis.length());
-        if (Character.isHighSurrogate(code.charAt(cut - 1))) cut = Math.max(1, cut - 1);
-        return code.substring(0, cut) + ellipsis;
+        return cutAtColumns(code, Math.max(1, budget - ellipsis.length())) + ellipsis;
+    }
+
+    /** Visible terminal columns of {@code code} (wcwidth-based, ANSI-free source text). */
+    private static int columns(String code) {
+        return cc.jumpkick.cli.tui.RenderContext.visibleWidth(code);
+    }
+
+    /** Longest prefix of {@code code} spending at most {@code maxCols} columns, whole code points. */
+    private static String cutAtColumns(String code, int maxCols) {
+        int cols = 0;
+        int i = 0;
+        while (i < code.length()) {
+            int cp = code.codePointAt(i);
+            int n = Character.charCount(cp);
+            int w = columns(code.substring(i, i + n));
+            if (cols + w > maxCols) break;
+            cols += w;
+            i += n;
+        }
+        // Never return empty for non-empty input: keep at least one whole code point.
+        if (i == 0 && !code.isEmpty()) return code.substring(0, Character.charCount(code.codePointAt(0)));
+        return code.substring(0, i);
     }
 
     private record SrcRow(String num, boolean error, String code, int markCol) {
@@ -577,7 +600,7 @@ public final class TestFailureHighlight {
         String gap = Theme.colorize(" ", t.withBackground(AttributedStyle.DEFAULT, lineBg));
         String code = row.code;
         String codePainted = paintCode(row, language, lineBg, t);
-        int pad = Math.max(0, maxCode - code.length());
+        int pad = Math.max(0, maxCode - columns(code));
         if (code.isEmpty() && pad == 0) pad = 1;
         String padPainted =
                 pad > 0 ? Theme.colorize(" ".repeat(pad), t.withBackground(AttributedStyle.DEFAULT, lineBg)) : "";
@@ -619,8 +642,9 @@ public final class TestFailureHighlight {
 
     private static String padRight(String s, int width) {
         if (s == null) s = "";
-        if (s.length() >= width) return s;
-        return s + " ".repeat(width - s.length());
+        int w = columns(s);
+        if (w >= width) return s;
+        return s + " ".repeat(width - w);
     }
 
     // --- labels / thrown-at / assertion --------------------------------------
