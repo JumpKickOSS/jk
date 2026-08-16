@@ -122,6 +122,39 @@ test('a stale project-meta response never overwrites the current project (JK-199
   assert.equal(w.selectedProjectDir, '/same');
 });
 
+test('manifest saves and build finishes refresh the open project header (JK-2065)', async () => {
+  const flush = () => new Promise((r) => setImmediate(r));
+  const v = vm({
+    view: 'project',
+    selectedProjectId: 'abc123',
+    projectMeta: { coord: 'g:old', dir: '/old' },
+    selectedProjectDir: '/old',
+    projectHistory: [{}],
+  });
+  let fetches = 0;
+  v.fetchProjectMeta = () => {
+    fetches++;
+    return Promise.resolve({ coord: 'g:new', dir: '/new' });
+  };
+  // A jk.toml save re-pulls meta in place — no null flicker on the way.
+  v.onCodeSaved({ path: 'jk.toml' });
+  assert.notEqual(v.projectMeta, null, 'header never blanks during the refresh');
+  await flush();
+  assert.equal(fetches, 1);
+  assert.equal(v.projectMeta.coord, 'g:new');
+  assert.equal(v.selectedProjectDir, '/new');
+  // Non-manifest saves do not refetch.
+  v.onCodeSaved({ path: 'src/Main.java' });
+  await flush();
+  assert.equal(fetches, 1);
+  // Build finish path calls refreshProjectMeta directly; outside project view it is a no-op.
+  await v.refreshProjectMeta();
+  assert.equal(fetches, 2);
+  v.view = 'activity';
+  await v.refreshProjectMeta();
+  assert.equal(fetches, 2);
+});
+
 test('leaving project view or switching projects collapses the graph panel', () => {
   globalThis.location.hash = '#project/abc123';
   const v = vm({ selectedProjectId: 'abc123', projectMeta: { dir: '/x' }, projectGraphOpen: true });

@@ -1265,6 +1265,9 @@ export const appOptions = {
               if (this.view === 'status' || this.view === 'projects' || this.view === 'project') {
                 this.refreshMetrics();
               }
+              // A build can change the open project's coord/description/dir (manifest edits,
+              // branch switches) — re-pull the header meta in place.
+              this.refreshProjectMeta();
             }, 500);
           }
         },
@@ -1483,6 +1486,31 @@ export const appOptions = {
         this.handleHttpError(e);
       }
       if (!this.projectHistory.length) this.loadProjectHistory(); // detail rows come from history
+    },
+
+    /**
+     * Re-pull the open project's meta in place — coord/description/dir go stale after a manifest
+     * save or a finished build (branch switch, edited jk.toml). Unlike {@code loadProjectMeta}
+     * this never nulls {@code projectMeta}, so the header keeps its last values instead of
+     * flickering; errors keep the stale header rather than surfacing (the next full load does).
+     */
+    async refreshProjectMeta() {
+      const projectId = this.selectedProjectId;
+      if (this.authModal || this.view !== 'project' || !projectId) return;
+      try {
+        const meta = await this.fetchProjectMeta(projectId);
+        if (this.selectedProjectId !== projectId) return; // stale response (JK-1995)
+        this.projectMeta = meta;
+        this._projectMetaFor = projectId;
+        if (meta && meta.dir) this.selectedProjectDir = meta.dir;
+      } catch {
+        // keep the last known header
+      }
+    },
+
+    /** A code-view save landed. Manifest edits change the header — re-pull the meta. */
+    onCodeSaved({ path } = {}) {
+      if (path === 'jk.toml' || (path && path.endsWith('/jk.toml'))) this.refreshProjectMeta();
     },
 
     // The "Build" button: kick off a fresh build of this project and jump to the live Activity feed.

@@ -968,7 +968,7 @@ export const CodeView = {
     /** Compiler / failure note from {@code ?msg=} — shown on hover. */
     msg: { type: String, default: '' },
   },
-  emits: ['navigate', 'build'],
+  emits: ['navigate', 'build', 'saved'],
   data: () => ({
     loadingList: false,
     loadingFile: false,
@@ -1640,6 +1640,8 @@ export const CodeView = {
           this.notice = 'Manifest saved — the lock is now stale; the next build will re-resolve dependencies';
         }
         this.flashSaved();
+        // The parent refreshes project meta on manifest saves (header coord/description).
+        this.$emit('saved', { path: savedPath });
       } catch (e) {
         if (this.path !== savedPath) return; // stale failure belongs to a file no longer shown
         this.error = saveErrorMessage(e);

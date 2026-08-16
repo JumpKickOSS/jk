@@ -324,7 +324,7 @@
                    :col="codeCol"
                    :line-err="codeLineErr"
                    :msg="codeMsg"
-                   :key="selectedProjectId" @navigate="onCodeNavigate"></code-view>
+                   :key="selectedProjectId" @navigate="onCodeNavigate" @saved="onCodeSaved"></code-view>
       </template>
       <template v-else>
       <p v-if="projectDetail && projectDetail.description" class="proj-desc">
