@@ -21,6 +21,12 @@ public record Progress(long numerator, long denominator, RichText suffix, Look l
     /** Plain live updates fire at these percents (0 is the start line; 100 is settle-only). */
     public static final int PLAIN_STEP_PERCENT = 20;
 
+    /**
+     * The canonical constructor is public by record rule — it can be no narrower than the class,
+     * and the class is public for cross-package callers ({@code CacheCommand}). Every component
+     * is normalized here, so no caller can construct a denormalized instance; the withers and the
+     * two-arg convenience constructor remain the idiomatic surface.
+     */
     public Progress {
         suffix = suffix == null ? RichText.empty() : suffix;
         look = look == null ? Look.PLAN : look;
