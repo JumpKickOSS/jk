@@ -4,9 +4,12 @@ package cc.jumpkick.engine.http.mcp;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -39,7 +42,7 @@ class McpManifestTest {
     void applied_writes_are_atomic_and_leave_no_temp_sibling(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), TABLE_TERMINATED, StandardCharsets.UTF_8);
         McpManifest.setJava(dir.toString(), 21, true);
-        McpManifest.deps(dir.toString(), "add", java.util.List.of("com.acme:thing:1.0.0"), "main", true);
+        McpManifest.deps(dir.toString(), "add", List.of("com.acme:thing:1.0.0"), "main", true);
         try (var files = Files.list(dir)) {
             assertThat(files.map(p -> p.getFileName().toString())).containsExactly("jk.toml");
         }
@@ -74,7 +77,7 @@ class McpManifestTest {
                         "0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30),
                 jobs,
                 d -> Map.of(),
-                java.util.List::of,
+                List::of,
                 "0.12.0");
         Path dir = tempProject();
         String applied = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
@@ -93,8 +96,8 @@ class McpManifestTest {
             dir.toFile().deleteOnExit();
             Files.writeString(dir.resolve("jk.toml"), TABLE_TERMINATED, StandardCharsets.UTF_8);
             return dir;
-        } catch (java.io.IOException e) {
-            throw new java.io.UncheckedIOException(e);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 

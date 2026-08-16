@@ -210,20 +210,20 @@ class McpContractTest {
 
     @Test
     void logging_set_level_is_a_no_op_result_not_method_not_found() {
-        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"logging/setLevel\","
-                + "\"params\":{\"level\":\"debug\"}}");
+        String body = mcp.handleBody(
+                "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"logging/setLevel\"," + "\"params\":{\"level\":\"debug\"}}");
         assertThat(body).contains("\"result\"");
         assertThat(body).doesNotContain("-32601");
     }
 
     @Test
     void prompts_get_returns_the_listed_prompt() {
-        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"prompts/get\","
-                + "\"params\":{\"name\":\"setup-ci\"}}");
+        String body = mcp.handleBody(
+                "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"prompts/get\"," + "\"params\":{\"name\":\"setup-ci\"}}");
         assertThat(body).contains("apply_preset=ci");
         assertThat(body).contains("\"messages\"");
-        String unknown = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"prompts/get\","
-                + "\"params\":{\"name\":\"nope\"}}");
+        String unknown = mcp.handleBody(
+                "{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"prompts/get\"," + "\"params\":{\"name\":\"nope\"}}");
         assertThat(unknown).contains("-32602");
     }
 
@@ -285,8 +285,7 @@ class McpContractTest {
     void runs_latest_skips_corrupt_and_running_records() {
         String runningStub = "{\"id\":\"live\",\"kind\":\"build\",\"dir\":\"/ws\",\"running\":true}";
         McpHandler withNoise = new McpHandler(
-                () -> new StatusSnapshot(
-                        "0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30),
+                () -> new StatusSnapshot("0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30),
                 jobs,
                 dir -> Map.of(),
                 () -> List.of("{not json", runningStub, FAIL_A),

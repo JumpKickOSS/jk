@@ -1547,7 +1547,8 @@ class JkManagerTest {
         // bookkeeping. Controls are dropped, never forwarded.
         assertThat(JkManager.truncateVisible("ab\tcd\re", 10)).isEqualTo("abcde");
         assertThat(JkManager.truncateVisible("a\bb", 2)).isEqualTo("ab");
-        assertThat(RenderContext.visibleWidth(JkManager.truncateVisible("a\tb\tc", 3))).isEqualTo(3);
+        assertThat(RenderContext.visibleWidth(JkManager.truncateVisible("a\tb\tc", 3)))
+                .isEqualTo(3);
     }
 
     @Test

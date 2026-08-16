@@ -62,12 +62,7 @@ public final class CompilerDiagnostic {
     }
 
     private static void paintUnit(
-            StringBuilder out,
-            String[] lines,
-            int start,
-            int end,
-            String severity,
-            Map<String, List<String>> sources) {
+            StringBuilder out, String[] lines, int start, int end, String severity, Map<String, List<String>> sources) {
         Matcher header = HEADER.matcher(lines[start]);
         if (!header.matches()) {
             out.append(lines[start]);

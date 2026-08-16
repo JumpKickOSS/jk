@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Comparator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -391,7 +392,7 @@ class WorkspaceFileAccessTest {
         // The scan covers the whole buffer — a NUL far past the first 8 KiB still marks binary
         // instead of falling through to the Latin-1 mojibake path.
         byte[] late = new byte[64 * 1024];
-        java.util.Arrays.fill(late, (byte) 'a');
+        Arrays.fill(late, (byte) 'a');
         late[late.length - 1] = 0;
         Files.write(root.resolve("src/Late.java"), late);
         assertThat(WorkspaceFileAccess.read(root, "src/Late.java")).isInstanceOf(ReadResult.Binary.class);

@@ -85,8 +85,7 @@ class JUnitLauncherAggregatorTest {
         // past the cap and gets cut.
         String quoting = "y".repeat(20_000) + JUnitLauncher.MESSAGE_TRUNCATION_MARKER + "12 more chars)";
         String cut = JUnitLauncher.ResultAggregator.truncateMessage(quoting);
-        assertThat(cut.length())
-                .isLessThanOrEqualTo(JUnitLauncher.ResultAggregator.MAX_MESSAGE_CHARS + 64);
+        assertThat(cut.length()).isLessThanOrEqualTo(JUnitLauncher.ResultAggregator.MAX_MESSAGE_CHARS + 64);
     }
 
     @Test

@@ -40,11 +40,7 @@ class CompilerLocusTest {
         // Multi-unit blob: the first unit has no caret, so the second unit's caret
         // must not supply the first unit's column.
         String raw = String.join(
-                "\n",
-                "src/A.kt:3: error: something is wrong",
-                "src/B.kt:9: error: other problem",
-                "   bad()",
-                "   ^");
+                "\n", "src/A.kt:3: error: something is wrong", "src/B.kt:9: error: other problem", "   bad()", "   ^");
         CompilerLocus loc = CompilerLocus.parse(raw);
         assertThat(loc.file()).isEqualTo("src/A.kt");
         assertThat(loc.line()).isEqualTo(3);

@@ -12,12 +12,14 @@ import cc.jumpkick.engine.http.mcp.McpSession;
 import cc.jumpkick.plugin.protocol.MiniJson;
 import cc.jumpkick.util.PathUtil;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.function.LongFunction;
 import java.util.function.Supplier;
 
 /**
@@ -55,7 +57,7 @@ public final class McpHandler {
      * The journal-backed form memoizes the run dir so wait-loop polls are one file read, never a
      * full {@code rawRecords} re-scan.
      */
-    private final java.util.function.LongFunction<String> finishedRecords;
+    private final LongFunction<String> finishedRecords;
 
     /**
      * Shared memoized cache/store walker (same supplier as {@code GET /api/cache}) — {@code
@@ -132,7 +134,7 @@ public final class McpHandler {
             ProgressTokenRegistry progressTokens,
             Supplier<List<HttpLive.Run>> liveRuns,
             AdmissionYield admissionYield,
-            java.util.function.LongFunction<String> finishedRecords) {
+            LongFunction<String> finishedRecords) {
         this.status = Objects.requireNonNull(status);
         this.jobs = Objects.requireNonNull(jobs);
         this.projectLookup = Objects.requireNonNull(projectLookup);
@@ -862,14 +864,15 @@ public final class McpHandler {
                     McpEnvelope.of("job", fields, false, null, "jk_job action=wait jid=" + jid),
                     "still running " + jid);
         }
-        Map<String, Object> last = admissionYield.yielding(() -> finishedJob(jid, resolveDir(args, false), triggeredAt));
+        Map<String, Object> last =
+                admissionYield.yielding(() -> finishedJob(jid, resolveDir(args, false), triggeredAt));
         if (last != null) {
             fields.put("result", last);
             if (Boolean.FALSE.equals(last.get("success"))) {
                 Object runId = last.get("id");
                 // The job's own dir, not the bound dir — the run may live outside the session.
-                Map<String, Object> diags = diagnosticsResult(
-                        runId == null ? Map.of() : Map.of("run", runId, "dir", spec.dir()));
+                Map<String, Object> diags =
+                        diagnosticsResult(runId == null ? Map.of() : Map.of("run", runId, "dir", spec.dir()));
                 @SuppressWarnings("unchecked")
                 Map<String, Object> env = (Map<String, Object>) diags.get("structuredContent");
                 if (env != null) fields.put("diagnostics", env.get("diagnostics"));
@@ -1134,7 +1137,7 @@ public final class McpHandler {
         m.put("setup-ci", "jk_config apply_preset=ci");
         m.put("upgrade-deps", "jk_outdated then jk_run kind=lock");
         m.put("stall-or-cancel", "jk_status then jk_job cancel");
-        return java.util.Collections.unmodifiableMap(m);
+        return Collections.unmodifiableMap(m);
     }
 
     private static Map<String, Object> promptsList() {

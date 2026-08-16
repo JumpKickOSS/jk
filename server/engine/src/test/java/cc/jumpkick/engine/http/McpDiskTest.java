@@ -104,8 +104,8 @@ class McpDiskTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> doctorDisk = (Map<String, Object>) doctor.get("disk");
         assertThat(((Number) doctorDisk.get("storeBytes")).longValue()).isEqualTo(snap.artifactStorageBytes());
-        mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"resources/read\","
-                + "\"params\":{\"uri\":\"jk://disk\"}}");
+        mcp.handleBody(
+                "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"resources/read\"," + "\"params\":{\"uri\":\"jk://disk\"}}");
         assertThat(walks).hasValue(1); // one walk serves jk_disk, jk_doctor, and jk://disk
     }
 }

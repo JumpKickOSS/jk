@@ -103,7 +103,8 @@ public final class McpManifest {
                 // that table, so insert before the first table (or append when none exists).
                 Matcher table = FIRST_TABLE.matcher(before);
                 after = table.find()
-                        ? before.substring(0, table.start()) + "java = " + java + "\n\n" + before.substring(table.start())
+                        ? before.substring(0, table.start()) + "java = " + java + "\n\n"
+                                + before.substring(table.start())
                         : before.stripTrailing() + "\njava = " + java + "\n";
             }
             out.put("changed", !after.equals(before));
