@@ -578,7 +578,14 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     public void attachPhaseError(String module, String stepKey, String phase, String brief) {
         synchronized (lock) {
             String msg = brief == null ? "" : brief.trim().replace('\n', ' ');
-            if (msg.length() > 96) msg = msg.substring(0, 93) + "…";
+            if (msg.length() > 96) {
+                int cut = 93;
+                // Never split a surrogate pair: an emoji-heavy assertion brief cut mid-pair
+                // ends in a lone high surrogate (mojibake in the tree's brief-error row, and
+                // PlainAscii passes lone surrogates through).
+                if (Character.isHighSurrogate(msg.charAt(cut - 1))) cut--;
+                msg = msg.substring(0, cut) + ELLIPSIS;
+            }
             Row r = rows.get(key(module, stepKey));
             if (r != null && !msg.isEmpty()) r.briefError = msg;
             // Prefer the row's recorded wire phase (e.g. "compile") when callers pass empty

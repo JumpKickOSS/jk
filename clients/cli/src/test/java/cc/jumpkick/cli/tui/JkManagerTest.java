@@ -1350,6 +1350,23 @@ class JkManagerTest {
     }
 
     @Test
+    void attachPhaseError_clamp_never_splits_a_surrogate_pair() {
+        // The 96-code-unit clamp lands the cut at index 93; when that splits an emoji's
+        // surrogate pair the brief-error row would end in a lone high surrogate (mojibake).
+        var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdFont = NerdFontCaps.NONE;
+        cm.stepRunning("m", "compile", "compile");
+        String brief = "a".repeat(92) + "😀" + " trailing context that forces the clamp";
+        cm.attachPhaseError("m", "compile", "compile", brief);
+        cm.stepDone("m", "compile", false, "compile");
+
+        String all = String.join("\n", stripAll(cm.renderBuildPlanLines(120, 0)));
+        assertThat(all).contains("a".repeat(92) + "…");
+        assertThat(all.chars().anyMatch(c -> Character.isHighSurrogate((char) c) || Character.isLowSurrogate((char) c)))
+                .isFalse();
+    }
+
+    @Test
     void attachPhaseError_uses_row_wire_phase_when_callers_pass_empty_phase() {
         // listeners pass phase=""; step key is compile-java, phase node is compile.
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
