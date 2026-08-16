@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.config.JkBuildEditor;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.PathUtil;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -54,7 +55,7 @@ public final class McpManifest {
             out.put("changed", !after.equals(before));
             out.put("preview", after.equals(before) ? "" : after);
             if (apply && !after.equals(before)) {
-                Files.writeString(file, after, StandardCharsets.UTF_8);
+                AtomicWrites.replace(file, after); // a concurrently-parsing build must never see a torn jk.toml
                 out.put("applied", true);
             } else {
                 out.put("applied", false);
@@ -76,7 +77,7 @@ public final class McpManifest {
             out.put("changed", !after.equals(before));
             out.put("preview", after.equals(before) ? "" : after);
             if (apply && !after.equals(before)) {
-                Files.writeString(file, after, StandardCharsets.UTF_8);
+                AtomicWrites.replace(file, after); // a concurrently-parsing build must never see a torn jk.toml
                 out.put("applied", true);
             } else {
                 out.put("applied", false);
@@ -108,7 +109,7 @@ public final class McpManifest {
             out.put("changed", !after.equals(before));
             out.put("preview", after);
             if (apply) {
-                Files.writeString(file, after, StandardCharsets.UTF_8);
+                AtomicWrites.replace(file, after); // a concurrently-parsing build must never see a torn jk.toml
                 out.put("applied", true);
             } else {
                 out.put("applied", false);

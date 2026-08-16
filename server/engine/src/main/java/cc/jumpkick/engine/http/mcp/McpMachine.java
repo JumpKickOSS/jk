@@ -56,7 +56,7 @@ public final class McpMachine {
                 int mb = Integer.parseInt(value.trim());
                 Path file = JkDirs.userConfigFile();
                 String text = Files.isRegularFile(file) ? Files.readString(file, StandardCharsets.UTF_8) : "";
-                Files.writeString(file, upsertHeap(text, mb), StandardCharsets.UTF_8);
+                cc.jumpkick.util.AtomicWrites.replace(file, upsertHeap(text, mb));
                 m.put("written", file.toString());
                 m.put("key", key);
                 m.put("value", mb);

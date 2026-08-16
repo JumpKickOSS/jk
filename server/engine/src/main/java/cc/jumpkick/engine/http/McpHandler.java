@@ -997,7 +997,7 @@ public final class McpHandler {
         List<String> coords = stringList(args.get("coords"));
         boolean apply = Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("apply")));
         Map<String, Object> data = McpManifest.deps(dir, action, coords, string(args.get("scope")), apply);
-        return ok(McpEnvelope.of("deps", data), apply ? "deps applied" : "deps preview");
+        return ok(McpEnvelope.of("deps", data, false, null, relockHint(data)), apply ? "deps applied" : "deps preview");
     }
 
     private Map<String, Object> workspaceResult(Map<String, Object> args) {
@@ -1008,7 +1008,9 @@ public final class McpHandler {
         if (path == null || path.isBlank()) throw new McpError(-32602, "jk_workspace requires path");
         boolean apply = Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("apply")));
         Map<String, Object> data = McpManifest.workspace(dir, action, path, apply);
-        return ok(McpEnvelope.of("workspace", data), apply ? "workspace applied" : "workspace preview");
+        return ok(
+                McpEnvelope.of("workspace", data, false, null, relockHint(data)),
+                apply ? "workspace applied" : "workspace preview");
     }
 
     private Map<String, Object> manifestResult(Map<String, Object> args) {
@@ -1017,13 +1019,19 @@ public final class McpHandler {
         if (!(javaRaw instanceof Number n)) throw new McpError(-32602, "jk_manifest requires java");
         boolean apply = Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("apply")));
         Map<String, Object> data = McpManifest.setJava(dir, n.intValue(), apply);
-        return ok(McpEnvelope.of("manifest", data), "java=" + n.intValue());
+        return ok(McpEnvelope.of("manifest", data, false, null, relockHint(data)), "java=" + n.intValue());
+    }
+
+    /** Applied jk.toml edits stale {@code manifests-sha256}; the result must say how to re-lock. */
+    private static String relockHint(Map<String, Object> data) {
+        return Boolean.TRUE.equals(data.get("applied")) ? "jk_run kind=lock to refresh the stale jk-lock.toml" : null;
     }
 
     private Map<String, Object> configResult(Map<String, Object> args) {
         String action = string(args.get("action"));
         if (action == null || action.isBlank()) action = "get";
-        if ("apply_preset".equals(action) || "ci".equalsIgnoreCase(string(args.get("preset")))) {
+        // Only the explicit action mutates — `action=get preset=ci` is a read, never a write.
+        if ("apply_preset".equals(action)) {
             return ok(McpEnvelope.of("config", McpMachine.applyCiPreset()), "ci preset");
         }
         if ("set".equals(action)) {

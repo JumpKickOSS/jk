@@ -319,6 +319,14 @@ class McpContractTest {
         assertThat(c.get("rows")).isInstanceOf(List.class);
     }
 
+    @Test
+    void config_get_with_preset_ci_is_a_read_not_a_preset_apply() {
+        Map<String, Object> c = call("jk_config", "{\"action\":\"get\",\"preset\":\"ci\"}");
+        assertThat(c.get("type")).isEqualTo("config");
+        assertThat(c.get("rows")).isInstanceOf(List.class);
+        assertThat(c).doesNotContainKey("heap"); // the apply_preset result shape never appears
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> call(String name, String argsJson) {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
