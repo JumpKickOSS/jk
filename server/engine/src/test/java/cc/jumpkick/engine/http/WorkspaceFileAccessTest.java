@@ -414,6 +414,33 @@ class WorkspaceFileAccessTest {
     }
 
     @Test
+    void symlinked_out_root_manifest_is_not_listed(@TempDir Path root, @TempDir Path outside) throws Exception {
+        // The pre-seed must pay the same real-path containment as every BFS entry — an
+        // escaping root jk.toml would otherwise be listed (and default-opened) only to 404.
+        Files.writeString(outside.resolve("jk.toml"), "name = \"demo\"\n");
+        try {
+            Files.createSymbolicLink(root.resolve("jk.toml"), outside.resolve("jk.toml"));
+        } catch (UnsupportedOperationException | IOException unsupported) {
+            return;
+        }
+        Files.createDirectories(root.resolve("src"));
+        Files.writeString(root.resolve("src/Main.java"), "class Main {}");
+        assertThat(WorkspaceFileAccess.list(root).files())
+                .extracting(WorkspaceFileAccess.ListedFile::path)
+                .containsExactly("src/Main.java");
+        assertThat(WorkspaceFileAccess.read(root, "jk.toml")).isInstanceOf(ReadResult.NotFound.class);
+        // An in-root symlinked manifest still pre-seeds first, exactly once.
+        Files.delete(root.resolve("jk.toml"));
+        Files.writeString(root.resolve("real.toml"), "name = \"demo\"\n");
+        Files.createSymbolicLink(root.resolve("jk.toml"), root.resolve("real.toml"));
+        var list = WorkspaceFileAccess.list(root);
+        assertThat(list.files())
+                .extracting(WorkspaceFileAccess.ListedFile::path)
+                .containsExactly("jk.toml", "real.toml", "src/Main.java");
+        assertThat(WorkspaceFileAccess.read(root, "jk.toml")).isInstanceOf(ReadResult.Ok.class);
+    }
+
+    @Test
     void depth_cap_reports_truncation(@TempDir Path root) throws Exception {
         // files below MAX_WALK_DEPTH are readable via deep link but invisible in the
         // tree — the UI must at least see the truncation hint.

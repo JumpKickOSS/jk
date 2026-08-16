@@ -244,16 +244,16 @@ final class WorkspaceFileAccess {
      */
     static FileList list(Path root) throws IOException {
         Path absRoot = root.toAbsolutePath().normalize();
-        List<ListedFile> collected = new ArrayList<>();
-        boolean rootManifest = Files.isRegularFile(absRoot.resolve("jk.toml"));
-        if (rootManifest) collected.add(new ListedFile("jk.toml", langOf("jk.toml")));
-        boolean truncated = false;
         Path realRoot;
         try {
             realRoot = absRoot.toRealPath();
         } catch (IOException e) {
             realRoot = absRoot;
         }
+        List<ListedFile> collected = new ArrayList<>();
+        boolean rootManifest = containedRegularFile(absRoot.resolve("jk.toml"), realRoot);
+        if (rootManifest) collected.add(new ListedFile("jk.toml", langOf("jk.toml")));
+        boolean truncated = false;
         // Real-path visited set: in-root directory symlinks are walked (list/read parity,
         // ), and a link pointing at an ancestor would otherwise cycle the BFS.
         Set<Path> visited = new HashSet<>();
@@ -317,6 +317,27 @@ final class WorkspaceFileAccess {
         if (!level.isEmpty()) truncated = true;
         collected.sort(Comparator.comparing(ListedFile::path));
         return new FileList(absRoot, List.copyOf(collected), truncated);
+    }
+
+    /**
+     * Pre-seed containment: the root manifest gets the same NOFOLLOW + real-path check the BFS
+     * applies to every other entry, so a symlinked-out {@code jk.toml} is not listed only to 404
+     * on read. An in-root symlinked manifest still pre-seeds.
+     */
+    private static boolean containedRegularFile(Path file, Path realRoot) {
+        BasicFileAttributes attrs;
+        try {
+            attrs = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        } catch (IOException absent) {
+            return false;
+        }
+        if (attrs.isRegularFile()) return true;
+        if (!attrs.isSymbolicLink()) return false;
+        try {
+            return Files.isRegularFile(file) && file.toRealPath().startsWith(realRoot);
+        } catch (IOException broken) {
+            return false;
+        }
     }
 
     /**
