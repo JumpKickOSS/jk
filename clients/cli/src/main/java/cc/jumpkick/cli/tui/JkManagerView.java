@@ -348,9 +348,11 @@ final class JkManagerView {
 
     /**
      * Route process/step output through the sliding {@link OutputWindow}. In plan mode the line is
-     * always buffered (≤200 lines); when the pane is <em>shown</em> the live region is repainted so
-     * the newest lines appear above the wedge (with a blank padding row). When hidden, nothing is
-     * painted (Ctrl-O reveals). Simple mode keeps the old permanent-above-region behavior.
+     * always buffered (≤200 lines). When the pane is open, the next animator frame repaints the
+     * whole live region in place — we deliberately do <em>not</em> paint on every line (native-image
+     * firehose), which left the cursor/region height out of sync and stacked wedge headers into
+     * scrollback. When hidden, nothing is painted (Ctrl-O reveals). Simple mode keeps the old
+     * permanent-above-region behavior.
      */
     public void writeAbove(String text) {
         synchronized (m.lock) {
@@ -368,13 +370,10 @@ final class JkManagerView {
                     m.out.flush();
                     return;
                 }
-                if (!m.outputWindow.visible()) {
-                    return; // buffered only — Ctrl-O reveals
+                if (m.outputWindow.visible()) {
+                    // Defer paint to the animator tick — coalesces bursts into one wipe+redraw.
+                    forceFullRepaint = true;
                 }
-                // Pane open: full repaint so the ring updates in place.
-                forceFullRepaint = true;
-                paintBuildPlan();
-                m.out.flush();
                 return;
             }
             if (!m.animate) {
@@ -420,7 +419,19 @@ final class JkManagerView {
         boolean force = forceFullRepaint;
         forceFullRepaint = false;
         int prev = m.lastLines.size();
-        if (prev > 0) m.out.print(Ansi.cursorUp(prev)); // to the top of the region
+        // Peek pane: height and every pane row churn when new process lines arrive. Line-diff
+        // cursor-up is fragile under that load (and under firehose re-paints), so wipe the whole
+        // previous region then paint clean — same cursor invariant, no stacked wedges.
+        boolean wipeRegion = force && m.outputWindow.visible() && prev > 0;
+        if (wipeRegion) {
+            m.out.print(Ansi.cursorUp(prev));
+            m.out.print('\r');
+            m.out.print(Ansi.ERASE_DISPLAY_TO_END);
+            prev = 0; // full rewrite into cleared space
+            force = true;
+        } else if (prev > 0) {
+            m.out.print(Ansi.cursorUp(prev)); // to the top of the region
+        }
         for (int i = 0; i < lines.size(); i++) {
             boolean changed = force || i >= prev || !lines.get(i).equals(m.lastLines.get(i));
             if (changed) {
