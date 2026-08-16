@@ -31,13 +31,14 @@ import cc.jumpkick.runtime.CompilePlans;
 import cc.jumpkick.runtime.FormatPlans;
 import cc.jumpkick.runtime.ImagePlans;
 import cc.jumpkick.runtime.LockPlans;
-import cc.jumpkick.runtime.NativePlans;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
+import cc.jumpkick.runtime.WorkspaceSpec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -445,7 +446,6 @@ public final class EngineHttpFront {
             return SessionContext.where(session, () -> {
                 Map<Path, JkBuild> scopes = nativeScopes(entryDir, entry, dirty);
                 Set<Path> selected = HttpJobSelect.selected(entryDir, entry, modules);
-                // Prefer modules with a [native] table (same rule as CLI workspace cascade).
                 boolean anyNativeTable = false;
                 for (JkBuild b : scopes.values()) {
                     if (b.nativeImage()) {
@@ -453,19 +453,29 @@ public final class EngineHttpFront {
                         break;
                     }
                 }
+                Set<Path> nativeTargets = new LinkedHashSet<>();
+                Map<Path, Path> graalByDir = new LinkedHashMap<>();
                 for (var e : scopes.entrySet()) {
                     Path dir = e.getKey();
                     boolean inSelection = selected == null || selected.contains(BuildGraph.canonicalPath(dir));
                     boolean allowNative = inSelection && (e.getValue().nativeImage() || !anyNativeTable);
-                    Path moduleGraal = allowNative ? graal : null;
-                    BuildPlan plan = NativePlans.moduleBuildPlan(
-                            dir, e.getValue(), cache, jdksDir, moduleGraal, null, List.of(), true, false, allowNative);
-                    plan.addListener(listeners.hubPlan(dir.toString()));
-                    BuildPlanResult result = plan.run();
-                    if (!result.success()) return finishPlan(entryDir, result);
+                    if (allowNative && graal != null) {
+                        nativeTargets.add(dir);
+                        graalByDir.put(dir, graal);
+                    }
                 }
-                journalWriter.accOutcome(eventRequestId.getAsLong(), true, 0);
-                return true;
+                if (nativeTargets.isEmpty() && graal != null) {
+                    for (Path d : scopes.keySet()) {
+                        nativeTargets.add(d);
+                        graalByDir.put(d, graal);
+                    }
+                }
+                WorkspaceRequest req = new WorkspaceRequest(
+                                entryDir, entry, cache, jdksDir, 0, null, true, false, 0, dirty, false, true)
+                        .withSpec(WorkspaceSpec.nativeImage(nativeTargets, graalByDir, null, List.of()));
+                WorkspaceResult wr = BuildService.buildWorkspace(req, listeners.hub(entryDir.toString()));
+                journalWriter.accOutcome(eventRequestId.getAsLong(), wr.success(), wr.exitCode());
+                return wr.success();
             });
         } catch (Exception e) {
             return fail(entryDir, "native", e);
