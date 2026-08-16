@@ -36,6 +36,25 @@ class McpDiagnosticsLookupTest {
     }
 
     @Test
+    void unique_false_keeps_the_normalized_row_shape() {
+        Map<String, Object> diag = Map.of(
+                "severity", "error",
+                "code", "javac",
+                "dir", "/ws/core",
+                "message", "/ws/A.java:1: error: cannot find symbol\n  foo\n  ^");
+        List<Map<String, Object>> deduped = McpDiagnostics.unique(List.of(diag, diag), true);
+        List<Map<String, Object>> all = McpDiagnostics.unique(List.of(diag, diag), false);
+        assertThat(deduped).hasSize(1);
+        assertThat(all).hasSize(2);
+        assertThat(all.getFirst().keySet()).isEqualTo(deduped.getFirst().keySet());
+        assertThat(all.getFirst().get("module")).isEqualTo("/ws/core");
+        assertThat(all.getFirst().get("file")).isEqualTo("/ws/A.java");
+        assertThat(all.getFirst().get("message")).isEqualTo("/ws/A.java:1: error: cannot find symbol");
+        assertThat(all.getFirst().get("count")).isEqualTo(1);
+        assertThat(deduped.getFirst().get("count")).isEqualTo(2);
+    }
+
+    @Test
     void explicit_run_id_bypasses_the_dir_filter() {
         Map<String, Object> rec = McpDiagnostics.findRun(List.of(FAIL, OTHER), "x", "/ws");
         assertThat(rec.get("id")).isEqualTo("x");

@@ -15,7 +15,16 @@ public final class McpDiagnostics {
     private McpDiagnostics() {}
 
     public static List<Map<String, Object>> unique(List<Map<String, Object>> raw, boolean unique) {
-        if (!unique) return List.copyOf(raw);
+        if (!unique) {
+            // Same normalized row shape as the deduped default — the flag only controls dedup.
+            List<Map<String, Object>> out = new ArrayList<>();
+            for (Map<String, Object> d : raw) {
+                Map<String, Object> row = normalize(d);
+                row.put("count", 1);
+                out.add(row);
+            }
+            return out;
+        }
         Map<String, Map<String, Object>> byKey = new LinkedHashMap<>();
         for (Map<String, Object> d : raw) {
             Map<String, Object> row = normalize(d);
