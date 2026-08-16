@@ -1794,17 +1794,19 @@ export const appOptions = {
     },
 
     // Multi-module cards split their module rows across two peer accordions: the failed modules
-    // (kept open) and everything else — succeeded, still-running, skipped, cancelled — which rolls
+    // (kept open) and everything else — succeeded, still-running, skipped — which rolls
     // up under a "success details" accordion that is open while running and collapsed once done. A
     // module carrying failure output counts as failed even if its state was never marked (covers
-    // request-level errors that land on a synthetic row).
+    // request-level errors that land on a synthetic row). Cancelled runs hide both accordions.
     // Order (CLI parity): active first (most recently updated), finished last.
     failedModules(card) {
+      if (this.outcome(card) === 'cancelled') return [];
       return orderedModules(
         card.modules.filter((m) => m.state === 'failed' || m.diagnostics.length > 0),
       );
     },
     okModules(card) {
+      if (this.outcome(card) === 'cancelled') return [];
       return orderedModules(
         card.modules.filter((m) => m.state !== 'failed' && m.diagnostics.length === 0),
       );

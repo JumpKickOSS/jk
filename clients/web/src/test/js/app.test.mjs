@@ -167,3 +167,19 @@ test('leaving project view or switching projects collapses the graph panel', () 
   v.applyRoute();
   assert.equal(v.projectGraphOpen, false, 'switch collapses');
 });
+
+test('cancelled cards hide success and failure details', () => {
+  const v = vm();
+  const card = {
+    state: 'finished',
+    cancelled: true,
+    success: false,
+    modules: [
+      { dir: '/w/a', state: 'success', diagnostics: [], steps: [{ name: 'compile', state: 'success' }] },
+      { dir: '/w/b', state: 'cancelled', diagnostics: [], steps: [] },
+    ],
+  };
+  assert.equal(v.outcome(card), 'cancelled');
+  assert.deepEqual(v.okModules(card), []);
+  assert.deepEqual(v.failedModules(card), []);
+});

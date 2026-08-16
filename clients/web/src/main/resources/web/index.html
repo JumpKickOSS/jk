@@ -161,8 +161,9 @@
 
         <!-- Compact (single-module): the step chain rolls up under a "success details" accordion
              that is open while the build runs and collapses once it finishes — same treatment as
-             workspace modules. A failed build keeps its chain and failure output visible inline. -->
-        <template v-if="compact(card)">
+             workspace modules. A failed build keeps its chain and failure output visible inline.
+             Cancelled cards stay a one-line header. -->
+        <template v-if="compact(card) && outcome(card) !== 'cancelled'">
           <details v-if="okModules(card).length && singleChain(card).length" class="module-group" :open="outcome(card) === 'running'">
             <summary>success details</summary>
             <phase-chain :steps="singleChain(card)" :module="card.coord || ''"></phase-chain>
@@ -190,7 +191,7 @@
              the build runs and collapses once it finishes; failed modules sit in a peer accordion
              that stays open, each with its own step chain AND its own failure output nested under
              it — the error belongs to the module and rolls up with it. -->
-        <template v-if="!compact(card)">
+        <template v-if="!compact(card) && outcome(card) !== 'cancelled'">
           <details v-if="okModules(card).length" class="module-group" :open="outcome(card) === 'running'">
             <summary>success details ({{ okModules(card).length }})</summary>
             <div v-for="m in okModules(card)" :key="m.dir" class="module">
