@@ -92,6 +92,48 @@ class BuildJournalTest {
     }
 
     @Test
+    void raw_finished_record_by_request_id_skips_running_stub_then_returns_finished_json() {
+        BuildJournal j = new BuildJournal(dir);
+        BuildRecord run = BuildRecord.running(0, "format", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "web", 9L);
+        String locator = j.begin(run);
+        assertThat(j.rawFinishedRecordByRequestId(9L)).isEmpty(); // running stub is not a result
+        assertThat(j.rawFinishedRecordByRequestId(7L)).isEmpty(); // unknown jid
+        BuildRecord done = new BuildRecord(
+                null,
+                0L,
+                BuildRecord.SCHEMA,
+                "format",
+                "/proj",
+                "g:a",
+                null,
+                1_700_000_000_000L,
+                1_700_000_000_080L,
+                80,
+                true,
+                false,
+                0,
+                "9.9",
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                "web",
+                null,
+                null,
+                false,
+                null,
+                9L);
+        assertThat(j.complete(locator, done, BuildJournal.Snapshot.NONE)).isTrue();
+        String json = j.rawFinishedRecordByRequestId(9L).orElseThrow();
+        BuildRecord parsed = Json.read(json);
+        assertThat(parsed.requestId()).isEqualTo(9L);
+        assertThat(parsed.running()).isFalse();
+        assertThat(parsed.success()).isTrue();
+        // Memoized dir: a second call answers from the same single record file.
+        assertThat(j.rawFinishedRecordByRequestId(9L)).isPresent();
+    }
+
+    @Test
     void begin_then_complete_keeps_id_and_clears_running() {
         BuildJournal j = new BuildJournal(dir);
         BuildRecord run = BuildRecord.running(27, "build", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "cli");

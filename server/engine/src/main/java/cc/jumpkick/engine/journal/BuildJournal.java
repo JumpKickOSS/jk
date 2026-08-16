@@ -562,6 +562,47 @@ public final class BuildJournal {
         return Optional.empty();
     }
 
+    /**
+     * Run dirs located by {@link #rawFinishedRecordByRequestId} — a wait loop re-reads one
+     * {@code record.json} per poll instead of re-scanning the journal. Bounded residue: cleared
+     * wholesale once full (same posture as {@code METRICS_LOCKS}).
+     */
+    private final ConcurrentHashMap<Long, Path> runDirsByRequestId = new ConcurrentHashMap<>();
+
+    /**
+     * Raw JSON of the <em>finished</em> record stamped with {@code requestId}, or empty while the
+     * run is absent or still {@code running}. The run dir is found with one newest-first scan and
+     * memoized, so repeated polls for the same id cost a single file read.
+     */
+    public Optional<String> rawFinishedRecordByRequestId(long requestId) {
+        if (requestId <= 0) return Optional.empty();
+        Path dir = runDirsByRequestId.get(requestId);
+        if (dir != null) {
+            if (Files.isDirectory(dir)) return readFinished(dir, requestId);
+            runDirsByRequestId.remove(requestId, dir); // pruned since memoized — re-locate
+        }
+        for (Loaded l : loadNewest(200)) {
+            if (l.record().requestId() != requestId) continue;
+            if (runDirsByRequestId.size() >= 1_024) runDirsByRequestId.clear();
+            runDirsByRequestId.put(requestId, l.dir());
+            return l.record().running() ? Optional.empty() : Optional.of(l.json());
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<String> readFinished(Path dir, long requestId) {
+        Path record = dir.resolve(RECORD);
+        if (!Files.isRegularFile(record)) return Optional.empty();
+        try {
+            String json = Files.readString(record, StandardCharsets.UTF_8);
+            BuildRecord parsed = Json.read(json);
+            if (parsed == null || parsed.requestId() != requestId || parsed.running()) return Optional.empty();
+            return Optional.of(json);
+        } catch (IOException | RuntimeException e) {
+            return Optional.empty();
+        }
+    }
+
     /** The newest {@code limit} records as their raw JSON — no second read (see {@link #loadNewest}). */
     public List<String> rawRecords(int limit) {
         List<String> out = new ArrayList<>();

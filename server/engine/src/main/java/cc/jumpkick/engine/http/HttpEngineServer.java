@@ -173,7 +173,8 @@ public final class HttpEngineServer implements AutoCloseable {
                         version,
                         progressTokens,
                         () -> this.liveRuns.get(),
-                        this::yieldingAdmission)
+                        this::yieldingAdmission,
+                        jid -> journal.rawFinishedRecordByRequestId(jid).orElse(null))
                 : null;
         this.historyApi = new HttpHistoryApi(journal, () -> this.liveRuns.get());
         this.projectApi = new HttpProjectApi(journal);

@@ -50,6 +50,13 @@ public final class McpHandler {
     private final Supplier<List<HttpLive.Run>> liveRuns;
     private final AdmissionYield admissionYield;
 
+    /**
+     * Raw JSON of the finished journal record for a jid, or {@code null} while absent/running.
+     * The journal-backed form memoizes the run dir so wait-loop polls are one file read, never a
+     * full {@code rawRecords} re-scan.
+     */
+    private final java.util.function.LongFunction<String> finishedRecords;
+
     /** Age after which a live job with no progress is marked stalled. */
     static final long STALL_MS = 60_000;
 
@@ -106,6 +113,19 @@ public final class McpHandler {
             ProgressTokenRegistry progressTokens,
             Supplier<List<HttpLive.Run>> liveRuns,
             AdmissionYield admissionYield) {
+        this(status, jobs, projectLookup, historyRaw, version, progressTokens, liveRuns, admissionYield, null);
+    }
+
+    public McpHandler(
+            Supplier<StatusSnapshot> status,
+            EngineHttpJobs jobs,
+            Function<String, Map<String, Object>> projectLookup,
+            Supplier<List<String>> historyRaw,
+            String version,
+            ProgressTokenRegistry progressTokens,
+            Supplier<List<HttpLive.Run>> liveRuns,
+            AdmissionYield admissionYield,
+            java.util.function.LongFunction<String> finishedRecords) {
         this.status = Objects.requireNonNull(status);
         this.jobs = Objects.requireNonNull(jobs);
         this.projectLookup = Objects.requireNonNull(projectLookup);
@@ -114,6 +134,12 @@ public final class McpHandler {
         this.progressTokens = progressTokens == null ? new ProgressTokenRegistry() : progressTokens;
         this.liveRuns = liveRuns == null ? List::of : liveRuns;
         this.admissionYield = admissionYield == null ? AdmissionYield.NONE : admissionYield;
+        this.finishedRecords = finishedRecords != null
+                ? finishedRecords
+                : jid -> {
+                    Map<String, Object> rec = McpDiagnostics.findByRequestId(this.historyRaw.get(), jid);
+                    return rec == null ? null : MiniJson.write(rec);
+                };
     }
 
     /**
@@ -560,21 +586,22 @@ public final class McpHandler {
 
     /**
      * Journal write races live-run teardown (HTTP jobs unregister before {@code writeJournal}).
-     * Poll briefly for the finished row stamped with this jid.
+     * Poll briefly for the finished row stamped with this jid — via {@link #finishedRecords}, so
+     * each poll is a memoized single-record read, never a full journal re-scan.
      */
     private @org.jspecify.annotations.Nullable Map<String, Object> waitForJournal(long jid) {
         long deadline = System.currentTimeMillis() + 1_000;
-        while (System.currentTimeMillis() < deadline) {
-            Map<String, Object> rec = McpDiagnostics.findByRequestId(historyRaw.get(), jid);
-            if (rec != null) return rec;
+        while (true) {
+            String raw = finishedRecords.apply(jid);
+            if (raw != null) return parseRecord(raw);
+            if (System.currentTimeMillis() >= deadline) return null;
             try {
-                Thread.sleep(25);
+                Thread.sleep(100);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return null;
             }
         }
-        return McpDiagnostics.findByRequestId(historyRaw.get(), jid);
     }
 
     private static @org.jspecify.annotations.Nullable Map<String, Object> summarizeJob(
