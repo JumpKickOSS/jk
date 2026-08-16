@@ -388,9 +388,7 @@ public final class McpHandler {
                         "wait",
                         Map.of("type", "boolean", "description", "Block until finish (default true)"),
                         "timeout_s",
-                        Map.of("type", "integer", "description", "Wait timeout seconds (default 600, max 3600)"),
-                        "aot_cache",
-                        Map.of("type", "boolean")))));
+                        Map.of("type", "integer", "description", "Wait timeout seconds (default 600, max 3600)")))));
         tools.add(tool(
                 "jk_job",
                 "get / wait / cancel a job. Omit jid to use the latest live job for the bound dir.",
@@ -812,6 +810,10 @@ public final class McpHandler {
     }
 
     private Map<String, Object> runResult(Map<String, Object> args, String progressToken) {
+        if (args.containsKey("aot_cache")) {
+            // Not hosted: rejecting beats a silent no-op an agent would read as AOT training.
+            throw new McpError(-32602, "aot_cache is not supported; run jobs train AOT via engine policy");
+        }
         String kind = string(args.get("kind"));
         if (kind == null || kind.isBlank()) kind = "build";
         HttpJobSpec spec = new HttpJobSpec(

@@ -167,6 +167,17 @@ class McpContractTest {
     }
 
     @Test
+    void aot_cache_is_rejected_not_silently_ignored() {
+        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_run\",\"arguments\":"
+                + "{\"kind\":\"build\",\"dir\":\"/tmp\",\"wait\":false,\"aot_cache\":true}}}");
+        assertThat(body).contains("-32602");
+        assertThat(body).contains("aot_cache");
+        String schema = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}");
+        assertThat(schema).doesNotContain("aot_cache");
+    }
+
+    @Test
     void tools_list_includes_bind() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");
         assertThat(body).contains("jk_bind");

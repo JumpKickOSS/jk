@@ -186,7 +186,7 @@ Bind once, then omit `dir` on later calls.
 | **`jk_bind`** | Set default workspace for later tools; returns a project card |
 | **`jk_status`** | Engine vitals (pid, version, heap, active jobs) — same facts as `GET /api/status` |
 | **`jk_project`** | Project card (coord, java, members, last run) |
-| **`jk_run`** | Start a job: `build` \| `test` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean`. **`wait` defaults true**. Optional modules/tags/suites/`skip_tests`/`timeout_s`/`aot_cache` |
+| **`jk_run`** | Start a job: `build` \| `test` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean`. **`wait` defaults true**. Optional modules/tags/suites/`skip_tests`/`timeout_s` |
 | **`jk_build`** / **`jk_test`** / **`jk_lock`** | Async convenience aliases (return `jid`/`requestId` immediately) |
 | **`jk_job`** | `get` \| `wait` \| `cancel` a job; omit `jid` → latest live job for bound dir |
 | **`jk_cancel`** | Cancel by **`jid`** (`requestId` alias) |
