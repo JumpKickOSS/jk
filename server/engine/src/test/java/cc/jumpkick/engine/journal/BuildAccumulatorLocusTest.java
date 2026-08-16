@@ -56,4 +56,28 @@ class BuildAccumulatorLocusTest {
         assertThat(out.line()).isEqualTo(9);
         assertThat(out.col()).isZero();
     }
+
+    @Test
+    void preset_file_and_line_reject_a_column_from_a_quoted_locus() {
+        var d = new BuildPlanResult.Diagnostic(
+                "run-tests",
+                "test-failure",
+                "assertion failed while parsing Foo.java:42:7: error: fixture text",
+                "",
+                "AssertionError",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "src/test/FooTest.java",
+                9,
+                0,
+                List.of(),
+                0);
+        BuildRecord.Diag out = BuildAccumulator.diagFromPlan("error", "/ws", "/ws", d);
+        assertThat(out.file()).isEqualTo("src/test/FooTest.java");
+        assertThat(out.line()).isEqualTo(9);
+        assertThat(out.col()).isZero();
+    }
 }

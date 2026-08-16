@@ -383,9 +383,13 @@ public final class BuildAccumulator {
         int col = 0;
         CompilerLocus loc = CompilerLocus.parse(message);
         if (loc != null) {
+            // The parsed column belongs with the parsed file/line: a diag whose file/line came
+            // from elsewhere (test identity) must not adopt a column from a locus its message
+            // merely quotes.
+            boolean fromMessage = file.isEmpty() && line <= 0;
             if (file.isEmpty()) file = loc.file();
             if (line <= 0) line = loc.line();
-            col = loc.col();
+            if (fromMessage) col = loc.col();
         }
         return new BuildRecord.Diag(
                 severity,

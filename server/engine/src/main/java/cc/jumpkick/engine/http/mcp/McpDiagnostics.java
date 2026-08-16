@@ -91,9 +91,12 @@ public final class McpDiagnostics {
         int col = (int) McpHistoryViews.lng(d, "col");
         CompilerLocus loc = CompilerLocus.parse(message);
         if (loc != null) {
+            // Same guard as BuildAccumulator.diagFromPlan: the parsed column belongs with the
+            // parsed file/line, never with a locus the message merely quotes.
+            boolean fromMessage = file.isEmpty() && line <= 0;
             if (file.isEmpty()) file = loc.file();
             if (line <= 0) line = loc.line();
-            if (col <= 0) col = loc.col();
+            if (fromMessage && col <= 0) col = loc.col();
         }
         String first = firstLine(message);
         String detail = restAfterFirstLine(message);
