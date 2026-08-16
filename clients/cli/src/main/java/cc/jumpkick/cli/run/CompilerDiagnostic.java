@@ -7,7 +7,9 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -43,16 +45,20 @@ public final class CompilerDiagnostic {
         }
         if (headers.isEmpty()) return rawBlock;
         StringBuilder out = new StringBuilder();
+        // One read per file per render pass: a multi-unit block (kotlinc batch, javac's
+        // per-file error volley) otherwise re-slurps the same source once per unit.
+        Map<String, List<String>> sources = new HashMap<>();
         for (int h = 0; h < headers.size(); h++) {
             int start = headers.get(h);
             int end = h + 1 < headers.size() ? headers.get(h + 1) : lines.length;
             if (out.length() > 0) out.append('\n');
-            paintUnit(out, lines, start, end);
+            paintUnit(out, lines, start, end, sources);
         }
         return out.toString();
     }
 
-    private static void paintUnit(StringBuilder out, String[] lines, int start, int end) {
+    private static void paintUnit(
+            StringBuilder out, String[] lines, int start, int end, Map<String, List<String>> sources) {
         Matcher header = HEADER.matcher(lines[start]);
         if (!header.matches()) {
             out.append(lines[start]);
@@ -105,7 +111,7 @@ public final class CompilerDiagnostic {
 
         String display = PathDisplay.of(Path.of(file));
         SyntaxHighlight.Language lang = languageOf(file);
-        List<String> fileLines = readSource(file);
+        List<String> fileLines = readSource(file, sources);
         if (fileLines == null && snippet != null) {
             fileLines = List.of(snippet);
         }
@@ -176,10 +182,22 @@ public final class CompilerDiagnostic {
                 rest.substring(0, colon).strip(), rest.substring(colon + 1).strip());
     }
 
+    /** Bound for a source file slurped to paint a five-line window. */
+    static final long MAX_SOURCE_BYTES = 1 << 20;
+
+    /** Lines of {@code file}, memoized per render pass — failed reads are memoized too. */
+    static List<String> readSource(String file, Map<String, List<String>> memo) {
+        if (memo.containsKey(file)) return memo.get(file);
+        List<String> lines = readSource(file);
+        memo.put(file, lines);
+        return lines;
+    }
+
     static List<String> readSource(String file) {
         Path p = resolveSource(file);
         if (p == null) return null;
         try {
+            if (Files.size(p) > MAX_SOURCE_BYTES) return null;
             return Files.readAllLines(p);
         } catch (Exception e) {
             return null;

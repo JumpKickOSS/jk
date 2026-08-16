@@ -140,6 +140,31 @@ class CompilerDiagnosticTest {
     }
 
     @Test
+    void source_reads_are_memoized_per_render_pass(@TempDir Path tmp) throws Exception {
+        Path src = tmp.resolve("Memo.java");
+        Files.writeString(src, "class Memo { X x; }\n");
+        var memo = new java.util.HashMap<String, List<String>>();
+        List<String> first = CompilerDiagnostic.readSource(src.toString(), memo);
+        assertThat(first).containsExactly("class Memo { X x; }");
+        // A later unit in the same pass never touches disk again.
+        Files.delete(src);
+        assertThat(CompilerDiagnostic.readSource(src.toString(), memo)).isSameAs(first);
+        // Failed reads are memoized too.
+        var missMemo = new java.util.HashMap<String, List<String>>();
+        assertThat(CompilerDiagnostic.readSource(src.toString(), missMemo)).isNull();
+        assertThat(missMemo).containsKey(src.toString());
+    }
+
+    @Test
+    void oversized_sources_are_not_slurped(@TempDir Path tmp) throws Exception {
+        Path big = tmp.resolve("Big.java");
+        byte[] bytes = new byte[(int) CompilerDiagnostic.MAX_SOURCE_BYTES + 1];
+        java.util.Arrays.fill(bytes, (byte) 'x');
+        Files.write(big, bytes);
+        assertThat(CompilerDiagnostic.readSource(big.toString())).isNull();
+    }
+
+    @Test
     void two_diagnostics_in_one_block_each_get_a_window(@TempDir Path tmp) throws Exception {
         Path a = tmp.resolve("A.java");
         Path b = tmp.resolve("B.java");
