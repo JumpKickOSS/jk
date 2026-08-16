@@ -867,6 +867,11 @@ public final class McpHandler {
         if (action == null || action.isBlank()) action = "get";
         action = action.toLowerCase(Locale.ROOT);
         Long jid = numberArg(args.get("jid"));
+        if ("cancel".equals(action) && jid == null && session.dir() == null) {
+            // Unbound sessions must name their victim: "latest live job" across every dir could
+            // kill another client's build.
+            throw new McpError(-32602, "jk_job cancel requires jid (or jk_bind first)");
+        }
         if (jid == null) jid = latestLiveJid(session.dir());
         if ("cancel".equals(action)) {
             if (jid == null) throw new McpError(-32602, "no live job to cancel");
@@ -922,15 +927,21 @@ public final class McpHandler {
 
     private Long latestLiveJid(String dir) {
         String want = dir == null ? null : McpHistoryViews.normalizeDir(dir);
-        Long found = null;
+        HttpLive.Run newest = null;
         for (HttpLive.Run r : liveRuns.get()) {
             if (want != null) {
                 String have = McpHistoryViews.normalizeDir(r.dir() == null ? "" : r.dir());
                 if (!have.equals(want) && !have.startsWith(want + "/")) continue;
             }
-            found = r.requestId();
+            // Newest by startedAt (jid tie-break) — the live-run snapshot iterates a hash map,
+            // so list position is meaningless.
+            if (newest == null
+                    || r.startedAt() > newest.startedAt()
+                    || (r.startedAt() == newest.startedAt() && r.requestId() > newest.requestId())) {
+                newest = r;
+            }
         }
-        return found;
+        return newest == null ? null : newest.requestId();
     }
 
     private Map<String, Object> whyResult(Map<String, Object> args) {
