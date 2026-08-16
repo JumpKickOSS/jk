@@ -522,13 +522,17 @@ public final class McpHandler {
         return "engine " + status.getOrDefault("version", "") + " pid " + status.getOrDefault("pid", "");
     }
 
-    /** MCP progress token from {@code params._meta.progressToken} (string or number). */
+    /**
+     * MCP progress token from {@code params._meta.progressToken} (string or number). Numeric
+     * tokens are canonicalized to their integral form — MiniJson parses numbers as Double, and
+     * {@code String.valueOf(5.0)} would never match the client's {@code ?progressToken=5} query.
+     */
     private static String progressTokenOf(Map<String, Object> params) {
         Object meta = params.get("_meta");
         if (!(meta instanceof Map<?, ?> m)) return null;
         Object tok = m.get("progressToken");
         if (tok == null) return null;
-        String s = String.valueOf(tok).trim();
+        String s = ProgressTokenRegistry.canonicalText(String.valueOf(tok));
         return s.isEmpty() || "null".equals(s) ? null : s;
     }
 
