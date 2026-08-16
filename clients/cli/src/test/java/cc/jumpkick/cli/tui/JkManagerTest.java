@@ -1506,6 +1506,19 @@ class JkManagerTest {
     }
 
     @Test
+    void truncate_visible_zero_width_tail_is_not_an_ellipsis_reserve() {
+        // Zero-width code points cost no columns: base+combining at exact budget must render
+        // fully — reserving an ellipsis column for the tail cut the last glyph one early.
+        String cafe = "cafe\u0301"; // e + combining acute, 4 columns
+        assertThat(JkManager.truncateVisible(cafe, 4)).isEqualTo(cafe);
+        String sun = "\u2600\uFE0F"; // emoji + VS16 at its exact width
+        assertThat(JkManager.truncateVisible(sun, 1)).isEqualTo(sun);
+        assertThat(JkManager.truncateVisible("abc\t", 3)).isEqualTo("abc"); // dropped-control tail
+        // A tail that still costs columns keeps the reserve.
+        assertThat(TestAnsi.strip(JkManager.truncateVisible("cafe\u0301s", 4))).isEqualTo("caf…");
+    }
+
+    @Test
     void truncate_visible_one_column_keeps_a_fitting_char() {
         // Degenerate 1-column width: fitting content survives; only longer input degrades
         // to the bare ellipsis. Empty stays empty.

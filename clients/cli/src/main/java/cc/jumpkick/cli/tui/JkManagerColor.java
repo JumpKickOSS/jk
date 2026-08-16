@@ -603,9 +603,9 @@ public final class JkManagerColor {
                     i += cpLen;
                     continue;
                 }
-                // Reserve one column for … when more content remains after this code point.
+                // Reserve one column for … only when the tail still costs columns.
                 // need=1 ⇒ stop while the ellipsis still fits in budget.
-                boolean moreAfter = i + cpLen < s.length() && !isOnlyAnsiFrom(s, i + cpLen);
+                boolean moreAfter = hasVisibleFrom(s, i + cpLen);
                 int need = moreAfter ? 1 : 0;
                 if (visible + w + need > budget) {
                     truncated = true;
@@ -643,13 +643,23 @@ public final class JkManagerColor {
         return semi + 1 < end ? 1 : -1;
     }
 
-    /** True when {@code s[from..]} is only ANSI escapes (CSI or OSC — no more visible text). */
-    static boolean isOnlyAnsiFrom(String s, int from) {
+    /**
+     * True when {@code s[from..]} still spends at least one terminal column — skips ANSI escapes
+     * (CSI or OSC) and zero-/negative-width code points (combining marks, VS16, ZWJ, controls).
+     * Feeds the ellipsis reserve: a tail that costs nothing (cafe + combining acute at budget 4,
+     * emoji + VS16 at its exact width) must render fully, not lose its last glyph to a {@code …}.
+     */
+    static boolean hasVisibleFrom(String s, int from) {
         for (int i = from; i < s.length(); ) {
-            if (s.charAt(i) != '\033') return false;
-            i = RenderContext.skipEscape(s, i);
+            if (s.charAt(i) == '\033') {
+                i = RenderContext.skipEscape(s, i);
+                continue;
+            }
+            int cp = s.codePointAt(i);
+            if (org.jline.utils.WCWidth.wcwidth(cp) > 0) return true;
+            i += Character.charCount(cp);
         }
-        return true;
+        return false;
     }
 
     /** Restores {@code System.out}/{@code System.err} when closed (no checked exception). */
