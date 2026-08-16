@@ -3,6 +3,8 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.theme.Theme;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -65,11 +67,41 @@ class OutputWindowTest {
 
         cm.outputWindow().show();
         List<String> lines = cm.renderBuildPlanLines(80, 0);
-        // pane line + blank + header at minimum
+        // pane line + braille rule + header
         assertThat(lines.get(0)).contains("hidden-line");
-        assertThat(lines.get(1)).isEmpty();
+        assertThat(TestAnsi.strip(lines.get(1))).matches("\u2812+"); // ⠒ rule
         assertThat(lines.get(2)).contains("Build");
         cm.close();
+    }
+
+    @Test
+    void visible_empty_buffer_still_shows_rule_above_wedge() {
+        CommandWedge.resetEnvelope();
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+        cm.name = "Build";
+        cm.startNanos = System.nanoTime();
+        cm.outputWindow().show();
+        List<String> lines = cm.renderBuildPlanLines(80, 0);
+        assertThat(TestAnsi.strip(lines.get(0))).matches("\u2812+");
+        assertThat(lines.get(1)).contains("Build");
+        cm.outputWindow().hide();
+        List<String> off = cm.renderBuildPlanLines(80, 0);
+        assertThat(TestAnsi.strip(off.get(0))).doesNotContain("\u2812");
+        assertThat(off.get(0)).contains("Build");
+        cm.close();
+    }
+
+    @Test
+    void rule_line_is_full_width_dark_gray() {
+        String rule = OutputWindow.ruleLine(40);
+        String plain = TestAnsi.strip(rule);
+        assertThat(plain).hasSize(JkManagerColor.rowColumnBudget(40));
+        assertThat(plain).matches("\u2812+");
+        if (Theme.active().isAnsi()) {
+            // Whole line is colorized once (not per glyph).
+            assertThat(rule).isEqualTo(Theme.colorize(plain, Theme.active().darkGray()));
+        }
     }
 
     @Test

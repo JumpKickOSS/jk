@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.theme.Theme;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -8,11 +9,17 @@ import java.util.List;
  * Sliding ring buffer of recent process / step output for a live plan region. Hidden by default;
  * revealed with Ctrl-O or force-shown on non-zero tool/worker exits. Capacity is hard-capped at
  * {@link #MAX_LINES}; display height is computed at paint time from the terminal and chrome budget.
+ *
+ * <p>When the pane is open, a full-width dark-gray braille rule ({@link #RULE_GLYPH}) is painted
+ * immediately above the live plan wedge as the on-state indicator.
  */
 public final class OutputWindow {
 
     /** Hard cap on retained lines (and on lines ever painted in the pane). */
     public static final int MAX_LINES = 200;
+
+    /** Braille dots-25 (U+2812) — the “dotted line” rule above the wedge when peek is on. */
+    public static final String RULE_GLYPH = "\u2812"; // ⠒
 
     private final ArrayList<String> lines = new ArrayList<>();
     private boolean visible;
@@ -71,7 +78,7 @@ public final class OutputWindow {
 
     /**
      * Display budget from terminal geometry: free rows above plan chrome, minus one for the
-     * padding blank, clamped to {@code [0, MAX_LINES]}.
+     * on-state rule line, clamped to {@code [0, MAX_LINES]}.
      *
      * @param terminalRows full terminal height
      * @param planChromeRows header + tree (+ completions) lines that form the live plan chrome
@@ -79,9 +86,23 @@ public final class OutputWindow {
     public static int displayBudget(int terminalRows, int planChromeRows) {
         int rows = Math.max(1, terminalRows);
         int chrome = Math.max(0, planChromeRows);
-        // Leave room for chrome + one padding blank between pane and wedge.
+        // Leave room for chrome + the peek rule line above the wedge.
         int free = rows - chrome - 1;
         if (free < 1) return 0;
         return Math.min(MAX_LINES, free);
+    }
+
+    /**
+     * Full-width dark-gray rule of {@link #RULE_GLYPH}, width {@code cols} (clamped to a sane
+     * minimum). Plain/no-ansi themes still return the braille string; {@link PlainAscii} rewrites
+     * it at print time.
+     */
+    public static String ruleLine(int cols) {
+        int n = Math.max(1, cols);
+        // Match live plan rows: keep the last column free so DEC auto-wrap does not push the
+        // rule onto the next physical row.
+        int width = Math.max(1, JkManagerColor.rowColumnBudget(n));
+        String rule = RULE_GLYPH.repeat(width);
+        return Theme.colorize(rule, Theme.active().darkGray());
     }
 }

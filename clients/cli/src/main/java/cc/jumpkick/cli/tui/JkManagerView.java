@@ -564,15 +564,14 @@ final class JkManagerView {
             }
         }
 
-        // Optional process-output pane above chrome: newest lines + one blank padding.
+        // Optional process-output pane above chrome. When open: [pane lines…] + rule + chrome.
+        // The dark-gray braille rule is the on-state indicator (present even when the buffer is
+        // empty); closing Ctrl-O removes it with the pane.
         List<String> lines = new ArrayList<>();
-        if (m.outputWindow.visible() && !m.outputWindow.isEmpty()) {
+        if (m.outputWindow.visible()) {
             int paneBudget = OutputWindow.displayBudget(m.height, chrome.size());
-            List<String> pane = m.outputWindow.linesForDisplay(paneBudget);
-            if (!pane.isEmpty()) {
-                lines.addAll(pane);
-                lines.add(""); // blank between pane and wedge header
-            }
+            lines.addAll(m.outputWindow.linesForDisplay(paneBudget));
+            lines.add(OutputWindow.ruleLine(cols));
         }
         lines.addAll(chrome);
         return lines;
