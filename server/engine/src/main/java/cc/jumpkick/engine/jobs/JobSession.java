@@ -24,6 +24,10 @@ public final class JobSession {
     private volatile @Nullable Double lastProgress;
     private volatile @Nullable Long lastProgressDen;
     private volatile @Nullable BuildAccumulator accumulator;
+
+    /** Wall clock of the newest progress/remaining signal; 0 until the job emits one. */
+    private volatile long lastEventAt;
+
     private final ConcurrentHashMap<String, Long> weights = new ConcurrentHashMap<>();
     private final Object emitLock = new Object();
     private volatile long @Nullable [] emitState;
@@ -86,6 +90,7 @@ public final class JobSession {
 
     public void remaining(@Nullable RemainingWork remaining) {
         this.remaining = remaining;
+        this.lastEventAt = System.currentTimeMillis();
     }
 
     public @Nullable RemainingWork remaining() {
@@ -102,6 +107,7 @@ public final class JobSession {
 
     public void lastProgress(@Nullable Double p) {
         this.lastProgress = p;
+        this.lastEventAt = System.currentTimeMillis();
     }
 
     public @Nullable Double lastProgress() {
@@ -114,6 +120,10 @@ public final class JobSession {
 
     public @Nullable Long lastProgressDen() {
         return lastProgressDen;
+    }
+
+    public long lastEventAt() {
+        return lastEventAt;
     }
 
     public void accumulator(@Nullable BuildAccumulator acc) {

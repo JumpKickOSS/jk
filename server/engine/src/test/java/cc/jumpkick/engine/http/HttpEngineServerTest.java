@@ -1479,7 +1479,7 @@ class HttpEngineServerTest {
         AtomicBoolean live = new AtomicBoolean(true);
         AtomicInteger livePolls = new AtomicInteger();
         HttpLive.Run run =
-                new HttpLive.Run(7L, 1L, "build", "/tmp/x", "c", 1L, 50.0, "j-1", 0, 0, 1, 2, List.of(), List.of());
+                new HttpLive.Run(7L, 1L, "build", "/tmp/x", "c", 1L, 0L, 50.0, "j-1", 0, 0, 1, 2, List.of(), List.of());
         tiny.setLiveRunSupport(
                 () -> {
                     livePolls.incrementAndGet();

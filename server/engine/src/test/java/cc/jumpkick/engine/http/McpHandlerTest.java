@@ -153,11 +153,88 @@ class McpHandlerTest {
     }
 
     @Test
+    void stalled_keys_on_event_silence_not_job_age() {
+        long now = System.currentTimeMillis();
+        // Old job, fresh progress signal: healthy. Old job, silent for the stall window: stalled.
+        HttpLive.Run healthy = new HttpLive.Run(
+                1L,
+                1L,
+                "build",
+                "/a",
+                "c",
+                now - 10 * 60_000,
+                now - 1_000,
+                40.0,
+                "j-1",
+                0,
+                0,
+                1,
+                2,
+                List.of(),
+                List.of());
+        HttpLive.Run silent = new HttpLive.Run(
+                2L,
+                2L,
+                "build",
+                "/b",
+                "c",
+                now - 10 * 60_000,
+                now - McpHandler.STALL_MS - 5_000,
+                40.0,
+                "j-2",
+                0,
+                0,
+                1,
+                2,
+                List.of(),
+                List.of());
+        // No signal ever: falls back to startedAt (young job — not stalled).
+        HttpLive.Run young = new HttpLive.Run(
+                3L, 3L, "lock", "/c", "c", now - 2_000, 0L, Double.NaN, "j-3", 0, 0, 1, 2, List.of(), List.of());
+        McpHandler withLive = new McpHandler(
+                () -> new StatusSnapshot("0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30),
+                jobs,
+                dir -> Map.of(),
+                List::of,
+                "0.12.0",
+                new ProgressTokenRegistry(),
+                () -> List.of(healthy, silent, young));
+        String body = withLive.handleBody(
+                "{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"tools/call\",\"params\":{\"name\":\"jk_status\",\"arguments\":{}}}");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) resp.get("result");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> structured = (Map<String, Object>) result.get("structuredContent");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> jobRows = (List<Map<String, Object>>) structured.get("jobs");
+        assertThat(jobRows).hasSize(3);
+        assertThat(jobRows.get(0).get("stalled")).isEqualTo(false); // ten minutes old, ticked 1s ago
+        assertThat(jobRows.get(1).get("stalled")).isEqualTo(true); // silent past the stall window
+        assertThat(jobRows.get(2).get("stalled")).isEqualTo(false); // no signal, but only 2s old
+    }
+
+    @Test
     void run_wait_parks_inside_the_admission_yield_scope() {
         AtomicInteger polls = new AtomicInteger();
         AtomicInteger yields = new AtomicInteger();
         HttpLive.Run live = new HttpLive.Run(
-                42L, 1L, "build", "/tmp/demo", "com.example:demo", 1L, 50.0, "j-1", 0, 0, 1, 2, List.of(), List.of());
+                42L,
+                1L,
+                "build",
+                "/tmp/demo",
+                "com.example:demo",
+                1L,
+                0L,
+                50.0,
+                "j-1",
+                0,
+                0,
+                1,
+                2,
+                List.of(),
+                List.of());
         McpHandler waiting = new McpHandler(
                 () -> new StatusSnapshot("0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30),
                 jobs,

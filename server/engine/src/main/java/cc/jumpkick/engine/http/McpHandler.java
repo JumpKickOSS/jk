@@ -537,7 +537,10 @@ public final class McpHandler {
             row.put("kind", r.kind());
             row.put("dir", r.dir());
             row.put("progress", Double.isNaN(r.progress()) ? null : r.progress());
-            long age = Math.max(0, now - r.startedAt());
+            // Stall is silence, not age: a healthy 10-minute build ticks progress the whole way.
+            // Jobs that never emit a signal fall back to startedAt.
+            long basis = r.lastEventAt() > 0 ? r.lastEventAt() : r.startedAt();
+            long age = Math.max(0, now - basis);
             row.put("lastEventAgeMs", age);
             row.put("stalled", age >= STALL_MS && (Double.isNaN(r.progress()) || r.progress() < 100));
             out.add(row);
