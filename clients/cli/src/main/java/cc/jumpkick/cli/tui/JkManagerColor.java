@@ -594,7 +594,15 @@ public final class JkManagerColor {
                 // One code point per step (never splitting a surrogate pair), wcwidth columns.
                 int cp = s.codePointAt(i);
                 int cpLen = Character.charCount(cp);
-                int w = Math.max(0, org.jline.utils.WCWidth.wcwidth(cp));
+                int w = org.jline.utils.WCWidth.wcwidth(cp);
+                if (w < 0) {
+                    // C0/C1 controls (stray tab/backspace/CR in a step message — @DisplayName
+                    // content flows in unsanitized). Emitting one at weight 0 advances real
+                    // columns past the charged budget, wraps the row, and desyncs the cursor
+                    // bookkeeping — drop it.
+                    i += cpLen;
+                    continue;
+                }
                 // Reserve one column for … when more content remains after this code point.
                 // need=1 ⇒ stop while the ellipsis still fits in budget.
                 boolean moreAfter = i + cpLen < s.length() && !isOnlyAnsiFrom(s, i + cpLen);

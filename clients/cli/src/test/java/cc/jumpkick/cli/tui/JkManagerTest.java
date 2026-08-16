@@ -1496,6 +1496,16 @@ class JkManagerTest {
     }
 
     @Test
+    void truncate_visible_drops_control_characters_instead_of_emitting_them() {
+        // A stray tab/backspace/CR in a step message (wcwidth -1) copied at weight 0 advances
+        // real terminal columns past the charged budget — the row wraps and desyncs cursor
+        // bookkeeping. Controls are dropped, never forwarded.
+        assertThat(JkManager.truncateVisible("ab\tcd\re", 10)).isEqualTo("abcde");
+        assertThat(JkManager.truncateVisible("a\bb", 2)).isEqualTo("ab");
+        assertThat(RenderContext.visibleWidth(JkManager.truncateVisible("a\tb\tc", 3))).isEqualTo(3);
+    }
+
+    @Test
     void truncate_visible_one_column_keeps_a_fitting_char() {
         // Degenerate 1-column width: fitting content survives; only longer input degrades
         // to the bare ellipsis. Empty stays empty.
