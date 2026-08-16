@@ -201,6 +201,8 @@ public final class McpHandler {
                         case "resources/list" -> resourcesList();
                         case "resources/read" -> resourcesRead(params);
                         case "prompts/list" -> promptsList();
+                        case "prompts/get" -> promptsGet(params);
+                        case "logging/setLevel" -> Map.of(); // declared capability; engine log level is fixed
                         default -> throw new McpError(-32601, "method not found: " + method);
                     };
             if (result == null) return null; // notification ack
@@ -218,6 +220,8 @@ public final class McpHandler {
     private Map<String, Object> initialize(Map<String, Object> params) {
         Map<String, Object> caps = new LinkedHashMap<>();
         caps.put("tools", Map.of("listChanged", false));
+        caps.put("resources", Map.of("subscribe", false, "listChanged", false));
+        caps.put("prompts", Map.of("listChanged", false));
         // Streamable-HTTP progress: GET /mcp with Accept: text/event-stream.
         caps.put("logging", Map.of());
         Map<String, Object> experimental = new LinkedHashMap<>();
@@ -1073,14 +1077,42 @@ public final class McpHandler {
         return Map.of("contents", List.of(text));
     }
 
+    /** Prompt name → one-line playbook; drives both {@code prompts/list} and {@code prompts/get}. */
+    private static final Map<String, String> PROMPTS = promptCatalog();
+
+    private static Map<String, String> promptCatalog() {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put("fix-failing-build", "jk_diagnostics then edit then jk_run kind=build wait=true");
+        m.put("recover-disk", "jk_disk usage then clean or nuke with confirm");
+        m.put("setup-ci", "jk_config apply_preset=ci");
+        m.put("upgrade-deps", "jk_outdated then jk_run kind=lock");
+        m.put("stall-or-cancel", "jk_status then jk_job cancel");
+        return java.util.Collections.unmodifiableMap(m);
+    }
+
     private static Map<String, Object> promptsList() {
         List<Map<String, Object>> ps = new ArrayList<>();
-        ps.add(prompt("fix-failing-build", "jk_diagnostics then edit then jk_run kind=build wait=true"));
-        ps.add(prompt("recover-disk", "jk_disk usage then clean or nuke with confirm"));
-        ps.add(prompt("setup-ci", "jk_config apply_preset=ci"));
-        ps.add(prompt("upgrade-deps", "jk_outdated then jk_run kind=lock"));
-        ps.add(prompt("stall-or-cancel", "jk_status then jk_job cancel"));
+        for (Map.Entry<String, String> e : PROMPTS.entrySet()) {
+            ps.add(prompt(e.getKey(), e.getValue()));
+        }
         return Map.of("prompts", ps);
+    }
+
+    private static Map<String, Object> promptsGet(Map<String, Object> params) {
+        String name = string(params.get("name"));
+        if (name == null || name.isBlank()) throw new McpError(-32602, "prompts/get requires name");
+        String description = PROMPTS.get(name);
+        if (description == null) throw new McpError(-32602, "unknown prompt: " + name);
+        Map<String, Object> content = new LinkedHashMap<>();
+        content.put("type", "text");
+        content.put("text", description);
+        Map<String, Object> message = new LinkedHashMap<>();
+        message.put("role", "user");
+        message.put("content", content);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("description", description);
+        result.put("messages", List.of(message));
+        return result;
     }
 
     private static Map<String, Object> resource(String uri, String description) {

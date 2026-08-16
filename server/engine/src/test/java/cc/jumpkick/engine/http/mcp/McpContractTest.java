@@ -179,6 +179,44 @@ class McpContractTest {
     }
 
     @Test
+    void initialize_capabilities_match_the_implemented_method_set() {
+        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) resp.get("result");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> caps = (Map<String, Object>) result.get("capabilities");
+        assertThat(caps).containsKeys("tools", "resources", "prompts", "logging");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> resources = (Map<String, Object>) caps.get("resources");
+        assertThat(resources.get("subscribe")).isEqualTo(false);
+        assertThat(resources.get("listChanged")).isEqualTo(false);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> prompts = (Map<String, Object>) caps.get("prompts");
+        assertThat(prompts.get("listChanged")).isEqualTo(false);
+    }
+
+    @Test
+    void logging_set_level_is_a_no_op_result_not_method_not_found() {
+        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"logging/setLevel\","
+                + "\"params\":{\"level\":\"debug\"}}");
+        assertThat(body).contains("\"result\"");
+        assertThat(body).doesNotContain("-32601");
+    }
+
+    @Test
+    void prompts_get_returns_the_listed_prompt() {
+        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"prompts/get\","
+                + "\"params\":{\"name\":\"setup-ci\"}}");
+        assertThat(body).contains("apply_preset=ci");
+        assertThat(body).contains("\"messages\"");
+        String unknown = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"prompts/get\","
+                + "\"params\":{\"name\":\"nope\"}}");
+        assertThat(unknown).contains("-32602");
+    }
+
+    @Test
     void resources_list_is_nonempty() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/list\"}");
         assertThat(body).contains("jk://session");
