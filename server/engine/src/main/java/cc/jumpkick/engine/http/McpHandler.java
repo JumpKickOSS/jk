@@ -225,9 +225,10 @@ public final class McpHandler {
                         case "logging/setLevel" -> Map.of(); // declared capability; engine log level is fixed
                         default -> throw new McpError(-32601, "method not found: " + method);
                     };
-            if (result == null) return null; // notification ack
             if (notification) return null;
-            return resultMap(id, result);
+            // Null result = a notification-shaped method. A client that (legally) sent it WITH an
+            // id is making a request and hangs without a response — answer an empty result.
+            return resultMap(id, result == null ? Map.of() : result);
         } catch (McpError e) {
             if (notification) return null;
             return errorMap(id, e.code, e.getMessage());

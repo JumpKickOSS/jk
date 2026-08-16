@@ -235,6 +235,19 @@ class McpContractTest {
     }
 
     @Test
+    void initialized_with_an_id_gets_an_empty_result_while_the_notification_form_stays_silent() {
+        String withId = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"notifications/initialized\"}");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(withId);
+        assertThat(resp.get("id")).isEqualTo(7.0);
+        assertThat(resp.get("result")).isEqualTo(Map.of());
+        assertThat(mcp.handleBody("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}"))
+                .isEmpty();
+        assertThat(mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"initialized\"}"))
+                .contains("\"result\"");
+    }
+
+    @Test
     void empty_batch_is_a_single_invalid_request_error_object() {
         String body = mcp.handleBody("[]");
         @SuppressWarnings("unchecked")
