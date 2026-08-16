@@ -134,9 +134,19 @@ class CompilerDiagnosticTest {
 
     @Test
     void split_kv_uses_the_first_colon_only() {
-        CompilerDiagnostic.Kv kv = CompilerDiagnostic.splitKv("error: unresolved reference: Test");
+        CompilerDiagnostic.Kv kv = CompilerDiagnostic.splitKv("error: unresolved reference: Test", "warning");
         assertThat(kv.key()).isEqualTo("error");
         assertThat(kv.value()).isEqualTo("unresolved reference: Test");
+    }
+
+    @Test
+    void colon_less_rest_keys_under_the_block_severity() {
+        CompilerDiagnostic.Kv kv = CompilerDiagnostic.splitKv("deprecated API usage", "warning");
+        assertThat(kv.key()).isEqualTo("warning");
+        assertThat(kv.value()).isEqualTo("deprecated API usage");
+        String p = plain(CompilerDiagnostic.render("Bar.java:3: deprecated API usage", "warning"));
+        assertThat(p).contains("warning: deprecated API usage");
+        assertThat(p).doesNotContain("error:");
     }
 
     @Test

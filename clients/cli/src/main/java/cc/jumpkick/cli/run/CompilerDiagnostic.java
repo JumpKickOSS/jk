@@ -36,6 +36,11 @@ public final class CompilerDiagnostic {
 
     /** Colorize a raw compiler block (one diagnostic, or kotlinc's whole batch). */
     public static String render(String rawBlock) {
+        return render(rawBlock, "error");
+    }
+
+    /** As {@link #render(String)}; {@code severity} keys a colon-less header rest. */
+    public static String render(String rawBlock, String severity) {
         if (rawBlock == null || rawBlock.isEmpty()) return "";
         String[] lines = rawBlock.split("\n", -1);
         List<Integer> headers = new ArrayList<>();
@@ -51,13 +56,18 @@ public final class CompilerDiagnostic {
             int start = headers.get(h);
             int end = h + 1 < headers.size() ? headers.get(h + 1) : lines.length;
             if (out.length() > 0) out.append('\n');
-            paintUnit(out, lines, start, end, sources);
+            paintUnit(out, lines, start, end, severity, sources);
         }
         return out.toString();
     }
 
     private static void paintUnit(
-            StringBuilder out, String[] lines, int start, int end, Map<String, List<String>> sources) {
+            StringBuilder out,
+            String[] lines,
+            int start,
+            int end,
+            String severity,
+            Map<String, List<String>> sources) {
         Matcher header = HEADER.matcher(lines[start]);
         if (!header.matches()) {
             out.append(lines[start]);
@@ -69,7 +79,7 @@ public final class CompilerDiagnostic {
         String rest = header.group("rest") == null ? "" : header.group("rest").strip();
 
         List<Kv> kvs = new ArrayList<>();
-        if (!rest.isEmpty()) kvs.add(splitKv(rest));
+        if (!rest.isEmpty()) kvs.add(splitKv(rest, severity));
         int caretCol0 = -1;
         String snippet = null;
         List<String> extras = new ArrayList<>();
@@ -174,9 +184,10 @@ public final class CompilerDiagnostic {
         return sb.toString();
     }
 
-    static Kv splitKv(String rest) {
+    /** A colon-less rest keys under the block's own severity, not a hardcoded {@code error}. */
+    static Kv splitKv(String rest, String severity) {
         int colon = rest.indexOf(':');
-        if (colon <= 0) return new Kv("error", rest.strip());
+        if (colon <= 0) return new Kv(severity, rest.strip());
         return new Kv(
                 rest.substring(0, colon).strip(), rest.substring(colon + 1).strip());
     }

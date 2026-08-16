@@ -61,7 +61,7 @@ public final class DiagnosticReport {
         String title = titleFor(step, code);
         if (ConsoleSpec.isCompilerCode(code)) {
             return header(title, Role.ERROR, module) + "\n"
-                    + railBlock(CompilerDiagnostic.render(nullToEmpty(message)), Role.ERROR);
+                    + railBlock(CompilerDiagnostic.render(nullToEmpty(message), "error"), Role.ERROR);
         }
         return header(title, Role.ERROR, module) + "\n" + railBlock(paintProse(nullToEmpty(message)), Role.ERROR);
     }
@@ -77,7 +77,7 @@ public final class DiagnosticReport {
         if (ConsoleSpec.isCompilerCode(code)) {
             return header(title, Role.WARNING, module)
                     + "\n"
-                    + railBlock(CompilerDiagnostic.render(nullToEmpty(message)), Role.WARNING);
+                    + railBlock(CompilerDiagnostic.render(nullToEmpty(message), "warning"), Role.WARNING);
         }
         return header(title, Role.WARNING, module) + "\n" + railBlock(paintProse(nullToEmpty(message)), Role.WARNING);
     }
