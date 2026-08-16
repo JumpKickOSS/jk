@@ -47,8 +47,8 @@ import {
 // Guarded so the module can be imported headlessly (node --test) — JK-1986.
 if (typeof document !== 'undefined') bootstrapToken();
 
-// The build **phase-chain**: a single horizontal strip of coarse plan phases (Resolve →
-// Compile → Test → …), never wrapping. New phases advance rightward and push earlier ones off the
+// The build **phase-chain**: a single horizontal strip of coarse plan phases (Generate →
+// Compile → Test → …), never wrapping. Resolve is omitted unless it failed. New phases advance rightward and push earlier ones off the
 // left; when phases are hidden a ◂ / ▸ nav button pages the view (no scrollbar). Anchored to the
 // newest phase on mount and whenever the chain grows. Each phase node is a click-to-expand toggle
 // (single-open) that reveals the steps it collapses; the failed phase auto-opens. See

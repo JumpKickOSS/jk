@@ -913,7 +913,16 @@ export function phaseChainOf(module) {
     node.steps.push(s);
   }
   for (const node of nodes) node.state = phaseState(node.steps);
-  return nodes;
+  // Resolve is setup noise on a happy path. Keep it only when a resolve step failed
+  // so the chain starts at Generate (or the next real phase) otherwise.
+  return nodes.filter((n) => !isQuietResolve(n));
+}
+
+/** True for a non-failed {@code resolve} phase node (hide from the strip). */
+function isQuietResolve(node) {
+  const phase = (node.phase || '').toLowerCase();
+  if (phase !== 'resolve') return false;
+  return node.state !== 'failed';
 }
 
 /** Display label for a phase wire-name: capitalize the first letter ('compile' → 'Compile'). */
@@ -921,22 +930,33 @@ function phaseLabel(wire) {
   return wire ? wire.charAt(0).toUpperCase() + wire.slice(1) : '?';
 }
 
+/**
+ * Stamp / resource / build-logic tails. A 1–2ms SUCCESS here is not "the compiler ran" —
+ * {@link #phaseState} judges skip/success from the other steps in the phase.
+ */
+function isHousekeepingStep(step) {
+  const n = step && step.name ? String(step.name) : '';
+  return n === 'copy-resources' || n.startsWith('write-stamp') || n.startsWith('build-logic-');
+}
+
 /** A phase node's aggregate state from its steps: failed › running › skipped/cancelled › success. */
 function phaseState(steps) {
   if (!steps.length) return 'running';
   if (steps.some((s) => s.state === 'failed')) return 'failed';
   if (steps.some((s) => s.state === 'running')) return 'running';
-  if (steps.every((s) => s.state === 'skipped')) return 'skipped';
-  if (steps.every((s) => s.state === 'skipped' || s.state === 'cancelled')) return 'cancelled';
+  // Judge productive work only. copy-resources SUCCESS@2ms must not turn Compile green
+  // when compile-java was SKIPPED (action-cache / stamp hit).
+  const primary = steps.filter((s) => !isHousekeepingStep(s));
+  const judged = primary.length ? primary : steps;
+  if (judged.every((s) => s.state === 'skipped')) return 'skipped';
+  if (judged.every((s) => s.state === 'skipped' || s.state === 'cancelled')) return 'cancelled';
   // Idle bookkeeping only (explicit 0ms success + skips): paint the phase as skipped so
-  // Compile/Generate with a skipped compile-java and a 0ms write-stamp is not solid "success".
-  // Missing millis is not treated as idle (history/tests often omit duration).
-  // (No 'checked' alternative here: stepState never yields it — checked is a MODULE state from
-  // module-finish didWork=false; the step-level clause was dead, JK-1858.)
-  if (steps.every((s) => s.state === 'skipped' || (s.state === 'success' && s.millis === 0))) {
+  // Generate with a 0ms empty generate is not solid "success". Missing millis is not
+  // treated as idle (history/tests often omit duration).
+  if (judged.every((s) => s.state === 'skipped' || (s.state === 'success' && s.millis === 0))) {
     return 'skipped';
   }
-  return 'success'; // all terminal, at least one success with real wall-clock
+  return 'success';
 }
 
 /**

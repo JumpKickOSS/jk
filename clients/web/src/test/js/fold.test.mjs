@@ -995,9 +995,44 @@ test('phaseChainOf collapses steps into coarse phase nodes in encounter order', 
   step('compile-kotlin', 'compile', 'SUCCESS');
   step('run-tests', 'test', 'SUCCESS');
   const chain = phaseChainOf(cards[0].modules[0]);
-  assert.deepEqual(chain.map((p) => p.label), ['Resolve', 'Compile', 'Test']); // one node per phase, in order
-  assert.deepEqual(chain.map((p) => p.state), ['success', 'success', 'success']);
-  assert.deepEqual(chain[1].steps.map((s) => s.name), ['compile-java', 'compile-kotlin']); // Compile collapses both
+  assert.deepEqual(chain.map((p) => p.label), ['Compile', 'Test']); // Resolve omitted when it succeeded
+  assert.deepEqual(chain.map((p) => p.state), ['success', 'success']);
+  assert.deepEqual(chain[0].steps.map((s) => s.name), ['compile-java', 'compile-kotlin']); // Compile collapses both
+});
+
+test('phaseChainOf keeps Resolve only when a resolve step failed', () => {
+  const ok = phaseChainOf({
+    steps: [
+      { name: 'resolve-deps', phase: 'resolve', state: 'success' },
+      { name: 'ksp', phase: 'generate', state: 'success' },
+      { name: 'compile-java', phase: 'compile', state: 'success' },
+    ],
+  });
+  assert.deepEqual(ok.map((p) => p.label), ['Generate', 'Compile']);
+
+  const failed = phaseChainOf({
+    steps: [
+      { name: 'resolve-deps', phase: 'resolve', state: 'failed' },
+      { name: 'compile-java', phase: 'compile', state: 'success' },
+    ],
+  });
+  assert.deepEqual(failed.map((p) => p.label), ['Resolve', 'Compile']);
+  assert.equal(failed[0].state, 'failed');
+});
+
+test('phaseChainOf paints Compile skipped when compile-java is skipped and only copy-resources succeeded', () => {
+  // Build #110 jk-cli: compile-java SKIPPED@2ms, copy-resources SUCCESS@2ms — not a javac run.
+  const chain = phaseChainOf({
+    steps: [
+      { name: 'compile-java', phase: 'compile', state: 'skipped', millis: 2 },
+      { name: 'build-logic-after-compile', phase: 'compile', state: 'skipped', millis: 0 },
+      { name: 'write-stamp', phase: 'compile', state: 'skipped', millis: 0 },
+      { name: 'copy-resources', phase: 'compile', state: 'success', millis: 2 },
+    ],
+  });
+  assert.equal(chain.length, 1);
+  assert.equal(chain[0].label, 'Compile');
+  assert.equal(chain[0].state, 'skipped');
 });
 
 test('phaseChainOf paints skip when compile is SKIPPED and stamp is 0ms success', () => {
