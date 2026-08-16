@@ -42,7 +42,7 @@ stay clean. Long tools (e.g. `native-image`) stream into this channel live — n
 
 | Action | Behavior |
 |--------|----------|
-| **Ctrl-O** | Toggle the peek pane **above** the live Wedge+Progress. When **on**: optional newest buffer lines (free rows − rule, max 200), then a full-width dark-gray braille rule (`⠒…⠒`) as the on-state indicator, then the plan header. When **off**: rule and pane are gone. Empty buffer still shows the rule while on. |
+| **Ctrl-O** | Toggle the peek pane **above** the live Wedge+Progress. When **on**: optional newest buffer lines (free rows − rule, max 200), then a full-width dark-gray braille rule with centered caption (`⠒… ↑ output ↑ …⠒`), then the plan header. When **off**: rule and pane are gone. Empty buffer still shows the rule while on. |
 | **Failed tool/worker** (non-zero sub-process exit, e.g. `native-image`) | Force-opens the pane while the plan is still live. |
 | **Test failures** | Do **not** force-open — curated test-failure chrome owns that path. |
 | Plan settle | Does **not** dump the buffer. If the pane was open (toggle or force-show), its lines are left in scrollback before the region is wiped. |

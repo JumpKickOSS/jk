@@ -21,6 +21,9 @@ public final class OutputWindow {
     /** Braille dots-25 (U+2812) — the “dotted line” rule above the wedge when peek is on. */
     public static final String RULE_GLYPH = "\u2812"; // ⠒
 
+    /** Center caption on the peek rule (spaces pad the braille fill away from the words). */
+    public static final String RULE_LABEL = " \u2191 output \u2191 "; // ↑ output ↑
+
     private final ArrayList<String> lines = new ArrayList<>();
     private boolean visible;
 
@@ -93,16 +96,31 @@ public final class OutputWindow {
     }
 
     /**
-     * Full-width dark-gray rule of {@link #RULE_GLYPH}, width {@code cols} (clamped to a sane
-     * minimum). Plain/no-ansi themes still return the braille string; {@link PlainAscii} rewrites
-     * it at print time.
+     * Full-width dark-gray rule of {@link #RULE_GLYPH} with centered {@link #RULE_LABEL}, width
+     * {@code cols}. Plain/no-ansi themes still return the Unicode form; {@link PlainAscii} rewrites
+     * braille and arrows at print time.
      */
     public static String ruleLine(int cols) {
         int n = Math.max(1, cols);
         // Match live plan rows: keep the last column free so DEC auto-wrap does not push the
         // rule onto the next physical row.
         int width = Math.max(1, JkManagerColor.rowColumnBudget(n));
-        String rule = RULE_GLYPH.repeat(width);
-        return Theme.colorize(rule, Theme.active().darkGray());
+        String body = centeredRuleBody(width);
+        return Theme.colorize(body, Theme.active().darkGray());
+    }
+
+    /** Visible rule body (no ANSI): braille fill with {@link #RULE_LABEL} centered. */
+    static String centeredRuleBody(int width) {
+        if (width < 1) width = 1;
+        String label = RULE_LABEL;
+        if (label.length() >= width) {
+            // Too narrow for the caption — fill only, or hard-clip the label.
+            if (width <= 2) return RULE_GLYPH.repeat(width);
+            return label.substring(0, width);
+        }
+        int rest = width - label.length();
+        int left = rest / 2;
+        int right = rest - left;
+        return RULE_GLYPH.repeat(left) + label + RULE_GLYPH.repeat(right);
     }
 }
