@@ -352,6 +352,10 @@ public final class EngineHttpFront {
     private boolean runFormat(Path entryDir, Session.CancelToken cancelToken) {
         try {
             Path cache = cc.jumpkick.util.JkDirs.cache();
+            // Same style/hygiene precedence as `jk format` (no CLI flags here): [format] in the
+            // entry jk.toml, then the built-in defaults — one verb, one result across entry points.
+            cc.jumpkick.config.FormatStyles.Resolved styles = cc.jumpkick.config.FormatStyles.resolve(
+                    null, null, null, null, null, null, parseEntry(entryDir).format());
             Session session = Session.defaults()
                     .withWorkingDir(entryDir)
                     .withCacheDir(cache)
@@ -362,11 +366,11 @@ public final class EngineHttpFront {
                             entryDir,
                             cache,
                             false,
-                            "palantir",
-                            "kotlinlang",
-                            true,
-                            true,
-                            true,
+                            styles.java(),
+                            styles.kotlin(),
+                            styles.optimizeImports(),
+                            styles.importOrder(),
+                            styles.removeUnusedImports(),
                             null,
                             (p, s, m, i, t) -> {}));
             plan.addListener(listeners.hubPlan(entryDir.toString()));

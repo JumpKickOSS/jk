@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.command;
+package cc.jumpkick.config;
 
 import cc.jumpkick.model.JkBuild;
 import java.util.LinkedHashMap;
@@ -24,7 +24,7 @@ import java.util.Map;
  * remove-unused-imports}) share precedence: CLI flag → env var (caller-resolved into the CLI
  * Boolean) → {@code [format]} → built-in default ({@code true} for all three).
  */
-final class FormatStyles {
+public final class FormatStyles {
 
     private FormatStyles() {}
 
@@ -50,7 +50,7 @@ final class FormatStyles {
     private record StylePair(String java, String kotlin) {}
 
     /** The chosen concrete styles and hygiene flags for a format run. */
-    record Resolved(
+    public record Resolved(
             String java, String kotlin, boolean optimizeImports, boolean importOrder, boolean removeUnusedImports) {}
 
     /**
@@ -59,7 +59,7 @@ final class FormatStyles {
      *
      * @throws IllegalArgumentException on an unknown style or alias (message is user-facing)
      */
-    static Resolved resolve(
+    public static Resolved resolve(
             String cliJava,
             String cliKotlin,
             String cliAlias,
