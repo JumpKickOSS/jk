@@ -282,6 +282,23 @@ class McpContractTest {
     }
 
     @Test
+    void runs_latest_skips_corrupt_and_running_records() {
+        String runningStub = "{\"id\":\"live\",\"kind\":\"build\",\"dir\":\"/ws\",\"running\":true}";
+        McpHandler withNoise = new McpHandler(
+                () -> new StatusSnapshot(
+                        "0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30),
+                jobs,
+                dir -> Map.of(),
+                () -> List.of("{not json", runningStub, FAIL_A),
+                "0.12.0");
+        String body = withNoise.handleBody(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/read\",\"params\":{\"uri\":\"jk://runs/latest\"}}");
+        assertThat(body).doesNotContain("-32603");
+        assertThat(body).contains("r1"); // the next parseable finished run
+        assertThat(body).doesNotContain("live");
+    }
+
+    @Test
     void tool_level_failures_set_is_error_and_successes_do_not() {
         String failing = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"jk_jdk\",\"arguments\":{\"action\":\"install\",\"spec\":\"\"}}}");

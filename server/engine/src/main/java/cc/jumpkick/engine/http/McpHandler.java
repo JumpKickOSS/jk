@@ -1098,10 +1098,12 @@ public final class McpHandler {
                         yield McpProjectCards.card(dir, historyRaw.get());
                     }
                     case "jk://runs/latest" -> {
-                        List<String> raw = historyRaw.get();
-                        yield raw.isEmpty()
+                        // Newest finished record — skips corrupt rows and running stubs instead
+                        // of NPEing on parseRecord(null).
+                        Map<String, Object> rec = McpDiagnostics.findNewest(historyRaw.get(), null);
+                        yield rec == null
                                 ? Map.of("records", List.of())
-                                : Map.of("record", McpHistoryViews.summarize(parseRecord(raw.getFirst())));
+                                : Map.of("record", McpHistoryViews.summarize(rec));
                     }
                     case "jk://disk" -> McpMachine.diskUsage(cacheSnapshot);
                     case "jk://config" -> McpMachine.configGet();
