@@ -927,6 +927,9 @@ export const appOptions = {
     _inflight: Object.create(null),
     _offlineStatusBackoffMs: 5_000,
     _offlineStatusTimer: null,
+    // projectId a meta load is running or has loaded for — the applyRoute reload guard keys on
+    // this, not on projectMeta, which is null for the whole in-flight window.
+    _projectMetaFor: null,
   }),
 
   async mounted() {
@@ -1397,7 +1400,13 @@ export const appOptions = {
       // every /api/project hit re-runs identity resolution engine-side (git probe + project-home
       // scan) — so reload metadata only on an actual project switch or when it was never loaded
       // (JK-1945). This also stops the header flicker from nulling projectMeta per file click.
-      if (r.view === 'project' && r.projectId && (idChanged || !this.projectMeta)) {
+      // A load already running for this id counts as loaded: projectMeta is null for the whole
+      // in-flight window, so testing only it would refetch on every file click until the response.
+      if (
+        r.view === 'project' &&
+        r.projectId &&
+        (idChanged || (!this.projectMeta && this._projectMetaFor !== r.projectId))
+      ) {
         this.loadProjectMeta(r.projectId);
       }
       if (r.view === 'projects') {
@@ -1455,6 +1464,7 @@ export const appOptions = {
     // Live coord + description for the open project (by durable id).
     async loadProjectMeta(projectId) {
       if (this.authModal) return;
+      this._projectMetaFor = projectId;
       this.projectMeta = null;
       try {
         const meta = await this.fetchProjectMeta(projectId);
@@ -1467,6 +1477,8 @@ export const appOptions = {
           this.selectedProjectDir = meta.dir;
         }
       } catch (e) {
+        // A failed load must not latch the guard — the next click retries.
+        if (this._projectMetaFor === projectId) this._projectMetaFor = null;
         if (this.selectedProjectId !== projectId) return;
         this.handleHttpError(e);
       }

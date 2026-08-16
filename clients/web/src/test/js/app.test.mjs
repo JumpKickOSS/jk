@@ -56,6 +56,47 @@ test('project switch and missing meta both refetch', () => {
   assert.equal(calls2, 1, 'never-loaded meta is fetched even without a switch');
 });
 
+test('rapid file clicks during a slow meta fetch fire exactly one request (JK-2064)', async () => {
+  const flush = () => new Promise((r) => setImmediate(r));
+  globalThis.location.hash = '#project/abc123/files/src/A.java';
+  const v = vm({ selectedProjectId: null, projectMeta: null, projectHistory: [{}] });
+  let fetches = 0;
+  let resolveMeta;
+  v.fetchProjectMeta = () => {
+    fetches++;
+    return new Promise((r) => {
+      resolveMeta = r;
+    });
+  };
+  v.applyRoute(); // project switch starts the load
+  assert.equal(fetches, 1);
+  // The fetch is still in flight (projectMeta null) — more clicks must not refetch.
+  v.applyRoute();
+  globalThis.location.hash = '#project/abc123/files/src/B.java';
+  v.applyRoute();
+  assert.equal(fetches, 1, 'in-flight load absorbs further clicks');
+  resolveMeta({ dir: '/x', coord: 'g:x' });
+  await flush();
+  assert.equal(v.projectMeta.dir, '/x');
+  v.applyRoute();
+  assert.equal(fetches, 1, 'loaded meta still suppresses refetch');
+
+  // A failed load must not latch the guard — the next click retries.
+  globalThis.location.hash = '#project/xyz789';
+  const w = vm({ selectedProjectId: null, projectMeta: null, projectHistory: [{}] });
+  w.handleHttpError = () => {};
+  let attempts = 0;
+  w.fetchProjectMeta = () => {
+    attempts++;
+    return Promise.reject(new Error('engine hiccup'));
+  };
+  w.applyRoute();
+  await flush();
+  w.applyRoute();
+  await flush();
+  assert.equal(attempts, 2, 'failure re-arms the guard');
+});
+
 test('a stale project-meta response never overwrites the current project (JK-1995)', async () => {
   const v = vm({ selectedProjectId: 'slowA', projectMeta: null, projectHistory: [{}] });
   let resolveSlow;
