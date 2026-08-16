@@ -405,9 +405,14 @@ public final class HttpEngineServer implements AutoCloseable {
                 sendText(exchange, 404, "not found\n"); // [mcp] enabled = false
                 return;
             }
-            // MCP is agent-facing; always token-gated (even loopback) — same CSRF posture as POST /api/build.
-            if (!tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization")))
-                    && !tokenValid(queryParamLenient(exchange.getRequestURI().getRawQuery(), "access_token"))) {
+            // MCP is agent-facing; always token-gated (even loopback) — same CSRF posture as POST
+            // /api/build. ?access_token= exists solely for the SSE GET (EventSource cannot set
+            // headers); every other shape — mutating POSTs above all — must present the Bearer
+            // header, matching /api and the docs, so tokens stay out of shell history/proxy logs.
+            boolean sseQueryToken = exchange.getRequestMethod().equals("GET")
+                    && acceptsEventStream(exchange)
+                    && tokenValid(queryParamLenient(exchange.getRequestURI().getRawQuery(), "access_token"));
+            if (!tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization"))) && !sseQueryToken) {
                 exchange.getResponseHeaders().set("WWW-Authenticate", "Bearer");
                 sendText(exchange, 401, "missing or invalid bearer token\n");
                 return;

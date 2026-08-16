@@ -1460,6 +1460,36 @@ class HttpEngineServerTest {
     }
 
     @Test
+    void mcp_query_token_only_authorizes_the_sse_get() throws Exception {
+        String tok = token();
+        // A mutation authorized by a URL token would land in shell history and proxy logs.
+        HttpResponse<String> post = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "mcp?access_token=" + tok))
+                        .POST(HttpRequest.BodyPublishers.ofString("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}"))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(post.statusCode()).isEqualTo(401);
+        // Bearer-only everywhere except the SSE GET — discovery included.
+        HttpResponse<String> discovery = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "mcp?access_token=" + tok))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(discovery.statusCode()).isEqualTo(401);
+        // The SSE GET keeps the query form: EventSource cannot set headers.
+        HttpResponse<Stream<String>> sse = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "mcp?access_token=" + tok))
+                        .header("Accept", "text/event-stream")
+                        .build(),
+                HttpResponse.BodyHandlers.ofLines());
+        try {
+            assertThat(sse.statusCode()).isEqualTo(200);
+            assertThat(nextLine(sse.body().iterator())).isEqualTo(": mcp-events connected");
+        } finally {
+            sse.body().close();
+        }
+    }
+
+    @Test
     void mcp_wait_parks_without_holding_the_only_admission_permit() throws Exception {
         // RPC budget of 1: pre-JK-2028 a parked jk_job wait held the permit, so every other
         // request (including the jk_cancel that could un-wedge it) 503'd until timeout.
