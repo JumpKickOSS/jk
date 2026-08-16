@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import org.jline.utils.AttributedString;
+import org.jline.utils.AttributedStyle;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -408,6 +409,36 @@ class TestFailureHighlightTest {
         List<String> painted = TestFailureHighlight.paintLines(raw);
         assertThat(plain(painted.get(0))).isEqualTo("Note: something");
         assertThat(plain(painted.get(1))).isEqualTo("\tat cc.jumpkick.Foo.bar(Foo.java:1)");
+    }
+
+    @Test
+    void expandedCol_translates_raw_indexes_through_tab_stops() {
+        // "\tfoo.bar()" expands to "    foo.bar()": raw index 1 ('f') displays at column 4.
+        assertThat(TestFailureHighlight.expandedCol("\tfoo.bar()", 1)).isEqualTo(4);
+        // Two tabs, then code: raw index 2 displays at column 8.
+        assertThat(TestFailureHighlight.expandedCol("\t\tbar()", 2)).isEqualTo(8);
+        // A mid-line tab pads to the next 4-column stop, not a fixed width.
+        assertThat(TestFailureHighlight.expandedCol("ab\tcd", 3)).isEqualTo(4);
+        // Tab-free lines and unset marks pass through untouched.
+        assertThat(TestFailureHighlight.expandedCol("    foo()", 4)).isEqualTo(4);
+        assertThat(TestFailureHighlight.expandedCol("\tfoo()", -1)).isEqualTo(-1);
+        assertThat(TestFailureHighlight.expandedCol("\tfoo()", 0)).isZero();
+    }
+
+    @Test
+    void tab_indented_error_line_underlines_the_right_token() {
+        if (!Theme.active().isAnsi()) return;
+        // Raw column 1 is 'f'; after tab expansion the underline must cover "foo", not drift
+        // into the indent.
+        List<String> window = TestFailureHighlight.paintSourceWindow(
+                "Foo.java", List.of("\tfoo.bar();"), 1, 1, SyntaxHighlight.Language.JAVA);
+        AttributedString row = AttributedString.fromAnsi(window.get(1));
+        long underlineBit = AttributedStyle.DEFAULT.underline().getStyle();
+        StringBuilder marked = new StringBuilder();
+        for (int i = 0; i < row.length(); i++) {
+            if ((row.styleAt(i).getStyle() & underlineBit) != 0) marked.append(row.charAt(i));
+        }
+        assertThat(marked.toString()).isEqualTo("foo");
     }
 
     @Test

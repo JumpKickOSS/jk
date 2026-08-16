@@ -442,7 +442,9 @@ public final class TestFailureHighlight {
             if (raw == null) raw = "";
             String code = clampCode(expandTabs(raw), budget, t.isAnsi());
             boolean isErr = snippetOnly || line == err;
-            int mark = isErr ? errorCol : -1;
+            // The mark indexes the displayed (tab-expanded) code, while errorCol indexes the raw
+            // line — translate, or every tab before the column shifts the underline right.
+            int mark = isErr ? expandedCol(raw, errorCol) : -1;
             String num = Integer.toString(snippetOnly ? err : line);
             SrcRow row = new SrcRow(num, isErr, code, mark);
             rows.add(row);
@@ -535,6 +537,23 @@ public final class TestFailureHighlight {
             }
         }
         return sb.toString();
+    }
+
+    /** Raw char index {@code col} translated to its {@link #expandTabs} index (4-column stops). */
+    static int expandedCol(String raw, int col) {
+        if (raw == null || col <= 0 || raw.indexOf('\t') < 0) return col;
+        int out = 0;
+        int limit = Math.min(col, raw.length());
+        for (int i = 0; i < limit; i++) {
+            if (raw.charAt(i) == '\t') {
+                do {
+                    out++;
+                } while (out % 4 != 0);
+            } else {
+                out++;
+            }
+        }
+        return out + (col - limit);
     }
 
     private static String clampCode(String code, int budget, boolean ansi) {
