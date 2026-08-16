@@ -998,6 +998,34 @@ class JkManagerTest {
     }
 
     @Test
+    void renderBuildPlanLines_uses_its_cols_argument_not_a_second_terminal_read() {
+        // One width sample per frame: a SIGWINCH landing between paintBuildPlan's size sync and
+        // the tree render must not leak a second TerminalSize read into row content while the
+        // truncation budget, paintedCols, and the reflow-wipe estimate still use the sample.
+        var savedProbe = TerminalSize.probe;
+        try {
+            var buf = new ByteArrayOutputStream();
+            var cm = new JkManager(stream(buf), true, true, 120);
+            cm.height = 24;
+            cm.name = "Build";
+            cm.startNanos = System.nanoTime();
+            cm.nerdFont = NerdFontCaps.NONE;
+            cm.stepRunning("cc.jumpkick:jk-cli", "compile", "compile");
+            cm.stepMessage("cc.jumpkick:jk-cli", "compile", "compiling 42 sources");
+
+            TerminalSize.probe = () -> new int[] {24, 200};
+            TerminalSize.reset();
+            List<String> sampled = cm.renderBuildPlanLines(120, 4_000);
+            TerminalSize.probe = () -> new int[] {24, 30};
+            TerminalSize.reset();
+            assertThat(cm.renderBuildPlanLines(120, 4_000)).isEqualTo(sampled);
+        } finally {
+            TerminalSize.probe = savedProbe;
+            TerminalSize.reset();
+        }
+    }
+
+    @Test
     void physical_rows_after_reflow_grows_when_columns_shrink() {
         // A line painted ~79 cols wide reflows to 2 physical rows at 40 cols.
         String wide = "x".repeat(79);
