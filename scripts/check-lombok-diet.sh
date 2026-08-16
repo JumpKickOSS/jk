@@ -1,23 +1,34 @@
 #!/usr/bin/env bash
-# JK-1934: lombok is diet-only on server/ and plugins/. Forbidden on shared/, clients/.
+# Lombok is compile-time only: jk.java-conventions wires it as compileOnly +
+# annotationProcessor (and the test variants). It must never reach a runtime,
+# fat-jar, or native-image classpath — no runtime-reaching Gradle configuration
+# and no jk.toml dependency entry outside provided-/processor-dependencies.
 # Usage: scripts/check-lombok-diet.sh
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
-banned="$(git grep -n -E '^import lombok' -- 'shared' 'clients' || true)"
-if [ -n "$banned" ]; then
-  printf '%s\n' "$banned" >&2
-  echo "error: import lombok is forbidden under shared/ and clients/ (Graal + scaffold diet)" >&2
+gradle_runtime="$(git grep -inE \
+  '^[[:space:]]*"?(implementation|api|runtimeOnly|testImplementation|testRuntimeOnly)"?\(.*lombok' \
+  -- '*.gradle' '*.gradle.kts' || true)"
+if [ -n "$gradle_runtime" ]; then
+  printf '%s\n' "$gradle_runtime" >&2
+  echo "error: lombok in a runtime-reaching Gradle configuration (compileOnly/annotationProcessor only)" >&2
   exit 1
 fi
 
-count="$( { git grep -l -E '^import lombok' -- '*.java' '*.kt' || true; } | wc -l | tr -d ' ')"
-if [ "${count:-0}" -ge 15 ]; then
-  echo "error: $count first-party files import lombok (cap 15)" >&2
-  git grep -n -E '^import lombok' -- '*.java' '*.kt' >&2 || true
+manifest_runtime="$(git ls-files '*jk.toml' | while IFS= read -r f; do
+  awk -v f="$f" '
+    /^\[/ { table = $0 }
+    tolower($0) ~ /^[[:space:]]*"?lombok"?[[:space:]]*[=.]/ {
+      if (table !~ /provided-dependencies|processor-dependencies/) printf "%s:%d:%s\n", f, NR, $0
+    }' "$f"
+done)"
+if [ -n "$manifest_runtime" ]; then
+  printf '%s\n' "$manifest_runtime" >&2
+  echo "error: lombok in a runtime-reaching jk.toml scope (provided-/processor-dependencies only)" >&2
   exit 1
 fi
 
-echo "ok: lombok diet (0 imports in shared/clients; ${count:-0} first-party file(s))"
+echo "ok: lombok stays compile-time only (no runtime/fat-jar/native-image scope)"

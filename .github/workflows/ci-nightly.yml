@@ -31,6 +31,15 @@ jobs:
       - name: Integration test
         run: ./gradlew integrationTest --no-daemon
 
+  lombok-scope-guard:
+    name: Lombok scope guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lombok stays compile-time only
+        run: ./scripts/check-lombok-diet.sh
+
   engine-heap-guard:
     name: Engine heap guard (committed-after-idle)
     runs-on: ubuntu-latest
