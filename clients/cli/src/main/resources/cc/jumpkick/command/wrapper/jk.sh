@@ -58,12 +58,21 @@ if [ ! -x "$BIN" ]; then
   TMP="$(mktemp -d)"
   trap 'rm -rf "$TMP"' EXIT
   echo "jk wrapper: fetching jk $VERSION ..." >&2
-  command -v xz >/dev/null 2>&1 || {
-    echo "jk wrapper: xz is not installed; install xz (xz-utils) and re-run." >&2
+  # Stock macOS has no xz binary; /usr/bin/compression_tool decodes the xz container.
+  if command -v xz >/dev/null 2>&1; then
+    UNXZ="xz"
+  elif [ "$(uname -s)" = "Darwin" ] && [ -x /usr/bin/compression_tool ]; then
+    UNXZ="compression_tool"
+  else
+    echo "jk wrapper: cannot decompress .xz; install xz and re-run (Linux: xz-utils; macOS: brew install xz)." >&2
     exit 1
-  }
+  fi
   curl -fsSL -o "$TMP/jk.xz" "$URL"
-  xz -dc "$TMP/jk.xz" > "$TMP/jk"
+  if [ "$UNXZ" = xz ]; then
+    xz -dc "$TMP/jk.xz" > "$TMP/jk"
+  else
+    /usr/bin/compression_tool -decode -A lzma -i "$TMP/jk.xz" -o "$TMP/jk"
+  fi
   CLIENT="$TMP/jk"
   if [ -n "$SHA" ]; then
     GOT="$( (sha256sum "$CLIENT" 2>/dev/null || shasum -a 256 "$CLIENT") | awk '{print $1}')"

@@ -123,8 +123,25 @@ detect_target() {
 # only (docs/releases.md). Windows uses scripts/install.ps1 and a .zip —
 # this script never runs there. JK_ARCHIVE_URL / a local file may still be
 # .zip. Missing xz must not fall through to a .zip we do not host.
+#
+# Stock macOS ships no xz binary; its /usr/bin/compression_tool decodes the
+# xz container (Compression framework LZMA), so Darwin falls back to it.
+can_unxz() {
+  have xz && return 0
+  [ "$(uname -s)" = "Darwin" ] && [ -x /usr/bin/compression_tool ]
+}
+
+# unxz <in.xz> <out> — xz when present, else Apple's compression_tool.
+unxz_file() {
+  if have xz; then
+    xz -dc "$1" > "$2"
+  else
+    /usr/bin/compression_tool -decode -A lzma -i "$1" -o "$2"
+  fi
+}
+
 detect_ext() {
-  have xz || die "xz is not installed; install xz (xz-utils) and re-run."
+  can_unxz || die "cannot decompress .xz: install xz and re-run (Linux: xz-utils; macOS: brew install xz)."
   printf 'xz'
 }
 
@@ -135,8 +152,8 @@ detect_ext() {
 infer_decompress() {
   case "$1" in
     *.xz)
-      have xz || die "'$1' is a .xz file but xz is not installed."
-      decompress() { xz -dc "$1" > "$2"; } ;;
+      can_unxz || die "'$1' is a .xz file but xz is not installed (Linux: xz-utils; macOS: brew install xz)."
+      decompress() { unxz_file "$1" "$2"; } ;;
     *.zip)
       have unzip || die "'$1' is a .zip file but unzip is not installed."
       # Single-entry archive: -p streams the binary to stdout.
