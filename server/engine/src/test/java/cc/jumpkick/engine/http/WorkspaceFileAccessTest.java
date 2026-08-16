@@ -388,6 +388,13 @@ class WorkspaceFileAccessTest {
         Files.createDirectories(root.resolve("src"));
         Files.write(root.resolve("src/Weird.java"), new byte[] {'c', 'l', 'a', 's', 's', 0, 'X'});
         assertThat(WorkspaceFileAccess.read(root, "src/Weird.java")).isInstanceOf(ReadResult.Binary.class);
+        // The scan covers the whole buffer — a NUL far past the first 8 KiB still marks binary
+        // instead of falling through to the Latin-1 mojibake path.
+        byte[] late = new byte[64 * 1024];
+        java.util.Arrays.fill(late, (byte) 'a');
+        late[late.length - 1] = 0;
+        Files.write(root.resolve("src/Late.java"), late);
+        assertThat(WorkspaceFileAccess.read(root, "src/Late.java")).isInstanceOf(ReadResult.Binary.class);
     }
 
     @Test

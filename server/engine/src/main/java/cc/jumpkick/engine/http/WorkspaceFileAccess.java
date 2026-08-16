@@ -36,7 +36,6 @@ final class WorkspaceFileAccess {
     static final int MAX_FILE_BYTES = 1024 * 1024;
     static final int MAX_LIST_FILES = 5000;
     static final int MAX_WALK_DEPTH = 32;
-    static final int BINARY_PROBE_BYTES = 8192;
 
     private static final Map<String, String> LANG_BY_EXT = Map.ofEntries(
             Map.entry(".java", "java"),
@@ -390,9 +389,10 @@ final class WorkspaceFileAccess {
         if (lang == null) return new ReadResult.NotFound();
         // Image allow-list entries are binary by nature — JSON body endpoint rejects them; use raw.
         if (isImageLang(lang)) return new ReadResult.Binary();
-        int probe = Math.min(BINARY_PROBE_BYTES, bytes.length);
-        for (int i = 0; i < probe; i++) {
-            if (bytes[i] == 0) return new ReadResult.Binary();
+        // Whole-buffer NUL scan: the file is already in memory, and a late NUL means binary
+        // content that would otherwise fail strict UTF-8 and render as Latin-1 mojibake.
+        for (byte b : bytes) {
+            if (b == 0) return new ReadResult.Binary();
         }
         // Strict decode first: new String(bytes, UTF_8) silently swaps every bad byte
         // for U+FFFD, so a Latin-1 source rendered as mojibake presented as the file's true text.
