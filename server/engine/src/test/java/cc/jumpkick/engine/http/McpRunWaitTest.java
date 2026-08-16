@@ -123,4 +123,25 @@ class McpRunWaitTest {
         Map<String, Object> result = (Map<String, Object>) fields.get("result");
         assertThat(result.get("id")).isEqualTo("new");
     }
+
+    @Test
+    void failed_wait_outside_the_bound_dir_still_attaches_diagnostics() {
+        String failed = "{\"id\":\"rf\",\"kind\":\"build\",\"dir\":\"/ws/b\",\"success\":false,"
+                + "\"exitCode\":1,\"requestId\":45,\"startedAt\":1700000000000,\"modules\":[],"
+                + "\"diagnostics\":[{\"severity\":\"error\",\"dir\":\"/ws/b\","
+                + "\"message\":\"/ws/b/Bad.java:1: error: cannot find symbol\"}]}";
+        McpHandler mcp = handler(() -> List.of(failed), jid -> jid == JID ? failed : null);
+        mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_bind\",\"arguments\":{\"dir\":\"/ws/a\"}}}");
+        Map<String, Object> fields = structured(mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,"
+                + "\"method\":\"tools/call\",\"params\":{\"name\":\"jk_run\",\"arguments\":"
+                + "{\"kind\":\"build\",\"dir\":\"/ws/b\",\"wait\":true,\"timeout_s\":2}}}"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) fields.get("result");
+        assertThat(result.get("success")).isEqualTo(false);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> diags = (List<Map<String, Object>>) fields.get("diagnostics");
+        assertThat(diags).isNotEmpty();
+        assertThat(String.valueOf(diags.getFirst().get("file"))).contains("Bad.java");
+    }
 }

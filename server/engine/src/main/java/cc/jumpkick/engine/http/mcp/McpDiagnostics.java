@@ -50,8 +50,12 @@ public final class McpDiagnostics {
             Map<String, Object> rec = parse(raw);
             if (rec == null) continue;
             if (McpHistoryViews.bool(rec, "running")) continue;
-            if (!McpHistoryViews.matches(rec, dir, null, lastFail ? Boolean.FALSE : null, null)) continue;
-            if (!lastFail && !run.equals(McpHistoryViews.str(rec, "id"))) continue;
+            if (lastFail) {
+                if (!McpHistoryViews.matches(rec, dir, null, Boolean.FALSE, null)) continue;
+            } else {
+                // A specific run id names one record; the bound-dir filter must not hide it.
+                if (!run.equals(McpHistoryViews.str(rec, "id"))) continue;
+            }
             return rec;
         }
         return null;

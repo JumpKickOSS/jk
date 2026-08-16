@@ -36,6 +36,13 @@ class McpDiagnosticsLookupTest {
     }
 
     @Test
+    void explicit_run_id_bypasses_the_dir_filter() {
+        Map<String, Object> rec = McpDiagnostics.findRun(List.of(FAIL, OTHER), "x", "/ws");
+        assertThat(rec.get("id")).isEqualTo("x");
+        assertThat(rec.get("dir")).isEqualTo("/other");
+    }
+
+    @Test
     void newest_finished_is_not_last_fail() {
         Map<String, Object> rec = McpDiagnostics.findNewest(List.of(FORMAT, FAIL, OTHER), "/ws");
         assertThat(rec.get("id")).isEqualTo("fmt");

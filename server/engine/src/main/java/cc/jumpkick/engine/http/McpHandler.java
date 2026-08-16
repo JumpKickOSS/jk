@@ -836,7 +836,9 @@ public final class McpHandler {
             fields.put("result", last);
             if (Boolean.FALSE.equals(last.get("success"))) {
                 Object runId = last.get("id");
-                Map<String, Object> diags = diagnosticsResult(runId == null ? Map.of() : Map.of("run", runId));
+                // The job's own dir, not the bound dir — the run may live outside the session.
+                Map<String, Object> diags = diagnosticsResult(
+                        runId == null ? Map.of() : Map.of("run", runId, "dir", spec.dir()));
                 @SuppressWarnings("unchecked")
                 Map<String, Object> env = (Map<String, Object>) diags.get("structuredContent");
                 if (env != null) fields.put("diagnostics", env.get("diagnostics"));
