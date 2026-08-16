@@ -1159,7 +1159,9 @@ public final class JkManager implements AutoCloseable, LiveRegion {
 
     /**
      * Peek close for settle/cancel: process lines are already permanent scrollback above the live
-     * region — only drop the rule from bookkeeping so wipe clears rule+wedge, not re-dump the log.
+     * region — hide the pane so wipe clears separator+wedge (not a re-dump of the log). The settle
+     * path then prints one blank between that scrollback and the settle chip when any lines were
+     * committed.
      */
     void flushVisibleOutputToScrollback() {
         synchronized (lock) {

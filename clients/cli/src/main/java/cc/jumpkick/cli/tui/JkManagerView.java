@@ -168,10 +168,10 @@ final class JkManagerView {
     }
 
     /**
-     * Print the settled result line. Leading blank only: one blank before chrome starts,
-     * no automatic blank after the settle line — that looked like an extra line before the shell
-     * prompt on {@code jk build}/{@code jk lock}/one-shot wedges. Callers that hand off to a
-     * subprocess ({@code jk run}) add their own separator when needed.
+     * Print the settled result line. One blank before chrome starts (envelope). After committed
+     * process output, one blank between that scrollback and the settle chip. No blank after the
+     * settle line (would look like an extra row before the shell prompt). Callers that hand off to
+     * a subprocess ({@code jk run}) add their own separator when needed.
      */
     void settle(String line, List<String> above) {
         m.restoreStreams(); // flush any captured output above the region first
@@ -181,12 +181,12 @@ final class JkManagerView {
             m.done = true;
             LiveRegion.clearActive(m);
             m.clearWindowTitle();
+            // Process lines already in scrollback; wipe removes rule/blank + live chrome.
+            int processAbove = m.planMode ? m.outputWindow.committedScrollbackLines() : 0;
             if (m.animate && Theme.active().isAnsi()) {
-                // Drop rule bookkeeping; leave committed process lines in scrollback.
                 if (m.planMode) m.flushVisibleOutputToScrollback();
-                // Simple mode keeps the settled spinner line and prints the
-                // result below it; plan mode replaces the whole region (cursor lands on the
-                // first wiped row — immediately under the last process line, no extra blank).
+                // Simple mode keeps the settled spinner line and prints the result below it; plan
+                // mode replaces the whole region (cursor lands on the first wiped row).
                 if (m.planMode) m.wipeRegion();
                 else m.freezeSpinnerLine();
                 m.out.print(Ansi.taskbarClear());
@@ -198,14 +198,18 @@ final class JkManagerView {
             // Deferred subprocess output (e.g. compiler warnings) prints as
             // scrollback above the result line, with a blank separator, so the
             // settle line stays the last thing on screen.
+            boolean printedAbove = false;
             if (above != null && !above.isEmpty()) {
-                boolean printedAbove = false;
                 for (String s : above) {
                     if (s == null || s.isBlank()) continue;
                     m.out.println(s);
                     printedAbove = true;
                 }
-                if (printedAbove) m.out.println();
+            }
+            // Exactly one blank between external output (process scrollback and/or deferred
+            // above) and the settle chip. Do not stack two blanks when both are present.
+            if (printedAbove || processAbove > 0) {
+                m.out.println();
             }
             m.ensureLeadingBlank(); // quiet / late m.settle still gets the leading blank
             m.out.println(line);
@@ -398,8 +402,9 @@ final class JkManagerView {
     }
 
     /**
-     * Repaint the multi-line <em>live</em> plan region (rule if peek is on + wedge + tree). Process
-     * output that has already been committed sits in scrollback above and is never redrawn here.
+     * Repaint the multi-line <em>live</em> plan region (separator + wedge + tree). Separator is the
+     * braille rule when peek is on, or a blank line when peek is off after process lines were
+     * committed. Process output in scrollback above is never redrawn here.
      *
      * <p>Cursor invariant: between paints the cursor is parked at the start of the line immediately
      * below the live region. Line-diff only rewrites changed rows (spinner header most frames).
@@ -466,8 +471,9 @@ final class JkManagerView {
     }
 
     /**
-     * Peek close: leave committed process lines in scrollback; drop the rule and repaint chrome
-     * only. Must hold {@code m.lock}.
+     * Peek close: leave committed process lines in scrollback; replace the dotted rule with a blank
+     * separator (still between process output and the wedge) and repaint chrome. Must hold
+     * {@code m.lock}. Caller has already {@link OutputWindow#hide()}'d.
      */
     void closePeekPaint() {
         if (!m.animate || !Theme.active().isAnsi()) return;
@@ -478,7 +484,8 @@ final class JkManagerView {
             m.out.print('\r');
             m.out.print(Ansi.ERASE_DISPLAY_TO_END);
         }
-        writeLiveRegion(renderChromeLines(m.width, m.elapsedMillis()));
+        // liveRegionLines paints "" when peek is off but process lines were committed.
+        writeLiveRegion(liveRegionLines(renderChromeLines(m.width, m.elapsedMillis()), m.width));
         m.out.flush();
     }
 
@@ -522,11 +529,19 @@ final class JkManagerView {
         m.out.print(Ansi.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
     }
 
-    /** Live region only: optional rule + wedge/tree chrome (never includes process lines). */
+    /**
+     * Live region only: separator + wedge/tree chrome (never includes process lines).
+     *
+     * <p>When process output has been committed above the region, keep exactly one separator row
+     * between that scrollback and the wedge: the braille rule while peek is on, or a blank line
+     * when peek is off. Never omit the separator after process lines were shown.
+     */
     private List<String> liveRegionLines(List<String> chrome, int cols) {
         List<String> live = new ArrayList<>();
         if (m.outputWindow.visible()) {
             live.add(OutputWindow.ruleLine(cols));
+        } else if (m.outputWindow.committedScrollbackLines() > 0) {
+            live.add(""); // blank stand-in for the rule
         }
         live.addAll(chrome);
         int maxRegion = OutputWindow.maxRegionLines(m.height);
@@ -611,8 +626,8 @@ final class JkManagerView {
      * one-line brief under the branch. No blank spacer rails between rows — vertically compact.
      */
     /**
-     * Live region only: optional peek rule + wedge/tree chrome. Process lines are not included —
-     * once shown they are terminal scrollback above this region.
+     * Live region only: separator (rule or blank) + wedge/tree chrome. Process lines are not
+     * included — once shown they are terminal scrollback above this region.
      */
     public List<String> renderBuildPlanLines(int cols, long elapsedMillis) {
         return liveRegionLines(renderChromeLines(cols, elapsedMillis), cols);

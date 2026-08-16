@@ -1510,6 +1510,29 @@ class JkManagerTest {
     }
 
     @Test
+    void toggle_off_replaces_peek_rule_with_blank_separator() {
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(stream(buf), true, true, 80);
+        cm.name = "Build";
+        cm.progress(1, 4);
+        cm.stepRunning("m", "compile");
+        cm.tick();
+        cm.outputWindow().show();
+        cm.writeAbove("native-image: step");
+        assertThat(cm.outputWindow().committedScrollbackLines()).isEqualTo(1);
+        List<String> on = cm.renderBuildPlanLines(80, 0);
+        assertThat(TestAnsi.strip(on.get(0))).contains("output");
+
+        cm.toggleOutputWindow(); // hide: rule → blank, not delete separator
+        assertThat(cm.outputWindow().visible()).isFalse();
+        List<String> off = cm.renderBuildPlanLines(80, 0);
+        assertThat(off.get(0)).isEmpty();
+        assertThat(TestAnsi.strip(off.get(1))).doesNotContain("output");
+        assertThat(off.get(1)).isNotEmpty();
+        assertThat(cm.outputWindow().committedScrollbackLines()).isEqualTo(1);
+    }
+
+    @Test
     void capture_output_buffers_system_out_in_the_output_window() {
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(stream(buf), true, true, 80);

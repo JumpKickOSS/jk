@@ -105,9 +105,54 @@ class OutputWindowTest {
         assertThat(TestAnsi.strip(lines.get(0))).contains("output");
         assertThat(lines.get(1)).contains("Build");
         cm.outputWindow().hide();
+        // No committed process lines → no blank stand-in; chrome is first.
         List<String> off = cm.renderBuildPlanLines(80, 0);
         assertThat(TestAnsi.strip(off.get(0))).doesNotContain("output");
         assertThat(off.get(0)).contains("Build");
+        cm.close();
+    }
+
+    @Test
+    void hide_after_committed_output_replaces_rule_with_blank_separator() {
+        CommandWedge.resetEnvelope();
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+        cm.name = "Build";
+        cm.startNanos = System.nanoTime();
+        cm.outputWindow().show();
+        cm.outputWindow().append("native-image: compiling");
+        cm.outputWindow().noteCommitted(1);
+        List<String> on = cm.renderBuildPlanLines(80, 0);
+        assertThat(TestAnsi.strip(on.get(0))).contains("output");
+        assertThat(on.get(1)).contains("Build");
+
+        cm.outputWindow().hide();
+        List<String> off = cm.renderBuildPlanLines(80, 0);
+        // Blank stand-in for the rule — not chrome immediately under process output.
+        assertThat(off.get(0)).isEmpty();
+        assertThat(off.get(1)).contains("Build");
+        assertThat(TestAnsi.strip(String.join("\n", off))).doesNotContain("↑ output ↑");
+        cm.close();
+    }
+
+    @Test
+    void settle_after_committed_process_output_inserts_one_blank_before_chip() {
+        CommandWedge.resetEnvelope();
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+        cm.name = "Build";
+        cm.startNanos = System.nanoTime();
+        cm.tick(); // initial region paint
+        cm.outputWindow().show();
+        cm.writeAbove("tool: line-one");
+        assertThat(cm.outputWindow().committedScrollbackLines()).isGreaterThan(0);
+        buf.reset();
+        cm.finishBuildPlanSuccess("built");
+        String out = buf.toString(StandardCharsets.UTF_8);
+        // Settle chip is preceded by a blank (separator under process scrollback).
+        assertThat(out).contains("\n\n");
+        assertThat(out).contains("built");
+        assertThat(out).doesNotEndWith("\n\n"); // no trailing blank before prompt
         cm.close();
     }
 

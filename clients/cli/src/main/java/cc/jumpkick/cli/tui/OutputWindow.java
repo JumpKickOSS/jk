@@ -12,7 +12,9 @@ import java.util.List;
  * {@link #MAX_LINES}; display height is computed at paint time from the terminal and chrome budget.
  *
  * <p>When the pane is open, a full-width dark-gray braille rule ({@link #RULE_GLYPH}) is painted
- * immediately above the live plan wedge as the on-state indicator.
+ * immediately above the live plan wedge as the on-state indicator. When the pane is closed after
+ * process lines were committed to scrollback, that rule is replaced by a blank line — never removed
+ * without a stand-in — so external output and the wedge stay separated.
  */
 public final class OutputWindow {
 
