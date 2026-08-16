@@ -293,8 +293,11 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         if (!planMode) return;
         synchronized (lock) {
             if (done) return;
+            boolean wasOpen = outputWindow.visible();
             outputWindow.show();
-            if (animate && Theme.active().isAnsi()) {
+            if (animate && Theme.active().isAnsi() && !wasOpen) {
+                view.openPeekPaint();
+            } else if (animate && Theme.active().isAnsi()) {
                 view.requestFullRepaint();
                 paintBuildPlan();
                 out.flush();
@@ -307,11 +310,12 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         if (!planMode) return;
         synchronized (lock) {
             if (done) return;
-            outputWindow.toggle();
-            if (animate && Theme.active().isAnsi()) {
-                view.requestFullRepaint();
-                paintBuildPlan();
-                out.flush();
+            if (outputWindow.visible()) {
+                outputWindow.hide();
+                if (animate && Theme.active().isAnsi()) view.closePeekPaint();
+            } else {
+                outputWindow.show();
+                if (animate && Theme.active().isAnsi()) view.openPeekPaint();
             }
         }
     }
@@ -1154,26 +1158,13 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * If the output pane is open, permanently print its displayed lines into scrollback before the
-     * live region is wiped on settle/cancel — so force-shown tool failures remain readable.
+     * Peek close for settle/cancel: process lines are already permanent scrollback above the live
+     * region — only drop the rule from bookkeeping so wipe clears rule+wedge, not re-dump the log.
      */
     void flushVisibleOutputToScrollback() {
         synchronized (lock) {
-            if (!outputWindow.visible() || outputWindow.isEmpty()) return;
-            // Budget from current geometry; use chrome estimate of 1 (header) so we flush what was
-            // roughly visible. Exact match to last paint is not required.
-            int budget = OutputWindow.displayBudget(height, Math.max(1, linesDrawn > 0 ? 1 : 1));
-            // Prefer the full ring up to MAX when flushing failures — user already opened the pane.
-            List<String> lines = outputWindow.linesForDisplay(OutputWindow.MAX_LINES);
-            if (lines.isEmpty()) return;
-            // Wipe live region first so println lands in scrollback above the eventual settle.
-            if (planMode && Theme.active().isAnsi() && linesDrawn > 0) {
-                wipeRegion();
-            }
-            for (String line : lines) {
-                out.println(line);
-            }
-            out.println(); // padding blank before settle chrome (matches live pane padding)
+            if (!outputWindow.visible()) return;
+            // Lines were committed above the region as they arrived; leave them in scrollback.
             outputWindow.hide();
         }
     }

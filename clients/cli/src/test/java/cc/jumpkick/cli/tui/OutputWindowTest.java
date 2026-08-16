@@ -34,7 +34,7 @@ class OutputWindowTest {
     }
 
     @Test
-    void render_region_never_fills_full_terminal_height() {
+    void live_region_never_fills_full_terminal_height() {
         CommandWedge.resetEnvelope();
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
@@ -42,8 +42,8 @@ class OutputWindowTest {
         cm.height = 20;
         cm.startNanos = System.nanoTime();
         cm.outputWindow().show();
-        for (int i = 0; i < 100; i++) cm.writeAbove("line-" + i);
         List<String> lines = cm.renderBuildPlanLines(80, 0);
+        // Live region is rule + chrome only (process lines are scrollback).
         assertThat(lines.size()).isLessThanOrEqualTo(OutputWindow.maxRegionLines(20));
         assertThat(TestAnsi.strip(String.join("\n", lines))).contains("output");
         cm.close();
@@ -82,14 +82,14 @@ class OutputWindowTest {
         assertThat(cm.outputWindow().visible()).isFalse();
         assertThat(buf.toString(StandardCharsets.UTF_8)).doesNotContain("hidden-line");
 
+        // Live region is rule + chrome only — process lines are scrollback, not lastLines.
         cm.outputWindow().show();
         List<String> lines = cm.renderBuildPlanLines(80, 0);
-        // pane line + braille rule (with caption) + header
-        assertThat(lines.get(0)).contains("hidden-line");
-        String rule = TestAnsi.strip(lines.get(1));
-        assertThat(rule).contains("output").contains("\u2191"); // ↑
-        assertThat(rule).startsWith("\u2812").endsWith("\u2812"); // ⠒
-        assertThat(lines.get(2)).contains("Build");
+        String rule = TestAnsi.strip(lines.get(0));
+        assertThat(rule).contains("output").contains("\u2191");
+        assertThat(rule).startsWith("\u2812").endsWith("\u2812");
+        assertThat(lines.get(1)).contains("Build");
+        assertThat(String.join("\n", lines)).doesNotContain("hidden-line");
         cm.close();
     }
 
@@ -146,8 +146,12 @@ class OutputWindowTest {
         assertThat(cm.outputWindow().visible()).isFalse();
         cm.showProcessFailureOutput();
         assertThat(cm.outputWindow().visible()).isTrue();
-        List<String> lines = cm.renderBuildPlanLines(80, 0);
-        assertThat(lines.get(0)).contains("native-image: error");
+        // Open paints committed lines + live rule; live region starts with the rule.
+        String out = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
+        assertThat(out).contains("native-image: error");
+        assertThat(out).contains("output");
+        List<String> live = cm.renderBuildPlanLines(80, 0);
+        assertThat(TestAnsi.strip(live.get(0))).contains("output");
         cm.close();
     }
 }

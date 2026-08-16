@@ -1497,20 +1497,15 @@ class JkManagerTest {
         assertThat(cm.outputWindow().size()).isEqualTo(1);
         assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8))).doesNotContain("javac: warning in Foo.java");
 
-        cm.showProcessFailureOutput(); // force-open + immediate paint (same as tool failure)
+        cm.showProcessFailureOutput(); // force-open: commit buffer + paint rule/wedge
         String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
-        int log = visible.indexOf("javac: warning in Foo.java");
-        int bar = visible.indexOf("█");
-        assertThat(log).isGreaterThanOrEqualTo(0);
-        // Pane paints above the plan header/bar.
-        if (bar >= 0) assertThat(bar).isGreaterThan(log);
+        assertThat(visible).contains("javac: warning in Foo.java");
+        assertThat(visible).contains("output"); // rule caption
 
-        // Further lines while open only mark dirty — animator tick repaints (no stacked wedges).
+        // Further lines while open: lift live region, emit line, repaint wedge (immediate).
         buf.reset();
         cm.writeAbove("second line");
         assertThat(cm.outputWindow().size()).isEqualTo(2);
-        assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8))).doesNotContain("second line");
-        cm.tick();
         assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8))).contains("second line");
     }
 
