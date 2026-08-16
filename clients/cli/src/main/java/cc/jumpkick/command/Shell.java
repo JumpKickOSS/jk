@@ -29,8 +29,9 @@ public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell 
     String unsetEnv(String key);
 
     /**
-     * Render the activation hook script (the long output of {@code jk activate}). {@code jkExe} is
-     * the resolved absolute path to the {@code jk} binary, pre-quoted for the target shell.
+     * Render the directory-aware hook body of {@code jk activate &lt;shell&gt;}. {@code jkExe} is
+     * the resolved absolute path to the {@code jk} binary (embedded as {@code __JK_EXE} for
+     * hook-env). PATH ensure and completions are composed separately by the caller.
      */
     String activateScript(String jkExe);
 
@@ -48,24 +49,48 @@ public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell 
     String rcFileDisplay();
 
     /**
-     * Hook line inside the installer block: eval/source {@code jk activate &lt;shell&gt;} so
-     * directory-aware {@code hook-env} is registered. Prefer {@code command jk} (PATH) over a
-     * frozen absolute path so self-update is picked up without rewriting the rc.
-     *
-     * @param jkCommand unused legacy param; implementations use {@code command jk}
+     * Single rc line: eval/source {@code jk activate &lt;shell&gt;} via a home-relative or absolute
+     * path to the binary so PATH need not be set first. {@code jkCommand} is a shell-ready command
+     * word (e.g. {@code "$HOME/.local/bin/jk"} or {@code /opt/jk/bin/jk}).
      */
     String activationLine(String jkCommand);
 
     /**
-     * Snippet that ensures {@code binDir} is on PATH when missing (idempotent). Ends with newline.
+     * Snippet that ensures {@code binDir} is on PATH when missing (idempotent). {@code binDir} is a
+     * shell expression ({@code $HOME/.local/bin} or an absolute path). Ends with newline.
      */
     String pathEnsureSnippet(String binDir);
 
     /**
-     * Snippet that wires completions from {@code dataDir}/completions/&lt;shell&gt;. Ends with
-     * newline; empty when unsupported.
+     * Snippet that wires completions from {@code dataDir}/completions/&lt;shell&gt;. {@code dataDir}
+     * is a shell expression. Ends with newline; empty when unsupported.
      */
     String completionWiring(String dataDir);
+
+    /**
+     * Full stdout of {@code jk activate &lt;shell&gt;}: PATH ensure, directory hooks, completions.
+     * {@code jkExe} is the absolute path embedded for hook-env; {@code binDir}/{@code dataDir} are
+     * live paths converted to {@code $HOME}-relative expressions when under {@code home}.
+     */
+    default String fullActivateScript(String jkExe, Path binDir, Path dataDir, Path home) {
+        String binExpr = pathExpr(binDir, home);
+        String dataExpr = pathExpr(dataDir, home);
+        StringBuilder sb = new StringBuilder();
+        sb.append(pathEnsureSnippet(binExpr));
+        sb.append(activateScript(jkExe));
+        String completions = completionWiring(dataExpr);
+        if (completions != null && !completions.isBlank()) {
+            sb.append(completions);
+            if (!completions.endsWith("\n")) sb.append('\n');
+        }
+        return sb.toString();
+    }
+
+    /** Path expression for this shell ({@code $HOME/…} when under home). */
+    String pathExpr(Path path, Path home);
+
+    /** Command-word expression for invoking {@code path} (quoted {@code $HOME/…} when under home). */
+    String commandExpr(Path path, Path home);
 
     /** Resolve a shell from its name (case-insensitive). */
     static Optional<Shell> byName(String name) {

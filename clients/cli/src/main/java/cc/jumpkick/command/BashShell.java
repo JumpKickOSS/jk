@@ -46,7 +46,7 @@ public final class BashShell implements Shell {
 
     @Override
     public String activationLine(String jkCommand) {
-        return "eval \"$(command jk activate bash)\"";
+        return "eval \"$(" + jkCommand + " activate bash)\"";
     }
 
     @Override
@@ -58,5 +58,15 @@ public final class BashShell implements Shell {
     public String completionWiring(String dataDir) {
         String file = dataDir + "/completions/bash/jk";
         return "[ -f \"" + file + "\" ] && . \"" + file + "\"\n";
+    }
+
+    @Override
+    public String pathExpr(Path path, Path home) {
+        return ShellPathExpr.posix(path, home);
+    }
+
+    @Override
+    public String commandExpr(Path path, Path home) {
+        return ShellPathExpr.posixCommand(path, home);
     }
 }

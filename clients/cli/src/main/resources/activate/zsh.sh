@@ -1,6 +1,5 @@
-# `jk activate zsh` — directory-aware JAVA_HOME / PATH (hook-env).
-# Wired from the installer rc block: eval "$(command jk activate zsh)"
-# Real `jk` / `jkx` live on PATH (platform bin); this file does not wrap them.
+# Directory-aware JAVA_HOME / PATH (hook-env). PATH ensure + completions wrap this in
+# `jk activate zsh` full output; the rc block is: eval "$("$HOME/…/jk" activate zsh)"
 export __JK_EXE=__JK_EXE__
 export __JK_SHELL=zsh
 

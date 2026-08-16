@@ -27,8 +27,8 @@ import java.util.Optional;
 import org.jline.terminal.Terminal;
 
 /**
- * {@code jk activate [<shell>]} — print hook scripts or install a marker-bounded rc block (PATH +
- * hook-env eval + completions).
+ * {@code jk activate [<shell>]} — print the full shell integration script (PATH + hooks +
+ * completions) or install a one-line marker-bounded rc block that evals it.
  */
 public final class ActivateCommand implements CliCommand {
 
@@ -48,7 +48,7 @@ public final class ActivateCommand implements CliCommand {
                 "shell",
                 Arity.ZERO_OR_ONE,
                 "Target shell: bash, zsh, fish, pwsh.\n"
-                        + "With a name: print hook-env script (for eval/source).\n"
+                        + "With a name: print PATH + hooks + completions (for eval/source).\n"
                         + "Omit to install the rc marker block."));
     }
 
@@ -75,8 +75,8 @@ public final class ActivateCommand implements CliCommand {
             return Exit.USAGE;
         }
         ensureJkxLauncher();
-        // stdout is eval'd shell code — keep it silent aside from the script.
-        CliOutput.outRaw(shell.get().activateScript(resolveJkExe()));
+        // stdout is eval'd shell code — PATH ensure + hooks + completions; keep silent aside from that.
+        CliOutput.outRaw(shell.get().fullActivateScript(resolveJkExe(), JkDirs.binDir(), JkDirs.data(), home()));
         return 0;
     }
 
@@ -109,7 +109,7 @@ public final class ActivateCommand implements CliCommand {
         String rcDisplay = shell.rcFileDisplay();
         Path binDir = JkDirs.binDir();
         Path dataDir = JkDirs.data();
-        String block = ShellInstallerBlock.render(shell, binDir, dataDir);
+        String block = ShellInstallerBlock.render(shell, binDir, home());
         NerdFontCaps nerdFont = GlobalConfig.nerdFont();
         Theme t = Theme.active();
 
@@ -156,7 +156,7 @@ public final class ActivateCommand implements CliCommand {
     private int printManualInstructions(Shell shell) throws IOException {
         Path rcFile = shell.rcFile(home());
         String rcDisplay = shell.rcFileDisplay();
-        String block = ShellInstallerBlock.render(shell, JkDirs.binDir(), JkDirs.data());
+        String block = ShellInstallerBlock.render(shell, JkDirs.binDir(), home());
         NerdFontCaps nerdFont = GlobalConfig.nerdFont();
         Theme t = Theme.active();
 
@@ -232,7 +232,7 @@ public final class ActivateCommand implements CliCommand {
         }
         if (result.isEmpty() || "no".equals(result.get().get("modify"))) {
             Theme t = Theme.active();
-            String block = ShellInstallerBlock.render(shell, JkDirs.binDir(), JkDirs.data());
+            String block = ShellInstallerBlock.render(shell, JkDirs.binDir(), home());
             CommandWedge.envelopeStart();
             CliOutput.out(JkWedge.chipLine(
                     Glyphs.BANG,

@@ -62,7 +62,7 @@ These commands intentionally emit only machine-consumable stdout:
 
 | Command | Typical stdout | Consumer |
 |---------|----------------|----------|
-| `jk activate <shell>` | Shell hook script | `eval "$(jk activate bash)"` |
+| `jk activate <shell>` | PATH + hooks + completions | `eval "$("$HOME/.local/bin/jk" activate bash)"` |
 | `jk deactivate` | Teardown script | activate proxy |
 | `jk hook-env -s <shell>` | Env sync lines | shell hook |
 | `jk jdk home` | `export JAVA_HOME=…` | `eval "$(jk jdk home)"` |

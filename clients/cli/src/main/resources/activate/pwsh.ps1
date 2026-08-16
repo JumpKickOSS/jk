@@ -1,6 +1,5 @@
-# `jk activate pwsh` — directory-aware JAVA_HOME / PATH (hook-env).
-# Wired from the installer profile block via Invoke-Expression.
-# Real `jk` / `jkx` live on PATH (platform bin); this file does not wrap them.
+# Directory-aware JAVA_HOME / PATH (hook-env). PATH ensure + completions wrap this in
+# `jk activate pwsh` full output; the profile line is: & "$HOME/…/jk" activate pwsh | …
 $env:__JK_EXE = '__JK_EXE__'
 $env:__JK_SHELL = 'pwsh'
 

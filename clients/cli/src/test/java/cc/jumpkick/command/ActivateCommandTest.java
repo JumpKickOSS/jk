@@ -54,7 +54,9 @@ class ActivateCommandTest {
         String content = Files.readString(rc);
         assertThat(content).contains(ShellInstallerBlock.BEGIN);
         assertThat(content).contains(ShellInstallerBlock.END);
-        assertThat(content).contains("command jk activate");
+        assertThat(content).contains(ShellInstallerBlock.COMMENT);
+        assertThat(content).contains("activate");
+        assertThat(content).contains("$HOME");
         assertThat(out.toString(StandardCharsets.UTF_8) + err.toString(StandardCharsets.UTF_8))
                 .contains("configured");
 

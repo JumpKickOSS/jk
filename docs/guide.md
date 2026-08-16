@@ -1258,13 +1258,14 @@ jk shell                       # subshell with project JDK
 
 ```text
 # >>> jk installer >>>
-# PATH ← platform bin (~/.local/bin) so real jk / jkx resolve
-eval "$(command jk activate zsh)"   # bash/zsh; fish: command jk activate fish | source
-# completions under ~/.local/share/jk/completions/…
+# JumpKick shell integration. Hi-ya!
+eval "$("$HOME/.local/bin/jk" activate zsh)"
 # <<< jk installer <<<
 ```
 
-- **PATH** — real `jk` / `jkx` on the platform bin dir (no shell function wrapper).
+(bash is the same with `activate bash`; fish: `"$HOME/.local/bin/jk" activate fish | source`.)
+
+- **PATH** — `jk activate <shell>` prepends the platform bin so real `jk` / `jkx` resolve (no shell function wrapper).
 - **Hooks** — `jk hook-env` updates `JAVA_HOME` / `PATH` when you cd (SDKMAN-like).
 - **Completions** — bash, zsh, fish, pwsh (`jk completion` refreshes files under data).
 - **`jk deactivate`** — prints how to drop session env (new shell) or remove the marker block.

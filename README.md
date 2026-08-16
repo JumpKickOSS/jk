@@ -113,7 +113,7 @@ jk build        # still fully reproducible from that lock
 
 ### Toolchain & tools
 - **JDK install / pin / discover** (Temurin, GraalVM, and neighbors: IntelliJ, SDKMAN, mise, …)
-- Directory-aware shell hooks: `eval "$(jk activate bash)"`
+- Directory-aware shell hooks: `eval "$("$HOME/.local/bin/jk" activate bash)"`
 - Ephemeral tools: `jk tool run` / `jkx` (uvx for the JVM); JBang-compatible scripts
 
 ### Ship & supply chain
@@ -282,7 +282,7 @@ jk export maven             # round-trip POM for Central
 jkx com.diffplug.spotless:spotless-cli:2.45.0 -- check   # ephemeral tool
 jk tool run script.java                                  # JBang-compatible
 jk jdk install temurin-25 && jk jdk pin temurin-25
-eval "$(jk activate bash)"                               # JAVA_HOME follows cd
+eval "$("$HOME/.local/bin/jk" activate bash)"            # JAVA_HOME follows cd
 ```
 
 ### Publish with supply chain

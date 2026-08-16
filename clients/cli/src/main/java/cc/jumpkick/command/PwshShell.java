@@ -51,12 +51,13 @@ public final class PwshShell implements Shell {
 
     @Override
     public String activationLine(String jkCommand) {
-        return "(jk activate pwsh) | Out-String | Invoke-Expression";
+        return "& " + jkCommand + " activate pwsh | Out-String | Invoke-Expression";
     }
 
     @Override
     public String pathEnsureSnippet(String binDir) {
-        return "$__jk_bin = '" + pwshEscape(binDir) + "'\n"
+        // binDir is a double-quote-safe expression ($HOME/… or escaped absolute).
+        return "$__jk_bin = \"" + binDir + "\"\n"
                 + "if ($env:PATH -notlike \"*$__jk_bin*\") { $env:PATH = \"$__jk_bin$([IO.Path]::PathSeparator)$env:PATH\" }\n"
                 + "Remove-Variable __jk_bin -ErrorAction SilentlyContinue\n";
     }
@@ -64,7 +65,17 @@ public final class PwshShell implements Shell {
     @Override
     public String completionWiring(String dataDir) {
         String file = dataDir + "/completions/pwsh/jk.ps1";
-        return "if (Test-Path -LiteralPath '" + pwshEscape(file) + "') { . '" + pwshEscape(file) + "' }\n";
+        return "if (Test-Path -LiteralPath \"" + file + "\") { . \"" + file + "\" }\n";
+    }
+
+    @Override
+    public String pathExpr(Path path, Path home) {
+        return ShellPathExpr.pwsh(path, home);
+    }
+
+    @Override
+    public String commandExpr(Path path, Path home) {
+        return ShellPathExpr.pwshCommand(path, home);
     }
 
     /**
