@@ -237,11 +237,14 @@ final class WorkspaceFileAccess {
 
     /**
      * Breadth-first listing bounded at {@link #MAX_LIST_FILES} entries. Truncation trims the
-     * deepest leaves. The workspace-root {@code jk.toml} is pre-seeded so the default-open
-     * contract survives any truncation. Prune rules match {@link #servable}; ancestors are
-     * pruned before descent.
+     * deepest leaves, and {@code target/} output before any of them: generated files (test
+     * reports, generated sources) fill only the capacity hand-written sources leave over, so a
+     * report-heavy workspace cannot crowd them out of the cap. The workspace-root {@code jk.toml}
+     * is pre-seeded so the default-open contract survives any truncation. Prune rules match
+     * {@link #servable}; ancestors are pruned before descent.
      */
     static FileList list(Path root) throws IOException {
+        record Dir(Path path, boolean output) {}
         Path absRoot = root.toAbsolutePath().normalize();
         Path realRoot;
         try {
@@ -250,19 +253,22 @@ final class WorkspaceFileAccess {
             realRoot = absRoot;
         }
         List<ListedFile> collected = new ArrayList<>();
+        List<ListedFile> outputFiles = new ArrayList<>();
         boolean rootManifest = containedRegularFile(absRoot.resolve("jk.toml"), realRoot);
         if (rootManifest) collected.add(new ListedFile("jk.toml", langOf("jk.toml")));
         boolean truncated = false;
+        // Output overflow must not stop the walk — sources found later still list.
+        boolean outputOverflow = false;
         // Real-path visited set: in-root directory symlinks are walked (list/read parity,
         // ), and a link pointing at an ancestor would otherwise cycle the BFS.
         Set<Path> visited = new HashSet<>();
         visited.add(realRoot);
-        List<Path> level = List.of(absRoot);
+        List<Dir> level = List.of(new Dir(absRoot, false));
         for (int depth = 0; depth < MAX_WALK_DEPTH && !level.isEmpty() && !truncated; depth++) {
-            List<Path> next = new ArrayList<>();
-            for (Path dir : level) {
+            List<Dir> next = new ArrayList<>();
+            for (Dir dir : level) {
                 if (truncated) break;
-                try (var entries = Files.newDirectoryStream(dir)) {
+                try (var entries = Files.newDirectoryStream(dir.path())) {
                     for (Path entry : entries) {
                         Path name = entry.getFileName();
                         String n = name == null ? "" : name.toString();
@@ -277,7 +283,7 @@ final class WorkspaceFileAccess {
                             // Symlinked dirs descend only when their target stays in root
                             // (read() would reject their files otherwise) and only once.
                             if (!isSkippedOutputDir(entry) && descendOnce(entry, realRoot, visited)) {
-                                next.add(entry);
+                                next.add(new Dir(entry, dir.output() || isTargetOutputDir(entry)));
                             }
                             continue;
                         }
@@ -298,6 +304,15 @@ final class WorkspaceFileAccess {
                         }
                         String posix = absRoot.relativize(entry).toString().replace('\\', '/');
                         if (rootManifest && posix.equals("jk.toml")) continue; // pre-seeded
+                        if (dir.output()) {
+                            // Overflow past the cap can never be listed — drop, and flag.
+                            if (outputFiles.size() < MAX_LIST_FILES) {
+                                outputFiles.add(new ListedFile(posix, lang));
+                            } else {
+                                outputOverflow = true;
+                            }
+                            continue;
+                        }
                         if (collected.size() >= MAX_LIST_FILES) {
                             truncated = true;
                             break;
@@ -314,8 +329,25 @@ final class WorkspaceFileAccess {
         // invisible here, so the UI must get its hint. Conservative — the unvisited
         // dirs may hold nothing servable.
         if (!level.isEmpty()) truncated = true;
+        int leftover = MAX_LIST_FILES - collected.size();
+        if (outputOverflow || outputFiles.size() > leftover) truncated = true;
+        // BFS order — the leftover slice keeps the shallowest output files, like the main trim.
+        collected.addAll(outputFiles.subList(0, Math.min(leftover, outputFiles.size())));
         collected.sort(Comparator.comparing(ListedFile::path));
         return new FileList(absRoot, List.copyOf(collected), truncated);
+    }
+
+    /**
+     * Module {@code target/} output — listable, but it fills the cap only after every non-output
+     * file. A workspace member named {@code target/} that is itself a module root is source, not
+     * output.
+     */
+    private static boolean isTargetOutputDir(Path dir) {
+        Path name = dir.getFileName();
+        if (name == null || !name.toString().equals("target")) return false;
+        Path parent = dir.getParent();
+        if (parent == null) return false;
+        return isModuleRoot(parent) && !isModuleRoot(dir);
     }
 
     /**

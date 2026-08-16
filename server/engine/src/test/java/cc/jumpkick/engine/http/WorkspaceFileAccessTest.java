@@ -559,6 +559,31 @@ class WorkspaceFileAccessTest {
     }
 
     @Test
+    void target_output_never_crowds_sources_out_of_the_cap(@TempDir Path root) throws Exception {
+        // target/ output fills only the capacity hand-written sources leave over, so a
+        // report-heavy workspace lists every src/ file even past the cap.
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        Files.createDirectories(root.resolve("target"));
+        int n = WorkspaceFileAccess.MAX_LIST_FILES + 50;
+        for (int i = 0; i < n; i++) {
+            Files.writeString(root.resolve(String.format("target/r-%04d.xml", i)), "<r/>");
+        }
+        for (int i = 0; i < 40; i++) {
+            Files.writeString(root.resolve(String.format("src/Z%02d.java", i)), "class Z {}");
+        }
+        var list = WorkspaceFileAccess.list(root);
+        assertThat(list.truncated()).isTrue();
+        assertThat(list.files()).hasSize(WorkspaceFileAccess.MAX_LIST_FILES);
+        assertThat(list.files().stream()
+                        .filter(f -> f.path().startsWith("src/"))
+                        .count())
+                .isEqualTo(40);
+        assertThat(list.files()).anyMatch(f -> f.path().equals("jk.toml"));
+        assertThat(list.files()).anyMatch(f -> f.path().startsWith("target/"));
+    }
+
+    @Test
     void resolve_root_uses_identity_only(@TempDir Path checkout, @TempDir Path buildsDir) throws Exception {
         writeJkToml(checkout, "demo");
         System.setProperty("jk.env.JK_BUILDS_DIR", buildsDir.toString());
