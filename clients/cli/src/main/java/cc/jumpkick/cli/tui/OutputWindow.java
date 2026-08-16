@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.theme.JkDarkTheme;
 import cc.jumpkick.cli.theme.Theme;
 import java.util.ArrayList;
 import java.util.List;
@@ -106,9 +107,9 @@ public final class OutputWindow {
     }
 
     /**
-     * Full-width dark-gray rule of {@link #RULE_GLYPH} with centered {@link #RULE_LABEL}, width
-     * {@code cols}. Plain/no-ansi themes still return the Unicode form; {@link PlainAscii} rewrites
-     * braille and arrows at print time.
+     * Full-width rule of {@link #RULE_GLYPH} with centered {@link #RULE_LABEL}, width {@code cols}.
+     * Color is {@link Theme#darkGray()} darkened by 35%. Plain/no-ansi themes still return the
+     * Unicode form; {@link PlainAscii} rewrites braille and arrows at print time.
      */
     public static String ruleLine(int cols) {
         int n = Math.max(1, cols);
@@ -116,7 +117,9 @@ public final class OutputWindow {
         // rule onto the next physical row.
         int width = Math.max(1, JkManagerColor.rowColumnBudget(n));
         String body = centeredRuleBody(width);
-        return Theme.colorize(body, Theme.active().darkGray());
+        // darkGray (bright black) × 0.65 — a step dimmer than the rail gray so the rule reads as
+        // a quiet separator under process output.
+        return Theme.colorize(body, Theme.active().bright(JkDarkTheme.BRIGHT_BLACK.darker(0.35)));
     }
 
     /** Visible rule body (no ANSI): braille fill with {@link #RULE_LABEL} centered. */
