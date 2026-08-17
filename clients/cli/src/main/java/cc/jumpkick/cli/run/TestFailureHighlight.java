@@ -202,7 +202,6 @@ public final class TestFailureHighlight {
         out.add(rail("", t)); // blank under header
 
         // ---- body (red rail around the existing content) -------------------
-        ValueRole nextValue = ValueRole.ACTUAL;
         List<String> assertBuf = new ArrayList<>();
         boolean collectingAssert = false;
 
@@ -307,8 +306,7 @@ public final class TestFailureHighlight {
             if (!t.isAnsi()) {
                 out.add(railPlain(raw));
             } else {
-                nextValue = updateValueRole(raw, nextValue);
-                out.add(rail(paintFallbackContent(raw, t, nextValue), t));
+                out.add(rail(paintFallbackContent(raw, t), t));
             }
             i++;
         }
@@ -319,7 +317,7 @@ public final class TestFailureHighlight {
 
     private static void flushAssert(List<String> out, List<String> assertBuf, boolean collecting, Theme t) {
         if (!collecting || assertBuf.isEmpty()) return;
-        List<String> painted = paintAssertionBody(assertBuf, t);
+        List<String> painted = paintAssertionBody(assertBuf);
         for (String line : painted) {
             out.add(rail(line == null ? "" : line, t));
         }
@@ -864,7 +862,7 @@ public final class TestFailureHighlight {
         return d >= 0 ? fqcn.substring(d + 1) : fqcn;
     }
 
-    static List<String> paintAssertionBody(List<String> body, Theme t) {
+    static List<String> paintAssertionBody(List<String> body) {
         if (body == null || body.isEmpty()) return List.of();
         int lo = 0;
         int hi = body.size() - 1;
@@ -874,27 +872,17 @@ public final class TestFailureHighlight {
 
         List<String> slice = body.subList(lo, hi + 1);
         String joined = String.join("\n", slice);
-        List<String> assertj = tryPaintAssertJ(joined, t);
+        List<String> assertj = tryPaintAssertJ(joined);
         if (assertj != null) return assertj;
 
         List<String> out = new ArrayList<>();
-        ValueRole role = ValueRole.ACTUAL;
         for (String raw : slice) {
-            if (raw == null) {
-                out.add("");
-                continue;
-            }
-            if (!t.isAnsi()) {
-                out.add(raw);
-                continue;
-            }
-            role = updateValueRole(raw, role);
-            out.add(paintAssertionLine(raw, t, role));
+            out.add(raw == null ? "" : raw);
         }
         return out;
     }
 
-    static List<String> tryPaintAssertJ(String joined, Theme t) {
+    static List<String> tryPaintAssertJ(String joined) {
         String desc = null;
         String rest = joined.strip();
         if (rest.startsWith("[")) {
@@ -910,29 +898,16 @@ public final class TestFailureHighlight {
             Pattern one = Pattern.compile("(?i)^expected:\\s*(.+?)\\s+but was:\\s*(.+?)\\s*$");
             Matcher m1 = one.matcher(rest);
             if (!m1.matches()) return null;
-            return paintExpectedButWas(desc, m1.group(1).strip(), m1.group(2).strip(), t);
+            return paintExpectedButWas(desc, m1.group(1).strip(), m1.group(2).strip());
         }
-        return paintExpectedButWas(desc, m.group(1).strip(), m.group(2).strip(), t);
+        return paintExpectedButWas(desc, m.group(1).strip(), m.group(2).strip());
     }
 
-    private static List<String> paintExpectedButWas(String desc, String expected, String actual, Theme t) {
+    private static List<String> paintExpectedButWas(String desc, String expected, String actual) {
         List<String> out = new ArrayList<>();
-        if (!t.isAnsi()) {
-            if (desc != null && !desc.isEmpty()) out.add("\"" + desc + "\"");
-            out.add(" Expected: " + stripValueQuotes(expected));
-            out.add("  But Was: " + stripValueQuotes(actual));
-            return out;
-        }
-        // Flush-left under the rail (no extra indent on the description).
-        if (desc != null && !desc.isEmpty()) {
-            out.add(Theme.colorize("\"", t.darkGray())
-                    + Theme.colorize(desc, t.brightWhite().italic())
-                    + Theme.colorize("\"", t.darkGray()));
-        }
-        String expVal = stripValueQuotes(expected);
-        String actVal = stripValueQuotes(actual);
-        out.add(Theme.colorize(" Expected: ", t.midGray()) + Theme.colorize(expVal, t.success()));
-        out.add(Theme.colorize("  But Was: ", t.midGray()) + Theme.colorize(actVal, t.error()));
+        if (desc != null && !desc.isEmpty()) out.add("\"" + desc + "\"");
+        out.add(" Expected: " + stripValueQuotes(expected));
+        out.add("  But Was: " + stripValueQuotes(actual));
         return out;
     }
 
@@ -986,25 +961,6 @@ public final class TestFailureHighlight {
         };
     }
 
-    private enum ValueRole {
-        ACTUAL,
-        EXPECTED
-    }
-
-    private static ValueRole updateValueRole(String raw, ValueRole current) {
-        String lower = raw.toLowerCase(java.util.Locale.ROOT);
-        if (lower.contains("actual") || lower.contains("but was") || lower.contains("but had")) {
-            return ValueRole.ACTUAL;
-        }
-        if (lower.contains("expected")
-                || lower.contains("between")
-                || lower.contains("should be")
-                || lower.contains("to be")) {
-            return ValueRole.EXPECTED;
-        }
-        return current;
-    }
-
     /**
      * End of the report: {@link #FOOTER_SENTINEL} (exclusive), the next {@link #HEADER_SENTINEL},
      * or EOF. A blank-line heuristic would truncate assertion bodies that contain a blank followed
@@ -1018,7 +974,7 @@ public final class TestFailureHighlight {
         return lines.size();
     }
 
-    private static String paintFallbackContent(String raw, Theme t, ValueRole valueRole) {
+    private static String paintFallbackContent(String raw, Theme t) {
         if (raw.isEmpty()) return "";
         Matcher cnt = COUNT_LINE.matcher(raw);
         if (cnt.matches()) {
@@ -1029,18 +985,7 @@ public final class TestFailureHighlight {
         if (stripped.startsWith("at ") || stripped.startsWith("...")) {
             return StackTraceHighlight.line(raw);
         }
-        return paintAssertionLine(raw, t, valueRole);
-    }
-
-    static String paintAssertionLine(String raw, Theme t, ValueRole valueRole) {
-        String stripped = raw.stripLeading();
-        int indentLen = raw.length() - stripped.length();
-        String indent = raw.substring(0, indentLen);
-        if (indentLen >= 2 && !stripped.isEmpty() && !stripped.endsWith(":")) {
-            AttributedStyle v = valueRole == ValueRole.EXPECTED ? t.success() : t.error();
-            return Theme.colorize(indent, t.midGray()) + Theme.colorize(stripped, v);
-        }
-        return Theme.colorize(raw, t.midGray());
+        return raw;
     }
 
     private static String rail(String paintedContent, Theme t) {

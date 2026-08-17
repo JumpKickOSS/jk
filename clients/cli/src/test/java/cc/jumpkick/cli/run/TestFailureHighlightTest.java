@@ -72,6 +72,10 @@ class TestFailureHighlightTest {
         assertThat(thrownAt).isGreaterThan(pathAt);
         assertThat(footerAt).isGreaterThan(thrownAt);
 
+        assertThat(afterRail("Expected: 42", painted)).isEqualTo(" Expected: 42");
+        assertThat(afterRail("But Was: 41", painted)).isEqualTo("  But Was: 41");
+        assertThat(afterRail("\"dogfood: hello\"", painted)).isEqualTo("\"dogfood: hello\"");
+
         if (Theme.active().isAnsi()) {
             Theme t = Theme.active();
             assertThat(String.join("", painted)).contains(Coords.ga("cc.jumpkick", "jk-engine"));
@@ -86,6 +90,44 @@ class TestFailureHighlightTest {
 
     private static String plain(String s) {
         return AttributedString.stripAnsi(s == null ? "" : s);
+    }
+
+    /** Text after the rail on the first painted line that contains {@code needle}. Must be ANSI-free. */
+    private static String afterRail(String needle, List<String> painted) {
+        for (String line : painted) {
+            if (!plain(line).contains(needle)) continue;
+            String rest = extractAfterRail(line);
+            assertThat(rest)
+                    .as("assertion body must not be colorized: %s", rest)
+                    .doesNotContain("\u001b");
+            return rest;
+        }
+        throw new AssertionError("no painted line contained: " + needle);
+    }
+
+    private static String extractAfterRail(String painted) {
+        if (painted == null) return "";
+        String rail = TestFailureHighlight.RAIL;
+        int idx = painted.indexOf(rail);
+        int glyph = rail.length();
+        if (idx < 0) {
+            idx = painted.indexOf('|');
+            glyph = 1;
+            if (idx < 0) return painted;
+        }
+        return stripLeadingSgrAndOneSpace(painted.substring(idx + glyph));
+    }
+
+    /** {@code colorize(RAIL)} leaves an SGR reset immediately after the glyph, then a space. */
+    private static String stripLeadingSgrAndOneSpace(String s) {
+        int i = 0;
+        while (i < s.length() && s.charAt(i) == '\u001b') {
+            int m = s.indexOf('m', i);
+            if (m < 0) break;
+            i = m + 1;
+        }
+        if (i < s.length() && s.charAt(i) == ' ') i++;
+        return s.substring(i);
     }
 
     @Test
@@ -152,11 +194,35 @@ class TestFailureHighlightTest {
         assertThat(all).contains("FAILED NativeEffortTest.size_model()");
         assertThat(all).contains("21670L");
         assertThat(all).contains(DiagnosticReport.FOOTER);
-        if (Theme.active().isAnsi()) {
-            Theme t = Theme.active();
-            assertThat(String.join("", painted)).contains(Theme.colorize("21670L", t.error()));
-            assertThat(String.join("", painted)).contains(Theme.colorize("[28000L, 45000L]", t.success()));
-        }
+        assertThat(afterRail("Expecting actual:", painted)).isEqualTo("Expecting actual:");
+        assertThat(afterRail("21670L", painted)).isEqualTo("  21670L");
+        assertThat(afterRail("to be between:", painted)).isEqualTo("to be between:");
+        assertThat(afterRail("[28000L, 45000L]", painted)).isEqualTo("  [28000L, 45000L]");
+    }
+
+    @Test
+    void expecting_actual_body_is_uncolored() {
+        List<String> raw = List.of(
+                "Test Failure",
+                "1 test failed",
+                "",
+                "FAILED AssemblyPackagerTest.merges()",
+                "",
+                "Expecting actual:",
+                "  \"app.Provider",
+                "lib.Provider\"",
+                "to contain:",
+                "  \"lib.Prooovider\"");
+        List<String> painted = TestFailureHighlight.paintLines(raw);
+        String all = plain(String.join("\n", painted));
+        assertThat(all).contains("Expecting actual:");
+        assertThat(all).contains("to contain:");
+        assertThat(all).contains("lib.Prooovider");
+        assertThat(afterRail("Expecting actual:", painted)).isEqualTo("Expecting actual:");
+        assertThat(afterRail("app.Provider", painted)).isEqualTo("  \"app.Provider");
+        assertThat(afterRail("lib.Provider\"", painted)).isEqualTo("lib.Provider\"");
+        assertThat(afterRail("to contain:", painted)).isEqualTo("to contain:");
+        assertThat(afterRail("lib.Prooovider", painted)).isEqualTo("  \"lib.Prooovider\"");
     }
 
     @Test
