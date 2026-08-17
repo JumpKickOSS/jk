@@ -4,10 +4,11 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.tui.Answers;
 import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.cli.tui.WizardStep;
-import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.engine.protocol.CatalogReadAck;
 import cc.jumpkick.scaffold.NewInputs;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -268,23 +269,39 @@ public final class NewWizard {
                 .build();
     }
 
-    /** Catalog short names as multi-select choices (bundled offline; type-to-filter in the wizard). */
+    /** Catalog short names as multi-select choices (bundled layer via the catalog-read verb). */
     static List<cc.jumpkick.cli.tui.Choice> libraryPickerChoices() {
         var out = new ArrayList<cc.jumpkick.cli.tui.Choice>();
+        CatalogReadAck ack = bundledCatalogOrEmpty();
+        var byName = new LinkedHashMap<String, CatalogReadAck.Entry>();
+        for (CatalogReadAck.Entry e : ack.entries()) byName.put(e.name(), e);
         // Prefer curated scaffold ids first (stable defaults for new projects).
         for (String id : NewCommand.CURATED_IDS) {
-            if (cc.jumpkick.scaffold.NewScaffolder.CURATED_DEPS.containsKey(id)
-                    || LibraryCatalog.bundled().lookup(id).isPresent()) {
+            if (cc.jumpkick.scaffold.NewScaffolder.CURATED_DEPS.containsKey(id) || byName.containsKey(id)) {
                 out.add(new cc.jumpkick.cli.tui.Choice(id, id, "curated"));
             }
         }
-        for (String name : LibraryCatalog.bundled().names()) {
-            if (NewCommand.CURATED_IDS.contains(name)) continue;
-            var mod = LibraryCatalog.bundled().lookup(name).orElse(null);
-            String hint = mod == null ? "" : mod.group() + ":" + mod.artifact();
-            out.add(new cc.jumpkick.cli.tui.Choice(name, name, hint));
+        for (CatalogReadAck.Entry e : ack.entries()) {
+            if (NewCommand.CURATED_IDS.contains(e.name())) continue;
+            out.add(new cc.jumpkick.cli.tui.Choice(e.name(), e.name(), e.moduleKey()));
         }
         return out;
+    }
+
+    private static CatalogReadAck bundledCatalogOrEmpty() {
+        try {
+            return cc.jumpkick.cli.engine.EngineClient.catalogRead(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    Path.of("."),
+                    null,
+                    "list",
+                    List.of(),
+                    false,
+                    false,
+                    true);
+        } catch (Exception e) {
+            return CatalogReadAck.of(List.of(), List.of(), List.of());
+        }
     }
 
     /**

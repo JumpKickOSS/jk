@@ -308,6 +308,28 @@ public final class ProtoReads {
                 + Jsonl.quote(error) + "}";
     }
 
+    /**
+     * Catalog list/search. {@code query} is {@code list} or {@code search}; {@code terms} apply to
+     * search only. {@code bundledOnly} skips project/global layers (wizard picker).
+     */
+    public static String catalogReadRequest(
+            String dir,
+            String cache,
+            String query,
+            List<String> terms,
+            boolean offline,
+            boolean includeCached,
+            boolean bundledOnly) {
+        return "{\"type\":\"" + EngineProtocol.CATALOG_READ_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
+                + ",\"cache\":" + Jsonl.quote(cache)
+                + ",\"query\":" + Jsonl.quote(query)
+                + ",\"terms\":" + EngineProtocol.quoteArray(terms == null ? List.of() : terms)
+                + ",\"offline\":" + offline
+                + ",\"includeCached\":" + includeCached
+                + ",\"bundledOnly\":" + bundledOnly
+                + "}";
+    }
+
     public static String projectInfoRequest(String dir, String cache) {
         return projectInfoRequest(dir, cache, null, null);
     }

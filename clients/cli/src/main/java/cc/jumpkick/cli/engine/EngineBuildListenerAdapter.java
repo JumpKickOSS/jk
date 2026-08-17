@@ -615,6 +615,31 @@ final class EngineBuildListenerAdapter {
      * case) — this method itself just sends the request. Best-effort: swallows the engine's error
      * rather than throwing, since the caller falls back to whatever the local cache already holds.
      */
+    static cc.jumpkick.engine.protocol.CatalogReadAck catalogRead(
+            EnginePaths.Paths paths,
+            Path dir,
+            Path cache,
+            String query,
+            List<String> terms,
+            boolean offline,
+            boolean includeCached,
+            boolean bundledOnly)
+            throws IOException {
+        return request(
+                paths,
+                ProtoReads.catalogReadRequest(
+                        dir == null ? "" : dir.toString(),
+                        cache == null ? "" : cache.toString(),
+                        query,
+                        terms,
+                        offline,
+                        includeCached,
+                        bundledOnly),
+                EngineProtocol.CATALOG_READ_ACK,
+                "catalog-read request",
+                cc.jumpkick.engine.protocol.CatalogReadAck::decode);
+    }
+
     static void freshenCatalog(EnginePaths.Paths paths, String catalog, boolean offline, String url, String cacheFile) {
         try {
             request(

@@ -260,6 +260,16 @@ public final class EngineProtocol {
     public static final String FRESHEN_CATALOG_ACK = "freshen-catalog-ack";
 
     /**
+     * Client → server: read the layered library catalog ({@code jk library list}/{@code search},
+     * wizard picker). Engine walks {@code LibraryCatalog} + cached artifact versions; one {@link
+     * #CATALOG_READ_ACK}.
+     */
+    public static final String CATALOG_READ_REQUEST = "catalog-read-request";
+
+    /** Server → client, terminal for {@link #CATALOG_READ_REQUEST}. */
+    public static final String CATALOG_READ_ACK = "catalog-read-ack";
+
+    /**
      * Client → server: evaluate {@code [deny]} against the lock ({@code jk deny}). Engine-hosted so
      * policy is never client-parsed; one {@link #DENY_CHECK_ACK}.
      */

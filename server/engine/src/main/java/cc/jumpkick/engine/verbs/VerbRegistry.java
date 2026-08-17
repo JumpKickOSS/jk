@@ -65,6 +65,7 @@ public final class VerbRegistry {
                 new DenyCheckVerb(host),
                 new EditVerb(host),
                 new FreshenCatalogVerb(host),
+                new CatalogReadVerb(host),
                 new ExecPlanVerb(host),
                 new ForecastVerb(host),
                 new ExplainVerb(host),

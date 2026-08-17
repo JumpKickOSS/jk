@@ -645,6 +645,21 @@ public final class EngineClient {
         return true;
     }
 
+    /** Layered library catalog (list / search / wizard picker). */
+    public static cc.jumpkick.engine.protocol.CatalogReadAck catalogRead(
+            cc.jumpkick.engine.EnginePaths.Paths paths,
+            Path dir,
+            Path cache,
+            String query,
+            List<String> terms,
+            boolean offline,
+            boolean includeCached,
+            boolean bundledOnly)
+            throws IOException {
+        return EngineBuildListenerAdapter.catalogRead(
+                paths, dir, cache, query, terms, offline, includeCached, bundledOnly);
+    }
+
     /**
      * Project summary (PROJECT_INFO) — replaces client-side {@code JkBuildParser.parse} peeks.
      * In-process twin under test/no-engine.
