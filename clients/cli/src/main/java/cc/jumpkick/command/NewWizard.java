@@ -5,7 +5,6 @@ import cc.jumpkick.cli.tui.Answers;
 import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.cli.tui.WizardStep;
 import cc.jumpkick.engine.protocol.CatalogReadAck;
-import cc.jumpkick.scaffold.NewInputs;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

@@ -22,8 +22,6 @@ import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.scaffold.Giter8ShortNames;
-import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -33,6 +31,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.jline.terminal.Terminal;
 
@@ -310,7 +309,7 @@ public final class NewCommand implements CliCommand {
         }
         Path target = resolveTarget(directory, cwd, resolvedName);
         Path parentDir = target.getParent() == null ? cwd : target.getParent();
-        if (Giter8ShortNames.find(templateRef).isPresent()) {
+        if (officialTemplateShortName(templateRef)) {
             cc.jumpkick.cli.engine.EngineClient.freshenCatalog(
                     cc.jumpkick.engine.EnginePaths.current(), "templates", global.offline, null, null);
         }
@@ -1154,4 +1153,21 @@ public final class NewCommand implements CliCommand {
 
     static final List<String> CURATED_IDS =
             List.of("jspecify", "kotest", "commons-lang", "commons-io", "guava", "lombok");
+
+    /** Official Giter8 short names (engine catalog). Used only to decide whether to freshen templates. */
+    private static boolean officialTemplateShortName(String id) {
+        if (id == null || id.isBlank()) return false;
+        return Set.of(
+                        "java-cli",
+                        "kotlin-cli",
+                        "java-cli-native",
+                        "spring-boot-webmvc",
+                        "spring-boot-webmvc-kotlin",
+                        "spring-boot-mcp",
+                        "quarkus",
+                        "ktor-3",
+                        "micronaut",
+                        "grails-8")
+                .contains(id);
+    }
 }

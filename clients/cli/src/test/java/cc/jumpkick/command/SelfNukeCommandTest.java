@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.IntSupplier;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -65,6 +66,7 @@ class SelfNukeCommandTest {
     }
 
     @Test
+    @Tag("integration")
     void store_nuke_wipes_cas_including_lib_keeps_versions_and_bin() throws Exception {
         JkDirs dirs = JkDirs.current();
         Path versions = dirs.versionsDir();

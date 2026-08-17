@@ -35,3 +35,9 @@ delta. This is **not** a promise that PRs 1–3 shrink the binary.
 | JK-2141 / 2142 / 2149 (stop `JkBuildParser` + drop Graal include) | measurable; hundreds of KB to low single-digit MB |
 
 Do **not** fail those tickets if 2138–2140 do not move `ls -lh`.
+
+## JK-2149 follow-up
+
+`resource-config.json` no longer includes `cc/jumpkick/plugin/manifest/.*`. Rebuild
+`build/dist/jk` to refresh `strings` / `ls -lh` against this baseline (JK-2137:
+33 MiB, `PluginDescriptor` ×613, `cc/jumpkick/plugin/manifest` ×640).
