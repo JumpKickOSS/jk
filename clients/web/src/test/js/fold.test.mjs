@@ -1668,6 +1668,24 @@ test('parseCompilerBlock extracts error kv, caret column, and snippet line', () 
   assert.equal(units[0].snippet, 'public final classaa AssemblyPackager {');
 });
 
+test('multi-unit blob keeps each unit under its own file despite a diag-level file', () => {
+  // JK-2115: file was not gated on i===0 like line/col, so unit 2 rendered as
+  // "<first file>:<unit2 line>" — wrong locus, deep link, and context-window fetch.
+  const d = {
+    code: 'javac',
+    file: '/w/A.java',
+    line: 3,
+    col: 1,
+    message: '/w/A.java:3: error: cannot find symbol\n/w/B.java:7: error: incompatible types',
+  };
+  const reps = compilerFailureReports(d, { showHeader: true, module: 'g:app' });
+  assert.equal(reps.length, 2);
+  assert.equal(reps[0].file, '/w/A.java');
+  assert.equal(reps[0].line, 3);
+  assert.equal(reps[1].file, '/w/B.java');
+  assert.equal(reps[1].line, 7);
+});
+
 test('compilerFailureReports builds CLI-shaped compile model', () => {
   const d = normalizeDiagnostic({
     task: 'compile-java',

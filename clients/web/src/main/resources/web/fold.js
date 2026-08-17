@@ -1703,7 +1703,11 @@ export function compilerFailureReports(d, opts) {
     makeCompilerReport({
       showHeader: showHeader && i === 0,
       module,
-      file: d.file || unit.file || '',
+      // Diag-level file applies to the FIRST unit only (same rule as line/col): a multi-header
+      // blob labeled every later unit with the first file — wrong locus, wrong deep link, and
+      // loadSource fetched the wrong file for the context window (JK-2115). CLI parity:
+      // CompilerDiagnostic.paintUnit uses each unit's own file.
+      file: i === 0 ? d.file || unit.file || '' : unit.file || d.file || '',
       line: d.line > 0 && i === 0 ? d.line : unit.line,
       col: d.col > 0 && i === 0 ? d.col : unit.col,
       kvs: unit.kvs,
