@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
-/** How {@code serveConnection} handles a request. Four arms, forever. */
+/**
+ * How {@code serveConnection} handles a request. Three arms; process lifecycle
+ * (hello, ping, status, shutdown, auth, cancel) stays on the process, never the registry.
+ */
 public sealed interface VerbShape {
-
-    /** hello, ping, status, shutdown — stay on the process. */
-    record Lifecycle() implements VerbShape {}
 
     /** explain, tree, why — inline, connection continues. */
     record SyncRead() implements VerbShape {}

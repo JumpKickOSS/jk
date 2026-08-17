@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.engine.JsonOut;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.ByteBuffer;

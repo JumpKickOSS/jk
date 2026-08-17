@@ -824,8 +824,6 @@ public final class EngineServer implements AutoCloseable {
                 verb.run(line, cc.jumpkick.config.Session.defaults().cancel(), writer);
                 yield false;
             }
-            case VerbShape.Lifecycle() ->
-                throw new IllegalStateException("lifecycle stays on the process, not the verb registry");
         };
     }
 

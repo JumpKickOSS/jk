@@ -82,6 +82,8 @@ public final class ProtoLifecycle {
         if (engineColdStartMs > 0) {
             b.append(",\"engineColdStartMs\":").append(engineColdStartMs);
         }
+        // Synthetic journal classification: a hosted calibrate is a fixture run, never history.
+        b.append(",\"trigger\":\"calibrate\"");
         return b.append('}').toString();
     }
 

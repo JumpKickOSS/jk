@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.jobs.JobSpec;
 import java.io.IOException;
 import java.net.BindException;

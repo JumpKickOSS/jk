@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.engine.JsonOut;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;

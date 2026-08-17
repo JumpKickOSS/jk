@@ -115,9 +115,9 @@ sealed interface JobKind {
 }
 ```
 
-**`VerbShape`** (sealed) — dispatch is four arms, forever:
+**`VerbShape`** (sealed) — dispatch is three arms, forever (process lifecycle —
+hello, ping, status, shutdown — stays on the process, never the registry):
 
-- `Lifecycle` — hello, ping, status, shutdown (stay on the process)
 - `SyncRead` — explain, tree, why, edit, ide-model, …
 - `AsyncPlan` — fork + watch; joins `activeBuildPlans`; cache read lock
 - `CacheMaint` — idle-boundary; takes the cache write lock itself

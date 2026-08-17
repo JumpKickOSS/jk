@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.InFlightBuilds;
-import cc.jumpkick.engine.http.JsonOut;
+import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.protocol.EngineProtocol;

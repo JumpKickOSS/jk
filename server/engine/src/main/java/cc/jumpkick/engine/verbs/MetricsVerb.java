@@ -2,7 +2,7 @@
 package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
-import cc.jumpkick.engine.http.JsonOut;
+import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.plugin.protocol.Jsonl;

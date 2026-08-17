@@ -6,7 +6,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.BuildJobFingerprint;
 import cc.jumpkick.engine.InFlightBuilds;
 import cc.jumpkick.engine.JobWorkers;
-import cc.jumpkick.engine.http.JsonOut;
+import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.protocol.EngineProtocol;

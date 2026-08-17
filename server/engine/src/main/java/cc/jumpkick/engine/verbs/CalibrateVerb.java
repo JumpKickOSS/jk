@@ -28,7 +28,10 @@ public final class CalibrateVerb implements HostedVerb {
 
     @Override
     public VerbShape shape() {
-        return new VerbShape.SyncRead();
+        // A forced calibrate runs real micro-benchmarks for seconds: connection-owned job
+        // (cancellable, joins active plans) rather than an inline read with a throwaway token.
+        // Its journal row is synthetic (trigger "calibrate") and is deleted at write.
+        return new VerbShape.AsyncPlan();
     }
 
     @Override

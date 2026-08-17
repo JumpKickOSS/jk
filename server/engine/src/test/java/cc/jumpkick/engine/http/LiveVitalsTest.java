@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.JsonOut;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;

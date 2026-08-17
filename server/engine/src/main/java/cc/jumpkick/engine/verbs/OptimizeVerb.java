@@ -28,6 +28,7 @@ public final class OptimizeVerb implements HostedVerb {
 
     @Override
     public VerbShape shape() {
+        // Schedules host warmup on the idle worker and acks immediately — genuinely a sync read.
         return new VerbShape.SyncRead();
     }
 
