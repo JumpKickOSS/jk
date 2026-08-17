@@ -672,9 +672,8 @@ class EngineServerTest {
         Path cache = shortTempDir();
 
         EnginePaths.Paths p = paths(shortTempDir());
-        // Real version, not a synthetic one: the first build freshens the stub lock and stamps
-        // jk = { version = JkVersion.VERSION }; a differing server version would make request #2
-        // delegate to a non-materialized install instead of exercising the fast path.
+        // Real version so the freshened lock's jk-min floor can never exceed the test server's
+        // version between request #1 and #2.
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, cc.jumpkick.model.JkVersion.VERSION, null);
         Thread serverThread = runInBackground(server);
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));

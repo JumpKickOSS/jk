@@ -50,7 +50,12 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
   belong; without it, `JK_STORE_DIR` silently did nothing. A machine can therefore hold several
   engines: `jk engine status` lists them, `jk engine stop --all` stops all of them.
 - **Versioning** — side-by-side installs under `~/.local/share/jk/versions/<v>/`; client and engine jar
-  share a version; handshake detects skew and takes over.
+  share a version; handshake detects skew and takes over. **Newer always wins**: the lock's
+  `jk-min` is a *floor*, never a pin — a jk older than the floor refuses artifact jobs with an
+  upgrade error (`jk self update`) on every surface, and nothing ever fetches or runs an older
+  engine to satisfy a lock. The lock pins inputs (artifacts, checksums, BOMs), not the operator;
+  `generated-by` is provenance only. Same lock ⇒ same resolved graph across jk versions until
+  `jk update`; tool behavior may still change pre-1.0 (a newer jk may rebuild).
 - **Liveness** — a listening socket alone is not proof the engine is healthy (ticket-1043):
 
 | Layer | What proves health | Bound |

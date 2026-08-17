@@ -639,7 +639,7 @@ public final class LockPlans {
                 oldLock != null ? oldLock.plugins() : newLock.plugins(),
                 oldLock != null ? oldLock.sdk() : newLock.sdk(),
                 List.of(),
-                newLock.jk());
+                newLock.jkMin());
         finalLock = cc.jumpkick.lock.LockfileModules.stamp(finalLock, dir);
         LockfileWriter.write(finalLock, lockFile, manifestsSha);
         return refreshed;

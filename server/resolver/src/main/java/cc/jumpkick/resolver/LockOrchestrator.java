@@ -1174,7 +1174,7 @@ public final class LockOrchestrator {
                 lock.plugins(),
                 lock.sdk(),
                 lock.modules(),
-                lock.jk());
+                lock.jkMin());
     }
 
     /** BFS through the resolved graph starting from {@code roots}. */

@@ -2,12 +2,7 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.model.JkVersion;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -31,10 +26,6 @@ public final class EngineMain {
      * appends leaves them harmlessly inert here — better an unsized engine than a dead one.
      */
     public static void main(String[] args) {
-        // --job: one-shot child — serve exactly one request over stdio, then exit.
-        if (args.length > 0 && "--job".equals(args[0])) {
-            System.exit(runJob());
-        }
         // --aot-training: the sidecar trainer (docs/architecture.md) — an isolated, self-terminating
         // engine run whose only purpose is recording an AOT cache. Spawned BY the main engine,
         // never by hand; binds only throwaway paths under a private temp dir.
@@ -64,25 +55,6 @@ public final class EngineMain {
             return 0;
         } catch (IOException e) {
             System.err.println("jk engine (inflate-xz): " + e.getMessage());
-            return 1;
-        }
-    }
-
-    /** One request over stdin/stdout; engine-lifecycle logging stays on stderr. */
-    static int runJob() {
-        try {
-            EngineServer server = new EngineServer(
-                    EnginePaths.current(),
-                    cc.jumpkick.config.JkEngineConfig.resolve(),
-                    null,
-                    JkVersion.VERSION,
-                    System.err::println);
-            server.serveJob(
-                    new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8)),
-                    new BufferedWriter(new OutputStreamWriter(System.out, StandardCharsets.UTF_8)));
-            return 0;
-        } catch (RuntimeException e) {
-            System.err.println("jk engine (job): " + e.getMessage());
             return 1;
         }
     }

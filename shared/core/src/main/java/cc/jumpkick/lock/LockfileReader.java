@@ -83,12 +83,15 @@ public final class LockfileReader {
         String generatedBy = requireString(result, "generated-by");
         String resolutionAlgorithm = requireString(result, "resolution-algorithm");
         String jdk = result.getString("jdk"); // optional
-        Lockfile.JkToolchain jkPin = null;
-        org.tomlj.TomlTable jkTable = result.getTable("jk");
-        if (jkTable != null && jkTable.getString("version") != null) {
-            String sha = jkTable.getString("sha256");
-            jkPin = new Lockfile.JkToolchain(jkTable.getString("version"), sha == null || sha.isBlank() ? "" : sha);
+        // The jk floor: minimum jk able to run this lock. Legacy locks carried an artifact pin
+        // (`jk = { version, sha256 }`); its version reads as the floor — it never blocks a newer
+        // jk, and the sha is ignored (a floor needs no engine artifact).
+        String jkMin = result.getString("jk-min");
+        if (jkMin == null || jkMin.isBlank()) {
+            org.tomlj.TomlTable jkTable = result.getTable("jk");
+            jkMin = jkTable != null ? jkTable.getString("version") : null;
         }
+        if (jkMin != null && jkMin.isBlank()) jkMin = null;
         String kotlin = result.getString("kotlin"); // optional, resolved Kotlin compiler version
 
         List<Lockfile.Artifact> artifacts = new ArrayList<>();
@@ -171,7 +174,7 @@ public final class LockfileReader {
                 plugins,
                 sdk,
                 modules,
-                jkPin,
+                jkMin,
                 manifestsSha,
                 projectId);
     }

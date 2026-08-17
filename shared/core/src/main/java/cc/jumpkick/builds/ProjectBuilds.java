@@ -165,8 +165,8 @@ public final class ProjectBuilds {
      * Allocate this project's next build number.
      *
      * <p>Guarded across <em>processes</em>, not just threads: two engines are routinely alive at
-     * once (a displaced engine drains in-flight work while its successor already serves, and
-     * {@code --job} child engines exist by design). With a JVM-only lock both could read {@code 7},
+     * once (a displaced engine drains in-flight work while its successor already serves). With a
+     * JVM-only lock both could read {@code 7},
      * both write {@code 8}, and the second {@code runs/8} write would delete the first's completed
      * run tree. Threads first, then a file lock — the same nesting {@code AotManifest.withLock}
      * uses, since a second {@code FileChannel.lock()} in one JVM throws.

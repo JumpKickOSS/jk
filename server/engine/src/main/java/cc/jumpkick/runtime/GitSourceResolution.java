@@ -161,7 +161,7 @@ public final class GitSourceResolution {
                 lock.plugins(),
                 lock.sdk(),
                 lock.modules(),
-                lock.jk());
+                lock.jkMin());
     }
 
     private static String ga(String nameOrKey) {

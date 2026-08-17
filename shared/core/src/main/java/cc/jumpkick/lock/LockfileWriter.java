@@ -4,7 +4,6 @@ package cc.jumpkick.lock;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -64,22 +63,13 @@ public final class LockfileWriter {
     }
 
     /** Engine-jar sha from {@code versions/<v>/manifest.toml}, or {@code ""} if absent. */
-    private static String runningEngineSha(String version) {
-        try {
-            Path manifest = cc.jumpkick.util.JkDirs.versions().resolve(version).resolve("manifest.toml");
-            for (String line : Files.readAllLines(manifest, StandardCharsets.UTF_8)) {
-                line = line.trim();
-                if (line.startsWith("engine-sha256")) {
-                    int q = line.indexOf('"');
-                    int e = line.lastIndexOf('"');
-                    if (q >= 0 && e > q) return line.substring(q + 1, e);
-                }
-            }
-        } catch (IOException ignored) {
-            // no materialized manifest — dev builds
-        }
-        return "";
-    }
+    /**
+     * The floor stamped into locks that have none: the oldest jk whose reader understands this
+     * writer's output. Bumped by hand only when the lock format actually requires a newer
+     * reader — never auto-bumped to the writing jk's own version, or an old CI binary dies
+     * because someone ran a newer laptop.
+     */
+    static final String FORMAT_FLOOR = "0.12.0";
 
     public static String render(Lockfile lockfile) {
         StringBuilder out = new StringBuilder(256);
@@ -94,16 +84,9 @@ public final class LockfileWriter {
         if (lockfile.kotlin() != null) {
             out.append("kotlin = ").append(quote(lockfile.kotlin())).append('\n');
         }
-        // Stamp running jk toolchain when the lock has none yet.
-        Lockfile.JkToolchain jk = lockfile.jk() != null
-                ? lockfile.jk()
-                : new Lockfile.JkToolchain(
-                        cc.jumpkick.model.JkVersion.VERSION, runningEngineSha(cc.jumpkick.model.JkVersion.VERSION));
-        out.append("jk = { version = ")
-                .append(quote(jk.version()))
-                .append(", sha256 = ")
-                .append(quote(jk.sha256() == null ? "" : jk.sha256()))
-                .append(" }\n");
+        // The jk floor is preserved, never auto-bumped; a floor-less lock gets the format floor.
+        String jkMin = lockfile.jkMin() != null && !lockfile.jkMin().isBlank() ? lockfile.jkMin() : FORMAT_FLOOR;
+        out.append("jk-min = ").append(quote(jkMin)).append('\n');
         if (lockfile.manifestsSha256() != null && !lockfile.manifestsSha256().isBlank()) {
             out.append("manifests-sha256 = ")
                     .append(quote(lockfile.manifestsSha256()))

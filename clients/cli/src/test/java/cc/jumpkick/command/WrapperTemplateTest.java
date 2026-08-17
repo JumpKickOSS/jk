@@ -8,10 +8,10 @@ import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
 /**
- * The wrapper scripts are FROZEN (engine-versioning-plan §7): they may depend on exactly two
- * surfaces — the release URL layout (releases.md) and the lock's one-line toolchain pin — and
- * nothing else about jk. This test pins that contract so a template edit that reaches deeper
- * fails loudly.
+ * The wrapper scripts are bootstrappers, not pins: they may depend on exactly two surfaces —
+ * the release URL layout (releases.md, including {@code SHA256SUMS}) and the lock's optional
+ * one-line {@code jk-min} floor — and nothing else about jk. No version pin, no artifact sha
+ * from the lock, no daemon awareness.
  */
 class WrapperTemplateTest {
 
@@ -23,30 +23,30 @@ class WrapperTemplateTest {
     }
 
     @Test
-    void posix_wrapper_touches_only_the_frozen_surfaces() throws Exception {
+    void posix_wrapper_bootstraps_and_touches_only_the_frozen_surfaces() throws Exception {
         String sh = template("jk.sh");
-        // The two frozen dependencies…
-        assertThat(sh).contains("jk-lock.toml").contains("\"jk = \"*").contains("latest/VERSION");
+        // The two frozen dependencies: the release layout and the lock's optional floor.
+        assertThat(sh).contains("latest/VERSION").contains("SHA256SUMS");
+        assertThat(sh).contains("\"jk-min = \"*").contains("$SEARCH/jk-lock.toml");
         assertThat(sh).contains("versions/$VERSION/bin/jk");
-        // …and the sha pin gates the download.
-        assertThat(sh).contains("sha256");
+        // Downloads verify against the release's own sums — never a sha read from the lock.
+        assertThat(sh).doesNotContain("\"jk = \"*").doesNotContain("sha256 = ");
+        // Newest installed wins when it satisfies the floor; a stale channel is a hard error.
+        assertThat(sh).contains("ver_ge").contains("requires jk >=");
         // Unix wrapper matches install.sh: .xz, inflated with system xz. No zip.
         assertThat(sh).contains("jk-$OS-$ARCH.xz").contains("xz -dc");
         assertThat(sh).doesNotContain(".zip");
-        // Workspace member wrappers walk up to the root lock, and a pinless
-        // bootstrap warns instead of silently trusting the download.
-        assertThat(sh).contains("$SEARCH/jk-lock.toml").contains("WARNING");
-        // Nothing daemon-shaped: the wrapper needs zero engine/endpoint awareness. (The word
-        // "engine" itself appears in the doc-reference comment — assert on the mechanisms.)
+        // Nothing daemon-shaped: the wrapper needs zero engine/endpoint awareness.
         assertThat(sh).doesNotContain(".sock").doesNotContain("endpoint").doesNotContain("gen1");
     }
 
     @Test
-    void windows_wrapper_touches_only_the_frozen_surfaces() throws Exception {
+    void windows_wrapper_bootstraps_and_touches_only_the_frozen_surfaces() throws Exception {
         String bat = template("jk.bat");
-        assertThat(bat).contains("jk-lock.toml").contains("latest/VERSION");
+        assertThat(bat).contains("latest/VERSION").contains("SHA256SUMS");
+        assertThat(bat).contains("jk-min");
+        assertThat(bat).doesNotContain("\"jk = \"").doesNotContain("sha256 = ");
         assertThat(bat).contains("versions\\%VERSION%\\bin");
-        assertThat(bat).contains("SHA256");
         // Windows wrapper matches install.ps1: .zip (no system xz). Not .exe.zip.
         assertThat(bat).contains("jk-windows-x86_64.zip");
         assertThat(bat).doesNotContain(".exe.zip").doesNotContain(".xz");

@@ -195,9 +195,6 @@ public final class EngineServer implements AutoCloseable {
     // answering, but new jobs are refused and the engine exits cleanly once in-flight jobs finish.
     private volatile boolean draining;
 
-    /** One-shot child mode ({@code --job}): no election, no endpoint, no re-delegation. */
-    private volatile boolean jobMode;
-
     private FileChannel lockChannel;
     private FileLock lock;
     /** The generation this engine bound (socket/lock/pid/token) — see EnginePaths.generation. */
@@ -702,25 +699,6 @@ public final class EngineServer implements AutoCloseable {
         }
     }
 
-    /**
-     * One-shot {@code jk-engine --job}: serve requests over the given streams and return (no
-     * socket/daemon/election). Used when a newer daemon runs a build pinned to this older version.
-     */
-    public void serveJob(BufferedReader reader, BufferedWriter writer) {
-        jobMode = true;
-        connectionExecutor = Executors.newThreadPerTaskExecutor(
-                Thread.ofVirtual().name("jk-engine-job-", 0).factory());
-        planSharedWorkerMemoryOnce();
-        noteConnectionOpened();
-        try {
-            serveConnection(reader, writer);
-        } catch (IOException ignored) {
-            // parent disconnected mid-exchange — nothing to do
-        } finally {
-            onConnectionFinished();
-        }
-    }
-
     private void serveConnection(BufferedReader reader, BufferedWriter writer) throws IOException {
         String line;
         while ((line = reader.readLine()) != null) {
@@ -734,10 +712,17 @@ public final class EngineServer implements AutoCloseable {
                                 EngineProtocol.ERR_PROTOCOL, "unparseable request line (no \"type\" discriminator)"));
                 continue;
             }
-            // Downward-delegation gate for artifact-producing requests (engine-versioning §3).
-            if (EngineDelegate.DELEGATABLE.contains(type)
-                    && EngineDelegate.maybeDelegate(jobMode, version, line, reader, writer, paths.log(), log)) {
-                return; // served by the pinned version's child engine (see EngineDelegate)
+            // Lock floor: a jk older than the lock's jk-min refuses with the upgrade error —
+            // newer always wins, and nothing runs an older engine to satisfy a lock.
+            if (LockFloor.GUARDED.contains(type)) {
+                String dir = Jsonl.str(line, "dir");
+                String floor = dir == null ? null : LockFloor.requiredNewer(Path.of(dir), version);
+                if (floor != null) {
+                    send(
+                            writer,
+                            ProtoLifecycle.error(EngineProtocol.ERR_VERSION_SKEW, LockFloor.message(floor, version)));
+                    return;
+                }
             }
             HostedVerb verb = verbs.find(type);
             if (verb != null) {

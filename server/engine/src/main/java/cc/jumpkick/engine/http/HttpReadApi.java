@@ -253,13 +253,13 @@ final class HttpReadApi {
                             .put("jid", e.jid())
                             .toString());
             return;
-        } catch (cc.jumpkick.engine.PinnedProjectRefused e) {
+        } catch (cc.jumpkick.engine.LockFloor.LockFloorRefused e) {
             HttpEngineServer.sendJson(
                     exchange,
                     409,
                     JsonOut.object()
                             .put("error", e.getMessage())
-                            .put("pinnedVersion", e.pinnedVersion())
+                            .put("requiredVersion", e.requiredVersion())
                             .toString());
             return;
         } catch (IllegalStateException e) {
