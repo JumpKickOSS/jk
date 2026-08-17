@@ -51,6 +51,15 @@ stay clean. Long tools (e.g. `native-image`) stream into this channel live — n
 
 Document only — no on-screen “press Ctrl-O” hint. InheritIO handoffs (`jk run`, `jshell`, …) are out of scope.
 
+**Type-ahead is consumed during animated plans.** The Ctrl-O listener holds the controlling TTY
+in raw, no-echo mode for the life of the plan and discards every key except Ctrl-O (Ctrl-C still
+raises SIGINT via ISIG). Keys typed during a build — a queued-up shell command, stray Enters —
+are *not* delivered to the shell afterwards, unlike the pre-peek behavior where the tty buffered
+them. This is inherent to listening at all: any byte read is consumed, and there is no portable
+way to push bytes back into the tty input queue (`TIOCSTI` is root-gated or compiled out on
+modern kernels). Accepted as the cost of the peek; piped/non-TTY runs install no listener and
+are unaffected.
+
 ### Completed-module tail
 
 Workspace plans (`jk build`, `jk test`, `jk run`, `jk native`, `jk image`) keep the last few
