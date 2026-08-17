@@ -276,6 +276,52 @@ public final class BuildPlanner {
                     ephemeralActions);
         }
 
+        /** Copy with {@link #workerCount()} set (request-level {@code --workers}). */
+        public Inputs withWorkerCount(int workerCount) {
+            return new Inputs(
+                    dir,
+                    cache,
+                    buildFile,
+                    lockFile,
+                    lockDir,
+                    workerCount,
+                    estimatedTestCount,
+                    profileName,
+                    jdksDir,
+                    skipTests,
+                    verbose,
+                    testOnly,
+                    compileOnly,
+                    projectModules,
+                    session,
+                    variant,
+                    clientEnv,
+                    ephemeralActions);
+        }
+
+        /** Copy with {@link #profileName()} set (request-level {@code --profile}). */
+        public Inputs withProfileName(String profileName) {
+            return new Inputs(
+                    dir,
+                    cache,
+                    buildFile,
+                    lockFile,
+                    lockDir,
+                    workerCount,
+                    estimatedTestCount,
+                    profileName,
+                    jdksDir,
+                    skipTests,
+                    verbose,
+                    testOnly,
+                    compileOnly,
+                    projectModules,
+                    session,
+                    variant,
+                    clientEnv,
+                    ephemeralActions);
+        }
+
         /** Copy carrying the project/workspace module set — set by the estimate paths (explain/build). */
         public Inputs withProjectModules(Set<Path> modules) {
             return new Inputs(

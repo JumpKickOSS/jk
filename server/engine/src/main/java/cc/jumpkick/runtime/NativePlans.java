@@ -73,6 +73,28 @@ public final class NativePlans {
             boolean skipTests,
             boolean verbose,
             boolean allowNative) {
+        return moduleBuildPlan(
+                moduleDir, module, cache, jdksDir, graalHome, mainOverride, extraArgs, skipTests, verbose, allowNative,
+                null);
+    }
+
+    /**
+     * As above with {@code decorate}: request-level Inputs decoration (workers, profile, variant +
+     * client env, module set, ephemeral actions) applied by the one orchestrator so the NATIVE
+     * branch honors the same knobs as PACKAGE (JK-2102). {@code null} = none.
+     */
+    public static BuildPlan moduleBuildPlan(
+            Path moduleDir,
+            JkBuild module,
+            Path cache,
+            Path jdksDir,
+            Path graalHome,
+            String mainOverride,
+            List<String> extraArgs,
+            boolean skipTests,
+            boolean verbose,
+            boolean allowNative,
+            java.util.function.UnaryOperator<BuildPlanner.Inputs> decorate) {
         Path buildFile = moduleDir.resolve("jk.toml");
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
         boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(moduleDir);
@@ -93,6 +115,7 @@ public final class NativePlans {
                 false,
                 Set.of(),
                 cc.jumpkick.config.SessionContext.current());
+        if (decorate != null) inputs = decorate.apply(inputs);
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
         // Assembly / sources tails only here — native carries CLI main/args from this command.
         // Do not append [native] always via allowNative; that is the jk build path. jk native

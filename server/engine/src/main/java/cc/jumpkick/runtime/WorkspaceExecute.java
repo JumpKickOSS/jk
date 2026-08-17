@@ -588,6 +588,15 @@ public final class WorkspaceExecute {
         boolean selected = !spec.hasSelection()
                 || spec.selectedModules().stream()
                         .anyMatch(p -> BuildGraph.canonicalPath(p).equals(BuildGraph.canonicalPath(dir)));
+        // One request-knob decoration for every terminal branch — the PACKAGE branch applies the
+        // same set via inputsFor below. Divergence here was exactly the drift JK-2078 names:
+        // jk native --variant/profile/workers silently ignored the knobs (JK-2102).
+        java.util.function.UnaryOperator<BuildPlanner.Inputs> decorate = in -> in
+                .withWorkerCount(req.workers() > 0 ? req.workers() : 1)
+                .withProfileName(req.profile())
+                .withProjectModules(moduleDirs)
+                .withVariant(req.variant(), req.clientEnv())
+                .withEphemeralActions(req.ephemeralActions());
         if (target == WorkspaceTarget.NATIVE) {
             Path graal = GraalHomes.lookup(dir, spec.graalByDir());
             boolean allowNative = selected && graal != null;
@@ -601,7 +610,8 @@ public final class WorkspaceExecute {
                     spec.nativeExtraArgs(),
                     req.skipTests(),
                     req.verbose(),
-                    allowNative);
+                    allowNative,
+                    decorate);
         }
         if (target == WorkspaceTarget.IMAGE && selected) {
             return ImagePlans.imageBuildPlan(
@@ -614,10 +624,11 @@ public final class WorkspaceExecute {
                     spec.imageRegistry(),
                     spec.imageTag(),
                     spec.imageTarball(),
-                    spec.imageDocker());
+                    spec.imageDocker(),
+                    decorate);
         }
         if (target == WorkspaceTarget.COMPILE) {
-            return CompilePlans.compileBuildPlan(dir, req.cache(), req.profile(), req.verbose());
+            return CompilePlans.compileBuildPlan(dir, req.cache(), req.profile(), req.verbose(), decorate);
         }
         boolean testOnly = target.testOnly() || req.testOnly();
         BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(

@@ -80,6 +80,28 @@ public final class ImagePlans {
             String tag,
             String tarballArg,
             String dockerExecutableArg) {
+        return imageBuildPlan(
+                projectDir, cache, jdksDir, skipTests, verbose, mainClass, registry, tag, tarballArg,
+                dockerExecutableArg, null);
+    }
+
+    /**
+     * As above with {@code decorate}: request-level Inputs decoration applied by the one
+     * orchestrator so the IMAGE branch honors the same knobs as PACKAGE (JK-2102). {@code null} =
+     * none.
+     */
+    public static BuildPlan imageBuildPlan(
+            Path projectDir,
+            Path cache,
+            Path jdksDir,
+            boolean skipTests,
+            boolean verbose,
+            String mainClass,
+            String registry,
+            String tag,
+            String tarballArg,
+            String dockerExecutableArg,
+            java.util.function.UnaryOperator<BuildPlanner.Inputs> decorate) {
         Path jkBuildPath = projectDir.resolve("jk.toml");
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
         boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(projectDir);
@@ -100,6 +122,7 @@ public final class ImagePlans {
                 false,
                 java.util.Set.of(),
                 cc.jumpkick.config.SessionContext.current());
+        if (decorate != null) inputs = decorate.apply(inputs);
 
         Task imagePlan = Task.builder(TaskNames.IMAGE_PLAN)
                 .stage(BuildStage.IMAGE)
