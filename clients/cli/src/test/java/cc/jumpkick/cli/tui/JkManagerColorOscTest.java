@@ -118,4 +118,16 @@ class JkManagerColorOscTest {
         }
         assertThat(count).isEqualTo(1);
     }
+
+    @org.junit.jupiter.api.Test
+    void non_sgr_csi_is_dropped_but_sgr_passes() {
+        // JK-2109: cursor motion / erase CSI from raw tool output must never reach the live
+        // region; SGR coloring stays.
+        String in = "\u001b[1Aup\u001b[2K \u001b[31mred\u001b[0m";
+        String out = JkManagerColor.truncateVisible(in, 40);
+        org.assertj.core.api.Assertions.assertThat(out).doesNotContain("\u001b[1A");
+        org.assertj.core.api.Assertions.assertThat(out).doesNotContain("\u001b[2K");
+        org.assertj.core.api.Assertions.assertThat(out).contains("\u001b[31mred\u001b[0m");
+        org.assertj.core.api.Assertions.assertThat(out).contains("up");
+    }
 }
