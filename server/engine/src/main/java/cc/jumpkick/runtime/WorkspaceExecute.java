@@ -363,7 +363,10 @@ public final class WorkspaceExecute {
             // rewrites during the run would otherwise poison the next preflight (memo miss →
             // re-enter every module). Mid-build source edits during a monorepo build are not a
             // supported workflow; the next intentional edit still busts the memo on the following run.
-            if (req.dirtyHint() == null && !req.testOnly()) {
+            // Terminal targets (native/image/compile) never store: their graph may be
+            // cone-restricted and their clean-claim (binary present, push performed) is not
+            // what the memo's package-level check certifies — see BuildForecasting.memoSafe.
+            if (req.dirtyHint() == null && !req.testOnly() && req.target() == WorkspaceTarget.PACKAGE) {
                 Map<Path, String> fps = PreflightMemo.snapshotFingerprints(graph, req.skipTests());
                 if (!fps.isEmpty()) {
                     PreflightMemo.storeDirty(req.entryDir(), graph, req.skipTests(), Set.of(), fps);

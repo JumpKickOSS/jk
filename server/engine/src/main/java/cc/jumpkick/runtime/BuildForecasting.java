@@ -79,6 +79,13 @@ public final class BuildForecasting {
 
     static Preflight forecastWithFingerprints(
             BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir, WorkspaceTarget target) {
+        WorkspaceTarget t = target == null ? WorkspaceTarget.PACKAGE : target;
+        // The dirty memo's clean claim covers package outputs only (it checks the module target
+        // dir, not terminal artifacts). NATIVE/IMAGE/COMPILE must always run the target-aware
+        // forecast walk — a memo hit here would skip a missing binary or a never-skippable
+        // image push. The memo is also keyed without target, so a PACKAGE store must never be
+        // consumed by a terminal-target run (jk build && jk native would no-op to success).
+        boolean memoSafe = t == WorkspaceTarget.PACKAGE || t == WorkspaceTarget.TEST;
         Set<Path> all = new HashSet<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) all.add(u.dir());
         // --force / --redo: every module runs — skip the expensive per-step forecast walk for dirty
@@ -88,7 +95,7 @@ public final class BuildForecasting {
             return new Preflight(all, Map.of(), List.of());
         }
         Map<Path, String> fps;
-        if (entryDir != null) {
+        if (entryDir != null && memoSafe) {
             var memo = PreflightMemo.tryLoadDirty(entryDir, graph, skipTests);
             if (memo.isPresent()) {
                 if (Perf.ENABLED) {
@@ -118,7 +125,7 @@ public final class BuildForecasting {
                     }
                 }
             }
-            if (entryDir != null) {
+            if (entryDir != null && memoSafe) {
                 PreflightMemo.storeDirty(entryDir, graph, skipTests, dirty, fps);
             }
             return new Preflight(dirty, fps, modules);
