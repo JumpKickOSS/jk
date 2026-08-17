@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.cache.Linking;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
@@ -376,6 +377,7 @@ public final class ExecPlans {
                 case "dev" -> runPlan(dir, cache, project, layout, true);
                 case "install" -> installPlan(dir, cache, project, layout, mainOverride, binName, binDir, libDir);
                 case "aot-cache" -> aotCachePlan(dir, cache, project, layout);
+                case "jshell" -> jshellPlan(dir, cache, project, layout);
                 default -> ExecPlan.error(kind, "unknown exec-plan kind: " + kind);
             };
         } catch (RuntimeException | IOException e) {
@@ -384,6 +386,84 @@ public final class ExecPlans {
             Thread.currentThread().interrupt();
             return ExecPlan.error(kind, "interrupted");
         }
+    }
+
+    /** Compile-main classpath for {@code jk jshell}: classes dir first, then lock artifacts. */
+    private static ExecPlan jshellPlan(Path dir, Path cache, JkBuild project, BuildLayout layout) throws IOException {
+        if (project.isWorkspaceRoot()) {
+            return ExecPlan.error(
+                    "jshell", "run from a module directory (workspace roots have no single compile classpath)");
+        }
+        Path classes = layout.classesDir();
+        if (!Files.isDirectory(classes)) {
+            return ExecPlan.error(
+                    "jshell", "no classes at " + classes + " — run `jk build --skip-tests` or drop `--no-build`");
+        }
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
+        if (!Files.isRegularFile(lockFile)) {
+            return ExecPlan.error("jshell", "no jk-lock.toml — lock refresh did not produce one");
+        }
+        Lockfile lock = LockfileReader.read(lockFile);
+        Cas cas = JkStores.cas(cache.resolve("cas"));
+        List<Path> depCp = new ClasspathResolver(cas).classpathFor(lock, ClasspathResolver.COMPILE_MAIN);
+        List<String> paths = new ArrayList<>();
+        paths.add(classes.toAbsolutePath().toString());
+        int missing = 0;
+        List<Path> present = new ArrayList<>();
+        for (Path p : depCp) {
+            if (p == null) continue;
+            if (Files.exists(p)) present.add(p);
+            else missing++;
+        }
+        for (Path p : jarAliased(present)) paths.add(p.toString());
+        String display = missing > 0 ? missing + " lock classpath entry(ies) missing on disk — run `jk sync`" : "";
+        return new ExecPlan(
+                null,
+                "",
+                "jshell",
+                List.of(),
+                dir.toString(),
+                display,
+                "",
+                false,
+                false,
+                List.of(),
+                List.of(),
+                List.of(),
+                "",
+                "",
+                "",
+                false,
+                classes.toAbsolutePath().toString(),
+                "",
+                "",
+                List.of(),
+                paths,
+                "");
+    }
+
+    private static List<Path> jarAliased(List<Path> jars) throws IOException {
+        List<Path> out = new ArrayList<>(jars.size());
+        Path tmp = null;
+        int i = 0;
+        for (Path jar : jars) {
+            if (jar == null) continue;
+            String name = jar.getFileName().toString().toLowerCase();
+            if (Files.isDirectory(jar) || name.endsWith(".jar") || name.endsWith(".zip")) {
+                out.add(jar);
+                continue;
+            }
+            if (tmp == null) {
+                tmp = Files.createTempDirectory("jk-jshell-cp-");
+                tmp.toFile().deleteOnExit();
+            }
+            Path alias = tmp.resolve(i + "-" + jar.getFileName() + ".jar");
+            Linking.linkOrCopy(jar, alias);
+            alias.toFile().deleteOnExit();
+            out.add(alias);
+            i++;
+        }
+        return out;
     }
 
     /**
