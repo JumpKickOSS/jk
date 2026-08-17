@@ -924,11 +924,16 @@ export function phaseChainOf(module) {
   return nodes.filter((n) => !isQuietResolve(n));
 }
 
-/** True for a non-failed {@code resolve} phase node (hide from the strip). */
+/**
+ * True for a completed-successfully {@code resolve} phase node (hide from the strip). Failed
+ * resolves stay (the user must see where it broke), and so do running/cancelled ones — during a
+ * cold-cache resolution (~18s) the resolve node is the ONLY live indicator; hiding it left the
+ * phase chain empty until compile steps appeared (JK-2112).
+ */
 function isQuietResolve(node) {
   const phase = (node.phase || '').toLowerCase();
   if (phase !== 'resolve') return false;
-  return node.state !== 'failed';
+  return node.state !== 'failed' && node.state !== 'running' && node.state !== 'cancelled';
 }
 
 /** Display label for a phase wire-name: capitalize the first letter ('compile' → 'Compile'). */

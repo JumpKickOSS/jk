@@ -1046,6 +1046,19 @@ test('phaseChainOf keeps Resolve only when a resolve step failed', () => {
   });
   assert.deepEqual(failed.map((p) => p.label), ['Resolve', 'Compile']);
   assert.equal(failed[0].state, 'failed');
+
+  // JK-2112: a RUNNING resolve is the only live indicator during cold-cache resolution —
+  // it must stay visible; likewise a cancelled one explains where the run stopped.
+  const running = phaseChainOf({
+    steps: [{ name: 'resolve-deps', phase: 'resolve', state: 'running' }],
+  });
+  assert.deepEqual(running.map((p) => p.label), ['Resolve']);
+  assert.equal(running[0].state, 'running');
+
+  const cancelled = phaseChainOf({
+    steps: [{ name: 'resolve-deps', phase: 'resolve', state: 'cancelled' }],
+  });
+  assert.deepEqual(cancelled.map((p) => p.label), ['Resolve']);
 });
 
 test('phaseChainOf paints Compile skipped when compile-java is skipped and only copy-resources succeeded', () => {
