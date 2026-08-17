@@ -13,10 +13,15 @@ public record CompilerLocus(String file, int line, int col) {
 
     /**
      * {@code <path ending in a source ext>:<line>[:<col>]:<rest>}. The single definition — CLI
-     * rendering ({@code CompilerDiagnostic}) matches against it too.
+     * rendering ({@code CompilerDiagnostic}) matches against it too. The optional space after the
+     * first colon is groovyc's shape ({@code /w/Foo.groovy: 5: unexpected token …}) — without it,
+     * groovyc blobs never parsed to units on either surface (JK-2113).
      */
     public static final Pattern HEADER = Pattern.compile(
-            "^(?<file>.+?\\.(?:java|kt|kts|groovy|gvy|gy)):(?<line>\\d+)(?::(?<col>\\d+))?:(?<rest>.*)$");
+            "^(?<file>.+?\\.(?:java|kt|kts|groovy|gvy|gy)): ?(?<line>\\d+)(?::(?<col>\\d+))?:(?<rest>.*)$");
+
+    /** groovyc's column trailer: {@code … @ line 5, column 1.} (header carries no inline col). */
+    public static final Pattern GROOVY_TRAILER = Pattern.compile("@ line \\d+, column (?<col>\\d+)\\.?\\s*$");
 
     /** A caret line: optional indent, a single {@code ^}, optional trailing space. */
     public static final Pattern CARET = Pattern.compile("^(\\s*)\\^\\s*$");
@@ -36,6 +41,10 @@ public record CompilerLocus(String file, int line, int col) {
                 if (!m.matches()) continue;
                 int lineNo = parsePositive(m.group("line"));
                 int col = parsePositive(m.group("col"));
+                if (col <= 0) {
+                    Matcher tr = GROOVY_TRAILER.matcher(m.group("rest"));
+                    if (tr.find()) col = parsePositive(tr.group("col"));
+                }
                 header = new CompilerLocus(m.group("file"), lineNo, col);
                 continue;
             }

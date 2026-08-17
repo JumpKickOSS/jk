@@ -1641,6 +1641,17 @@ test('isCompilerDiag matches javac kotlinc groovyc', () => {
   assert.equal(isCompilerDiag(null), false);
 });
 
+test('parseCompilerBlock parses real groovyc output (space + column trailer)', () => {
+  // JK-2113: groovyc's "path: 5: message @ line 5, column 1." never matched, so groovyc blobs
+  // always fell back to an unstructured "Compile failure" blob.
+  const units = parseCompilerBlock(
+    '/w/src/main/groovy/Foo.groovy: 5: unexpected token: } @ line 5, column 1.', 'error');
+  assert.equal(units.length, 1);
+  assert.equal(units[0].file, '/w/src/main/groovy/Foo.groovy');
+  assert.equal(units[0].line, 5);
+  assert.equal(units[0].col, 1);
+});
+
 test('parseCompilerBlock extracts error kv, caret column, and snippet line', () => {
   const units = parseCompilerBlock(
     '/ws/server/engine/src/main/java/cc/jumpkick/compile/AssemblyPackager.java:35: error: class, interface, enum, or record expected\n' +

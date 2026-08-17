@@ -1546,9 +1546,14 @@ export function isCompilerDiag(d) {
   return c === 'javac' || c === 'kotlinc' || c === 'groovyc';
 }
 
-/** {@code path.ext:line[:col]:rest} — same shape as {@code CompilerLocus.HEADER}. */
+/**
+ * {@code path.ext:line[:col]:rest} — same shape as {@code CompilerLocus.HEADER}. The optional
+ * space after the first colon is groovyc's shape ({@code /w/Foo.groovy: 5: …}) — JK-2113.
+ */
 const COMPILER_HEADER =
-  /^(?<file>.+?\.(?:java|kt|kts|groovy|gvy|gy)):(?<line>\d+)(?::(?<col>\d+))?:(?<rest>.*)$/;
+  /^(?<file>.+?\.(?:java|kt|kts|groovy|gvy|gy)): ?(?<line>\d+)(?::(?<col>\d+))?:(?<rest>.*)$/;
+/** groovyc's column trailer: {@code … @ line 5, column 1.} (no inline col in the header). */
+const GROOVY_TRAILER = /@ line \d+, column (\d+)\.?\s*$/;
 const COMPILER_CARET = /^\s*\^\s*$/;
 const COMPILER_KV = /^\s*([^:]+):(.*)$/;
 
@@ -1585,6 +1590,10 @@ function parseCompilerUnit(lines, start, end, severity) {
   const line = parsePositiveInt(m.groups.line);
   let col = parsePositiveInt(m.groups.col);
   const rest = (m.groups.rest || '').trim();
+  if (col <= 0) {
+    const tr = GROOVY_TRAILER.exec(rest);
+    if (tr) col = parsePositiveInt(tr[1]);
+  }
   const kvs = [];
   if (rest) kvs.push(splitCompilerKv(rest, severity));
   let snippet = null;
