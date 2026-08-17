@@ -1140,11 +1140,10 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             } catch (RuntimeException ignored) {
                 // best-effort
             }
-            try {
-                t.close();
-            } catch (Exception ignored) {
-                // best-effort
-            }
+            // NEVER close: the system terminal owns FD 0 (see Interactivity) — closing it here
+            // broke stdin for everything after the plan in the same invocation (jk run's
+            // inheritIO app, wizard prompts, the next plan's Ctrl-O). Return it for reuse.
+            Interactivity.returnSharedTerminal(t);
         }
     }
 

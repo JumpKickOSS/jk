@@ -125,6 +125,21 @@ public final class Interactivity {
     }
 
     /**
+     * Give a taken system terminal back for reuse instead of closing it. JLine's system terminal
+     * owns native FD 0 — closing it mid-process closes stdin for everything that follows in the
+     * same invocation: {@code jk run}'s {@code inheritIO()} subprocess, a wizard/confirm after a
+     * plan, the next plan's Ctrl-O listener. Callers restore tty attributes (cooked) BEFORE
+     * returning. The original restore hook still guards this instance at shutdown
+     * ({@code sharedTerminal == terminal} holds again after the return). Never closes {@code t}.
+     */
+    static synchronized void returnSharedTerminal(Terminal t) {
+        if (t == null || sharedTerminal == t) return;
+        if (sharedTerminal == null) sharedTerminal = t;
+        // else: a different shared terminal exists (should not happen — one system terminal per
+        // process); leave both open rather than close an FD-0 owner.
+    }
+
+    /**
      * Guarantee the probe terminal's tty attributes (notably ECHO) are restored if no caller ever
      * takes and closes it. Restores attributes rather than calling {@code close()} to avoid JLine's
      * close blocking on its reader thread during shutdown; a taken terminal is closed by its owner,
