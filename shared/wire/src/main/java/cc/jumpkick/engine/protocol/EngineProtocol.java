@@ -286,6 +286,12 @@ public final class EngineProtocol {
     /** Server → client, terminal for {@link #GENERATE_REQUEST}. */
     public static final String GENERATE_ACK = "generate-ack";
 
+    /** Client → server: scaffold a project ({@code jk new} / HTTP / MCP). */
+    public static final String NEW_PROJECT_REQUEST = "new-project-request";
+
+    /** Server → client, terminal for {@link #NEW_PROJECT_REQUEST}. */
+    public static final String NEW_PROJECT_ACK = "new-project-ack";
+
     /** Client → server: plugin-declared command; one {@link #PLUGIN_VERB_ACK}. */
     public static final String PLUGIN_VERB_REQUEST = "plugin-command-request";
 

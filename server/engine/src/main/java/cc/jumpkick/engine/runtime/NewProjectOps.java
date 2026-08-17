@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 /**
@@ -37,12 +38,59 @@ public final class NewProjectOps {
             String layout,
             String template,
             boolean executable,
-            String framework) {}
+            String framework,
+            String jdk,
+            int javaRelease,
+            boolean assembly,
+            boolean nativeImage,
+            boolean plugin,
+            String kotlinModule,
+            List<String> deps,
+            boolean sample,
+            boolean standalone,
+            Map<String, String> templateParams,
+            boolean relaxParent) {
+        /** HTTP/MCP compact shape. */
+        public Request(
+                String name,
+                String parentDir,
+                String group,
+                String lang,
+                String layout,
+                String template,
+                boolean executable,
+                String framework) {
+            this(
+                    name,
+                    parentDir,
+                    group,
+                    lang,
+                    layout,
+                    template,
+                    executable,
+                    framework,
+                    null,
+                    0,
+                    false,
+                    false,
+                    false,
+                    null,
+                    List.of(),
+                    true,
+                    true,
+                    Map.of(),
+                    false);
+        }
+    }
 
     public record Result(Path path) {}
 
     /** Creation plus the durable project id (identity.toml materialized under the project home). */
-    public record Created(Path path, String projectId) {}
+    public record Created(Path path, String projectId, int filesWritten) {
+        public Created(Path path, String projectId) {
+            this(path, projectId, 0);
+        }
+    }
 
     /** What a create would write: target path and template-or-scaffold file list. Writes nothing. */
     public record Preview(String path, String template, List<String> files) {}
@@ -56,7 +104,8 @@ public final class NewProjectOps {
             NewInputs.Language lang,
             String layout,
             String template,
-            boolean executable) {}
+            boolean executable,
+            Request req) {}
 
     public static Result create(Request req) throws IOException {
         Prepared prep = prepare(req);
@@ -82,7 +131,13 @@ public final class NewProjectOps {
         } catch (RuntimeException | IOException e) {
             // best-effort — see javadoc
         }
-        return new Created(result.path(), projectId);
+        int files = 0;
+        try (var walk = Files.walk(result.path())) {
+            files = (int) walk.filter(Files::isRegularFile).count();
+        } catch (IOException ignored) {
+            // count is advisory
+        }
+        return new Created(result.path(), projectId, files);
     }
 
     /**
@@ -112,18 +167,27 @@ public final class NewProjectOps {
     }
 
     private static void scaffoldInto(Prepared prep, Path target) throws IOException {
+        Request req = prep.req();
         if (prep.template() != null) {
             Path templateRoot = resolveTemplate(prep.template(), prep.parent());
             Map<String, String> params = new LinkedHashMap<>();
-            params.put("name", prep.name());
-            params.put("package", prep.group());
-            params.put("organization", prep.group());
+            if (req.templateParams() != null) params.putAll(req.templateParams());
+            params.putIfAbsent("name", prep.name());
+            params.putIfAbsent("package", prep.group());
+            params.putIfAbsent("organization", prep.group());
+            if (prep.group() != null && !prep.group().isBlank()) {
+                params.putIfAbsent("group", prep.group());
+            }
             Giter8LocalApply.apply(templateRoot, target, params);
             if (!Files.isRegularFile(target.resolve("jk.toml"))) {
                 throw new IOException("template did not produce jk.toml: " + prep.template());
             }
             return;
         }
+        boolean spring = "spring".equalsIgnoreCase(nullToEmpty(req.framework()));
+        boolean grails = "grails".equalsIgnoreCase(nullToEmpty(req.framework()));
+        boolean quarkus = "quarkus".equalsIgnoreCase(nullToEmpty(req.framework()));
+        boolean micronaut = "micronaut".equalsIgnoreCase(nullToEmpty(req.framework()));
         Optional<String> main = Optional.empty();
         if (prep.executable()) {
             main = Optional.of(
@@ -133,29 +197,52 @@ public final class NewProjectOps {
                         case GROOVY -> prep.group() + ".Main";
                     });
         }
-        int jdkMajor = Runtime.version().feature();
+        int hostMajor = Runtime.version().feature();
+        int jdkMajor = req.javaRelease() > 0 ? req.javaRelease() : hostMajor;
+        String jdk = req.jdk() == null || req.jdk().isBlank() ? String.valueOf(jdkMajor) : req.jdk();
         NewInputs inputs = new NewInputs(
                 prep.group(),
                 prep.name(),
-                String.valueOf(jdkMajor),
+                jdk,
                 jdkMajor,
                 jdkMajor,
                 Optional.empty(),
                 main,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
+                req.assembly(),
+                req.nativeImage(),
+                spring,
+                grails,
+                quarkus,
+                micronaut,
+                req.plugin(),
                 prep.lang(),
                 prep.layout(),
-                Optional.empty(),
-                List.of(),
-                true,
+                req.kotlinModule() == null || req.kotlinModule().isBlank()
+                        ? Optional.empty()
+                        : Optional.of(req.kotlinModule()),
+                req.deps() == null ? List.of() : req.deps(),
+                req.sample(),
                 target);
-        NewScaffolder.write(inputs, true, null);
+        NewScaffolder.write(inputs, req.standalone(), NewProjectOps::frameworkScaffold);
+    }
+
+    private static NewScaffolder.ScaffoldFiles frameworkScaffold(NewInputs inputs) throws IOException {
+        var params = new LinkedHashMap<String, String>();
+        params.put("plugin", inputs.frameworkPluginFlag());
+        params.put("lang", inputs.lang().hoconValue());
+        params.put("package", inputs.group());
+        params.put("group", inputs.group());
+        params.put("name", inputs.name());
+        params.put("version", "0.1.0");
+        params.putIfAbsent("quarkus.version", cc.jumpkick.model.ToolDefaults.QUARKUS_PLATFORM_FLOOR);
+        params.put("simpleLayout", String.valueOf(inputs.isSimpleLayout()));
+        params.put("sample", String.valueOf(inputs.sample()));
+        params.put("baseToml", cc.jumpkick.scaffold.NewJkBuildRenderer.render(inputs));
+        var files = cc.jumpkick.runtime.GenerateOps.generate(inputs.directory(), "scaffold", params);
+        if (files.error() != null && !files.error().isBlank()) {
+            throw new IOException(files.error());
+        }
+        return new NewScaffolder.ScaffoldFiles(files.paths(), files.contents());
     }
 
     private static Prepared prepare(Request req) throws IOException {
@@ -169,7 +256,7 @@ public final class NewProjectOps {
         if (parentRaw.isEmpty()) throw new IllegalArgumentException("missing \"parentDir\"");
         // Same rules as the activity Build path: ~ and relatives resolve against user.home.
         Path parent = cc.jumpkick.util.PathUtil.resolveUserPath(parentRaw);
-        assertAllowedParent(parent);
+        if (!req.relaxParent()) assertAllowedParent(parent);
         if (!Files.isDirectory(parent)) {
             throw new IllegalArgumentException("parentDir is not a directory: " + parent);
         }
@@ -202,20 +289,7 @@ public final class NewProjectOps {
                 ? null
                 : req.template().strip();
 
-        boolean spring = "spring".equalsIgnoreCase(nullToEmpty(req.framework()));
-        boolean grails = "grails".equalsIgnoreCase(nullToEmpty(req.framework()));
-        boolean quarkus = "quarkus".equalsIgnoreCase(nullToEmpty(req.framework()));
-        boolean micronaut = "micronaut".equalsIgnoreCase(nullToEmpty(req.framework()));
-        if (template == null && (spring || grails || quarkus || micronaut)) {
-            // Framework scaffolds need ScaffoldOps; wire plain path first — frameworks via CLI for now
-            // until we inject ScaffoldOps here. Reject with a clear message.
-            throw new IllegalArgumentException("framework scaffolds from the web are not enabled yet; use: jk new --"
-                    + (spring ? "spring" : grails ? "grails" : quarkus ? "quarkus" : "micronaut")
-                    + " "
-                    + name);
-        }
-
-        return new Prepared(name, parent, target, group, lang, layout, template, req.executable());
+        return new Prepared(name, parent, target, group, lang, layout, template, req.executable(), req);
     }
 
     private static void deleteRecursively(Path root) throws IOException {
@@ -259,7 +333,84 @@ public final class NewProjectOps {
                     + cfg.officialUrl()
                     + ")");
         }
+        if (looksRemoteTemplate(ref)) {
+            return cloneRemoteTemplate(ref);
+        }
         throw new IllegalArgumentException("unknown template ref: " + ref);
+    }
+
+    private static boolean looksRemoteTemplate(String ref) {
+        String r = ref.strip();
+        if (r.startsWith("https://") || r.startsWith("http://") || r.startsWith("git@") || r.startsWith("ssh://")) {
+            return true;
+        }
+        if (r.startsWith(".") || r.startsWith("/") || r.contains("\\")) return false;
+        return r.matches("[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*(?:\\.g8)?(?:#.+)?");
+    }
+
+    private static Path cloneRemoteTemplate(String ref) throws IOException {
+        Path cache = Path.of(System.getProperty("user.home"), ".jk", "cache", "templates");
+        Files.createDirectories(cache);
+        String key = ref.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]+", "_");
+        Path dest = cache.resolve(key);
+        if (!Files.isDirectory(dest) || isEmptyDir(dest)) {
+            if (Files.exists(dest)) deleteRecursively(dest);
+            String url = ref;
+            String rev = null;
+            if (ref.matches("[A-Za-z0-9].*/[A-Za-z0-9].*") && !ref.contains("://") && !ref.startsWith("git@")) {
+                String body = ref;
+                int hash = body.lastIndexOf('#');
+                if (hash > 0) {
+                    rev = body.substring(hash + 1);
+                    body = body.substring(0, hash);
+                }
+                if (body.endsWith(".g8")) body = body.substring(0, body.length() - 3);
+                url = "https://github.com/" + body + ".git";
+            }
+            List<String> args = new ArrayList<>();
+            args.add("git");
+            args.add("clone");
+            args.add("--depth");
+            args.add("1");
+            if (rev != null && !rev.isBlank()) {
+                args.add("--branch");
+                args.add(rev);
+            }
+            args.add(url);
+            args.add(dest.toString());
+            Process p = new ProcessBuilder(args).redirectErrorStream(true).start();
+            String out;
+            try (var in = p.getInputStream()) {
+                out = new String(in.readAllBytes());
+            }
+            try {
+                if (!p.waitFor(120, TimeUnit.SECONDS)) {
+                    p.destroyForcibly();
+                    throw new IOException("git clone timed out after 120s");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                p.destroyForcibly();
+                throw new IOException("git clone interrupted", e);
+            }
+            if (p.exitValue() != 0) {
+                throw new IOException("git clone failed: " + (out.isBlank() ? "(no output)" : out.strip()));
+            }
+        }
+        if (isTemplateRoot(dest)) return dest.toAbsolutePath().normalize();
+        try (var stream = Files.list(dest)) {
+            Optional<Path> nested = stream.filter(Files::isDirectory)
+                    .filter(NewProjectOps::isTemplateRoot)
+                    .findFirst();
+            if (nested.isPresent()) return nested.get().toAbsolutePath().normalize();
+        }
+        throw new IOException("git clone succeeded but no Giter8 layout under " + dest);
+    }
+
+    private static boolean isEmptyDir(Path dir) throws IOException {
+        try (var s = Files.list(dir)) {
+            return s.findAny().isEmpty();
+        }
     }
 
     static boolean isTemplateRoot(Path p) {

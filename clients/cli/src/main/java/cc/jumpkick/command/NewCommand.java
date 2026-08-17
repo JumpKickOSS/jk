@@ -22,7 +22,7 @@ import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.scaffold.Giter8LocalApply;
+import cc.jumpkick.scaffold.Giter8ShortNames;
 import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -39,7 +39,7 @@ import org.jline.terminal.Terminal;
 /**
  * {@code jk new} — scaffold a project or workspace module (aliases: {@code init}, {@code create}).
  * TTY with no flags → interactive wizard; otherwise flags with defaults. Both paths write via
- * {@link NewScaffolder#write(NewInputs)}. Walks up for a parent {@code jk.toml} (module) unless
+ * {@code NewProjectVerb}. Walks up for a parent {@code jk.toml} (module) unless
  * {@code --no-module}; modules inherit parent defaults and register under {@code [workspace].modules}.
  *
  * <p>Wizard construction lives in {@link NewWizard}. This type is the command facade (under 1,200).
@@ -288,50 +288,6 @@ public final class NewCommand implements CliCommand {
                     "--template cannot be combined with --spring, --grails, --quarkus, --micronaut, or --plugin");
             return Exit.USAGE;
         }
-        Path template = Path.of(templateRef);
-        if (!template.isAbsolute()) template = cwd.resolve(template).normalize();
-        Path extractScratch = null;
-        // Only a template-SHAPED local dir wins over the catalog: a stray cwd subdirectory
-        // sharing a short name (./quarkus) must not have its arbitrary contents copied as a
-        // project.
-        boolean localTemplate = Files.isDirectory(template)
-                && (Files.isRegularFile(template.resolve("default.properties"))
-                        || Files.isDirectory(template.resolve("src/main/g8")));
-        if (!localTemplate) {
-            try {
-                extractScratch = Files.createTempDirectory("jk-g8-");
-                var cfg = cc.jumpkick.config.JkTemplatesConfig.resolve();
-                // Lazy JIT for jk-templates: the engine freshens the official cache for built-in
-                // short names — the CLI never talks to jk-templates' network itself.
-                if (Giter8Catalog.isShortName(templateRef)
-                        && cc.jumpkick.scaffold.Giter8ShortNames.find(templateRef)
-                                .isPresent()) {
-                    cc.jumpkick.cli.engine.EngineClient.freshenCatalog(
-                            cc.jumpkick.engine.EnginePaths.current(), "templates", global.offline, null, null);
-                }
-                var shortResolved =
-                        Giter8Catalog.resolveShortName(templateRef, cwd, extractScratch, cfg, templateSources);
-                if (shortResolved.isPresent()) {
-                    template = shortResolved.get();
-                } else if (Giter8Git.looksRemote(templateRef)) {
-                    template = Giter8Git.fetch(templateRef, Giter8Git.defaultCacheRoot());
-                } else {
-                    cc.jumpkick.cli.tui.CommandWedge.printFail(
-                            "New",
-                            "template not found: "
-                                    + templateRef
-                                    + (Giter8Catalog.isShortName(templateRef)
-                                            ? " ("
-                                                    + Giter8Catalog.helpKnown(cfg)
-                                                    + "; see docs/features/giter8-templates.md)"
-                                            : " (use a path, short name, owner/repo, or git URL — see docs/features/giter8-templates.md)"));
-                    return Exit.USAGE;
-                }
-            } catch (IOException e) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("New", e.getMessage());
-                return Exit.SOFTWARE;
-            }
-        }
         Map<String, String> params = new LinkedHashMap<>();
         for (String p : templateParams) {
             int eq = p.indexOf('=');
@@ -342,15 +298,10 @@ public final class NewCommand implements CliCommand {
             params.put(p.substring(0, eq), p.substring(eq + 1));
         }
         var presetName = wizardPresetName(directory, cwd);
-        // Fallback order: explicit --name, --param name, wizard preset, the template's own
-        // default.properties name, then the short name minus ".g8" — never the raw catalog
-        // filename, which produced projects literally named "quarkus.g8".
-        String templateDefault = Giter8LocalApply.defaultName(template).orElse(null);
-        String fileBase = template.getFileName().toString();
+        String fileBase = Path.of(templateRef).getFileName().toString();
         if (fileBase.endsWith(".g8")) fileBase = fileBase.substring(0, fileBase.length() - 3);
-        String resolvedName = (name != null && !name.isBlank())
-                ? name
-                : params.getOrDefault("name", presetName.orElse(templateDefault != null ? templateDefault : fileBase));
+        String resolvedName =
+                (name != null && !name.isBlank()) ? name : params.getOrDefault("name", presetName.orElse(fileBase));
         params.putIfAbsent("name", resolvedName);
         if (group != null && !group.isBlank()) {
             params.putIfAbsent("organization", group);
@@ -358,37 +309,48 @@ public final class NewCommand implements CliCommand {
             params.putIfAbsent("package", group);
         }
         Path target = resolveTarget(directory, cwd, resolvedName);
-        if (Files.exists(target) && Files.isDirectory(target)) {
-            try (var s = Files.list(target)) {
-                if (s.findAny().isPresent() && Files.exists(target.resolve("jk.toml"))) {
-                    emitProjectExistsError(resolvedName, parent != null, false, null);
-                    return Exit.CONFIG;
-                }
-            } catch (IOException e) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("New", e.getMessage());
-                return Exit.SOFTWARE;
-            }
+        Path parentDir = target.getParent() == null ? cwd : target.getParent();
+        if (Giter8ShortNames.find(templateRef).isPresent()) {
+            cc.jumpkick.cli.engine.EngineClient.freshenCatalog(
+                    cc.jumpkick.engine.EnginePaths.current(), "templates", global.offline, null, null);
         }
         try {
-            int n = Giter8LocalApply.apply(template, target, params);
+            var ack = cc.jumpkick.cli.engine.EngineClient.newProject(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    new cc.jumpkick.cli.engine.EngineRequests.NewProjectRequest(
+                            resolvedName,
+                            parentDir.toString(),
+                            group,
+                            "java",
+                            "simple",
+                            templateRef,
+                            false,
+                            null,
+                            null,
+                            0,
+                            false,
+                            false,
+                            false,
+                            null,
+                            List.of(),
+                            true,
+                            parent == null,
+                            params,
+                            true));
+            if (ack.error() != null && !ack.error().isBlank()) {
+                cc.jumpkick.cli.tui.CommandWedge.printFail("New", ack.error());
+                return ack.error().contains("not found") ? Exit.USAGE : Exit.SOFTWARE;
+            }
             cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
             CliOutput.out(cc.jumpkick.cli.tui.JkWedge.chipLine(
                     cc.jumpkick.cli.tui.Glyphs.CHECK,
                     "New Project",
                     cc.jumpkick.config.GlobalConfig.nerdFont(),
-                    "Applied template (" + n + " files) → " + target.getFileName()));
+                    "Applied template (" + ack.filesWritten() + " files) → " + target.getFileName()));
             return Exit.SUCCESS;
         } catch (IOException e) {
             cc.jumpkick.cli.tui.CommandWedge.printFail("New", e.getMessage());
             return Exit.SOFTWARE;
-        } finally {
-            if (extractScratch != null) {
-                try {
-                    cc.jumpkick.util.PathUtil.deleteRecursively(extractScratch);
-                } catch (RuntimeException ignored) {
-                    // temp dir — the OS reaps it eventually
-                }
-            }
         }
     }
 
@@ -656,7 +618,34 @@ public final class NewCommand implements CliCommand {
      * the success message.
      */
     private void scaffoldAndRegister(NewInputs inputs) throws IOException {
-        NewScaffolder.write(inputs, parent == null); // modules skip the gitignore (root owns it)
+        Path target = inputs.directory();
+        Path parentDir = target.getParent() == null ? target : target.getParent();
+        String framework = inputs.frameworkScaffold() ? inputs.frameworkPluginFlag() : null;
+        var ack = cc.jumpkick.cli.engine.EngineClient.newProject(
+                cc.jumpkick.engine.EnginePaths.current(),
+                new cc.jumpkick.cli.engine.EngineRequests.NewProjectRequest(
+                        inputs.name(),
+                        parentDir.toString(),
+                        inputs.group(),
+                        inputs.lang().hoconValue(),
+                        inputs.layout(),
+                        null,
+                        inputs.isRunnable(),
+                        framework,
+                        inputs.jdk(),
+                        inputs.javaRelease(),
+                        inputs.assembly(),
+                        inputs.nativeImage(),
+                        inputs.plugin(),
+                        inputs.kotlinModuleName().orElse(null),
+                        inputs.deps(),
+                        inputs.sample(),
+                        parent == null,
+                        Map.of(),
+                        true));
+        if (ack.error() != null && !ack.error().isBlank()) {
+            throw new IOException(ack.error());
+        }
         if (parent != null) {
             Path root = parent.root();
             String rel = root.relativize(inputs.directory()).toString().replace('\\', '/');

@@ -425,6 +425,28 @@ public final class EngineRequests {
             boolean verbose) {}
 
     /** Everything an engine-hosted {@code jk install <git-url>} fetch needs — pre-split/expanded client-side. */
+    /** Engine-hosted {@code jk new}. {@code relaxParent} skips the dashboard HOME/tmp allowlist. */
+    public record NewProjectRequest(
+            String name,
+            String parentDir,
+            String group,
+            String lang,
+            String layout,
+            String template,
+            boolean executable,
+            String framework,
+            String jdk,
+            int javaRelease,
+            boolean assembly,
+            boolean nativeImage,
+            boolean plugin,
+            String kotlinModule,
+            List<String> deps,
+            boolean sample,
+            boolean standalone,
+            Map<String, String> templateParams,
+            boolean relaxParent) {}
+
     public record GitFetchRequest(
             String url, String canonicalUrl, String ref, Path cache, boolean refresh, boolean requireJkToml) {
         public GitFetchRequest(String url, String canonicalUrl, String ref, Path cache, boolean refresh) {

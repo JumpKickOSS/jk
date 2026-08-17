@@ -577,6 +577,12 @@ public final class EngineClient {
         return EngineBuildListenerAdapter.edit(paths, file, op, args);
     }
 
+    /** Engine-hosted {@code jk new} / init scaffold. */
+    public static cc.jumpkick.engine.protocol.NewProjectAck newProject(
+            cc.jumpkick.engine.EnginePaths.Paths paths, EngineRequests.NewProjectRequest req) throws IOException {
+        return EngineBuildListenerAdapter.newProject(paths, req);
+    }
+
     /**
      * On-demand, engine-hosted freshen of a network-backed catalog — {@code "templates"} (before
      * {@code jk new}/{@code init}) or {@code "libraries"} (before {@code jk lock}/{@code update}).

@@ -211,6 +211,50 @@ public final class ProtoReads {
         return Jsonl.strMap(requestLine, "params");
     }
 
+    /** Scaffold a project (CLI {@code jk new}, HTTP, MCP). */
+    public static String newProjectRequest(
+            String name,
+            String parentDir,
+            String group,
+            String lang,
+            String layout,
+            String template,
+            boolean executable,
+            String framework,
+            String jdk,
+            int javaRelease,
+            boolean assembly,
+            boolean nativeImage,
+            boolean plugin,
+            String kotlinModule,
+            List<String> deps,
+            boolean sample,
+            boolean standalone,
+            Map<String, String> templateParams,
+            boolean relaxParent) {
+        return "{\"type\":\"" + EngineProtocol.NEW_PROJECT_REQUEST + "\""
+                + ",\"name\":" + Jsonl.quote(name)
+                + ",\"parentDir\":" + Jsonl.quote(parentDir)
+                + ",\"group\":" + Jsonl.quote(group)
+                + ",\"lang\":" + Jsonl.quote(lang)
+                + ",\"layout\":" + Jsonl.quote(layout)
+                + ",\"template\":" + Jsonl.quote(template)
+                + ",\"executable\":" + executable
+                + ",\"framework\":" + Jsonl.quote(framework)
+                + ",\"jdk\":" + Jsonl.quote(jdk)
+                + ",\"javaRelease\":" + javaRelease
+                + ",\"assembly\":" + assembly
+                + ",\"nativeImage\":" + nativeImage
+                + ",\"plugin\":" + plugin
+                + ",\"kotlinModule\":" + Jsonl.quote(kotlinModule)
+                + ",\"deps\":" + EngineProtocol.quoteArray(deps == null ? List.of() : deps)
+                + ",\"sample\":" + sample
+                + ",\"standalone\":" + standalone
+                + ",\"templateParams\":" + Jsonl.map(templateParams == null ? Map.of() : templateParams)
+                + ",\"relaxParent\":" + relaxParent
+                + "}";
+    }
+
     public static String pluginCommandRequest(String dir, String cache, String command, List<String> args) {
         return "{\"type\":\"" + EngineProtocol.PLUGIN_VERB_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
                 + ",\"cache\":" + Jsonl.quote(cache)

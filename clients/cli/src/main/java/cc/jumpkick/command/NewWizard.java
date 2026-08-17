@@ -273,7 +273,7 @@ public final class NewWizard {
         var out = new ArrayList<cc.jumpkick.cli.tui.Choice>();
         // Prefer curated scaffold ids first (stable defaults for new projects).
         for (String id : NewCommand.CURATED_IDS) {
-            if (NewScaffolder.CURATED_DEPS.containsKey(id)
+            if (cc.jumpkick.scaffold.NewScaffolder.CURATED_DEPS.containsKey(id)
                     || LibraryCatalog.bundled().lookup(id).isPresent()) {
                 out.add(new cc.jumpkick.cli.tui.Choice(id, id, "curated"));
             }

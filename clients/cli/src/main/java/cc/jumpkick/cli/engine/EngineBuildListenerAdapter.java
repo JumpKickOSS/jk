@@ -630,6 +630,35 @@ final class EngineBuildListenerAdapter {
                 cc.jumpkick.engine.protocol.IdeWireModel::decode);
     }
 
+    static cc.jumpkick.engine.protocol.NewProjectAck newProject(
+            EnginePaths.Paths paths, EngineRequests.NewProjectRequest req) throws IOException {
+        return request(
+                paths,
+                ProtoReads.newProjectRequest(
+                        req.name(),
+                        req.parentDir(),
+                        req.group(),
+                        req.lang(),
+                        req.layout(),
+                        req.template(),
+                        req.executable(),
+                        req.framework(),
+                        req.jdk(),
+                        req.javaRelease(),
+                        req.assembly(),
+                        req.nativeImage(),
+                        req.plugin(),
+                        req.kotlinModule(),
+                        req.deps(),
+                        req.sample(),
+                        req.standalone(),
+                        req.templateParams(),
+                        req.relaxParent()),
+                EngineProtocol.NEW_PROJECT_ACK,
+                "new-project request",
+                cc.jumpkick.engine.protocol.NewProjectAck::decode);
+    }
+
     /** One engine-hosted generator run: file payloads back, guards/writes stay client-side. */
     static cc.jumpkick.engine.protocol.GeneratedFiles generate(
             EnginePaths.Paths paths, Path dir, String kind, Map<String, String> params) throws IOException {
