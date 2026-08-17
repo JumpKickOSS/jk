@@ -73,8 +73,14 @@ public final class WorkspaceScheduler {
 
     /**
      * As {@link #run(List, Function, Map, UnitTask, LevelSink, int)} with an explicit cancel probe
-     * (tests). When {@code cancelled} is true, no further units start and in-flight futures are
-     * {@code cancel(true)}'d — the method returns {@code null} without waiting for them.
+     * (tests). When {@code cancelled} is true, no further units are admitted (queued-but-unstarted
+     * tasks no-op via an in-task gate), in-flight units are drained for a bounded window (see
+     * {@link #CANCEL_DRAIN_MS}) so their module events land before this method returns, and then
+     * {@code null} is returned. {@code CompletableFuture.cancel(true)} is deliberately NOT used on
+     * the cancel path: it settles the future instantly while the supplier keeps running, which let
+     * module-finish events fire after the workspace-finish event (JK-2097). Real stoppage is
+     * cooperative — SessionCancel checks inside plans plus JobWorkers process kills — which
+     * settles tasks quickly; the bound keeps cancel from ever hanging on a wedged step.
      */
     public static <U, R> R run(
             List<U> units,
@@ -105,15 +111,15 @@ public final class WorkspaceScheduler {
                 List<CompletableFuture<R>> futures = new ArrayList<>();
                 for (U u : ready) {
                     if (stop.getAsBoolean()) {
-                        cancelAll(futures);
+                        drainCancelled(futures);
                         return null;
                     }
-                    futures.add(CompletableFuture.supplyAsync(() -> task.run(u), JkThreads.io()));
+                    futures.add(CompletableFuture.supplyAsync(() -> gated(stop, task, u), JkThreads.io()));
                 }
                 List<R> results = new ArrayList<>(futures.size());
                 for (CompletableFuture<R> f : futures) {
                     if (stop.getAsBoolean()) {
-                        cancelAll(futures);
+                        drainCancelled(futures);
                         return null;
                     }
                     results.add(f.join());
@@ -131,7 +137,7 @@ public final class WorkspaceScheduler {
         int inFlight = 0;
         while (true) {
             if (stop.getAsBoolean()) {
-                cancelAll(inflight);
+                drainCancelled(inflight);
                 return null;
             }
             while (inFlight < maxConcurrency && !stop.getAsBoolean()) {
@@ -148,7 +154,7 @@ public final class WorkspaceScheduler {
                 if (next == null) break;
                 notStarted.remove(next);
                 U unit = next;
-                CompletableFuture<R> f = CompletableFuture.supplyAsync(() -> task.run(unit), JkThreads.io());
+                CompletableFuture<R> f = CompletableFuture.supplyAsync(() -> gated(stop, task, unit), JkThreads.io());
                 inflight.add(f);
                 f.whenComplete((r, ex) -> {
                     inflight.remove(f);
@@ -157,7 +163,7 @@ public final class WorkspaceScheduler {
                 inFlight++;
             }
             if (stop.getAsBoolean()) {
-                cancelAll(inflight);
+                drainCancelled(inflight);
                 return null;
             }
             if (inFlight == 0) {
@@ -188,9 +194,40 @@ public final class WorkspaceScheduler {
         }
     }
 
+    /**
+     * Bounded settle window for the cancel path — long enough for cooperative stoppage
+     * (SessionCancel + JobWorkers kills, sub-second by contract) with headroom, short enough
+     * that a wedged step can never pin cancel.
+     */
+    static final long CANCEL_DRAIN_MS = 2_000L;
+
+    /** Admission gate: a queued task starting after cancel must do nothing (and emit nothing). */
+    private static <U, R> R gated(BooleanSupplier stop, UnitTask<U, R> task, U unit) {
+        if (stop.getAsBoolean()) return null;
+        return task.run(unit);
+    }
+
+    /** Fail-fast path: in-flight modules keep building; only queued-not-started are prevented. */
     private static void cancelAll(Iterable<? extends CompletableFuture<?>> futures) {
         for (CompletableFuture<?> f : futures) {
             f.cancel(true);
+        }
+    }
+
+    /** Cancel path: wait (bounded) for in-flight tasks so their events precede our return. */
+    private static void drainCancelled(Iterable<? extends CompletableFuture<?>> futures) {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(CANCEL_DRAIN_MS);
+        for (CompletableFuture<?> f : futures) {
+            long left = deadline - System.nanoTime();
+            if (left <= 0) return; // residual: a task outliving the drain may emit late events
+            try {
+                f.get(left, java.util.concurrent.TimeUnit.NANOSECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            } catch (Exception ignored) {
+                // failed / timed out — best-effort drain
+            }
         }
     }
 

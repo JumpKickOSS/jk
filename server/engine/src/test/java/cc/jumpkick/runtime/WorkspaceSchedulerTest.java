@@ -75,6 +75,37 @@ class WorkspaceSchedulerTest {
         return new Trace(peak.get(), new ArrayList<>(completed), sinkCalls[0], maxBatch[0]);
     }
 
+    @Test
+    void cancel_drains_in_flight_units_before_returning() {
+        // JK-2097: cancel(true) settled the futures instantly while suppliers kept running, so
+        // module-finish events could land AFTER workspace-finish. The cancel path must wait
+        // (bounded) for in-flight tasks to settle before run() returns.
+        AtomicBoolean cancelled = new AtomicBoolean();
+        AtomicBoolean slowFinished = new AtomicBoolean();
+        Object result = WorkspaceScheduler.run(
+                List.of("fast", "slow"),
+                WorkspaceSchedulerTest::p,
+                Map.of(p("fast"), Set.of(), p("slow"), Set.of()),
+                unit -> {
+                    if ("fast".equals(unit)) {
+                        cancelled.set(true);
+                        return unit;
+                    }
+                    try {
+                        Thread.sleep(300);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    slowFinished.set(true);
+                    return unit;
+                },
+                (justCompleted, results, remaining) -> null,
+                2,
+                cancelled::get);
+        assertThat(result).isNull();
+        assertThat(slowFinished).isTrue();
+    }
+
     /** Assert every unit ran only after its prereqs finished (positional check on completion order). */
     private static void assertDependencyOrder(List<String> order) {
         assertThat(order).containsExactlyInAnyOrder("a", "b", "c", "d");
