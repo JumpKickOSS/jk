@@ -169,17 +169,21 @@ public final class HttpEngineServer implements AutoCloseable {
         this.engineVersion = version;
         this.progressTokens = new ProgressTokenRegistry();
         // null when [mcp] enabled=false — dispatch 404s every /mcp path before reaching it.
+        // MCP journal reads are redacted at the supplier — every consumer (history view=full,
+        // diagnostics, project cards, run-wait summaries) sees the same defense-in-depth as REST.
         this.mcp = config.mcp().enabled()
                 ? new McpHandler(
                         status,
                         jobs,
                         this::projectMap,
-                        () -> journal.rawRecords(200),
+                        () -> HttpHistoryApi.redactRecords(journal.rawRecords(200)),
                         version,
                         progressTokens,
                         () -> this.liveRuns.get(),
                         this::yieldingAdmission,
-                        jid -> journal.rawFinishedRecordByRequestId(jid).orElse(null))
+                        jid -> journal.rawFinishedRecordByRequestId(jid)
+                                .map(r -> HttpHistoryApi.redactRecordJson(r, new java.util.HashMap<>()))
+                                .orElse(null))
                 : null;
         // jk_disk / jk_doctor / jk://disk read the same memoized walk as GET /api/cache.
         if (this.mcp != null) this.mcp.cacheSnapshot(cache);

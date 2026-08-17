@@ -248,12 +248,11 @@ public final class EngineProtocol {
      * process). {@code url}/{@code cacheFile} override the default source/destination ({@code
      * libraries}/{@code jdks} only, for tests and power users); one {@link #FRESHEN_CATALOG_ACK}.
      *
-     * <p>Clients that only ever talk to an already-running engine (the web dashboard, MCP) can
-     * always use {@code jdks} here too — that is how they install JDKs. {@code jk jdk
-     * install}/{@code update} is the one exception with a bootstrap concern: the engine is a JVM
-     * process that needs a JDK to run, so it cannot be the sole path to provisioning the first JDK
-     * on a bare machine. That CLI path only sends this request when an engine already answers, and
-     * fetches {@code jdks.json} directly itself otherwise.
+     * <p>JDK installs themselves ride one shared path everywhere: {@code JdkService.install}
+     * fetches the catalog and installs (CLI {@code jk jdk install} and MCP {@code jk_jdk} both
+     * call it). This request is the engine-hosted <em>catalog refresh</em> channel; the CLI only
+     * sends it when an engine already answers — the engine is a JVM process that needs a JDK to
+     * run, so this cannot be the sole path to provisioning the first JDK on a bare machine.
      */
     public static final String FRESHEN_CATALOG_REQUEST = "freshen-catalog-request";
 

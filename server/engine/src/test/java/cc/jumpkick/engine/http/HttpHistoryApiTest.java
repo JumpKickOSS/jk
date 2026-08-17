@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -31,6 +32,25 @@ class HttpHistoryApiTest {
                 """.formatted(dir);
         String out = HttpHistoryApi.redactRecordJson(raw, new HashMap<>());
         assertThat(out).doesNotContain("s3cret-from-file").contains("***");
+    }
+
+    @Test
+    void mcp_journal_suppliers_serve_redacted_records(@TempDir Path dir) throws Exception {
+        // jk_history view=full and jk_diagnostics read raw journal JSON through the suppliers the
+        // engine wires into McpHandler — those ride redactRecords, so an agent on the MCP surface
+        // sees the same masking as the REST history stream.
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "g"
+                name = "demo"
+                version = "1"
+                """);
+        Files.writeString(dir.resolve(".env"), "TOKEN=mcp-s3cret\n");
+        String raw = """
+                {"id":"x","kind":"build","dir":"%s","diagnostics":[{"severity":"error","message":"leak mcp-s3cret"}]}""".formatted(dir);
+        var out = HttpHistoryApi.redactRecords(List.of(raw, raw));
+        assertThat(out).hasSize(2);
+        assertThat(out.get(0)).doesNotContain("mcp-s3cret").contains("***");
+        assertThat(out.get(1)).doesNotContain("mcp-s3cret");
     }
 
     @Test

@@ -3,7 +3,9 @@ package cc.jumpkick.engine.protocol;
 
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Read-only outdated-dependency report for {@code jk outdated} ({@link EngineProtocol#OUTDATED_REQUEST}).
@@ -50,6 +52,32 @@ public record OutdatedReport(String error, boolean workspace, List<Row> rows) {
                 + ",\"workspace\":" + workspace
                 + ",\"rows\":" + EngineProtocol.quoteArray(encoded)
                 + "}";
+    }
+
+    /**
+     * Structured form for map-shaped surfaces (MCP {@code structuredContent}) — the same rows
+     * {@link #encode} pipe-joins for the wire.
+     */
+    public Map<String, Object> toStructured() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (error != null) {
+            m.put("error", error);
+            return m;
+        }
+        m.put("workspace", workspace);
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Row r : rows) {
+            Map<String, Object> o = new LinkedHashMap<>();
+            o.put("module", r.moduleLabel());
+            o.put("coordinate", r.coordinate());
+            o.put("current", r.current());
+            o.put("compatible", r.compatible());
+            o.put("latest", r.latest());
+            if (r.tip() != null && !r.tip().isBlank()) o.put("tip", r.tip());
+            out.add(o);
+        }
+        m.put("rows", out);
+        return m;
     }
 
     public static OutdatedReport decode(String line) {

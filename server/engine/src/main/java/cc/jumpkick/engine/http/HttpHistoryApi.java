@@ -90,6 +90,18 @@ final class HttpHistoryApi {
      * verbatim. Re-redact against each record's own dir; {@code cache} amortises the env lookup
      * per distinct dir across one response (rows overwhelmingly share a dir).
      */
+    /**
+     * Redact a batch of raw journal records with one per-dir redactor cache. The MCP journal
+     * suppliers ride this so {@code jk_history view=full} / {@code jk_diagnostics} never serve
+     * pre-redaction secrets — same defense-in-depth as the REST history stream.
+     */
+    static List<String> redactRecords(List<String> raw) {
+        Map<String, cc.jumpkick.config.SecretRedactor> cache = new HashMap<>();
+        List<String> out = new ArrayList<>(raw.size());
+        for (String r : raw) out.add(redactRecordJson(r, cache));
+        return out;
+    }
+
     static String redactRecordJson(String raw, Map<String, cc.jumpkick.config.SecretRedactor> cache) {
         try {
             String dir = scanStringField(raw, "dir");
