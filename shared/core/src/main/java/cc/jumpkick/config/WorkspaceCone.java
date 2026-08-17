@@ -21,15 +21,19 @@ public final class WorkspaceCone {
 
     /**
      * Seeds plus transitive prereqs under {@code scopes}. Paths are returned as keys from
-     * {@code modulesByDir} when they match (absolute-normalized compare).
+     * {@code modulesByDir} when they match. Identity is the <em>canonical</em> (real) path —
+     * same rule as the build graph — so symlinked checkouts do not silently drop prereqs: an
+     * absolute-normalized-only compare missed a seed reached through a symlink, prereq
+     * expansion stopped, and the target built without its dirty prereqs (JK-2101).
      */
     public static Set<Path> expand(Map<Path, JkBuild> modulesByDir, Collection<Path> seeds, Collection<Scope> scopes) {
-        Map<Path, Path> byNorm = new LinkedHashMap<>();
+        Map<Path, Path> byIdentity = new LinkedHashMap<>();
         Map<String, Path> dirByCoord = new LinkedHashMap<>();
         Map<String, Path> dirByName = new LinkedHashMap<>();
         for (var e : modulesByDir.entrySet()) {
-            Path n = e.getKey().toAbsolutePath().normalize();
-            byNorm.put(n, e.getKey());
+            // Register both identities; canonical wins on lookup below.
+            byIdentity.put(e.getKey().toAbsolutePath().normalize(), e.getKey());
+            byIdentity.put(canon(e.getKey()), e.getKey());
             JkBuild b = e.getValue();
             dirByCoord.put(b.project().group() + ":" + b.project().name(), e.getKey());
             dirByName.put(b.project().name(), e.getKey());
@@ -37,7 +41,8 @@ public final class WorkspaceCone {
         Set<Path> want = new LinkedHashSet<>();
         ArrayDeque<Path> q = new ArrayDeque<>();
         for (Path s : seeds) {
-            Path key = byNorm.getOrDefault(s.toAbsolutePath().normalize(), s);
+            Path key = byIdentity.get(canon(s));
+            if (key == null) key = byIdentity.getOrDefault(s.toAbsolutePath().normalize(), s);
             if (want.add(key)) q.add(key);
         }
         while (!q.isEmpty()) {
@@ -49,5 +54,14 @@ public final class WorkspaceCone {
             }
         }
         return want;
+    }
+
+    /** Canonical (real) path, falling back to absolute-normalized for paths that don't exist. */
+    private static Path canon(Path p) {
+        try {
+            return p.toRealPath();
+        } catch (Exception e) {
+            return p.toAbsolutePath().normalize();
+        }
     }
 }

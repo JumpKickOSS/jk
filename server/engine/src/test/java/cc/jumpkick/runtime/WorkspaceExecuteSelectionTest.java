@@ -86,6 +86,33 @@ class WorkspaceExecuteSelectionTest {
         assertThat(appNames).contains(TaskNames.PACKAGE_JAR, TaskNames.NATIVE_IMAGE);
     }
 
+    @Test
+    void symlinked_seed_still_expands_prereqs() throws Exception {
+        // JK-2101: cone identity is the canonical path — a seed reached through a symlink must
+        // still match its graph module and pull dirty prereqs into the cone.
+        Path core = module("jk-core", "core", "");
+        Path cli = module("jk-cli", "cli", """
+                [application]
+                main = "ex.Main"
+
+                [dependencies]
+                jk-core = { workspace = true }
+                """);
+        Map<Path, JkBuild> mods = new LinkedHashMap<>();
+        mods.put(core, JkBuildParser.parse(core.resolve("jk.toml")));
+        mods.put(cli, JkBuildParser.parse(cli.resolve("jk.toml")));
+
+        Path link = tmp.resolve("cli-link");
+        try {
+            Files.createSymbolicLink(link, cli);
+        } catch (UnsupportedOperationException | java.io.IOException e) {
+            org.junit.jupiter.api.Assumptions.abort("symlinks unsupported here: " + e);
+        }
+
+        Set<Path> cone = WorkspaceCone.expand(mods, List.of(link), List.of(Scope.values()));
+        assertThat(cone).contains(core, cli);
+    }
+
     private Path module(String name, String dirName, String extra) throws Exception {
         Path dir = tmp.resolve(dirName);
         Files.createDirectories(dir.resolve("src/main/java/ex"));

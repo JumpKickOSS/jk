@@ -169,6 +169,19 @@ public final class WorkspaceExecute {
         graph = applySelectionCone(graph, req);
         units = graph.topoOrder();
         if (units.isEmpty()) {
+            // A NON-EMPTY selection that matches nothing is an error, not a clean no-op —
+            // success(0) here silently "built" a mistyped -m selection (JK-2101).
+            WorkspaceSpec spec = req.spec();
+            if (spec != null && spec.hasSelection()) {
+                String sel = spec.selectedModules().stream()
+                        .map(Path::toString)
+                        .sorted()
+                        .collect(java.util.stream.Collectors.joining(", "));
+                WorkspaceResult r = new WorkspaceResult(
+                        false, 2, List.of(), List.of("selection matched no workspace module: " + sel));
+                listener.onWorkspaceFinish(r);
+                return r;
+            }
             WorkspaceResult r = new WorkspaceResult(true, 0, List.of(), List.of());
             listener.onWorkspaceFinish(r);
             return r;
