@@ -14,6 +14,8 @@ class JkWedgeTest {
         RenderContext plain = RenderContext.current().withAnsi(false);
         assertThat(JkWedge.ok("Build", "done").renderLine(plain)).isEqualTo(" + Build > done");
         assertThat(JkWedge.fail("Build", "boom").renderLine(plain)).isEqualTo(" ! Build > boom");
+        assertThat(JkWedge.cancelled("Build", false, "took 1s").renderLine(plain))
+                .isEqualTo(" o Build > job was cancelled took 1s");
     }
 
     @Test

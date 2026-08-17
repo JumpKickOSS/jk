@@ -22,7 +22,7 @@ import java.nio.charset.StandardCharsets;
  * <tr><td>● (black circle / pulse)</td><td>{@code *}</td></tr>
  * <tr><td>· (middle dot)</td><td>{@code -}</td></tr>
  * <tr><td>□ (unchecked box)</td><td>{@code [ ]}</td></tr>
- * <tr><td>⊛ (circled asterisk / cancelled)</td><td>{@code *}</td></tr>
+ * <tr><td>⊛ (circled asterisk / cancelled)</td><td>{@code o}</td></tr>
  * <tr><td>— (em dash)</td><td>{@code --}</td></tr>
  * <tr><td>✓ / ✘ / ‼ / ▶ / ■ / ≡</td><td>{@code +} / {@code !} / {@code !} / {@code >} /
  * {@code x} / {@code =}</td></tr>
@@ -74,7 +74,7 @@ public final class PlainAscii {
                 case 0x00B7 -> sb.append('-'); // · middle dot (header separators)
                 case 0x2812 -> sb.append('-'); // ⠒ braille dots-25 (Ctrl-O peek rule)
                 case 0x2191 -> sb.append('^'); // ↑ up arrow (Ctrl-O "↑ output ↑" caption)
-                case 0x229B -> sb.append('*'); // ⊛ circled asterisk (history: cancelled)
+                case 0x229B -> sb.append(Glyphs.CANCELLED_PLAIN); // ⊛ circled asterisk (cancelled)
                 case 0x2014 -> sb.append("--"); // — em dash (table titles, n/a durations)
                 default -> sb.appendCodePoint(cp);
             }

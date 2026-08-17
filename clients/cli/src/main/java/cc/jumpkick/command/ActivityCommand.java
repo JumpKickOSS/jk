@@ -171,7 +171,7 @@ public final class ActivityCommand implements CliCommand {
             glyph = t.isAnsi() ? Glyphs.PLAY : "*";
             outcomeWord = "Building";
         } else if (cancelled) {
-            glyph = t.isAnsi() ? "⊛" : "o";
+            glyph = t.isAnsi() ? Glyphs.CANCELLED : Glyphs.CANCELLED_PLAIN;
             outcomeWord = "Cancel ";
         } else if (success) {
             glyph = t.isAnsi() ? Glyphs.CHECK : "+";

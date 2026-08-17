@@ -34,7 +34,7 @@ class PlainAsciiTest {
         assertThat(PlainAscii.transform("≡ menu")).isEqualTo("= menu");
         assertThat(PlainAscii.transform("□")).isEqualTo("[ ]");
         assertThat(PlainAscii.transform("·")).isEqualTo("-");
-        assertThat(PlainAscii.transform("⊛ cancelled")).isEqualTo("* cancelled");
+        assertThat(PlainAscii.transform("⊛ cancelled")).isEqualTo("o cancelled");
         assertThat(PlainAscii.transform("Tasks — g:n")).isEqualTo("Tasks -- g:n");
     }
 
@@ -85,6 +85,7 @@ class PlainAsciiTest {
     void bullet_plain_is_dash_not_star() {
         assertThat(Glyphs.BULLET_PLAIN).isEqualTo("-");
         assertThat(Glyphs.PULSE_PLAIN).isEqualTo("*");
+        assertThat(Glyphs.CANCELLED_PLAIN).isEqualTo("o");
     }
 
     private static <T> T withNoAnsi(Supplier<T> body) throws Exception {

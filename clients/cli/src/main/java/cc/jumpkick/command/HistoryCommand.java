@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.model.command.Arity;
@@ -41,7 +42,7 @@ public final class HistoryCommand extends GroupCommand {
     // --- shared formatting helpers ----------------------------------------------
 
     static String glyph(boolean success, boolean cancelled) {
-        return cancelled ? "⊛" : success ? "✓" : "✘"; // ⊛ cancelled, ✓ ok, ✘ failed
+        return cancelled ? Glyphs.CANCELLED : success ? Glyphs.CHECK : Glyphs.CROSS;
     }
 
     static String outcome(boolean success, boolean cancelled) {

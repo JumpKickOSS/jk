@@ -97,7 +97,7 @@ final class JkManagerView {
     }
 
     /**
-     * Settle as a remote engine cancel ({@code jk cancel} / web): gray {@code ‼ Build} chip, then
+     * Settle as a remote engine cancel ({@code jk cancel} / web): gray {@code ⊛ Build} chip, then
      * {@code job was cancelled took …} — no "by user".
      */
     public void finishBuildPlanCancelled(List<String> above) {
