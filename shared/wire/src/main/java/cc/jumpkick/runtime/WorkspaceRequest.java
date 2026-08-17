@@ -6,7 +6,12 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
 
-/** Engine workspace-build request ({@code BuildService.buildWorkspace}). */
+/**
+ * Engine workspace-build request ({@code BuildService.buildWorkspace}).
+ *
+ * <p>{@code entryBuild} may be {@code null}: the engine re-parses {@code jk.toml} from
+ * {@link #entryDir()}. Clients must not ship a parsed model over the wire.
+ */
 public record WorkspaceRequest(
         Path entryDir,
         JkBuild entryBuild,

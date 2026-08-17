@@ -110,11 +110,22 @@ public final class WorkspaceExecute {
      * {@code HeapPlan}/{@code PluginSlots} state sized for just itself.
      */
     public static WorkspaceResult buildWorkspace(WorkspaceRequest req, WorkspaceBuildListener listener) {
+        cc.jumpkick.model.JkBuild entryBuild = req.entryBuild();
+        if (entryBuild == null) {
+            try {
+                entryBuild =
+                        cc.jumpkick.config.JkBuildParser.parse(req.entryDir().resolve("jk.toml"));
+            } catch (Exception e) {
+                WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(String.valueOf(e.getMessage())));
+                listener.onWorkspaceFinish(r);
+                return r;
+            }
+        }
         // Re-lock when the workspace lock is stale so unsatisfiable deps fail here instead of
         // a false "all up to date" from per-module forecasts. Soft I/O failures don't block.
         if (req.freshenLock()) {
             Path rootLock = cc.jumpkick.lock.LockPaths.lockFile(req.entryDir());
-            boolean lockStale = WorkspaceLock.workspaceLockStale(req.entryDir(), req.entryBuild(), rootLock);
+            boolean lockStale = WorkspaceLock.workspaceLockStale(req.entryDir(), entryBuild, rootLock);
             if (lockStale) {
                 // Countdown during lock: price lock + a coarse remaining-build prior so the TUI
                 // does not pure count-up for the whole re-lock window. Remaining-work semantics —
@@ -143,7 +154,7 @@ public final class WorkspaceExecute {
         listener.onPreflight("graph", 0, 0, "Resolving module graph…");
         BuildGraph.Result graph;
         try {
-            graph = BuildGraph.resolve(req.entryDir(), req.entryBuild());
+            graph = BuildGraph.resolve(req.entryDir(), entryBuild);
         } catch (IOException e) {
             WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(String.valueOf(e.getMessage())));
             listener.onWorkspaceFinish(r);
