@@ -51,6 +51,14 @@ class OutputWindowTest {
     }
 
     @Test
+    void append_splits_embedded_newlines() {
+        OutputWindow w = new OutputWindow();
+        w.append("header\n ┃ body\n ┗━");
+        assertThat(w.size()).isEqualTo(3);
+        assertThat(w.linesForDisplay(10)).containsExactly("header", " ┃ body", " ┗━");
+    }
+
+    @Test
     void lines_for_display_takes_newest_within_budget() {
         OutputWindow w = new OutputWindow();
         for (int i = 0; i < 10; i++) w.append("L" + i);

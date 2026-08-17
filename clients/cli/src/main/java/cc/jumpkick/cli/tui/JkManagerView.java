@@ -366,6 +366,15 @@ final class JkManagerView {
      * spinner behavior.
      */
     public void writeAbove(String text) {
+        if (text != null && text.indexOf('\n') >= 0) {
+            // DiagnosticReport and other multi-line blobs must be one scrollback row each.
+            // A single append + truncateVisible would squash rails onto one terminal line.
+            for (String part : text.split("\n", -1)) {
+                if (part.endsWith("\r")) part = part.substring(0, part.length() - 1);
+                writeAbove(part);
+            }
+            return;
+        }
         synchronized (m.lock) {
             if (m.done) {
                 m.out.println(text);

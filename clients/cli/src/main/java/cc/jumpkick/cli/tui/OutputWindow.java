@@ -38,6 +38,10 @@ public final class OutputWindow {
     /** Append one logical line; evicts the oldest when over {@link #MAX_LINES}. */
     public synchronized void append(String line) {
         if (line == null) return;
+        if (line.indexOf('\n') >= 0) {
+            for (String part : line.split("\n", -1)) append(part);
+            return;
+        }
         // Normalize: strip a single trailing CR left by some tools.
         if (line.endsWith("\r")) line = line.substring(0, line.length() - 1);
         // Skip pure blank lines — they only create visual gaps before the rule / settle chip.

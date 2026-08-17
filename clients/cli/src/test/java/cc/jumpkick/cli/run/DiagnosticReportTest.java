@@ -72,6 +72,7 @@ class DiagnosticReportTest {
         assertThat(p).contains("in cc.jumpkick:jk-core");
         assertThat(p).contains("error:");
         assertThat(p).contains("Foo.java:1");
+        assertThat(p.lines().count()).isGreaterThan(2);
         if (Theme.active().isAnsi()) {
             assertThat(report).contains(Coords.ga("cc.jumpkick", "jk-core"));
         }

@@ -1536,6 +1536,30 @@ class JkManagerTest {
     }
 
     @Test
+    void writeAbove_splits_a_multiline_diagnostic_into_scrollback_rows() {
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(stream(buf), true, true, 80);
+        cm.name = "Build";
+        cm.progress(1, 4);
+        cm.stepRunning("m", "compile-java");
+        cm.tick();
+        buf.reset();
+
+        String report = "Compile Java Failure\n ┃ error: class expected\n ┃     Foo.java:1\n ┗━";
+        cm.writeAbove(report);
+        assertThat(cm.outputWindow().size()).isEqualTo(4);
+
+        cm.showProcessFailureOutput();
+        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
+        assertThat(visible).contains("Compile Java Failure");
+        assertThat(visible).contains("error: class expected");
+        assertThat(visible).contains("Foo.java:1");
+        // Still multi-line — not one squash of rails onto the header.
+        assertThat(visible.indexOf("Compile Java Failure")).isLessThan(visible.indexOf("error: class expected"));
+        cm.close();
+    }
+
+    @Test
     void toggle_off_replaces_peek_rule_with_blank_separator() {
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(stream(buf), true, true, 80);
