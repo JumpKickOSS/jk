@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.cache.Linking;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.compile.ClasspathResolver;
@@ -19,10 +20,12 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.util.JkDirs;
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
@@ -136,10 +139,11 @@ public final class JshellCommand implements CliCommand {
         List<String> cp = new ArrayList<>();
         cp.add(classes.toString());
         int missing = 0;
+        List<Path> present = new ArrayList<>();
         for (Path p : depCp) {
             if (p == null) continue;
             if (Files.exists(p)) {
-                cp.add(p.toString());
+                present.add(p);
             } else {
                 missing++;
             }
@@ -150,17 +154,27 @@ public final class JshellCommand implements CliCommand {
                     "JShell",
                     missing + " lock classpath entry(ies) missing on disk — run `jk sync`");
         }
+        // jshell rejects extensionless files; CAS blobs are bare hashes, so alias as .jar.
+        for (Path p : withJarExtension(present)) {
+            cp.add(p.toString());
+        }
         String classpath = String.join(File.pathSeparator, cp);
 
         List<String> cmd = new ArrayList<>();
         cmd.add(jshellBin.toString());
         cmd.add("--class-path");
         cmd.add(classpath);
+        // Local execution: remote demux hits IOContext.charset() UOE on JDK 25 startup.
+        List<String> extra = in.positionals();
+        if (!hasExecutionSpec(extra)) {
+            cmd.add("--execution");
+            cmd.add("local");
+        }
         // Forward extra positionals to jshell.
-        cmd.addAll(in.positionals());
+        cmd.addAll(extra);
 
         if (global.verbose) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            cc.jumpkick.cli.tui.CommandWedge.printWorking(
                     "JShell",
                     cmd.stream().map(s -> s.contains(" ") ? "\"" + s + "\"" : s).collect(Collectors.joining(" ")));
         }
@@ -171,6 +185,15 @@ public final class JshellCommand implements CliCommand {
         Process p = pb.start();
         int exit = p.waitFor();
         return exit;
+    }
+
+    /** True when the user already chose an execution engine ({@code --execution …}). */
+    static boolean hasExecutionSpec(List<String> args) {
+        for (String a : args) {
+            if (a == null) continue;
+            if (a.equals("--execution") || a.startsWith("--execution=")) return true;
+        }
+        return false;
     }
 
     /** Prefer {@code $JAVA_HOME/bin/jshell}, then {@code java.home}/bin/jshell. */
@@ -198,5 +221,39 @@ public final class JshellCommand implements CliCommand {
             if (c != null && Files.isRegularFile(c)) return c;
         }
         return null;
+    }
+
+    /**
+     * jshell only accepts directories and {@code .jar}/{@code .zip} files on {@code --class-path}.
+     * JumpKick's CAS store paths are extensionless content hashes — hard-link (or copy) them to a
+     * {@code .jar}-suffixed alias under a temp dir so jshell accepts them.
+     */
+    static List<Path> withJarExtension(List<Path> jars) throws IOException {
+        List<Path> out = new ArrayList<>(jars.size());
+        Path dir = null;
+        int i = 0;
+        for (Path jar : jars) {
+            if (jar == null) continue;
+            if (Files.isDirectory(jar) || hasJarOrZipExtension(jar)) {
+                out.add(jar);
+                continue;
+            }
+            if (dir == null) {
+                dir = Files.createTempDirectory("jk-jshell-cp-");
+                dir.toFile().deleteOnExit();
+            }
+            // Keep the CAS hex in the name so aliases stay unique across modules.
+            Path alias = dir.resolve(i + "-" + jar.getFileName() + ".jar");
+            Linking.linkOrCopy(jar, alias);
+            alias.toFile().deleteOnExit();
+            out.add(alias);
+            i++;
+        }
+        return out;
+    }
+
+    private static boolean hasJarOrZipExtension(Path path) {
+        String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
+        return name.endsWith(".jar") || name.endsWith(".zip");
     }
 }

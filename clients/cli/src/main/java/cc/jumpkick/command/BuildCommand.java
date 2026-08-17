@@ -148,7 +148,8 @@ public final class BuildCommand implements CliCommand {
                 && !peek.workspaceRootDir().equals(startDir.toString())) {
             Path root = Path.of(peek.workspaceRootDir());
             if (!global.outputIsJson()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
+                // Informational handoff when invoked from a module dir — not a failure.
+                cc.jumpkick.cli.tui.CommandWedge.printWorking(
                         "Build",
                         "building workspace from " + root.getFileName() + " (module: " + startDir.getFileName() + ")");
             }
