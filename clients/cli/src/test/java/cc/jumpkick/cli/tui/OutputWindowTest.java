@@ -54,6 +54,30 @@ class OutputWindowTest {
     }
 
     @Test
+    void no_ansi_plan_animate_prints_plainly_hidden_or_visible() {
+        // JK-2091: --no-ansi TTY animate mode has no live region — the ANSI path leaked raw
+        // escapes when the peek was visible and swallowed tool output entirely when hidden.
+        var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
+        cc.jumpkick.config.SessionContext.runWhere(
+                cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
+                    CommandWedge.resetEnvelope();
+                    var buf = new ByteArrayOutputStream();
+                    var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+                    cm.name = "Build";
+                    cm.startNanos = System.nanoTime();
+
+                    cm.writeAbove("hidden-tool-line");
+                    cm.outputWindow().show();
+                    cm.writeAbove("visible-tool-line");
+
+                    String out = buf.toString(StandardCharsets.UTF_8);
+                    assertThat(out).contains("hidden-tool-line").contains("visible-tool-line");
+                    assertThat(out).doesNotContain("\u001b");
+                    cm.close();
+                });
+    }
+
+    @Test
     void display_budget_clamps_to_max_and_free_rows() {
         // rows - chrome - rule - cursor-park
         assertThat(OutputWindow.displayBudget(40, 5)).isEqualTo(33); // 40 - 5 - 2

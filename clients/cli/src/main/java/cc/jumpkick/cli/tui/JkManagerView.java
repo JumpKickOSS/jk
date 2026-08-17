@@ -385,7 +385,12 @@ final class JkManagerView {
                 // append() reports blank-strips; a size compare would misread ring-full
                 // eviction (size unchanged on every accepted append) as a strip.
                 if (!m.outputWindow.append(text)) return;
-                if (!m.animate) {
+                if (!m.animate || !Theme.active().isAnsi()) {
+                    // Piped mode — and --no-ansi TTY plain-animate mode: there is no live region
+                    // to lift (open/close/tick paints are all isAnsi-gated), so the ANSI path
+                    // would leak raw escapes when peek was visible and swallow tool output
+                    // entirely when hidden (no Ctrl-O repaint can ever reveal it). Print plainly
+                    // and sequentially, like the pre-peek writeAbove always did (JK-2091).
                     m.out.println(text);
                     m.out.flush();
                     return;
