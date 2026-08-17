@@ -146,6 +146,22 @@ class OutputWindowTest {
     }
 
     @Test
+    void piped_plan_output_preserves_blank_lines_verbatim() {
+        // JK-2108: the peek ring strips blanks, but piped/CI output prints tool lines verbatim —
+        // docs/tui.md promises the non-TTY path is unchanged.
+        CommandWedge.resetEnvelope();
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), false, true, 80);
+        cm.name = "Build";
+        cm.startNanos = System.nanoTime();
+        cm.writeAbove("first");
+        cm.writeAbove("");
+        cm.writeAbove("second");
+        assertThat(buf.toString(StandardCharsets.UTF_8)).contains("first\n\nsecond\n");
+        cm.close();
+    }
+
+    @Test
     void display_budget_clamps_to_max_and_free_rows() {
         // rows - chrome - rule - cursor-park
         assertThat(OutputWindow.displayBudget(40, 5)).isEqualTo(33); // 40 - 5 - 2

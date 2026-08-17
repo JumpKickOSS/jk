@@ -382,10 +382,14 @@ final class JkManagerView {
                 return;
             }
             if (m.planMode) {
+                if (text == null) return;
                 // append() reports blank-strips; a size compare would misread ring-full
                 // eviction (size unchanged on every accepted append) as a strip.
-                if (!m.outputWindow.append(text)) return;
+                boolean accepted = m.outputWindow.append(text);
                 if (!m.animate || !Theme.active().isAnsi()) {
+                    // Non-TTY fidelity (JK-2108): the peek ring strips blanks (they only make
+                    // gaps under the rule), but piped/CI output prints tool lines VERBATIM —
+                    // docs/tui.md promises the non-TTY path is unchanged.
                     // Piped mode — and --no-ansi TTY plain-animate mode: there is no live region
                     // to lift (open/close/tick paints are all isAnsi-gated), so the ANSI path
                     // would leak raw escapes when peek was visible and swallow tool output
@@ -395,6 +399,7 @@ final class JkManagerView {
                     m.out.flush();
                     return;
                 }
+                if (!accepted) return; // blank-stripped: nothing new for the live region
                 if (m.outputWindow.visible()) {
                     // Lift live region → emit one line into scrollback → repaint rule+wedge only.
                     liftEmitRepaintLive(text);
