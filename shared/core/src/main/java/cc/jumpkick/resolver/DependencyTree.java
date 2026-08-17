@@ -200,7 +200,7 @@ public final class DependencyTree {
      * {@code " "}) are passed through {@link Styling#rail}.
      */
     public static String render(JkBuild project, Lockfile lock, int maxDepth, Styling styling) {
-        Map<String, Lockfile.Artifact> byModule = indexByModule(lock);
+        LockGraph graph = LockGraph.forLock(lock);
         StringBuilder out = new StringBuilder();
         // Root project: group:artifact:version, styled like every other line.
         out.append(formatCoord(
@@ -217,7 +217,7 @@ public final class DependencyTree {
         for (int i = 0; i < roots.size(); i++) {
             String root = roots.get(i);
             renderNode(
-                    byModule,
+                    graph,
                     root,
                     0,
                     maxDepth,
@@ -740,7 +740,7 @@ public final class DependencyTree {
             StringBuilder out,
             boolean siblingSurface) {
 
-        Map<String, Lockfile.Artifact> byModule = lock == null ? Map.of() : indexByModule(lock);
+        LockGraph graph = LockGraph.forLock(lock);
         Map<String, Dependency> composite = Map.of();
         // Declared versions (and which modules are PLATFORM-only pins / BOMs).
         Map<String, String> declaredVersions = declaredVersions(project, scopes);
@@ -759,7 +759,7 @@ public final class DependencyTree {
             renderDep(
                     mod,
                     composite,
-                    byModule,
+                    graph,
                     dir,
                     depth,
                     maxDepth,
@@ -879,7 +879,7 @@ public final class DependencyTree {
             WorkspaceGraph ws,
             StringBuilder out) {
 
-        Map<String, Lockfile.Artifact> byModule = lock == null ? Map.of() : indexByModule(lock);
+        LockGraph graph = LockGraph.forLock(lock);
         Map<String, Dependency> composite = Map.of();
         List<Scope> sections = new ArrayList<>();
         for (Scope s : sectionOrder(scopeOrder)) {
@@ -897,7 +897,7 @@ public final class DependencyTree {
                     collectFlat(
                             m,
                             composite,
-                            byModule,
+                            graph,
                             ws,
                             sections,
                             visited,
@@ -917,7 +917,7 @@ public final class DependencyTree {
                 collectFlat(
                         m,
                         composite,
-                        byModule,
+                        graph,
                         ws,
                         List.of(s),
                         visited,
@@ -950,11 +950,11 @@ public final class DependencyTree {
             Map<String, FlatDep> collected = new TreeMap<>();
             Set<String> visited = new HashSet<>();
             for (LoadedModule m : modules) {
-                Map<String, Lockfile.Artifact> byModule = m.lock() == null ? Map.of() : indexByModule(m.lock());
+                LockGraph graph = LockGraph.forLock(m.lock());
                 Map<String, Dependency> composite = Map.of();
                 for (Scope s : sections) {
                     for (String dep : directModules(m.build(), s)) {
-                        collectFlat(dep, composite, byModule, ws, sections, visited, collected);
+                        collectFlat(dep, composite, graph, ws, sections, visited, collected);
                     }
                 }
             }
@@ -967,10 +967,10 @@ public final class DependencyTree {
             Set<String> visited = new HashSet<>();
             for (LoadedModule m : modules) {
                 if (m.build().dependencies().of(s).isEmpty()) continue;
-                Map<String, Lockfile.Artifact> byModule = m.lock() == null ? Map.of() : indexByModule(m.lock());
+                LockGraph graph = LockGraph.forLock(m.lock());
                 Map<String, Dependency> composite = Map.of();
                 for (String dep : directModules(m.build(), s)) {
-                    collectFlat(dep, composite, byModule, ws, List.of(s), visited, collected);
+                    collectFlat(dep, composite, graph, ws, List.of(s), visited, collected);
                 }
             }
             renderFlatSection(
@@ -1009,18 +1009,18 @@ public final class DependencyTree {
     private static void collectFlat(
             String module,
             Map<String, Dependency> composite,
-            Map<String, Lockfile.Artifact> byModule,
+            LockGraph graph,
             WorkspaceGraph ws,
             List<Scope> walkScopes,
             Set<String> visited,
             Map<String, FlatDep> out) {
-        collectFlat(module, composite, byModule, ws, walkScopes, visited, out, null, false);
+        collectFlat(module, composite, graph, ws, walkScopes, visited, out, null, false);
     }
 
     private static void collectFlat(
             String module,
             Map<String, Dependency> composite,
-            Map<String, Lockfile.Artifact> byModule,
+            LockGraph graph,
             WorkspaceGraph ws,
             List<Scope> walkScopes,
             Set<String> visited,
@@ -1036,8 +1036,7 @@ public final class DependencyTree {
             String ver = sibling.build().project().version();
             if (!visited.add(ga)) return;
             putFlat(out, new FlatDep(ga, ver, ""));
-            Map<String, Lockfile.Artifact> siblingIndex =
-                    sibling.lock() == null ? byModule : indexByModule(sibling.lock());
+            LockGraph siblingGraph = sibling.lock() == null ? graph : LockGraph.forLock(sibling.lock());
             // The sibling contributes its own surface (export/main/runtime), not whatever
             // scope section of the consumer declared it. Module (workspace) edges chain
             // only through export/main — WorkspaceClasspath never adds a sibling's RUNTIME module
@@ -1046,7 +1045,7 @@ public final class DependencyTree {
                 boolean moduleEdges = cc.jumpkick.config.WorkspaceClasspath.SIBLING_MODULE_SCOPES.contains(s);
                 for (String dep : directModules(sibling.build(), s)) {
                     if (!moduleEdges && isSiblingModuleDep(dep, ws)) continue;
-                    collectFlat(dep, composite, siblingIndex, ws, siblingContributedScopes(), visited, out);
+                    collectFlat(dep, composite, siblingGraph, ws, siblingContributedScopes(), visited, out);
                 }
             }
             return;
@@ -1057,7 +1056,7 @@ public final class DependencyTree {
             return;
         }
         if (!visited.add(module)) return;
-        Lockfile.Artifact pkg = byModule.get(module);
+        Lockfile.Artifact pkg = graph.artifact(module);
         if (pkg == null) {
             if (platformPin) {
                 putFlat(out, new FlatDep(module, declaredVersion, " (platform)"));
@@ -1067,8 +1066,8 @@ public final class DependencyTree {
             return;
         }
         putFlat(out, new FlatDep(module, pkg.version(), ""));
-        for (String child : pkg.deps()) {
-            collectFlat(stripVersion(child), composite, byModule, ws, walkScopes, visited, out, null, false);
+        for (String child : graph.forward(module)) {
+            collectFlat(child, composite, graph, ws, walkScopes, visited, out, null, false);
         }
     }
 
@@ -1120,7 +1119,7 @@ public final class DependencyTree {
     private static void renderDep(
             String module,
             Map<String, Dependency> composite,
-            Map<String, Lockfile.Artifact> byModule,
+            LockGraph graph,
             Path dir,
             int depth,
             int maxDepth,
@@ -1153,7 +1152,7 @@ public final class DependencyTree {
             return;
         }
         renderNode(
-                byModule,
+                graph,
                 module,
                 depth,
                 maxDepth,
@@ -1265,7 +1264,7 @@ public final class DependencyTree {
     }
 
     private static void renderNode(
-            Map<String, Lockfile.Artifact> byModule,
+            LockGraph graph,
             String module,
             int depth,
             int maxDepth,
@@ -1274,7 +1273,7 @@ public final class DependencyTree {
             Styling styling,
             Set<String> seen,
             StringBuilder out) {
-        renderNode(byModule, module, depth, maxDepth, isLast, prefix, styling, seen, out, null, false);
+        renderNode(graph, module, depth, maxDepth, isLast, prefix, styling, seen, out, null, false);
     }
 
     /**
@@ -1282,7 +1281,7 @@ public final class DependencyTree {
      * @param platformPin true when this module is a PLATFORM BOM / pin source — not a lock jar row
      */
     private static void renderNode(
-            Map<String, Lockfile.Artifact> byModule,
+            LockGraph graph,
             String module,
             int depth,
             int maxDepth,
@@ -1294,7 +1293,7 @@ public final class DependencyTree {
             String declaredVersion,
             boolean platformPin) {
 
-        Lockfile.Artifact pkg = byModule.get(module);
+        Lockfile.Artifact pkg = graph.artifact(module);
         // module may be GA or full package key (g:a:type:classifier); display as GA.
         String groupId;
         String artifactId;
@@ -1363,11 +1362,10 @@ public final class DependencyTree {
         if (pkg == null || depth >= maxDepth || platformPin) return;
 
         String childPrefix = prefix + styling.rail().apply(isLast ? "   " : "│  ");
-        List<String> children =
-                pkg.deps().stream().map(DependencyTree::stripVersion).sorted().toList();
+        List<String> children = graph.forwardSorted(module);
         for (int i = 0; i < children.size(); i++) {
             renderNode(
-                    byModule,
+                    graph,
                     children.get(i),
                     depth + 1,
                     maxDepth,
@@ -1387,24 +1385,6 @@ public final class DependencyTree {
                 + styling.artifact().apply(artifact)
                 + ":"
                 + styling.version().apply(version);
-    }
-
-    static Map<String, Lockfile.Artifact> indexByModule(Lockfile lock) {
-        Map<String, Lockfile.Artifact> result = new HashMap<>();
-        for (Lockfile.Artifact pkg : lock.artifacts()) {
-            result.put(pkg.name(), pkg);
-            result.put(pkg.packageKey(), pkg);
-            // Bare GA lookups (declared roots) resolve to the default-jar row when present.
-            if (cc.jumpkick.model.PackageId.isMavenPackageKey(pkg.name())) {
-                var id = cc.jumpkick.model.PackageId.parse(pkg.name());
-                if (id.isDefaultJar()) {
-                    result.put(id.ga(), pkg);
-                } else {
-                    result.putIfAbsent(id.ga(), pkg);
-                }
-            }
-        }
-        return result;
     }
 
     static List<String> collectRoots(JkBuild project) {
@@ -1432,12 +1412,6 @@ public final class DependencyTree {
             roots.addAll(collectRoots(m.build()));
         }
         return new ArrayList<>(roots);
-    }
-
-    /** Strip the {@code @version} suffix from a lockfile dep ref. */
-    static String stripVersion(String depRef) {
-        int at = depRef.indexOf('@');
-        return at > 0 ? depRef.substring(0, at) : depRef;
     }
 
     // Sorting helper exposed for tests that want a deterministic order.

@@ -147,16 +147,27 @@ public final class Interactivity {
      */
     private static void installRestoreHook(Terminal terminal, Attributes saved) {
         Runtime.getRuntime()
-                .addShutdownHook(new Thread(
-                        () -> {
-                            synchronized (Interactivity.class) {
-                                if (sharedTerminal == terminal) {
-                                    terminal.setAttributes(saved);
-                                    terminal.flush();
-                                }
-                            }
-                        },
-                        "jk-terminal-restore"));
+                .addShutdownHook(new Thread(() -> restoreOwnedAttributes(terminal, saved), "jk-terminal-restore"));
+    }
+
+    /**
+     * Best-effort attribute restore for the still-owned shared terminal. JLine registers its own
+     * closer on a system terminal; that hook and this one run concurrently at JVM exit, and
+     * {@link Terminal#setAttributes} / {@link Terminal#flush} throw {@link IllegalStateException}
+     * once the terminal is closed. Swallowing keeps a successful command from dumping
+     * {@code Exception in thread "jk-terminal-restore"} — JLine's closer already restored the
+     * original attributes.
+     */
+    static void restoreOwnedAttributes(Terminal terminal, Attributes saved) {
+        synchronized (Interactivity.class) {
+            if (sharedTerminal != terminal) return;
+            try {
+                terminal.setAttributes(saved);
+                terminal.flush();
+            } catch (RuntimeException ignored) {
+                // JLine closer already shut the terminal, or the tty vanished under us.
+            }
+        }
     }
 
     /**

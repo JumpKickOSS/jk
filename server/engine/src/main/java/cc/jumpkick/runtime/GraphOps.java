@@ -8,6 +8,7 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.DependencyTree;
+import cc.jumpkick.resolver.LockGraph;
 import cc.jumpkick.resolver.Provenance;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -41,6 +42,9 @@ public final class GraphOps {
         try {
             JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
             Lockfile lock = LockfileReader.read(cc.jumpkick.lock.LockPaths.lockFile(dir));
+            // One LockGraph per request: a fuzzy query with many matches used to rebuild the
+            // whole reverse adjacency per match.
+            LockGraph graph = LockGraph.of(project, lock, dir);
             List<Lockfile.Artifact> matches = lock.artifacts().stream()
                     .filter(p -> matchesQuery(p.name(), query))
                     .toList();
@@ -53,7 +57,7 @@ public final class GraphOps {
                 // Display GA form to users (not g:a:jar:).
                 names.add(ga(target.packageKey()));
                 versions.add(target.version());
-                for (Provenance.Path path : Provenance.pathsTo(project, lock, target.packageKey(), dir)) {
+                for (Provenance.Path path : Provenance.pathsTo(graph, target.packageKey())) {
                     owners.add(Integer.toString(i));
                     paths.add(path.steps().stream()
                             .map(s -> ga(s.module()) + "@" + s.version())
@@ -85,14 +89,6 @@ public final class GraphOps {
     }
 
     private static String ga(String nameOrKey) {
-        if (nameOrKey == null) return "";
-        if (cc.jumpkick.model.PackageId.isMavenPackageKey(nameOrKey)) {
-            try {
-                return cc.jumpkick.model.PackageId.parse(nameOrKey).ga();
-            } catch (RuntimeException ignored) {
-                return nameOrKey;
-            }
-        }
-        return nameOrKey;
+        return LockGraph.ga(nameOrKey);
     }
 }
