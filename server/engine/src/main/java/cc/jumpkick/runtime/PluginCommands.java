@@ -57,7 +57,7 @@ public final class PluginCommands {
                             cc.jumpkick.plugin.protocol.PluginProtocol.OP_COMMAND,
                             command,
                             active.manifest().id())
-                    .config(active.config())
+                    .configValues(active.config().values())
                     .project(PluginBuild.facts(project, project.mainClass()))
                     .layout(layout.classesDir(), dir, scratch)
                     .artifact(PluginBuild.mainArtifactPath(layout, active))

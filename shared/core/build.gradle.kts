@@ -10,9 +10,8 @@ description = "jk core foundations: TOML config parser, lockfile, layout, librar
 
 dependencies {
     api(project(":jk-api"))
-    // MiniJson + Jsonl live in :plugin-sdk; core depends on plugin-sdk for the tree codec.
-    // plugin-api itself depends only on :model, so the direction is legal.
-    api(project(":plugin-sdk"))
+    // MiniJson / Jsonl live in :jsonl. Plugin tables on JkBuild use model.PluginConfig.
+    api(project(":jsonl"))
     api(libs.tomlj)
     // ComparableVersion is the Maven-canonical version comparator (e.g.
     // `1.0-alpha < 1.0-rc < 1.0 < 1.0-sp1`). Used by Versions.compare, rehomed here from

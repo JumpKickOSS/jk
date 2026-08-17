@@ -1,9 +1,6 @@
 name = "jk-model"
 description = "Domain model: dependencies, build plans, and coordinates"
 
-[dependencies]
-jk-plugin-sdk.workspace = true
-
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"

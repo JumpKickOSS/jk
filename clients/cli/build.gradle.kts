@@ -40,6 +40,24 @@ dependencies {
     testImplementation(libs.bouncycastle.bcpg)
 }
 
+// JK-2139: the native client must not see the plugin SPI jar (codec is :jsonl).
+val checkCliRuntimeClasspath by tasks.registering {
+    val runtime = configurations.named("runtimeClasspath")
+    inputs.files(runtime)
+    doLast {
+        val forbidden = runtime.get().incoming.artifacts.artifactFiles.files.filter { f ->
+            val n = f.name
+            n.startsWith("plugin-sdk") || n.startsWith("jk-plugin-sdk")
+        }
+        if (forbidden.isNotEmpty()) {
+            throw GradleException(
+                    "CLI runtimeClasspath must not contain jk-plugin-sdk (JK-2139): " + forbidden)
+        }
+    }
+}
+tasks.named("check") { dependsOn(checkCliRuntimeClasspath) }
+tasks.named("jar") { dependsOn(checkCliRuntimeClasspath) }
+
 // Thin JVM client (installDist) — no engine on the classpath. Spawns jk-engine.jar via VersionStore
 // / JK_ENGINE_EXE. Prefer the native image for production dist; this path is for Temurin-only CI.
 application {

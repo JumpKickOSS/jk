@@ -293,7 +293,7 @@ public final class PlannerPlugin {
                                     cc.jumpkick.plugin.protocol.PluginProtocol.OP_RUN_STEP,
                                     step.name(),
                                     active.manifest().id())
-                            .config(active.config())
+                            .configValues(active.config().values())
                             .project(PluginBuild.facts(project, startClass))
                             .layout(classes, in.dir(), scratch)
                             .javaHome(javaHome)
@@ -467,7 +467,7 @@ public final class PlannerPlugin {
                         cc.jumpkick.plugin.protocol.PluginProtocol.OP_PACKAGE,
                         null,
                         active.manifest().id())
-                .config(active.config())
+                .configValues(active.config().values())
                 .project(PluginBuild.facts(project, startClass))
                 .layout(classes, in.dir(), layout.moduleTargetDir().resolve("plugin"))
                 .javaHome(ctx.require(JAVA_HOME))

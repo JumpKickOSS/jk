@@ -34,7 +34,12 @@ public final class SpecWriter {
 
     /** Serialize a whole validated config table (string/bool/int/list values). */
     public SpecWriter config(PluginConfig config) {
-        for (Map.Entry<String, Object> e : config.values().entrySet()) {
+        return configValues(config.values());
+    }
+
+    /** Same as {@link #config(PluginConfig)} from a raw table (front-end {@code model.PluginConfig}). */
+    public SpecWriter configValues(Map<String, Object> values) {
+        for (Map.Entry<String, Object> e : values.entrySet()) {
             Object v = e.getValue();
             if (v instanceof String s) configString(e.getKey(), s);
             else if (v instanceof Boolean b) configBool(e.getKey(), b);

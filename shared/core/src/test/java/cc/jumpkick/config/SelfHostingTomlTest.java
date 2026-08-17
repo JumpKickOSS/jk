@@ -83,8 +83,8 @@ class SelfHostingTomlTest {
         assertThat(root.project().group()).isEqualTo("cc.jumpkick");
         assertThat(root.project().name()).isEqualTo("jk");
         assertThat(root.isWorkspaceRoot()).isTrue();
-        // jsonl is the S1/S7 codec leaf; plugin-sdk sits above it. jk-api still depends on
-        // plugin-sdk (PluginConfig) until that edge is cut.
+        // jsonl is the S1/S7 codec leaf; plugin-sdk sits above it. jk-api is a zero-dep
+        // model (PluginConfig lives there — JK-2139).
         // Phase 2 adds thin workers (test-runner, java-compiler) as workspace modules.
         assertThat(root.workspace().modules())
                 .containsExactly(

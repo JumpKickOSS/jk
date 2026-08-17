@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.model;
 
-import cc.jumpkick.plugin.PluginConfig;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
