@@ -270,12 +270,12 @@ public final class PluginTableRegistry {
 
     private static Map<String, PluginDescriptor> loadBuiltIns() {
         Map<String, PluginDescriptor> byTable = new LinkedHashMap<>();
+        int missing = 0;
         for (String resource : BUILT_IN) {
             try (InputStream in = openBuiltIn(resource)) {
                 if (in == null) {
-                    throw new IllegalStateException("missing built-in plugin manifest resource: "
-                            + resource
-                            + " (first-party manifests live on the engine classpath, not :core)");
+                    missing++;
+                    continue;
                 }
                 PluginDescriptor manifest =
                         PluginDescriptors.parse(new String(in.readAllBytes(), StandardCharsets.UTF_8), resource);
@@ -288,6 +288,13 @@ public final class PluginTableRegistry {
                 throw new UncheckedIOException("failed to load built-in plugin manifest " + resource, e);
             }
         }
-        return byTable;
+        // Native CLI / :core main have no baked manifests (JK-2149). Engine and workers do.
+        if (missing == 0) return byTable;
+        if (missing == BUILT_IN.size()) return Map.of();
+        throw new IllegalStateException("missing built-in plugin manifest resources ("
+                + missing
+                + "/"
+                + BUILT_IN.size()
+                + "; first-party manifests live on the engine and worker classpaths, not :core)");
     }
 }

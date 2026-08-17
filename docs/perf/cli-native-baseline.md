@@ -36,8 +36,29 @@ delta. This is **not** a promise that PRs 1–3 shrink the binary.
 
 Do **not** fail those tickets if 2138–2140 do not move `ls -lh`.
 
-## JK-2149 follow-up
+## After JK-2149 (2026-08-17 19:50)
 
-`resource-config.json` no longer includes `cc/jumpkick/plugin/manifest/.*`. Rebuild
-`build/dist/jk` to refresh `strings` / `ls -lh` against this baseline (JK-2137:
-33 MiB, `PluginDescriptor` ×613, `cc/jumpkick/plugin/manifest` ×640).
+| Field | Value |
+|---|---|
+| Path | `build/dist/jk` |
+| Size | **32 MiB** (`-rwxr-xr-x`, 33522176 bytes) |
+| Built | 2026-08-17 19:50 |
+| SHA-256 | `3c743e056b8db9c91135caac1f5d1227d4a10125efcec2775e1c115520fb36d1` |
+| Tree SHA | `30eca0fe` (`JK-2136-slim-native-cli` + empty-builtin CLI fallback) |
+| Delta vs JK-2137 | **−1 080 832 bytes** (−1.03 MiB) |
+
+`strings build/dist/jk | grep -c <pattern>`:
+
+| Pattern | Before | After | Notes |
+|---|---:|---:|---|
+| `ComparableVersion` | 16 | **0** | vendored as `MavenVersion` (JK-2140) |
+| `PluginDescriptor` | 613 | 58 | `:core` still on the CLI compile set; types remain reachable |
+| `cc/jumpkick/plugin/manifest` | 640 | **2** | Graal include gone; no baked `*.jk-plugin.toml` |
+| `spring-boot.jk-plugin.toml` | — | 1 | string in `PluginTableRegistry.BUILT_IN`, not a resource |
+| `scaffold/Application.java.tmpl` | — | **0** | |
+| `org/tomlj` | 66 | 14 | still the approved CLI TOML job |
+
+Manifests now live on `:engine` + worker jars only (`:core` jar rejects them). Native
+CLI `PluginTableRegistry` loads an empty built-in map so leftover lock-freshness
+parses do not crash. Splitting `:core` so `PluginDescriptor` leaves the image is
+follow-up, not this epic.
