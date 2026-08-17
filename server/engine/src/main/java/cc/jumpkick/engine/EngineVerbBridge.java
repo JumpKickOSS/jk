@@ -61,18 +61,18 @@ public final class EngineVerbBridge implements VerbHost {
 
     @Override
     public WorkspaceBuildListener workspaceListener(@Nullable BufferedWriter writer, String dir) {
-        return writer == null ? listeners.hub(dir) : listeners.wire(writer, dir);
+        return listeners.workspace(writer, dir);
     }
 
     @Override
     public BuildPlanListener planListener(String dir, @Nullable BufferedWriter writer, BuildPlan plan) {
-        return writer == null ? listeners.hubPlan(dir) : listeners.wirePlan(dir, writer, plan);
+        return listeners.plan(dir, writer, plan);
     }
 
     @Override
     public BuildPlanListener planListener(
             String dir, @Nullable BufferedWriter writer, Function<BuildPlanResult, String> finishEncoder) {
-        return writer == null ? listeners.hubPlan(dir) : listeners.wirePlan(dir, writer, finishEncoder);
+        return listeners.plan(dir, writer, finishEncoder);
     }
 
     @Override

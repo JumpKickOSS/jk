@@ -6,8 +6,9 @@ import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.listen.BridgingPlanListener;
 import cc.jumpkick.engine.listen.BridgingWorkspaceListener;
+import cc.jumpkick.engine.listen.CompositeEventSink;
 import cc.jumpkick.engine.listen.EventSink;
-import cc.jumpkick.engine.listen.NoopEventSink;
+import cc.jumpkick.engine.listen.SseEventSink;
 import cc.jumpkick.engine.listen.WireEventSink;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
@@ -28,7 +29,13 @@ import java.util.function.LongSupplier;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
-/** CLI / HTTP listener factories: wire sink plus SSE and journal hooks. */
+/**
+ * Listener factories over the one event spine: producers emit {@link
+ * cc.jumpkick.engine.listen.EngineEvent}; the sink is {@link WireEventSink} + {@link SseEventSink}
+ * composed (or SSE alone for a detached job with no socket writer). Hooks carry only the engine
+ * folds an event cannot: progress trackers, journal accumulation, timeline/slot teardown, capped
+ * diagnostics.
+ */
 @RequiredArgsConstructor
 public final class EngineListeners {
 
@@ -38,41 +45,26 @@ public final class EngineListeners {
     private final InFlightBuilds inFlight;
     private final LongSupplier eventRequestId;
 
-    public WorkspaceBuildListener wire(BufferedWriter writer, String workspaceDir) {
-        return workspace(workspaceDir, new WireEventSink(writer), writer);
-    }
-
-    public WorkspaceBuildListener hub(String workspaceDir) {
-        return workspace(workspaceDir, NoopEventSink.INSTANCE, null);
-    }
-
-    /**
-     * Translate every {@link BuildPlanListener} callback for one plan into a {@code dir}-tagged wire
-     * event. {@code realBuildPlan} is non-null only for a single-project run — its
-     * {@code TEST_RESULT}/{@code BUILD_OUTCOME} keys ride along on
-     * {@link EngineProtocol#BUILDPLAN_FINISH}; {@code null} for a per-module workspace plan.
-     */
-    public BuildPlanListener wirePlan(String dir, BufferedWriter writer, @Nullable BuildPlan realBuildPlan) {
-        return hostedPlan(
-                dir,
-                new WireEventSink(writer),
-                writer,
-                result -> encodePlanFinish(dir, realBuildPlan, result),
-                realBuildPlan != null);
+    /** Workspace listener for one request; {@code writer} null = detached (HTTP/MCP) job. */
+    public WorkspaceBuildListener workspace(@Nullable BufferedWriter writer, String workspaceDir) {
+        long rid = eventRequestId.getAsLong();
+        if (rid > 0 && workspaceDir != null) sessions.progressRoot(rid, workspaceDir);
+        return new BridgingWorkspaceListener(workspaceDir, sinkFor(writer, rid), workspaceHooks(rid, writer));
     }
 
     /**
-     * As {@link #wirePlan(String, BufferedWriter, BuildPlan)}, with a pluggable terminal encoder
-     * — how lock/update/sync ride their summary counts on the same plan-finish message.
+     * Plan listener for one hosted single-plan run. {@code realBuildPlan} is non-null only for a
+     * single-project build — its {@code TEST_RESULT}/{@code BUILD_OUTCOME} keys ride along on
+     * {@link EngineProtocol#BUILDPLAN_FINISH}.
      */
-    public BuildPlanListener wirePlan(
-            String dir, BufferedWriter writer, Function<BuildPlanResult, String> finishEncoder) {
-        return hostedPlan(dir, new WireEventSink(writer), writer, finishEncoder, false);
+    public BuildPlanListener plan(String dir, @Nullable BufferedWriter writer, @Nullable BuildPlan realBuildPlan) {
+        return hostedPlan(dir, writer, result -> encodePlanFinish(dir, realBuildPlan, result), realBuildPlan != null);
     }
 
-    /** HTTP lock: same hooks as CLI, no JSONL writer. */
-    public BuildPlanListener hubPlan(String dir) {
-        return hostedPlan(dir, NoopEventSink.INSTANCE, null, null, false);
+    /** As {@link #plan(String, BufferedWriter, BuildPlan)} with a pluggable terminal encoder. */
+    public BuildPlanListener plan(
+            String dir, @Nullable BufferedWriter writer, Function<BuildPlanResult, String> finishEncoder) {
+        return hostedPlan(dir, writer, finishEncoder, false);
     }
 
     public void flushTimeline(long requestId, @Nullable BufferedWriter writer) {
@@ -83,10 +75,9 @@ public final class EngineListeners {
         });
     }
 
-    private WorkspaceBuildListener workspace(String workspaceDir, EventSink sink, @Nullable BufferedWriter writer) {
-        long rid = eventRequestId.getAsLong();
-        if (rid > 0 && workspaceDir != null) sessions.progressRoot(rid, workspaceDir);
-        return new BridgingWorkspaceListener(workspaceDir, sink, workspaceHooks(rid, writer));
+    private EventSink sinkFor(@Nullable BufferedWriter writer, long rid) {
+        SseEventSink sseSink = new SseEventSink(sse, rid);
+        return writer == null ? sseSink : new CompositeEventSink(new WireEventSink(writer), sseSink);
     }
 
     private BridgingWorkspaceListener.Hooks workspaceHooks(long rid, @Nullable BufferedWriter writer) {
@@ -118,7 +109,6 @@ public final class EngineListeners {
                     sessions.tracker(rid).calibrate(totalWeight, modules);
                     sse.emitWorkspaceProgress(rid, writer, true);
                 }
-                sse.publishPlan(rid, totalWeight);
             }
 
             @Override
@@ -127,20 +117,8 @@ public final class EngineListeners {
             }
 
             @Override
-            public void eta(long remainingMs) {
-                sse.publishEta(rid, remainingMs);
-            }
-
-            @Override
-            public void moduleStarted(String dir, String coord) {
-                sse.publishModuleStart(rid, dir, coord);
-            }
-
-            @Override
             public void moduleFinished(ModuleOutcome o) {
                 journal.accModule(rid, o);
-                sse.publishModuleFinish(
-                        rid, o.dir().toString(), o.coord(), o.success(), o.millis(), o.didWork(), o.cancelled());
             }
 
             @Override
@@ -171,29 +149,8 @@ public final class EngineListeners {
             long rid, String dir, @Nullable BufferedWriter writer, boolean releaseSlotOnFinish) {
         return new BridgingPlanListener.Hooks() {
             @Override
-            public void planProgress(String d, BuildPlanView view) {
-                sse.publishBuildPlanProgress(rid, d, view);
-            }
-
-            @Override
-            public void stepStarted(String d, String step, String phase) {
-                sse.publishStepStart(rid, d, step, phase);
-            }
-
-            @Override
             public void stepFinished(String d, String step, String phase, String status, long millis) {
                 journal.accStepFinish(rid, d, step, phase, status, millis);
-                sse.publishStepFinish(rid, d, step, phase, status, millis);
-            }
-
-            @Override
-            public void labeled(String d, String step, String text) {
-                sse.publishLabel(rid, d, step, text);
-            }
-
-            @Override
-            public void output(String d, String step, String line) {
-                sse.publishOutput(rid, d, step, line);
             }
 
             @Override
@@ -201,7 +158,10 @@ public final class EngineListeners {
                 flushTimeline(rid, writer);
                 if (releaseSlotOnFinish) inFlight.release(rid);
                 journal.accBuildPlanFinish(rid, d, result);
-                sse.publishBuildPlanFinish(rid, d, result.success());
+            }
+
+            @Override
+            public void planDiagnostics(String d, BuildPlanResult result) {
                 if (!result.success()) sse.publishDiagnostics(rid, d, result.errors());
             }
         };
@@ -209,12 +169,12 @@ public final class EngineListeners {
 
     private BuildPlanListener hostedPlan(
             String dir,
-            EventSink sink,
             @Nullable BufferedWriter writer,
             @Nullable Function<BuildPlanResult, String> finishEncoder,
             boolean releaseSlotOnFinish) {
+        long rid = eventRequestId.getAsLong();
         return new CoalescingBuildPlanListener(new BridgingPlanListener(
-                dir, sink, planHooks(eventRequestId.getAsLong(), dir, writer, releaseSlotOnFinish), finishEncoder));
+                dir, sinkFor(writer, rid), planHooks(rid, dir, writer, releaseSlotOnFinish), finishEncoder));
     }
 
     /**

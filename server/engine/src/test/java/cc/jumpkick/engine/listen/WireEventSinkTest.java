@@ -39,7 +39,7 @@ class WireEventSinkTest {
                 .isEqualTo(EngineProtocol.PREFLIGHT);
         assertThat(EngineProtocol.typeOf(WireEventSink.encode(new EngineEvent.PlanDone(3))))
                 .isEqualTo(EngineProtocol.PLAN_DONE);
-        assertThat(EngineProtocol.typeOf(WireEventSink.encode(new EngineEvent.ModuleStart("d"))))
+        assertThat(EngineProtocol.typeOf(WireEventSink.encode(new EngineEvent.ModuleStart("d", "g:a"))))
                 .isEqualTo(EngineProtocol.MODULE_START);
         assertThat(EngineProtocol.typeOf(WireEventSink.encode(new EngineEvent.Eta(9))))
                 .isEqualTo(EngineProtocol.ETA);

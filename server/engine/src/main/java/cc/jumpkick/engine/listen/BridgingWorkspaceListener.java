@@ -19,8 +19,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One workspace listener. CLI passes a {@link WireEventSink}; HTTP passes {@link
- * NoopEventSink#INSTANCE}. Side effects (progress / journal / SSE) live on {@link Hooks}.
+ * One workspace listener over one {@link EventSink} (wire + SSE composed; SSE alone for a
+ * detached job). Engine folds that are not events (progress trackers, journal) live on
+ * {@link Hooks}.
  */
 public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
 
@@ -34,10 +35,6 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
         default void planWeights(long totalWeight, int modules) {}
 
         default void moduleGraph(Map<Path, Set<Path>> prereqs) {}
-
-        default void eta(long remainingMs) {}
-
-        default void moduleStarted(String dir, String coord) {}
 
         default void moduleFinished(ModuleOutcome o) {}
 
@@ -101,6 +98,7 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
             }
         }
         sink.emit(new EngineEvent.PlanDone(plan.size()));
+        sink.emit(new EngineEvent.Plan(totalWeight, plan.size()));
         hooks.planWeights(totalWeight, plan.size());
     }
 
@@ -112,15 +110,13 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
     @Override
     public void onEtaEstimate(long remainingMs) {
         sink.emit(new EngineEvent.Eta(remainingMs));
-        hooks.eta(remainingMs);
     }
 
     @Override
     public BuildPlanListener onModuleStart(ModulePlan m) {
         String dir = m.dir().toString();
         moduleBuildPlans.put(dir, m.plan());
-        sink.emit(new EngineEvent.ModuleStart(dir));
-        hooks.moduleStarted(dir, m.coord());
+        sink.emit(new EngineEvent.ModuleStart(dir, m.coord()));
         BridgingPlanListener.Hooks nested = hooks.planHooks(dir);
         BridgingPlanListener.Hooks planHooks = new BridgingPlanListener.Hooks() {
             @Override
@@ -131,28 +127,18 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
             }
 
             @Override
-            public void stepStarted(String d, String step, String phase) {
-                nested.stepStarted(d, step, phase);
-            }
-
-            @Override
             public void stepFinished(String d, String step, String phase, String status, long millis) {
                 nested.stepFinished(d, step, phase, status, millis);
             }
 
             @Override
-            public void labeled(String d, String step, String text) {
-                nested.labeled(d, step, text);
-            }
-
-            @Override
-            public void output(String d, String step, String line) {
-                nested.output(d, step, line);
-            }
-
-            @Override
             public void planFinished(String d, BuildPlanResult result) {
                 nested.planFinished(d, result);
+            }
+
+            @Override
+            public void planDiagnostics(String d, BuildPlanResult result) {
+                nested.planDiagnostics(d, result);
             }
         };
         return new CoalescingBuildPlanListener(new BridgingPlanListener(dir, sink, planHooks));

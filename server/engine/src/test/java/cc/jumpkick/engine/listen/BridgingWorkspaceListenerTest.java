@@ -30,16 +30,12 @@ class BridgingWorkspaceListenerTest {
     }
 
     @Test
-    void http_path_is_hooks_only() {
-        AtomicInteger etas = new AtomicInteger();
+    void eta_rides_the_sink_on_every_path() {
+        RecordingEventSink sink = new RecordingEventSink();
         BridgingWorkspaceListener listener =
-                new BridgingWorkspaceListener("ws", NoopEventSink.INSTANCE, new BridgingWorkspaceListener.Hooks() {
-                    @Override
-                    public void eta(long remainingMs) {
-                        etas.incrementAndGet();
-                    }
-                });
+                new BridgingWorkspaceListener("ws", sink, new BridgingWorkspaceListener.Hooks() {});
         listener.onEtaEstimate(42);
-        assertThat(etas.get()).isEqualTo(1);
+        assertThat(sink.events()).hasSize(1);
+        assertThat(((EngineEvent.Eta) sink.events().get(0)).remainingMs()).isEqualTo(42);
     }
 }

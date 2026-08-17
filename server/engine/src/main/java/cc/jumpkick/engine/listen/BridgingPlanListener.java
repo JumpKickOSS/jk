@@ -18,19 +18,19 @@ import org.jspecify.annotations.Nullable;
 @RequiredArgsConstructor
 public final class BridgingPlanListener implements BuildPlanListener {
 
-    /** Engine-owned progress, journal fold, and SSE. */
+    /**
+     * Engine-owned folds a wire event cannot carry: workspace progress tracking, journal
+     * accumulation, timeline/slot teardown, and the capped diagnostics publication (needs the
+     * whole error list). Event frames themselves ride the {@link EventSink}.
+     */
     public interface Hooks {
         default void planProgress(String dir, BuildPlanView view) {}
 
-        default void stepStarted(String dir, String step, String phase) {}
-
         default void stepFinished(String dir, String step, String phase, String status, long millis) {}
 
-        default void labeled(String dir, String step, String text) {}
-
-        default void output(String dir, String step, String line) {}
-
         default void planFinished(String dir, BuildPlanResult result) {}
+
+        default void planDiagnostics(String dir, BuildPlanResult result) {}
     }
 
     private final String dir;
@@ -89,7 +89,6 @@ public final class BridgingPlanListener implements BuildPlanListener {
     public void stepStart(String step, String group, int ticks) {
         String phase = phaseWire(group);
         sink.emit(new EngineEvent.StepStart(dir, step, phase, ticks));
-        hooks.stepStarted(dir, step, phase);
     }
 
     @Override
@@ -124,14 +123,12 @@ public final class BridgingPlanListener implements BuildPlanListener {
     public void label(String step, String label) {
         String safe = redact(label);
         sink.emit(new EngineEvent.Label(dir, step, safe));
-        hooks.labeled(dir, step, safe);
     }
 
     @Override
     public void output(String step, String line) {
         String safe = redact(line);
         sink.emit(new EngineEvent.Output(dir, step, safe));
-        hooks.output(dir, step, safe);
     }
 
     @Override
@@ -193,6 +190,8 @@ public final class BridgingPlanListener implements BuildPlanListener {
         // a client that has returned must not observe the engine still writing the chrome
         // profile, and a reconnect must not see an already-running fingerprint.
         hooks.planFinished(dir, result);
+        sink.emit(new EngineEvent.PlanFinish(dir, result.success()));
+        hooks.planDiagnostics(dir, result);
         if (finishEncoder != null) {
             sink.emit(new EngineEvent.PlanFinishLine(finishEncoder.apply(result)));
         }

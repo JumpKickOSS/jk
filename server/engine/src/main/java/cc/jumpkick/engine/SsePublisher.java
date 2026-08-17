@@ -560,9 +560,9 @@ public final class SsePublisher {
      * jobs (build/test/compile) have no tracker yet — the plan <em>is</em> the whole request, so
      * feed last-progress on the session from this view.
      */
-    public void publishBuildPlanProgress(long requestId, String dir, BuildPlanView view) {
-        if (requestId > 0 && view != null && trackerOrNull(requestId) == null && view.denominator() > 0) {
-            double p = cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(view.numerator(), view.denominator());
+    public void publishPlanProgress(long requestId, String dir, long numerator, long denominator) {
+        if (requestId > 0 && trackerOrNull(requestId) == null && denominator > 0) {
+            double p = cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(numerator, denominator);
             if (!Double.isNaN(p)) setLastProgress(requestId, p);
         }
         if (!eventsWanted()) return;
@@ -574,8 +574,8 @@ public final class SsePublisher {
                                 .put("type", "progress")
                                 .put("requestId", requestId)
                                 .put("dir", dir)
-                                .put("numerator", view.numerator())
-                                .put("denominator", view.denominator()),
+                                .put("numerator", numerator)
+                                .put("denominator", denominator),
                         requestId));
     }
 

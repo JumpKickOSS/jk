@@ -53,10 +53,12 @@ class BridgingPlanListenerTest {
                 List.of(new BuildPlanResult.Diagnostic("javac", "E", "boom")),
                 false);
         listener.planFinish(result);
-        assertThat(sink.events()).hasSize(2);
+        assertThat(sink.events()).hasSize(3);
         assertThat(sink.events().getFirst()).isInstanceOf(EngineEvent.PlanDiagnostic.class);
+        assertThat(sink.events().get(1)).isInstanceOf(EngineEvent.PlanFinish.class);
         assertThat(sink.events().getLast()).isInstanceOf(EngineEvent.PlanFinishLine.class);
-        // Hook saw the diagnostic burst, not the terminal line — timeline/slot release stay first.
+        // Hook saw the diagnostic burst only — timeline/slot release run before the SSE
+        // buildplan-finish event and the wire terminal line.
         assertThat(sinkSizeAtHook.get()).isEqualTo(1);
     }
 
