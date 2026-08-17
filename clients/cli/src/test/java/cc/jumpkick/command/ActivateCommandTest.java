@@ -30,8 +30,9 @@ class ActivateCommandTest {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         ByteArrayOutputStream err = new ByteArrayOutputStream();
         System.setProperty("user.home", home.toString());
-        // Isolate product dirs under the temp home so completions land in the fixture tree.
-        String prevJkHome = System.getenv("JK_HOME"); // may be set by gradle test isolation
+        // Isolate product dirs under the temp home (jk.env.* beats the suite's JK_HOME env), so
+        // bin/completions land in the fixture tree and the rc block contracts paths to $HOME.
+        System.setProperty("jk.env.JK_HOME", home.resolve(".jk").toString());
         System.setOut(new PrintStream(out, true, StandardCharsets.UTF_8));
         System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
         int exit;
@@ -39,6 +40,7 @@ class ActivateCommandTest {
             exit = Jk.execute("activate", "--yes");
         } finally {
             System.setProperty("user.home", prevHome);
+            System.clearProperty("jk.env.JK_HOME");
             System.setOut(origOut);
             System.setErr(origErr);
         }
