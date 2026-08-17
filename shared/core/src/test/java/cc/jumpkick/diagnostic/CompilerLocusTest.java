@@ -58,8 +58,8 @@ class CompilerLocusTest {
     void real_groovyc_header_with_space_and_column_trailer_parses() {
         // JK-2113: groovyc writes "path: 5: message @ line 5, column 1." — space after the
         // first colon, column only in the trailer. This never matched on either surface.
-        CompilerLocus locus = CompilerLocus.parse(
-                "/w/src/main/groovy/Foo.groovy: 5: unexpected token: } @ line 5, column 1.");
+        CompilerLocus locus =
+                CompilerLocus.parse("/w/src/main/groovy/Foo.groovy: 5: unexpected token: } @ line 5, column 1.");
         org.assertj.core.api.Assertions.assertThat(locus).isNotNull();
         org.assertj.core.api.Assertions.assertThat(locus.file()).isEqualTo("/w/src/main/groovy/Foo.groovy");
         org.assertj.core.api.Assertions.assertThat(locus.line()).isEqualTo(5);

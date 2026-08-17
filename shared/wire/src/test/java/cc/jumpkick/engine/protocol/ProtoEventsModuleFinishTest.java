@@ -16,7 +16,13 @@ class ProtoEventsModuleFinishTest {
         assertThat(plain).doesNotContain("hasImage");
 
         String pushed = ProtoEvents.moduleFinish(
-                "/w/app", "g:app", true, 0, 12, true, false,
+                "/w/app",
+                "g:app",
+                true,
+                0,
+                12,
+                true,
+                false,
                 new ModuleOutcome.Image("reg.example/app:1.0", null, "app", "1.0", null));
         assertThat(Jsonl.bool(pushed, "hasImage", false)).isTrue();
         assertThat(Jsonl.str(pushed, "imageRef")).isEqualTo("reg.example/app:1.0");

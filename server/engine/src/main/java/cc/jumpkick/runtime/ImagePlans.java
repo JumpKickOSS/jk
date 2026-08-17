@@ -81,8 +81,17 @@ public final class ImagePlans {
             String tarballArg,
             String dockerExecutableArg) {
         return imageBuildPlan(
-                projectDir, cache, jdksDir, skipTests, verbose, mainClass, registry, tag, tarballArg,
-                dockerExecutableArg, null);
+                projectDir,
+                cache,
+                jdksDir,
+                skipTests,
+                verbose,
+                mainClass,
+                registry,
+                tag,
+                tarballArg,
+                dockerExecutableArg,
+                null);
     }
 
     /**

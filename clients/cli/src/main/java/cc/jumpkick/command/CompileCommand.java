@@ -136,9 +136,7 @@ public final class CompileCommand implements CliCommand {
         cc.jumpkick.runtime.WorkspaceResult result;
         try {
             result = cc.jumpkick.cli.engine.EngineClient.runCompileWorkspace(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    req,
-                    new cc.jumpkick.runtime.WorkspaceBuildListener() {
+                    cc.jumpkick.engine.EnginePaths.current(), req, new cc.jumpkick.runtime.WorkspaceBuildListener() {
                         @Override
                         public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
                             agg.applySnapshot(snap);

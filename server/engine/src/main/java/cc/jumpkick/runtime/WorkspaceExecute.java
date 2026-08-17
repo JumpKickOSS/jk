@@ -27,6 +27,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.UnaryOperator;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NullMarked;
 
 /**
@@ -176,7 +178,7 @@ public final class WorkspaceExecute {
                 String sel = spec.selectedModules().stream()
                         .map(Path::toString)
                         .sorted()
-                        .collect(java.util.stream.Collectors.joining(", "));
+                        .collect(Collectors.joining(", "));
                 WorkspaceResult r = new WorkspaceResult(
                         false, 2, List.of(), List.of("selection matched no workspace module: " + sel));
                 listener.onWorkspaceFinish(r);
@@ -215,12 +217,7 @@ public final class WorkspaceExecute {
         } else {
             listener.onPreflight("checking", 0, 0, "Checking cache…");
             preflight = BuildForecasting.forecastWithFingerprints(
-                    graph,
-                    req.cache(),
-                    req.skipTests(),
-                    req.entryDir(),
-                    req.target(),
-                    terminalTargetDirs(units, req));
+                    graph, req.cache(), req.skipTests(), req.entryDir(), req.target(), terminalTargetDirs(units, req));
             dirty = preflight.dirty();
             listener.onPreflight(
                     "checking", 1, 1, dirty.isEmpty() ? "All modules up to date" : dirty.size() + " module(s) dirty");
@@ -591,8 +588,7 @@ public final class WorkspaceExecute {
         // One request-knob decoration for every terminal branch — the PACKAGE branch applies the
         // same set via inputsFor below. Divergence here was exactly the drift JK-2078 names:
         // jk native --variant/profile/workers silently ignored the knobs (JK-2102).
-        java.util.function.UnaryOperator<BuildPlanner.Inputs> decorate = in -> in
-                .withWorkerCount(req.workers() > 0 ? req.workers() : 1)
+        UnaryOperator<BuildPlanner.Inputs> decorate = in -> in.withWorkerCount(req.workers() > 0 ? req.workers() : 1)
                 .withProfileName(req.profile())
                 .withProjectModules(moduleDirs)
                 .withVariant(req.variant(), req.clientEnv())
@@ -661,10 +657,10 @@ public final class WorkspaceExecute {
         String ref = plan.get(ImagePlans.IMAGE_REF).orElse(null);
         if (cfg == null && tarball == null && ref == null) return null;
         var project = plan.get(BuildPlanner.PROJECT).orElse(null);
-        boolean daemonMode = tarball == null && (cfg == null || cfg.registry() == null || cfg.registry().isBlank());
-        String daemonExe = !daemonMode
-                ? null
-                : cfg != null && cfg.dockerExecutable() != null ? cfg.dockerExecutable() : "docker";
+        boolean daemonMode = tarball == null
+                && (cfg == null || cfg.registry() == null || cfg.registry().isBlank());
+        String daemonExe =
+                !daemonMode ? null : cfg != null && cfg.dockerExecutable() != null ? cfg.dockerExecutable() : "docker";
         return new ModuleOutcome.Image(
                 ref,
                 tarball != null ? tarball.toString() : null,
@@ -716,7 +712,6 @@ public final class WorkspaceExecute {
             return o;
         }
     }
-
 
     /** Apply the subset of {@code workspaceLinks} whose sources live under {@code moduleDir} (best-effort). */
     public static void linkModuleArtifacts(Path moduleDir, Map<Path, Path> workspaceLinks) {

@@ -8,6 +8,9 @@ import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
+import java.nio.file.Path;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 public final class CompileVerb implements HostedVerb {
 
@@ -44,7 +47,7 @@ public final class CompileVerb implements HostedVerb {
                 String profile = Jsonl.str(requestLine, "profile");
                 boolean verbose = Jsonl.bool(requestLine, "verbose", false);
                 Session session = host.resolveSession(requestLine, cancelToken, false);
-                java.nio.file.Path entryDir = session.workingDir();
+                Path entryDir = session.workingDir();
                 // Workspace (root or member): the one-orchestrator COMPILE path — compile-only
                 // terminal on the selection, prereqs packaged first via the shared cascade
                 // (JK-2103). The client mirrors this condition and expects workspace events.
@@ -53,10 +56,10 @@ public final class CompileVerb implements HostedVerb {
                     cc.jumpkick.model.JkBuild rootBuild =
                             cc.jumpkick.config.JkBuildParser.parse(wsRoot.get().resolve("jk.toml"));
                     if (rootBuild.isWorkspaceRoot()) {
-                        java.util.Set<java.nio.file.Path> selected = new java.util.LinkedHashSet<>();
+                        Set<Path> selected = new LinkedHashSet<>();
                         for (String d : Jsonl.strArray(requestLine, "moduleDirs")) {
                             if (d != null && !d.isBlank())
-                                selected.add(java.nio.file.Path.of(d).toAbsolutePath().normalize());
+                                selected.add(Path.of(d).toAbsolutePath().normalize());
                         }
                         boolean isMember = !cc.jumpkick.runtime.BuildGraph.canonicalPath(wsRoot.get())
                                 .equals(cc.jumpkick.runtime.BuildGraph.canonicalPath(entryDir));
@@ -85,10 +88,11 @@ public final class CompileVerb implements HostedVerb {
                         cc.jumpkick.runtime.WorkspaceResult result = SessionContext.where(
                                 session,
                                 () -> cc.jumpkick.runtime.BuildService.buildWorkspace(
-                                        req, host.workspaceListener(writer, wsRoot.get().toString())));
+                                        req,
+                                        host.workspaceListener(
+                                                writer, wsRoot.get().toString())));
                         host.releaseExclusiveSlot();
-                        boolean cancelled =
-                                result.cancelled() || host.effectiveCancelled(rid, cancelToken.cancelled());
+                        boolean cancelled = result.cancelled() || host.effectiveCancelled(rid, cancelToken.cancelled());
                         host.accOutcome(rid, result.success() && !cancelled, result.exitCode());
                         if (rid > 0) {
                             if (result.success() && !cancelled) host.finishProgress(rid);
@@ -98,10 +102,7 @@ public final class CompileVerb implements HostedVerb {
                         host.sendQuiet(
                                 writer,
                                 ProtoEvents.workspaceFinish(
-                                        result.success() && !cancelled,
-                                        result.exitCode(),
-                                        result.errors(),
-                                        cancelled));
+                                        result.success() && !cancelled, result.exitCode(), result.errors(), cancelled));
                         return;
                     }
                 }

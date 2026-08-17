@@ -13,6 +13,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Resolves the build graph for an entry project: the workspace root + its modules, as one
@@ -250,8 +251,7 @@ public final class BuildGraph {
      * resolves fresh; clear-on-overflow bounds the map (ProjectIds idiom). Mid-build symlink
      * retargeting was never supported — the syscall answer would have changed mid-build anyway.
      */
-    private static final java.util.concurrent.ConcurrentHashMap<Path, Path> CANONICAL_CACHE =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Path, Path> CANONICAL_CACHE = new ConcurrentHashMap<>();
 
     public static Path canonicalPath(Path p) {
         Path hit = CANONICAL_CACHE.get(p);

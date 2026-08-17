@@ -997,13 +997,10 @@ public final class ProtoEvents {
                 .append(cancelled);
         if (image != null) {
             if (image.ref() != null) sb.append(",\"imageRef\":").append(Jsonl.quote(image.ref()));
-            if (image.tarball() != null)
-                sb.append(",\"imageTarball\":").append(Jsonl.quote(image.tarball()));
+            if (image.tarball() != null) sb.append(",\"imageTarball\":").append(Jsonl.quote(image.tarball()));
             if (image.name() != null) sb.append(",\"imageName\":").append(Jsonl.quote(image.name()));
-            if (image.version() != null)
-                sb.append(",\"imageVersion\":").append(Jsonl.quote(image.version()));
-            if (image.daemonExe() != null)
-                sb.append(",\"imageDaemonExe\":").append(Jsonl.quote(image.daemonExe()));
+            if (image.version() != null) sb.append(",\"imageVersion\":").append(Jsonl.quote(image.version()));
+            if (image.daemonExe() != null) sb.append(",\"imageDaemonExe\":").append(Jsonl.quote(image.daemonExe()));
             sb.append(",\"hasImage\":true");
         }
         return sb.append('}').toString();

@@ -745,7 +745,7 @@ public final class ProtoJobs {
      */
     public static String compileRequest(
             String dir, String cache, String profile, boolean offline, boolean force, boolean verbose) {
-        return compileRequest(dir, cache, profile, offline, force, verbose, java.util.List.of());
+        return compileRequest(dir, cache, profile, offline, force, verbose, List.of());
     }
 
     /**

@@ -9,6 +9,7 @@ import cc.jumpkick.config.WorkspaceCone;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.TaskNames;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -105,7 +106,7 @@ class WorkspaceExecuteSelectionTest {
         Path link = tmp.resolve("cli-link");
         try {
             Files.createSymbolicLink(link, cli);
-        } catch (UnsupportedOperationException | java.io.IOException e) {
+        } catch (UnsupportedOperationException | IOException e) {
             org.junit.jupiter.api.Assumptions.abort("symlinks unsupported here: " + e);
         }
 

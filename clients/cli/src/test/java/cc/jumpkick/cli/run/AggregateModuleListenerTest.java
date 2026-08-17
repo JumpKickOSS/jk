@@ -12,6 +12,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -58,7 +59,7 @@ class AggregateModuleListenerTest {
         JkManager view = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Building", false);
         var agg = new AggregateContext(view);
         var lis = new AggregateModuleListener(agg, "g:api", List.of(step("compile", "Compile")));
-        var outBuf = new java.util.ArrayList<String>();
+        var outBuf = new ArrayList<String>();
         lis.bufferOutputInto(outBuf);
 
         lis.output("compile", "tool-line-xyz");
@@ -93,7 +94,7 @@ class AggregateModuleListenerTest {
         JkManager plain = JkManager.plan(new PrintStream(buf2, true, StandardCharsets.UTF_8), "Building", false);
         var agg2 = new AggregateContext(plain);
         var grouped = new AggregateModuleListener(agg2, "g:api", List.of(step("compile", "Compile")));
-        var outBuf = new java.util.ArrayList<String>();
+        var outBuf = new ArrayList<String>();
         grouped.bufferOutputInto(outBuf);
         grouped.error("compile-java", "javac", "A.java:1: error: boom");
         grouped.error("compile-java", "javac", "A.java:2: error: boom2");

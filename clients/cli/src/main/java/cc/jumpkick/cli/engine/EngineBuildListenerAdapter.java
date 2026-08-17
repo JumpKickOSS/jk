@@ -344,9 +344,7 @@ final class EngineBuildListenerAdapter {
                             req.offline(),
                             req.force(),
                             req.verbose(),
-                            req.moduleDirs().stream()
-                                    .map(java.nio.file.Path::toString)
-                                    .toList()),
+                            req.moduleDirs().stream().map(Path::toString).toList()),
                     SessionContext.current().variant(),
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),

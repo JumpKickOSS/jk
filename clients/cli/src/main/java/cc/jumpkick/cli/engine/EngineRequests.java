@@ -368,12 +368,12 @@ public final class EngineRequests {
             boolean offline,
             boolean force,
             boolean verbose,
-            java.util.List<Path> moduleDirs) {
+            List<Path> moduleDirs) {
 
         /** Back-compat: no module selection (entry dir / whole graph). */
         public CompileRequest(
                 Path entryDir, Path cache, String profile, boolean offline, boolean force, boolean verbose) {
-            this(entryDir, cache, profile, offline, force, verbose, java.util.List.of());
+            this(entryDir, cache, profile, offline, force, verbose, List.of());
         }
     }
 

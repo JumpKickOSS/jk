@@ -109,9 +109,8 @@ public final class TaskForecaster {
             DepDirtiness dep =
                     depDirtiness(u, graph.edges().getOrDefault(u.dir(), Set.of()), dirty, dirByCoord, dirByName);
             long t0 = Perf.start();
-            TaskForecast.Module m =
-                    forecastModule(u, dep, force, skipTests, cas, actionCache, cache, restoredJarShas, target,
-                            terminalDirs);
+            TaskForecast.Module m = forecastModule(
+                    u, dep, force, skipTests, cas, actionCache, cache, restoredJarShas, target, terminalDirs);
             Perf.end("forecast " + u.coord(), t0);
             // Seed main-output dirtiness for *compile* consumers only when this module's
             // consumed jar/classes will change — not when only test-scope work is dirty.

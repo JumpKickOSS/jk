@@ -9,6 +9,7 @@ import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import java.util.function.UnaryOperator;
 
 /**
  * {@code jk native} plan: {@link BuildPlanner} plus {@link BuildPlanner#nativeStep} for
@@ -74,7 +75,16 @@ public final class NativePlans {
             boolean verbose,
             boolean allowNative) {
         return moduleBuildPlan(
-                moduleDir, module, cache, jdksDir, graalHome, mainOverride, extraArgs, skipTests, verbose, allowNative,
+                moduleDir,
+                module,
+                cache,
+                jdksDir,
+                graalHome,
+                mainOverride,
+                extraArgs,
+                skipTests,
+                verbose,
+                allowNative,
                 null);
     }
 
@@ -94,7 +104,7 @@ public final class NativePlans {
             boolean skipTests,
             boolean verbose,
             boolean allowNative,
-            java.util.function.UnaryOperator<BuildPlanner.Inputs> decorate) {
+            UnaryOperator<BuildPlanner.Inputs> decorate) {
         Path buildFile = moduleDir.resolve("jk.toml");
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
         boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(moduleDir);

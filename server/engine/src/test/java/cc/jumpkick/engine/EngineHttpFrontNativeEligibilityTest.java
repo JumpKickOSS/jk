@@ -78,8 +78,7 @@ class EngineHttpFrontNativeEligibilityTest {
         // JK-2089: an explicit [native] enabled = false must not re-enter via unique-main.
         Path off = module(tmp, "off", false, true);
         Files.writeString(
-                off.resolve("jk.toml"),
-                Files.readString(off.resolve("jk.toml")) + "\n[native]\nenabled = false\n");
+                off.resolve("jk.toml"), Files.readString(off.resolve("jk.toml")) + "\n[native]\nenabled = false\n");
         Path app = module(tmp, "app", false, true);
         Map<Path, JkBuild> all = load(off, app);
         assertThat(EngineHttpFront.nativeEligibleTargets(all, null)).containsExactly(app);
