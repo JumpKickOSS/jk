@@ -445,7 +445,51 @@ public final class EngineRequests {
             boolean sample,
             boolean standalone,
             Map<String, String> templateParams,
-            boolean relaxParent) {}
+            boolean relaxParent,
+            String targetDir) {
+        public NewProjectRequest(
+                String name,
+                String parentDir,
+                String group,
+                String lang,
+                String layout,
+                String template,
+                boolean executable,
+                String framework,
+                String jdk,
+                int javaRelease,
+                boolean assembly,
+                boolean nativeImage,
+                boolean plugin,
+                String kotlinModule,
+                List<String> deps,
+                boolean sample,
+                boolean standalone,
+                Map<String, String> templateParams,
+                boolean relaxParent) {
+            this(
+                    name,
+                    parentDir,
+                    group,
+                    lang,
+                    layout,
+                    template,
+                    executable,
+                    framework,
+                    jdk,
+                    javaRelease,
+                    assembly,
+                    nativeImage,
+                    plugin,
+                    kotlinModule,
+                    deps,
+                    sample,
+                    standalone,
+                    templateParams,
+                    relaxParent,
+                    null);
+        }
+    }
 
     public record GitFetchRequest(
             String url, String canonicalUrl, String ref, Path cache, boolean refresh, boolean requireJkToml) {

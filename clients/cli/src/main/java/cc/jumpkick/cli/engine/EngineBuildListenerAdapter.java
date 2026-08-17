@@ -748,7 +748,8 @@ final class EngineBuildListenerAdapter {
                         req.sample(),
                         req.standalone(),
                         req.templateParams(),
-                        req.relaxParent()),
+                        req.relaxParent(),
+                        req.targetDir()),
                 EngineProtocol.NEW_PROJECT_ACK,
                 "new-project request",
                 cc.jumpkick.engine.protocol.NewProjectAck::decode);

@@ -335,7 +335,8 @@ public final class NewCommand implements CliCommand {
                             true,
                             parent == null,
                             params,
-                            true));
+                            true,
+                            target.toString()));
             if (ack.error() != null && !ack.error().isBlank()) {
                 cc.jumpkick.cli.tui.CommandWedge.printFail("New", ack.error());
                 return ack.error().contains("not found") ? Exit.USAGE : Exit.SOFTWARE;
@@ -641,7 +642,8 @@ public final class NewCommand implements CliCommand {
                         inputs.sample(),
                         parent == null,
                         Map.of(),
-                        true));
+                        true,
+                        target.toString()));
         if (ack.error() != null && !ack.error().isBlank()) {
             throw new IOException(ack.error());
         }

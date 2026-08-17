@@ -243,7 +243,8 @@ public final class ProtoReads {
             boolean sample,
             boolean standalone,
             Map<String, String> templateParams,
-            boolean relaxParent) {
+            boolean relaxParent,
+            String targetDir) {
         return "{\"type\":\"" + EngineProtocol.NEW_PROJECT_REQUEST + "\""
                 + ",\"name\":" + Jsonl.quote(name)
                 + ",\"parentDir\":" + Jsonl.quote(parentDir)
@@ -264,6 +265,7 @@ public final class ProtoReads {
                 + ",\"standalone\":" + standalone
                 + ",\"templateParams\":" + Jsonl.map(templateParams == null ? Map.of() : templateParams)
                 + ",\"relaxParent\":" + relaxParent
+                + ((targetDir == null || targetDir.isBlank()) ? "" : ",\"targetDir\":" + Jsonl.quote(targetDir))
                 + "}";
     }
 

@@ -49,7 +49,8 @@ public final class NewProjectOps {
             boolean sample,
             boolean standalone,
             Map<String, String> templateParams,
-            boolean relaxParent) {
+            boolean relaxParent,
+            String targetDir) {
         /** HTTP/MCP compact shape. */
         public Request(
                 String name,
@@ -79,7 +80,51 @@ public final class NewProjectOps {
                     true,
                     true,
                     Map.of(),
-                    false);
+                    false,
+                    null);
+        }
+
+        public Request(
+                String name,
+                String parentDir,
+                String group,
+                String lang,
+                String layout,
+                String template,
+                boolean executable,
+                String framework,
+                String jdk,
+                int javaRelease,
+                boolean assembly,
+                boolean nativeImage,
+                boolean plugin,
+                String kotlinModule,
+                List<String> deps,
+                boolean sample,
+                boolean standalone,
+                Map<String, String> templateParams,
+                boolean relaxParent) {
+            this(
+                    name,
+                    parentDir,
+                    group,
+                    lang,
+                    layout,
+                    template,
+                    executable,
+                    framework,
+                    jdk,
+                    javaRelease,
+                    assembly,
+                    nativeImage,
+                    plugin,
+                    kotlinModule,
+                    deps,
+                    sample,
+                    standalone,
+                    templateParams,
+                    relaxParent,
+                    null);
         }
     }
 
@@ -190,11 +235,12 @@ public final class NewProjectOps {
         boolean micronaut = "micronaut".equalsIgnoreCase(nullToEmpty(req.framework()));
         Optional<String> main = Optional.empty();
         if (prep.executable()) {
+            boolean compact = "simple".equalsIgnoreCase(prep.layout());
             main = Optional.of(
                     switch (prep.lang()) {
                         case JAVA -> prep.group() + ".Main";
-                        case KOTLIN -> prep.group() + ".MainKt";
-                        case GROOVY -> prep.group() + ".Main";
+                        case KOTLIN -> compact ? "MainKt" : prep.group() + ".MainKt";
+                        case GROOVY -> compact ? "Main" : prep.group() + ".Main";
                     });
         }
         int hostMajor = Runtime.version().feature();
@@ -261,9 +307,19 @@ public final class NewProjectOps {
             throw new IllegalArgumentException("parentDir is not a directory: " + parent);
         }
 
-        Path target = parent.resolve(name).normalize();
-        if (!target.startsWith(parent)) {
-            throw new IllegalArgumentException("name escapes parentDir");
+        Path target;
+        String targetRaw = req.targetDir() == null ? "" : req.targetDir().strip();
+        if (!targetRaw.isEmpty()) {
+            target = cc.jumpkick.util.PathUtil.resolveUserPath(targetRaw).normalize();
+            Path destParent = target.getParent();
+            if (destParent != null && !target.startsWith(destParent)) {
+                throw new IllegalArgumentException("name escapes parentDir");
+            }
+        } else {
+            target = parent.resolve(name).normalize();
+            if (!target.startsWith(parent)) {
+                throw new IllegalArgumentException("name escapes parentDir");
+            }
         }
         if (Files.exists(target.resolve("jk.toml"))) {
             throw new IllegalStateException("project already exists: " + target);
