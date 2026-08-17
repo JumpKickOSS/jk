@@ -368,7 +368,7 @@ public final class EngineRequests {
             boolean offline,
             boolean force,
             boolean verbose,
-            List<Path> moduleDirs) {
+            List<String> modules) {
 
         /** Back-compat: no module selection (entry dir / whole graph). */
         public CompileRequest(

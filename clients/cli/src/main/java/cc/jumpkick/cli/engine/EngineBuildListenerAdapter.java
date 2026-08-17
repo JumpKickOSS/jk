@@ -344,7 +344,7 @@ final class EngineBuildListenerAdapter {
                             req.offline(),
                             req.force(),
                             req.verbose(),
-                            req.moduleDirs().stream().map(Path::toString).toList()),
+                            req.modules()),
                     SessionContext.current().variant(),
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
