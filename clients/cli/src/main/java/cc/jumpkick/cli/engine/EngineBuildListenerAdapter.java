@@ -674,16 +674,37 @@ final class EngineBuildListenerAdapter {
     }
 
     static void freshenCatalog(EnginePaths.Paths paths, String catalog, boolean offline, String url, String cacheFile) {
+        freshenCatalog(paths, catalog, offline, url, cacheFile, false);
+    }
+
+    static void freshenCatalog(
+            EnginePaths.Paths paths, String catalog, boolean offline, String url, String cacheFile, boolean force) {
         try {
             request(
                     paths,
-                    ProtoReads.freshenCatalogRequest(catalog, offline, url, cacheFile),
+                    ProtoReads.freshenCatalogRequest(catalog, offline, url, cacheFile, force),
                     EngineProtocol.FRESHEN_CATALOG_ACK,
                     catalog + " freshen request",
                     line -> Jsonl.bool(line, "ok", false));
         } catch (IOException ignored) {
             // Best-effort — local resolution proceeds against whatever the cache already holds.
         }
+    }
+
+    static String freshenCatalogNow(EnginePaths.Paths paths, String catalog, String url, String cacheFile)
+            throws IOException {
+        return request(
+                paths,
+                ProtoReads.freshenCatalogRequest(catalog, false, url, cacheFile, true),
+                EngineProtocol.FRESHEN_CATALOG_ACK,
+                catalog + " freshen request",
+                line -> {
+                    if (!Jsonl.bool(line, "ok", false)) {
+                        String error = Jsonl.str(line, "error");
+                        return error == null || error.isBlank() ? "catalog refresh failed" : error;
+                    }
+                    return null;
+                });
     }
 
     /** One engine-hosted tree render: the marker-tagged tree; throws with the engine's message. */

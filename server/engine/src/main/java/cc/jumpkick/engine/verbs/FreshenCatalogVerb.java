@@ -53,13 +53,17 @@ public final class FreshenCatalogVerb implements HostedVerb {
                     case "templates" -> {
                         if (!offline) cc.jumpkick.templates.OfficialTemplatesFreshen.refreshNow(msg -> {});
                     }
-                    case "libraries" ->
-                        cc.jumpkick.repo.LibraryRegistrySync.ensurePresent(
-                                offline,
-                                url != null ? URI.create(url) : cc.jumpkick.repo.LibraryRegistryClient.DEFAULT_SOURCE,
-                                cacheFile != null
-                                        ? Path.of(cacheFile)
-                                        : cc.jumpkick.library.LibraryCatalog.downloadedFile());
+                    case "libraries" -> {
+                        URI src = url != null ? URI.create(url) : cc.jumpkick.repo.LibraryRegistryClient.DEFAULT_SOURCE;
+                        Path dest = cacheFile != null
+                                ? Path.of(cacheFile)
+                                : cc.jumpkick.library.LibraryCatalog.downloadedFile();
+                        if (Jsonl.bool(requestLine, "force", false)) {
+                            cc.jumpkick.repo.LibraryRegistrySync.refreshNow(src, dest);
+                        } else {
+                            cc.jumpkick.repo.LibraryRegistrySync.ensurePresent(offline, src, dest);
+                        }
+                    }
                     case "jdks" -> {
                         if (!offline) {
                             cc.jumpkick.jdk.JdkCatalogClient client = url != null

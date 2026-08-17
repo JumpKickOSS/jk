@@ -634,7 +634,18 @@ public final class EngineClient {
             return; // no engine to host the freshen — local resolution proceeds against the cache
         }
         EngineBuildListenerAdapter.freshenCatalog(
-                paths, catalog, false, url, cacheFile == null ? null : cacheFile.toString());
+                paths, catalog, false, url, cacheFile == null ? null : cacheFile.toString(), false);
+    }
+
+    /**
+     * As {@link #freshenCatalog} but always hits the network and returns the engine error (or
+     * {@code null} on success). Used by {@code jk library update}.
+     */
+    public static String freshenCatalogNow(
+            cc.jumpkick.engine.EnginePaths.Paths paths, String catalog, String url, Path cacheFile) throws IOException {
+        ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
+        return EngineBuildListenerAdapter.freshenCatalogNow(
+                paths, catalog, url, cacheFile == null ? null : cacheFile.toString());
     }
 
     /**

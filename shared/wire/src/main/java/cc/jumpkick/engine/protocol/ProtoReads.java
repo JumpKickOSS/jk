@@ -310,10 +310,16 @@ public final class ProtoReads {
     }
 
     public static String freshenCatalogRequest(String catalog, boolean offline, String url, String cacheFile) {
+        return freshenCatalogRequest(catalog, offline, url, cacheFile, false);
+    }
+
+    public static String freshenCatalogRequest(
+            String catalog, boolean offline, String url, String cacheFile, boolean force) {
         return "{\"type\":\"" + EngineProtocol.FRESHEN_CATALOG_REQUEST + "\",\"catalog\":" + Jsonl.quote(catalog)
                 + ",\"offline\":" + offline
                 + ",\"url\":" + Jsonl.quote(url)
                 + ",\"cacheFile\":" + Jsonl.quote(cacheFile)
+                + ",\"force\":" + force
                 + "}";
     }
 

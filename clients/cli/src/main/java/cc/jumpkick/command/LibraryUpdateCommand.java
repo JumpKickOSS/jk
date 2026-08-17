@@ -67,8 +67,19 @@ public final class LibraryUpdateCommand implements CliCommand {
             Files.createDirectories(cacheFile.getParent());
             Files.copy(cacheFile, previousBackup, StandardCopyOption.REPLACE_EXISTING);
         }
-        cc.jumpkick.cli.engine.EngineClient.freshenCatalog(
-                cc.jumpkick.engine.EnginePaths.current(), "libraries", false, source.toString(), cacheFile);
+        try {
+            String error = cc.jumpkick.cli.engine.EngineClient.freshenCatalogNow(
+                    cc.jumpkick.engine.EnginePaths.current(), "libraries", source.toString(), cacheFile);
+            if (error != null) {
+                restoreBackup(cacheFile, previousBackup);
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Library", error);
+                return 1;
+            }
+        } catch (IOException e) {
+            restoreBackup(cacheFile, previousBackup);
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Library", String.valueOf(e.getMessage()));
+            return 1;
+        }
         Map<String, LibraryCatalog.Module> after = currentEntries(cacheFile);
         boolean fetched = !after.equals(before) || (Files.isRegularFile(cacheFile) && before.isEmpty());
         if (Files.isRegularFile(cacheFile) && Files.isRegularFile(previousBackup) && after.equals(before)) {
@@ -77,6 +88,16 @@ public final class LibraryUpdateCommand implements CliCommand {
         Diff diff = Diff.compute(before, after);
         printSummary(after.size(), diff, Duration.ofNanos(System.nanoTime() - startNanos), fetched);
         return 0;
+    }
+
+    private static void restoreBackup(Path cacheFile, Path previousBackup) {
+        try {
+            if (Files.isRegularFile(previousBackup)) {
+                Files.copy(previousBackup, cacheFile, StandardCopyOption.REPLACE_EXISTING);
+                Files.deleteIfExists(previousBackup);
+            }
+        } catch (IOException ignored) {
+        }
     }
 
     private static Map<String, LibraryCatalog.Module> currentEntries(Path cacheFile) {
