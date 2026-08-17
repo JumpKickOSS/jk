@@ -62,6 +62,18 @@ public final class JobWorkers {
 
     private static final ConcurrentHashMap<Long, Set<Process>> BY_REQUEST = new ConcurrentHashMap<>();
 
+    /**
+     * Requests whose shutdown already ran. A cpu-pool thread still draining after cancel can call
+     * {@link #register} concurrently with {@link #shutdownForRequest}; without the tombstone it
+     * either re-created a {@code BY_REQUEST} entry nothing ever removes (leak + untracked live
+     * process) or added to the already-removed set after the kill loop (escaped worker) —
+     * JK-2096. Cleared on {@link #open} in case a request id is ever reused; clear-on-overflow
+     * bounds the set.
+     */
+    private static final Set<Long> TOMBSTONES = ConcurrentHashMap.newKeySet();
+
+    private static final int MAX_TOMBSTONES = 4_096;
+
     static {
         // SessionContext's static init uses bind() (displaces); force it to land before our add().
         cc.jumpkick.config.SessionContext.current();
@@ -107,6 +119,7 @@ public final class JobWorkers {
 
     /** Open a request scope on this thread so subsequent {@link #register} calls attach here. */
     public static void open(long requestId) {
+        TOMBSTONES.remove(requestId);
         CURRENT.set(requestId);
     }
 
@@ -148,7 +161,22 @@ public final class JobWorkers {
         if (process == null) return;
         Long id = CURRENT.get();
         if (id == null) return;
+        if (TOMBSTONES.contains(id)) {
+            // Request already shut down — kill on arrival instead of resurrecting the entry.
+            signalTree(process, true);
+            return;
+        }
         BY_REQUEST.computeIfAbsent(id, k -> ConcurrentHashMap.newKeySet()).add(process);
+        // Shutdown may have tombstoned + drained between the check above and the add: our set
+        // (or entry) may be orphaned. Kill directly — signalTree is idempotent, so racing the
+        // shutdown's own kill loop is harmless.
+        if (TOMBSTONES.contains(id)) {
+            signalTree(process, true);
+            Set<Process> orphan = BY_REQUEST.remove(id);
+            if (orphan != null) {
+                for (Process p : orphan) signalTree(p, true);
+            }
+        }
     }
 
     /**
@@ -202,6 +230,9 @@ public final class JobWorkers {
      * <p>On Windows, step 1 may already be terminal (no SIGTERM); step 2 still bounds our wait.
      */
     public static int shutdownForRequest(long requestId, long graceMs) {
+        // Tombstone FIRST so a register racing us kills its process on arrival (JK-2096).
+        if (TOMBSTONES.size() >= MAX_TOMBSTONES) TOMBSTONES.clear();
+        TOMBSTONES.add(requestId);
         Set<Process> set = BY_REQUEST.remove(requestId);
         if (set == null || set.isEmpty()) return 0;
         int aliveAtStart = 0;
