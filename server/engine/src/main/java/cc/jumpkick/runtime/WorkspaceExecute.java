@@ -9,11 +9,9 @@ import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
-import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.JkThreads;
-import cc.jumpkick.run.TestSummary;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -95,8 +93,6 @@ public final class WorkspaceExecute {
     // =========================================================================
     // Workspace build (the front-end-callable event-emitting entry point)
     // =========================================================================
-
-    private static final BuildPlanKey<TestSummary> TEST_RESULT = BuildPlanKey.of("test-result", TestSummary.class);
 
     /**
      * Build a whole workspace: resolve the module graph, size the worker-JVM memory plan (unless
@@ -651,7 +647,9 @@ public final class WorkspaceExecute {
             BuildPlanResult r = EffortWeights.withOverReserveTails(module.plan()::run);
             long ms = (System.nanoTime() - t0) / 1_000_000;
             boolean cancelled = r.userCancelled() || cc.jumpkick.run.SessionCancel.cancelled();
-            int exit = r.success() && !cancelled ? 0 : exitCodeFor(module.plan());
+            // NativePlans owns the full failure mapping (native main-class misconfig → USAGE,
+            // test failure → 4, else 1) so jk native --main bad exits 64 like the old verb did.
+            int exit = r.success() && !cancelled ? 0 : NativePlans.failureExitCode(module.plan(), r);
             // Failures always count as work; successes count only when a productive step ran
             // (not pure cache hits / no-ops —.
             boolean didWork = !r.success() || cancelled || BuildService.moduleDidWork(r);
@@ -668,11 +666,6 @@ public final class WorkspaceExecute {
         }
     }
 
-    /** Test failures exit 4; every other plan failure exits 1. */
-    private static int exitCodeFor(BuildPlan plan) {
-        TestSummary tr = plan.get(TEST_RESULT).orElse(null);
-        return tr != null && !tr.allPassed() ? 4 : 1;
-    }
 
     /** Apply the subset of {@code workspaceLinks} whose sources live under {@code moduleDir} (best-effort). */
     public static void linkModuleArtifacts(Path moduleDir, Map<Path, Path> workspaceLinks) {

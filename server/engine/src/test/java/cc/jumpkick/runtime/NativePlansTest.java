@@ -102,4 +102,27 @@ class NativePlansTest {
                 """);
         return dir;
     }
+
+    @org.junit.jupiter.api.Test
+    void failure_exit_code_maps_native_main_misconfig_to_usage() {
+        // JK-2099: the workspace path dropped the old NativeVerb's Exit.USAGE mapping and
+        // left failureExitCode dead — jk native --main no.Such.Class exited 1 instead of 64.
+        var plan = cc.jumpkick.run.BuildPlan.builder("native").build();
+        var usage = new cc.jumpkick.run.BuildPlanResult(
+                "native",
+                false,
+                java.time.Duration.ZERO,
+                java.util.List.of(),
+                java.util.List.of(),
+                java.util.List.of(new cc.jumpkick.run.BuildPlanResult.Diagnostic(
+                        "native-image", "native", "main class no.Such.Class not found")),
+                false);
+        org.assertj.core.api.Assertions.assertThat(NativePlans.failureExitCode(plan, usage))
+                .isEqualTo(cc.jumpkick.model.command.Exit.USAGE);
+        var plain = new cc.jumpkick.run.BuildPlanResult(
+                "native", false, java.time.Duration.ZERO,
+                java.util.List.of(), java.util.List.of(), java.util.List.of(), false);
+        org.assertj.core.api.Assertions.assertThat(NativePlans.failureExitCode(plan, plain))
+                .isEqualTo(1);
+    }
 }

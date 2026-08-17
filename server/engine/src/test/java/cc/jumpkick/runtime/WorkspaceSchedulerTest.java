@@ -82,15 +82,24 @@ class WorkspaceSchedulerTest {
         // (bounded) for in-flight tasks to settle before run() returns.
         AtomicBoolean cancelled = new AtomicBoolean();
         AtomicBoolean slowFinished = new AtomicBoolean();
+        // Determinism: "fast" only flips cancel once "slow" is genuinely in flight — a
+        // not-yet-started "slow" would be (correctly) no-op'd by the admission gate instead.
+        java.util.concurrent.CountDownLatch slowStarted = new java.util.concurrent.CountDownLatch(1);
         Object result = WorkspaceScheduler.run(
                 List.of("fast", "slow"),
                 WorkspaceSchedulerTest::p,
                 Map.of(p("fast"), Set.of(), p("slow"), Set.of()),
                 unit -> {
                     if ("fast".equals(unit)) {
+                        try {
+                            slowStarted.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
                         cancelled.set(true);
                         return unit;
                     }
+                    slowStarted.countDown();
                     try {
                         Thread.sleep(300);
                     } catch (InterruptedException e) {
