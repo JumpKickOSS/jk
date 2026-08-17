@@ -136,8 +136,11 @@ version-to = "version"
 main = "cc.example.MyPluginMain"   # implements the plugin-sdk entry
 ```
 
-Workers speak the same JSONL style as compiler plugins. Prefer the harness in `plugin-sdk`
-(`BuildPlugin`, `TaskSpec`/`TaskContribution` task and packager SPIs) over hand-rolled protocols.
+Workers speak the same JSONL style as compiler plugins: one shared `SpecWriter` builds every
+spec, and the engine reads worker replies through a bounded line reader. Prefer the harness in
+`plugin-sdk` (`BuildPlugin`, `TaskSpec`/`TaskContribution` task and packager SPIs) over
+hand-rolled protocols. A plugin's `jk-compat = ">=x.y"` floor is enforced at manifest load —
+too-old jk refuses the plugin with an upgrade error.
 
 ## Tasks and transforms
 

@@ -54,10 +54,11 @@ resident host (election, accept, hosted ops). Reality:
 | Event encoding | three anonymous listener graphs (CLI / SSE hub / workspace wrap) |
 | Outcome law | inner `BuildAccumulator` (~480 lines) |
 
-The bug is not file length. It is **two job lifecycles** (CLI vs HTTP)
-and **three serializers** of the same facts. HTTP jobs have no heartbeat
-and no wall deadline. HTTP lock skips `admitJob`. A late progress emit
-after teardown can resurrect a map (JK-1474).
+The bug was not file length. It was **two job lifecycles** (CLI vs HTTP)
+and **three serializers** of the same facts. Before the envelope, HTTP
+jobs had no heartbeat and no wall deadline, HTTP lock skipped
+`admitJob`, and a late progress emit after teardown could resurrect a
+map (JK-1474).
 
 Load-bearing races — preserve the *invariant*, not the method shape:
 
@@ -147,9 +148,11 @@ Not `AbstractAsyncJob`.
 - `SocketWatch(reader, writer)` — connection owns the job
 - `FireAndForget()` — return the request id; progress is the sink
 
-Delete `httpCancelTokens`, `httpJobThreads`, `cancelHttpJob`, and
-`startHttpWorkspace` / `startHttpLock`. HTTP lock goes through
-`admitJob`. HTTP/MCP jobs get the same heartbeat and deadline as CLI.
+`httpCancelTokens`, `httpJobThreads`, `cancelHttpJob`, and
+`startHttpWorkspace` / `startHttpLock` are gone. HTTP lock goes through
+`admitJob`. HTTP/MCP jobs share the envelope's admission, deadline, and
+cancel; heartbeats are wire lines, so detached jobs run only the
+wall-deadline watchdog.
 
 **`EngineEvent`** (sealed) + **`EventSink`** — one domain vocabulary.
 Implementations: `WireEventSink`, `SseEventSink`, `CompositeEventSink`,
@@ -368,7 +371,7 @@ Exit: `EngineServer` ≤ 4,500, maps ≤ 2.
 Gate: cancel, deadline, `CancelStampGuardTest`, `EngineServerTest`.
 
 **Phase 3 — One envelope.** HTTP/MCP become `FireAndForget`. Delete the
-second registry. HTTP jobs gain heartbeat, deadline, and `admitJob`.
+second registry. HTTP jobs share `admitJob`, the deadline, and cancel.
 Success semantics converge on `effectiveSuccess`. This is an
 improvement, not a regression to document and keep.
 

@@ -26,12 +26,12 @@ All machine surfaces carry **the same conceptual events**. Framing differs:
 |---------|--------------------|----------------------------|-----------------|-------------------|
 | Request / session start | `buildplan-start` (per plan); workspace: `workspace-start` | `request-start` | `▶ plan (N steps)` | tool result / `notifications/jk/event` |
 | Task start | `task-start` | `task-start` | `· stage/task (ticks: N)` | notification |
-| Progress ticks (fine) | `progress`, `tick-update` | `plan-progress` | (bar / quiet) | notification |
+| Progress ticks (fine) | `progress`, `tick-update` | `progress` | (bar / quiet) | notification |
 | **Whole-job % (aggregate)** | **`workspace-progress`** | **`workspace-progress`** | TUI bar | filter `type=workspace-progress` |
 | Label (current work) | `label` | (via progress / output) | last label on finish line | notification |
 | User/compiler output | `output` | `output` | printed lines | notification |
 | Warning | `warn` | (diagnostic-like) | bang line | notification |
-| Error / test failure | `error` (+ `test`, `exceptionClass`) | `diagnostic` | FAILED lines / stacks | tool error + structured fields |
+| Error / test failure | `error` (+ `test`, `exceptionClass`) | `error` | FAILED lines / stacks | tool error + structured fields |
 | Step end | `task-finish` | `task-finish` | `✓/✗ step took …` | notification |
 | BuildPlan end | `buildplan-finish` | module/request finish | wedge chip | tool result |
 | Plan / ETA | (wire → engine; extend JSONL) | `plan`, `eta` | explain / bar countdown | `jk_explain` + notifications |
@@ -132,8 +132,10 @@ Disable: `--no-timeline` / `JK_CHROME_PROFILE=off`. Linked from docs; not duplic
 
 Engine hosts HTTP (loopback by default) with:
 
-- `GET /api/status`, `GET /api/events` (SSE), `POST /api/build`, …
-- SSE: `event: <type>` + `data: <json>` — types include `request-start`, `task-start`, `task-finish`, `plan-progress`, `eta`, `diagnostic`, module events, …
+- `GET /api/status`, `GET /api/events` (SSE), `POST /api/build` (optional `kind`:
+  workspace build by default), `POST /api/cancel` (`jid`, or `dir` to cancel every live job
+  of a checkout), …
+- SSE: `event: <type>` + `data: <json>` — the event name **equals** the payload `type`: `request-start`, `task-start`, `task-finish`, `progress`, `eta`, `error`, module events, …
 
 See [http.md](http.md) for bind, auth, and engine lifetime. Dashboard-only chrome
 (`status`/`cache` sample frames on `/api/events`) is **not** sent on MCP SSE.
@@ -150,11 +152,11 @@ same work:
 | `task` / `stage` / `status` / `dir` / `coord` | Same names across surfaces. `stage` is the task's `BuildStage` — a **closed** set (`resolve`, `generate`, `compile`, `test`, `package`, `native`, `image`, `other`), always present, never free-form. `phase` means only `InvocationPhase` and `workspace-progress` |
 | `numerator` / `denominator` | Task-scoped weights (progress events); optional beside the % rider |
 | `test` / `exceptionClass` | Structured failure fields |
-| `jid` / `requestId` | Public job handle (same integer; prefer **`jid`**, `requestId` is an alias) |
+| `jid` | The public job handle on every surface (wire, SSE, REST, MCP). The journal's persisted records store it as `requestId`; every emitted payload says `jid` |
 
-The SSE *event* name may stay SPA-oriented (`plan-progress`, `diagnostic`); agents should
-prefer `data.type`. The client↔engine wire uses the same `type` discriminator (and additive
-`schema` / `progress` on progress events) — one vocabulary across JSONL, SSE, MCP, and wire.
+The SSE *event* name always equals `data.type`. The client↔engine wire uses the same `type`
+discriminator (and the `schema` / `progress` riders) — one vocabulary across JSONL, SSE, MCP,
+and wire.
 
 ### MCP (engine-hosted)
 
@@ -187,9 +189,9 @@ Bind once, then omit `dir` on later calls.
 | **`jk_status`** | Engine vitals (pid, version, heap, active jobs) — same facts as `GET /api/status` |
 | **`jk_project`** | Project card (coord, java, members, last run) |
 | **`jk_run`** | Start a job: `build` \| `test` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean`. **`wait` defaults true**. Optional modules/tags/suites/`skip_tests`/`timeout_s` |
-| **`jk_build`** / **`jk_test`** / **`jk_lock`** | Async convenience aliases (return `jid`/`requestId` immediately) |
+| **`jk_build`** / **`jk_test`** / **`jk_lock`** | Async convenience aliases (return `jid` immediately) |
 | **`jk_job`** | `get` \| `wait` \| `cancel` a job; omit `jid` → latest live job for bound dir |
-| **`jk_cancel`** | Cancel by **`jid`** (`requestId` alias) |
+| **`jk_cancel`** | Cancel by **`jid`**, or every live job for a `dir` |
 | **`jk_history`** | Recent runs as **summaries** (filters: dir, projectId, success, kind, limit, next). Avoid `view=full` |
 | **`jk_diagnostics`** | Structured compiler/test failures (`last-fail` default, or a history id) |
 | **`jk_why`** | Why a dependency is on the graph |
@@ -240,7 +242,7 @@ aggregate **`progress`** (0–100 or `null`) aligned with CLI JSONL / `details.j
 
 | Query | Effect |
 |-------|--------|
-| `?requestId=N` | Only events whose payload has that id (from the tool result; same value as `jid`) |
+| `?jid=N` | Only events whose payload has that jid (from the tool result) |
 | `?progressToken=T` | Same, after tools/call with `"_meta":{"progressToken":"T"}` binds T→job id |
 
 Unfiltered `GET /mcp` still receives every job. Dashboard alias: **`GET /api/events`**
@@ -262,7 +264,7 @@ curl -sS -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 
 # Live progress for one job
 curl -sSN -H "Authorization: Bearer $TOKEN" -H 'Accept: text/event-stream' \
-  "$MCP_URL?requestId=$JID"
+  "$MCP_URL?jid=$JID"
 ```
 
 ## Agent recipe (recommended)
@@ -274,7 +276,7 @@ curl -sSN -H "Authorization: Bearer $TOKEN" -H 'Accept: text/event-stream' \
 #   3. rebuild → jk_run kind=build wait=true
 #   4. graph / ETA → jk_why / jk_explain
 #   5. stalled → jk_status then jk_job action=cancel
-# Live progress: GET /mcp?requestId=N Accept: text/event-stream
+# Live progress: GET /mcp?jid=N Accept: text/event-stream
 
 # One-shot CLI (no MCP):
 jk test --output json --modules 'shared/*' 2>/dev/null
@@ -310,8 +312,9 @@ Pre-1.0: **no schema version bumps** across jk.toml, lock, wire, REST, SSE, MCP 
 | Join after user cancel | grace + 500 ms | Connection thread abandons if runner still stuck |
 | BuildPlan step cancel | 200 ms | In-process `Future.cancel` after cooperative flag |
 
-Public cancel handle is **`jid`** (`requestId` alias). Entry points: Ctrl-C, `jk cancel` /
-`jk cancel <jid>`, `POST /api/cancel`, MCP `jk_cancel` / `jk_job action=cancel`.
+Public cancel handle is **`jid`**. Entry points: Ctrl-C, `jk cancel` / `jk cancel <jid>`,
+`POST /api/cancel` (`{"jid":N}` or `{"dir":"…"}` for every live job of a checkout), MCP
+`jk_cancel` / `jk_job action=cancel`.
 
 **Timeline (N workers):** `destroy()` all → wait ≤500 ms once → `destroyForcibly()` stragglers.  
 Not N×500 ms. **Windows:** no SIGTERM; `destroy()` is often already terminal — grace bounds the
