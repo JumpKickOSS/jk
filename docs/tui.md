@@ -60,6 +60,14 @@ way to push bytes back into the tty input queue (`TIOCSTI` is root-gated or comp
 modern kernels). Accepted as the cost of the peek; piped/non-TTY runs install no listener and
 are unaffected.
 
+**Settle must unblock JLine's stdin reader.** Timed key reads park a JLine NonBlocking I/O thread
+in a blocking `read()` on FD 0. On macOS, `FileInputStream.close()` does not interrupt that wait.
+Once ICANON is restored, the line discipline only delivers input after newline — so the hang
+requires **Enter** specifically (other keys buffer until newline). `Wizard.restoreCooked` /
+`unblockBlockingInput` force non-canonical `VMIN=0`/`VTIME=0` and pulse `O_NONBLOCK` on FD 0
+*before* restoring cooked mode; `Interactivity.prepareProcessExit` wakes, restores, and closes the
+shared terminal before `System.exit` so JLine's shutdown closer is already deregistered.
+
 ### Completed-module tail
 
 Workspace plans (`jk build`, `jk test`, `jk run`, `jk native`, `jk image`) keep the last few

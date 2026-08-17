@@ -89,10 +89,45 @@ public final class Wizard {
     }
 
     /**
+     * Wake JLine's NonBlocking I/O thread if it is stuck in a blocking {@code read()} on stdin.
+     *
+     * <p>JLine wraps FD 0 in {@code FileInputStream} and, for timed reads, parks a daemon thread
+     * in {@code read()}. On macOS that close does not interrupt the blocked read. Once ICANON is
+     * on, the line discipline only delivers input after newline — so the process looks hung after
+     * a successful interactive plan until the user presses <em>Enter</em> (other keys sit in the
+     * kernel line buffer). Non-canonical {@code VMIN=0}/{@code VTIME=0} plus a brief {@code
+     * O_NONBLOCK} pulse force the pending read to return; call this before restoring cooked mode
+     * or closing the terminal.
+     */
+    public static void unblockBlockingInput(Terminal terminal) {
+        if (terminal == null) return;
+        try {
+            Attributes cur = terminal.getAttributes();
+            Attributes nb = new Attributes(cur);
+            // Stay non-canonical with VMIN=0 so a wake cannot re-enter "wait for newline".
+            nb.setLocalFlag(Attributes.LocalFlag.ICANON, false);
+            nb.setControlChar(Attributes.ControlChar.VMIN, 0);
+            nb.setControlChar(Attributes.ControlChar.VTIME, 0);
+            terminal.setAttributes(nb);
+            // Stronger than termios alone: force the blocked read(0) to return EAGAIN.
+            StdinWake.pulseNonBlocking();
+            // Drain while still non-canonical / VMIN=0 so we do not re-block the I/O thread.
+            drainInput(terminal.reader(), 40L);
+        } catch (RuntimeException ignored) {
+            // best-effort — terminal may already be closed
+        }
+    }
+
+    /**
      * Restore cooked input from {@code saved}, forcing ECHO and ICANON on (needed after
      * {@link #openTerminal}'s echo-off). Shared by {@link #run} and {@link Confirm}.
+     *
+     * <p>Unblocks any pending JLine stdin read first — see {@link #unblockBlockingInput}. Cooked
+     * (ICANON) is restored only after that wake so a still-pending {@code read} cannot fall back
+     * into "wait for Enter".
      */
     public static void restoreCooked(Terminal terminal, Attributes saved) {
+        unblockBlockingInput(terminal);
         var cooked = new Attributes(saved);
         cooked.setLocalFlag(Attributes.LocalFlag.ECHO, true);
         cooked.setLocalFlag(Attributes.LocalFlag.ICANON, true);
