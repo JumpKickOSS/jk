@@ -137,9 +137,6 @@ class HostedVerbDecodeJobTest {
         }
 
         @Override
-        public void accOutcome(long rid, boolean success, int exit) {}
-
-        @Override
         public void accTests(long rid, cc.jumpkick.run.TestSummary tests) {}
 
         @Override

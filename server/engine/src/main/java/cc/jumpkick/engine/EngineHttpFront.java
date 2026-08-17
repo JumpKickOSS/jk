@@ -21,6 +21,7 @@ import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 import java.util.function.LongPredicate;
 import java.util.function.Supplier;
+import java.util.function.ToIntFunction;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
@@ -46,6 +47,7 @@ public final class EngineHttpFront {
     private final JobEnvelope jobs;
     private final VerbRegistry verbs;
     private final LongPredicate cancelJob;
+    private final ToIntFunction<String> cancelJobsForDir;
     private final @Nullable ReentrantReadWriteLock cacheGate;
 
     private volatile @Nullable HttpEngineServer server;
@@ -123,6 +125,11 @@ public final class EngineHttpFront {
             @Override
             public boolean cancel(long requestId) {
                 return cancelJob.test(requestId);
+            }
+
+            @Override
+            public int cancelDir(String dir) {
+                return cancelJobsForDir.applyAsInt(dir);
             }
         };
     }

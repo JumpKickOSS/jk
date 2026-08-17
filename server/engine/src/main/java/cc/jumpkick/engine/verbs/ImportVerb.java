@@ -38,7 +38,8 @@ public final class ImportVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 Path baseDir = Path.of(Jsonl.str(requestLine, "baseDir"));
@@ -77,5 +78,6 @@ public final class ImportVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
+        return null;
     }
 }

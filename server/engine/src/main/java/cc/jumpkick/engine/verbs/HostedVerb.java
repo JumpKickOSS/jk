@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobBody;
 import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobRequest;
 import cc.jumpkick.engine.jobs.JobSpec;
 import java.io.BufferedWriter;
@@ -47,8 +48,13 @@ public interface HostedVerb {
         throw new IllegalArgumentException("kind not hosted: " + spec.kind());
     }
 
-    /** {@code writer} is {@code null} for a detached (HTTP/MCP) job — sinks and hooks still run. */
-    void run(String requestLine, Session.CancelToken cancel, @Nullable BufferedWriter writer);
+    /**
+     * {@code writer} is {@code null} for a detached (HTTP/MCP) job — sinks and hooks still run.
+     * A job verb returns its {@link cc.jumpkick.engine.jobs.JobOutcome}; the envelope stamps it
+     * (the one success law). Sync reads return {@code null}.
+     */
+    @Nullable
+    JobOutcome run(String requestLine, Session.CancelToken cancel, @Nullable BufferedWriter writer);
 
     /** The submission for one decoded request; the line may refine the kind (workspace test). */
     default JobRequest toJobRequest(String requestLine) {

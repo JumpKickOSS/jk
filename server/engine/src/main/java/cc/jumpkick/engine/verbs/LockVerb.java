@@ -62,7 +62,8 @@ public final class LockVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             List<String> features = Jsonl.strArray(requestLine, "features");
             boolean withDefaults = !Jsonl.bool(requestLine, "noDefaultFeatures", false);
@@ -88,6 +89,7 @@ public final class LockVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
+        return null;
     }
 
     static @org.jspecify.annotations.Nullable URI repoUrlOf(String requestLine) {

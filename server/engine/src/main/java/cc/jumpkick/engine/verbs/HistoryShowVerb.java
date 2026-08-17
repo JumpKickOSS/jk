@@ -40,7 +40,8 @@ public final class HistoryShowVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String id = Jsonl.str(requestLine, "id");
             Optional<BuildRecord> found =
@@ -53,7 +54,7 @@ public final class HistoryShowVerb implements HostedVerb {
                                 .put("code", EngineProtocol.ERR_REQUEST_FAILED)
                                 .put("message", "no such build: " + id)
                                 .toString());
-                return;
+                return null;
             }
             BuildRecord r = found.get();
             BuildRecord.Tests t = r.tests();
@@ -127,6 +128,7 @@ public final class HistoryShowVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
+        return null;
     }
 
     private static String stepLine(cc.jumpkick.config.SecretRedactor r, BuildRecord.Task p, String module) {

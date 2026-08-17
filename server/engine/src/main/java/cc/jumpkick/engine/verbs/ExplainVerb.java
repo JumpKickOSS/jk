@@ -44,7 +44,8 @@ public final class ExplainVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 String entryDirStr = Jsonl.str(requestLine, "dir");
@@ -101,7 +102,7 @@ public final class ExplainVerb implements HostedVerb {
                         host.sendQuiet(writer, host.requestFailedLine(entryDir.toString(), err));
                     }
                     host.sendQuiet(writer, ProtoReads.explainDone(1, 0));
-                    return;
+                    return null;
                 }
                 for (cc.jumpkick.runtime.TaskForecast.Module m : plan.modules()) {
                     String dir = m.dir().toString();
@@ -141,5 +142,6 @@ public final class ExplainVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
+        return null;
     }
 }

@@ -38,7 +38,8 @@ public final class ExecPlanVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             cc.jumpkick.engine.protocol.ExecPlan plan;
             try {
@@ -62,5 +63,6 @@ public final class ExecPlanVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
+        return null;
     }
 }

@@ -252,7 +252,13 @@ public final class JobEnvelope {
                 // Every Session this request builds adopts this ledger, so fetches/cache traffic on
                 // the shared pools all land in one place (see IoLedger).
                 cc.jumpkick.task.IoLedger.open(host.runIo(eventRequestId));
-                runner.run(requestLine, cancelToken, writer);
+                JobOutcome outcome = runner.run(requestLine, cancelToken, writer);
+                // The one success law: the body's verdict is stamped here, nowhere else. A null
+                // verdict leaves the journal to the accumulated facts (failures, cancel stamps).
+                if (outcome != null) {
+                    BuildAccumulator acc = host.accumulatorOf(eventRequestId);
+                    if (acc != null) acc.setOutcome(outcome.success(), outcome.exitCode());
+                }
             } finally {
                 cc.jumpkick.task.IoLedger.close();
                 // Kill leftovers — never clear() the registry without shutdown, or a racing
@@ -262,11 +268,12 @@ public final class JobEnvelope {
                 JobWorkers.close();
                 host.unbindEventRequestId();
                 if (plan) host.cacheGate().readLock().unlock();
-                // Free exclusive fingerprint as soon as plan work ends — before the
-                // connection thread finishes teardown — so a follow-up same-project build is
-                // not rejected as already-running while journal/idle chores run.
-                host.inFlight().release(eventRequestId);
+                // Unregister the live job BEFORE releasing the in-flight hold: waiters watch the
+                // hold, cancel watches liveJobs — this order means a job never looks finished
+                // while cancelJob would still succeed. The hold still frees before the connection
+                // thread's teardown so a follow-up same-project build is not rejected.
                 unregisterLiveJob(eventRequestId);
+                host.inFlight().release(eventRequestId);
                 done.countDown();
                 // Unblock the connection thread only if it is parked on client readLine
                 // waiting for BUILD_CANCEL / EOF — remote cancel finishes the runner without

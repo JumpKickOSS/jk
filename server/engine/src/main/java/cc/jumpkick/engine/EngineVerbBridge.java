@@ -87,11 +87,6 @@ public final class EngineVerbBridge implements VerbHost {
     }
 
     @Override
-    public void accOutcome(long rid, boolean success, int exit) {
-        journalWriter.accOutcome(rid, success, exit);
-    }
-
-    @Override
     public void accTests(long rid, @Nullable TestSummary tests) {
         journalWriter.accTests(rid, tests);
     }

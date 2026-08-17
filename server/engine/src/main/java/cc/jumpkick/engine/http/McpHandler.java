@@ -317,14 +317,16 @@ public final class McpHandler {
                                 "Project/workspace root (jk.toml): absolute, ~/…, or home-relative")))));
         tools.add(tool(
                 "jk_cancel",
-                "Cancel an in-flight job by jid. Grace then force workers.",
+                "Cancel an in-flight job by jid, or every live job for a dir. Grace then force workers.",
                 objectSchema(Map.of(
                         "jid",
                         Map.of(
                                 "type",
                                 "integer",
                                 "description",
-                                "Job id from jk_build / jk_test / jk_lock / job-start")))));
+                                "Job id from jk_build / jk_test / jk_lock / job-start"),
+                        "dir",
+                        Map.of("type", "string", "description", "Cancel every live job for this checkout")))));
         tools.add(tool(
                 "jk_bind",
                 "Set the default workspace for later tools (omit dir after this). Returns a project card.",
@@ -700,7 +702,17 @@ public final class McpHandler {
 
     private Map<String, Object> cancelResult(Map<String, Object> args) {
         if (!(args.get("jid") instanceof Number n)) {
-            throw new McpError(-32602, "jk_cancel requires arguments.jid");
+            String dir = string(args.get("dir"));
+            if (dir != null && !dir.isBlank()) {
+                int count = jobs.cancelDir(dir);
+                Map<String, Object> fields = new LinkedHashMap<>();
+                fields.put("dir", dir);
+                fields.put("cancelled", count);
+                return ok(
+                        McpEnvelope.of("cancel", fields),
+                        count > 0 ? "cancelled " + count + " job(s)" : "no running jobs for dir");
+            }
+            throw new McpError(-32602, "jk_cancel requires arguments.jid (or dir)");
         }
         long id = n.longValue();
         boolean ok = jobs.cancel(id);

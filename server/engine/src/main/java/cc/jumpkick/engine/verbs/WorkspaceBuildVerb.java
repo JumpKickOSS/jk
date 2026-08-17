@@ -107,7 +107,8 @@ public final class WorkspaceBuildVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String entryDirStr = Jsonl.str(requestLine, "dir");
             String cacheStr = Jsonl.str(requestLine, "cache");
@@ -179,7 +180,8 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             WorkspaceResult result = SessionContext.where(session, () -> BuildService.buildWorkspace(req, listener));
             host.releaseExclusiveSlot();
             boolean cancelled = result.cancelled() || host.effectiveCancelled(rid, cancelToken.cancelled());
-            host.accOutcome(rid, result.success() && !cancelled, result.exitCode());
+            cc.jumpkick.engine.jobs.JobOutcome outcome =
+                    cc.jumpkick.engine.jobs.JobOutcome.of(result.success() && !cancelled, result.exitCode());
             if (rid > 0) {
                 if (result.success() && !cancelled) host.finishProgress(rid);
                 host.emitWorkspaceProgress(rid, writer, true);
@@ -197,18 +199,19 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     host.publishRequestError(host.eventRequestId(), entryDirStr, error);
                 }
             }
+            return outcome;
         } catch (Exception e) {
             String dir = Jsonl.str(requestLine, "dir");
             long rid = host.eventRequestId();
             boolean cancelled = host.effectiveCancelled(rid, cancelToken.cancelled());
             if (cancelled) {
                 host.sendQuiet(writer, ProtoEvents.workspaceFinish(false, 1, List.of(), true));
-            } else {
-                host.accOutcome(rid, false, 1);
-                String msg = host.redactEnv(dir, String.valueOf(e.getMessage()));
-                host.sendQuiet(writer, host.requestFailedLine(dir, e));
-                host.publishRequestError(rid, dir, msg);
+                return null;
             }
+            String msg = host.redactEnv(dir, String.valueOf(e.getMessage()));
+            host.sendQuiet(writer, host.requestFailedLine(dir, e));
+            host.publishRequestError(rid, dir, msg);
+            return cc.jumpkick.engine.jobs.JobOutcome.failed(1);
         }
     }
 }

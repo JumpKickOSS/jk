@@ -37,7 +37,10 @@ class JobEnvelopeTest {
         StringWriter out = new StringWriter();
         env.submit(
                 "{\"type\":\"build-request\",\"dir\":\"/p\"}",
-                JobRequest.plan("build", "jk-test-", (line, tok, w) -> ran.set(true)),
+                JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
+                    ran.set(true);
+                    return null;
+                }),
                 new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
         assertThat(ran).isFalse();
         assertThat(out.toString()).contains("shutting down");
@@ -52,7 +55,10 @@ class JobEnvelopeTest {
         StringWriter out = new StringWriter();
         env.submit(
                 "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
-                JobRequest.plan("lock", "jk-test-", (line, tok, w) -> ran.set(true)),
+                JobRequest.plan("lock", "jk-test-", (line, tok, w) -> {
+                    ran.set(true);
+                    return null;
+                }),
                 new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
         assertThat(ran).isTrue();
         assertThat(host.events.stream().anyMatch(e -> e.contains("request-finish")))
@@ -71,7 +77,10 @@ class JobEnvelopeTest {
         CountDownLatch ran = new CountDownLatch(1);
         long jid = env.submit(
                 "{\"type\":\"lock-request\",\"dir\":\"/tmp/job-env\"}",
-                JobRequest.plan("lock", "jk-test-", (line, tok, w) -> ran.countDown()),
+                JobRequest.plan("lock", "jk-test-", (line, tok, w) -> {
+                    ran.countDown();
+                    return null;
+                }),
                 new JobTransport.FireAndForget());
         assertThat(jid).isPositive();
         assertThat(ran.await(5, TimeUnit.SECONDS)).isTrue();
@@ -100,13 +109,14 @@ class JobEnvelopeTest {
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
+                    return null;
                 }),
                 new JobTransport.FireAndForget());
         assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
         try {
             org.assertj.core.api.Assertions.assertThatThrownBy(() -> env.submit(
                             line,
-                            JobRequest.workspace("build", "jk-test-", (l, tok, w) -> {}),
+                            JobRequest.workspace("build", "jk-test-", (l, tok, w) -> null),
                             new JobTransport.FireAndForget()))
                     .isInstanceOf(JobEnvelope.AlreadyRunning.class);
         } finally {

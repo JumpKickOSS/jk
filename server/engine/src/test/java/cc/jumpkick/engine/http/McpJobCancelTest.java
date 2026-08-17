@@ -25,6 +25,10 @@ class McpJobCancelTest {
             cancelled.add(requestId);
             return true;
         }
+
+        public int cancelDir(String dir) {
+            return 0;
+        }
     };
 
     private McpHandler handler(List<HttpLive.Run> live) {

@@ -61,6 +61,11 @@ class McpManifestTest {
             public boolean cancel(long requestId) {
                 return false;
             }
+
+            @Override
+            public int cancelDir(String dir) {
+                return 0;
+            }
         };
         cc.jumpkick.engine.http.McpHandler mcp = new cc.jumpkick.engine.http.McpHandler(
                 () -> new cc.jumpkick.engine.http.StatusSnapshot(

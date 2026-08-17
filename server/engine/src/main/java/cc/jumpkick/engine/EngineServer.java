@@ -337,6 +337,7 @@ public final class EngineServer implements AutoCloseable {
                 jobs,
                 verbs,
                 this::cancelJob,
+                this::cancelJobsForDir,
                 cacheGate);
         this.vitals = new EngineVitals(
                 this.version,

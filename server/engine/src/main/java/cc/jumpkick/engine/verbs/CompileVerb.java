@@ -69,7 +69,8 @@ public final class CompileVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 String profile = Jsonl.str(requestLine, "profile");
@@ -121,7 +122,8 @@ public final class CompileVerb implements HostedVerb {
                                                 writer, wsRoot.get().toString())));
                         host.releaseExclusiveSlot();
                         boolean cancelled = result.cancelled() || host.effectiveCancelled(rid, cancelToken.cancelled());
-                        host.accOutcome(rid, result.success() && !cancelled, result.exitCode());
+                        cc.jumpkick.engine.jobs.JobOutcome outcome = cc.jumpkick.engine.jobs.JobOutcome.of(
+                                result.success() && !cancelled, result.exitCode());
                         if (rid > 0) {
                             if (result.success() && !cancelled) host.finishProgress(rid);
                             host.emitWorkspaceProgress(rid, writer, true);
@@ -131,7 +133,7 @@ public final class CompileVerb implements HostedVerb {
                                 writer,
                                 ProtoEvents.workspaceFinish(
                                         result.success() && !cancelled, result.exitCode(), result.errors(), cancelled));
-                        return;
+                        return outcome;
                     }
                 }
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
@@ -148,5 +150,6 @@ public final class CompileVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
+        return null;
     }
 }

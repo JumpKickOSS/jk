@@ -37,8 +37,6 @@ public interface VerbHost {
 
     boolean effectiveCancelled(long rid, boolean tokenCancelled);
 
-    void accOutcome(long rid, boolean success, int exit);
-
     void accTests(long rid, @Nullable TestSummary tests);
 
     void finishProgress(long rid);

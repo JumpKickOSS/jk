@@ -41,7 +41,8 @@ public final class HistoryListVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             int limit = Math.max(1, Jsonl.intValue(requestLine, "limit", 200));
             // Truncate in the journal (synthetic fixtures are already filtered there) rather
@@ -115,5 +116,6 @@ public final class HistoryListVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
+        return null;
     }
 }

@@ -82,9 +82,6 @@ class VerbRegistryTest {
         }
 
         @Override
-        public void accOutcome(long rid, boolean success, int exit) {}
-
-        @Override
         public void accTests(long rid, TestSummary tests) {}
 
         @Override

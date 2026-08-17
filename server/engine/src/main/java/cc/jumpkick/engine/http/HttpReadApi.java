@@ -273,17 +273,31 @@ final class HttpReadApi {
     }
 
     /**
-     * {@code POST /api/cancel} — body {@code {"jid":N}}.
+     * {@code POST /api/cancel} — body {@code {"jid":N}}, or {@code {"dir":"…"}} to cancel every
+     * live job for a checkout (the wire's dir-scoped cancel, now on every surface).
      */
     void handleCancel(HttpExchange exchange) throws IOException {
         String body = new String(
                 exchange.getRequestBody().readNBytes(HttpEngineServer.MAX_BODY_BYTES), StandardCharsets.UTF_8);
         long jid = cc.jumpkick.plugin.protocol.Jsonl.longValue(body, "jid", -1);
         if (jid < 0) {
+            String dir = cc.jumpkick.plugin.protocol.Jsonl.str(body, "dir");
+            if (dir != null && !dir.isBlank()) {
+                int n = jobs.cancelDir(dir);
+                HttpEngineServer.sendJson(
+                        exchange,
+                        n > 0 ? 200 : 404,
+                        JsonOut.object()
+                                .put("dir", dir)
+                                .put("cancelled", n)
+                                .put("note", n > 0 ? "" : "no running jobs for dir")
+                                .toString());
+                return;
+            }
             HttpEngineServer.sendJson(
                     exchange,
                     400,
-                    JsonOut.object().put("error", "missing \"jid\"").toString());
+                    JsonOut.object().put("error", "missing \"jid\" or \"dir\"").toString());
             return;
         }
         boolean ok = jobs.cancel(jid);

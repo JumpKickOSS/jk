@@ -38,7 +38,8 @@ public final class MetricsVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String dirFilter = Jsonl.str(requestLine, "dir");
             int n = 0;
@@ -61,6 +62,7 @@ public final class MetricsVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
+        return null;
     }
 
     private static String metricsEntryJson(BuildMetrics.Entry e) {

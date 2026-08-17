@@ -42,6 +42,10 @@ class McpDiskTest {
         public boolean cancel(long requestId) {
             return false;
         }
+
+        public int cancelDir(String dir) {
+            return 0;
+        }
     };
 
     private McpHandler handler() {

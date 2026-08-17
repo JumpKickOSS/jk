@@ -59,6 +59,10 @@ class McpContractTest {
         public boolean cancel(long requestId) {
             return requestId == 42L;
         }
+
+        public int cancelDir(String dir) {
+            return 0;
+        }
     };
 
     private final McpHandler mcp = new McpHandler(

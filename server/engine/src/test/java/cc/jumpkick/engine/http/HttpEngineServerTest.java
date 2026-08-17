@@ -119,6 +119,10 @@ class HttpEngineServerTest {
         public boolean cancel(long requestId) {
             return requestId == 7L;
         }
+
+        public int cancelDir(String dir) {
+            return 0;
+        }
     };
 
     @BeforeEach

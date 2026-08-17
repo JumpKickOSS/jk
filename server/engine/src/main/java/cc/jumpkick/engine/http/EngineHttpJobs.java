@@ -25,4 +25,7 @@ public interface EngineHttpJobs {
      * unknown or already finished.
      */
     boolean cancel(long jid);
+
+    /** Cancel every live job for a checkout dir (the wire's dir-scoped cancel). Returns the count. */
+    int cancelDir(String dir);
 }

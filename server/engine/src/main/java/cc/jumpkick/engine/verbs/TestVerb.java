@@ -44,7 +44,8 @@ public final class TestVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String entryDirStr = Jsonl.str(requestLine, "dir");
             String cacheStr = Jsonl.str(requestLine, "cache");
@@ -116,9 +117,10 @@ public final class TestVerb implements HostedVerb {
             host.accTests(
                     host.eventRequestId(),
                     plan.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT).orElse(null));
-            host.accOutcome(host.eventRequestId(), result.success(), result.success() ? 0 : 1);
+            return cc.jumpkick.engine.jobs.JobOutcome.of(result.success(), result.success() ? 0 : 1);
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return null;
         }
     }
 }
