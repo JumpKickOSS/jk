@@ -122,6 +122,30 @@ class OutputWindowTest {
     }
 
     @Test
+    void full_viewport_keeps_rule_and_header_and_trims_tree_rows() {
+        // JK-2106: at a full viewport the tail-slice deleted the separator (and one more over,
+        // the header). Trimming must sacrifice tree rows instead.
+        CommandWedge.resetEnvelope();
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+        cm.name = "Build";
+        cm.height = 6; // tiny viewport: maxRegion = 5
+        cm.startNanos = System.nanoTime();
+        cm.target("g:app");
+        for (int i = 0; i < 10; i++) {
+            cm.addTaskLabeled("g:app", "step-" + i, "Step " + i);
+            cm.stepRunning("g:app", "step-" + i, "");
+        }
+        cm.outputWindow().show();
+        List<String> live = cm.renderBuildPlanLines(80, 0);
+        assertThat(live.size()).isLessThanOrEqualTo(OutputWindow.maxRegionLines(6));
+        String first = TestAnsi.strip(live.get(0));
+        assertThat(first).startsWith("⠒"); // the braille rule survives
+        assertThat(TestAnsi.strip(live.get(1))).contains("Build"); // header survives
+        cm.close();
+    }
+
+    @Test
     void display_budget_clamps_to_max_and_free_rows() {
         // rows - chrome - rule - cursor-park
         assertThat(OutputWindow.displayBudget(40, 5)).isEqualTo(33); // 40 - 5 - 2

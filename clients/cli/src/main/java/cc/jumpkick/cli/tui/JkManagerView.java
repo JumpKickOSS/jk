@@ -563,7 +563,19 @@ final class JkManagerView {
         live.addAll(chrome);
         int maxRegion = OutputWindow.maxRegionLines(m.height);
         if (live.size() > maxRegion) {
-            live = new ArrayList<>(live.subList(live.size() - maxRegion, live.size()));
+            // Overflow drops TREE rows, never the separator or the header: a plain tail-slice
+            // deleted the rule/blank first (violating the invariant above) and, one more over,
+            // the spinner header too (JK-2106). Keep separator rows + chrome head, then fill
+            // the rest with the newest chrome tail rows.
+            int separatorRows = live.size() - chrome.size();
+            List<String> trimmed = new ArrayList<>(maxRegion);
+            for (int i = 0; i < separatorRows && trimmed.size() < maxRegion; i++) trimmed.add(live.get(i));
+            if (!chrome.isEmpty() && trimmed.size() < maxRegion) trimmed.add(chrome.getFirst());
+            int room = maxRegion - trimmed.size();
+            if (room > 0 && chrome.size() > 1) {
+                trimmed.addAll(chrome.subList(Math.max(1, chrome.size() - room), chrome.size()));
+            }
+            live = trimmed;
         }
         return live;
     }
