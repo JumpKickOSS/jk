@@ -196,25 +196,14 @@ final class HttpReadApi {
                 HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "dir");
         StringBuilder body = new StringBuilder("[");
         for (cc.jumpkick.runtime.BuildMetrics.Entry e : metrics.get()) {
-            if (dirFilter != null && !e.dir().isEmpty() && !e.dir().equals(dirFilter)) continue;
+            // Same base-dir filter semantics as the wire metrics verb (project rows fold dir#dN).
+            if (dirFilter != null
+                    && !e.dir().isEmpty()
+                    && !cc.jumpkick.runtime.BuildMetrics.sameBaseDir(dirFilter, e.dir())) {
+                continue;
+            }
             if (body.length() > 1) body.append(',');
-            body.append(JsonOut.object()
-                    .put("scope", e.scope())
-                    .put("kind", e.kind())
-                    .put("dir", e.dir())
-                    .put("coord", e.coord())
-                    .put("task", e.step())
-                    .put("okCount", e.ok().count())
-                    .put("okTotalMillis", e.ok().totalMillis())
-                    .put("okMinMillis", e.ok().minMillis())
-                    .put("okMaxMillis", e.ok().maxMillis())
-                    .put("okAvgMillis", e.ok().avgMillis())
-                    .put("failCount", e.failed().count())
-                    .put("failTotalMillis", e.failed().totalMillis())
-                    .put("failMinMillis", e.failed().minMillis())
-                    .put("failMaxMillis", e.failed().maxMillis())
-                    .put("cancelledCount", e.cancelled().count())
-                    .put("updated", e.updatedMillis()));
+            body.append(cc.jumpkick.engine.verbs.MetricsVerb.metricsFields(JsonOut.object(), e));
         }
         HttpEngineServer.sendJson(exchange, 200, body.append(']').toString());
     }

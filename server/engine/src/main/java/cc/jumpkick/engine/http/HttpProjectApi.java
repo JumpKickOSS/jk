@@ -192,29 +192,21 @@ final class HttpProjectApi {
             }
             dir = path.get().toString();
         }
-        // Resolve identity BEFORE the jk.toml parse: resolution succeeds without a parseable
-        // manifest (lock / identity.toml / hash), so a ?dir= call on a broken or deleted
-        // workspace still gets its durable projectId in the fallback branch.
-        String resolvedId = projectId;
-        try {
-            resolvedId =
-                    cc.jumpkick.builds.ProjectIdentity.resolve(Path.of(dir)).id();
-        } catch (RuntimeException e) {
-            // Invalid path — keep whatever the caller supplied (empty for ?dir= calls).
-        }
-        try {
-            var project = cc.jumpkick.config.JkBuildParser.parse(Path.of(dir).resolve("jk.toml"))
-                    .project();
+        // One card, one parse path (shared with MCP jk_project): identity resolves without a
+        // parseable manifest, so a ?dir= call on a broken workspace still gets its durable id.
+        cc.jumpkick.runtime.ProjectCard card = cc.jumpkick.runtime.ProjectCard.of(Path.of(dir));
+        String resolvedId = card.projectId() != null ? card.projectId() : projectId;
+        if (card.coord() != null) {
             HttpEngineServer.sendJson(
                     exchange,
                     200,
                     JsonOut.object()
                             .put("dir", dir)
                             .put("projectId", resolvedId)
-                            .put("coord", project.group() + ":" + project.name())
-                            .put("description", project.description())
+                            .put("coord", card.coord())
+                            .put("description", card.description())
                             .toString());
-        } catch (RuntimeException e) {
+        } else {
             HttpEngineServer.sendJson(
                     exchange,
                     200,

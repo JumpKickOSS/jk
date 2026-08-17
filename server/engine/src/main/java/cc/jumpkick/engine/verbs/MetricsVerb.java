@@ -64,9 +64,13 @@ public final class MetricsVerb implements HostedVerb {
     }
 
     private static String metricsEntryJson(BuildMetrics.Entry e) {
-        return JsonOut.object()
-                .put("type", EngineProtocol.METRICS_ENTRY)
-                .put("scope", e.scope())
+        return metricsFields(JsonOut.object().put("type", EngineProtocol.METRICS_ENTRY), e)
+                .toString();
+    }
+
+    /** The one metrics-row field map — wire lines and {@code GET /api/metrics} both encode here. */
+    public static JsonOut metricsFields(JsonOut o, BuildMetrics.Entry e) {
+        return o.put("scope", e.scope())
                 .put("kind", e.kind())
                 .put("dir", e.dir())
                 .put("coord", e.coord())
@@ -84,7 +88,6 @@ public final class MetricsVerb implements HostedVerb {
                 .put("cancelledTotalMillis", e.cancelled().totalMillis())
                 .put("cancelledMinMillis", e.cancelled().minMillis())
                 .put("cancelledMaxMillis", e.cancelled().maxMillis())
-                .put("updated", e.updatedMillis())
-                .toString();
+                .put("updated", e.updatedMillis());
     }
 }

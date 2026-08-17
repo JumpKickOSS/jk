@@ -604,7 +604,7 @@ public final class HttpEngineServer implements AutoCloseable {
         return accept.toLowerCase(java.util.Locale.ROOT).contains("text/event-stream");
     }
 
-    /** Project metadata for MCP {@code jk_project} (same parse as GET /api/project). */
+    /** Project metadata fallback for MCP {@code jk_project} — one card, one parse path. */
     private java.util.Map<String, Object> projectMap(String dir) {
         java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
         Path root;
@@ -614,16 +614,11 @@ public final class HttpEngineServer implements AutoCloseable {
             m.put("dir", dir);
             return m;
         }
-        m.put("dir", root.toString());
-        try {
-            var project = cc.jumpkick.config.JkBuildParser.parse(root.resolve("jk.toml"))
-                    .project();
-            m.put("coord", project.group() + ":" + project.name());
-            if (project.description() != null) m.put("description", project.description());
-            m.put("version", project.version());
-        } catch (Exception ignored) {
-            // missing/unparseable jk.toml
-        }
+        cc.jumpkick.runtime.ProjectCard card = cc.jumpkick.runtime.ProjectCard.of(root);
+        m.put("dir", card.dir());
+        if (card.coord() != null) m.put("coord", card.coord());
+        if (card.description() != null) m.put("description", card.description());
+        if (card.version() != null) m.put("version", card.version());
         return m;
     }
 
