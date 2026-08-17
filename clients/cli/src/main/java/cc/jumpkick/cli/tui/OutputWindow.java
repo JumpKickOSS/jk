@@ -35,6 +35,15 @@ public final class OutputWindow {
      */
     private int committedScrollbackLines;
 
+    /** Monotonic count of lines ever accepted into the ring (eviction never decrements). */
+    private long totalAccepted;
+    /**
+     * Logical index (into {@link #totalAccepted}) through which lines have already been printed
+     * into terminal scrollback. Scrollback is permanent — a reopen must dump only NEWER lines,
+     * or every toggle cycle duplicates up to {@link #MAX_LINES} rows (JK-2092).
+     */
+    private long committedThrough;
+
     /**
      * Append one logical line; evicts the oldest when over {@link #MAX_LINES}.
      *
@@ -56,8 +65,27 @@ public final class OutputWindow {
         // Skip pure blank lines — they only create visual gaps before the rule / settle chip.
         if (line.isBlank()) return false;
         lines.add(line);
+        totalAccepted++;
         while (lines.size() > MAX_LINES) lines.remove(0);
         return true;
+    }
+
+    /**
+     * Newest not-yet-committed lines that fit {@code budget} — the open-peek dump. Lines already
+     * printed into scrollback (open dump or live appends while open) are excluded; scrollback is
+     * permanent, so re-printing them duplicates. Callers pair this with {@link #markAllCommitted}.
+     */
+    public synchronized List<String> uncommittedForDisplay(int budget) {
+        long uncommitted = totalAccepted - committedThrough;
+        int n = (int) Math.min(lines.size(), Math.min(uncommitted, Math.min(MAX_LINES, Math.max(0, budget))));
+        if (n <= 0) return List.of();
+        int from = lines.size() - n;
+        return List.copyOf(lines.subList(from, lines.size()));
+    }
+
+    /** Record that everything accepted so far has been printed into scrollback. */
+    public synchronized void markAllCommitted() {
+        committedThrough = totalAccepted;
     }
 
     /** Record that {@code n} process lines were written into terminal scrollback. */

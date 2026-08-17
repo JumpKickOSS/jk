@@ -464,7 +464,9 @@ final class JkManagerView {
         syncTerminalSize();
         List<String> chrome = renderChromeLines(m.width, m.elapsedMillis());
         int budget = OutputWindow.displayBudget(m.height, chrome.size());
-        List<String> pane = m.outputWindow.linesForDisplay(budget);
+        // Uncommitted only: lines from an earlier open (dump or live appends) are already
+        // permanent scrollback right above — re-dumping them duplicates (JK-2092).
+        List<String> pane = m.outputWindow.uncommittedForDisplay(budget);
         int colBudget = JkManagerColor.rowColumnBudget(m.width);
         int up = Math.min(m.lastLines.size(), OutputWindow.maxRegionLines(m.height));
         if (up > 0) {
@@ -479,6 +481,7 @@ final class JkManagerView {
             m.out.print('\n');
         }
         m.outputWindow.noteCommitted(pane.size());
+        m.outputWindow.markAllCommitted();
         writeLiveRegion(liveRegionLines(chrome, m.width));
         m.out.flush();
     }
@@ -521,6 +524,7 @@ final class JkManagerView {
         m.out.print(Ansi.ERASE_LINE_TO_END);
         m.out.print('\n');
         m.outputWindow.noteCommitted(1);
+        m.outputWindow.markAllCommitted();
         List<String> chrome = renderChromeLines(m.width, m.elapsedMillis());
         writeLiveRegion(liveRegionLines(chrome, m.width));
         m.out.flush();

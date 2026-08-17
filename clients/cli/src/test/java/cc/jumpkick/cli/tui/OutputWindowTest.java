@@ -78,6 +78,50 @@ class OutputWindowTest {
     }
 
     @Test
+    void uncommitted_display_excludes_already_committed_lines() {
+        OutputWindow w = new OutputWindow();
+        for (int i = 0; i < 5; i++) w.append("L" + i);
+        assertThat(w.uncommittedForDisplay(10)).hasSize(5);
+        w.markAllCommitted();
+        assertThat(w.uncommittedForDisplay(10)).isEmpty();
+        w.append("L5");
+        w.append("L6");
+        assertThat(w.uncommittedForDisplay(10)).containsExactly("L5", "L6");
+        assertThat(w.uncommittedForDisplay(1)).containsExactly("L6"); // newest within budget
+    }
+
+    @Test
+    void reopen_never_redumps_committed_lines() {
+        // JK-2092: open dumps into permanent scrollback; close→reopen must dump only new lines.
+        CommandWedge.resetEnvelope();
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+        cm.name = "Build";
+        cm.height = 30;
+        cm.startNanos = System.nanoTime();
+
+        cm.writeAbove("alpha-line"); // hidden: ring only
+        cm.outputWindow().show();
+        cm.view.openPeekPaint(); // dumps alpha
+        cm.writeAbove("beta-line"); // visible: lifted+printed once, committed
+        cm.outputWindow().hide();
+        cm.view.closePeekPaint();
+        cm.outputWindow().show();
+        cm.view.openPeekPaint(); // must dump nothing new
+
+        String out = buf.toString(StandardCharsets.UTF_8);
+        assertThat(countOccurrences(out, "alpha-line")).isEqualTo(1);
+        assertThat(countOccurrences(out, "beta-line")).isEqualTo(1);
+        cm.close();
+    }
+
+    private static int countOccurrences(String haystack, String needle) {
+        int n = 0;
+        for (int i = haystack.indexOf(needle); i >= 0; i = haystack.indexOf(needle, i + needle.length())) n++;
+        return n;
+    }
+
+    @Test
     void display_budget_clamps_to_max_and_free_rows() {
         // rows - chrome - rule - cursor-park
         assertThat(OutputWindow.displayBudget(40, 5)).isEqualTo(33); // 40 - 5 - 2
