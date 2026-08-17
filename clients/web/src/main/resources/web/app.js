@@ -406,11 +406,13 @@ const FailReport = {
         <div v-if="rep.assertj.desc" class="fail-line">
           <span class="fail-dim">"</span><span class="fail-desc">{{ rep.assertj.desc }}</span><span class="fail-dim">"</span>
         </div>
+        <!-- JK-2111: expected/actual bodies stay uncolored, matching the CLI (d8dd7760) —
+             values are data, not verdicts; the FAILED chip already carries the verdict. -->
         <div class="fail-line">
-          <span class="fail-mid">&nbsp;Expected:&nbsp;</span><span class="fail-ok">{{ rep.assertj.expected }}</span>
+          <span class="fail-mid">&nbsp;Expected:&nbsp;</span><span>{{ rep.assertj.expected }}</span>
         </div>
         <div class="fail-line">
-          <span class="fail-mid">&nbsp;&nbsp;But Was:&nbsp;</span><span class="fail-err">{{ rep.assertj.actual }}</span>
+          <span class="fail-mid">&nbsp;&nbsp;But Was:&nbsp;</span><span>{{ rep.assertj.actual }}</span>
         </div>
       </template>
       <template v-else-if="rep.message">
