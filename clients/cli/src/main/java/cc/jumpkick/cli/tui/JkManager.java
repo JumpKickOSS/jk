@@ -1090,12 +1090,14 @@ public final class JkManager implements AutoCloseable, LiveRegion {
      */
     private void startKeyListener() {
         if (!planMode || !animate || !Interactivity.canPrompt()) return;
+        Terminal t = null;
+        Attributes saved = null;
         try {
-            Terminal t = Interactivity.takeSharedTerminal();
+            t = Interactivity.takeSharedTerminal();
             if (t == null) {
                 t = Wizard.openTerminal();
             }
-            Attributes saved = t.getAttributes();
+            saved = t.getAttributes();
             Attributes raw = new Attributes(saved);
             raw.setLocalFlag(Attributes.LocalFlag.ICANON, false);
             raw.setLocalFlag(Attributes.LocalFlag.ECHO, false);
@@ -1112,7 +1114,20 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             keyThread.setDaemon(true);
             keyThread.start();
         } catch (Exception ignored) {
-            // Peek is optional — plan continues without Ctrl-O.
+            // Peek is optional — plan continues without Ctrl-O. But never strand the taken tty:
+            // if we failed after setAttributes(raw), the shared terminal's restore hook already
+            // stood down (slot empty), so the shell would inherit a raw, echo-less terminal.
+            // Restore cooked and put the terminal back for the next consumer.
+            if (t != null) {
+                if (saved != null) {
+                    try {
+                        Wizard.restoreCooked(t, saved);
+                    } catch (RuntimeException ignored2) {
+                        // best-effort
+                    }
+                }
+                Interactivity.returnSharedTerminal(t);
+            }
             keyTerminal = null;
             keyAttrsSaved = null;
         }
