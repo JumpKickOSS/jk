@@ -274,8 +274,14 @@ public final class ProtoReads {
     }
 
     public static String editAck(boolean changed, String error) {
+        return editAck(changed, error, "");
+    }
+
+    public static String editAck(boolean changed, String error, String detail) {
         return "{\"type\":\"" + EngineProtocol.EDIT_ACK + "\",\"changed\":" + changed + ",\"error\":"
-                + Jsonl.quote(error) + "}";
+                + Jsonl.quote(error)
+                + ((detail == null || detail.isBlank()) ? "" : ",\"detail\":" + Jsonl.quote(detail))
+                + "}";
     }
 
     public static String freshenCatalogRequest(String catalog, boolean offline, String url, String cacheFile) {

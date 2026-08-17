@@ -577,6 +577,11 @@ public final class EngineClient {
         return EngineBuildListenerAdapter.edit(paths, file, op, args);
     }
 
+    public static String editDetail(cc.jumpkick.engine.EnginePaths.Paths paths, Path file, String op, List<String> args)
+            throws IOException {
+        return EngineBuildListenerAdapter.editDetail(paths, file, op, args);
+    }
+
     /** Engine-hosted {@code jk new} / init scaffold. */
     public static cc.jumpkick.engine.protocol.NewProjectAck newProject(
             cc.jumpkick.engine.EnginePaths.Paths paths, EngineRequests.NewProjectRequest req) throws IOException {

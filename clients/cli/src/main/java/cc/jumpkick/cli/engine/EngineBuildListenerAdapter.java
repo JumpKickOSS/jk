@@ -569,6 +569,20 @@ final class EngineBuildListenerAdapter {
                 });
     }
 
+    static String editDetail(EnginePaths.Paths paths, Path file, String op, List<String> args) throws IOException {
+        return request(
+                paths,
+                ProtoReads.editRequest(file.toString(), op, args),
+                EngineProtocol.EDIT_ACK,
+                "edit request",
+                line -> {
+                    String error = Jsonl.str(line, "error");
+                    if (error != null) throw new IOException(error);
+                    String detail = Jsonl.str(line, "detail");
+                    return detail == null ? "" : detail;
+                });
+    }
+
     /**
      * On-demand engine-hosted catalog freshen ({@code templates}/{@code libraries}/{@code jdks}) —
      * the CLI never touches these catalogs' networks itself once an engine is available. Callers

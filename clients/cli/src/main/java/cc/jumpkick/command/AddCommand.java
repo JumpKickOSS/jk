@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cache.Cas;
-import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
@@ -22,8 +20,6 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.tool.JarManifest;
-import cc.jumpkick.util.Hashing;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -368,21 +364,13 @@ public final class AddCommand implements CliCommand {
         }
         if (library == null) library = artifact;
 
-        // Store in the CAS. File deps are resolved straight from the CAS by their sha256 at both
-        // lock and build time (see ClasspathResolver), so no Maven-layout mirroring is needed.
-        Path cache = JkDirs.cache();
-        Files.createDirectories(cache);
-        // Streamed hash + hard-link — the jar never has to fit in the CLI's small heap.
-        String sha256 = Hashing.sha256Hex(filePath);
-        Cas cas = JkStores.cas(cache);
-        cas.putFile(filePath, sha256);
-
-        // Edit jk.toml (engine-side).
+        // Hash + CAS-put are engine-side; the CLI only names the file.
+        String sha256;
         try {
-            EngineEdits.apply(
+            sha256 = EngineEdits.applyDetail(
                     tomlFile,
                     "add-file-dependency",
-                    java.util.List.of(scope.canonical(), library, group, artifact, version, sha256));
+                    java.util.List.of(scope.canonical(), library, group, artifact, version, filePath.toString()));
         } catch (IOException e) {
             cc.jumpkick.cli.tui.CommandWedge.printFail("Add", e.getMessage());
             return 1;

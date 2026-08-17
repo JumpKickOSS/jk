@@ -50,7 +50,7 @@ public final class EditVerb implements HostedVerb {
             } catch (RuntimeException e) {
                 result = new cc.jumpkick.runtime.EditOps.Result(false, String.valueOf(e.getMessage()));
             }
-            host.sendQuiet(writer, ProtoReads.editAck(result.changed(), result.error()));
+            host.sendQuiet(writer, ProtoReads.editAck(result.changed(), result.error(), result.detail()));
 
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
