@@ -26,6 +26,34 @@ class OutputWindowTest {
     }
 
     @Test
+    void append_reports_acceptance_even_when_ring_is_full() {
+        // JK-2085: once full, every accepted append evicts one line — size stays constant, so a
+        // before/after size compare misreads acceptance as a blank-strip.
+        OutputWindow w = new OutputWindow();
+        for (int i = 0; i < OutputWindow.MAX_LINES; i++) w.append("fill-" + i);
+        assertThat(w.append("over-capacity")).isTrue();
+        assertThat(w.append("   ")).isFalse();
+        assertThat(w.append(null)).isFalse();
+        assertThat(w.linesForDisplay(OutputWindow.MAX_LINES).getLast()).isEqualTo("over-capacity");
+    }
+
+    @Test
+    void writeAbove_keeps_printing_past_ring_capacity_when_not_animating() {
+        // JK-2085: piped/CI plan mode (animate=false) printed nothing after the 200th line.
+        CommandWedge.resetEnvelope();
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), false, true, 80);
+        cm.name = "Build";
+        cm.startNanos = System.nanoTime();
+        int total = OutputWindow.MAX_LINES + 50;
+        for (int i = 0; i < total; i++) cm.writeAbove("tool-line-" + i);
+        String out = buf.toString(StandardCharsets.UTF_8);
+        assertThat(out).contains("tool-line-0");
+        assertThat(out).contains("tool-line-" + (OutputWindow.MAX_LINES + 49));
+        cm.close();
+    }
+
+    @Test
     void display_budget_clamps_to_max_and_free_rows() {
         // rows - chrome - rule - cursor-park
         assertThat(OutputWindow.displayBudget(40, 5)).isEqualTo(33); // 40 - 5 - 2

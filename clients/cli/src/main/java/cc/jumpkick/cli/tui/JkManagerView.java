@@ -382,10 +382,9 @@ final class JkManagerView {
                 return;
             }
             if (m.planMode) {
-                int before = m.outputWindow.size();
-                m.outputWindow.append(text);
-                // Blank/duplicate strips may no-op the append.
-                if (m.outputWindow.size() == before) return;
+                // append() reports blank-strips; a size compare would misread ring-full
+                // eviction (size unchanged on every accepted append) as a strip.
+                if (!m.outputWindow.append(text)) return;
                 if (!m.animate) {
                     m.out.println(text);
                     m.out.flush();

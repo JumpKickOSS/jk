@@ -35,19 +35,29 @@ public final class OutputWindow {
      */
     private int committedScrollbackLines;
 
-    /** Append one logical line; evicts the oldest when over {@link #MAX_LINES}. */
-    public synchronized void append(String line) {
-        if (line == null) return;
+    /**
+     * Append one logical line; evicts the oldest when over {@link #MAX_LINES}.
+     *
+     * @return true when at least one line was accepted into the ring; false when the input was
+     *     blank-stripped. Callers must use this — NOT a before/after {@link #size()} compare:
+     *     once the ring is full every accepted append evicts one line and leaves the size
+     *     unchanged, which a size compare misreads as "stripped" (freezing live peek streaming
+     *     and truncating non-TTY output at {@link #MAX_LINES} lines).
+     */
+    public synchronized boolean append(String line) {
+        if (line == null) return false;
         if (line.indexOf('\n') >= 0) {
-            for (String part : line.split("\n", -1)) append(part);
-            return;
+            boolean any = false;
+            for (String part : line.split("\n", -1)) any |= append(part);
+            return any;
         }
         // Normalize: strip a single trailing CR left by some tools.
         if (line.endsWith("\r")) line = line.substring(0, line.length() - 1);
         // Skip pure blank lines — they only create visual gaps before the rule / settle chip.
-        if (line.isBlank()) return;
+        if (line.isBlank()) return false;
         lines.add(line);
         while (lines.size() > MAX_LINES) lines.remove(0);
+        return true;
     }
 
     /** Record that {@code n} process lines were written into terminal scrollback. */
