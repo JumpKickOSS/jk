@@ -22,6 +22,15 @@ public sealed interface JobKind {
         return !(this instanceof Maintenance);
     }
 
+    /**
+     * Whether the job writes the Chrome timeline into the project's {@code target/}. Maintenance
+     * jobs delete outputs — a clean that leaves a fresh {@code target/jk-profile.json} behind
+     * un-cleans itself.
+     */
+    default boolean writesTimeline() {
+        return !(this instanceof Maintenance);
+    }
+
     default boolean workspaceTerminal() {
         return this instanceof Workspace;
     }

@@ -209,7 +209,7 @@ public final class JobEnvelope {
                 eventKind,
                 eventDir,
                 trigger,
-                Jsonl.bool(requestLine, "noTimeline", false),
+                !job.kind().writesTimeline() || Jsonl.bool(requestLine, "noTimeline", false),
                 rebuildRun,
                 admit.buildNumber(),
                 admit.journalId());

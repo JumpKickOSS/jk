@@ -71,6 +71,25 @@ class JobEnvelopeTest {
     }
 
     @Test
+    void maintenance_kind_never_writes_a_timeline() {
+        FakeHost host = new FakeHost();
+        JobEnvelope env = new JobEnvelope(host);
+        StringWriter out = new StringWriter();
+        env.submit(
+                "{\"type\":\"cache-prune-request\",\"op\":\"clear\",\"dir\":\"/tmp/job-env\"}",
+                JobRequest.maintenance("cache", "jk-test-", (line, tok, w) -> null),
+                new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
+        // A clean that leaves a fresh target/jk-profile.json behind un-cleans itself.
+        assertThat(host.lastNoTimeline).isTrue();
+
+        env.submit(
+                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                JobRequest.plan("build", "jk-test-", (line, tok, w) -> null),
+                new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
+        assertThat(host.lastNoTimeline).isFalse();
+    }
+
+    @Test
     void fire_and_forget_returns_jid_and_finishes_detached() throws Exception {
         FakeHost host = new FakeHost();
         JobEnvelope env = new JobEnvelope(host);
@@ -190,6 +209,8 @@ class JobEnvelopeTest {
         @Override
         public void publishRequestStart(long id, String kind, String dir, long buildNumber) {}
 
+        Boolean lastNoTimeline;
+
         @Override
         public void registerAccumulator(
                 long id,
@@ -199,7 +220,9 @@ class JobEnvelopeTest {
                 boolean noTimeline,
                 boolean rebuild,
                 long buildNumber,
-                String journalId) {}
+                String journalId) {
+            lastNoTimeline = noTimeline;
+        }
 
         @Override
         public ReentrantReadWriteLock cacheGate() {
