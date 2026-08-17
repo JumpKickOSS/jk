@@ -10,16 +10,25 @@ import org.jspecify.annotations.Nullable;
 public final class VerbRegistry {
 
     private final Map<String, HostedVerb> byType;
+    private final Map<String, HostedVerb> byJobKind;
 
     public VerbRegistry(List<HostedVerb> verbs) {
         Map<String, HostedVerb> map = new LinkedHashMap<>();
+        Map<String, HostedVerb> jobs = new LinkedHashMap<>();
         for (HostedVerb v : verbs) {
             HostedVerb prev = map.put(v.wireType(), v);
             if (prev != null) {
                 throw new IllegalArgumentException("duplicate verb " + v.wireType());
             }
+            for (String kind : v.jobKinds()) {
+                HostedVerb dup = jobs.put(kind, v);
+                if (dup != null) {
+                    throw new IllegalArgumentException("duplicate job kind " + kind);
+                }
+            }
         }
         this.byType = Map.copyOf(map);
+        this.byJobKind = Map.copyOf(jobs);
     }
 
     public static VerbRegistry standard(VerbHost host) {
@@ -67,6 +76,11 @@ public final class VerbRegistry {
 
     public @Nullable HostedVerb find(String wireType) {
         return byType.get(wireType);
+    }
+
+    /** The verb serving an HTTP/MCP job kind, or {@code null} when the kind is not exposed. */
+    public @Nullable HostedVerb forJobKind(String kind) {
+        return byJobKind.get(kind);
     }
 
     public List<HostedVerb> all() {

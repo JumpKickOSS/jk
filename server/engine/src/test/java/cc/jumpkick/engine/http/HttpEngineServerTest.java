@@ -3,10 +3,10 @@ package cc.jumpkick.engine.http;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.engine.jobs.JobSpec;
 import java.io.IOException;
 import java.net.BindException;
 import java.net.Socket;
@@ -107,20 +107,10 @@ class HttpEngineServerTest {
     /** Stub {@link EngineHttpJobs}: records the dir, returns a fixed id, rejects "reject me". */
     private final EngineHttpJobs stubJobs = new EngineHttpJobs() {
         @Override
-        public long triggerBuild(String dir) {
-            if (dir.contains("reject")) throw new IllegalArgumentException("no jk.toml in " + dir);
-            triggeredDirs.add(dir);
+        public long trigger(JobSpec spec) {
+            if (spec.dir().contains("reject")) throw new IllegalArgumentException("no jk.toml in " + spec.dir());
+            triggeredDirs.add(spec.dir());
             return 7;
-        }
-
-        @Override
-        public long triggerTest(String dir) {
-            return triggerBuild(dir);
-        }
-
-        @Override
-        public long triggerLock(String dir) {
-            return triggerBuild(dir);
         }
 
         @Override

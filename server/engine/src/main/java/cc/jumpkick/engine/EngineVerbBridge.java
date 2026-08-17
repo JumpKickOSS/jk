@@ -60,19 +60,19 @@ public final class EngineVerbBridge implements VerbHost {
     }
 
     @Override
-    public WorkspaceBuildListener workspaceListener(BufferedWriter writer, String dir) {
-        return listeners.wire(writer, dir);
+    public WorkspaceBuildListener workspaceListener(@Nullable BufferedWriter writer, String dir) {
+        return writer == null ? listeners.hub(dir) : listeners.wire(writer, dir);
     }
 
     @Override
-    public BuildPlanListener planListener(String dir, BufferedWriter writer, BuildPlan plan) {
-        return listeners.wirePlan(dir, writer, plan);
+    public BuildPlanListener planListener(String dir, @Nullable BufferedWriter writer, BuildPlan plan) {
+        return writer == null ? listeners.hubPlan(dir) : listeners.wirePlan(dir, writer, plan);
     }
 
     @Override
     public BuildPlanListener planListener(
-            String dir, BufferedWriter writer, Function<BuildPlanResult, String> finishEncoder) {
-        return listeners.wirePlan(dir, writer, finishEncoder);
+            String dir, @Nullable BufferedWriter writer, Function<BuildPlanResult, String> finishEncoder) {
+        return writer == null ? listeners.hubPlan(dir) : listeners.wirePlan(dir, writer, finishEncoder);
     }
 
     @Override
@@ -112,12 +112,14 @@ public final class EngineVerbBridge implements VerbHost {
     }
 
     @Override
-    public void send(BufferedWriter writer, String line) throws IOException {
+    public void send(@Nullable BufferedWriter writer, String line) throws IOException {
+        if (writer == null) return; // detached job — the sinks and hooks carry the facts
         EngineServer.send(writer, line);
     }
 
     @Override
-    public void sendQuiet(BufferedWriter writer, String line) {
+    public void sendQuiet(@Nullable BufferedWriter writer, String line) {
+        if (writer == null) return;
         EngineServer.sendQuiet(writer, line);
     }
 

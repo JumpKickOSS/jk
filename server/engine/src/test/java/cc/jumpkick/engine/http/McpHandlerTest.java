@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.plugin.protocol.MiniJson;
 import java.util.List;
 import java.util.Map;
@@ -17,18 +18,8 @@ class McpHandlerTest {
 
     private final EngineHttpJobs jobs = new EngineHttpJobs() {
         @Override
-        public long triggerBuild(String dir) {
+        public long trigger(JobSpec spec) {
             return 42L;
-        }
-
-        @Override
-        public long triggerTest(String dir) {
-            return 43L;
-        }
-
-        @Override
-        public long triggerLock(String dir) {
-            return 44L;
         }
 
         @Override

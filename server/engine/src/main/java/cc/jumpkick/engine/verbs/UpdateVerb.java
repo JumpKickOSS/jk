@@ -47,6 +47,29 @@ public final class UpdateVerb implements HostedVerb {
     }
 
     @Override
+    public List<String> jobKinds() {
+        return List.of("update");
+    }
+
+    @Override
+    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+        return cc.jumpkick.engine.protocol.ProtoSession.withTrigger(
+                cc.jumpkick.engine.protocol.ProtoJobs.updateRequest(
+                        spec.dir(),
+                        cc.jumpkick.util.JkDirs.cache().toString(),
+                        List.of(),
+                        false,
+                        null,
+                        false,
+                        null,
+                        false,
+                        false,
+                        false,
+                        null),
+                "web");
+    }
+
+    @Override
     public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             List<String> features = Jsonl.strArray(requestLine, "features");

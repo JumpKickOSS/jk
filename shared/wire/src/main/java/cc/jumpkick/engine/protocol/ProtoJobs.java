@@ -103,6 +103,47 @@ public final class ProtoJobs {
             boolean ephemeralActions,
             boolean testOnly,
             List<String> dirtyHint) {
+        return buildRequest(
+                dir,
+                cache,
+                jdksDir,
+                workers,
+                profile,
+                skipTests,
+                verbose,
+                maxModuleConcurrency,
+                parallelTests,
+                offline,
+                force,
+                freshenLock,
+                ephemeralActions,
+                testOnly,
+                dirtyHint,
+                null);
+    }
+
+    /**
+     * As above with an optional suite/tag {@code selection} ({@code null} or DEFAULT emits
+     * nothing) — how a workspace test job carries the same selection fields as
+     * {@link #testRequest}.
+     */
+    public static String buildRequest(
+            String dir,
+            String cache,
+            String jdksDir,
+            int workers,
+            String profile,
+            boolean skipTests,
+            boolean verbose,
+            int maxModuleConcurrency,
+            boolean parallelTests,
+            boolean offline,
+            boolean force,
+            boolean freshenLock,
+            boolean ephemeralActions,
+            boolean testOnly,
+            List<String> dirtyHint,
+            cc.jumpkick.config.TestSelection selection) {
         // noTimeline rides the session envelope ({@link #withSession}) only when true — never emit
         // a false default here (Jsonl.bool takes the first key match).
         return "{\"type\":\""
@@ -134,6 +175,9 @@ public final class ProtoJobs {
                 + (ephemeralActions ? ",\"ephemeralActions\":true" : "")
                 + (testOnly ? ",\"testOnly\":true" : "")
                 + (dirtyHint != null && !dirtyHint.isEmpty() ? ",\"dirtyHint\":" + jsonStringArray(dirtyHint) : "")
+                + (selection != null && !selection.equals(cc.jumpkick.config.TestSelection.DEFAULT)
+                        ? testSelectionFields(selection)
+                        : "")
                 + triggerJsonSuffix()
                 + progressModeJsonSuffix()
                 + "}";

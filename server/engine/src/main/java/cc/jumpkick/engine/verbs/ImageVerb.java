@@ -16,6 +16,7 @@ import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.runtime.WorkspaceSpec;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -45,6 +46,31 @@ public final class ImageVerb implements HostedVerb {
     @Override
     public String threadPrefix() {
         return "jk-engine-image-";
+    }
+
+    @Override
+    public List<String> jobKinds() {
+        return List.of("image");
+    }
+
+    @Override
+    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+        // No test toggle on the dashboard/agent surface: an image job's deliverable is the image.
+        return cc.jumpkick.engine.protocol.ProtoSession.withTrigger(
+                cc.jumpkick.engine.protocol.ProtoJobs.imageRequest(
+                        spec.dir(),
+                        cc.jumpkick.util.JkDirs.cache().toString(),
+                        cc.jumpkick.util.JkDirs.jdks().toString(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        true,
+                        false,
+                        false,
+                        false),
+                "web");
     }
 
     @Override

@@ -1,48 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.engine.jobs.JobSpec;
+
 /**
- * Async jobs started from the embedded HTTP / MCP surface. Progress on SSE {@code
- * GET /api/events}; cancel via {@link #cancel(long)}.
+ * Async jobs started from the embedded HTTP / MCP surface. One admission point: the spec's kind
+ * resolves to its {@code HostedVerb}, decodes to a wire request line, and submits FireAndForget.
+ * Progress on SSE {@code GET /api/events}; cancel via {@link #cancel(long)}.
  */
-public interface EngineHttpJobs extends BuildTrigger {
-
-    /** {@link #triggerBuild(String)} — dashboard/MCP default. */
-    @Override
-    default long trigger(String dir) {
-        return triggerBuild(dir);
-    }
-
-    /** Workspace build (tests included unless the project skips them). */
-    long triggerBuild(String dir);
+public interface EngineHttpJobs {
 
     /**
-     * True test-only workspace job ({@code testOnly} plans — compile + run tests, no package);
-     * journal kind {@code test}. Prefer for agents that mean “run the suite” (same shape as {@code
-     * jk test}).
+     * Start a job (build / test / lock / …) and return its jid immediately.
+     *
+     * @throws IllegalArgumentException when the kind is not hosted or {@code dir} isn't runnable
+     *     — relayed as a {@code 400}
+     * @throws cc.jumpkick.engine.jobs.JobEnvelope.AlreadyRunning when a same-project job of this
+     *     kind is in flight — relayed as a {@code 409}
      */
-    long triggerTest(String dir);
-
-    /** Resolve and write {@code jk-lock.toml} for {@code dir}. */
-    long triggerLock(String dir);
-
-    /**
-     * Start a job from MCP {@code jk_run} (kind, modules, tags). Default routes to the simple
-     * verbs so tests that only stub build/test/lock keep working.
-     */
-    default long trigger(HttpJobSpec spec) {
-        String kind = spec == null ? "build" : spec.kind();
-        String dir = spec == null ? "" : spec.dir();
-        return switch (kind) {
-            case "test" -> triggerTest(dir);
-            case "lock", "update" -> triggerLock(dir);
-            default -> triggerBuild(dir);
-        };
-    }
+    long trigger(JobSpec spec);
 
     /**
-     * Cooperative cancel + worker grace→force for an HTTP/MCP request id. Returns {@code
-     * false} if the id is unknown or already finished.
+     * Cooperative cancel + worker grace→force for a jid. Returns {@code false} if the id is
+     * unknown or already finished.
      */
-    boolean cancel(long requestId);
+    boolean cancel(long jid);
 }

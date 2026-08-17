@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.engine.http;
+package cc.jumpkick.engine.jobs;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -15,21 +15,21 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-class HttpJobSelectTest {
+class JobSelectTest {
 
     @Test
     void empty_modules_means_no_hint(@TempDir Path root) throws Exception {
         writeWorkspace(root);
         JkBuild build = JkBuildParser.parse(root.resolve("jk.toml"));
-        assertThat(HttpJobSelect.dirtyHint(root, build, List.of())).isNull();
-        assertThat(HttpJobSelect.dirtyHint(root, build, null)).isNull();
+        assertThat(JobSelect.dirtyHint(root, build, List.of())).isNull();
+        assertThat(JobSelect.dirtyHint(root, build, null)).isNull();
     }
 
     @Test
     void unknown_module_fails(@TempDir Path root) throws Exception {
         writeWorkspace(root);
         JkBuild build = JkBuildParser.parse(root.resolve("jk.toml"));
-        assertThatThrownBy(() -> HttpJobSelect.dirtyHint(root, build, List.of("nope")))
+        assertThatThrownBy(() -> JobSelect.dirtyHint(root, build, List.of("nope")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("no module matched");
     }
@@ -38,8 +38,8 @@ class HttpJobSelectTest {
     void selected_module_includes_prereqs(@TempDir Path root) throws Exception {
         writeWorkspace(root);
         JkBuild build = JkBuildParser.parse(root.resolve("jk.toml"));
-        Set<Path> selected = HttpJobSelect.selected(root, build, List.of("api"));
-        Set<Path> dirty = HttpJobSelect.dirtyHint(root, build, List.of("api"));
+        Set<Path> selected = JobSelect.selected(root, build, List.of("api"));
+        Set<Path> dirty = JobSelect.dirtyHint(root, build, List.of("api"));
         assertThat(selected).containsExactly(BuildGraph.canonicalPath(root.resolve("api")));
         assertThat(dirty)
                 .containsExactlyInAnyOrder(
@@ -48,10 +48,10 @@ class HttpJobSelectTest {
 
     @Test
     void tags_are_final_when_set() {
-        TestSelection sel = HttpJobSelect.testSelection(List.of("network"), List.of(), List.of());
+        TestSelection sel = JobSelect.testSelection(List.of("network"), List.of(), List.of());
         assertThat(sel.includeTags()).containsExactly("network");
         assertThat(sel.tagsResolved()).isTrue();
-        assertThat(HttpJobSelect.testSelection(List.of(), List.of(), List.of())).isEqualTo(TestSelection.DEFAULT);
+        assertThat(JobSelect.testSelection(List.of(), List.of(), List.of())).isEqualTo(TestSelection.DEFAULT);
     }
 
     private static void writeWorkspace(Path root) throws Exception {

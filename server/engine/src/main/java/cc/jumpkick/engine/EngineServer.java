@@ -338,11 +338,7 @@ public final class EngineServer implements AutoCloseable {
                 peakActiveConnections,
                 this::liveConnectionCount,
                 jobs,
-                sessions,
-                sse,
-                journalWriter,
-                this::eventRequestId,
-                listeners,
+                verbs,
                 this::cancelJob,
                 cacheGate);
         this.vitals = new EngineVitals(
@@ -832,11 +828,11 @@ public final class EngineServer implements AutoCloseable {
             throws IOException {
         return switch (verb.shape()) {
             case VerbShape.AsyncPlan() -> {
-                jobs.submit(line, verb.toJobRequest(), new JobTransport.SocketWatch(reader, writer));
+                jobs.submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer));
                 yield true;
             }
             case VerbShape.CacheMaint() -> {
-                jobs.submit(line, verb.toJobRequest(), new JobTransport.SocketWatch(reader, writer));
+                jobs.submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer));
                 yield true;
             }
             case VerbShape.SyncRead() -> {

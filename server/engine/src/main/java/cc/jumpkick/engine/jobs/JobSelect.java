@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.engine.http;
+package cc.jumpkick.engine.jobs;
 
 import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.TestSelection;
@@ -12,9 +12,9 @@ import java.util.List;
 import java.util.Set;
 
 /** Resolve MCP/HTTP module names and tag lists into planner inputs. */
-public final class HttpJobSelect {
+public final class JobSelect {
 
-    private HttpJobSelect() {}
+    private JobSelect() {}
 
     /** User-selected module dirs only (canonical). {@code null} when the caller did not filter. */
     public static Set<Path> selected(Path entryDir, JkBuild entry, List<String> modules) {

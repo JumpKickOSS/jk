@@ -224,7 +224,11 @@ final class HttpReadApi {
         HttpEngineServer.sendJson(exchange, 200, cache.get().toJson().toString());
     }
 
-    /** {@code POST /api/build} — acknowledge with a request id; progress streams on {@code /api/events}. */
+    /**
+     * {@code POST /api/build} — acknowledge with a request id; progress streams on
+     * {@code /api/events}. Optional {@code kind} (default {@code build}) starts any HTTP-exposed
+     * job kind (test, lock, …) through the same admission point MCP {@code jk_run} uses.
+     */
     void handleBuild(HttpExchange exchange) throws IOException {
         String body = new String(
                 exchange.getRequestBody().readNBytes(HttpEngineServer.MAX_BODY_BYTES), StandardCharsets.UTF_8);
@@ -236,9 +240,10 @@ final class HttpReadApi {
                     JsonOut.object().put("error", "missing \"dir\"").toString());
             return;
         }
+        String kind = cc.jumpkick.plugin.protocol.Jsonl.str(body, "kind");
         long requestId;
         try {
-            requestId = jobs.triggerBuild(dir);
+            requestId = jobs.trigger(cc.jumpkick.engine.jobs.JobSpec.of(kind, dir));
         } catch (cc.jumpkick.engine.jobs.JobEnvelope.AlreadyRunning e) {
             HttpEngineServer.sendJson(
                     exchange,

@@ -9,6 +9,7 @@ import cc.jumpkick.engine.http.mcp.McpManifest;
 import cc.jumpkick.engine.http.mcp.McpProjectCards;
 import cc.jumpkick.engine.http.mcp.McpReads;
 import cc.jumpkick.engine.http.mcp.McpSession;
+import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.plugin.protocol.MiniJson;
 import cc.jumpkick.util.PathUtil;
 import java.util.ArrayList;
@@ -526,11 +527,11 @@ public final class McpHandler {
                 yield ok(st, statusSummary(st));
             }
             case "jk_build" ->
-                ok(jobPayload(HttpJobSpec.of("build", resolveDir(args, true)), progressToken), "build accepted");
+                ok(jobPayload(JobSpec.of("build", resolveDir(args, true)), progressToken), "build accepted");
             case "jk_test" ->
-                ok(jobPayload(HttpJobSpec.of("test", resolveDir(args, true)), progressToken), "test accepted");
+                ok(jobPayload(JobSpec.of("test", resolveDir(args, true)), progressToken), "test accepted");
             case "jk_lock" ->
-                ok(jobPayload(HttpJobSpec.of("lock", resolveDir(args, true)), progressToken), "lock accepted");
+                ok(jobPayload(JobSpec.of("lock", resolveDir(args, true)), progressToken), "lock accepted");
             case "jk_cancel" -> cancelResult(args);
             case "jk_bind" -> bindResult(args);
             case "jk_project" -> projectResult(args);
@@ -666,7 +667,7 @@ public final class McpHandler {
         return one;
     }
 
-    private Map<String, Object> jobPayload(HttpJobSpec spec, String progressToken) {
+    private Map<String, Object> jobPayload(JobSpec spec, String progressToken) {
         try {
             long requestId = jobs.trigger(spec);
             if (progressToken != null) progressTokens.bind(progressToken, requestId);
@@ -840,7 +841,7 @@ public final class McpHandler {
         }
         String kind = string(args.get("kind"));
         if (kind == null || kind.isBlank()) kind = "build";
-        HttpJobSpec spec = new HttpJobSpec(
+        JobSpec spec = new JobSpec(
                 kind,
                 resolveDir(args, true),
                 stringList(args.get("modules")),
@@ -894,7 +895,7 @@ public final class McpHandler {
         return ok(McpEnvelope.of("job", fields), done ? "finished " + jid : "jid " + jid);
     }
 
-    private long jobPayloadId(HttpJobSpec spec, String progressToken) {
+    private long jobPayloadId(JobSpec spec, String progressToken) {
         Map<String, Object> accepted = jobPayload(spec, progressToken);
         Object jid = accepted.get("jid");
         if (jid instanceof Number n) return n.longValue();

@@ -8,6 +8,7 @@ import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import java.util.List;
 
 public final class CacheMaintenanceVerb implements HostedVerb {
 
@@ -35,6 +36,17 @@ public final class CacheMaintenanceVerb implements HostedVerb {
     @Override
     public String threadPrefix() {
         return "jk-engine-cache-";
+    }
+
+    @Override
+    public List<String> jobKinds() {
+        return List.of("clean");
+    }
+
+    @Override
+    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+        return ProtoSession.withTrigger(
+                ProtoSession.cacheClearRequest(cc.jumpkick.util.JkDirs.cache().toString(), spec.dir(), false), "web");
     }
 
     @Override

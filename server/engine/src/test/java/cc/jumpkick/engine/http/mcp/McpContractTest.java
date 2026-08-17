@@ -4,9 +4,9 @@ package cc.jumpkick.engine.http.mcp;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.http.EngineHttpJobs;
-import cc.jumpkick.engine.http.HttpJobSpec;
 import cc.jumpkick.engine.http.McpHandler;
 import cc.jumpkick.engine.http.StatusSnapshot;
+import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.plugin.protocol.MiniJson;
 import java.util.List;
 import java.util.Map;
@@ -42,26 +42,11 @@ class McpContractTest {
                     + "\"success\":true,\"exitCode\":0,\"millis\":5,\"coord\":\"g:b\","
                     + "\"modules\":[],\"diagnostics\":[]}";
 
-    private HttpJobSpec lastSpec;
+    private JobSpec lastSpec;
 
     private final EngineHttpJobs jobs = new EngineHttpJobs() {
         @Override
-        public long triggerBuild(String dir) {
-            return 42L;
-        }
-
-        @Override
-        public long triggerTest(String dir) {
-            return 43L;
-        }
-
-        @Override
-        public long triggerLock(String dir) {
-            return 44L;
-        }
-
-        @Override
-        public long trigger(HttpJobSpec spec) {
+        public long trigger(JobSpec spec) {
             lastSpec = spec;
             return switch (spec.kind()) {
                 case "test" -> 43L;

@@ -20,6 +20,7 @@ import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /** Workspace {@code build-request}: CLI JSONL stream. */
@@ -49,6 +50,55 @@ public final class WorkspaceBuildVerb implements HostedVerb {
     @Override
     public String threadPrefix() {
         return "jk-engine-build-";
+    }
+
+    @Override
+    public List<String> jobKinds() {
+        return List.of("build", "assemble", "test");
+    }
+
+    @Override
+    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+        Path entryDir = Path.of(spec.dir());
+        JkBuild entry;
+        try {
+            entry = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+        } catch (Exception e) {
+            throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
+        }
+        Set<Path> dirty = cc.jumpkick.engine.jobs.JobSelect.dirtyHint(entryDir, entry, spec.modules());
+        boolean testOnly = "test".equals(spec.kind());
+        boolean skipTests = spec.skipTests() || "assemble".equals(spec.kind());
+        return ProtoSession.withTrigger(
+                ProtoJobs.buildRequest(
+                        entryDir.toString(),
+                        cc.jumpkick.util.JkDirs.cache().toString(),
+                        cc.jumpkick.util.JkDirs.jdks().toString(),
+                        0,
+                        null,
+                        skipTests,
+                        false,
+                        0,
+                        false,
+                        false,
+                        false,
+                        true,
+                        false,
+                        testOnly,
+                        dirty == null
+                                ? null
+                                : dirty.stream().map(Path::toString).sorted().toList(),
+                        cc.jumpkick.engine.jobs.JobSelect.testSelection(
+                                spec.includeTags(), spec.excludeTags(), spec.suites())),
+                "web");
+    }
+
+    /** A workspace test job journals as kind {@code test} on every surface, not {@code build}. */
+    @Override
+    public cc.jumpkick.engine.jobs.JobRequest toJobRequest(String requestLine) {
+        boolean testOnly = Jsonl.bool(requestLine, "testOnly", false);
+        return new cc.jumpkick.engine.jobs.JobRequest(
+                JobKind.workspace(testOnly ? "test" : "build"), threadPrefix(), this::run);
     }
 
     @Override

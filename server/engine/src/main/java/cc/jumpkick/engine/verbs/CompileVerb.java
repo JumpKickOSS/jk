@@ -10,6 +10,7 @@ import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 public final class CompileVerb implements HostedVerb {
@@ -38,6 +39,33 @@ public final class CompileVerb implements HostedVerb {
     @Override
     public String threadPrefix() {
         return "jk-engine-compile-";
+    }
+
+    @Override
+    public List<String> jobKinds() {
+        return List.of("compile");
+    }
+
+    @Override
+    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+        Path entryDir = Path.of(spec.dir());
+        List<String> moduleDirs = List.of();
+        if (!spec.modules().isEmpty()) {
+            cc.jumpkick.model.JkBuild entry;
+            try {
+                entry = cc.jumpkick.config.JkBuildParser.parse(entryDir.resolve("jk.toml"));
+            } catch (Exception e) {
+                throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
+            }
+            Set<Path> selected = cc.jumpkick.engine.jobs.JobSelect.selected(entryDir, entry, spec.modules());
+            if (selected != null) {
+                moduleDirs = selected.stream().map(Path::toString).sorted().toList();
+            }
+        }
+        return cc.jumpkick.engine.protocol.ProtoSession.withTrigger(
+                cc.jumpkick.engine.protocol.ProtoJobs.compileRequest(
+                        spec.dir(), cc.jumpkick.util.JkDirs.cache().toString(), null, false, false, false, moduleDirs),
+                "web");
     }
 
     @Override

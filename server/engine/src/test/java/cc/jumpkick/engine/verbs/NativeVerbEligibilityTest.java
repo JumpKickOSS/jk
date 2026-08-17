@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.engine;
+package cc.jumpkick.engine.verbs;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -20,7 +20,7 @@ import org.junit.jupiter.api.io.TempDir;
  * unrequested multi-minute native-image runs; eligibility was also computed over the
  * dirty-filtered subset, so a dirty non-native module flipped the fallback on.
  */
-class EngineHttpFrontNativeEligibilityTest {
+class NativeVerbEligibilityTest {
 
     private static Path module(Path tmp, String name, boolean nativeTable, boolean withMain) throws Exception {
         Path dir = Files.createDirectories(tmp.resolve(name)).toRealPath();
@@ -55,11 +55,11 @@ class EngineHttpFrontNativeEligibilityTest {
         Map<Path, JkBuild> all = load(lib, cli);
 
         // Selecting only the non-native lib: nothing eligible — and never "everything".
-        Set<Path> targets = EngineHttpFront.nativeEligibleTargets(all, Set.of(BuildGraph.canonicalPath(lib)));
+        Set<Path> targets = NativeVerb.nativeEligibleTargets(all, Set.of(BuildGraph.canonicalPath(lib)));
         assertThat(targets).isEmpty();
 
         // Selecting the native cli works.
-        assertThat(EngineHttpFront.nativeEligibleTargets(all, Set.of(BuildGraph.canonicalPath(cli))))
+        assertThat(NativeVerb.nativeEligibleTargets(all, Set.of(BuildGraph.canonicalPath(cli))))
                 .containsExactly(cli);
     }
 
@@ -70,7 +70,7 @@ class EngineHttpFrontNativeEligibilityTest {
         Path lib = module(tmp, "lib", false, true);
         Path cli = module(tmp, "cli", true, true);
         Map<Path, JkBuild> all = load(lib, cli);
-        assertThat(EngineHttpFront.nativeEligibleTargets(all, null)).containsExactly(cli);
+        assertThat(NativeVerb.nativeEligibleTargets(all, null)).containsExactly(cli);
     }
 
     @Test
@@ -81,7 +81,7 @@ class EngineHttpFrontNativeEligibilityTest {
                 off.resolve("jk.toml"), Files.readString(off.resolve("jk.toml")) + "\n[native]\nenabled = false\n");
         Path app = module(tmp, "app", false, true);
         Map<Path, JkBuild> all = load(off, app);
-        assertThat(EngineHttpFront.nativeEligibleTargets(all, null)).containsExactly(app);
+        assertThat(NativeVerb.nativeEligibleTargets(all, null)).containsExactly(app);
     }
 
     @Test
@@ -89,6 +89,6 @@ class EngineHttpFrontNativeEligibilityTest {
         Path lib = module(tmp, "lib", false, false); // no main — ineligible
         Path app = module(tmp, "app", false, true); // unique main — eligible via fallback
         Map<Path, JkBuild> all = load(lib, app);
-        assertThat(EngineHttpFront.nativeEligibleTargets(all, null)).containsExactly(app);
+        assertThat(NativeVerb.nativeEligibleTargets(all, null)).containsExactly(app);
     }
 }
