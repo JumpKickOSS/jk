@@ -1699,6 +1699,16 @@ export const CodeView = {
           body.encoding = this.file.encoding;
         }
         const resp = await put('/api/project/file', body);
+        // The dashboard's snippet cache (app.js SOURCE_CACHE) memoizes this file's lines —
+        // stale lines silently degrade the next compile-failure context window to a single
+        // embedded row until a full reload (JK-2114). Announce the save; app.js evicts.
+        try {
+          window.dispatchEvent(
+            new CustomEvent('jk:file-saved', { detail: { project: this.projectId, path: savedPath } }),
+          );
+        } catch {
+          /* non-browser test env */
+        }
         if (this.path !== savedPath) return; // navigated away — the write landed; drop the state
         const nextEtag = (resp && resp.etag) || null;
         if (this.file) this.file = { ...this.file, content, etag: nextEtag };
