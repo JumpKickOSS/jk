@@ -122,7 +122,9 @@ final class EngineBuildListenerAdapter {
                                     : req.dirtyHint().stream()
                                             .map(Object::toString)
                                             .sorted()
-                                            .toList()),
+                                            .toList(),
+                            null,
+                            req.modules()),
                     req.variant(),
                     req.clientEnv(),
                     SessionContext.current().jvm(),
@@ -667,9 +669,14 @@ final class EngineBuildListenerAdapter {
     }
 
     static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(EnginePaths.Paths paths, Path dir) throws IOException {
+        return projectInfo(paths, dir, null, null);
+    }
+
+    static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(
+            EnginePaths.Paths paths, Path dir, String modules, String affectedSince) throws IOException {
         return request(
                 paths,
-                ProtoReads.projectInfoRequest(dir.toString(), ""),
+                ProtoReads.projectInfoRequest(dir.toString(), "", modules, affectedSince),
                 EngineProtocol.PROJECT_INFO_ACK,
                 "project-info request",
                 cc.jumpkick.engine.protocol.ProjectInfo::decode);

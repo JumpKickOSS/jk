@@ -12,17 +12,9 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.RichText;
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.WorkspaceLoader;
-import cc.jumpkick.config.WorkspaceLocator;
-import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.lock.LockPaths;
-import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.LockfileReader;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -30,18 +22,12 @@ import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.runtime.TaskForecast;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * {@code jk status} — project + machine build dashboard: engine vitals, project identity,
@@ -448,194 +434,37 @@ public final class StatusCommand implements CliCommand {
         Path buildFile = cwd.resolve("jk.toml");
         if (!Files.isRegularFile(buildFile)) return null;
         try {
-            JkBuild build = JkBuildParser.parse(buildFile);
-            // Resolve project.*.workspace / omitted-field inheritance from the workspace root.
-            build = WorkspaceResolve.applyWorkspace(cwd, build);
-            // Prefer concrete pins from jk-lock.toml [[module]] when still unresolved or as a check.
-            build = applyLockModulePin(cwd, build);
-
-            var p = build.project();
-            String group = sanitizeIdentity(p.group());
-            String name =
-                    p.name() == null || p.name().isBlank() ? cwd.getFileName().toString() : p.name();
-            String version = sanitizeIdentity(p.version());
+            var info = BuildCommand.projectInfoOrNull(cwd);
+            if (info == null) {
+                return new ProjectSnapshot(cwd.getFileName().toString(), "—", "—", 0, 0, 0);
+            }
+            String group = info.group() == null ? "" : info.group();
+            String name = info.name() == null || info.name().isBlank()
+                    ? cwd.getFileName().toString()
+                    : info.name();
+            String version = info.version() == null ? "" : info.version();
             String coord = group.isEmpty()
                     ? name + (version.isEmpty() ? "" : ":" + version)
                     : group + ":" + name + (version.isEmpty() ? "" : ":" + version);
 
             List<String> langs = new ArrayList<>();
-            int java = p.javaRelease();
-            if (java > 0) langs.add("Java " + java);
-            if (p.kotlin() != null) langs.add("Kotlin " + versionLabel(p.kotlin()));
-            if (p.groovy() != null) langs.add("Groovy " + versionLabel(p.groovy()));
+            if (info.javaRelease() > 0) langs.add("Java " + info.javaRelease());
+            if (info.kotlin() && !info.kotlinVersion().isBlank()) langs.add("Kotlin " + info.kotlinVersion());
+            else if (info.kotlin()) langs.add("Kotlin");
+            if (info.groovy() && !info.groovyVersion().isBlank()) langs.add("Groovy " + info.groovyVersion());
+            else if (info.groovy()) langs.add("Groovy");
             if (langs.isEmpty()) langs.add("Java");
 
-            String jdk = p.jdk();
-            if (jdk == null || jdk.isBlank() || JkBuild.VERSION_FROM_WORKSPACE.equals(jdk)) jdk = "—";
+            String jdk = info.jdk();
+            if (jdk == null || jdk.isBlank()) jdk = info.lockJdk();
+            if (jdk == null || jdk.isBlank()) jdk = "—";
 
-            // Workspace-wide module list when we're inside a monorepo (root or member).
-            List<Path> modules = workspaceModuleDirs(cwd, build);
-            int sources = 0, tests = 0;
-            for (Path mod : modules) {
-                sources += countSources(mod, true);
-                tests += countSources(mod, false);
-            }
-            return new ProjectSnapshot(coord, String.join(", ", langs), jdk, modules.size(), sources, tests);
+            int modules = info.moduleDirs().isEmpty() ? 1 : info.moduleDirs().size();
+            return new ProjectSnapshot(
+                    coord, String.join(", ", langs), jdk, modules, info.sourceCount(), info.testCount());
         } catch (Exception e) {
             return new ProjectSnapshot(cwd.getFileName().toString(), "—", "—", 0, 0, 0);
         }
-    }
-
-    /** Strip unresolved workspace sentinels so the UI never shows {@code __jk.workspace__}. */
-    private static String sanitizeIdentity(String value) {
-        if (value == null || value.isBlank() || JkBuild.VERSION_FROM_WORKSPACE.equals(value)) return "";
-        return value;
-    }
-
-    /**
-     * Apply a matching {@code [[module]]} pin from the workspace (or project) lockfile — concrete
-     * group/version/jdk/java after inheritance was frozen at lock time.
-     */
-    private static JkBuild applyLockModulePin(Path cwd, JkBuild build) {
-        try {
-            Path lockFile = LockPaths.lockFile(cwd);
-            if (!Files.isRegularFile(lockFile)) return build;
-            Lockfile lock = LockfileReader.read(lockFile);
-            if (lock.modules().isEmpty()) return build;
-            Path owner = LockPaths.lockOwnerDir(cwd).toAbsolutePath().normalize();
-            String rel = owner.relativize(cwd.toAbsolutePath().normalize())
-                    .toString()
-                    .replace('\\', '/');
-            if (rel.isEmpty()) rel = ".";
-            final String pathKey = rel;
-            Lockfile.ModuleEntry pin = lock.modules().stream()
-                    .filter(m ->
-                            pathKey.equals(m.path()) || build.project().name().equals(m.name()))
-                    .findFirst()
-                    .orElse(null);
-            if (pin == null) return build;
-            var p = build.project();
-            String group = blankOrSentinel(p.group()) ? pin.group() : p.group();
-            String version = blankOrSentinel(p.version()) ? pin.version() : p.version();
-            String jdk = blankOrSentinel(p.jdk()) && pin.jdk() != null ? pin.jdk() : p.jdk();
-            int javaRelease = p.java() > 0 ? p.java() : (pin.java() != null ? pin.java() : 0);
-            if (group.equals(p.group())
-                    && version.equals(p.version())
-                    && Objects.equals(jdk, p.jdk())
-                    && javaRelease == p.java()
-                    && !p.inheritsFromWorkspace()) {
-                return build;
-            }
-            var resolved = new JkBuild.Project(
-                    group,
-                    p.name(),
-                    version,
-                    jdk,
-                    javaRelease,
-                    p.kotlin(),
-                    p.groovy(),
-                    p.sourcesMode(),
-                    p.description(),
-                    p.m2install(),
-                    p.layout(),
-                    Set.of());
-            return build.withProject(resolved);
-        } catch (Exception e) {
-            return build;
-        }
-    }
-
-    private static boolean blankOrSentinel(String value) {
-        return value == null || value.isBlank() || JkBuild.VERSION_FROM_WORKSPACE.equals(value);
-    }
-
-    /**
-     * Module directories for source counts: workspace members when inside a monorepo, else this
-     * project only.
-     */
-    private static List<Path> workspaceModuleDirs(Path cwd, JkBuild build) {
-        List<Path> out = new ArrayList<>();
-        try {
-            Path rootDir = build.isWorkspaceRoot()
-                    ? cwd
-                    : WorkspaceLocator.findRoot(cwd).orElse(null);
-            if (rootDir != null) {
-                JkBuild root = build.isWorkspaceRoot() ? build : JkBuildParser.parse(rootDir.resolve("jk.toml"));
-                if (root.isWorkspaceRoot()) {
-                    for (var e : WorkspaceLoader.loadModules(rootDir, root).entrySet()) {
-                        out.add(e.getKey());
-                    }
-                    // Include a buildable root itself.
-                    if (Files.isDirectory(rootDir.resolve("src")) || Files.isDirectory(rootDir.resolve("src/main"))) {
-                        out.add(rootDir);
-                    }
-                }
-            }
-        } catch (Exception ignored) {
-            // fall through to single-module
-        }
-        if (out.isEmpty()) {
-            if (build.isWorkspaceRoot() && build.workspaceOpt().isPresent()) {
-                for (String rel : build.workspaceOpt().get().modules()) {
-                    if (rel == null || rel.isBlank()) continue;
-                    Path m = cwd.resolve(rel).normalize();
-                    if (Files.isDirectory(m)) out.add(m);
-                }
-            }
-        }
-        if (out.isEmpty()) out.add(cwd);
-        return out;
-    }
-
-    /** Count Java/Kotlin/Groovy sources under main (or test) trees. */
-    static int countSources(Path module, boolean main) {
-        AtomicInteger n = new AtomicInteger();
-        List<Path> roots = new ArrayList<>();
-        if (main) {
-            roots.add(module.resolve("src/main/java"));
-            roots.add(module.resolve("src/main/kotlin"));
-            roots.add(module.resolve("src/main/groovy"));
-        } else {
-            roots.add(module.resolve("src/test/java"));
-            roots.add(module.resolve("src/test/kotlin"));
-            roots.add(module.resolve("src/test/groovy"));
-            roots.add(module.resolve("test/src"));
-        }
-        // Dedup when layouts collapse (e.g. only one of the roots exists).
-        for (Path root : roots.stream().distinct().toList()) {
-            if (!Files.isDirectory(root)) continue;
-            try {
-                Files.walkFileTree(root, new SimpleFileVisitor<>() {
-                    @Override
-                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                        String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
-                        if (name.endsWith(".java")
-                                || name.endsWith(".kt")
-                                || name.endsWith(".kts")
-                                || name.endsWith(".groovy")) {
-                            n.incrementAndGet();
-                        }
-                        return FileVisitResult.CONTINUE;
-                    }
-
-                    @Override
-                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                        return FileVisitResult.CONTINUE;
-                    }
-                });
-            } catch (IOException ignored) {
-                // best-effort counts
-            }
-        }
-        return n.get();
-    }
-
-    private static String versionLabel(cc.jumpkick.model.VersionSelector v) {
-        if (v == null) return "";
-        if (v instanceof cc.jumpkick.model.VersionSelector.Exact e) return e.version();
-        if (v instanceof cc.jumpkick.model.VersionSelector.Caret c) return c.version();
-        if (v instanceof cc.jumpkick.model.VersionSelector.Tilde t) return t.version();
-        return v.raw();
     }
 
     private static String findLastHistory(EnginePaths.Paths paths, Path cwd) {

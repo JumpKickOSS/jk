@@ -9,6 +9,8 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -17,7 +19,13 @@ import org.junit.jupiter.api.io.TempDir;
  * selection they advertise — an invalid selector fails fast instead of being silently ignored,
  * and {@code image} demands exactly one selected module.
  */
+@Tag("integration")
 class ModuleFlagValidationTest {
+
+    @BeforeAll
+    static void materializeEngine() {
+        cc.jumpkick.cli.engine.EngineTestSupport.ensureEngineMaterialized();
+    }
 
     private static void workspace(Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """

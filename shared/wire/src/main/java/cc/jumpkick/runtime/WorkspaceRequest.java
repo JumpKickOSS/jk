@@ -1,20 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.model.JkBuild;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
  * Engine workspace-build request ({@code BuildService.buildWorkspace}).
  *
- * <p>{@code entryBuild} may be {@code null}: the engine re-parses {@code jk.toml} from
- * {@link #entryDir()}. Clients must not ship a parsed model over the wire.
+ * <p>The engine always parses {@code jk.toml} from {@link #entryDir()}. Clients send directory,
+ * flags, and optional module-selector tokens — never a parsed model.
  */
 public record WorkspaceRequest(
         Path entryDir,
-        JkBuild entryBuild,
         Path cache,
         Path jdksDir,
         int workers,
@@ -48,16 +47,24 @@ public record WorkspaceRequest(
          * Target basket + optional module cone. Default {@link WorkspaceSpec#DEFAULT} is package /
          * whole graph — same as historical {@code jk build}.
          */
-        WorkspaceSpec spec) {
+        WorkspaceSpec spec,
+        /**
+         * {@code -m}/{@code --affected-since} tokens ({@code affected:<ref>} prefix). Empty: no
+         * client filter. The engine resolves these via {@code ModuleSelection} / {@code JobSelect}.
+         */
+        List<String> modules) {
 
     public WorkspaceRequest {
         if (spec == null) spec = WorkspaceSpec.DEFAULT;
+        if (modules == null) modules = List.of();
+        else modules = List.copyOf(modules);
+        if (variant == null) variant = "";
+        if (clientEnv == null) clientEnv = Map.of();
     }
 
-    /** Defaults testOnly=false, variant empty, clientEnv empty. */
+    /** Defaults testOnly=false, variant empty, clientEnv empty, no module selectors. */
     public WorkspaceRequest(
             Path entryDir,
-            JkBuild entryBuild,
             Path cache,
             Path jdksDir,
             int workers,
@@ -70,7 +77,6 @@ public record WorkspaceRequest(
             boolean freshenLock) {
         this(
                 entryDir,
-                entryBuild,
                 cache,
                 jdksDir,
                 workers,
@@ -85,13 +91,13 @@ public record WorkspaceRequest(
                 "",
                 Map.of(),
                 false,
-                WorkspaceSpec.DEFAULT);
+                WorkspaceSpec.DEFAULT,
+                List.of());
     }
 
     /** Pre-ephemeralActions canonical shape (defaults false — persistent caches). */
     public WorkspaceRequest(
             Path entryDir,
-            JkBuild entryBuild,
             Path cache,
             Path jdksDir,
             int workers,
@@ -107,7 +113,6 @@ public record WorkspaceRequest(
             Map<String, String> clientEnv) {
         this(
                 entryDir,
-                entryBuild,
                 cache,
                 jdksDir,
                 workers,
@@ -122,14 +127,14 @@ public record WorkspaceRequest(
                 variant,
                 clientEnv,
                 false,
-                WorkspaceSpec.DEFAULT);
+                WorkspaceSpec.DEFAULT,
+                List.of());
     }
 
     /** This request with a variant selection + client-resolved env attached. */
     public WorkspaceRequest withVariant(String variant, Map<String, String> clientEnv) {
         return new WorkspaceRequest(
                 entryDir,
-                entryBuild,
                 cache,
                 jdksDir,
                 workers,
@@ -144,14 +149,14 @@ public record WorkspaceRequest(
                 variant == null ? "" : variant,
                 clientEnv == null ? Map.of() : clientEnv,
                 ephemeralActions,
-                spec);
+                spec,
+                modules);
     }
 
     /** Copy with {@link #testOnly()} set (HTTP/MCP {@code jk_test} true test-only path). */
     public WorkspaceRequest withTestOnly(boolean testOnly) {
         return new WorkspaceRequest(
                 entryDir,
-                entryBuild,
                 cache,
                 jdksDir,
                 workers,
@@ -166,14 +171,14 @@ public record WorkspaceRequest(
                 variant,
                 clientEnv,
                 ephemeralActions,
-                spec);
+                spec,
+                modules);
     }
 
     /** Copy with {@link #ephemeralActions()} set ({@code jk verify} scratch rebuild). */
     public WorkspaceRequest withEphemeralActions(boolean ephemeralActions) {
         return new WorkspaceRequest(
                 entryDir,
-                entryBuild,
                 cache,
                 jdksDir,
                 workers,
@@ -188,14 +193,14 @@ public record WorkspaceRequest(
                 variant,
                 clientEnv,
                 ephemeralActions,
-                spec);
+                spec,
+                modules);
     }
 
     /** Copy with target / selection (native, image, compile, …). */
     public WorkspaceRequest withSpec(WorkspaceSpec spec) {
         return new WorkspaceRequest(
                 entryDir,
-                entryBuild,
                 cache,
                 jdksDir,
                 workers,
@@ -210,7 +215,30 @@ public record WorkspaceRequest(
                 variant,
                 clientEnv,
                 ephemeralActions,
-                spec == null ? WorkspaceSpec.DEFAULT : spec);
+                spec == null ? WorkspaceSpec.DEFAULT : spec,
+                modules);
+    }
+
+    /** Copy with {@code -m}/{@code --affected-since} selector tokens. */
+    public WorkspaceRequest withModules(List<String> modules) {
+        return new WorkspaceRequest(
+                entryDir,
+                cache,
+                jdksDir,
+                workers,
+                profile,
+                skipTests,
+                verbose,
+                maxModuleConcurrency,
+                dirtyHint,
+                applyMemoryPlan,
+                freshenLock,
+                testOnly,
+                variant,
+                clientEnv,
+                ephemeralActions,
+                spec,
+                modules == null ? List.of() : modules);
     }
 
     /** Effective target: explicit spec, else TEST when {@link #testOnly}. */

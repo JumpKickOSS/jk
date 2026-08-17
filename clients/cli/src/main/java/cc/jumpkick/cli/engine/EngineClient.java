@@ -627,7 +627,13 @@ public final class EngineClient {
      */
     public static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(
             cc.jumpkick.engine.EnginePaths.Paths paths, Path dir) throws IOException {
-        return EngineBuildListenerAdapter.projectInfo(paths, dir);
+        return projectInfo(paths, dir, null, null);
+    }
+
+    public static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(
+            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, String modules, String affectedSince)
+            throws IOException {
+        return EngineBuildListenerAdapter.projectInfo(paths, dir, modules, affectedSince);
     }
 
     /**

@@ -19,6 +19,7 @@ val bundledCodec by configurations.creating {
 dependencies {
     compileOnly(project(":plugin-sdk"))
     bundledCodec(project(":plugin-sdk"))
+    bundledCodec(project(":jsonl"))
     testImplementation(project(":plugin-sdk"))
 }
 

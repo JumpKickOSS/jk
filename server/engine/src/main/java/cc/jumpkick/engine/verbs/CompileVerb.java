@@ -118,7 +118,6 @@ public final class CompileVerb implements HostedVerb {
                         }
                         cc.jumpkick.runtime.WorkspaceRequest req = new cc.jumpkick.runtime.WorkspaceRequest(
                                         wsRoot.get(),
-                                        rootBuild,
                                         session.cacheDir(),
                                         session.jdksDir(),
                                         0,

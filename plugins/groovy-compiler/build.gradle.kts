@@ -30,6 +30,7 @@ dependencies {
     // via `bundledCodec` below so the codec is present in the worker JVM.
     compileOnly(project(":plugin-sdk"))
     bundledCodec(project(":plugin-sdk"))
+    bundledCodec(project(":jsonl"))
     testImplementation(project(":plugin-sdk"))
 }
 

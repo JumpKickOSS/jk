@@ -32,6 +32,27 @@ final class TaskCatalog {
         }
     }
 
+    static Optional<Path> output(TaskDef task, cc.jumpkick.engine.protocol.ProjectInfo info) {
+        if (task.primaryOutput == null || info == null) return Optional.empty();
+        String path =
+                switch (task.name()) {
+                    case "compile-java",
+                            "assemble-classes",
+                            "copy-resources",
+                            "build-logic-after-compile",
+                            "build-logic-before-package" -> info.classesDir();
+                    case "compile-kotlin" -> info.kotlinClassesDir();
+                    case "compile-groovy" -> info.groovyClassesDir();
+                    case "compile-test" -> info.testClassesDir();
+                    case "run-tests" -> info.testResultsDir();
+                    case "package-jar" -> info.mainJarPath();
+                    case "package-assembly" -> info.assemblyJarPath();
+                    default -> "";
+                };
+        if (path == null || path.isBlank()) return Optional.empty();
+        return Optional.of(Path.of(path));
+    }
+
     private static final List<TaskDef> BUILD_TASKS = List.of(
             def(TaskNames.PARSE_BUILD, "Parse jk.toml / workspace modules", null),
             def(TaskNames.RESOLVE_DEPS, "Resolve dependencies / lock materialize", null),

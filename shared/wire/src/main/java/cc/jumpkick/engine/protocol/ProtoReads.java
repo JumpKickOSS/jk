@@ -248,8 +248,23 @@ public final class ProtoReads {
     }
 
     public static String projectInfoRequest(String dir, String cache) {
+        return projectInfoRequest(dir, cache, null, null);
+    }
+
+    /**
+     * As {@link #projectInfoRequest(String, String)} with optional {@code -m}/{@code
+     * --affected-since} filters (omitted when blank).
+     */
+    public static String projectInfoRequest(String dir, String cache, String modules, String affectedSince) {
+        String extra = "";
+        if (modules != null && !modules.isBlank()) extra += ",\"modules\":" + Jsonl.quote(modules);
+        if (affectedSince != null && !affectedSince.isBlank()) {
+            extra += ",\"affectedSince\":" + Jsonl.quote(affectedSince);
+        }
         return "{\"type\":\"" + EngineProtocol.PROJECT_INFO_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + ",\"cache\":"
-                + Jsonl.quote(cache) + "}";
+                + Jsonl.quote(cache)
+                + extra
+                + "}";
     }
 
     public static String outdatedRequest(String dir, String cache, String repoUrl, boolean offline, boolean force) {

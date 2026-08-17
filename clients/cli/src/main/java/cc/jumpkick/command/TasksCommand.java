@@ -6,12 +6,8 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.ModuleSelection;
-import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -29,7 +25,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * {@code jk tasks} — Mill-lite task list / show / inspect.
@@ -113,7 +108,7 @@ public final class TasksCommand implements CliCommand {
     }
 
     static int list(Invocation in, Path startDir, Path buildFile) throws Exception {
-        Map<Path, JkBuild> modules = resolveModules(in, startDir, buildFile);
+        Map<Path, ProjectInfo> modules = resolveModules(in, startDir);
         if (modules.isEmpty()) {
             cc.jumpkick.cli.tui.CommandWedge.printFail("Tasks", "no modules selected");
             return Exit.CONFIG;
@@ -123,8 +118,7 @@ public final class TasksCommand implements CliCommand {
         for (var e : modules.entrySet()) {
             String title = "Tasks";
             if (multi) {
-                title = "Tasks — " + e.getValue().project().group() + ":"
-                        + e.getValue().project().name() + " (" + rel(startDir, e.getKey()) + ")";
+                title = "Tasks — " + e.getValue().coord() + " (" + rel(startDir, e.getKey()) + ")";
             }
             if (!first) CliOutput.out("");
             first = false;
@@ -158,7 +152,7 @@ public final class TasksCommand implements CliCommand {
             return Exit.CONFIG;
         }
         TaskCatalog.TaskDef task = def.get();
-        Map<Path, JkBuild> modules = resolveModules(in, startDir, buildFile);
+        Map<Path, ProjectInfo> modules = resolveModules(in, startDir);
         if (modules.isEmpty()) {
             cc.jumpkick.cli.tui.CommandWedge.printFail("Tasks", "no modules selected");
             return Exit.CONFIG;
@@ -171,10 +165,9 @@ public final class TasksCommand implements CliCommand {
         ExplainPlan forecast = inspect ? explainBestEffort(startDir, cache, global) : null;
         for (var e : modules.entrySet()) {
             Path modDir = e.getKey();
-            JkBuild build = e.getValue();
-            BuildLayout layout = BuildLayout.of(modDir, build);
-            String coord = build.project().group() + ":" + build.project().name();
-            Optional<Path> out = task.output(layout);
+            ProjectInfo info = e.getValue();
+            String coord = info.coord();
+            Optional<Path> out = TaskCatalog.output(task, info);
             boolean exists = out.isPresent() && Files.exists(out.get());
 
             if (inspect) {
@@ -211,56 +204,33 @@ public final class TasksCommand implements CliCommand {
         return 0;
     }
 
-    private static Map<Path, JkBuild> resolveModules(Invocation in, Path startDir, Path buildFile) throws Exception {
-        JkBuild entry = JkBuildParser.parse(buildFile);
+    private static Map<Path, ProjectInfo> resolveModules(Invocation in, Path startDir) {
         Path root = startDir.toAbsolutePath().normalize();
         String modulesSpec = in.value("modules").orElse(null);
         String affected = in.value("affected-since").orElse(null);
-        // Inside a workspace member with a selector: resolve against the enclosing root so
-        // `-m sibling` works exactly like build/test. No selector stays module-local.
-        if (!entry.isWorkspaceRoot()
+        var peek = BuildCommand.projectInfoOrNull(root);
+        if (peek != null
+                && !peek.workspaceRoot()
+                && !peek.workspaceRootDir().isBlank()
                 && ((modulesSpec != null && !modulesSpec.isBlank()) || (affected != null && !affected.isBlank()))) {
-            var rootOpt = cc.jumpkick.config.WorkspaceLocator.findRoot(root);
-            if (rootOpt.isPresent()) {
-                JkBuild rootBuild = JkBuildParser.parse(rootOpt.get().resolve("jk.toml"));
-                if (rootBuild.isWorkspaceRoot()) {
-                    entry = rootBuild;
-                    root = rootOpt.get().toAbsolutePath().normalize();
-                }
-            }
+            root = Path.of(peek.workspaceRootDir()).toAbsolutePath().normalize();
         }
-
-        Map<Path, JkBuild> all = new LinkedHashMap<>();
-        if (entry.isWorkspaceRoot()) {
-            all.putAll(WorkspaceLoader.loadModules(root, entry));
-            // Include root only if it has its own artifact-ish project name and is not pure coordinator
-            // — for task show we stick to workspace modules.
-        } else {
-            all.put(root, entry);
+        var info = BuildCommand.projectInfoOrError(root, modulesSpec, affected);
+        if (info.error() != null && !info.error().isBlank()) {
+            throw new IllegalStateException(info.error());
         }
-
-        ModuleSelection.Result selected = ModuleSelection.resolveOptional(root, entry, modulesSpec, affected);
-        if (selected != null && !selected.ok()) {
-            throw new IllegalStateException(selected.errorMessage());
+        Map<Path, ProjectInfo> out = new LinkedHashMap<>();
+        if (info.moduleDirs().isEmpty()) {
+            var self = BuildCommand.projectInfoOrNull(startDir);
+            if (self != null) out.put(startDir.toAbsolutePath().normalize(), self);
+            return out;
         }
-        if (selected == null) {
-            // Single project: current dir. Workspace with no selector: all modules.
-            return all;
+        for (String d : info.moduleDirs()) {
+            Path abs = Path.of(d).toAbsolutePath().normalize();
+            var mod = BuildCommand.projectInfoOrNull(abs);
+            if (mod != null) out.put(abs, mod);
         }
-        Set<Path> want = selected.moduleDirs();
-        Map<Path, JkBuild> filtered = new LinkedHashMap<>();
-        for (var e : all.entrySet()) {
-            Path abs = e.getKey().toAbsolutePath().normalize();
-            if (want.contains(abs)) filtered.put(abs, e.getValue());
-        }
-        // Selection may resolve dirs not in all if user is in a module — re-parse those
-        for (Path p : want) {
-            Path abs = p.toAbsolutePath().normalize();
-            if (!filtered.containsKey(abs) && Files.isRegularFile(abs.resolve("jk.toml"))) {
-                filtered.put(abs, JkBuildParser.parse(abs.resolve("jk.toml")));
-            }
-        }
-        return filtered;
+        return out;
     }
 
     private static String rel(Path root, Path p) {

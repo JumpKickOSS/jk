@@ -110,16 +110,13 @@ public final class WorkspaceExecute {
      * {@code HeapPlan}/{@code PluginSlots} state sized for just itself.
      */
     public static WorkspaceResult buildWorkspace(WorkspaceRequest req, WorkspaceBuildListener listener) {
-        cc.jumpkick.model.JkBuild entryBuild = req.entryBuild();
-        if (entryBuild == null) {
-            try {
-                entryBuild =
-                        cc.jumpkick.config.JkBuildParser.parse(req.entryDir().resolve("jk.toml"));
-            } catch (Exception e) {
-                WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(String.valueOf(e.getMessage())));
-                listener.onWorkspaceFinish(r);
-                return r;
-            }
+        cc.jumpkick.model.JkBuild entryBuild;
+        try {
+            entryBuild = JkBuildParser.parse(req.entryDir().resolve("jk.toml"));
+        } catch (Exception e) {
+            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(String.valueOf(e.getMessage())));
+            listener.onWorkspaceFinish(r);
+            return r;
         }
         // Re-lock when the workspace lock is stale so unsatisfiable deps fail here instead of
         // a false "all up to date" from per-module forecasts. Soft I/O failures don't block.
@@ -225,6 +222,12 @@ public final class WorkspaceExecute {
             dirty = req.dirtyHint();
             listener.onPreflight(
                     "checking", 1, 1, dirty.isEmpty() ? "Nothing dirty" : dirty.size() + " module(s) dirty");
+        } else if (req.testOnly()) {
+            // Workspace {@code jk test} with no client dirty hint: run every module in the
+            // (already cone-filtered) graph — not a cache-forecast subset.
+            listener.onPreflight("checking", 0, 0, "Testing all selected modules…");
+            dirty = Set.copyOf(moduleDirs);
+            listener.onPreflight("checking", 1, 1, dirty.size() + " module(s)");
         } else {
             listener.onPreflight("checking", 0, 0, "Checking cache…");
             preflight = BuildForecasting.forecastWithFingerprints(

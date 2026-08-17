@@ -4,9 +4,6 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.ModuleSelection;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -104,22 +101,21 @@ public final class SelectiveCommand implements CliCommand {
 
     private static int resolve(Path dir, Path buildFile, String since, String modules, boolean json, Set<Path> into)
             throws Exception {
-        JkBuild entry = JkBuildParser.parse(buildFile);
         if ((since == null || since.isBlank()) && (modules == null || modules.isBlank())) {
             cc.jumpkick.cli.tui.CommandWedge.printFail("Selective", "pass --since=<ref> and/or --modules=<sel>");
             return Exit.USAGE;
         }
-        var selected = ModuleSelection.resolveOptional(dir, entry, modules, since);
-        if (selected == null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Selective", "pass --since=<ref> and/or --modules=<sel>");
-            return Exit.USAGE;
-        }
-        if (!selected.ok()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Selective", selected.errorMessage());
+        var selected = BuildCommand.projectInfoOrError(dir, modules, since);
+        if (selected.error() != null && !selected.error().isBlank()) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Selective", selected.error());
             return Exit.CONFIG;
         }
-        if (into != null) into.addAll(selected.moduleDirs());
-        List<String> rels = toRelPaths(dir, selected.moduleDirs());
+        Set<Path> selectedDirs = new LinkedHashSet<>();
+        for (String d : selected.moduleDirs()) {
+            selectedDirs.add(Path.of(d).toAbsolutePath().normalize());
+        }
+        if (into != null) into.addAll(selectedDirs);
+        List<String> rels = toRelPaths(dir, selectedDirs);
         if (json) {
             CliOutput.out("{\"modules\":["
                     + String.join(",", rels.stream().map(SelectiveCommand::q).toList()) + "]}");

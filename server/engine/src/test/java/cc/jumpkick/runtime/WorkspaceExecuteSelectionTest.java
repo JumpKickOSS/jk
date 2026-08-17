@@ -75,7 +75,7 @@ class WorkspaceExecuteSelectionTest {
         var libUnit = new BuildGraph.BuildUnit(lib, libB, "ex:lib", BuildGraph.Origin.MODULE);
         var appUnit = new BuildGraph.BuildUnit(app, appB, "ex:app", BuildGraph.Origin.MODULE);
         WorkspaceRequest req = new WorkspaceRequest(
-                        tmp, appB, tmp.resolve("cache"), null, 0, null, true, false, 0, null, true, true)
+                        tmp, tmp.resolve("cache"), null, 0, null, true, false, 0, null, true, true)
                 .withSpec(WorkspaceSpec.nativeImage(Set.of(app), Map.of(app, graal), null, List.of()));
 
         var libPlan = WorkspaceExecute.assemblePlan(libUnit, req, Set.of(lib, app), false);

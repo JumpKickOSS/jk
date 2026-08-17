@@ -112,8 +112,7 @@ class TaskForecasterImageTargetTest {
         var units = graph.topoOrder();
         Path cache = root.resolve("cache");
 
-        WorkspaceRequest base =
-                new WorkspaceRequest(root, rootBuild, cache, null, 0, null, false, false, 0, null, true, true);
+        WorkspaceRequest base = new WorkspaceRequest(root, cache, null, 0, null, false, false, 0, null, true, true);
 
         // PACKAGE: no terminal dirs.
         assertThat(WorkspaceExecute.terminalTargetDirs(units, base)).isEmpty();
