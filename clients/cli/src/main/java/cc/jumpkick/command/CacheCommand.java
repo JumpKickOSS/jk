@@ -289,6 +289,42 @@ public final class CacheCommand extends GroupCommand {
         }
     }
 
+    static CacheUsageStats cacheUsageFromAck(cc.jumpkick.engine.protocol.CacheInventoryAck ack) {
+        return new CacheUsageStats(
+                statFromAck(ack, "classFiles"),
+                statFromAck(ack, "testResults"),
+                statFromAck(ack, "eventLogs"),
+                statFromAck(ack, "normalJars"),
+                statFromAck(ack, "shadowJars"),
+                statFromAck(ack, "minifiedJars"),
+                statFromAck(ack, "nativeBins"),
+                statFromAck(ack, "ociImages"),
+                statFromAck(ack, "stamps"),
+                new Stats(ack.totalFiles(), ack.totalBytes()));
+    }
+
+    static StoreUsageStats storeUsageFromAck(cc.jumpkick.engine.protocol.CacheInventoryAck ack) {
+        return new StoreUsageStats(
+                statFromAck(ack, "jars"),
+                statFromAck(ack, "executables"),
+                statFromAck(ack, "oci"),
+                statFromAck(ack, "workers"));
+    }
+
+    private static Stats statFromAck(cc.jumpkick.engine.protocol.CacheInventoryAck ack, String name) {
+        for (String row : ack.stats()) {
+            String[] f = row.split("\\|", -1);
+            if (f.length >= 3 && name.equals(f[0])) {
+                try {
+                    return new Stats(Long.parseLong(f[1]), Long.parseLong(f[2]));
+                } catch (NumberFormatException ignored) {
+                    return new Stats(0, 0);
+                }
+            }
+        }
+        return new Stats(0, 0);
+    }
+
     /** Breakdown used by storage / status — fields ordered for the reports. */
     record SectionStats(Stats cas, Stats actions, Stats repos, Stats runs, Stats stamps) {
         long totalFiles() {
@@ -683,7 +719,19 @@ public final class CacheCommand extends GroupCommand {
                 CliOutput.out("Cache: " + cc.jumpkick.cli.PathDisplay.styledRaw(root) + " (not yet created)");
                 return 0;
             }
-            CacheUsageStats s = cacheUsageStats(root);
+            cc.jumpkick.engine.protocol.CacheInventoryAck ack;
+            try {
+                ack = cc.jumpkick.cli.engine.EngineClient.cacheInventory(
+                        cc.jumpkick.engine.EnginePaths.current(), "usage", root, null, List.of(), List.of(), false);
+            } catch (IOException e) {
+                CommandWedge.printFail("Cache", String.valueOf(e.getMessage()));
+                return 1;
+            }
+            if (ack.error() != null) {
+                CommandWedge.printFail("Cache", ack.error());
+                return 1;
+            }
+            CacheUsageStats s = cacheUsageFromAck(ack);
             var cfg = cc.jumpkick.config.JkCacheConfig.resolve();
             long maxBytes = cfg.maxCacheSizeBytes();
             String lastCleaned = lastPrunedLabel(root);

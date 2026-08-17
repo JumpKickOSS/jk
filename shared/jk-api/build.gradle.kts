@@ -4,22 +4,12 @@ plugins {
     id("jk.java-conventions")
 }
 
-description = "jk-api: the stable front-end/plugin contract (IO/thread machinery lives in :core) — BuildPlan/Step scheduler SPI, " +
+description = "jk-api: the stable front-end contract (IO/thread machinery lives in :core) — BuildPlan/Step scheduler SPI, " +
         "Dependency/Coordinate model, BuildPlanListener + command (CliCommand/Invocation) SPI. " +
-        "Zero external dependencies — JDK + Lombok + JSpecify only."
+        "Zero project dependencies — JDK + JSpecify only. PluginConfig lives here so the " +
+        "native CLI does not link :plugin-sdk."
 
 // This module IS jk's public API surface (Gradle project ":jk-api"; dir kept at
 // shared/jk-api): the impl-free contract that
 // plugins, third-party tools, and alternative front-ends (IDE/web/CI) compile
-// against. The contract leaf is the {plugin-api, model} PAIR: plugin-api sits below
-// (it holds jk's promised JDK 17 project floor — its classes ride the user's test
-// JVM — and owns PluginConfig); model layers the rest of the contract on top at the
-// engine's language level. Keeping both JDK-only means a consumer needs no jk
-// internal classpath to get BuildPlan, Step, Coordinate, the command SPI, etc. A
-// front-end that additionally *drives* builds depends on :engine for the
-// BuildService facade (exactly as the CLI does). Do not add project() dependencies
-// here beyond :plugin-api, and no external dependencies in either module.
-
-dependencies {
-    api(project(":plugin-sdk"))
-}
+// against. Plugin workers compile against :plugin-sdk (JDK 17), not this module.

@@ -8,8 +8,8 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoSession;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.runtime.BuildService;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
@@ -114,18 +114,7 @@ public final class ImageVerb implements HostedVerb {
                         // Workspace member: same orchestrator as jk build; image terminal on this
                         // module; prereqs package. Events are workspace-progress (not single-plan).
                         WorkspaceRequest req = new WorkspaceRequest(
-                                        wsRoot.get(),
-                                        rootBuild,
-                                        cache,
-                                        jdksDir,
-                                        0,
-                                        null,
-                                        skipTests,
-                                        verbose,
-                                        0,
-                                        null,
-                                        true,
-                                        true)
+                                        wsRoot.get(), cache, jdksDir, 0, null, skipTests, verbose, 0, null, true, true)
                                 .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
                                 .withSpec(WorkspaceSpec.image(
                                         Set.of(entryDir.toAbsolutePath().normalize()),

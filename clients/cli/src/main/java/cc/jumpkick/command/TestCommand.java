@@ -17,7 +17,6 @@ import cc.jumpkick.cli.run.SessionMirrorListener;
 import cc.jumpkick.cli.run.TestFailureHighlight;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.JkManager;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -28,15 +27,12 @@ import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -134,54 +130,49 @@ public final class TestCommand implements CliCommand {
         // 0 = auto (Mill-like min(jobs, classCount) + heap clamp); explicit -w1 keeps one JVM.
         int workerCount = workers != null ? Math.max(0, workers) : 0;
 
-        cc.jumpkick.model.JkBuild entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
+        var info = BuildCommand.projectInfoOrNull(dir);
 
         // Workspace root: fan out to members so a bare `jk test` is not just the root
         // module's (usually empty) suite.
-        if (entry.isWorkspaceRoot()) {
-            Set<Path> moduleDirs;
-            boolean selective = (affectedSince != null && !affectedSince.isBlank())
-                    || (modulesSpec != null && !modulesSpec.isBlank());
-            if (selective) {
-                var selected =
-                        cc.jumpkick.config.ModuleSelection.resolveOptional(dir, entry, modulesSpec, affectedSince);
-                if (selected != null && !selected.ok()) {
-                    cc.jumpkick.cli.tui.CommandWedge.printFail("Test", selected.errorMessage());
-                    if (session != null) session.error(selected.errorMessage());
+        if (info != null && info.workspaceRoot()) {
+            List<String> tokens = ModuleSelectors.tokens(modulesSpec, affectedSince);
+            if (!tokens.isEmpty()) {
+                var sel = BuildCommand.projectInfoOrError(dir, modulesSpec, affectedSince);
+                if (sel.error() != null && !sel.error().isBlank()) {
+                    cc.jumpkick.cli.tui.CommandWedge.printFail("Test", sel.error());
+                    if (session != null) session.error(sel.error());
                     return finishSession(Exit.CONFIG);
                 }
-                if (selected == null || selected.moduleDirs().isEmpty()) {
+                if (sel.moduleDirs().isEmpty()) {
                     cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "nothing selected for tests");
                     if (session != null) session.wedge("nothing selected for tests");
                     return finishSession(0);
                 }
-                moduleDirs = selected.moduleDirs();
-            } else {
-                moduleDirs = allWorkspaceModuleDirs(dir, entry);
-                if (moduleDirs.isEmpty()) {
-                    cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "workspace declares no modules");
-                    if (session != null) session.wedge("workspace declares no modules");
-                    return finishSession(0);
-                }
+            } else if (info.moduleDirs().isEmpty()) {
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "workspace declares no modules");
+                if (session != null) session.wedge("workspace declares no modules");
+                return finishSession(0);
             }
-            return finishSession(runWorkspaceTests(dir, entry, cache, workerCount, moduleDirs));
+            return finishSession(runWorkspaceTests(dir, cache, workerCount, tokens));
         }
 
         // Single-module selective: --modules / --affected-since may exclude this dir.
         if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
-            var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(dir, entry, modulesSpec, affectedSince);
-            if (selected != null && !selected.ok()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Test", selected.errorMessage());
-                if (session != null) session.error(selected.errorMessage());
+            var sel = BuildCommand.projectInfoOrError(dir, modulesSpec, affectedSince);
+            if (sel.error() != null && !sel.error().isBlank()) {
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Test", sel.error());
+                if (session != null) session.error(sel.error());
                 return finishSession(Exit.CONFIG);
             }
-            if (selected != null && selected.moduleDirs().isEmpty()) {
+            if (sel.moduleDirs().isEmpty()) {
                 cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "nothing selected for tests");
                 if (session != null) session.wedge("nothing selected for tests");
                 return finishSession(0);
             }
-            if (selected != null
-                    && !selected.moduleDirs().contains(dir.toAbsolutePath().normalize())) {
+            Path here = dir.toAbsolutePath().normalize();
+            boolean hit = sel.moduleDirs().stream()
+                    .anyMatch(d -> Path.of(d).toAbsolutePath().normalize().equals(here));
+            if (!hit) {
                 cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "nothing selected for tests");
                 if (session != null) session.wedge("nothing selected for tests");
                 return finishSession(0);
@@ -268,49 +259,35 @@ public final class TestCommand implements CliCommand {
         return argv;
     }
 
-    /** Absolute dirs of every workspace member (declaration order). */
-    static Set<Path> allWorkspaceModuleDirs(Path workspaceRoot, cc.jumpkick.model.JkBuild entry) {
-        LinkedHashSet<Path> dirs = new LinkedHashSet<>();
-        if (!entry.isWorkspaceRoot()) return dirs;
-        Path root = workspaceRoot.toAbsolutePath().normalize();
-        for (String m : entry.workspaceOpt().orElseThrow().modules()) {
-            if (m == null || m.isBlank()) continue;
-            dirs.add(root.resolve(m.strip()).normalize());
-        }
-        return dirs;
-    }
-
     /**
      * Workspace tests: one engine {@code buildWorkspace} RPC with {@code testOnly=true} — same
      * live aggregate TUI as {@code jk build} (single {@link JkManager} header + bar + module
      * tree), terminal target {@code run-tests} per module instead of package.
      */
-    private int runWorkspaceTests(Path entryDir, JkBuild entryBuild, Path cache, int workerCount, Set<Path> dirtyDirs)
+    private int runWorkspaceTests(Path entryDir, Path cache, int workerCount, List<String> modules)
             throws IOException, InterruptedException {
-        if (dirtyDirs == null || dirtyDirs.isEmpty()) return 0;
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
         if (!live) {
-            return runWorkspaceTestsHeadless(entryDir, entryBuild, cache, workerCount, dirtyDirs);
+            return runWorkspaceTestsHeadless(entryDir, cache, workerCount, modules);
         }
-        return runWorkspaceTestsLive(entryDir, entryBuild, cache, workerCount, dirtyDirs);
+        return runWorkspaceTestsLive(entryDir, cache, workerCount, modules);
     }
 
     /** Live TTY: one JkManager "Test" region — mirrors {@link BuildCommand} workspace live path. */
-    private int runWorkspaceTestsLive(
-            Path entryDir, JkBuild entryBuild, Path cache, int workerCount, Set<Path> dirtyDirs) {
+    private int runWorkspaceTestsLive(Path entryDir, Path cache, int workerCount, List<String> modules) {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         cc.jumpkick.cli.engine.EnginePrewarm.ensure();
         long start = System.nanoTime();
         JkManager view = JkManager.plan(CliOutput.stdout(), "Test", animate);
-        view.setWindowTitle("JumpKick - Testing " + BuildCommand.projectGavLabel(entryDir, entryBuild) + "...");
+        view.setWindowTitle("JumpKick - Testing " + BuildCommand.projectGavLabel(entryDir) + "...");
         AggregateContext agg = new AggregateContext(view);
         Map<Path, List<String>> buffers = new ConcurrentHashMap<>();
         List<String> deferredOutput = Collections.synchronizedList(new ArrayList<>());
         AtomicInteger completed = new AtomicInteger();
         int[] total = {0};
-        var request = workspaceTestRequest(entryDir, entryBuild, cache, workerCount, dirtyDirs);
+        var request = workspaceTestRequest(entryDir, cache, workerCount, modules);
         WorkspaceResult result;
         try {
             result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
@@ -448,8 +425,7 @@ public final class TestCommand implements CliCommand {
     }
 
     /** Headless / JSON: same workspace RPC as live, no JkManager chrome. */
-    private int runWorkspaceTestsHeadless(
-            Path entryDir, JkBuild entryBuild, Path cache, int workerCount, Set<Path> dirtyDirs) {
+    private int runWorkspaceTestsHeadless(Path entryDir, Path cache, int workerCount, List<String> modules) {
         boolean json = global != null && global.outputIsJson();
         long start = System.nanoTime();
         int[] total = {0};
@@ -457,7 +433,7 @@ public final class TestCommand implements CliCommand {
         // concurrently, so output is buffered and printed as one block per module finish.
         var buffers = new ConcurrentHashMap<Path, List<String>>();
         var done = new AtomicInteger();
-        var request = workspaceTestRequest(entryDir, entryBuild, cache, workerCount, dirtyDirs);
+        var request = workspaceTestRequest(entryDir, cache, workerCount, modules);
         WorkspaceResult result;
         try {
             result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
@@ -561,8 +537,7 @@ public final class TestCommand implements CliCommand {
         return result.exitCode();
     }
 
-    private WorkspaceRequest workspaceTestRequest(
-            Path entryDir, JkBuild entryBuild, Path cache, int workerCount, Set<Path> dirtyDirs) {
+    private WorkspaceRequest workspaceTestRequest(Path entryDir, Path cache, int workerCount, List<String> modules) {
         String variant = cc.jumpkick.config.SessionContext.current().variant();
         if (variant == null) variant = "";
         Map<String, String> clientEnv =
@@ -570,7 +545,6 @@ public final class TestCommand implements CliCommand {
         int concurrency = parallelTests ? jobs : 1;
         return new WorkspaceRequest(
                         entryDir,
-                        entryBuild,
                         cache,
                         jdksDir,
                         workerCount,
@@ -578,11 +552,12 @@ public final class TestCommand implements CliCommand {
                         /* skipTests */ false,
                         global.verbose,
                         concurrency,
-                        dirtyDirs,
+                        null,
                         true,
                         true)
                 .withTestOnly(true)
-                .withVariant(variant, clientEnv);
+                .withVariant(variant, clientEnv)
+                .withModules(modules);
     }
 
     private static List<String> snapshot(List<String> deferred) {
@@ -657,38 +632,36 @@ public final class TestCommand implements CliCommand {
         }
         Path wd = GlobalOptions.from(in).workingDir();
         Path toml = wd.resolve("jk.toml");
-        var baseline = cc.jumpkick.config.JkBuildParser.parseTestTags(toml);
-        List<String> include = new ArrayList<>(baseline.includeTags());
-        List<String> exclude = new ArrayList<>(baseline.excludeTags());
+        String explicit = in.value("profile").orElse(null);
+        boolean explicitProfile = explicit != null && !explicit.isBlank();
+        String profileName = explicitProfile ? explicit : cc.jumpkick.model.Profiles.autoSelect(System.getenv());
+        List<String> scanKeys = new ArrayList<>();
+        scanKeys.add("test.include-tags");
+        scanKeys.add("test.exclude-tags");
+        if (profileName != null && !profileName.isBlank()) {
+            scanKeys.add("profiles." + profileName + ".include-tags");
+            scanKeys.add("profiles." + profileName + ".exclude-tags");
+        }
+        var scan = cc.jumpkick.config.TomlScan.scan(toml, scanKeys.toArray(String[]::new));
+        List<String> include = new ArrayList<>(scan.stringArray("test.include-tags"));
+        List<String> exclude = new ArrayList<>(scan.stringArray("test.exclude-tags"));
         // Track whether any layer explicitly resolved the tag lists. Only then is the selection
         // final (tagsResolved) — otherwise the engine may still fold per-module [test] tags in
         // for workspace members (a root with no tags must not erase a module's own filters).
-        boolean spoke =
-                !baseline.includeTags().isEmpty() || !baseline.excludeTags().isEmpty();
-        // Profile when selected / auto. --no-profile skips. AUTO profile defers when CLI set any
-        // tag option so e.g. `jk test --include-tags slow` is not beaten by profile filters.
+        boolean spoke = scan.hasKey("test.include-tags") || scan.hasKey("test.exclude-tags");
         boolean cliTags = cliInclude || cliExclude;
-        try {
-            if (!in.isSet("no-profile") && Files.isRegularFile(toml)) {
-                var build = cc.jumpkick.config.JkBuildParser.parse(toml);
-                String explicit = in.value("profile").orElse(null);
-                boolean explicitProfile = explicit != null && !explicit.isBlank();
-                String name = explicitProfile ? explicit : cc.jumpkick.model.Profiles.autoSelect(System.getenv());
-                boolean apply = name != null && build.profiles().contains(name) && (explicitProfile || !cliTags);
-                if (apply) {
-                    var p = build.profiles().resolve(name);
-                    if (p.includeTagsSet()) {
-                        include = new ArrayList<>(p.includeTags());
-                        spoke = true; // present-but-empty clears — must survive to the runner
-                    }
-                    if (p.excludeTagsSet()) {
-                        exclude = new ArrayList<>(p.excludeTags());
-                        spoke = true;
-                    }
-                }
+        boolean applyProfile = !in.isSet("no-profile") && profileName != null && (explicitProfile || !cliTags);
+        if (applyProfile) {
+            String incKey = "profiles." + profileName + ".include-tags";
+            String excKey = "profiles." + profileName + ".exclude-tags";
+            if (scan.hasKey(incKey)) {
+                include = new ArrayList<>(scan.stringArray(incKey));
+                spoke = true;
             }
-        } catch (Exception ignored) {
-            // profile optional
+            if (scan.hasKey(excKey)) {
+                exclude = new ArrayList<>(scan.stringArray(excKey));
+                spoke = true;
+            }
         }
         if (cliInclude) {
             include = new ArrayList<>(in.values("include-tags"));

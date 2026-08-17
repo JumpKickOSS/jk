@@ -4,14 +4,12 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
-import cc.jumpkick.config.JkBuildEditor;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -76,26 +74,28 @@ public final class AssemblyCommand implements CliCommand {
             return Exit.USAGE;
         }
 
-        JkBuildParser.ArtifactOverride override = minified
-                ? new JkBuildParser.ArtifactOverride(true, true)
-                : fat ? new JkBuildParser.ArtifactOverride(true, false) : null;
+        boolean oneOff = fat || minified;
         String overrideLabel = minified ? "minified" : "fat";
 
-        if (writeConfig && override != null) {
-            String original = Files.readString(toml);
-            String edited = JkBuildEditor.setArtifacts(original, override.assembly(), override.minified());
-            if (!edited.equals(original)) {
-                Files.writeString(toml, edited);
-                CliOutput.err("jk assemble: wrote [application] " + overrideLabel + " = true to "
-                        + PathDisplay.styledRaw(toml));
-            } else {
-                CliOutput.err("jk assemble: jk.toml already has " + overrideLabel + " = true");
+        if (writeConfig && oneOff) {
+            try {
+                boolean changed = EngineEdits.apply(
+                        toml, "set-artifacts", List.of(String.valueOf(true), String.valueOf(minified)));
+                if (changed) {
+                    CliOutput.err("jk assemble: wrote [application] " + overrideLabel + " = true to "
+                            + PathDisplay.styledRaw(toml));
+                } else {
+                    CliOutput.err("jk assemble: jk.toml already has " + overrideLabel + " = true");
+                }
+            } catch (IOException e) {
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Assemble", e.getMessage());
+                return Exit.SOFTWARE;
             }
         }
 
-        if (override == null) {
-            JkBuild project = JkBuildParser.parse(toml);
-            if (!project.assembly()) {
+        if (!oneOff) {
+            var info = BuildCommand.projectInfoOrNull(dir);
+            if (info == null || !info.assembly()) {
                 CliOutput.err("""
                         jk assemble: no bundled artifact is configured — pick one:
 

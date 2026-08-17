@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.protocol;
 
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -144,6 +144,48 @@ public final class ProtoJobs {
             boolean testOnly,
             List<String> dirtyHint,
             cc.jumpkick.config.TestSelection selection) {
+        return buildRequest(
+                dir,
+                cache,
+                jdksDir,
+                workers,
+                profile,
+                skipTests,
+                verbose,
+                maxModuleConcurrency,
+                parallelTests,
+                offline,
+                force,
+                freshenLock,
+                ephemeralActions,
+                testOnly,
+                dirtyHint,
+                selection,
+                List.of());
+    }
+
+    /**
+     * As above with optional {@code modules} selector tokens ({@code affected:<ref>} prefix). The
+     * engine resolves them; omitted when empty so older engines see an unchanged request.
+     */
+    public static String buildRequest(
+            String dir,
+            String cache,
+            String jdksDir,
+            int workers,
+            String profile,
+            boolean skipTests,
+            boolean verbose,
+            int maxModuleConcurrency,
+            boolean parallelTests,
+            boolean offline,
+            boolean force,
+            boolean freshenLock,
+            boolean ephemeralActions,
+            boolean testOnly,
+            List<String> dirtyHint,
+            cc.jumpkick.config.TestSelection selection,
+            List<String> modules) {
         // noTimeline rides the session envelope ({@link #withSession}) only when true — never emit
         // a false default here (Jsonl.bool takes the first key match).
         return "{\"type\":\""
@@ -178,6 +220,7 @@ public final class ProtoJobs {
                 + (selection != null && !selection.equals(cc.jumpkick.config.TestSelection.DEFAULT)
                         ? testSelectionFields(selection)
                         : "")
+                + (modules != null && !modules.isEmpty() ? ",\"modules\":" + jsonStringArray(modules) : "")
                 + triggerJsonSuffix()
                 + progressModeJsonSuffix()
                 + "}";

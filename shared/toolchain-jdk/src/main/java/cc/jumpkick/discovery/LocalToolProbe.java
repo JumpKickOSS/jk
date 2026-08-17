@@ -2,7 +2,6 @@
 package cc.jumpkick.discovery;
 
 import cc.jumpkick.jdk.JdkHit;
-import cc.jumpkick.plugin.Extension;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
@@ -19,13 +18,12 @@ import java.util.Optional;
  * registered via {@link java.util.ServiceLoader}. On the native-image binary ServiceLoader can only
  * see probes baked in at build time — runtime plugin discovery is JVM-mode only, by design.
  */
-public interface LocalToolProbe extends Extension {
+public interface LocalToolProbe {
 
     /** Probe identifier, surfaced in diagnostics and {@code jk jdk list}. */
     String name();
 
-    /** An extension's id is its probe name. */
-    @Override
+    /** Stable identity — same as {@link #name()}. */
     default String id() {
         return name();
     }

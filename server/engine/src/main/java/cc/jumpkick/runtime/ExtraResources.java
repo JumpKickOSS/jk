@@ -13,7 +13,7 @@ import java.util.Map;
 /**
  * Resolves {@code [build] extra-resources} into concrete source→destination copies.
  *
- * <p>jk-core bakes {@code plugins/*}{@code /jk-plugin.toml} in as the built-in plugin registry. Those
+ * <p>The engine bakes {@code plugins/*}{@code /jk-plugin.toml} in as the built-in plugin registry. Those
  * blueprint files are the single source of truth third parties copy, so duplicating them into the
  * module would create a second copy that drifts — and {@code jk.toml} previously had no way to say
  * "include that file from over there", which is what stopped the repo self-hosting.

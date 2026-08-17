@@ -124,11 +124,18 @@ public final class ToolRunCommand implements CliCommand {
             Path start = cwd.toAbsolutePath().normalize();
             Path wsRoot = null;
             if (Files.isRegularFile(start.resolve("jk.toml"))) {
-                var b = cc.jumpkick.config.JkBuildParser.parse(start.resolve("jk.toml"));
-                if (b.isWorkspaceRoot()) wsRoot = start;
+                var peek = BuildCommand.projectInfoOrNull(start);
+                if (peek != null && peek.workspaceRoot()) wsRoot = start;
+                else if (peek == null
+                        && !workspaceModules(start.resolve("jk.toml")).isEmpty()) {
+                    wsRoot = start;
+                }
             }
             if (wsRoot == null) {
-                wsRoot = cc.jumpkick.config.WorkspaceLocator.findRoot(start).orElse(null);
+                var peek = BuildCommand.projectInfoOrNull(start);
+                if (peek != null && !peek.workspaceRootDir().isBlank()) {
+                    wsRoot = Path.of(peek.workspaceRootDir());
+                }
             }
             if (wsRoot == null) {
                 // Cwd is not in a workspace — still allow path-as-module if it has jk.toml
@@ -136,8 +143,11 @@ public final class ToolRunCommand implements CliCommand {
                 if (Files.isRegularFile(direct.resolve("jk.toml"))) return direct;
                 return null;
             }
-            var rootBuild = cc.jumpkick.config.JkBuildParser.parse(wsRoot.resolve("jk.toml"));
-            if (!rootBuild.isWorkspaceRoot()) return null;
+            var rootBuild = BuildCommand.projectInfoOrNull(wsRoot);
+            List<String> moduleDirs = rootBuild != null && rootBuild.workspaceRoot()
+                    ? rootBuild.moduleDirs()
+                    : workspaceModules(wsRoot.resolve("jk.toml"));
+            if (moduleDirs.isEmpty()) return null;
             String want = name.replace('\\', '/');
             while (want.startsWith("./")) want = want.substring(2);
             if (want.endsWith("/")) want = want.substring(0, want.length() - 1);
@@ -145,9 +155,11 @@ public final class ToolRunCommand implements CliCommand {
             // declared-path match may claim it — a leaf shortcut must not shadow `./web`.
             boolean localExists = Files.exists(start.resolve(want));
             List<Path> suffixHits = new ArrayList<>();
-            for (String mod : rootBuild.workspace().modules()) {
-                String m = mod.replace('\\', '/');
-                Path dir = wsRoot.resolve(mod).normalize();
+            for (String mod : moduleDirs) {
+                Path dir = Path.of(mod).isAbsolute()
+                        ? Path.of(mod).normalize()
+                        : wsRoot.resolve(mod).normalize();
+                String m = wsRoot.relativize(dir).toString().replace('\\', '/');
                 if (!Files.isRegularFile(dir.resolve("jk.toml"))) continue;
                 if (m.equals(want)) return dir; // exact declared path — always unambiguous
                 // Trailing-segment shortcut: `jk run cli` → clients/cli.
@@ -171,6 +183,10 @@ public final class ToolRunCommand implements CliCommand {
             return null;
         }
         return null;
+    }
+
+    private static List<String> workspaceModules(Path jkToml) {
+        return cc.jumpkick.config.TomlScan.scan(jkToml, "workspace.modules").stringArray("workspace.modules");
     }
 
     /** Render a module dir relative to its workspace for an error message. */

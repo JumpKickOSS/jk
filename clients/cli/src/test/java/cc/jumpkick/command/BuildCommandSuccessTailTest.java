@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.runtime.ModuleOutcome;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**wedge wording for built vs checked vs fully up to date. */
@@ -22,7 +21,7 @@ class BuildCommandSuccessTailTest {
 
     @Test
     void empty_dirty_set_is_all_up_to_date() {
-        String t = BuildCommand.successTail(List.of(), 5, Set.of(), System.nanoTime());
+        String t = BuildCommand.successTail(List.of(), 0, List.of(), System.nanoTime());
         assertThat(t).contains("all modules up to date");
     }
 

@@ -4,7 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 
@@ -42,7 +42,10 @@ public final class ProjectInfoVerb implements HostedVerb {
         try {
             cc.jumpkick.engine.protocol.ProjectInfo info;
             try {
-                info = cc.jumpkick.runtime.ExecPlans.projectInfo(Path.of(Jsonl.str(requestLine, "dir")));
+                info = cc.jumpkick.runtime.ExecPlans.projectInfo(
+                        Path.of(Jsonl.str(requestLine, "dir")),
+                        Jsonl.str(requestLine, "modules"),
+                        Jsonl.str(requestLine, "affectedSince"));
             } catch (RuntimeException e) {
                 info = cc.jumpkick.engine.protocol.ProjectInfo.error(String.valueOf(e.getMessage()));
             }

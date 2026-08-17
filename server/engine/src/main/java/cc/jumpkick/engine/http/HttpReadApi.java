@@ -87,7 +87,7 @@ final class HttpReadApi {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("path", cc.jumpkick.config.EffectiveUserConfig.configPath().toString());
         body.put("rows", rows);
-        HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
+        HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.jsonl.MiniJson.write(body));
     }
 
     /**
@@ -222,7 +222,7 @@ final class HttpReadApi {
     void handleBuild(HttpExchange exchange) throws IOException {
         String body = new String(
                 exchange.getRequestBody().readNBytes(HttpEngineServer.MAX_BODY_BYTES), StandardCharsets.UTF_8);
-        String dir = cc.jumpkick.plugin.protocol.Jsonl.str(body, "dir");
+        String dir = cc.jumpkick.jsonl.Jsonl.str(body, "dir");
         if (dir == null || dir.isBlank()) {
             HttpEngineServer.sendJson(
                     exchange,
@@ -230,7 +230,7 @@ final class HttpReadApi {
                     JsonOut.object().put("error", "missing \"dir\"").toString());
             return;
         }
-        String kind = cc.jumpkick.plugin.protocol.Jsonl.str(body, "kind");
+        String kind = cc.jumpkick.jsonl.Jsonl.str(body, "kind");
         long requestId;
         try {
             requestId = jobs.trigger(cc.jumpkick.engine.jobs.JobSpec.of(kind, dir));
@@ -279,9 +279,9 @@ final class HttpReadApi {
     void handleCancel(HttpExchange exchange) throws IOException {
         String body = new String(
                 exchange.getRequestBody().readNBytes(HttpEngineServer.MAX_BODY_BYTES), StandardCharsets.UTF_8);
-        long jid = cc.jumpkick.plugin.protocol.Jsonl.longValue(body, "jid", -1);
+        long jid = cc.jumpkick.jsonl.Jsonl.longValue(body, "jid", -1);
         if (jid < 0) {
-            String dir = cc.jumpkick.plugin.protocol.Jsonl.str(body, "dir");
+            String dir = cc.jumpkick.jsonl.Jsonl.str(body, "dir");
             if (dir != null && !dir.isBlank()) {
                 int n = jobs.cancelDir(dir);
                 HttpEngineServer.sendJson(

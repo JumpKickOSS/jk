@@ -101,6 +101,11 @@ public final class TomlScan {
         return values.get(qualifiedKey);
     }
 
+    /** True when the scalar or array key was present (including an explicit empty array). */
+    public boolean hasKey(String qualifiedKey) {
+        return values.containsKey(qualifiedKey) || arrays.containsKey(qualifiedKey);
+    }
+
     /** As {@link #get}, parsed as an int; {@code fallback} when absent or non-numeric. */
     public int getInt(String qualifiedKey, int fallback) {
         String v = values.get(qualifiedKey);

@@ -13,7 +13,7 @@ import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;

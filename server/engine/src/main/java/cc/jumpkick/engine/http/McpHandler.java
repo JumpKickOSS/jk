@@ -10,7 +10,7 @@ import cc.jumpkick.engine.http.mcp.McpProjectCards;
 import cc.jumpkick.engine.http.mcp.McpReads;
 import cc.jumpkick.engine.http.mcp.McpSession;
 import cc.jumpkick.engine.jobs.JobSpec;
-import cc.jumpkick.plugin.protocol.MiniJson;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.util.PathUtil;
 import java.io.IOException;
 import java.nio.file.Path;

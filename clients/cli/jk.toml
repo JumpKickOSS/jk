@@ -9,7 +9,7 @@ jk-core.workspace = true
 jk-client-io.workspace = true
 jk-toolchain-jdk.workspace = true
 jk-engine-api.workspace = true
-jk-plugin-sdk.workspace = true
+jk-jsonl.workspace = true
 jline-terminal-ffm = "latest"
 
 [provided-dependencies]

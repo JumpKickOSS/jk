@@ -11,11 +11,9 @@ import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Tree;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.ConfigSources;
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -187,16 +185,52 @@ public final class TreeCommand implements CliCommand {
             return TreeDir.fail("no jk.toml in " + start);
         }
         Path root = workspaceOrProject(project);
-        JkBuild entry = JkBuildParser.parse(root.resolve("jk.toml"));
-        ModuleSelection.Result selected = ModuleSelection.resolve(root, entry, spec);
-        if (!selected.ok()) {
-            return TreeDir.fail(selected.errorMessage());
+        String want = spec.substring(1).trim();
+        var info = BuildCommand.projectInfoOrNull(root);
+        if (info != null && !info.moduleNames().isEmpty()) {
+            return matchColonName(spec, want, root, info.moduleDirs(), info.moduleNames());
         }
-        if (selected.moduleDirs().size() != 1) {
-            return TreeDir.fail(
-                    "`" + spec + "` matched " + selected.moduleDirs().size() + " modules — pick one path or :name");
+        return matchColonNameBootstrap(root, spec, want);
+    }
+
+    private static TreeDir matchColonName(String spec, String want, Path root, List<String> dirs, List<String> names) {
+        List<Path> hits = new ArrayList<>();
+        int n = Math.min(dirs.size(), names.size());
+        for (int i = 0; i < n; i++) {
+            Path dir = Path.of(dirs.get(i));
+            if (!dir.isAbsolute()) dir = root.resolve(dir).toAbsolutePath().normalize();
+            else dir = dir.toAbsolutePath().normalize();
+            String name = names.get(i);
+            String last = dir.getFileName() == null ? "" : dir.getFileName().toString();
+            if (want.equalsIgnoreCase(name) || want.equalsIgnoreCase(last)) hits.add(dir);
         }
-        return TreeDir.ok(selected.moduleDirs().iterator().next());
+        if (hits.size() == 1) return TreeDir.ok(hits.getFirst());
+        if (hits.isEmpty()) return TreeDir.fail("no module matched `" + spec + "`");
+        return TreeDir.fail("`" + spec + "` matched " + hits.size() + " modules — pick one path or :name");
+    }
+
+    /**
+     * Engine-free {@code :name} lookup for unit tests and a down engine: bootstrap TOML only
+     * ({@code workspace.modules} + each member's {@code name}).
+     */
+    private static TreeDir matchColonNameBootstrap(Path root, String spec, String want) {
+        List<String> rels =
+                TomlScan.scan(root.resolve("jk.toml"), "workspace.modules").stringArray("workspace.modules");
+        List<String> dirs = new ArrayList<>();
+        List<String> names = new ArrayList<>();
+        if (rels.isEmpty()) {
+            dirs.add(root.toString());
+            String n = TomlScan.scan(root.resolve("jk.toml"), "name").get("name");
+            names.add(n == null || n.isBlank() ? root.getFileName().toString() : n);
+        } else {
+            for (String rel : rels) {
+                Path d = root.resolve(rel).toAbsolutePath().normalize();
+                dirs.add(d.toString());
+                String n = TomlScan.scan(d.resolve("jk.toml"), "name").get("name");
+                names.add(n == null || n.isBlank() ? d.getFileName().toString() : n);
+            }
+        }
+        return matchColonName(spec, want, root, dirs, names);
     }
 
     private static TreeDir resolveModulePath(Path start, String spec) {

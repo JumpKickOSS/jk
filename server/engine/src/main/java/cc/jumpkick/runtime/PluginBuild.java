@@ -5,13 +5,13 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
-import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -187,7 +187,7 @@ public final class PluginBuild {
                             cc.jumpkick.plugin.protocol.PluginProtocol.OP_DESCRIBE,
                             null,
                             active.manifest().id())
-                    .config(active.config())
+                    .configValues(active.config().values())
                     .project(facts(project, project.mainClass()))
                     .writeTempSpec();
             try {

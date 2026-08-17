@@ -89,37 +89,30 @@ public final class ImageCommand implements CliCommand {
         String modulesSpec = in.value("modules").orElse(null);
         String affectedSince = in.value("affected-since").orElse(null);
         if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {
-            cc.jumpkick.model.JkBuild entry = cc.jumpkick.config.JkBuildParser.parse(jkBuildPath);
-            var selected =
-                    cc.jumpkick.config.ModuleSelection.resolveOptional(projectDir, entry, modulesSpec, affectedSince);
-            if (selected != null && !selected.ok()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Image", selected.errorMessage());
+            var selected = BuildCommand.projectInfoOrError(projectDir, modulesSpec, affectedSince);
+            if (selected.error() != null && !selected.error().isBlank()) {
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Image", selected.error());
                 return Exit.CONFIG;
             }
-            if (selected != null) {
-                if (selected.moduleDirs().size() != 1) {
-                    cc.jumpkick.cli.tui.CommandWedge.printFail(
-                            "Image",
-                            "an image is built for exactly one module — the selector matched "
-                                    + selected.moduleDirs().size());
-                    return Exit.USAGE;
-                }
-                projectDir = selected.moduleDirs().iterator().next();
-                jkBuildPath = projectDir.resolve("jk.toml");
+            if (selected.moduleDirs().size() != 1) {
+                cc.jumpkick.cli.tui.CommandWedge.printFail(
+                        "Image",
+                        "an image is built for exactly one module — the selector matched "
+                                + selected.moduleDirs().size());
+                return Exit.USAGE;
             }
+            projectDir = Path.of(selected.moduleDirs().getFirst());
+            jkBuildPath = projectDir.resolve("jk.toml");
         }
         Path cache = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
-        var wsRoot = cc.jumpkick.config.WorkspaceLocator.findRoot(projectDir);
-        if (wsRoot.isPresent()) {
-            cc.jumpkick.model.JkBuild rootBuild =
-                    cc.jumpkick.config.JkBuildParser.parse(wsRoot.get().resolve("jk.toml"));
-            if (rootBuild.isWorkspaceRoot()
-                    && !wsRoot.get()
-                            .toAbsolutePath()
-                            .normalize()
-                            .equals(projectDir.toAbsolutePath().normalize())) {
-                return runWorkspaceImage(wsRoot.get(), rootBuild, projectDir, cache);
-            }
+        var peek = BuildCommand.projectInfoOrNull(projectDir);
+        if (peek != null
+                && !peek.workspaceRootDir().isBlank()
+                && !Path.of(peek.workspaceRootDir())
+                        .toAbsolutePath()
+                        .normalize()
+                        .equals(projectDir.toAbsolutePath().normalize())) {
+            return runWorkspaceImage(Path.of(peek.workspaceRootDir()), projectDir, cache);
         }
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         String module = BuildCommand.buildTarget(jkBuildPath, projectDir);
@@ -210,8 +203,7 @@ public final class ImageCommand implements CliCommand {
      * Workspace member: same {@code buildWorkspace} path as {@code jk build}, image terminal on
      * this module, prereqs package. Aggregate TUI matches native/build.
      */
-    private int runWorkspaceImage(Path wsRoot, cc.jumpkick.model.JkBuild rootBuild, Path moduleDir, Path cache)
-            throws IOException {
+    private int runWorkspaceImage(Path wsRoot, Path moduleDir, Path cache) throws IOException {
         var session = cc.jumpkick.config.SessionContext.current();
         var imageReq = new cc.jumpkick.cli.engine.EngineRequests.ImageRequest(
                 moduleDir,

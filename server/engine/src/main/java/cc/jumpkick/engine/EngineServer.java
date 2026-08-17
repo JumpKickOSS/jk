@@ -19,7 +19,7 @@ import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.engine.verbs.VerbShape;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -556,9 +556,9 @@ public final class EngineServer implements AutoCloseable {
             w.flush();
             String ack = r.readLine();
             if (ack == null || !EngineProtocol.HELLO_ACK.equals(EngineProtocol.typeOf(ack))) return null;
-            String v = cc.jumpkick.plugin.protocol.Jsonl.str(ack, "version");
+            String v = cc.jumpkick.jsonl.Jsonl.str(ack, "version");
             if (v == null) return null;
-            String id = cc.jumpkick.plugin.protocol.Jsonl.str(ack, "buildId");
+            String id = cc.jumpkick.jsonl.Jsonl.str(ack, "buildId");
             return new Incumbent(v, id == null ? "" : id);
         } catch (IOException | RuntimeException e) {
             return null;
@@ -683,7 +683,7 @@ public final class EngineServer implements AutoCloseable {
 
     private void handleConnection(SocketChannel ch) {
         try (ch;
-                BufferedReader reader = new cc.jumpkick.plugin.protocol.BoundedLineReader(
+                BufferedReader reader = new cc.jumpkick.jsonl.BoundedLineReader(
                         new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
                 BufferedWriter writer = new BufferedWriter(
                         new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8))) {
@@ -771,7 +771,7 @@ public final class EngineServer implements AutoCloseable {
                                     s.peakActiveBuildPlans()));
                 }
                 case EngineProtocol.SHUTDOWN -> {
-                    boolean force = cc.jumpkick.plugin.protocol.Jsonl.bool(line, "force", false);
+                    boolean force = cc.jumpkick.jsonl.Jsonl.bool(line, "force", false);
                     // Takeover already repointed the endpoint before sending shutdown — kill the
                     // engine AOT sidecar so it cannot re-publish engine-<old-v>-*.
                     // Voluntary `jk engine stop` still names us; leave train to finish then.

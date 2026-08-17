@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;

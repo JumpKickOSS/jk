@@ -4,9 +4,9 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.protocol.PluginCommandReport;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -57,7 +57,7 @@ public final class PluginCommands {
                             cc.jumpkick.plugin.protocol.PluginProtocol.OP_COMMAND,
                             command,
                             active.manifest().id())
-                    .config(active.config())
+                    .configValues(active.config().values())
                     .project(PluginBuild.facts(project, project.mainClass()))
                     .layout(layout.classesDir(), dir, scratch)
                     .artifact(PluginBuild.mainArtifactPath(layout, active))

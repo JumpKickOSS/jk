@@ -11,7 +11,7 @@ import cc.jumpkick.engine.protocol.EngineWireException;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.engine.protocol.ProtoSession;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -122,7 +122,9 @@ final class EngineBuildListenerAdapter {
                                     : req.dirtyHint().stream()
                                             .map(Object::toString)
                                             .sorted()
-                                            .toList()),
+                                            .toList(),
+                            null,
+                            req.modules()),
                     req.variant(),
                     req.clientEnv(),
                     SessionContext.current().jvm(),
@@ -344,7 +346,7 @@ final class EngineBuildListenerAdapter {
                             req.offline(),
                             req.force(),
                             req.verbose(),
-                            req.moduleDirs().stream().map(Path::toString).toList()),
+                            req.modules()),
                     SessionContext.current().variant(),
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
@@ -567,6 +569,43 @@ final class EngineBuildListenerAdapter {
                 });
     }
 
+    static cc.jumpkick.engine.protocol.PluginInstallLocalAck pluginInstallLocal(
+            EnginePaths.Paths paths,
+            Path dir,
+            Path cache,
+            Path installRoot,
+            String modules,
+            boolean dryRun,
+            boolean ambientStore)
+            throws IOException {
+        return request(
+                paths,
+                ProtoReads.pluginInstallLocalRequest(
+                        dir.toString(),
+                        cache.toString(),
+                        installRoot == null ? "" : installRoot.toString(),
+                        modules,
+                        dryRun,
+                        ambientStore),
+                EngineProtocol.PLUGIN_INSTALL_LOCAL_ACK,
+                "plugin install-local",
+                cc.jumpkick.engine.protocol.PluginInstallLocalAck::decode);
+    }
+
+    static String editDetail(EnginePaths.Paths paths, Path file, String op, List<String> args) throws IOException {
+        return request(
+                paths,
+                ProtoReads.editRequest(file.toString(), op, args),
+                EngineProtocol.EDIT_ACK,
+                "edit request",
+                line -> {
+                    String error = Jsonl.str(line, "error");
+                    if (error != null) throw new IOException(error);
+                    String detail = Jsonl.str(line, "detail");
+                    return detail == null ? "" : detail;
+                });
+    }
+
     /**
      * On-demand engine-hosted catalog freshen ({@code templates}/{@code libraries}/{@code jdks}) —
      * the CLI never touches these catalogs' networks itself once an engine is available. Callers
@@ -576,17 +615,96 @@ final class EngineBuildListenerAdapter {
      * case) — this method itself just sends the request. Best-effort: swallows the engine's error
      * rather than throwing, since the caller falls back to whatever the local cache already holds.
      */
+    static cc.jumpkick.engine.protocol.ModuleGraphAck moduleGraph(
+            EnginePaths.Paths paths, Path dir, String format, String modules, String affectedSince) throws IOException {
+        return request(
+                paths,
+                ProtoReads.moduleGraphRequest(dir.toString(), format, modules, affectedSince),
+                EngineProtocol.MODULE_GRAPH_ACK,
+                "module-graph request",
+                cc.jumpkick.engine.protocol.ModuleGraphAck::decode);
+    }
+
+    static cc.jumpkick.engine.protocol.CacheInventoryAck cacheInventory(
+            EnginePaths.Paths paths,
+            String query,
+            Path cache,
+            Path store,
+            List<String> terms,
+            List<String> coords,
+            boolean dryRun)
+            throws IOException {
+        return request(
+                paths,
+                ProtoReads.cacheInventoryRequest(
+                        query,
+                        cache == null ? "" : cache.toString(),
+                        store == null ? "" : store.toString(),
+                        terms,
+                        coords,
+                        dryRun),
+                EngineProtocol.CACHE_INVENTORY_ACK,
+                "cache-inventory request",
+                cc.jumpkick.engine.protocol.CacheInventoryAck::decode);
+    }
+
+    static cc.jumpkick.engine.protocol.CatalogReadAck catalogRead(
+            EnginePaths.Paths paths,
+            Path dir,
+            Path cache,
+            String query,
+            List<String> terms,
+            boolean offline,
+            boolean includeCached,
+            boolean bundledOnly)
+            throws IOException {
+        return request(
+                paths,
+                ProtoReads.catalogReadRequest(
+                        dir == null ? "" : dir.toString(),
+                        cache == null ? "" : cache.toString(),
+                        query,
+                        terms,
+                        offline,
+                        includeCached,
+                        bundledOnly),
+                EngineProtocol.CATALOG_READ_ACK,
+                "catalog-read request",
+                cc.jumpkick.engine.protocol.CatalogReadAck::decode);
+    }
+
     static void freshenCatalog(EnginePaths.Paths paths, String catalog, boolean offline, String url, String cacheFile) {
+        freshenCatalog(paths, catalog, offline, url, cacheFile, false);
+    }
+
+    static void freshenCatalog(
+            EnginePaths.Paths paths, String catalog, boolean offline, String url, String cacheFile, boolean force) {
         try {
             request(
                     paths,
-                    ProtoReads.freshenCatalogRequest(catalog, offline, url, cacheFile),
+                    ProtoReads.freshenCatalogRequest(catalog, offline, url, cacheFile, force),
                     EngineProtocol.FRESHEN_CATALOG_ACK,
                     catalog + " freshen request",
                     line -> Jsonl.bool(line, "ok", false));
         } catch (IOException ignored) {
             // Best-effort — local resolution proceeds against whatever the cache already holds.
         }
+    }
+
+    static String freshenCatalogNow(EnginePaths.Paths paths, String catalog, String url, String cacheFile)
+            throws IOException {
+        return request(
+                paths,
+                ProtoReads.freshenCatalogRequest(catalog, false, url, cacheFile, true),
+                EngineProtocol.FRESHEN_CATALOG_ACK,
+                catalog + " freshen request",
+                line -> {
+                    if (!Jsonl.bool(line, "ok", false)) {
+                        String error = Jsonl.str(line, "error");
+                        return error == null || error.isBlank() ? "catalog refresh failed" : error;
+                    }
+                    return null;
+                });
     }
 
     /** One engine-hosted tree render: the marker-tagged tree; throws with the engine's message. */
@@ -628,6 +746,36 @@ final class EngineBuildListenerAdapter {
                 cc.jumpkick.engine.protocol.IdeWireModel::decode);
     }
 
+    static cc.jumpkick.engine.protocol.NewProjectAck newProject(
+            EnginePaths.Paths paths, EngineRequests.NewProjectRequest req) throws IOException {
+        return request(
+                paths,
+                ProtoReads.newProjectRequest(
+                        req.name(),
+                        req.parentDir(),
+                        req.group(),
+                        req.lang(),
+                        req.layout(),
+                        req.template(),
+                        req.executable(),
+                        req.framework(),
+                        req.jdk(),
+                        req.javaRelease(),
+                        req.assembly(),
+                        req.nativeImage(),
+                        req.plugin(),
+                        req.kotlinModule(),
+                        req.deps(),
+                        req.sample(),
+                        req.standalone(),
+                        req.templateParams(),
+                        req.relaxParent(),
+                        req.targetDir()),
+                EngineProtocol.NEW_PROJECT_ACK,
+                "new-project request",
+                cc.jumpkick.engine.protocol.NewProjectAck::decode);
+    }
+
     /** One engine-hosted generator run: file payloads back, guards/writes stay client-side. */
     static cc.jumpkick.engine.protocol.GeneratedFiles generate(
             EnginePaths.Paths paths, Path dir, String kind, Map<String, String> params) throws IOException {
@@ -667,9 +815,14 @@ final class EngineBuildListenerAdapter {
     }
 
     static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(EnginePaths.Paths paths, Path dir) throws IOException {
+        return projectInfo(paths, dir, null, null);
+    }
+
+    static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(
+            EnginePaths.Paths paths, Path dir, String modules, String affectedSince) throws IOException {
         return request(
                 paths,
-                ProtoReads.projectInfoRequest(dir.toString(), ""),
+                ProtoReads.projectInfoRequest(dir.toString(), "", modules, affectedSince),
                 EngineProtocol.PROJECT_INFO_ACK,
                 "project-info request",
                 cc.jumpkick.engine.protocol.ProjectInfo::decode);
@@ -1050,6 +1203,12 @@ final class EngineBuildListenerAdapter {
                             String msg = wire.getMessage();
                             throw new EngineWireException(
                                     wire.code(), msg == null || msg.isBlank() ? "Build is already running" : msg);
+                        }
+                        if (EngineProtocol.ERR_REQUEST_FAILED.equals(wire.code())) {
+                            String msg = wire.getMessage() == null ? "" : wire.getMessage();
+                            WorkspaceResult failed = new WorkspaceResult(false, 2, List.of(), List.of(msg), false);
+                            listener.onWorkspaceFinish(failed);
+                            return failed;
                         }
                         throw new EngineWireException(wire.code(), "jk engine: build failed: " + wire.getMessage());
                     }

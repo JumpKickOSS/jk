@@ -2,7 +2,7 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.diagnostic.CompilerLocus;
-import cc.jumpkick.plugin.protocol.MiniJson;
+import cc.jumpkick.jsonl.MiniJson;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

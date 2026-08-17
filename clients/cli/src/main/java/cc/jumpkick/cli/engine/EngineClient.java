@@ -5,7 +5,7 @@ import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.engine.protocol.ProtoSession;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
 import cc.jumpkick.runtime.WorkspaceRequest;
@@ -577,6 +577,42 @@ public final class EngineClient {
         return EngineBuildListenerAdapter.edit(paths, file, op, args);
     }
 
+    public static String editDetail(cc.jumpkick.engine.EnginePaths.Paths paths, Path file, String op, List<String> args)
+            throws IOException {
+        return EngineBuildListenerAdapter.editDetail(paths, file, op, args);
+    }
+
+    public static cc.jumpkick.engine.protocol.CacheInventoryAck cacheInventory(
+            cc.jumpkick.engine.EnginePaths.Paths paths,
+            String query,
+            Path cache,
+            Path store,
+            List<String> terms,
+            List<String> coords,
+            boolean dryRun)
+            throws IOException {
+        return EngineBuildListenerAdapter.cacheInventory(paths, query, cache, store, terms, coords, dryRun);
+    }
+
+    public static cc.jumpkick.engine.protocol.PluginInstallLocalAck pluginInstallLocal(
+            cc.jumpkick.engine.EnginePaths.Paths paths,
+            Path dir,
+            Path cache,
+            Path installRoot,
+            String modules,
+            boolean dryRun,
+            boolean ambientStore)
+            throws IOException {
+        return EngineBuildListenerAdapter.pluginInstallLocal(
+                paths, dir, cache, installRoot, modules, dryRun, ambientStore);
+    }
+
+    /** Engine-hosted {@code jk new} / init scaffold. */
+    public static cc.jumpkick.engine.protocol.NewProjectAck newProject(
+            cc.jumpkick.engine.EnginePaths.Paths paths, EngineRequests.NewProjectRequest req) throws IOException {
+        return EngineBuildListenerAdapter.newProject(paths, req);
+    }
+
     /**
      * On-demand, engine-hosted freshen of a network-backed catalog — {@code "templates"} (before
      * {@code jk new}/{@code init}) or {@code "libraries"} (before {@code jk lock}/{@code update}).
@@ -598,7 +634,18 @@ public final class EngineClient {
             return; // no engine to host the freshen — local resolution proceeds against the cache
         }
         EngineBuildListenerAdapter.freshenCatalog(
-                paths, catalog, false, url, cacheFile == null ? null : cacheFile.toString());
+                paths, catalog, false, url, cacheFile == null ? null : cacheFile.toString(), false);
+    }
+
+    /**
+     * As {@link #freshenCatalog} but always hits the network and returns the engine error (or
+     * {@code null} on success). Used by {@code jk library update}.
+     */
+    public static String freshenCatalogNow(
+            cc.jumpkick.engine.EnginePaths.Paths paths, String catalog, String url, Path cacheFile) throws IOException {
+        ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
+        return EngineBuildListenerAdapter.freshenCatalogNow(
+                paths, catalog, url, cacheFile == null ? null : cacheFile.toString());
     }
 
     /**
@@ -621,13 +668,41 @@ public final class EngineClient {
         return true;
     }
 
+    /** Module DAG for {@code jk explain --graph}. */
+    public static cc.jumpkick.engine.protocol.ModuleGraphAck moduleGraph(
+            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, String format, String modules, String affectedSince)
+            throws IOException {
+        return EngineBuildListenerAdapter.moduleGraph(paths, dir, format, modules, affectedSince);
+    }
+
+    /** Layered library catalog (list / search / wizard picker). */
+    public static cc.jumpkick.engine.protocol.CatalogReadAck catalogRead(
+            cc.jumpkick.engine.EnginePaths.Paths paths,
+            Path dir,
+            Path cache,
+            String query,
+            List<String> terms,
+            boolean offline,
+            boolean includeCached,
+            boolean bundledOnly)
+            throws IOException {
+        return EngineBuildListenerAdapter.catalogRead(
+                paths, dir, cache, query, terms, offline, includeCached, bundledOnly);
+    }
+
     /**
-     * Project summary (PROJECT_INFO) — replaces client-side {@code JkBuildParser.parse} peeks.
+     * Project summary (PROJECT_INFO) — replaces client-side project-file peeks.
      * In-process twin under test/no-engine.
      */
     public static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(
             cc.jumpkick.engine.EnginePaths.Paths paths, Path dir) throws IOException {
-        return EngineBuildListenerAdapter.projectInfo(paths, dir);
+        return projectInfo(paths, dir, null, null);
+    }
+
+    public static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(
+            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, String modules, String affectedSince)
+            throws IOException {
+        return EngineBuildListenerAdapter.projectInfo(paths, dir, modules, affectedSince);
     }
 
     /**

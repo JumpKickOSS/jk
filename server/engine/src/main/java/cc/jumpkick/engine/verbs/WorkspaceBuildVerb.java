@@ -10,8 +10,8 @@ import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.runtime.BuildService;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
 import cc.jumpkick.runtime.WorkspaceRequest;
@@ -131,10 +131,26 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             Path cache = Path.of(cacheStr);
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
 
-            JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+            List<String> moduleTokens = Jsonl.strArray(requestLine, "modules");
+            Set<Path> dirty = dirtyHintDirs == null
+                    ? null
+                    : dirtyHintDirs.stream().map(Path::of).collect(Collectors.toUnmodifiableSet());
+            if (dirty == null && !moduleTokens.isEmpty()) {
+                JkBuild entry = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+                var hit = cc.jumpkick.engine.jobs.JobSelect.resolveTokens(entryDir, entry, moduleTokens);
+                if (hit != null && !hit.ok()) {
+                    host.sendQuiet(
+                            writer, host.requestFailedLine(null, new IllegalArgumentException(hit.errorMessage())));
+                    return cc.jumpkick.engine.jobs.JobOutcome.failed(2);
+                }
+                if (hit != null) {
+                    dirty = hit.moduleDirs().stream()
+                            .map(cc.jumpkick.runtime.BuildGraph::canonicalPath)
+                            .collect(Collectors.toUnmodifiableSet());
+                }
+            }
             WorkspaceRequest req = new WorkspaceRequest(
                             entryDir,
-                            entryBuild,
                             cache,
                             jdksDir,
                             workers,
@@ -142,11 +158,10 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                             skipTests,
                             verbose,
                             maxModuleConcurrency,
-                            dirtyHintDirs == null
-                                    ? null
-                                    : dirtyHintDirs.stream().map(Path::of).collect(Collectors.toUnmodifiableSet()),
+                            dirty,
                             false,
                             freshenLock)
+                    .withModules(moduleTokens)
                     .withTestOnly(testOnly)
                     .withEphemeralActions(ephemeralActions)
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));

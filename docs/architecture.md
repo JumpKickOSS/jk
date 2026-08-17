@@ -27,7 +27,8 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
 
 - **Client** — presentation, shell hooks, JDK install prompts, anything that owns your terminal
   (`jk run` exec, `jk mvn`/`gradle` interactive). Sub-50 ms cold start; no engine code in the
-  native image.
+  native image. The CLI does not interpret plugin schemas — `*.jk-plugin.toml` and scaffold
+  templates are baked into the engine jar only, never `:core` / the native client.
 - **Engine** — dependency resolution, task graph / BuildPlan execution, CAS, toolchains,
   compiler/test workers, hosted verbs (`build`, `test`, `lock`, `publish`, …). Default heap ceiling
   **256 MiB** (or **512 MiB** when `CI=1`/`true` and unset) via
@@ -181,12 +182,12 @@ Bootstrap build: **Java 25 + Gradle** (until self-hosting CI is complete). Runti
 
 | Area | Modules | Role |
 |---|---|---|
-| `shared/` | `jk-api`, `plugin-sdk`, `core`, `client-io`, `toolchain-jdk`, `wire` | Client-safe contracts, config/lock, CLI I/O, JDK tools, wire codec |
+| `shared/` | `jsonl`, `jk-api`, `plugin-sdk`, `core`, `client-io`, `toolchain-jdk`, `wire` | JSONL codec, client-safe contracts, config/lock, CLI I/O, JDK tools, wire |
 | `server/` | `io`, `resolver`, `toolchain`, `engine` | Repo fetch, PubGrub, import/export tools, build plan; `EngineMain` + fat jar packaging (never links CLI) |
 | `clients/` | `cli`, `web` | Slim wire client (native/JVM), dashboard SPA |
 | `plugins/` | `java-compiler`, `kotlin-compiler`, `groovy-compiler`, `test-runner`, `auditor`, `publisher`, `image-builder`, `formatter`, `compat-bridge`, `spring-boot`, `quarkus`, `grails`, `android`, `protobuf`, `minified` | First-party workers / build plugins |
 
-**Layering:** `jk-api` → `core` → `{client-io, wire, …}` → server `{io, resolver, toolchain}` → `engine` → clients. Plugins depend on `plugin-sdk`, not on engine internals.
+**Layering:** `jsonl` → `{plugin-sdk, wire, cli}` ; `jk-api` → `core` → `{client-io, wire, …}` → server `{io, resolver, toolchain}` → `engine` → clients. Plugins depend on `plugin-sdk` (+ transitive `jsonl`), not on engine internals.
 
 Ship layout (`./gradlew dist`): slim native `jk` + `lib/jk-engine-<version>.jar`.
 

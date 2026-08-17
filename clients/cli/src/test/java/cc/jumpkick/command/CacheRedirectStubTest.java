@@ -10,6 +10,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.function.IntSupplier;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -38,6 +39,7 @@ class CacheRedirectStubTest {
     }
 
     @Test
+    @Tag("integration")
     void cache_search_forwards_to_repo_search_with_a_pointer_note(@TempDir Path tempDir) {
         Path cache = tempDir.resolve("cache");
         Capture c = capture(() -> Jk.execute("cache", "search", "nonexistent", "--cache-dir", cache.toString()));

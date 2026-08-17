@@ -18,4 +18,8 @@ final class EngineEdits {
 
         return cc.jumpkick.cli.engine.EngineClient.edit(cc.jumpkick.engine.EnginePaths.current(), file, op, args);
     }
+
+    static String applyDetail(Path file, String op, List<String> args) throws IOException {
+        return cc.jumpkick.cli.engine.EngineClient.editDetail(cc.jumpkick.engine.EnginePaths.current(), file, op, args);
+    }
 }

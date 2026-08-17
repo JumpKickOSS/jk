@@ -2,10 +2,9 @@
 package cc.jumpkick.resolver;
 
 import java.util.regex.Pattern;
-import org.apache.maven.artifact.versioning.ComparableVersion;
 
 /**
- * Maven-canonical version ordering via {@link ComparableVersion} (numeric segments, GA-equivalent
+ * Maven-canonical version ordering via {@link MavenVersion} (numeric segments, GA-equivalent
  * normalization, qualifier order, snapshot timestamps).
  */
 public final class Versions {
@@ -18,7 +17,7 @@ public final class Versions {
      */
     public static int compare(String a, String b) {
         if (a.equals(b)) return 0;
-        return new ComparableVersion(a).compareTo(new ComparableVersion(b));
+        return new MavenVersion(a).compareTo(new MavenVersion(b));
     }
 
     /**
@@ -36,7 +35,7 @@ public final class Versions {
     private static final Pattern SNAPSHOT_TIMESTAMP = Pattern.compile("-\\d{8}\\.\\d{6}-\\d+$");
 
     /**
-     * True for a stable release: sorts ≥ its numeric core under {@link ComparableVersion}, has no
+     * True for a stable release: sorts ≥ its numeric core under {@link MavenVersion}, has no
      * pre-release qualifier, and is not a timestamped snapshot. No numeric core → unstable.
      * Release synonyms ({@code Final}, {@code RELEASE}, {@code GA}) remain stable.
      */
@@ -44,7 +43,7 @@ public final class Versions {
         String core = numericCore(version);
         if (core.isEmpty()) return false;
         if (SNAPSHOT_TIMESTAMP.matcher(version).find()) return false;
-        if (new ComparableVersion(version).compareTo(new ComparableVersion(core)) < 0) return false;
+        if (new MavenVersion(version).compareTo(new MavenVersion(core)) < 0) return false;
         return !PRE_RELEASE.matcher(version).find();
     }
 

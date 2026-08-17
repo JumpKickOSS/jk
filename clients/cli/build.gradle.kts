@@ -19,8 +19,8 @@ dependencies {
     implementation(project(":client-io"))
     implementation(project(":toolchain-jdk"))
     implementation(project(":wire"))
-    // Shared JSONL reader for the engine/worker wire envelope.
-    implementation(project(":plugin-sdk"))
+    // Shared JSONL reader for the engine/worker wire envelope (not the plugin SPI).
+    implementation(project(":jsonl"))
 
     // JLine 4 FFM terminal provider for raw-mode TUI (jk init wizard).
     // FFM backend requires JDK 22+; the GraalVM-compiled binary embeds the
@@ -39,6 +39,28 @@ dependencies {
     // GpgTestFixture (publish command tests).
     testImplementation(libs.bouncycastle.bcpg)
 }
+
+// JK-2139: the native client must not see the plugin SPI jar (codec is :jsonl).
+val checkCliRuntimeClasspath by tasks.registering {
+    val runtime = configurations.named("runtimeClasspath")
+    inputs.files(runtime)
+    doLast {
+        val forbidden = runtime.get().incoming.artifacts.artifactFiles.files.filter { f ->
+            val n = f.name
+            n.startsWith("plugin-sdk")
+                    || n.startsWith("jk-plugin-sdk")
+                    || n.startsWith("maven-artifact")
+                    || n.startsWith("plexus-utils")
+        }
+        if (forbidden.isNotEmpty()) {
+            throw GradleException(
+                    "CLI runtimeClasspath must not contain plugin-sdk / maven-artifact / plexus-utils: "
+                            + forbidden)
+        }
+    }
+}
+tasks.named("check") { dependsOn(checkCliRuntimeClasspath) }
+tasks.named("jar") { dependsOn(checkCliRuntimeClasspath) }
 
 // Thin JVM client (installDist) — no engine on the classpath. Spawns jk-engine.jar via VersionStore
 // / JK_ENGINE_EXE. Prefer the native image for production dist; this path is for Temurin-only CI.

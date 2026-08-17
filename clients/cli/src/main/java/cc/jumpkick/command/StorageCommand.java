@@ -13,9 +13,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.util.PathUtil;
 import java.io.IOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -53,28 +51,16 @@ public final class StorageCommand extends GroupCommand {
      * self nuke --store}. Returns {@code [files, bytes]} removed (best-effort sizes).
      */
     public static long[] wipeStore(Path storeRoot) throws IOException {
-        long[] stats = {0L, 0L};
-        if (storeRoot == null || !Files.isDirectory(storeRoot)) return stats;
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(storeRoot)) {
-            for (Path child : stream) {
-                countTree(child, stats);
-                PathUtil.deleteRecursivelyOrThrow(child);
-            }
-        }
-        return stats;
-    }
-
-    private static void countTree(Path root, long[] stats) {
-        try (var walk = Files.walk(root)) {
-            walk.filter(Files::isRegularFile).forEach(p -> {
-                stats[0]++;
-                try {
-                    stats[1] += Files.size(p);
-                } catch (IOException ignored) {
-                }
-            });
-        } catch (IOException ignored) {
-        }
+        var ack = cc.jumpkick.cli.engine.EngineClient.cacheInventory(
+                cc.jumpkick.engine.EnginePaths.current(),
+                "wipe-store",
+                CacheCommand.resolveCacheRoot(null),
+                storeRoot,
+                List.of(),
+                List.of(),
+                false);
+        if (ack.error() != null) throw new IOException(ack.error());
+        return new long[] {ack.files(), ack.bytes()};
     }
 
     /**
@@ -111,19 +97,6 @@ public final class StorageCommand extends GroupCommand {
             return 1;
         }
         // Stop engines first — they read/write the store mid-build.
-        try {
-            for (var r : cc.jumpkick.cli.engine.EngineFleet.stopAll(true)) {
-                if (r.outcome() == cc.jumpkick.cli.engine.EngineFleet.Outcome.SURVIVED) {
-                    Theme t = Theme.active();
-                    CliOutput.err(Theme.colorize(Glyphs.BANG, t.warning())
-                            + " Engine pid "
-                            + r.member().pid()
-                            + " did not stop; nuking the store may leave it orphaned.");
-                }
-            }
-        } catch (RuntimeException ignored) {
-            // best-effort
-        }
         long[] wiped = wipeStore(storeRoot);
         CommandWedge.printOk(
                 "Storage",
@@ -204,7 +177,25 @@ public final class StorageCommand extends GroupCommand {
                         "Store directory: " + cc.jumpkick.cli.PathDisplay.styledRaw(storeRoot) + " (not yet created)");
                 return 0;
             }
-            CacheCommand.StoreUsageStats s = CacheCommand.storeUsageStats(cacheRoot);
+            cc.jumpkick.engine.protocol.CacheInventoryAck ack;
+            try {
+                ack = cc.jumpkick.cli.engine.EngineClient.cacheInventory(
+                        cc.jumpkick.engine.EnginePaths.current(),
+                        "store-usage",
+                        cacheRoot,
+                        storeRoot,
+                        List.of(),
+                        List.of(),
+                        false);
+            } catch (IOException e) {
+                CommandWedge.printFail("Storage", String.valueOf(e.getMessage()));
+                return 1;
+            }
+            if (ack.error() != null) {
+                CommandWedge.printFail("Storage", ack.error());
+                return 1;
+            }
+            CacheCommand.StoreUsageStats s = CacheCommand.storeUsageFromAck(ack);
             var cfg = cc.jumpkick.config.JkCacheConfig.resolve();
             long maxBytes = cfg.maxStoreSizeBytes();
             String lastPruned = CacheCommand.lastPrunedLabel(cacheRoot);

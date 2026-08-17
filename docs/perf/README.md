@@ -74,6 +74,10 @@ on `shared/*`). Re-measure: `scripts/test-parallel-measure.sh`.
 **Decision: GO for default auto `-w0` (B3); serial pin via `-w1` or `[test] workers=1`.**  
 Spike numbers: [within-module-test-parallel-spike.md](within-module-test-parallel-spike.md) (~2.4× wall at `-w4` on 24×200 ms classes; ~4× RSS).
 
+## Native CLI size baseline (JK-2137)
+
+`jk` binary + `strings` counts before the Stage 6 slim-client cut: [cli-native-baseline.md](cli-native-baseline.md).
+
 ## Resolve / lock I/O (JK-1088)
 
 See [resolve-io.md](resolve-io.md) — local-first fetch, shared scope caches, progress bar phases.

@@ -7,7 +7,7 @@ import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.McpHandler;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobSpec;
-import cc.jumpkick.plugin.protocol.MiniJson;
+import cc.jumpkick.jsonl.MiniJson;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;

@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.JournalWriter;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 

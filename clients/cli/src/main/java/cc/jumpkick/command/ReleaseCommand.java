@@ -5,10 +5,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.PathDisplay;
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.WorkspaceLoader;
-import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -86,7 +83,11 @@ public final class ReleaseCommand implements CliCommand {
         String modulesSpec = in.value("modules").orElse(null);
         Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
 
-        JkBuild root = JkBuildParser.parse(rootToml);
+        ProjectInfo root = BuildCommand.projectInfoOrNull(dir);
+        if (root == null) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Release", "could not read project summary at " + dir);
+            return Exit.CONFIG;
+        }
         Path engineDir = findEngineModule(dir, root);
         Path cliDir = findCliModule(dir, root);
 
@@ -116,9 +117,9 @@ public final class ReleaseCommand implements CliCommand {
         // this step outright rather than falling back to the full build it opted out of.
         String buildModules = modulesSpec;
         boolean skipBuildStep = false;
-        if (skipNative && (buildModules == null || buildModules.isBlank()) && root.isWorkspaceRoot()) {
+        if (skipNative && (buildModules == null || buildModules.isBlank()) && root.workspaceRoot()) {
             List<String> keep = modulesWithoutNativeAlways(dir, root);
-            if (keep.size() < root.workspace().modules().size()) {
+            if (keep.size() < root.moduleDirs().size()) {
                 if (keep.isEmpty()) {
                     cc.jumpkick.cli.tui.CommandWedge.printOk(
                             "Release", "every module is [native] always — skipping the JVM build step");
@@ -155,7 +156,7 @@ public final class ReleaseCommand implements CliCommand {
         Files.createDirectories(out.resolve("lib"));
         String version = JkVersion.VERSION;
 
-        Path engineJar = findEngineAssembly(dir, root, engineDir);
+        Path engineJar = findEngineAssembly(engineDir);
         if (engineJar == null) {
             cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "Release",
@@ -281,71 +282,83 @@ public final class ReleaseCommand implements CliCommand {
         return code;
     }
 
-    private static Path findEngineModule(Path workspaceRoot, JkBuild root) throws IOException {
-        if (!root.isWorkspaceRoot()) {
+    private static Path findEngineModule(Path workspaceRoot, ProjectInfo root) {
+        if (!root.workspaceRoot()) {
             if (isEngine(root)) return workspaceRoot;
             return null;
         }
-        for (var e : WorkspaceLoader.loadModules(workspaceRoot, root).entrySet()) {
-            if (isEngine(e.getValue())) return e.getKey();
+        int n = Math.min(root.moduleDirs().size(), root.moduleNames().size());
+        for (int i = 0; i < n; i++) {
+            Path mod = resolveModuleDir(workspaceRoot, root.moduleDirs().get(i));
+            var info = BuildCommand.projectInfoOrNull(mod);
+            if (info != null && isEngine(info)) return mod;
         }
-        // Convention fallback
+        for (String d : root.moduleDirs()) {
+            Path mod = resolveModuleDir(workspaceRoot, d);
+            var info = BuildCommand.projectInfoOrNull(mod);
+            if (info != null && isEngine(info)) return mod;
+        }
         Path conventional = workspaceRoot.resolve("server/engine");
         if (Files.isRegularFile(conventional.resolve("jk.toml"))) return conventional;
         return null;
     }
 
-    private static Path findCliModule(Path workspaceRoot, JkBuild root) throws IOException {
-        if (!root.isWorkspaceRoot()) {
+    private static Path findCliModule(Path workspaceRoot, ProjectInfo root) {
+        if (!root.workspaceRoot()) {
             if (isCli(root)) return workspaceRoot;
             return null;
         }
-        for (var e : WorkspaceLoader.loadModules(workspaceRoot, root).entrySet()) {
-            if (isCli(e.getValue())) return e.getKey();
+        for (String d : root.moduleDirs()) {
+            Path mod = resolveModuleDir(workspaceRoot, d);
+            var info = BuildCommand.projectInfoOrNull(mod);
+            if (info != null && isCli(info)) return mod;
         }
         Path conventional = workspaceRoot.resolve("clients/cli");
         if (Files.isRegularFile(conventional.resolve("jk.toml"))) return conventional;
         return null;
     }
 
-    private static boolean isEngine(JkBuild b) {
-        return "cc.jumpkick.engine.EngineMain".equals(b.mainClass())
-                || "jk-engine".equals(b.project().name());
+    private static Path resolveModuleDir(Path workspaceRoot, String dir) {
+        Path p = Path.of(dir);
+        return p.isAbsolute()
+                ? p.normalize()
+                : workspaceRoot.resolve(dir).toAbsolutePath().normalize();
     }
 
-    private static boolean isCli(JkBuild b) {
-        return "cc.jumpkick.cli.Jk".equals(b.mainClass())
-                || "jk-cli".equals(b.project().name());
+    private static boolean isEngine(ProjectInfo b) {
+        return "cc.jumpkick.engine.EngineMain".equals(b.mainClass()) || "jk-engine".equals(b.name());
+    }
+
+    private static boolean isCli(ProjectInfo b) {
+        return "cc.jumpkick.cli.Jk".equals(b.mainClass()) || "jk-cli".equals(b.name());
     }
 
     private static boolean isNativeEligible(Path cliDir) {
-        try {
-            JkBuild cli = JkBuildParser.parse(cliDir.resolve("jk.toml"));
-            return cli.nativeMode() == JkBuild.NativeMode.ALWAYS;
-        } catch (RuntimeException | IOException e) {
-            return false;
-        }
+        var info = BuildCommand.projectInfoOrNull(cliDir);
+        return info != null && "ALWAYS".equals(info.nativeMode());
     }
 
     /**
      * Workspace module paths minus every {@code [native] enabled = "always"} module — not just the
      * discovered CLI module — so {@code --skip-native} never re-enters any of them.
      */
-    static List<String> modulesWithoutNativeAlways(Path workspaceRoot, JkBuild root) {
+    static List<String> modulesWithoutNativeAlways(Path workspaceRoot, ProjectInfo root) {
         List<String> keep = new ArrayList<>();
-        for (String m : root.workspace().modules()) {
-            if (isNativeEligible(workspaceRoot.resolve(m).toAbsolutePath().normalize())) continue;
+        for (String m : root.moduleDirs()) {
+            Path mod = resolveModuleDir(workspaceRoot, m);
+            if (isNativeEligible(mod)) continue;
             keep.add(m);
         }
         return keep;
     }
 
-    private static Path findEngineAssembly(Path workspaceRoot, JkBuild root, Path engineDir) throws IOException {
+    private static Path findEngineAssembly(Path engineDir) throws IOException {
         if (engineDir == null) return null;
-        JkBuild engine = JkBuildParser.parse(engineDir.resolve("jk.toml"));
-        BuildLayout layout = BuildLayout.of(engineDir, engine);
-        Path assembly = layout.assemblyJar();
-        if (Files.isRegularFile(assembly)) return assembly;
+        var info = BuildCommand.projectInfoOrNull(engineDir);
+        if (info != null && !info.assemblyJarPath().isBlank()) {
+            Path assembly = Path.of(info.assemblyJarPath());
+            if (Files.isRegularFile(assembly)) return assembly;
+        }
         // Sometimes version in toml differs; scan target/
         Path target = engineDir.resolve("target");
         if (!Files.isDirectory(target)) return null;

@@ -1,17 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cache.Cas;
-import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.Linking;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
-import cc.jumpkick.compile.ClasspathResolver;
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.LockfileReader;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -112,52 +104,24 @@ public final class JshellCommand implements CliCommand {
 
         int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cacheDir, global, "JShell");
         if (lockCode != 0) return lockCode;
-        if (!Files.isRegularFile(proj.lockFile())) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("JShell", "no jk-lock.toml — lock refresh did not produce one");
+
+        cc.jumpkick.engine.protocol.ExecPlan plan;
+        try {
+            plan = cc.jumpkick.cli.engine.EngineClient.execPlan(
+                    cc.jumpkick.engine.EnginePaths.current(), dir, cacheDir, "jshell", null, null);
+        } catch (IOException e) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("JShell", e.getMessage());
+            return Exit.SOFTWARE;
+        }
+        if (plan.error() != null && !plan.error().isBlank()) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("JShell", plan.error());
             return Exit.CONFIG;
         }
-
-        JkBuild build = JkBuildParser.parse(proj.buildFile());
-        if (build.isWorkspaceRoot()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "JShell", "run from a module directory (workspace roots have no single compile classpath)");
-            return Exit.CONFIG;
+        if (plan.display() != null && !plan.display().isBlank()) {
+            cc.jumpkick.cli.tui.CommandWedge.printChipErr(cc.jumpkick.cli.tui.Glyphs.BANG, "JShell", plan.display());
         }
-
-        BuildLayout layout = BuildLayout.of(dir, build);
-        Path classes = layout.classesDir();
-        if (!Files.isDirectory(classes)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "JShell", "no classes at " + classes + " — run `jk build --skip-tests` or drop `--no-build`");
-            return Exit.CONFIG;
-        }
-
-        Lockfile lock = LockfileReader.read(proj.lockFile());
-        Cas cas = JkStores.cas(cacheDir.resolve("cas"));
-        List<Path> depCp = new ClasspathResolver(cas).classpathFor(lock, ClasspathResolver.COMPILE_MAIN);
-
-        List<String> cp = new ArrayList<>();
-        cp.add(classes.toString());
-        int missing = 0;
-        List<Path> present = new ArrayList<>();
-        for (Path p : depCp) {
-            if (p == null) continue;
-            if (Files.exists(p)) {
-                present.add(p);
-            } else {
-                missing++;
-            }
-        }
-        if (missing > 0) {
-            cc.jumpkick.cli.tui.CommandWedge.printChipErr(
-                    cc.jumpkick.cli.tui.Glyphs.BANG,
-                    "JShell",
-                    missing + " lock classpath entry(ies) missing on disk — run `jk sync`");
-        }
-        // jshell rejects extensionless files; CAS blobs are bare hashes, so alias as .jar.
-        for (Path p : withJarExtension(present)) {
-            cp.add(p.toString());
-        }
+        List<String> cp =
+                plan.libPaths() == null || plan.libPaths().isEmpty() ? List.of(plan.mainJar()) : plan.libPaths();
         String classpath = String.join(File.pathSeparator, cp);
 
         List<String> cmd = new ArrayList<>();

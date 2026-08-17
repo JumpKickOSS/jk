@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.plugin.protocol;
+package cc.jumpkick.jsonl;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -11,7 +11,7 @@ import java.util.Map;
  * {@code Boolean}/{@code null}) for HTTP/MCP/journal. Sibling of {@link Jsonl} (wire field codec +
  * {@link Jsonl#quote}); this is the single tree codec — never reimplement escaping here.
  *
- * <p>Lives in plugin-sdk at the SPI language floor ({@code --release 17}); written without
+ * <p>Lives in :jsonl at the SPI language floor ({@code --release 17}); written without
  * pattern-switch (Java 21+) so worker JVMs on project JDK 17+ can load the same classes.
  *
  * <p>{@link #parse} is strict RFC 8259 — it is the wire-protocol path and must stay that way.

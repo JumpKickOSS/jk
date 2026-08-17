@@ -13,6 +13,6 @@ dependencies {
     api(project(":jk-api"))
     // CachePruneScheduler consults JkCacheConfig (~/.config/jk/config.toml [cache]).
     api(project(":core"))
-    // EngineProtocol encodes/decodes with the shared Jsonl codec.
-    api(project(":plugin-sdk"))
+    // EngineProtocol encodes/decodes with the shared Jsonl codec (not the plugin SPI).
+    api(project(":jsonl"))
 }

@@ -57,49 +57,33 @@ public final class CompileCommand implements CliCommand {
         VariantSelection.install(in, dir);
         var proj = ProjectContext.require(dir, "compile").orElse(null);
         if (proj == null) return Exit.CONFIG;
-        Path buildFile = proj.buildFile();
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
 
-        // -m/--modules / --affected-since: compile each selected module (validated —).
-        List<Path> dirs = List.of(dir);
         String modulesSpec = in.value("modules").orElse(null);
         String affectedSince = in.value("affected-since").orElse(null);
-        if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {
-            cc.jumpkick.model.JkBuild entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
-            var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(dir, entry, modulesSpec, affectedSince);
-            if (selected != null && !selected.ok()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Compile", selected.errorMessage());
-                return Exit.CONFIG;
-            }
-            if (selected != null) {
-                if (selected.moduleDirs().isEmpty()) {
-                    cc.jumpkick.cli.tui.CommandWedge.printOk("Compile", "nothing selected to compile");
-                    return 0;
-                }
-                dirs = List.copyOf(selected.moduleDirs());
+        List<String> selectors = new ArrayList<>();
+        if (modulesSpec != null && !modulesSpec.isBlank()) {
+            for (String t : modulesSpec.split(",")) {
+                if (!t.isBlank()) selectors.add(t.trim());
             }
         }
-
-        // Workspace (root or member): the one-orchestrator COMPILE path — same condition the
-        // engine's CompileVerb branches on, so client and server agree on the event vocabulary
-        // (JK-2103). Prereqs package first; the selection compiles-only.
-        var wsRoot = cc.jumpkick.config.WorkspaceLocator.findRoot(dir);
-        if (wsRoot.isPresent()) {
-            cc.jumpkick.model.JkBuild rootBuild =
-                    cc.jumpkick.config.JkBuildParser.parse(wsRoot.get().resolve("jk.toml"));
-            if (rootBuild.isWorkspaceRoot()) {
-                boolean explicitSelection = (modulesSpec != null && !modulesSpec.isBlank())
-                        || (affectedSince != null && !affectedSince.isBlank());
-                List<Path> moduleDirs = explicitSelection ? dirs : List.of();
-                return runWorkspaceCompile(cache, profileName, global, dir, moduleDirs);
-            }
+        if (affectedSince != null && !affectedSince.isBlank()) {
+            selectors.add("affected:" + affectedSince);
+        }
+        var info = BuildCommand.projectInfoOrError(dir, modulesSpec, affectedSince);
+        if (info.error() != null) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Compile", info.error());
+            return Exit.CONFIG;
+        }
+        if (info.workspaceRoot() || !info.workspaceRootDir().isBlank()) {
+            return runWorkspaceCompile(cache, profileName, global, dir, selectors);
         }
 
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         // Engine-hosted: same plan as CompilePlans; listener chosen when the step list
         // arrives over the socket.
         var session = cc.jumpkick.config.SessionContext.current();
-        for (Path moduleDir : dirs) {
+        for (Path moduleDir : List.of(dir)) {
             ConsoleSpec spec = new ConsoleSpec(
                     "Compile", r -> Theme.colorize("Compiled", Theme.active().focused()), r -> "Compilation failed");
             String target = BuildCommand.buildTarget(moduleDir.resolve("jk.toml"), moduleDir);
@@ -108,8 +92,17 @@ public final class CompileCommand implements CliCommand {
                 result = cc.jumpkick.cli.engine.EngineClient.runCompile(
                         cc.jumpkick.engine.EnginePaths.current(),
                         new cc.jumpkick.cli.engine.EngineRequests.CompileRequest(
-                                moduleDir, cache, profileName, session.offline(), session.force(), global.verbose),
+                                moduleDir,
+                                cache,
+                                profileName,
+                                session.offline(),
+                                session.force(),
+                                global.verbose,
+                                selectors),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target));
+            } catch (cc.jumpkick.engine.protocol.EngineWireException e) {
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Compile", e.getMessage());
+                return Exit.CONFIG;
             } catch (IOException e) {
                 cc.jumpkick.cli.tui.CommandWedge.printFail("Compile", e.getMessage());
                 return Exit.SOFTWARE;
@@ -121,11 +114,11 @@ public final class CompileCommand implements CliCommand {
 
     /** Workspace compile via {@code buildWorkspace}: aggregate TUI matches build/native/image. */
     private int runWorkspaceCompile(
-            Path cache, String profileName, GlobalOptions global, Path entryDir, List<Path> moduleDirs)
+            Path cache, String profileName, GlobalOptions global, Path entryDir, List<String> modules)
             throws IOException {
         var session = cc.jumpkick.config.SessionContext.current();
         var req = new cc.jumpkick.cli.engine.EngineRequests.CompileRequest(
-                entryDir, cache, profileName, session.offline(), session.force(), global.verbose, moduleDirs);
+                entryDir, cache, profileName, session.offline(), session.force(), global.verbose, modules);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         cc.jumpkick.cli.tui.JkManager view =
@@ -158,12 +151,18 @@ public final class CompileCommand implements CliCommand {
                             }
                         }
                     });
+        } catch (cc.jumpkick.engine.protocol.EngineWireException e) {
+            view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
+            return Exit.CONFIG;
         } catch (IOException e) {
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
             return Exit.SOFTWARE;
         }
         if (!result.success()) {
-            view.finishBuildPlanFailure("compilation failed " + BuildCommand.elapsedSince(start));
+            String detail = result.errors().isEmpty()
+                    ? "compilation failed " + BuildCommand.elapsedSince(start)
+                    : result.errors().getFirst();
+            view.finishBuildPlanFailure(detail);
             return result.exitCode() == 0 ? 1 : result.exitCode();
         }
         view.finishBuildPlanSuccess(

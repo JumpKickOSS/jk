@@ -134,13 +134,12 @@ public final class NativeCommand implements CliCommand {
 
         // Single project: -m/--affected-since still validate.
         if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {
-            var entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
-            var sel = cc.jumpkick.config.ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affectedSince);
-            if (sel != null && !sel.ok()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Native", sel.errorMessage());
+            var sel = BuildCommand.projectInfoOrError(startDir, modulesSpec, affectedSince);
+            if (sel.error() != null && !sel.error().isBlank()) {
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Native", sel.error());
                 return Exit.CONFIG;
             }
-            if (sel != null && sel.moduleDirs().isEmpty()) {
+            if (sel.moduleDirs().isEmpty()) {
                 CliOutput.out("(no modules matched selection)");
                 return 0;
             }
@@ -190,34 +189,29 @@ public final class NativeCommand implements CliCommand {
             return 0;
         }
 
-        // -m / --affected-since: same ModuleSelection as jk build/test (paths, names, :gradle).
+        // -m / --affected-since: engine ModuleSelection via projectInfo.
         List<Path> selectedDirs = null;
         if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {
-            cc.jumpkick.model.JkBuild rootBuild;
-            try {
-                rootBuild = cc.jumpkick.config.JkBuildParser.parse(wsRoot.resolve("jk.toml"));
-            } catch (Exception e) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Native", String.valueOf(e.getMessage()));
+            var sel = BuildCommand.projectInfoOrError(wsRoot, modulesSpec, affectedSince);
+            if (sel.error() != null && !sel.error().isBlank()) {
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Native", sel.error());
                 return Exit.CONFIG;
             }
-            var sel = cc.jumpkick.config.ModuleSelection.resolveOptional(wsRoot, rootBuild, modulesSpec, affectedSince);
-            if (sel == null) {
-                // neither set — whole workspace
-            } else if (!sel.ok()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Native", sel.errorMessage());
-                return Exit.CONFIG;
-            } else if (sel.moduleDirs().isEmpty()) {
+            if (sel.moduleDirs().isEmpty()) {
                 CliOutput.out("(no modules matched selection)");
                 return 0;
-            } else {
-                selectedDirs = List.copyOf(sel.moduleDirs());
             }
+            selectedDirs = sel.moduleDirs().stream()
+                    .map(d -> Path.of(d).toAbsolutePath().normalize())
+                    .toList();
         }
 
         List<Path> candidates = new ArrayList<>();
         int considered = 0;
         for (String rel : rootInfo.moduleDirs()) {
-            Path moduleDir = wsRoot.resolve(rel).toAbsolutePath().normalize();
+            Path moduleDir = Path.of(rel).isAbsolute()
+                    ? Path.of(rel).normalize()
+                    : wsRoot.resolve(rel).toAbsolutePath().normalize();
             if (selectedDirs != null && !selectedDirs.contains(moduleDir)) continue;
             considered++;
             candidates.add(moduleDir);
@@ -252,12 +246,15 @@ public final class NativeCommand implements CliCommand {
         for (Path moduleDir : moduleDirs) {
             boolean hasNativeTable = false;
             boolean explicitlyDisabled = false;
-            try {
-                var build = cc.jumpkick.config.JkBuildParser.parse(moduleDir.resolve("jk.toml"));
-                hasNativeTable = build.nativeImage();
-                explicitlyDisabled = build.nativeExplicitlyDisabled();
-            } catch (Exception ignored) {
-                // Unreadable module toml — still try main discovery below.
+            var info = BuildCommand.projectInfoOrNull(moduleDir);
+            if (info != null) {
+                explicitlyDisabled = info.nativeExplicitlyDisabled();
+                hasNativeTable = !"DISABLED".equals(info.nativeMode());
+            } else {
+                // Unit tests / engine-down: bootstrap [native] scan, not a plugin-schema parse.
+                var scan = cc.jumpkick.config.TomlScan.scan(moduleDir.resolve("jk.toml"), "native.enabled");
+                explicitlyDisabled = scan.hasSection("native") && "false".equalsIgnoreCase(scan.get("native.enabled"));
+                hasNativeTable = scan.hasSection("native") && !explicitlyDisabled;
             }
             // enabled = false keeps the table but opts the module out of native builds — it must
             // not re-enter through the unique-main fallback (JK-2089).

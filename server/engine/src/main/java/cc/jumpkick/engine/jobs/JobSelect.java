@@ -7,6 +7,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.ModuleHints;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -16,11 +17,40 @@ public final class JobSelect {
 
     private JobSelect() {}
 
+    /**
+     * Split {@code affected:<ref>} tokens from {@code -m} selectors and resolve via
+     * {@link ModuleSelection#resolveOptional}. {@code null} when {@code tokens} is empty.
+     */
+    public static ModuleSelection.Result resolveTokens(Path entryDir, JkBuild entry, List<String> tokens) {
+        if (tokens == null || tokens.isEmpty()) return null;
+        List<String> raw = new ArrayList<>();
+        String affected = null;
+        for (String d : tokens) {
+            if (d == null || d.isBlank()) continue;
+            if (d.startsWith("affected:")) affected = d.substring("affected:".length());
+            else raw.add(d);
+        }
+        if (raw.isEmpty() && affected == null) return null;
+        return ModuleSelection.resolveOptional(entryDir, entry, raw.isEmpty() ? null : String.join(",", raw), affected);
+    }
+
     /** User-selected module dirs only (canonical). {@code null} when the caller did not filter. */
     public static Set<Path> selected(Path entryDir, JkBuild entry, List<String> modules) {
         if (modules == null || modules.isEmpty()) return null;
-        String spec = String.join(",", modules);
-        ModuleSelection.Result sel = ModuleSelection.resolve(entryDir, entry, spec);
+        ModuleSelection.Result sel;
+        boolean tokenShape = false;
+        for (String m : modules) {
+            if (m != null && m.startsWith("affected:")) {
+                tokenShape = true;
+                break;
+            }
+        }
+        if (tokenShape || modules.stream().anyMatch(m -> m != null && m.contains(","))) {
+            sel = resolveTokens(entryDir, entry, modules);
+        } else {
+            sel = ModuleSelection.resolve(entryDir, entry, String.join(",", modules));
+        }
+        if (sel == null) return null;
         if (!sel.ok()) throw new IllegalArgumentException(sel.errorMessage());
         Set<Path> out = new LinkedHashSet<>();
         for (Path p : sel.moduleDirs()) out.add(BuildGraph.canonicalPath(p));

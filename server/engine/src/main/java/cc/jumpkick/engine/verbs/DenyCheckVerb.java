@@ -4,7 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 

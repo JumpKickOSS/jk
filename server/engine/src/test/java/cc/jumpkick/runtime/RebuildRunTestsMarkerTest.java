@@ -40,7 +40,9 @@ class RebuildRunTestsMarkerTest {
 
     @Test
     void rebuild_stores_the_green_test_marker_under_the_normal_key(@TempDir Path tmp) throws Exception {
-        Path project = Files.createDirectories(tmp.resolve("markerapp"));
+        // Real-path the fixture so ActionKey.taskTag matches BuildGraph.canonicalPath
+        // (/var/folders vs /private/var/folders on macOS).
+        Path project = Files.createDirectories(tmp.resolve("markerapp")).toRealPath();
         Path cache = Path.of(System.getProperty("user.dir"), "build", "clean-restore-cache");
         Files.writeString(project.resolve("jk.toml"), """
                 name    = "markerapp"
@@ -121,7 +123,7 @@ class RebuildRunTestsMarkerTest {
             try {
                 BuildGraph.Result graph = BuildGraph.resolve(project, parsed);
                 Cas cas = JkStores.cas(cache);
-                ActionCache actionCache = new ActionCache(cas, cache.resolve("actions"));
+                ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
                 List<TaskForecast.Module> plan = TaskForecaster.of(graph, cas, actionCache, cache, false);
                 assertThat(plan).hasSize(1);
                 assertThat(plan.get(0).steps())

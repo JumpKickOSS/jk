@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
-import cc.jumpkick.plugin.protocol.MiniJson;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;

@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.cache.Linking;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
@@ -23,14 +24,19 @@ import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.tool.AppLauncher;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -46,21 +52,99 @@ public final class ExecPlans {
 
     /** Summarize the project at {@code dir} — never throws; failures ride {@code error}. */
     public static ProjectInfo projectInfo(Path dir) {
+        return projectInfo(dir, null, null);
+    }
+
+    /**
+     * As {@link #projectInfo(Path)} with optional {@code -m}/{@code --affected-since} filters.
+     * When either selector is set, {@code moduleDirs}/{@code moduleNames} are the selection
+     * (empty match is success, not an error). Invalid selectors ride {@code error}.
+     */
+    public static ProjectInfo projectInfo(Path dir, String modulesSpec, String affectedSince) {
         try {
             Path buildFile = dir.resolve("jk.toml");
             if (!Files.exists(buildFile)) {
                 return ProjectInfo.error("no jk.toml in " + dir);
             }
             JkBuild build = JkBuildParser.parse(buildFile);
+            build = cc.jumpkick.config.WorkspaceResolve.applyWorkspace(dir, build);
+            build = applyLockModulePin(dir, build);
 
             String workspaceRootDir = "";
             List<String> moduleDirs = new ArrayList<>();
+            List<String> moduleNames = new ArrayList<>();
+            Path wsRoot = null;
+            JkBuild rootBuild = build;
             if (build.isWorkspaceRoot()) {
+                wsRoot = dir;
                 workspaceRootDir = dir.toString();
-                for (String m : build.workspace().modules()) moduleDirs.add(m);
             } else {
                 var root = WorkspaceLocator.findRoot(dir);
-                if (root.isPresent()) workspaceRootDir = root.get().toString();
+                if (root.isPresent()) {
+                    wsRoot = root.get();
+                    workspaceRootDir = wsRoot.toString();
+                    try {
+                        rootBuild = JkBuildParser.parse(wsRoot.resolve("jk.toml"));
+                    } catch (Exception ignored) {
+                        rootBuild = build;
+                    }
+                }
+            }
+            if (wsRoot != null && rootBuild.isWorkspaceRoot()) {
+                try {
+                    for (var e : WorkspaceLoader.loadModules(wsRoot, rootBuild).entrySet()) {
+                        moduleDirs.add(e.getKey().toAbsolutePath().normalize().toString());
+                        moduleNames.add(e.getValue().project().name());
+                    }
+                } catch (Exception ignored) {
+                    for (String m : rootBuild.workspace().modules()) {
+                        Path abs = wsRoot.resolve(m).toAbsolutePath().normalize();
+                        moduleDirs.add(abs.toString());
+                        moduleNames.add(abs.getFileName().toString());
+                    }
+                }
+            } else {
+                moduleDirs.add(dir.toAbsolutePath().normalize().toString());
+                moduleNames.add(build.project().name());
+            }
+
+            if ((modulesSpec != null && !modulesSpec.isBlank())
+                    || (affectedSince != null && !affectedSince.isBlank())) {
+                Path selectRoot = wsRoot != null ? wsRoot : dir;
+                JkBuild selectBuild = wsRoot != null ? rootBuild : build;
+                var hit = cc.jumpkick.config.ModuleSelection.resolveOptional(
+                        selectRoot, selectBuild, modulesSpec, affectedSince);
+                if (hit != null && !hit.ok()) {
+                    return ProjectInfo.error(hit.errorMessage());
+                }
+                List<String> filteredDirs = new ArrayList<>();
+                List<String> filteredNames = new ArrayList<>();
+                if (hit != null) {
+                    for (Path p : hit.moduleDirs()) {
+                        String abs = p.toAbsolutePath().normalize().toString();
+                        int idx = moduleDirs.indexOf(abs);
+                        filteredDirs.add(abs);
+                        filteredNames.add(
+                                idx >= 0
+                                        ? moduleNames.get(idx)
+                                        : p.getFileName().toString());
+                    }
+                }
+                moduleDirs = filteredDirs;
+                moduleNames = filteredNames;
+            }
+
+            int sourceCount = 0;
+            int testCount = 0;
+            List<Path> countDirs = new ArrayList<>();
+            if (!moduleDirs.isEmpty()) {
+                for (String d : moduleDirs) countDirs.add(Path.of(d));
+            } else {
+                countDirs.add(dir);
+            }
+            for (Path mod : countDirs) {
+                sourceCount += countSources(mod, true);
+                testCount += countSources(mod, false);
             }
 
             Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
@@ -77,12 +161,13 @@ public final class ExecPlans {
 
             var format = build.format();
             var boot = build.pluginConfig(JkBuild.SPRING_BOOT_ID).orElse(null);
+            var testTags = JkBuildParser.parseTestTags(buildFile);
             return new ProjectInfo(
                     null,
-                    build.project().group(),
+                    sanitizeIdentity(build.project().group()),
                     build.project().name(),
-                    build.project().version(),
-                    build.project().jdk(),
+                    sanitizeIdentity(build.project().version()),
+                    sanitizeJdk(build.project().jdk()),
                     build.project().javaRelease(),
                     build.project().isKotlin(),
                     build.project().kotlin() == null
@@ -118,10 +203,120 @@ public final class ExecPlans {
                     pathDeps(build),
                     layoutOf(build, dir, BuildLayout::sourcesJar),
                     layoutOf(build, dir, BuildLayout::javadocJar),
-                    VariantApply.envRefs(build));
+                    VariantApply.envRefs(build),
+                    moduleNames,
+                    sourceCount,
+                    testCount,
+                    build.nativeExplicitlyDisabled(),
+                    layoutOf(build, dir, BuildLayout::classesDir),
+                    layoutOf(build, dir, BuildLayout::testClassesDir),
+                    layoutOf(build, dir, BuildLayout::kotlinClassesDir),
+                    layoutOf(build, dir, BuildLayout::groovyClassesDir),
+                    layoutOf(build, dir, BuildLayout::testResultsDir),
+                    testTags.includeTags(),
+                    testTags.excludeTags());
         } catch (RuntimeException | IOException e) {
             return ProjectInfo.error(String.valueOf(e.getMessage()));
         }
+    }
+
+    private static String sanitizeIdentity(String value) {
+        if (value == null || value.isBlank() || JkBuild.VERSION_FROM_WORKSPACE.equals(value)) return "";
+        return value;
+    }
+
+    private static String sanitizeJdk(String jdk) {
+        if (jdk == null || jdk.isBlank() || JkBuild.VERSION_FROM_WORKSPACE.equals(jdk)) return "";
+        return jdk;
+    }
+
+    /** Apply a matching {@code [[module]]} lock pin for display identity. */
+    private static JkBuild applyLockModulePin(Path cwd, JkBuild build) {
+        try {
+            Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(cwd);
+            if (!Files.isRegularFile(lockFile)) return build;
+            Lockfile lock = LockfileReader.read(lockFile);
+            if (lock.modules().isEmpty()) return build;
+            Path owner = cc.jumpkick.lock.LockPaths.lockOwnerDir(cwd)
+                    .toAbsolutePath()
+                    .normalize();
+            String rel = owner.relativize(cwd.toAbsolutePath().normalize())
+                    .toString()
+                    .replace('\\', '/');
+            if (rel.isEmpty()) rel = ".";
+            final String pathKey = rel;
+            Lockfile.ModuleEntry pin = lock.modules().stream()
+                    .filter(m ->
+                            pathKey.equals(m.path()) || build.project().name().equals(m.name()))
+                    .findFirst()
+                    .orElse(null);
+            if (pin == null) return build;
+            var p = build.project();
+            String group = blankOrSentinel(p.group()) ? pin.group() : p.group();
+            String version = blankOrSentinel(p.version()) ? pin.version() : p.version();
+            String jdk = blankOrSentinel(p.jdk()) && pin.jdk() != null ? pin.jdk() : p.jdk();
+            int javaRelease = p.java() > 0 ? p.java() : (pin.java() != null ? pin.java() : 0);
+            if (group.equals(p.group())
+                    && version.equals(p.version())
+                    && Objects.equals(jdk, p.jdk())
+                    && javaRelease == p.java()
+                    && !p.inheritsFromWorkspace()) {
+                return build;
+            }
+            var resolved = new JkBuild.Project(
+                    group,
+                    p.name(),
+                    version,
+                    jdk,
+                    javaRelease,
+                    p.kotlin(),
+                    p.groovy(),
+                    p.sourcesMode(),
+                    p.description(),
+                    p.m2install(),
+                    p.layout(),
+                    Set.of());
+            return build.withProject(resolved);
+        } catch (Exception e) {
+            return build;
+        }
+    }
+
+    private static boolean blankOrSentinel(String value) {
+        return value == null || value.isBlank() || JkBuild.VERSION_FROM_WORKSPACE.equals(value);
+    }
+
+    static int countSources(Path module, boolean main) {
+        AtomicInteger n = new AtomicInteger();
+        List<Path> roots = new ArrayList<>();
+        if (main) {
+            roots.add(module.resolve("src/main/java"));
+            roots.add(module.resolve("src/main/kotlin"));
+            roots.add(module.resolve("src/main/groovy"));
+        } else {
+            roots.add(module.resolve("src/test/java"));
+            roots.add(module.resolve("src/test/kotlin"));
+            roots.add(module.resolve("src/test/groovy"));
+            roots.add(module.resolve("test/src"));
+        }
+        for (Path root : roots.stream().distinct().toList()) {
+            if (!Files.isDirectory(root)) continue;
+            try {
+                Files.walkFileTree(root, new SimpleFileVisitor<>() {
+                    @Override
+                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                        String name = file.getFileName().toString();
+                        if (name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".groovy")) {
+                            n.incrementAndGet();
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            } catch (IOException ignored) {
+                // best-effort counts
+            }
+        }
+        return n.get();
     }
 
     /** Libraries declared as path dependencies — publish/export refuse them (consume-only). */
@@ -182,6 +377,7 @@ public final class ExecPlans {
                 case "dev" -> runPlan(dir, cache, project, layout, true);
                 case "install" -> installPlan(dir, cache, project, layout, mainOverride, binName, binDir, libDir);
                 case "aot-cache" -> aotCachePlan(dir, cache, project, layout);
+                case "jshell" -> jshellPlan(dir, cache, project, layout);
                 default -> ExecPlan.error(kind, "unknown exec-plan kind: " + kind);
             };
         } catch (RuntimeException | IOException e) {
@@ -190,6 +386,84 @@ public final class ExecPlans {
             Thread.currentThread().interrupt();
             return ExecPlan.error(kind, "interrupted");
         }
+    }
+
+    /** Compile-main classpath for {@code jk jshell}: classes dir first, then lock artifacts. */
+    private static ExecPlan jshellPlan(Path dir, Path cache, JkBuild project, BuildLayout layout) throws IOException {
+        if (project.isWorkspaceRoot()) {
+            return ExecPlan.error(
+                    "jshell", "run from a module directory (workspace roots have no single compile classpath)");
+        }
+        Path classes = layout.classesDir();
+        if (!Files.isDirectory(classes)) {
+            return ExecPlan.error(
+                    "jshell", "no classes at " + classes + " — run `jk build --skip-tests` or drop `--no-build`");
+        }
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
+        if (!Files.isRegularFile(lockFile)) {
+            return ExecPlan.error("jshell", "no jk-lock.toml — lock refresh did not produce one");
+        }
+        Lockfile lock = LockfileReader.read(lockFile);
+        Cas cas = JkStores.cas(cache.resolve("cas"));
+        List<Path> depCp = new ClasspathResolver(cas).classpathFor(lock, ClasspathResolver.COMPILE_MAIN);
+        List<String> paths = new ArrayList<>();
+        paths.add(classes.toAbsolutePath().toString());
+        int missing = 0;
+        List<Path> present = new ArrayList<>();
+        for (Path p : depCp) {
+            if (p == null) continue;
+            if (Files.exists(p)) present.add(p);
+            else missing++;
+        }
+        for (Path p : jarAliased(present)) paths.add(p.toString());
+        String display = missing > 0 ? missing + " lock classpath entry(ies) missing on disk — run `jk sync`" : "";
+        return new ExecPlan(
+                null,
+                "",
+                "jshell",
+                List.of(),
+                dir.toString(),
+                display,
+                "",
+                false,
+                false,
+                List.of(),
+                List.of(),
+                List.of(),
+                "",
+                "",
+                "",
+                false,
+                classes.toAbsolutePath().toString(),
+                "",
+                "",
+                List.of(),
+                paths,
+                "");
+    }
+
+    private static List<Path> jarAliased(List<Path> jars) throws IOException {
+        List<Path> out = new ArrayList<>(jars.size());
+        Path tmp = null;
+        int i = 0;
+        for (Path jar : jars) {
+            if (jar == null) continue;
+            String name = jar.getFileName().toString().toLowerCase();
+            if (Files.isDirectory(jar) || name.endsWith(".jar") || name.endsWith(".zip")) {
+                out.add(jar);
+                continue;
+            }
+            if (tmp == null) {
+                tmp = Files.createTempDirectory("jk-jshell-cp-");
+                tmp.toFile().deleteOnExit();
+            }
+            Path alias = tmp.resolve(i + "-" + jar.getFileName() + ".jar");
+            Linking.linkOrCopy(jar, alias);
+            alias.toFile().deleteOnExit();
+            out.add(alias);
+            i++;
+        }
+        return out;
     }
 
     /**

@@ -11,11 +11,11 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.plugin.protocol.Jsonl;
 import java.util.List;
 import java.util.Optional;
 

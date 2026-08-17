@@ -84,22 +84,16 @@ public final class RunCommand {
         cc.jumpkick.run.TestSummary[] testResultHolder = new cc.jumpkick.run.TestSummary[1];
         try {
             boolean workspace = false;
-            try {
-                workspace = cc.jumpkick.config.JkBuildParser.parse(projectDir.resolve("jk.toml"))
-                        .isWorkspaceRoot();
-            } catch (Exception ignored) {
-                // fall through to single-module path
-            }
+            var peek = BuildCommand.projectInfoOrNull(projectDir);
+            if (peek != null) workspace = peek.workspaceRoot();
             if (workspace) {
                 // Build every module (path deps, sibling jars), then execPlan picks the app module.
-                var rootBuild = cc.jumpkick.config.JkBuildParser.parse(projectDir.resolve("jk.toml"));
                 int jobs = global.jobsEffective();
                 // Session variant/clientEnv ride the request like `jk build` at a root does
                 // `jk run --release` used to build debug and then exec release artifacts that
                 // were never produced.
                 var request = new cc.jumpkick.runtime.WorkspaceRequest(
                                 projectDir,
-                                rootBuild,
                                 cache,
                                 jdksDir,
                                 1,

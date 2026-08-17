@@ -88,8 +88,9 @@ gradle.sharedServices
 
 include(
     // shared/ — client-safe contracts + code (everything the native CLI can link)
+    ":jsonl",           // Jsonl / MiniJson / BoundedLineReader (JDK-17; S1 + S7 share only this)
     ":jk-api",          // the domain + scheduler/command SPI contract (zero-dep, IO-free leaf)
-    ":plugin-sdk",      // the plugin SPI + Jsonl wire codec (JDK-17; published as jk-plugin-sdk)
+    ":plugin-sdk",      // the plugin SPI (JDK-17; published as jk-plugin-sdk)
     ":core",            // config/lock/layout/catalog/deny + filesystem/hashing/XML util
     ":client-io",       // client I/O slice: http, forge auth, credential files, CAS read/link
     ":toolchain-jdk",   // client JDK/tool flow: catalog/installer/registry, launchers, exporters
@@ -123,6 +124,7 @@ include(
 )
 
 // shared/ — client-safe contracts + code
+project(":jsonl").projectDir         = file("shared/jsonl")
 project(":jk-api").projectDir        = file("shared/jk-api")
 project(":plugin-sdk").projectDir    = file("shared/plugin-sdk")
 project(":core").projectDir          = file("shared/core")

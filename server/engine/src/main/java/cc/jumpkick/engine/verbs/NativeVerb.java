@@ -8,8 +8,8 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoSession;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.runtime.BuildService;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
@@ -174,18 +174,34 @@ public final class NativeVerb implements HostedVerb {
             List<String> extraArgs = Jsonl.strArray(requestLine, "extraArgs");
             Map<Path, Path> graalByDir = new HashMap<>();
             Jsonl.strMap(requestLine, "graalHomes").forEach((d, h) -> graalByDir.put(Path.of(d), Path.of(h)));
+            List<String> moduleTokens = Jsonl.strArray(requestLine, "moduleDirs");
             Set<Path> selected = new LinkedHashSet<>();
-            for (String d : Jsonl.strArray(requestLine, "moduleDirs")) {
-                if (d != null && !d.isBlank())
-                    selected.add(Path.of(d).toAbsolutePath().normalize());
+            if (!moduleTokens.isEmpty()) {
+                JkBuild entry = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+                var hit = cc.jumpkick.engine.jobs.JobSelect.resolveTokens(entryDir, entry, moduleTokens);
+                if (hit != null && !hit.ok()) {
+                    host.sendQuiet(
+                            writer, host.requestFailedLine(null, new IllegalArgumentException(hit.errorMessage())));
+                    return cc.jumpkick.engine.jobs.JobOutcome.failed(2);
+                }
+                if (hit != null) {
+                    for (Path p : hit.moduleDirs()) {
+                        selected.add(cc.jumpkick.runtime.BuildGraph.canonicalPath(p));
+                    }
+                } else {
+                    for (String d : moduleTokens) {
+                        if (d != null && !d.isBlank()) {
+                            selected.add(Path.of(d).toAbsolutePath().normalize());
+                        }
+                    }
+                }
             }
             if (selected.isEmpty()) selected.addAll(graalByDir.keySet());
 
-            JkBuild root = JkBuildParser.parse(entryDir.resolve("jk.toml"));
             Session session =
                     host.resolveSession(requestLine, cancelToken, false).withJdksDir(jdksDir);
             WorkspaceRequest req = new WorkspaceRequest(
-                            entryDir, root, cache, jdksDir, 0, null, skipTests, verbose, 0, null, true, true)
+                            entryDir, cache, jdksDir, 0, null, skipTests, verbose, 0, null, true, true)
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
                     .withSpec(WorkspaceSpec.nativeImage(selected, graalByDir, mainClass, extraArgs));
 

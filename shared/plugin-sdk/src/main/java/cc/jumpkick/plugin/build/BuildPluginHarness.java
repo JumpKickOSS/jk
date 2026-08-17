@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.build;
 
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.PluginConfig;
-import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.IOException;

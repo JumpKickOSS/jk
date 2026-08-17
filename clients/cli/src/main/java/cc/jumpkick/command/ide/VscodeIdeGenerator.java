@@ -3,8 +3,8 @@ package cc.jumpkick.command.ide;
 
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.engine.protocol.IdeWireModel;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.Scope;
-import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.util.MinimalXml;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

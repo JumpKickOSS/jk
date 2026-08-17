@@ -67,11 +67,9 @@ public final class NewJkBuildRenderer {
         if (inputs.plugin()) {
             // The SDK the plugin compiles against. A `main` dep, NOT `provided`: the worker forks
             // as `java -jar`, so jk-plugin-sdk must be shaded INTO the fat jar, not merely on the
-            // compile classpath. Version tracks cc.jumpkick.plugin.PluginSdkVersion.VERSION.
+            // compile classpath. Keep in sync with PluginSdkVersion.VERSION / plugin-sdk/build.gradle.kts.
             sb.append("\n[dependencies]\n");
-            sb.append("jk-plugin-sdk = { group = \"cc.jumpkick\", version = \"")
-                    .append(cc.jumpkick.plugin.PluginSdkVersion.VERSION)
-                    .append("\" }\n");
+            sb.append("jk-plugin-sdk = { group = \"cc.jumpkick\", version = \"0.1.0\" }\n");
             return sb.toString();
         }
 

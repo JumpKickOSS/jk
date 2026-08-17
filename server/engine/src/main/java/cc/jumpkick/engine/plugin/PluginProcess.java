@@ -164,7 +164,7 @@ public final class PluginProcess {
         Process process = cc.jumpkick.engine.JobWorkers.start(pb);
         // Bounded like the client socket: a worker emitting an unbounded line must not OOM the
         // engine. No idle timeout — a compiling worker is legitimately silent for long stretches.
-        try (BufferedReader reader = new cc.jumpkick.plugin.protocol.BoundedLineReader(
+        try (BufferedReader reader = new cc.jumpkick.jsonl.BoundedLineReader(
                         new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
                 BufferedWriter stdin =
                         new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8))) {

@@ -293,7 +293,7 @@ public final class PlannerPlugin {
                                     cc.jumpkick.plugin.protocol.PluginProtocol.OP_RUN_STEP,
                                     step.name(),
                                     active.manifest().id())
-                            .config(active.config())
+                            .configValues(active.config().values())
                             .project(PluginBuild.facts(project, startClass))
                             .layout(classes, in.dir(), scratch)
                             .javaHome(javaHome)
@@ -467,7 +467,7 @@ public final class PlannerPlugin {
                         cc.jumpkick.plugin.protocol.PluginProtocol.OP_PACKAGE,
                         null,
                         active.manifest().id())
-                .config(active.config())
+                .configValues(active.config().values())
                 .project(PluginBuild.facts(project, startClass))
                 .layout(classes, in.dir(), layout.moduleTargetDir().resolve("plugin"))
                 .javaHome(ctx.require(JAVA_HOME))
@@ -520,8 +520,8 @@ public final class PlannerPlugin {
         // are a packager bug.
         Path outBase = jarPath.getParent().toAbsolutePath().normalize();
         for (String line : workerLines) {
-            if (!"produced".equals(cc.jumpkick.plugin.protocol.Jsonl.str(line, "t"))) continue;
-            Path p = Path.of(String.valueOf(cc.jumpkick.plugin.protocol.Jsonl.str(line, "path")))
+            if (!"produced".equals(cc.jumpkick.jsonl.Jsonl.str(line, "t"))) continue;
+            Path p = Path.of(String.valueOf(cc.jumpkick.jsonl.Jsonl.str(line, "path")))
                     .toAbsolutePath()
                     .normalize();
             if (!p.startsWith(outBase)) {

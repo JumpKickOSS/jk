@@ -56,33 +56,52 @@ public final class LibraryRegistrySync {
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(cacheFile, "cacheFile");
         if (isFresh(cacheFile)) return;
-        Path etagFile = LibraryCatalog.etagFileFor(cacheFile);
         try {
-            // The client skips If-None-Match when cacheFile is missing/empty, so an orphan etag
-            // sidecar can never 304 us into returning without materializing the file.
-            LibraryRegistryClient.Result result =
-                    new LibraryRegistryClient(new Http()).fetch(source, etagFile, cacheFile);
-            if (result instanceof LibraryRegistryClient.Result.Unchanged) {
-                // Re-arm the freshness window so the next FRESH_FOR of commands skip the network.
-                Files.setLastModifiedTime(cacheFile, FileTime.from(Instant.now()));
-                return;
-            }
-            if (!(result instanceof LibraryRegistryClient.Result.Updated updated)) {
-                return;
-            }
-            // Validate before writing — never replace a good cache (or create a bad first copy).
-            LibraryCatalog.parse(new String(updated.body(), StandardCharsets.UTF_8));
-            Files.createDirectories(cacheFile.getParent());
-            AtomicWrites.replace(cacheFile, updated.body());
-            if (updated.etag() != null && !updated.etag().isBlank()) {
-                AtomicWrites.replace(etagFile, updated.etag().getBytes(StandardCharsets.UTF_8));
-            } else {
-                Files.deleteIfExists(etagFile);
-            }
+            fetchAndStore(source, cacheFile);
         } catch (Exception e) {
             // Fail soft: missing → bundled floor; present → keep stale. Lock must not fail solely
             // because the registry is unreachable (except operators may still lack short names only
             // present upstream — then parse reports unknown library).
+        }
+    }
+
+    /** {@code jk library update}: always hit the network and surface fetch/parse failures. */
+    public static void refreshNow(URI source, Path cacheFile) throws IOException {
+        Objects.requireNonNull(source, "source");
+        Objects.requireNonNull(cacheFile, "cacheFile");
+        try {
+            fetchAndStore(source, cacheFile);
+        } catch (IOException e) {
+            throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException(e);
+        } catch (RuntimeException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    private static void fetchAndStore(URI source, Path cacheFile) throws IOException, InterruptedException {
+        Path etagFile = LibraryCatalog.etagFileFor(cacheFile);
+        // The client skips If-None-Match when cacheFile is missing/empty, so an orphan etag
+        // sidecar can never 304 us into returning without materializing the file.
+        LibraryRegistryClient.Result result = new LibraryRegistryClient(new Http()).fetch(source, etagFile, cacheFile);
+        if (result instanceof LibraryRegistryClient.Result.Unchanged) {
+            // Re-arm the freshness window so the next FRESH_FOR of commands skip the network.
+            Files.setLastModifiedTime(cacheFile, FileTime.from(Instant.now()));
+            return;
+        }
+        if (!(result instanceof LibraryRegistryClient.Result.Updated updated)) {
+            return;
+        }
+        // Validate before writing — never replace a good cache (or create a bad first copy).
+        LibraryCatalog.parse(new String(updated.body(), StandardCharsets.UTF_8));
+        Files.createDirectories(cacheFile.getParent());
+        AtomicWrites.replace(cacheFile, updated.body());
+        if (updated.etag() != null && !updated.etag().isBlank()) {
+            AtomicWrites.replace(etagFile, updated.etag().getBytes(StandardCharsets.UTF_8));
+        } else {
+            Files.deleteIfExists(etagFile);
         }
     }
 

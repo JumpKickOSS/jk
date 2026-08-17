@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
