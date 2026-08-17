@@ -656,7 +656,12 @@ public final class TaskForecaster {
             // Hard cascade: jar dirty ⇒ native dirty. Never forecast package-jar RUN +
             // native-image CACHED (binary mtime vs pre-build jar is not an independent skip).
             boolean nativeOnBuild = project.nativeMode() == cc.jumpkick.model.JkBuild.NativeMode.ALWAYS;
-            boolean nativeOnNativeCmd = target == WorkspaceTarget.NATIVE && project.nativeImage();
+            // Membership in the resolved terminal set — NOT project.nativeImage(). Re-deriving
+            // eligibility from the [native] table made fallback (table-less unique-main) modules
+            // invisible (jar clean + binary missing ⇒ skipped ⇒ "success" with no binary) and
+            // priced unselected cone prereqs WITH tables as perpetually dirty (their plans get
+            // allowNative=false, so the binary they were dirty "for" never appears) — JK-2088.
+            boolean nativeOnNativeCmd = target == WorkspaceTarget.NATIVE && terminalDirs.contains(dir);
             if ((nativeOnBuild || nativeOnNativeCmd) && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
                 boolean jarDirty = steps.stream().anyMatch(s -> "package-jar".equals(s.name()) && !s.cached());
                 Path nativeOut = layout.nativeBinary();
