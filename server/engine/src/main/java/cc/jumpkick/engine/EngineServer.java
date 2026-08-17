@@ -343,7 +343,8 @@ public final class EngineServer implements AutoCloseable {
                 journalWriter,
                 this::eventRequestId,
                 listeners,
-                this::cancelJob);
+                this::cancelJob,
+                cacheGate);
         this.vitals = new EngineVitals(
                 this.version,
                 this.pid,

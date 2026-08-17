@@ -109,6 +109,11 @@ public final class HttpEngineServer implements AutoCloseable {
     /** Engine hook: bump the combined-connection high-water mark on every SSE admission. */
     private volatile Runnable onSseAdmitted = () -> {};
 
+    /** Engine hook: the cache maintenance gate for MCP {@code jk_disk clean|nuke}. */
+    public void setCacheGate(java.util.concurrent.locks.ReentrantReadWriteLock cacheGate) {
+        if (mcp != null && cacheGate != null) mcp.cacheGate(cacheGate);
+    }
+
     public void setOnSseAdmitted(Runnable onSseAdmitted) {
         this.onSseAdmitted = onSseAdmitted != null ? onSseAdmitted : () -> {};
     }

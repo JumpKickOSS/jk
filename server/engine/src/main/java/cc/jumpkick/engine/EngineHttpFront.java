@@ -43,6 +43,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 import java.util.function.LongPredicate;
@@ -73,6 +74,7 @@ public final class EngineHttpFront {
     private final LongSupplier eventRequestId;
     private final EngineListeners listeners;
     private final LongPredicate cancelJob;
+    private final @Nullable ReentrantReadWriteLock cacheGate;
 
     private volatile @Nullable HttpEngineServer server;
     private volatile @Nullable String error;
@@ -114,6 +116,7 @@ public final class EngineHttpFront {
         // Combined-connection peak observed at every admission point (UDS accept bumps it too) —
         // not only when a status snapshot happens to run.
         candidate.setOnSseAdmitted(() -> peakActiveConnections.accumulateAndGet(liveConnections.getAsInt(), Math::max));
+        if (cacheGate != null) candidate.setCacheGate(cacheGate);
         try {
             candidate.start();
             Files.writeString(paths.http(), candidate.url());
@@ -460,9 +463,8 @@ public final class EngineHttpFront {
                 if (nativeTargets.isEmpty()) {
                     // Never "image everything" as a fallback — an unrequested multi-minute
                     // native-image of unrelated modules is worse than a clear failure.
-                    throw new IllegalStateException(
-                            "native job: no native-eligible module in the selection "
-                                    + "(needs a [native] table or a unique main class)");
+                    throw new IllegalStateException("native job: no native-eligible module in the selection "
+                            + "(needs a [native] table or a unique main class)");
                 }
                 // Terminal targets must schedule even when the client's dirty hint missed them —
                 // the binary is the job's deliverable (same principle as the forecast side,

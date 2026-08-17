@@ -6,6 +6,7 @@ import cc.jumpkick.config.EffectiveUserConfig;
 import cc.jumpkick.config.NerdFontMode;
 import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.engine.http.CacheSnapshot;
+import cc.jumpkick.engine.verbs.CacheMaintenanceLocks;
 import cc.jumpkick.util.JkDirs;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -14,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -245,11 +247,18 @@ public final class McpMachine {
         }
     }
 
-    public static Map<String, Object> diskAction(String action, boolean confirm) {
-        return diskAction(action, confirm, JkDirs.cache());
+    public static Map<String, Object> diskAction(
+            String action, boolean confirm, @Nullable ReentrantReadWriteLock cacheGate) {
+        return diskAction(action, confirm, JkDirs.cache(), cacheGate);
     }
 
-    static Map<String, Object> diskAction(String action, boolean confirm, Path cache) {
+    /**
+     * {@code clean}/{@code nuke} take the same exclusive locks as the wire cache verb (engine
+     * {@code cacheGate} write + cross-process {@code .prune.lock}); when either is busy the tool
+     * refuses instead of deleting under an in-flight build or a concurrent prune.
+     */
+    static Map<String, Object> diskAction(
+            String action, boolean confirm, Path cache, @Nullable ReentrantReadWriteLock cacheGate) {
         if (action == null || action.isBlank() || "usage".equals(action)) return diskUsage(null);
         Map<String, Object> preview = diskUsageOf(cache);
         if ("clean".equals(action) || "nuke".equals(action)) {
@@ -259,23 +268,31 @@ public final class McpMachine {
                 return preview;
             }
             try {
-                if ("nuke".equals(action)) {
-                    cc.jumpkick.runtime.CachePlans.purgeActionCache(cache);
-                    preview.put("nuked", true);
-                    preview.put("note", "cache tier wiped; artifact store untouched");
-                } else {
-                    var plan = cc.jumpkick.runtime.CachePlans.pruneBuildPlan(cache, 30, false, false, true, true);
-                    var result = plan.run();
-                    preview.put("cleaned", result.success());
-                    preview.put(
-                            "files",
-                            plan.get(cc.jumpkick.runtime.CachePlans.FILES).orElse(-1L));
-                    preview.put(
-                            "bytes",
-                            plan.get(cc.jumpkick.runtime.CachePlans.BYTES).orElse(-1L));
-                    if (!result.success()) {
-                        preview.put("error", "cache clean failed");
+                boolean ran = CacheMaintenanceLocks.tryExclusively(cacheGate, cache, () -> {
+                    if ("nuke".equals(action)) {
+                        cc.jumpkick.runtime.CachePlans.purgeActionCache(cache);
+                        preview.put("nuked", true);
+                        preview.put("note", "cache tier wiped; artifact store untouched");
+                    } else {
+                        var plan = cc.jumpkick.runtime.CachePlans.pruneBuildPlan(cache, 30, false, false, true, true);
+                        var result = plan.run();
+                        preview.put("cleaned", result.success());
+                        preview.put(
+                                "files",
+                                plan.get(cc.jumpkick.runtime.CachePlans.FILES).orElse(-1L));
+                        preview.put(
+                                "bytes",
+                                plan.get(cc.jumpkick.runtime.CachePlans.BYTES).orElse(-1L));
+                        if (result.success()) {
+                            CacheMaintenanceLocks.stampLastPruned(cache, System.currentTimeMillis());
+                        } else {
+                            preview.put("error", "cache clean failed");
+                        }
                     }
+                });
+                if (!ran) {
+                    preview.put("error", "cache is busy (build in flight or another prune) — retry when idle");
+                    return preview;
                 }
                 Map<String, Object> after = diskUsageOf(cache);
                 preview.put("cacheBytesAfter", after.get("cacheBytes"));

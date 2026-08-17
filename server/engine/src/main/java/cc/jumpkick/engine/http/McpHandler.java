@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import java.util.function.LongFunction;
 import java.util.function.Supplier;
@@ -65,6 +66,13 @@ public final class McpHandler {
      * Optional wiring; {@code null} falls back to a fresh exclusive capture.
      */
     private volatile Supplier<CacheSnapshot> cacheSnapshot;
+
+    /**
+     * The engine's plan-vs-maintenance lock ({@code cacheGate}); {@code jk_disk clean|nuke} must
+     * hold its write side (plus {@code .prune.lock}) before deleting. {@code null} only in tests
+     * with no engine — the file lock still applies there.
+     */
+    private volatile ReentrantReadWriteLock cacheGate;
 
     /** Age after which a live job with no progress is marked stalled. */
     static final long STALL_MS = 60_000;
@@ -154,6 +162,11 @@ public final class McpHandler {
     /** Wire the shared cache/store snapshot supplier (memoized in the live engine). Optional. */
     public void cacheSnapshot(Supplier<CacheSnapshot> cacheSnapshot) {
         this.cacheSnapshot = cacheSnapshot;
+    }
+
+    /** Wire the engine's cache maintenance gate so destructive disk tools take the real locks. */
+    public void cacheGate(ReentrantReadWriteLock cacheGate) {
+        this.cacheGate = cacheGate;
     }
 
     /**
@@ -1070,7 +1083,7 @@ public final class McpHandler {
             return ok(McpEnvelope.of("disk", McpMachine.diskUsage(cacheSnapshot)), "disk usage");
         }
         boolean confirm = Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("confirm")));
-        Map<String, Object> m = McpMachine.diskAction(action, confirm);
+        Map<String, Object> m = McpMachine.diskAction(action, confirm, cacheGate);
         if (confirm && cacheSnapshot instanceof CacheSnapshot.Memoizing memo) {
             memo.invalidate(); // clean/nuke moved bytes; the next read must re-walk
         }
