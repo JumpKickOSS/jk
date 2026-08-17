@@ -47,11 +47,15 @@ val checkCliRuntimeClasspath by tasks.registering {
     doLast {
         val forbidden = runtime.get().incoming.artifacts.artifactFiles.files.filter { f ->
             val n = f.name
-            n.startsWith("plugin-sdk") || n.startsWith("jk-plugin-sdk")
+            n.startsWith("plugin-sdk")
+                    || n.startsWith("jk-plugin-sdk")
+                    || n.startsWith("maven-artifact")
+                    || n.startsWith("plexus-utils")
         }
         if (forbidden.isNotEmpty()) {
             throw GradleException(
-                    "CLI runtimeClasspath must not contain jk-plugin-sdk (JK-2139): " + forbidden)
+                    "CLI runtimeClasspath must not contain plugin-sdk / maven-artifact / plexus-utils: "
+                            + forbidden)
         }
     }
 }

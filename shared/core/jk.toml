@@ -5,7 +5,6 @@ description = "Core library: config, lockfile, layout, and policy"
 jk-model.workspace = true
 jk-jsonl.workspace = true
 tomlj = "latest"
-maven-artifact = "latest"
 
 [provided-dependencies]
 lombok = "latest"
