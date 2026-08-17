@@ -1403,6 +1403,27 @@ export const appOptions = {
       return Math.min(i, 8) * 0.04 + 's';
     },
 
+    /** Wall clock for relative-time hovers: {@code yyyy-MM-dd hh:mm:ss} in the local zone. */
+    fmtDateTime(ms) {
+      if (ms == null || !Number.isFinite(Number(ms)) || Number(ms) <= 0) return '';
+      const d = new Date(Number(ms));
+      if (Number.isNaN(d.getTime())) return '';
+      const p = (n) => String(n).padStart(2, '0');
+      return (
+        d.getFullYear() +
+        '-' +
+        p(d.getMonth() + 1) +
+        '-' +
+        p(d.getDate()) +
+        ' ' +
+        p(d.getHours()) +
+        ':' +
+        p(d.getMinutes()) +
+        ':' +
+        p(d.getSeconds())
+      );
+    },
+
     // "just now" / "5m ago" / "3h ago" / "2d ago" from an epoch-millis stamp (drives the 1s clock).
     agoMillis(ms) {
       if (!ms) return '';

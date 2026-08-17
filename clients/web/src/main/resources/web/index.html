@@ -149,7 +149,8 @@
               </span>
             </span>
           </span>
-          <span v-if="outcome(card) !== 'running'" class="ago">{{ ago(card) }}</span>
+          <span v-if="outcome(card) !== 'running'" class="ago"
+                :data-tip="fmtDateTime(card.finishedAt) || undefined">{{ ago(card) }}</span>
         </div>
 
         <div v-if="outcome(card) === 'running'" class="cardbar" role="progressbar"
@@ -280,7 +281,8 @@
               <span class="proj-sep">·</span>
               <span>{{ p.total }} build{{ p.total === 1 ? '' : 's' }}</span>
               <template v-if="p.avgMillis"><span class="proj-sep">·</span><span>avg {{ duration(p.avgMillis) }}</span></template>
-              <template v-if="p.lastFinishedAt"><span class="proj-sep">·</span><span>{{ agoMillis(p.lastFinishedAt) }}</span></template>
+              <template v-if="p.lastFinishedAt"><span class="proj-sep">·</span><span class="when-tip"
+                :data-tip="fmtDateTime(p.lastFinishedAt) || undefined">{{ agoMillis(p.lastFinishedAt) }}</span></template>
             </div>
           </div>
         </div>
@@ -349,7 +351,8 @@
           <div class="tile" data-tip="Estimated wall-clock saved by the cache vs. a cold-cache build (critical-path estimate over the last 30 builds). ~ marks low baseline coverage."><span class="lbl">cache saved</span><span class="kpi">{{ projectDetail.cacheSaved }}<span class="kpi-sm" :class="{ warn: projectDetail.cacheLowConfidence }" v-if="projectDetail.cacheSavedPct"> {{ projectDetail.cacheSavedPct }}</span></span></div>
           <div class="tile"><span class="lbl">avg build</span><span class="kpi">{{ duration(projectDetail.avgMillis) }}</span></div>
           <div class="tile"><span class="lbl">min / max</span><span class="kpi kpi-sm">{{ duration(projectDetail.minMillis) }} / {{ duration(projectDetail.maxMillis) }}</span></div>
-          <div class="tile"><span class="lbl">last built</span><span class="kpi kpi-sm">{{ agoLong(projectDetail.lastFinishedAt) }}</span></div>
+          <div class="tile"><span class="lbl">last built</span><span class="kpi kpi-sm when-tip"
+                :data-tip="fmtDateTime(projectDetail.lastFinishedAt) || undefined">{{ agoLong(projectDetail.lastFinishedAt) }}</span></div>
         </div>
       </template>
 
@@ -377,7 +380,7 @@
                   <td><template v-if="r.tests">{{ r.tests.succeeded }} / {{ r.tests.total }}</template><template v-else>—</template></td>
                   <td :class="{ ok: r.savedPct >= 50 }"><template v-if="r.saved">{{ r.saved }} <span class="dim">({{ r.savedPct }}%)</span></template><template v-else>—</template></td>
                   <td>{{ duration(r.millis) }}</td>
-                  <td>{{ agoMillis(r.finishedAt) }}</td>
+                  <td class="when-tip" :data-tip="fmtDateTime(r.finishedAt) || undefined">{{ agoMillis(r.finishedAt) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -435,7 +438,8 @@
         <div class="panels">
           <div class="panel">
             <div class="panel-head"><span class="lbl" data-tip="Action outputs used to speed up future builds">action cache</span><span class="spacer"></span>
-              <span v-if="cache" class="mono dim">{{ gib(actionCacheBytes()) }} of {{ actionMaxBytes() != null ? gib(actionMaxBytes()) : '—' }} · pruned {{ prunedAgo() }}</span></div>
+              <span v-if="cache" class="mono dim">{{ gib(actionCacheBytes()) }} of {{ actionMaxBytes() != null ? gib(actionMaxBytes()) : '—' }} ·
+                <span class="when-tip" :data-tip="fmtDateTime(cache.lastPrunedMillis) || undefined">pruned {{ prunedAgo() }}</span></span></div>
             <template v-if="cache">
               <span class="meter" data-tip="vs [cache] max-cache-size-gb">
                 <span class="meter-fill used" :style="{ width: actionCacheUtilizationPercent() + '%' }"></span>

@@ -168,6 +168,15 @@ test('leaving project view or switching projects collapses the graph panel', () 
   assert.equal(v.projectGraphOpen, false, 'switch collapses');
 });
 
+test('fmtDateTime is yyyy-MM-dd hh:mm:ss in the local zone', () => {
+  const v = vm();
+  const d = new Date(2026, 7, 16, 14, 3, 9);
+  assert.equal(v.fmtDateTime(d.getTime()), '2026-08-16 14:03:09');
+  assert.equal(v.fmtDateTime(null), '');
+  assert.equal(v.fmtDateTime(0), '');
+  assert.equal(v.fmtDateTime('nope'), '');
+});
+
 test('cancelled cards hide success and failure details', () => {
   const v = vm();
   const card = {
