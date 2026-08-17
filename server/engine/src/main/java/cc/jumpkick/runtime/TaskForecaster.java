@@ -63,6 +63,24 @@ public final class TaskForecaster {
             Path cache,
             boolean skipTests,
             WorkspaceTarget target) {
+        return of(graph, cas, actionCache, cache, skipTests, target, Set.of());
+    }
+
+    /**
+     * As {@link #of(BuildGraph.Result, Cas, ActionCache, Path, boolean, WorkspaceTarget)} with the
+     * resolved terminal module set: the dirs that will receive the target's terminal step
+     * (native-image / write-image), mirroring {@code WorkspaceExecute.assemblePlan} eligibility.
+     * The forecast must consume the same set the plan assembly uses — re-deriving eligibility
+     * here (e.g. from {@code [native]} tables) skips fallback modules and prices unselected ones.
+     */
+    public static List<TaskForecast.Module> of(
+            BuildGraph.Result graph,
+            Cas cas,
+            ActionCache actionCache,
+            Path cache,
+            boolean skipTests,
+            WorkspaceTarget target,
+            Set<Path> terminalDirs) {
         List<TaskForecast.Module> out = new ArrayList<>();
         // --force/--rerun bypasses jk's build caches, so every step runs — the forecast must say
         // so too (otherwise the plan tree renders "Fully Cached" while the ETA, which honors force,
@@ -92,7 +110,8 @@ public final class TaskForecaster {
                     depDirtiness(u, graph.edges().getOrDefault(u.dir(), Set.of()), dirty, dirByCoord, dirByName);
             long t0 = Perf.start();
             TaskForecast.Module m =
-                    forecastModule(u, dep, force, skipTests, cas, actionCache, cache, restoredJarShas, target);
+                    forecastModule(u, dep, force, skipTests, cas, actionCache, cache, restoredJarShas, target,
+                            terminalDirs);
             Perf.end("forecast " + u.coord(), t0);
             // Seed main-output dirtiness for *compile* consumers only when this module's
             // consumed jar/classes will change — not when only test-scope work is dirty.
@@ -260,7 +279,8 @@ public final class TaskForecaster {
             ActionCache actionCache,
             Path cache,
             Map<Path, String> restoredJarShas,
-            WorkspaceTarget target) {
+            WorkspaceTarget target,
+            Set<Path> terminalDirs) {
         if (dep == null) dep = DepDirtiness.NONE;
         boolean compileDepDirty = dep.compileDepDirty();
         boolean testDepDirty = dep.testDepDirty();
@@ -647,6 +667,16 @@ public final class TaskForecaster {
                 } else {
                     steps.add(new TaskForecast.Task("native-image", TaskForecast.Status.CACHED, "", null));
                 }
+            }
+
+            // ---- write-image — jk image terminal on the selected module(s) ----
+            // ImagePlans' contract: a registry push/docker load/tarball write is a side-effect,
+            // never a cacheable output — an up-to-date module still runs its image tail. Without
+            // this step a clean workspace member forecast "not dirty", was never scheduled, and
+            // jk image reported success having pushed nothing (JK-2084).
+            if (target == WorkspaceTarget.IMAGE && terminalDirs.contains(dir)) {
+                steps.add(new TaskForecast.Task(
+                        cc.jumpkick.run.TaskNames.WRITE_IMAGE, TaskForecast.Status.RUN, "image side-effect", null));
             }
 
             // ---- emit resource-drift steps (detected before package) ----

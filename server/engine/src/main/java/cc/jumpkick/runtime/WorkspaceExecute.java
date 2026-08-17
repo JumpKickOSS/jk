@@ -206,7 +206,12 @@ public final class WorkspaceExecute {
         } else {
             listener.onPreflight("checking", 0, 0, "Checking cache…");
             preflight = BuildForecasting.forecastWithFingerprints(
-                    graph, req.cache(), req.skipTests(), req.entryDir(), req.target());
+                    graph,
+                    req.cache(),
+                    req.skipTests(),
+                    req.entryDir(),
+                    req.target(),
+                    terminalTargetDirs(units, req));
             dirty = preflight.dirty();
             listener.onPreflight(
                     "checking", 1, 1, dirty.isEmpty() ? "All modules up to date" : dirty.size() + " module(s) dirty");
@@ -541,6 +546,29 @@ public final class WorkspaceExecute {
                 : List.of(cc.jumpkick.model.Scope.values());
         Set<Path> cone = cc.jumpkick.config.WorkspaceCone.expand(byDir, spec.selectedModules(), scopes);
         return graph.restrict(cone);
+    }
+
+    /**
+     * The module dirs that will receive the target's terminal step — the SAME eligibility
+     * {@link #assemblePlan} applies (selection membership; native additionally needs a resolvable
+     * Graal home). The forecast consumes this so dirty prediction and plan assembly can never
+     * disagree about which modules carry terminal work.
+     */
+    static Set<Path> terminalTargetDirs(List<BuildGraph.BuildUnit> units, WorkspaceRequest req) {
+        WorkspaceTarget target = req.target();
+        if (target != WorkspaceTarget.NATIVE && target != WorkspaceTarget.IMAGE) return Set.of();
+        WorkspaceSpec spec = req.spec() == null ? WorkspaceSpec.DEFAULT : req.spec();
+        Set<Path> out = new LinkedHashSet<>();
+        for (BuildGraph.BuildUnit u : units) {
+            Path dir = u.dir();
+            boolean selected = !spec.hasSelection()
+                    || spec.selectedModules().stream()
+                            .anyMatch(p -> BuildGraph.canonicalPath(p).equals(BuildGraph.canonicalPath(dir)));
+            if (!selected) continue;
+            if (target == WorkspaceTarget.NATIVE && GraalHomes.lookup(dir, spec.graalByDir()) == null) continue;
+            out.add(dir);
+        }
+        return out;
     }
 
     static BuildPlan assemblePlan(

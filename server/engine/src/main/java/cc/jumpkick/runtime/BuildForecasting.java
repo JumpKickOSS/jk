@@ -74,11 +74,26 @@ public final class BuildForecasting {
      * (fingerprinting after the build records mid-build edits as clean).
      */
     static Preflight forecastWithFingerprints(BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
-        return forecastWithFingerprints(graph, cache, skipTests, entryDir, WorkspaceTarget.PACKAGE);
+        return forecastWithFingerprints(graph, cache, skipTests, entryDir, WorkspaceTarget.PACKAGE, Set.of());
     }
 
     static Preflight forecastWithFingerprints(
             BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir, WorkspaceTarget target) {
+        return forecastWithFingerprints(graph, cache, skipTests, entryDir, target, Set.of());
+    }
+
+    /**
+     * As above with {@code terminalDirs}: the resolved terminal module set for NATIVE/IMAGE
+     * targets (see {@code TaskForecaster.of}) so the forecast schedules the same terminal steps
+     * plan assembly will build.
+     */
+    static Preflight forecastWithFingerprints(
+            BuildGraph.Result graph,
+            Path cache,
+            boolean skipTests,
+            Path entryDir,
+            WorkspaceTarget target,
+            Set<Path> terminalDirs) {
         WorkspaceTarget t = target == null ? WorkspaceTarget.PACKAGE : target;
         // The dirty memo's clean claim covers package outputs only (it checks the module target
         // dir, not terminal artifacts). NATIVE/IMAGE/COMPILE must always run the target-aware
@@ -114,7 +129,13 @@ public final class BuildForecasting {
             Cas cas = JkStores.cas(cache); // artifact CAS for classpath fingerprints
             ActionCache ac = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
             List<TaskForecast.Module> modules = TaskForecaster.of(
-                    graph, cas, ac, cache, skipTests, target == null ? WorkspaceTarget.PACKAGE : target);
+                    graph,
+                    cas,
+                    ac,
+                    cache,
+                    skipTests,
+                    t,
+                    terminalDirs == null ? Set.of() : terminalDirs);
             Set<Path> dirty = new HashSet<>();
             for (TaskForecast.Module m : modules) {
                 if (m.dirty()) dirty.add(m.dir());
