@@ -188,6 +188,8 @@ public final class HttpEngineServer implements AutoCloseable {
                 : null;
         // jk_disk / jk_doctor / jk://disk read the same memoized walk as GET /api/cache.
         if (this.mcp != null) this.mcp.cacheSnapshot(cache);
+        // jk_details serves a budgeted tail of the journal-owned details.jsonl transcript.
+        if (this.mcp != null) this.mcp.detailsFile(journal::detailsFile);
         this.historyApi = new HttpHistoryApi(journal, () -> this.liveRuns.get());
         this.projectApi = new HttpProjectApi(journal);
         this.readApi = new HttpReadApi(config, webRoot, logFile, status, jobs, metrics, cache, this::url);

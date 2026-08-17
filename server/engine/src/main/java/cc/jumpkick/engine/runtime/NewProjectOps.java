@@ -9,6 +9,8 @@ import cc.jumpkick.scaffold.NewScaffolder;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -39,7 +41,124 @@ public final class NewProjectOps {
 
     public record Result(Path path) {}
 
+    /** Creation plus the durable project id (identity.toml materialized under the project home). */
+    public record Created(Path path, String projectId) {}
+
+    /** What a create would write: target path and template-or-scaffold file list. Writes nothing. */
+    public record Preview(String path, String template, List<String> files) {}
+
+    /** Validated inputs shared by {@link #create} and {@link #preview}. */
+    private record Prepared(
+            String name,
+            Path parent,
+            Path target,
+            String group,
+            NewInputs.Language lang,
+            String layout,
+            String template,
+            boolean executable) {}
+
     public static Result create(Request req) throws IOException {
+        Prepared prep = prepare(req);
+        scaffoldInto(prep, prep.target());
+        return new Result(prep.target());
+    }
+
+    /**
+     * As {@link #create}, then resolve and persist the durable project identity so id-routed
+     * surfaces ({@code GET /api/project?project=<id>}, MCP cards) can map the id back to the
+     * checkout immediately — the scaffolder writes no lock. Identity persistence is best-effort:
+     * creation already succeeded; a null id just means id-routing waits for the first build.
+     */
+    public static Created createWithIdentity(Request req) throws IOException {
+        Result result = create(req);
+        String projectId = null;
+        try {
+            var identity = cc.jumpkick.builds.ProjectIdentity.resolve(result.path());
+            cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(
+                    cc.jumpkick.builds.ProjectBuilds.projectHome(identity.id()), identity);
+            cc.jumpkick.runtime.ProjectIds.refresh(result.path().toString());
+            projectId = identity.id();
+        } catch (RuntimeException | IOException e) {
+            // best-effort — see javadoc
+        }
+        return new Created(result.path(), projectId);
+    }
+
+    /**
+     * The exact file set a create would produce, discovered by scaffolding into a scratch
+     * directory and deleting it — never a guessed list, and the real target is untouched. Runs
+     * the same validation as {@link #create}, so an occupied target refuses here too.
+     */
+    public static Preview preview(Request req) throws IOException {
+        Prepared prep = prepare(req);
+        Path tmpRoot = cc.jumpkick.util.JkDirs.tmp();
+        Files.createDirectories(tmpRoot);
+        Path scratch = Files.createTempDirectory(tmpRoot, "jk-new-preview-");
+        Path probe = scratch.resolve(prep.name());
+        try {
+            scaffoldInto(prep, probe);
+            List<String> files = new ArrayList<>();
+            try (var walk = Files.walk(probe)) {
+                walk.filter(Files::isRegularFile)
+                        .map(f -> probe.relativize(f).toString().replace('\\', '/'))
+                        .sorted()
+                        .forEach(files::add);
+            }
+            return new Preview(prep.target().toString(), prep.template(), List.copyOf(files));
+        } finally {
+            deleteRecursively(scratch);
+        }
+    }
+
+    private static void scaffoldInto(Prepared prep, Path target) throws IOException {
+        if (prep.template() != null) {
+            Path templateRoot = resolveTemplate(prep.template(), prep.parent());
+            Map<String, String> params = new LinkedHashMap<>();
+            params.put("name", prep.name());
+            params.put("package", prep.group());
+            params.put("organization", prep.group());
+            Giter8LocalApply.apply(templateRoot, target, params);
+            if (!Files.isRegularFile(target.resolve("jk.toml"))) {
+                throw new IOException("template did not produce jk.toml: " + prep.template());
+            }
+            return;
+        }
+        Optional<String> main = Optional.empty();
+        if (prep.executable()) {
+            main = Optional.of(
+                    switch (prep.lang()) {
+                        case JAVA -> prep.group() + ".Main";
+                        case KOTLIN -> prep.group() + ".MainKt";
+                        case GROOVY -> prep.group() + ".Main";
+                    });
+        }
+        int jdkMajor = Runtime.version().feature();
+        NewInputs inputs = new NewInputs(
+                prep.group(),
+                prep.name(),
+                String.valueOf(jdkMajor),
+                jdkMajor,
+                jdkMajor,
+                Optional.empty(),
+                main,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                prep.lang(),
+                prep.layout(),
+                Optional.empty(),
+                List.of(),
+                true,
+                target);
+        NewScaffolder.write(inputs, true, null);
+    }
+
+    private static Prepared prepare(Request req) throws IOException {
         if (req == null) throw new IllegalArgumentException("missing body");
         String name = req.name() == null ? "" : req.name().strip();
         if (name.isEmpty()) throw new IllegalArgumentException("missing \"name\"");
@@ -83,24 +202,11 @@ public final class NewProjectOps {
                 ? null
                 : req.template().strip();
 
-        if (template != null) {
-            Path templateRoot = resolveTemplate(template, parent);
-            Map<String, String> params = new LinkedHashMap<>();
-            params.put("name", name);
-            params.put("package", group);
-            params.put("organization", group);
-            Giter8LocalApply.apply(templateRoot, target, params);
-            if (!Files.isRegularFile(target.resolve("jk.toml"))) {
-                throw new IOException("template did not produce jk.toml: " + template);
-            }
-            return new Result(target);
-        }
-
         boolean spring = "spring".equalsIgnoreCase(nullToEmpty(req.framework()));
         boolean grails = "grails".equalsIgnoreCase(nullToEmpty(req.framework()));
         boolean quarkus = "quarkus".equalsIgnoreCase(nullToEmpty(req.framework()));
         boolean micronaut = "micronaut".equalsIgnoreCase(nullToEmpty(req.framework()));
-        if (spring || grails || quarkus || micronaut) {
+        if (template == null && (spring || grails || quarkus || micronaut)) {
             // Framework scaffolds need ScaffoldOps; wire plain path first — frameworks via CLI for now
             // until we inject ScaffoldOps here. Reject with a clear message.
             throw new IllegalArgumentException("framework scaffolds from the web are not enabled yet; use: jk new --"
@@ -109,41 +215,16 @@ public final class NewProjectOps {
                     + name);
         }
 
-        boolean executable = req.executable();
-        Optional<String> main = Optional.empty();
-        if (executable) {
-            main = Optional.of(
-                    switch (lang) {
-                        case JAVA -> group + ".Main";
-                        case KOTLIN -> group + ".MainKt";
-                        case GROOVY -> group + ".Main";
-                    });
-        }
+        return new Prepared(name, parent, target, group, lang, layout, template, req.executable());
+    }
 
-        int jdkMajor = Runtime.version().feature();
-        NewInputs inputs = new NewInputs(
-                group,
-                name,
-                String.valueOf(jdkMajor),
-                jdkMajor,
-                jdkMajor,
-                Optional.empty(),
-                main,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                lang,
-                layout,
-                Optional.empty(),
-                List.of(),
-                true,
-                target);
-        NewScaffolder.write(inputs, true, null);
-        return new Result(target);
+    private static void deleteRecursively(Path root) throws IOException {
+        if (!Files.exists(root)) return;
+        try (var walk = Files.walk(root)) {
+            for (Path f : walk.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(f);
+            }
+        }
     }
 
     /**

@@ -9,6 +9,7 @@ import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import java.util.List;
 
 public final class InstallVerb implements HostedVerb {
 
@@ -36,6 +37,28 @@ public final class InstallVerb implements HostedVerb {
     @Override
     public String threadPrefix() {
         return "jk-engine-install-";
+    }
+
+    @Override
+    public List<String> jobKinds() {
+        return List.of("install");
+    }
+
+    @Override
+    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+        String m2 =
+                Path.of(System.getProperty("user.home"), ".m2", "repository").toString();
+        return cc.jumpkick.engine.protocol.ProtoSession.withTrigger(
+                cc.jumpkick.engine.protocol.ProtoJobs.installRequest(
+                        spec.dir(),
+                        cc.jumpkick.util.JkDirs.cache().toString(),
+                        m2,
+                        null,
+                        spec.skipTests(),
+                        false,
+                        false,
+                        false),
+                "web");
     }
 
     @Override

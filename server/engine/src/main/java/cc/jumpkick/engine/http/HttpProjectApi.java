@@ -51,28 +51,14 @@ final class HttpProjectApi {
         String framework = cc.jumpkick.plugin.protocol.Jsonl.str(body, "framework");
         boolean executable = cc.jumpkick.plugin.protocol.Jsonl.bool(body, "executable", true);
         try {
-            var result = cc.jumpkick.engine.runtime.NewProjectOps.create(
+            // The SPA routes #project/<id> immediately, so identity materializes with creation.
+            var result = cc.jumpkick.engine.runtime.NewProjectOps.createWithIdentity(
                     new cc.jumpkick.engine.runtime.NewProjectOps.Request(
                             name, parentDir, group, lang, layout, template, executable, framework));
-            // Resolve the durable projectId so the SPA can route #project/<id> immediately
-            // — an absolute path in the hash 404s (isValidId rejects '/'). The
-            // scaffolder writes no lock, so materialize identity.toml under the project home;
-            // without it GET /api/project?project=<id> cannot map the id back to the checkout.
-            String projectId = null;
-            try {
-                var identity = cc.jumpkick.builds.ProjectIdentity.resolve(result.path());
-                cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(
-                        cc.jumpkick.builds.ProjectBuilds.projectHome(identity.id()), identity);
-                cc.jumpkick.runtime.ProjectIds.refresh(result.path().toString());
-                projectId = identity.id();
-            } catch (RuntimeException | IOException e) {
-                // Identity resolution/persist is best-effort — creation succeeded; the SPA
-                // skips the project route when projectId is absent.
-            }
             JsonOut created = JsonOut.object()
                     .put("path", result.path().toString())
                     .put("dir", result.path().toString());
-            if (projectId != null) created.put("projectId", projectId);
+            if (result.projectId() != null) created.put("projectId", result.projectId());
             HttpEngineServer.sendJson(exchange, 201, created.toString());
         } catch (IllegalArgumentException e) {
             HttpEngineServer.sendJson(

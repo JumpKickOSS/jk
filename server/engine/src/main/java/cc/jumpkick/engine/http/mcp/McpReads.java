@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -82,6 +83,100 @@ public final class McpReads {
         } catch (Exception e) {
             m.put("error", String.valueOf(e.getMessage()));
         }
+        return m;
+    }
+
+    /**
+     * Budgeted module/dep graph — the same {@link cc.jumpkick.resolver.DependencyGraphModel}
+     * result {@code GET /api/project/graph} serves. Default is members + declared deps
+     * (non-transitive); transitive expansion is opt-in and re-capped for the MCP budget below
+     * the model's own dashboard caps.
+     */
+    public static Map<String, Object> graph(String dir, String scopesCsv, boolean transitive) {
+        Path root = PathUtil.resolveUserPath(dir);
+        Map<String, Object> m = new LinkedHashMap<>();
+        cc.jumpkick.resolver.DependencyGraphModel.Graph g;
+        try {
+            List<cc.jumpkick.model.Scope> scopes = cc.jumpkick.resolver.DependencyGraphModel.parseScopes(scopesCsv);
+            g = cc.jumpkick.resolver.DependencyGraphModel.forProjectDir(root, scopes, transitive);
+        } catch (Exception e) {
+            m.put("error", String.valueOf(e.getMessage()));
+            return m;
+        }
+        m.put("workspace", g.workspace());
+        m.put("scopes", g.scopes());
+        m.put("transitive", g.transitive());
+        boolean clipped = g.truncated();
+        List<Map<String, Object>> nodes = new ArrayList<>();
+        for (var n : g.nodes()) {
+            if (nodes.size() >= MCP_GRAPH_MAX_NODES) {
+                clipped = true;
+                break;
+            }
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", n.id());
+            row.put("label", n.label());
+            row.put("kind", n.kind());
+            if (n.version() != null) row.put("version", n.version());
+            if (n.path() != null) row.put("path", n.path());
+            nodes.add(row);
+        }
+        List<Map<String, Object>> edges = new ArrayList<>();
+        for (var e : g.edges()) {
+            if (edges.size() >= MCP_GRAPH_MAX_EDGES) {
+                clipped = true;
+                break;
+            }
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("from", e.from());
+            row.put("to", e.to());
+            if (e.scope() != null) row.put("scope", e.scope());
+            edges.add(row);
+        }
+        m.put("truncated", clipped);
+        m.put("nodes", nodes);
+        m.put("edges", edges);
+        return m;
+    }
+
+    /** MCP budget caps — tighter than the dashboard's force-layout caps. */
+    static final int MCP_GRAPH_MAX_NODES = 200;
+
+    static final int MCP_GRAPH_MAX_EDGES = 600;
+
+    /**
+     * Full-model export via the same {@link cc.jumpkick.runtime.GenerateOps} generators the wire
+     * serves ({@code jk export maven|gradle|bom}). Returns written paths + notes; agents read the
+     * files themselves — inlining pom/settings bodies would blow the budget.
+     */
+    public static Map<String, Object> export(String dir, String format) {
+        Path root = PathUtil.resolveUserPath(dir);
+        Map<String, Object> m = new LinkedHashMap<>();
+        String kind =
+                switch (format == null ? "" : format.trim().toLowerCase(Locale.ROOT)) {
+                    case "maven" -> "export-maven";
+                    case "gradle" -> "export-gradle";
+                    case "bom" -> "export-bom";
+                    default -> null;
+                };
+        if (kind == null) {
+            m.put("error", "format must be maven | gradle | bom (IDE files: run `jk ide` — generators are CLI-side)");
+            return m;
+        }
+        cc.jumpkick.engine.protocol.GeneratedFiles files;
+        try {
+            files = cc.jumpkick.runtime.GenerateOps.generate(root, kind, Map.of());
+        } catch (RuntimeException e) {
+            m.put("error", String.valueOf(e.getMessage()));
+            return m;
+        }
+        if (files.error() != null && !files.error().isBlank()) {
+            m.put("error", files.error());
+            return m;
+        }
+        m.put("format", format.trim().toLowerCase(Locale.ROOT));
+        m.put("paths", files.paths());
+        if (files.notes() != null && !files.notes().isEmpty()) m.put("notes", files.notes());
         return m;
     }
 

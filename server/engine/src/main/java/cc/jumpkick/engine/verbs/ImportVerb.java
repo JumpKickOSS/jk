@@ -7,7 +7,9 @@ import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 public final class ImportVerb implements HostedVerb {
 
@@ -35,6 +37,39 @@ public final class ImportVerb implements HostedVerb {
     @Override
     public String threadPrefix() {
         return "jk-engine-import-";
+    }
+
+    @Override
+    public List<String> jobKinds() {
+        return List.of("import");
+    }
+
+    /** Auto-detects the source build file — the same order the CLI uses. */
+    @Override
+    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+        Path dir = Path.of(spec.dir());
+        Path source = null;
+        for (String candidate : List.of("build.gradle.kts", "build.gradle", "pom.xml")) {
+            Path p = dir.resolve(candidate);
+            if (Files.isRegularFile(p)) {
+                source = p;
+                break;
+            }
+        }
+        if (source == null) {
+            throw new IllegalArgumentException(
+                    "no build file found in " + dir + " (looked for build.gradle.kts, build.gradle, pom.xml)");
+        }
+        return cc.jumpkick.engine.protocol.ProtoSession.withTrigger(
+                cc.jumpkick.engine.protocol.ProtoJobs.importRequest(
+                        source.toString(),
+                        dir.resolve("jk.toml").toString(),
+                        spec.dir(),
+                        cc.jumpkick.util.JkDirs.tmp().toString(),
+                        false,
+                        null,
+                        cc.jumpkick.util.JkDirs.cache().toString()),
+                "web");
     }
 
     @Override

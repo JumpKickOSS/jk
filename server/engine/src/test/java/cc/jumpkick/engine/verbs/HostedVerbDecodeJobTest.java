@@ -85,10 +85,50 @@ class HostedVerbDecodeJobTest {
     }
 
     @Test
+    void publish_install_and_import_decode_to_their_wire_requests(@TempDir Path dir) throws Exception {
+        project(dir);
+        // Detached publish is always a dry run — credential resolution never enters the engine.
+        String publish = new PublishVerb(null).decodeJob(JobSpec.of("publish", dir.toString()));
+        assertThat(EngineProtocol.typeOf(publish)).isEqualTo(EngineProtocol.PUBLISH_REQUEST);
+        assertThat(Jsonl.bool(publish, "dryRun", false)).isTrue();
+        assertThat(Jsonl.str(publish, "authType")).isEqualTo("anonymous");
+
+        String install = new InstallVerb(null).decodeJob(JobSpec.of("install", dir.toString()));
+        assertThat(EngineProtocol.typeOf(install)).isEqualTo(EngineProtocol.INSTALL_REQUEST);
+        assertThat(Jsonl.str(install, "m2Dir")).endsWith("repository");
+
+        Files.writeString(dir.resolve("pom.xml"), "<project/>");
+        String imp = new ImportVerb(null).decodeJob(JobSpec.of("import", dir.toString()));
+        assertThat(EngineProtocol.typeOf(imp)).isEqualTo(EngineProtocol.IMPORT_REQUEST);
+        assertThat(Jsonl.str(imp, "source")).endsWith("pom.xml");
+        assertThat(Jsonl.str(imp, "out")).endsWith("jk.toml");
+    }
+
+    @Test
+    void import_without_a_build_file_refuses_decode(@TempDir Path dir) throws Exception {
+        project(dir);
+        assertThatThrownBy(() -> new ImportVerb(null).decodeJob(JobSpec.of("import", dir.toString())))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("no build file");
+    }
+
+    @Test
     void every_exposed_kind_resolves_through_the_registry() {
         VerbRegistry registry = VerbRegistry.standard(new EngineVerbBridgeStub());
         for (String kind : List.of(
-                "build", "assemble", "test", "lock", "update", "format", "compile", "image", "native", "clean")) {
+                "build",
+                "assemble",
+                "test",
+                "lock",
+                "update",
+                "format",
+                "compile",
+                "image",
+                "native",
+                "clean",
+                "publish",
+                "install",
+                "import")) {
             assertThat(registry.forJobKind(kind)).as(kind).isNotNull();
         }
         assertThat(registry.forJobKind("quux")).isNull();

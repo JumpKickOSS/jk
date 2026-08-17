@@ -8,10 +8,12 @@ import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.engine.http.CacheSnapshot;
 import cc.jumpkick.engine.verbs.CacheMaintenanceLocks;
 import cc.jumpkick.util.JkDirs;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +29,55 @@ public final class McpMachine {
     private static final Pattern HEAP_LINE = Pattern.compile("(?m)^([ \\t]*)max-heap-mb[ \\t]*=[ \\t]*\\d+[ \\t]*$");
 
     private McpMachine() {}
+
+    /**
+     * Installed jkx tools ({@code jk tool list} facts): env dirs under
+     * {@code <state>/tools/envs}, coordinate + provenance from each {@code env.json}, launcher
+     * presence under the platform bin dir. Same fields the CLI table renders — never the CAS.
+     */
+    public static Map<String, Object> tools() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        List<Map<String, Object>> rows = new ArrayList<>();
+        Path envsRoot = JkDirs.state().resolve("tools").resolve("envs");
+        Path binDir = JkDirs.binDir();
+        if (Files.isDirectory(envsRoot)) {
+            List<Path> envs = new ArrayList<>();
+            try (var stream = Files.list(envsRoot)) {
+                stream.filter(Files::isDirectory).forEach(envs::add);
+            } catch (IOException e) {
+                m.put("error", String.valueOf(e.getMessage()));
+                return m;
+            }
+            envs.sort(Comparator.comparing(pth -> pth.getFileName().toString()));
+            for (Path envDir : envs) {
+                String bin = envDir.getFileName().toString();
+                Path envJson = envDir.resolve("env.json");
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("tool", bin);
+                row.put("coord", envField(envJson, "primary"));
+                String kind = envField(envJson, "kind");
+                String spec = envField(envJson, "spec");
+                if (kind != null && spec != null) row.put("source", kind + " " + spec);
+                row.put("onPath", Files.exists(binDir.resolve(bin)));
+                rows.add(row);
+            }
+        }
+        m.put("tools", rows);
+        return m;
+    }
+
+    private static @Nullable String envField(Path envJson, String field) {
+        if (!Files.isRegularFile(envJson)) return null;
+        try {
+            // env.json is pretty-printed — parse properly, never compact-form key scans.
+            Object parsed =
+                    cc.jumpkick.plugin.protocol.MiniJson.parse(Files.readString(envJson, StandardCharsets.UTF_8));
+            if (parsed instanceof Map<?, ?> map && map.get(field) instanceof String s) return s;
+            return null;
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
 
     public static Map<String, Object> configGet() {
         Map<String, Object> m = new LinkedHashMap<>();

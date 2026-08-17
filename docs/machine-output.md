@@ -133,7 +133,8 @@ Disable: `--no-timeline` / `JK_CHROME_PROFILE=off`. Linked from docs; not duplic
 Engine hosts HTTP (loopback by default) with:
 
 - `GET /api/status`, `GET /api/events` (SSE), `POST /api/build` (optional `kind`:
-  workspace build by default), `POST /api/cancel` (`jid`, or `dir` to cancel every live job
+  workspace build by default; any HTTP-exposed kind incl. `publish` — always dry-run —
+  `install`, `import`), `POST /api/cancel` (`jid`, or `dir` to cancel every live job
   of a checkout), …
 - SSE: `event: <type>` + `data: <json>` — the event name **equals** the payload `type`: `request-start`, `task-start`, `task-finish`, `progress`, `eta`, `error`, module events, …
 
@@ -188,7 +189,7 @@ Bind once, then omit `dir` on later calls.
 | **`jk_bind`** | Set default workspace for later tools; returns a project card |
 | **`jk_status`** | Engine vitals (pid, version, heap, active jobs) — same facts as `GET /api/status` |
 | **`jk_project`** | Project card (coord, java, members, last run) |
-| **`jk_run`** | Start a job: `build` \| `test` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean`. **`wait` defaults true**. Optional modules/tags/suites/`skip_tests`/`timeout_s` |
+| **`jk_run`** | Start a job: `build` \| `test` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `import` (publish is **always a dry-run** — credentialed uploads are CLI-only). **`wait` defaults true**. Optional modules/tags/suites/`skip_tests`/`timeout_s` |
 | **`jk_build`** / **`jk_test`** / **`jk_lock`** | Async convenience aliases (return `jid` immediately) |
 | **`jk_job`** | `get` \| `wait` \| `cancel` a job; omit `jid` → latest live job for bound dir |
 | **`jk_cancel`** | Cancel by **`jid`**, or every live job for a `dir` |
@@ -204,6 +205,13 @@ Bind once, then omit `dir` on later calls.
 | **`jk_disk`** | Cache/store usage; `clean`/`nuke` require `confirm=true` |
 | **`jk_jdk`** | List / install / uninstall JDKs (`confirm=true` for uninstall) |
 | **`jk_doctor`** | Host health snapshot (config + disk) |
+| **`jk_new`** | Scaffold a project (same scaffolder as `jk new`); `action=templates` lists short names; `preview=true` returns the exact file set without writing |
+| **`jk_publish`** | Validate the publish bundle — **always a dry-run**; real uploads stay `jk publish` (credentials never enter the engine) |
+| **`jk_install`** | Install the project app into the local Maven repo; `action=list` shows installed jkx tools (tool installs stay CLI-side — trust gates) |
+| **`jk_import`** | Import a Maven/Gradle build into `jk.toml` (auto-detects the build file) |
+| **`jk_export`** | Write `maven` \| `gradle` \| `bom` files (same generators as `jk export`); returns paths — IDE files stay `jk ide` (CLI) |
+| **`jk_details`** | Budgeted tail of a run's `details.jsonl` transcript (default last-fail, `error` + `task-finish`, 80 events) — `jk_diagnostics` first |
+| **`jk_graph`** | Compact module/dep graph (same model as the dashboard); transitive expansion opt-in and budget-capped |
 
 Do not dump full journal records — start with **`jk_diagnostics`** for failures.
 `jk_history` lists every journaled kind; the Web UI Activity feed stays build-like.
