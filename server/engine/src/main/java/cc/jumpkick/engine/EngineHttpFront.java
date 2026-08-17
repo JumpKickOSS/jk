@@ -444,34 +444,35 @@ public final class EngineHttpFront {
                     .withJdksDir(jdksDir)
                     .withCancel(cancelToken);
             return SessionContext.where(session, () -> {
-                Map<Path, JkBuild> scopes = nativeScopes(entryDir, entry, dirty);
+                if (graal == null) {
+                    // Without a Graal home the old path built empty target sets and reported a
+                    // plain package build as native success — fail loudly instead.
+                    throw new IllegalStateException(
+                            "native job: no GraalVM home available (install one with `jk jdk graal`)");
+                }
+                // Eligibility over the FULL workspace, never the dirty-filtered subset: a dirty
+                // non-native module must not flip the no-table fallback on (JK-2087).
+                Map<Path, JkBuild> allModules = nativeScopes(entryDir, entry);
                 Set<Path> selected = HttpJobSelect.selected(entryDir, entry, modules);
-                boolean anyNativeTable = false;
-                for (JkBuild b : scopes.values()) {
-                    if (b.nativeImage()) {
-                        anyNativeTable = true;
-                        break;
-                    }
-                }
-                Set<Path> nativeTargets = new LinkedHashSet<>();
+                Set<Path> nativeTargets = nativeEligibleTargets(allModules, selected);
                 Map<Path, Path> graalByDir = new LinkedHashMap<>();
-                for (var e : scopes.entrySet()) {
-                    Path dir = e.getKey();
-                    boolean inSelection = selected == null || selected.contains(BuildGraph.canonicalPath(dir));
-                    boolean allowNative = inSelection && (e.getValue().nativeImage() || !anyNativeTable);
-                    if (allowNative && graal != null) {
-                        nativeTargets.add(dir);
-                        graalByDir.put(dir, graal);
-                    }
+                for (Path d : nativeTargets) graalByDir.put(d, graal);
+                if (nativeTargets.isEmpty()) {
+                    // Never "image everything" as a fallback — an unrequested multi-minute
+                    // native-image of unrelated modules is worse than a clear failure.
+                    throw new IllegalStateException(
+                            "native job: no native-eligible module in the selection "
+                                    + "(needs a [native] table or a unique main class)");
                 }
-                if (nativeTargets.isEmpty() && graal != null) {
-                    for (Path d : scopes.keySet()) {
-                        nativeTargets.add(d);
-                        graalByDir.put(d, graal);
-                    }
+                // Terminal targets must schedule even when the client's dirty hint missed them —
+                // the binary is the job's deliverable (same principle as the forecast side,
+                // JK-2084/JK-2088).
+                Set<Path> hint = dirty == null ? null : new LinkedHashSet<>(dirty);
+                if (hint != null) {
+                    for (Path d : nativeTargets) hint.add(BuildGraph.canonicalPath(d));
                 }
                 WorkspaceRequest req = new WorkspaceRequest(
-                                entryDir, entry, cache, jdksDir, 0, null, true, false, 0, dirty, false, true)
+                                entryDir, entry, cache, jdksDir, 0, null, true, false, 0, hint, false, true)
                         .withSpec(WorkspaceSpec.nativeImage(nativeTargets, graalByDir, null, List.of()));
                 WorkspaceResult wr = BuildService.buildWorkspace(req, listeners.hub(entryDir.toString()));
                 journalWriter.accOutcome(eventRequestId.getAsLong(), wr.success(), wr.exitCode());
@@ -482,21 +483,43 @@ public final class EngineHttpFront {
         }
     }
 
-    private static Map<Path, JkBuild> nativeScopes(Path entryDir, JkBuild entry, Set<Path> dirty) throws IOException {
+    private static Map<Path, JkBuild> nativeScopes(Path entryDir, JkBuild entry) throws IOException {
         if (!entry.isWorkspaceRoot()) {
             return Map.of(entryDir, entry);
         }
         Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(entryDir, entry);
-        if (dirty != null) {
-            Map<Path, JkBuild> filtered = new LinkedHashMap<>();
-            for (var e : modules.entrySet()) {
-                if (dirty.contains(BuildGraph.canonicalPath(e.getKey()))) filtered.put(e.getKey(), e.getValue());
-            }
-            modules = filtered;
-        }
         Map<Path, JkBuild> ordered = new LinkedHashMap<>();
         for (Path dir : BuildGraph.orderModules(modules)) ordered.put(dir, modules.get(dir));
         return ordered;
+    }
+
+    /**
+     * Selection ∩ native eligibility, mirroring {@code NativeCommand.graalHomesForModules}:
+     * modules with a {@code [native]} table are preferred; when NO module declares one, modules
+     * with a unique main are eligible. Never falls back to "every module" — an empty result is
+     * the caller's cue to fail the job (JK-2087).
+     */
+    static Set<Path> nativeEligibleTargets(Map<Path, JkBuild> allModules, Set<Path> selected) {
+        boolean anyNativeTable = false;
+        for (JkBuild b : allModules.values()) {
+            if (b.nativeImage()) {
+                anyNativeTable = true;
+                break;
+            }
+        }
+        Set<Path> targets = new LinkedHashSet<>();
+        for (var e : allModules.entrySet()) {
+            Path dir = e.getKey();
+            boolean inSelection = selected == null || selected.contains(BuildGraph.canonicalPath(dir));
+            if (!inSelection) continue;
+            boolean eligible = e.getValue().nativeImage();
+            if (!eligible && !anyNativeTable) {
+                eligible = cc.jumpkick.layout.NativePreflight.resolveMain(dir, null)
+                        instanceof cc.jumpkick.layout.NativePreflight.Main.Unique;
+            }
+            if (eligible) targets.add(dir);
+        }
+        return targets;
     }
 
     private boolean runClean(Path entryDir, Session.CancelToken cancelToken) {
