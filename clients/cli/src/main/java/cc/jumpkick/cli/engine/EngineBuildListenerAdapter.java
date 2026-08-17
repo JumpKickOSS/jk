@@ -1204,6 +1204,12 @@ final class EngineBuildListenerAdapter {
                             throw new EngineWireException(
                                     wire.code(), msg == null || msg.isBlank() ? "Build is already running" : msg);
                         }
+                        if (EngineProtocol.ERR_REQUEST_FAILED.equals(wire.code())) {
+                            String msg = wire.getMessage() == null ? "" : wire.getMessage();
+                            WorkspaceResult failed = new WorkspaceResult(false, 2, List.of(), List.of(msg), false);
+                            listener.onWorkspaceFinish(failed);
+                            return failed;
+                        }
                         throw new EngineWireException(wire.code(), "jk engine: build failed: " + wire.getMessage());
                     }
                     default -> {

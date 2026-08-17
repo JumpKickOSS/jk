@@ -37,7 +37,7 @@ public final class PluginTableRegistry {
     /** Load a plugin resource relative to its manifest ({@code <id>/<relPath>}). */
     public static String resourceText(PluginDescriptor manifest, String relPath) {
         String resource = manifest.id() + "/" + relPath;
-        try (InputStream in = PluginTableRegistry.class.getResourceAsStream(resource)) {
+        try (InputStream in = openBuiltIn(resource)) {
             if (in == null) {
                 throw new cc.jumpkick.config.JkBuildParseException(
                         "plugin " + manifest.id() + " names a missing resource: " + relPath);
@@ -251,10 +251,27 @@ public final class PluginTableRegistry {
         return sb.toString();
     }
 
+    /**
+     * Built-in manifests sit on the engine classpath (JK-2149), not next to this class in {@code
+     * :core}. Try the class, then the context loader, then the defining loader with the full path.
+     */
+    private static InputStream openBuiltIn(String resource) {
+        InputStream in = PluginTableRegistry.class.getResourceAsStream(resource);
+        if (in != null) return in;
+        String full = "cc/jumpkick/plugin/manifest/" + resource;
+        ClassLoader ctx = Thread.currentThread().getContextClassLoader();
+        if (ctx != null) {
+            in = ctx.getResourceAsStream(full);
+            if (in != null) return in;
+        }
+        ClassLoader def = PluginTableRegistry.class.getClassLoader();
+        return def == null ? null : def.getResourceAsStream(full);
+    }
+
     private static Map<String, PluginDescriptor> loadBuiltIns() {
         Map<String, PluginDescriptor> byTable = new LinkedHashMap<>();
         for (String resource : BUILT_IN) {
-            try (InputStream in = PluginTableRegistry.class.getResourceAsStream(resource)) {
+            try (InputStream in = openBuiltIn(resource)) {
                 if (in == null) {
                     throw new IllegalStateException("missing built-in plugin manifest resource: "
                             + resource

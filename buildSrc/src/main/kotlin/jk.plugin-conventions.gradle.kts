@@ -61,6 +61,14 @@ publishing {
     }
 }
 
+// Publisher / compat-bridge parse JkBuild via PluginTableRegistry. Manifests stay
+// off :core (JK-2149) so the native CLI cannot see them; workers load them from
+// this jar via the context classloader.
+tasks.processResources {
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    pluginManifestResources(rootProject)
+}
+
 tasks.jar {
     manifest {
         attributes(

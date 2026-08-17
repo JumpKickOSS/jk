@@ -70,9 +70,12 @@ public final class CompileCommand implements CliCommand {
         if (affectedSince != null && !affectedSince.isBlank()) {
             selectors.add("affected:" + affectedSince);
         }
-        var info = BuildCommand.projectInfoOrNull(dir);
-        boolean workspace = info != null && !info.workspaceRootDir().isBlank();
-        if (workspace) {
+        var info = BuildCommand.projectInfoOrError(dir, modulesSpec, affectedSince);
+        if (info.error() != null) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Compile", info.error());
+            return Exit.CONFIG;
+        }
+        if (info.workspaceRoot() || !info.workspaceRootDir().isBlank()) {
             return runWorkspaceCompile(cache, profileName, global, dir, selectors);
         }
 
@@ -89,8 +92,17 @@ public final class CompileCommand implements CliCommand {
                 result = cc.jumpkick.cli.engine.EngineClient.runCompile(
                         cc.jumpkick.engine.EnginePaths.current(),
                         new cc.jumpkick.cli.engine.EngineRequests.CompileRequest(
-                                moduleDir, cache, profileName, session.offline(), session.force(), global.verbose),
+                                moduleDir,
+                                cache,
+                                profileName,
+                                session.offline(),
+                                session.force(),
+                                global.verbose,
+                                selectors),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target));
+            } catch (cc.jumpkick.engine.protocol.EngineWireException e) {
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Compile", e.getMessage());
+                return Exit.CONFIG;
             } catch (IOException e) {
                 cc.jumpkick.cli.tui.CommandWedge.printFail("Compile", e.getMessage());
                 return Exit.SOFTWARE;
@@ -139,12 +151,18 @@ public final class CompileCommand implements CliCommand {
                             }
                         }
                     });
+        } catch (cc.jumpkick.engine.protocol.EngineWireException e) {
+            view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
+            return Exit.CONFIG;
         } catch (IOException e) {
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
             return Exit.SOFTWARE;
         }
         if (!result.success()) {
-            view.finishBuildPlanFailure("compilation failed " + BuildCommand.elapsedSince(start));
+            String detail = result.errors().isEmpty()
+                    ? "compilation failed " + BuildCommand.elapsedSince(start)
+                    : result.errors().getFirst();
+            view.finishBuildPlanFailure(detail);
             return result.exitCode() == 0 ? 1 : result.exitCode();
         }
         view.finishBuildPlanSuccess(

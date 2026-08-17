@@ -249,7 +249,8 @@ final class EngineHosted {
                                 req.profile(),
                                 req.offline(),
                                 req.force(),
-                                req.verbose()),
+                                req.verbose(),
+                                req.modules()),
                         "compile",
                         listenerFactory,
                         (type, line) -> {})

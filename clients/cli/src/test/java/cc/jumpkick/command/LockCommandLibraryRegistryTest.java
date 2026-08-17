@@ -115,10 +115,9 @@ class LockCommandLibraryRegistryTest {
     void lock_skips_a_fresh_catalog_without_touching_the_network(@TempDir Path tempDir) throws Exception {
         // The resident engine keeps the file warm on the same cadence — a lock right after a
         // download must not stack another blocking fetch on top.
+        run("new", tempDir.toString());
         Path libraryCache = tempDir.resolve("libs.global.toml");
         Files.writeString(libraryCache, "[libraries]\nold = \"com.old:thing\"\n");
-
-        run("new", tempDir.toString());
         int exit = lock(tempDir, libraryCache);
 
         assertThat(exit).isEqualTo(0);
@@ -128,11 +127,10 @@ class LockCommandLibraryRegistryTest {
     @Test
     void lock_revalidates_an_existing_catalog_and_stores_the_fresh_body_and_etag(@TempDir Path tempDir)
             throws Exception {
+        run("new", tempDir.toString());
         Path libraryCache = tempDir.resolve("libs.global.toml");
         Files.writeString(libraryCache, "[libraries]\nold = \"com.old:thing\"\n");
         makeStale(libraryCache);
-
-        run("new", tempDir.toString());
         int exit = lock(tempDir, libraryCache);
 
         assertThat(exit).isEqualTo(0);
@@ -144,13 +142,12 @@ class LockCommandLibraryRegistryTest {
 
     @Test
     void lock_sends_the_stored_etag_and_leaves_a_304_cache_untouched(@TempDir Path tempDir) throws Exception {
+        run("new", tempDir.toString());
         Path libraryCache = tempDir.resolve("libs.global.toml");
         String original = "[libraries]\nold = \"com.old:thing\"\n";
         Files.writeString(libraryCache, original);
         Files.writeString(LibraryCatalog.etagFileFor(libraryCache), ETAG);
         makeStale(libraryCache);
-
-        run("new", tempDir.toString());
         int exit = lock(tempDir, libraryCache);
 
         assertThat(exit).isEqualTo(0);
@@ -174,11 +171,10 @@ class LockCommandLibraryRegistryTest {
 
     @Test
     void lock_offline_skips_the_registry_entirely(@TempDir Path tempDir) throws Exception {
+        run("new", tempDir.toString());
         Path libraryCache = tempDir.resolve("libs.global.toml");
         Files.writeString(libraryCache, "[libraries]\nold = \"com.old:thing\"\n");
         makeStale(libraryCache);
-
-        run("new", tempDir.toString());
         assertThat(lock(tempDir, libraryCache)).isEqualTo(0); // warm the jk-lock.toml
         assertThat(registryHits.get()).isEqualTo(1);
 
@@ -204,6 +200,7 @@ class LockCommandLibraryRegistryTest {
 
     @Test
     void lock_falls_back_when_the_registry_returns_a_malformed_payload(@TempDir Path tempDir) throws Exception {
+        run("new", tempDir.toString());
         Path libraryCache = tempDir.resolve("libs.global.toml");
         String original = "[libraries]\nold = \"com.old:thing\"\n";
         Files.writeString(libraryCache, original);
@@ -222,7 +219,6 @@ class LockCommandLibraryRegistryTest {
         registryUrl =
                 URI.create("http://127.0.0.1:" + registryServer.getAddress().getPort() + "/libraries.toml");
 
-        run("new", tempDir.toString());
         int exit = lock(tempDir, libraryCache);
 
         assertThat(exit).isEqualTo(0); // malformed registry payload never fails the lock
