@@ -60,14 +60,6 @@ public final class BuildJobFingerprint {
                 Jsonl.str(requestLine, "assemblyOverride"));
     }
 
-    /** Fingerprint for HTTP/MCP workspace jobs (absolute dir + kind + test-only shape). */
-    public static String ofHttp(String kind, Path dir, boolean skipTests, boolean testOnly) {
-        if (BuildHistoryKinds.isBuildLike(kind)) {
-            return ofProject(kind, dir != null ? dir.toString() : "");
-        }
-        return of(kind, dir != null ? dir.toString() : "", false, false, skipTests, testOnly, null, null, null);
-    }
-
     /**
      * Project-scoped exclusivity for build-like kinds: same canonical dir + kind cannot run two
      * jobs at once.

@@ -239,13 +239,17 @@ final class HttpReadApi {
         long requestId;
         try {
             requestId = jobs.triggerBuild(dir);
+        } catch (cc.jumpkick.engine.jobs.JobEnvelope.AlreadyRunning e) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    409,
+                    JsonOut.object()
+                            .put("error", e.getMessage())
+                            .put("jid", e.jid())
+                            .toString());
+            return;
         } catch (IllegalStateException e) {
             String msg = e.getMessage() == null ? "" : e.getMessage();
-            if (msg.contains("already running")) {
-                HttpEngineServer.sendJson(
-                        exchange, 409, JsonOut.object().put("error", msg).toString());
-                return;
-            }
             exchange.getResponseHeaders().set("Retry-After", "1");
             HttpEngineServer.sendJson(
                     exchange, 503, JsonOut.object().put("error", msg).toString());

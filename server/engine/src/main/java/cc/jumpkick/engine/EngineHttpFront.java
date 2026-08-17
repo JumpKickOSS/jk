@@ -183,24 +183,16 @@ public final class EngineHttpFront {
             case "lock" -> triggerPlan(entryDir, "lock", (l, tok, w) -> runLock(entryDir, tok));
             case "update" -> triggerPlan(entryDir, "update", (l, tok, w) -> runUpdate(entryDir, tok));
             case "format" -> triggerPlan(entryDir, "format", (l, tok, w) -> runFormat(entryDir, tok));
-            case "compile" ->
-                triggerExclusive(entryDir, "compile", (l, tok, w) -> runCompile(entryDir, dirty, tok), true, false);
-            case "image" ->
-                triggerExclusive(
-                        entryDir, "image", (l, tok, w) -> runImage(entryDir, dirty, tok), spec.skipTests(), false);
+            case "compile" -> triggerPlan(entryDir, "compile", (l, tok, w) -> runCompile(entryDir, dirty, tok));
+            case "image" -> triggerPlan(entryDir, "image", (l, tok, w) -> runImage(entryDir, dirty, tok));
             case "native" ->
-                triggerExclusive(
-                        entryDir,
-                        "native",
-                        (l, tok, w) -> runNative(entryDir, entry, dirty, spec.modules(), tok),
-                        spec.skipTests(),
-                        false);
+                triggerPlan(entryDir, "native", (l, tok, w) -> runNative(entryDir, entry, dirty, spec.modules(), tok));
             case "clean" ->
-                jobs.submitAsync(
+                jobs.submit(
                         requestLine("cache-clear-request", entryDir),
                         JobRequest.maintenance(
                                 "clean", "jk-engine-http-clean-", (l, tok, w) -> runClean(entryDir, tok)),
-                        "");
+                        new cc.jumpkick.engine.jobs.JobTransport.FireAndForget());
             default -> throw new IllegalArgumentException("kind not hosted: " + spec.kind());
         };
     }
@@ -211,25 +203,15 @@ public final class EngineHttpFront {
                 kind,
                 "jk-engine-http-" + kind + "-",
                 (l, tok, w) -> runWorkspace(entryDir, skipTests, testOnly, dirty, tags, tok));
-        return jobs.submitAsync(
-                requestLine("build-request", entryDir),
-                req,
-                BuildJobFingerprint.ofHttp(kind, entryDir, skipTests, testOnly));
+        return jobs.submit(
+                requestLine("build-request", entryDir), req, new cc.jumpkick.engine.jobs.JobTransport.FireAndForget());
     }
 
     private long triggerPlan(Path entryDir, String kind, cc.jumpkick.engine.jobs.JobBody body) {
-        return jobs.submitAsync(
+        return jobs.submit(
                 requestLine(kind + "-request", entryDir),
                 JobRequest.plan(kind, "jk-engine-http-" + kind + "-", body),
-                "");
-    }
-
-    private long triggerExclusive(
-            Path entryDir, String kind, cc.jumpkick.engine.jobs.JobBody body, boolean skipTests, boolean testOnly) {
-        return jobs.submitAsync(
-                requestLine(kind + "-request", entryDir),
-                JobRequest.plan(kind, "jk-engine-http-" + kind + "-", body),
-                BuildJobFingerprint.ofHttp(kind, entryDir, skipTests, testOnly));
+                new cc.jumpkick.engine.jobs.JobTransport.FireAndForget());
     }
 
     private static String requestLine(String type, Path entryDir) {
