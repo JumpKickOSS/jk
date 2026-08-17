@@ -56,14 +56,43 @@ public final class DiagnosticReport {
 
     /** Like {@link #renderError(String, String, String)} with a {@code group:artifact} module. */
     public static String renderError(String step, String code, String message, String module) {
+        return renderError(step, code, message, module, true);
+    }
+
+    /**
+     * {@code showHeader} false omits the phase pill — used for later compiler errors in the same
+     * module so they stack under the first report (dashboard parity).
+     */
+    public static String renderError(String step, String code, String message, String module, boolean showHeader) {
         if ("test-failure".equals(code)) return "";
         if ("verbatim".equals(code)) return message == null ? "" : message;
         String title = titleFor(step, code);
-        if (ConsoleSpec.isCompilerCode(code)) {
-            return header(title, Role.ERROR, module) + "\n"
-                    + railBlock(CompilerDiagnostic.render(nullToEmpty(message), "error"), Role.ERROR);
+        String body = ConsoleSpec.isCompilerCode(code)
+                ? railBlock(CompilerDiagnostic.render(nullToEmpty(message), "error"), Role.ERROR)
+                : railBlock(paintProse(nullToEmpty(message)), Role.ERROR);
+        if (!showHeader) return body;
+        return header(title, Role.ERROR, module) + "\n" + body;
+    }
+
+    /**
+     * Collapse key for consecutive compiler reports that share a pill. {@code null} means the
+     * report always carries its own header (non-compiler diagnostics).
+     */
+    public static String compilerHeaderKey(String step, String code, String module) {
+        if (!ConsoleSpec.isCompilerCode(code)) return null;
+        return titleFor(step, code) + "\0" + (module == null ? "" : module);
+    }
+
+    /** Tracks whether the next compiler diagnostic should repeat the phase pill. */
+    public static final class CompilerHeaderRun {
+        private String prev;
+
+        public boolean show(String step, String code, String module) {
+            String key = compilerHeaderKey(step, code, module);
+            boolean show = key == null || !key.equals(prev);
+            prev = key;
+            return show;
         }
-        return header(title, Role.ERROR, module) + "\n" + railBlock(paintProse(nullToEmpty(message)), Role.ERROR);
     }
 
     /** Warning report: yellow pill + rail (compiler warnings keep their body paint). */

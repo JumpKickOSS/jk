@@ -206,9 +206,7 @@ public final class LockCommand implements CliCommand {
                     globalLocked.set(Math.max(globalLocked.get(), sum));
                 }
                 if (!result.success()) {
-                    for (BuildPlanResult.Diagnostic d : result.errors()) {
-                        errorLines.add(ConsoleSpec.renderError(d));
-                    }
+                    ConsoleSpec.appendErrors(errorLines, result.errors());
                 }
             }
         };

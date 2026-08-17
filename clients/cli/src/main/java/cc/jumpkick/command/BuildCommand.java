@@ -726,10 +726,12 @@ public final class BuildCommand implements CliCommand {
             // Buffered sub-process output first, then the error diagnostics just above the
             // "‼ Build failed" line — which stays last so the outcome is visible without scrolling.
             List<String> above = snapshot(deferredOutput);
+            List<BuildPlanResult.Diagnostic> settleErrors = new ArrayList<>();
             for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
                 if ("test-failure".equals(d.code())) continue; // already printed by run-tests
-                above.add(ConsoleSpec.renderError(d));
+                settleErrors.add(d);
             }
+            ConsoleSpec.appendErrors(above, settleErrors);
             String failedCoord = result.modules().stream()
                     .filter(m -> !m.success())
                     .map(cc.jumpkick.runtime.ModuleOutcome::coord)

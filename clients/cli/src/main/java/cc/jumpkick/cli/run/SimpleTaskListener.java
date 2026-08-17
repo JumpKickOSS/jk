@@ -6,6 +6,8 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import java.io.PrintStream;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -51,9 +53,9 @@ public final class SimpleTaskListener implements BuildPlanListener {
             cm.finishFailure(spec.onFailure().apply(result) + suffix);
         }
         // Diagnostics below the result line; the spinner is already stopped.
-        for (BuildPlanResult.Diagnostic d : result.errors()) {
-            err.println(ConsoleSpec.renderError(d));
-        }
+        List<String> rendered = new ArrayList<>();
+        ConsoleSpec.appendErrors(rendered, result.errors());
+        for (String line : rendered) err.println(line);
         for (BuildPlanResult.Diagnostic d : result.warnings()) {
             err.println(ConsoleSpec.renderWarning(d));
         }

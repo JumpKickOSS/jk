@@ -29,6 +29,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
     private boolean inTestFailure;
 
     private final TestFailureHighlight.Stream testFailStream = new TestFailureHighlight.Stream();
+    private final DiagnosticReport.CompilerHeaderRun compilerHeaders = new DiagnosticReport.CompilerHeaderRun();
 
     /** Route this module's output into {@code buffer} (parallel build); see field doc. */
     public void bufferOutputInto(List<String> buffer) {
@@ -132,7 +133,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
         // Per-test failures are fully rendered by run-tests output (styled "Test Failure" block).
         // Do not also print a second report — keep the diagnostic for JSON.
         if ("test-failure".equals(code)) return;
-        String report = ConsoleSpec.renderError(step, code, message, module);
+        String report = ConsoleSpec.renderError(step, code, message, module, compilerHeaders.show(step, code, module));
         if (report != null && !report.isEmpty()) {
             // Peek ring always; settle dump only when not animating (same as process output).
             cm.writeAbove(report);

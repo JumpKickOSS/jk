@@ -428,10 +428,12 @@ public final class TestCommand implements CliCommand {
         }
         if (!result.success()) {
             List<String> failAbove = new ArrayList<>(above);
+            List<BuildPlanResult.Diagnostic> settleErrors = new ArrayList<>();
             for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
                 if ("test-failure".equals(d.code())) continue;
-                failAbove.add(ConsoleSpec.renderError(d));
+                settleErrors.add(d);
             }
+            ConsoleSpec.appendErrors(failAbove, settleErrors);
             String failTail = workspaceTestFailureTail(result, elapsedMs);
             view.finishBuildPlanFailure(failTail, failAbove);
             if (session != null) session.wedge(failTail);

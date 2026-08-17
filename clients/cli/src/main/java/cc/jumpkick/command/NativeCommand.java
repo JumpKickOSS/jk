@@ -17,7 +17,6 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -405,9 +404,9 @@ public final class NativeCommand implements CliCommand {
                     .findFirst()
                     .orElse("build");
             view.finishBuildPlanFailure(Coord.module(failedCoord) + " " + BuildCommand.elapsedSince(buildStart));
-            for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
-                CliOutput.err(ConsoleSpec.renderError(d));
-            }
+            List<String> rendered = new ArrayList<>();
+            ConsoleSpec.appendErrors(rendered, agg.lastErrors());
+            for (String line : rendered) CliOutput.err(line);
             return result.exitCode();
         }
         view.finishBuildPlanSuccess(

@@ -4,6 +4,8 @@ package cc.jumpkick.cli.run;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import java.io.PrintStream;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -25,9 +27,9 @@ public final class SilentListener implements BuildPlanListener {
     @Override
     public void planFinish(BuildPlanResult result) {
         if (suppressDiagnostics) return;
-        for (BuildPlanResult.Diagnostic d : result.errors()) {
-            err.println(ConsoleSpec.renderError(d));
-        }
+        List<String> rendered = new ArrayList<>();
+        ConsoleSpec.appendErrors(rendered, result.errors());
+        for (String line : rendered) err.println(line);
         for (BuildPlanResult.Diagnostic d : result.warnings()) {
             err.println(ConsoleSpec.renderWarning(d));
         }
