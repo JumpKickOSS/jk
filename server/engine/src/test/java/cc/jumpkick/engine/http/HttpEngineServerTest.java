@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import cc.jumpkick.config.JkHttpConfig;
