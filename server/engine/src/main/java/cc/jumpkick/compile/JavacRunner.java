@@ -228,13 +228,18 @@ public final class JavacRunner {
      * HotSpot host banners about memory-access {@code sun.misc.Unsafe} (JEP 498), not javac
      * diagnostics. The four-line form names the caller on one line and asks maintainers on
      * another; match all of them so none leak into the UI.
+     *
+     * <p>Anchored case-sensitively to HotSpot's uppercase {@code WARNING: } prefix and exact
+     * banner phrases (JK-2095): javac and annotation-processor {@code Messager} warnings use
+     * lowercase {@code warning:}, and a processor warning that merely mentions
+     * {@code sun.misc.Unsafe} or a deprecated method must reach the diagnostics channel. (The
+     * banner's "terminally deprecated method" line also names {@code sun.misc.Unsafe}, so the
+     * two matches below cover all four lines.)
      */
     static boolean isJvmHostNoise(String line) {
-        String lower = line.toLowerCase(Locale.ROOT);
-        if (!lower.startsWith("warning:")) return false;
-        return lower.contains("sun.misc.unsafe")
-                || lower.contains("terminally deprecated method")
-                || lower.contains("please consider reporting this to the maintainers of class");
+        if (!line.startsWith("WARNING: ")) return false;
+        return line.contains("sun.misc.Unsafe")
+                || line.contains("Please consider reporting this to the maintainers of class");
     }
 
     private static boolean hasErrors(List<CompileResult.Diagnostic> diagnostics) {
