@@ -347,6 +347,30 @@ test('history backfill maps per-module steps; single-project synthesizes one mod
   assert.equal(sp[0].modules[0].diagnostics[0].message, 'cannot find symbol');
 });
 
+test('history seeding keeps a FAILED-step module failed inside a cancelled record', async () => {
+  // JK-2094: module A fails compile (FAIL step journaled), the rest of the workspace is
+  // cancelled → rec.cancelled=true. Live painted A failed; the reload seed graying A out to
+  // 'cancelled' desynced the two and dropped A from the failure details. FAIL steps win, same
+  // precedence as outcomeOf.
+  const { seedFromHistory } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const cards = [];
+  seedFromHistory(cards, [{
+    id: 'c1', kind: 'build', dir: '/w', coord: 'g:w', finishedAt: 5000, success: false,
+    cancelled: true,
+    modules: [
+      { coord: 'g:a', dir: '/w/a', finished: true, success: false, millis: 90,
+        steps: [{ name: 'compile-java', status: 'FAIL' }] },
+      { coord: 'g:b', dir: '/w/b', finished: true, success: false, cancelled: true, millis: 10,
+        steps: [{ name: 'compile-java', status: 'CANCELLED' }] },
+    ],
+    steps: [], diagnostics: [],
+  }]);
+  const a = cards[0].modules.find((m) => m.dir === '/w/a');
+  const b = cards[0].modules.find((m) => m.dir === '/w/b');
+  assert.equal(a.state, 'failed');
+  assert.equal(b.state, 'cancelled');
+});
+
 test('workspace history replay applies the per-kind diagnostic ceilings', async () => {
   // JK-1947: the single-project path was bounded (JK-1881) but the workspace path streamed a
   // pathological record's diagnostics into the card unbounded.

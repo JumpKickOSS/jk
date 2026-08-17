@@ -773,9 +773,14 @@ function historyModules(rec) {
             ? m.didWork === false
               ? 'checked'
               : 'success'
-            : rec.cancelled || m.cancelled || steps.some((s) => s.state === 'cancelled')
-              ? 'cancelled'
-              : 'failed';
+            : steps.some((s) => s.state === 'failed')
+              // A real FAIL recorded before the cancel still reads as failed — same precedence
+              // as outcomeOf and the legacy branch below (JK-2094): a compile failure followed
+              // by a workspace cancel must not gray out to 'cancelled' on reload.
+              ? 'failed'
+              : rec.cancelled || m.cancelled || steps.some((s) => s.state === 'cancelled')
+                ? 'cancelled'
+                : 'failed';
       } else if (running && !m.success && steps.some((s) => s.state === 'running')) {
         state = 'running';
       } else if (running && !m.success && steps.length > 0 && !steps.every((s) => s.state === 'failed' || s.state === 'cancelled')) {
