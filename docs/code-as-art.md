@@ -72,7 +72,7 @@ Load-bearing races — preserve the *invariant*, not the method shape:
 | JK-1861 | Peak connections is one metric across UDS + SSE |
 
 Existing peels to copy, not relitigate: `BuildService`, `runtime.*Plans`,
-`InFlightBuilds`, `EngineDelegate`, `EngineMaintenance`, `http/*`,
+`InFlightBuilds`, `EngineMaintenance`, `http/*`,
 `CoalescingBuildPlanListener`. `EngineMain` is the composition root.
 There is no DI container and there must not be one.
 
@@ -322,7 +322,7 @@ User projects scaffold Lombok under `[processor-dependencies]` and
 | Decorator (`CoalescingBuildPlanListener`) | A second coalescer “for HTTP” |
 | Composite (`CompositeEventSink`) | EventBus |
 | `@Builder` / fluent Lombok where multi-field construction is real | Hand-rolled builders that only restate fields |
-| Proxy (`EngineDelegate`, `PluginClient`) | Dynamic proxies for tests |
+| Proxy (`PluginClient`) | Dynamic proxies for tests |
 | Process-as-singleton | `getInstance()`, static maps that outlive `close()` |
 | Existing listeners | A second observer SPI |
 | CAS / action cache as flyweight | Interning `JobSession` |
