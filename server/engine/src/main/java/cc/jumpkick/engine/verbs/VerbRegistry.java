@@ -58,6 +58,7 @@ public final class VerbRegistry {
                 new TreeVerb(host),
                 new WhyVerb(host),
                 new PluginCommandVerb(host),
+                new PluginInstallLocalVerb(host),
                 new GenerateVerb(host),
                 new NewProjectVerb(host),
                 new IdeModelVerb(host),

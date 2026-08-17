@@ -569,6 +569,29 @@ final class EngineBuildListenerAdapter {
                 });
     }
 
+    static cc.jumpkick.engine.protocol.PluginInstallLocalAck pluginInstallLocal(
+            EnginePaths.Paths paths,
+            Path dir,
+            Path cache,
+            Path installRoot,
+            String modules,
+            boolean dryRun,
+            boolean ambientStore)
+            throws IOException {
+        return request(
+                paths,
+                ProtoReads.pluginInstallLocalRequest(
+                        dir.toString(),
+                        cache.toString(),
+                        installRoot == null ? "" : installRoot.toString(),
+                        modules,
+                        dryRun,
+                        ambientStore),
+                EngineProtocol.PLUGIN_INSTALL_LOCAL_ACK,
+                "plugin install-local",
+                cc.jumpkick.engine.protocol.PluginInstallLocalAck::decode);
+    }
+
     static String editDetail(EnginePaths.Paths paths, Path file, String op, List<String> args) throws IOException {
         return request(
                 paths,

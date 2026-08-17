@@ -255,6 +255,17 @@ public final class ProtoReads {
                 + "}";
     }
 
+    public static String pluginInstallLocalRequest(
+            String dir, String cache, String installRoot, String modules, boolean dryRun, boolean ambientStore) {
+        return "{\"type\":\"" + EngineProtocol.PLUGIN_INSTALL_LOCAL_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
+                + ",\"cache\":" + Jsonl.quote(cache)
+                + ",\"installRoot\":" + Jsonl.quote(installRoot)
+                + ",\"modules\":" + Jsonl.quote(modules)
+                + ",\"dryRun\":" + dryRun
+                + ",\"ambientStore\":" + ambientStore
+                + "}";
+    }
+
     public static String pluginCommandRequest(String dir, String cache, String command, List<String> args) {
         return "{\"type\":\"" + EngineProtocol.PLUGIN_VERB_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
                 + ",\"cache\":" + Jsonl.quote(cache)

@@ -582,6 +582,19 @@ public final class EngineClient {
         return EngineBuildListenerAdapter.editDetail(paths, file, op, args);
     }
 
+    public static cc.jumpkick.engine.protocol.PluginInstallLocalAck pluginInstallLocal(
+            cc.jumpkick.engine.EnginePaths.Paths paths,
+            Path dir,
+            Path cache,
+            Path installRoot,
+            String modules,
+            boolean dryRun,
+            boolean ambientStore)
+            throws IOException {
+        return EngineBuildListenerAdapter.pluginInstallLocal(
+                paths, dir, cache, installRoot, modules, dryRun, ambientStore);
+    }
+
     /** Engine-hosted {@code jk new} / init scaffold. */
     public static cc.jumpkick.engine.protocol.NewProjectAck newProject(
             cc.jumpkick.engine.EnginePaths.Paths paths, EngineRequests.NewProjectRequest req) throws IOException {
