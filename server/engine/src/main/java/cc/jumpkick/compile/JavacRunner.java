@@ -51,15 +51,25 @@ public final class JavacRunner {
                 // up) — they must be direct command-line arguments.
                 List<String> command = new ArrayList<>();
                 command.add(javac.toString());
-                command.addAll(JvmOptions.launcherFlags(1));
+                // -J flags land on this javac's host JVM (project pin), not the engine's — gate
+                // JEP 498 allow by that home's feature so JDK 17/21 pins do not abort at startup.
+                command.addAll(JvmOptions.launcherFlags(1, JvmOptions.hostFeature(javaHome)));
                 // No PluginAot on bare `javac` — AOT is for `java … PluginMain` workers only
                 // (jk-java-compiler ToolProvider host and kotlin-compiler). See PluginAot.
                 command.add("@" + argfile);
                 ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
-                Process process = pb.start();
+                Process process = cc.jumpkick.engine.JobWorkers.start(pb);
                 List<String> stray = new ArrayList<>();
-                List<CompileResult.Diagnostic> diagnostics = parseStream(process, stray);
-                int exit = process.waitFor();
+                List<CompileResult.Diagnostic> diagnostics;
+                int exit;
+                try {
+                    diagnostics = parseStream(process, stray);
+                    exit = process.waitFor();
+                } catch (InterruptedException e) {
+                    process.destroyForcibly();
+                    Thread.currentThread().interrupt();
+                    throw new IOException("javac was interrupted", e);
+                }
                 if (exit != 0 && !hasErrors(diagnostics)) {
                     // javac died without any per-source diagnostic (bad flag, unreadable
                     // classpath entry it didn't attribute, a crash, …). Surface whatever it
@@ -77,9 +87,6 @@ public final class JavacRunner {
             } finally {
                 Files.deleteIfExists(argfile);
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("javac was interrupted", e);
         } finally {
             if (scratch != null) PathUtil.deleteRecursively(scratch);
         }
@@ -186,6 +193,10 @@ public final class JavacRunner {
                     // Snippet, caret, symbol:/location:, or wrapped message — keep verbatim.
                     block.append('\n').append(line);
                 } else if ((bare = BARE_DIAGNOSTIC.matcher(line)).matches()) {
+                    // HotSpot JEP 498 banners (lombok.permit, KSP IntelliJ containers, …) look
+                    // like "WARNING: …" and would otherwise flood the warning channel. Real
+                    // javac header-less warnings stay ("warning: [options] …").
+                    if (isJvmHostNoise(line)) continue;
                     diagnostics.add(new CompileResult.Diagnostic(parseSeverity(bare.group("sev")), null, -1, -1, line));
                 } else if (line.startsWith("javac: ")) {
                     // Launcher-level failure (invalid flag, file not found, bad argfile).
@@ -211,6 +222,24 @@ public final class JavacRunner {
             case "note" -> CompileResult.Severity.NOTE;
             default -> CompileResult.Severity.OTHER;
         };
+    }
+
+    /**
+     * HotSpot host banners about memory-access {@code sun.misc.Unsafe} (JEP 498), not javac
+     * diagnostics. The four-line form names the caller on one line and asks maintainers on
+     * another; match all of them so none leak into the UI.
+     *
+     * <p>Anchored case-sensitively to HotSpot's uppercase {@code WARNING: } prefix and exact
+     * banner phrases (JK-2095): javac and annotation-processor {@code Messager} warnings use
+     * lowercase {@code warning:}, and a processor warning that merely mentions
+     * {@code sun.misc.Unsafe} or a deprecated method must reach the diagnostics channel. (The
+     * banner's "terminally deprecated method" line also names {@code sun.misc.Unsafe}, so the
+     * two matches below cover all four lines.)
+     */
+    static boolean isJvmHostNoise(String line) {
+        if (!line.startsWith("WARNING: ")) return false;
+        return line.contains("sun.misc.Unsafe")
+                || line.contains("Please consider reporting this to the maintainers of class");
     }
 
     private static boolean hasErrors(List<CompileResult.Diagnostic> diagnostics) {

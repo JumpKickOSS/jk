@@ -31,9 +31,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * chrome line of the invocation (prep spinner, live bar, or settle chip — whichever comes first).
  * {@link #envelopeStart()} is idempotent for the life of a command ({@link #resetEnvelope} at
  * dispatch). Do <strong>not</strong> add a trailing blank after the settle line. Spinners,
- * {@link JkManager}, and {@link #printOk}/{@link #printFail} all go through
- * {@link #envelopeStart}. Script-mode commands (paths, tokens, shell hooks) must not use the
- * envelope.
+ * {@link JkManager}, {@link JdkDownloadBar}, and the {@code print*} helpers ({@link #printOk},
+ * {@link #printFail}, {@link #printWorking}, {@link #printLine}, …) all open the envelope.
+ * Script-mode commands (paths, tokens, shell hooks) must not use the envelope.
  *
  * <p>Colors: blue/work chip for {@link #working}, green for {@link #ok}, red for {@link #fail}.
  * Subprocess streams go <em>before</em> the wedge; engine detail after (or details.jsonl).
@@ -135,6 +135,15 @@ public final class CommandWedge {
     }
 
     /**
+     * Mark the envelope as already opened without printing. Use when chrome that owns its own
+     * leading blank (wizard header, terminal writer) ran first so later {@link #printOk} /
+     * {@link #envelopeStart} calls do not insert a second blank.
+     */
+    public static void markEnvelopeStarted() {
+        ENVELOPE_STARTED.set(true);
+    }
+
+    /**
      * Print a success settle with leading blank only: blank (if first chrome), then {@link #ok}.
      * Prefer this for one-shot commands over raw {@link CliOutput#out} of a check glyph.
      */
@@ -148,9 +157,7 @@ public final class CommandWedge {
      * {@link #fail}.
      */
     public static void printFail(String command, String message) {
-        if (ENVELOPE_STARTED.compareAndSet(false, true)) {
-            CliOutput.err();
-        }
+        envelopeStartErr();
         CliOutput.err(fail(command, message));
     }
 
@@ -158,9 +165,54 @@ public final class CommandWedge {
      * Print a failure settle with "Failed to …" phrasing and a leading stderr blank when first.
      */
     public static void printFailedTo(String command, String tail) {
+        envelopeStartErr();
+        CliOutput.err(failedTo(command, tail));
+    }
+
+    /**
+     * Working / play chip on stderr (exec handoff, watch loop) with leading blank when first chrome.
+     */
+    public static void printWorking(String command, String message) {
+        envelopeStartErr();
+        CliOutput.err(working(command, message));
+    }
+
+    /** Generic glyph chip on stdout with envelope. */
+    public static void printChip(String glyph, String command, String message) {
+        envelopeStart();
+        CliOutput.out(chip(glyph, command, message));
+    }
+
+    /** Generic glyph chip on stderr with envelope. */
+    public static void printChipErr(String glyph, String command, String message) {
+        envelopeStartErr();
+        CliOutput.err(chip(glyph, command, message));
+    }
+
+    /**
+     * Print a pre-rendered wedge line (e.g. {@link JkWedge#chipLine} / cancelled job) on stdout with
+     * the leading blank when this is first chrome.
+     */
+    public static void printLine(String wedgeLine) {
+        envelopeStart();
+        CliOutput.out(wedgeLine);
+    }
+
+    /**
+     * Print a pre-rendered wedge line on stderr with the leading blank when this is first chrome.
+     */
+    public static void printErrLine(String wedgeLine) {
+        envelopeStartErr();
+        CliOutput.err(wedgeLine);
+    }
+
+    /**
+     * Leading blank on stderr once per command (failure / working chrome path). Public so multi-line
+     * error chrome (warn line + fail wedge) can open the envelope before the first line.
+     */
+    public static void envelopeStartErr() {
         if (ENVELOPE_STARTED.compareAndSet(false, true)) {
             CliOutput.err();
         }
-        CliOutput.err(failedTo(command, tail));
     }
 }

@@ -35,6 +35,21 @@ class JobWorkersTest {
     }
 
     @Test
+    void start_registers_when_a_request_scope_is_open() throws Exception {
+        long req = 55L;
+        JobWorkers.open(req);
+        Process p = JobWorkers.start(new ProcessBuilder("sleep", "30"));
+        try {
+            assertThat(JobWorkers.trackedCount(req)).isEqualTo(1);
+            assertThat(p.isAlive()).isTrue();
+        } finally {
+            if (p.isAlive()) p.destroyForcibly();
+            JobWorkers.close();
+            JobWorkers.clear(req);
+        }
+    }
+
+    @Test
     void register_without_scope_is_noop() throws Exception {
         Process p = new ProcessBuilder("sleep", "1").start();
         try {
@@ -58,6 +73,37 @@ class JobWorkersTest {
             assertThat(p.isAlive()).isTrue();
         } finally {
             p.destroyForcibly();
+            JobWorkers.close();
+            JobWorkers.clear(req);
+        }
+    }
+
+    @Test
+    void late_register_after_shutdown_kills_on_arrival_and_leaks_nothing() throws Exception {
+        // JK-2096: a cpu-pool thread still draining after cancel may register a fresh process
+        // AFTER shutdownForRequest ran. It must not resurrect a BY_REQUEST entry (permanent
+        // leak) nor escape the kill.
+        long req = 97L;
+        JobWorkers.open(req);
+        Process p = new ProcessBuilder("sleep", "60").start();
+        try {
+            assertThat(JobWorkers.shutdownForRequest(req, 0L)).isEqualTo(0); // nothing yet
+            JobWorkers.register(p); // late registration from a draining thread
+            assertThat(JobWorkers.trackedCount(req)).isEqualTo(0); // no resurrected entry
+            assertThat(p.waitFor(5, TimeUnit.SECONDS)).isTrue(); // killed on arrival
+            assertThat(p.isAlive()).isFalse();
+            // A fresh scope open for the same id clears the tombstone: registration works again.
+            JobWorkers.open(req);
+            Process q = new ProcessBuilder("sleep", "60").start();
+            try {
+                JobWorkers.register(q);
+                assertThat(JobWorkers.trackedCount(req)).isEqualTo(1);
+            } finally {
+                if (q.isAlive()) q.destroyForcibly();
+                JobWorkers.clear(req);
+            }
+        } finally {
+            if (p.isAlive()) p.destroyForcibly();
             JobWorkers.close();
             JobWorkers.clear(req);
         }

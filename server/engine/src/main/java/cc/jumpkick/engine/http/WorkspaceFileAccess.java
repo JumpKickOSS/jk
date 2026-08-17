@@ -34,18 +34,27 @@ import org.jspecify.annotations.Nullable;
 final class WorkspaceFileAccess {
 
     static final int MAX_FILE_BYTES = 1024 * 1024;
-    static final int MAX_LIST_FILES = 2000;
+    static final int MAX_LIST_FILES = 5000;
     static final int MAX_WALK_DEPTH = 32;
-    static final int BINARY_PROBE_BYTES = 8192;
 
     private static final Map<String, String> LANG_BY_EXT = Map.ofEntries(
             Map.entry(".java", "java"),
             Map.entry(".kt", "kotlin"),
             Map.entry(".kts", "kotlin"),
             Map.entry(".groovy", "groovy"),
+            Map.entry(".scala", "scala"),
+            Map.entry(".sc", "scala"),
             Map.entry(".toml", "toml"),
+            Map.entry(".xml", "xml"),
+            Map.entry(".yaml", "yaml"),
+            Map.entry(".yml", "yaml"),
             Map.entry(".json", "json"),
             Map.entry(".jsonl", "json"),
+            Map.entry(".sql", "sql"),
+            Map.entry(".properties", "properties"),
+            Map.entry(".sh", "shell"),
+            Map.entry(".bash", "shell"),
+            Map.entry(".zsh", "shell"),
             Map.entry(".md", "markdown"),
             Map.entry(".markdown", "markdown"),
             // Preview-oriented text (dashboard Preview pane; still UTF-8 sources).
@@ -193,14 +202,17 @@ final class WorkspaceFileAccess {
     }
 
     /**
-     * Output dir of a module root — not a reserved path segment. A workspace member named
-     * {@code build/} that contains {@code jk.toml} is itself a module root and is not skipped.
+     * Gradle/Mill-style output dir of a module root — not a reserved path segment. JumpKick's
+     * own {@code target/} is listable (reports, diagrams, and other allow-listed artifacts). A
+     * workspace member named {@code build/} that contains {@code jk.toml} is itself a module root
+     * and is not skipped.
      */
     static boolean isSkippedOutputDir(Path dir) {
         Path name = dir.getFileName();
         if (name == null) return false;
         String n = name.toString();
-        if (!n.equals("target") && !n.equals("build") && !n.equals("out")) return false;
+        // target/ is JumpKick's module output and often holds viewable .md / .mmd / etc.
+        if (!n.equals("build") && !n.equals("out")) return false;
         Path parent = dir.getParent();
         if (parent == null) return false;
         return isModuleRoot(parent) && !isModuleRoot(dir);
@@ -225,32 +237,38 @@ final class WorkspaceFileAccess {
 
     /**
      * Breadth-first listing bounded at {@link #MAX_LIST_FILES} entries. Truncation trims the
-     * deepest leaves. The workspace-root {@code jk.toml} is pre-seeded so the default-open
-     * contract survives any truncation. Prune rules match {@link #servable}; ancestors are
-     * pruned before descent.
+     * deepest leaves, and {@code target/} output before any of them: generated files (test
+     * reports, generated sources) fill only the capacity hand-written sources leave over, so a
+     * report-heavy workspace cannot crowd them out of the cap. The workspace-root {@code jk.toml}
+     * is pre-seeded so the default-open contract survives any truncation. Prune rules match
+     * {@link #servable}; ancestors are pruned before descent.
      */
     static FileList list(Path root) throws IOException {
+        record Dir(Path path, boolean output) {}
         Path absRoot = root.toAbsolutePath().normalize();
-        List<ListedFile> collected = new ArrayList<>();
-        boolean rootManifest = Files.isRegularFile(absRoot.resolve("jk.toml"));
-        if (rootManifest) collected.add(new ListedFile("jk.toml", langOf("jk.toml")));
-        boolean truncated = false;
         Path realRoot;
         try {
             realRoot = absRoot.toRealPath();
         } catch (IOException e) {
             realRoot = absRoot;
         }
+        List<ListedFile> collected = new ArrayList<>();
+        List<ListedFile> outputFiles = new ArrayList<>();
+        boolean rootManifest = containedRegularFile(absRoot.resolve("jk.toml"), realRoot);
+        if (rootManifest) collected.add(new ListedFile("jk.toml", langOf("jk.toml")));
+        boolean truncated = false;
+        // Output overflow must not stop the walk — sources found later still list.
+        boolean outputOverflow = false;
         // Real-path visited set: in-root directory symlinks are walked (list/read parity,
         // ), and a link pointing at an ancestor would otherwise cycle the BFS.
         Set<Path> visited = new HashSet<>();
         visited.add(realRoot);
-        List<Path> level = List.of(absRoot);
+        List<Dir> level = List.of(new Dir(absRoot, false));
         for (int depth = 0; depth < MAX_WALK_DEPTH && !level.isEmpty() && !truncated; depth++) {
-            List<Path> next = new ArrayList<>();
-            for (Path dir : level) {
+            List<Dir> next = new ArrayList<>();
+            for (Dir dir : level) {
                 if (truncated) break;
-                try (var entries = Files.newDirectoryStream(dir)) {
+                try (var entries = Files.newDirectoryStream(dir.path())) {
                     for (Path entry : entries) {
                         Path name = entry.getFileName();
                         String n = name == null ? "" : name.toString();
@@ -265,7 +283,7 @@ final class WorkspaceFileAccess {
                             // Symlinked dirs descend only when their target stays in root
                             // (read() would reject their files otherwise) and only once.
                             if (!isSkippedOutputDir(entry) && descendOnce(entry, realRoot, visited)) {
-                                next.add(entry);
+                                next.add(new Dir(entry, dir.output() || isTargetOutputDir(entry)));
                             }
                             continue;
                         }
@@ -286,6 +304,15 @@ final class WorkspaceFileAccess {
                         }
                         String posix = absRoot.relativize(entry).toString().replace('\\', '/');
                         if (rootManifest && posix.equals("jk.toml")) continue; // pre-seeded
+                        if (dir.output()) {
+                            // Overflow past the cap can never be listed — drop, and flag.
+                            if (outputFiles.size() < MAX_LIST_FILES) {
+                                outputFiles.add(new ListedFile(posix, lang));
+                            } else {
+                                outputOverflow = true;
+                            }
+                            continue;
+                        }
                         if (collected.size() >= MAX_LIST_FILES) {
                             truncated = true;
                             break;
@@ -302,8 +329,46 @@ final class WorkspaceFileAccess {
         // invisible here, so the UI must get its hint. Conservative — the unvisited
         // dirs may hold nothing servable.
         if (!level.isEmpty()) truncated = true;
+        int leftover = MAX_LIST_FILES - collected.size();
+        if (outputOverflow || outputFiles.size() > leftover) truncated = true;
+        // BFS order — the leftover slice keeps the shallowest output files, like the main trim.
+        collected.addAll(outputFiles.subList(0, Math.min(leftover, outputFiles.size())));
         collected.sort(Comparator.comparing(ListedFile::path));
         return new FileList(absRoot, List.copyOf(collected), truncated);
+    }
+
+    /**
+     * Module {@code target/} output — listable, but it fills the cap only after every non-output
+     * file. A workspace member named {@code target/} that is itself a module root is source, not
+     * output.
+     */
+    private static boolean isTargetOutputDir(Path dir) {
+        Path name = dir.getFileName();
+        if (name == null || !name.toString().equals("target")) return false;
+        Path parent = dir.getParent();
+        if (parent == null) return false;
+        return isModuleRoot(parent) && !isModuleRoot(dir);
+    }
+
+    /**
+     * Pre-seed containment: the root manifest gets the same NOFOLLOW + real-path check the BFS
+     * applies to every other entry, so a symlinked-out {@code jk.toml} is not listed only to 404
+     * on read. An in-root symlinked manifest still pre-seeds.
+     */
+    private static boolean containedRegularFile(Path file, Path realRoot) {
+        BasicFileAttributes attrs;
+        try {
+            attrs = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        } catch (IOException absent) {
+            return false;
+        }
+        if (attrs.isRegularFile()) return true;
+        if (!attrs.isSymbolicLink()) return false;
+        try {
+            return Files.isRegularFile(file) && file.toRealPath().startsWith(realRoot);
+        } catch (IOException broken) {
+            return false;
+        }
     }
 
     /**
@@ -356,9 +421,10 @@ final class WorkspaceFileAccess {
         if (lang == null) return new ReadResult.NotFound();
         // Image allow-list entries are binary by nature — JSON body endpoint rejects them; use raw.
         if (isImageLang(lang)) return new ReadResult.Binary();
-        int probe = Math.min(BINARY_PROBE_BYTES, bytes.length);
-        for (int i = 0; i < probe; i++) {
-            if (bytes[i] == 0) return new ReadResult.Binary();
+        // Whole-buffer NUL scan: the file is already in memory, and a late NUL means binary
+        // content that would otherwise fail strict UTF-8 and render as Latin-1 mojibake.
+        for (byte b : bytes) {
+            if (b == 0) return new ReadResult.Binary();
         }
         // Strict decode first: new String(bytes, UTF_8) silently swaps every bad byte
         // for U+FFFD, so a Latin-1 source rendered as mojibake presented as the file's true text.

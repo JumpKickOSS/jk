@@ -131,6 +131,29 @@ class JkConfigLoaderTest {
     }
 
     @Test
+    void parses_build_output_from_toml(@TempDir Path tempDir) throws IOException {
+        Path on = tempDir.resolve("on.toml");
+        Files.writeString(on, """
+                [config]
+                build-output = true
+                """);
+        assertThat(JkConfigLoader.loadTomlOrEmpty(on).buildOutput()).hasValue(true);
+        assertThat(JkConfigLoader.loadTomlOrEmpty(on).buildOutputOr(false)).isTrue();
+
+        Path off = tempDir.resolve("off.toml");
+        Files.writeString(off, "[config]\nbuild-output = false\n");
+        assertThat(JkConfigLoader.loadTomlOrEmpty(off).buildOutput()).hasValue(false);
+        assertThat(JkConfig.empty().buildOutputOr(false)).isFalse();
+    }
+
+    @Test
+    void env_var_build_output() {
+        JkConfig env = JkConfigLoader.loadFromEnv(Map.of("JK_BUILD_OUTPUT", "true")::get);
+        assertThat(env.buildOutput()).hasValue(true);
+        assertThat(env.buildOutputOr(false)).isTrue();
+    }
+
+    @Test
     void find_project_config_walks_upward(@TempDir Path tempDir) throws IOException {
         Path nested = tempDir.resolve("a").resolve("b").resolve("c");
         Files.createDirectories(nested);
@@ -170,7 +193,8 @@ class JkConfigLoaderTest {
                 Optional.of(false), // force: present-and-false, as every wire decode materializes it
                 Optional.empty(), // noAnsi
                 Optional.empty(), // noOsc
-                Optional.empty()); // notifyPolicy
+                Optional.empty(), // notifyPolicy
+                Optional.empty()); // buildOutput
         assertThat(wireShaped.rebuildOr(false)).isTrue();
         assertThat(wireShaped.forceOr(false)).isFalse();
 

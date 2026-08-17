@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
@@ -83,7 +82,7 @@ public final class ImageCommand implements CliCommand {
         VariantSelection.install(in, projectDir);
         Path jkBuildPath = projectDir.resolve("jk.toml");
         if (!Files.exists(jkBuildPath)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Image", jkBuildPath + " not found."));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Image", jkBuildPath + " not found.");
             return Exit.NO_INPUT;
         }
         // -m/--modules: an image is built for exactly one module — redirect to it.
@@ -94,15 +93,15 @@ public final class ImageCommand implements CliCommand {
             var selected =
                     cc.jumpkick.config.ModuleSelection.resolveOptional(projectDir, entry, modulesSpec, affectedSince);
             if (selected != null && !selected.ok()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Image", selected.errorMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Image", selected.errorMessage());
                 return Exit.CONFIG;
             }
             if (selected != null) {
                 if (selected.moduleDirs().size() != 1) {
-                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    cc.jumpkick.cli.tui.CommandWedge.printFail(
                             "Image",
                             "an image is built for exactly one module — the selector matched "
-                                    + selected.moduleDirs().size()));
+                                    + selected.moduleDirs().size());
                     return Exit.USAGE;
                 }
                 projectDir = selected.moduleDirs().iterator().next();
@@ -110,6 +109,18 @@ public final class ImageCommand implements CliCommand {
             }
         }
         Path cache = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
+        var wsRoot = cc.jumpkick.config.WorkspaceLocator.findRoot(projectDir);
+        if (wsRoot.isPresent()) {
+            cc.jumpkick.model.JkBuild rootBuild =
+                    cc.jumpkick.config.JkBuildParser.parse(wsRoot.get().resolve("jk.toml"));
+            if (rootBuild.isWorkspaceRoot()
+                    && !wsRoot.get()
+                            .toAbsolutePath()
+                            .normalize()
+                            .equals(projectDir.toAbsolutePath().normalize())) {
+                return runWorkspaceImage(wsRoot.get(), rootBuild, projectDir, cache);
+            }
+        }
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         String module = BuildCommand.buildTarget(jkBuildPath, projectDir);
 
@@ -153,7 +164,7 @@ public final class ImageCommand implements CliCommand {
                     steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, module),
                     summary);
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Image", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Image", e.getMessage());
             return Exit.SOFTWARE;
         }
         testResult = summary[0] != null ? summary[0].testResult() : null;
@@ -193,5 +204,72 @@ public final class ImageCommand implements CliCommand {
                     + daemonExe;
         }
         return "Pushed " + Theme.colorize(ref != null ? ref : "", Theme.active().path());
+    }
+
+    /**
+     * Workspace member: same {@code buildWorkspace} path as {@code jk build}, image terminal on
+     * this module, prereqs package. Aggregate TUI matches native/build.
+     */
+    private int runWorkspaceImage(Path wsRoot, cc.jumpkick.model.JkBuild rootBuild, Path moduleDir, Path cache)
+            throws IOException {
+        var session = cc.jumpkick.config.SessionContext.current();
+        var imageReq = new cc.jumpkick.cli.engine.EngineRequests.ImageRequest(
+                moduleDir,
+                cache,
+                jdksDir,
+                mainClass,
+                registry,
+                tag,
+                tarballArg,
+                dockerExecutableArg,
+                buildOpts.skipTests,
+                session.offline(),
+                session.force(),
+                session.config().rebuildOr(false),
+                global.verbose);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
+        cc.jumpkick.cli.tui.JkManager view =
+                cc.jumpkick.cli.tui.JkManager.plan(cc.jumpkick.cli.CliOutput.stdout(), "Image", animate);
+        cc.jumpkick.cli.run.AggregateContext agg = new cc.jumpkick.cli.run.AggregateContext(view);
+        int[] finished = {0};
+        long start = System.nanoTime();
+        cc.jumpkick.runtime.WorkspaceResult result;
+        try {
+            result = cc.jumpkick.cli.engine.EngineClient.runImageWorkspace(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    imageReq,
+                    new cc.jumpkick.runtime.WorkspaceBuildListener() {
+                        @Override
+                        public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
+                            agg.applySnapshot(snap);
+                        }
+
+                        @Override
+                        public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
+                            return new cc.jumpkick.cli.run.AggregateModuleListener(
+                                    agg, m.coord(), m.plan().steps(), m.weight());
+                        }
+
+                        @Override
+                        public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
+                            int n = ++finished[0];
+                            String completion =
+                                    BuildCommand.completionLine(o.success(), n, Math.max(n, 1), o.coord(), o.millis());
+                            if (view.animating()) {
+                                view.addCompletion(completion);
+                            }
+                        }
+                    });
+        } catch (IOException e) {
+            view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
+            return Exit.SOFTWARE;
+        }
+        if (!result.success()) {
+            view.finishBuildPlanFailure("image failed " + BuildCommand.elapsedSince(start));
+            return result.exitCode() == 0 ? 1 : result.exitCode();
+        }
+        view.finishBuildPlanSuccess("image built " + BuildCommand.elapsedSince(start));
+        return 0;
     }
 }

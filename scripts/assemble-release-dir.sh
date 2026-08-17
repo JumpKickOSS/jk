@@ -7,7 +7,8 @@
 # Env:
 # JK_VERSION override version (default: JkVersion / project version via git describe or file)
 # Layout written to out-dir (default: build/release/<version>/):
-# jk-linux-x86_64.xz | jk-macos-aarch64.xz | … (whatever native binary is present)
+# jk-<os>-<arch>.xz (every platform, including Windows — self-update)
+# jk-windows-x86_64.zip (Windows only — install.ps1 / jk.bat; no system xz)
 # jk-engine-<version>.jar
 # SHA256SUMS
 # SHA256SUMS.sig (if JK_RELEASE_SIGNING_KEY is set)
@@ -49,21 +50,28 @@ esac
 
 if [[ -f "$DIST/jk" ]]; then
   name="jk-${os}-${arch}"
-  if command -v xz >/dev/null 2>&1; then
-    xz -ck9 "$DIST/jk" >"$OUT/${name}.xz"
-  else
-    cp "$DIST/jk" "$OUT/$name"
-  fi
+  src="$DIST/jk"
 elif [[ -f "$DIST/jk.exe" ]]; then
   name="jk-windows-x86_64"
-  if command -v zip >/dev/null 2>&1; then
-    (cd "$DIST" && zip -q "$OUT/${name}.zip" jk.exe)
-  else
-    cp "$DIST/jk.exe" "$OUT/${name}.exe"
-  fi
+  src="$DIST/jk.exe"
 else
   echo "assemble-release-dir: no native jk binary in $DIST" >&2
   exit 2
+fi
+
+if ! command -v xz >/dev/null 2>&1; then
+  echo "assemble-release-dir: xz is required (self-update fetches .xz on every OS)" >&2
+  exit 2
+fi
+xz -ck9 "$src" >"$OUT/${name}.xz"
+
+# Windows wrapper / install.ps1 have no system xz — also ship a single-entry zip.
+if [[ "$os" == "windows" ]]; then
+  if ! command -v zip >/dev/null 2>&1; then
+    echo "assemble-release-dir: zip is required on Windows (jk.bat / install.ps1)" >&2
+    exit 2
+  fi
+  (cd "$DIST" && zip -q "$OUT/${name}.zip" "$(basename "$src")")
 fi
 
 engine="$(ls "$DIST"/lib/jk-engine-*.jar 2>/dev/null | head -1 || true)"

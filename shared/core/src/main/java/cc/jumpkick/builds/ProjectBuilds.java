@@ -388,9 +388,14 @@ public final class ProjectBuilds {
      */
     public static Optional<Path> findRunDirByNumber(Path buildsRoot, long buildNumber) {
         if (buildNumber <= 0) return Optional.empty();
-        String name = runDirName(buildNumber);
+        return findRunDirByName(buildsRoot, runDirName(buildNumber));
+    }
+
+    /** Locate a run directory by exact directory name across all projects. */
+    public static Optional<Path> findRunDirByName(Path buildsRoot, String dirName) {
+        if (dirName == null || dirName.isBlank() || dirName.startsWith(".")) return Optional.empty();
         for (Path home : listProjectHomes(buildsRoot)) {
-            Path candidate = home.resolve(RUNS).resolve(name);
+            Path candidate = home.resolve(RUNS).resolve(dirName);
             if (Files.isDirectory(candidate)) return Optional.of(candidate);
         }
         return Optional.empty();

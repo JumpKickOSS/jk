@@ -20,6 +20,15 @@ class PillTest {
     }
 
     @Test
+    void cancelled_matches_explain_pill_gray() {
+        assertThat(Pill.cancelled("Cancel").look()).isEqualTo(Pill.Look.CANCELLED);
+        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) return;
+        var ctx = RenderContext.current().withAnsi(true);
+        assertThat(Pill.cancelled("Cancel").renderInline(ctx))
+                .isEqualTo(Pill.of("Cancel").renderInline(ctx));
+    }
+
+    @Test
     void nerd_uses_half_circles_ansi_does_not() {
         if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) return;
         String nerd = Pill.of("Rebuild")

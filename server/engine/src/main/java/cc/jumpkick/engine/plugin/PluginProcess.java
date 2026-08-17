@@ -161,8 +161,7 @@ public final class PluginProcess {
             Consumer<String> onPassthrough,
             boolean closeStdinImmediately)
             throws IOException, InterruptedException {
-        Process process = pb.start();
-        cc.jumpkick.engine.JobWorkers.register(process);
+        Process process = cc.jumpkick.engine.JobWorkers.start(pb);
         try (BufferedReader reader =
                         new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
                 BufferedWriter stdin =

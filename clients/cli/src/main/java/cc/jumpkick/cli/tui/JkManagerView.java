@@ -32,6 +32,11 @@ final class JkManagerView {
         this.paintedCols = m.width;
     }
 
+    /** Request a full rewrite on the next paint (Ctrl-O toggle, force-show, resize). */
+    void requestFullRepaint() {
+        forceFullRepaint = true;
+    }
+
     // --- completion -------------------------------------------------------
 
     /** Settle with {@code ✔ <plan> Successful: <message>} (the head in green). */
@@ -92,8 +97,8 @@ final class JkManagerView {
     }
 
     /**
-     * Settle as a remote engine cancel ({@code jk cancel} / web): {@code Build job was cancelled
-     * took …} — no "by user".
+     * Settle as a remote engine cancel ({@code jk cancel} / web): gray {@code ‼ Build} chip, then
+     * {@code job was cancelled took …} — no "by user".
      */
     public void finishBuildPlanCancelled(List<String> above) {
         String took = cc.jumpkick.cli.run.ConsoleSpec.took(Duration.ofMillis(m.elapsedMillis()));
@@ -163,10 +168,10 @@ final class JkManagerView {
     }
 
     /**
-     * Print the settled result line. Leading blank only: one blank before chrome starts,
-     * no automatic blank after the settle line — that looked like an extra line before the shell
-     * prompt on {@code jk build}/{@code jk lock}/one-shot wedges. Callers that hand off to a
-     * subprocess ({@code jk run}) add their own separator when needed.
+     * Print the settled result line. One blank before chrome starts (envelope). After committed
+     * process output, one blank between that scrollback and the settle chip. No blank after the
+     * settle line (would look like an extra row before the shell prompt). Callers that hand off to
+     * a subprocess ({@code jk run}) add their own separator when needed.
      */
     void settle(String line, List<String> above) {
         m.restoreStreams(); // flush any captured output above the region first
@@ -176,9 +181,12 @@ final class JkManagerView {
             m.done = true;
             LiveRegion.clearActive(m);
             m.clearWindowTitle();
+            // Process lines already in scrollback; wipe removes rule/blank + live chrome.
+            int processAbove = m.planMode ? m.outputWindow.committedScrollbackLines() : 0;
             if (m.animate && Theme.active().isAnsi()) {
-                // Simple mode keeps the settled spinner line and prints the
-                // result below it; plan mode replaces the whole region.
+                if (m.planMode) m.flushVisibleOutputToScrollback();
+                // Simple mode keeps the settled spinner line and prints the result below it; plan
+                // mode replaces the whole region (cursor lands on the first wiped row).
                 if (m.planMode) m.wipeRegion();
                 else m.freezeSpinnerLine();
                 m.out.print(Ansi.taskbarClear());
@@ -190,13 +198,23 @@ final class JkManagerView {
             // Deferred subprocess output (e.g. compiler warnings) prints as
             // scrollback above the result line, with a blank separator, so the
             // settle line stays the last thing on screen.
+            boolean printedAbove = false;
             if (above != null && !above.isEmpty()) {
-                for (String s : above) m.out.println(s);
+                for (String s : above) {
+                    if (s == null || s.isBlank()) continue;
+                    m.out.println(s);
+                    printedAbove = true;
+                }
+            }
+            // Exactly one blank between external output (process scrollback and/or deferred
+            // above) and the settle chip. Do not stack two blanks when both are present.
+            if (printedAbove || processAbove > 0) {
                 m.out.println();
             }
             m.ensureLeadingBlank(); // quiet / late m.settle still gets the leading blank
             m.out.println(line);
             m.out.flush();
+            m.outputWindow.resetCommitted();
         }
     }
 
@@ -339,91 +357,94 @@ final class JkManagerView {
     }
 
     /**
-     * Print {@code text} as a permanent line <em>above</em> the live region, then repaint the region
-     * just below it — so process/step output scrolls up and the {@code JkManager} view stays
-     * pinned to the bottom. No-op-ish (plain {@code println}) when not animating or already settled.
+     * Route process/step output through the sliding {@link OutputWindow}.
+     *
+     * <p>Plan mode always buffers. When the peek pane is <em>open</em>, process lines are committed
+     * to terminal scrollback above the live region (rule + wedge + tree) and only that small live
+     * region is rewritten — not the whole screen, and not on every animator tick. When hidden,
+     * lines stay in the ring until Ctrl-O reveals them. Simple mode keeps the old permanent-above
+     * spinner behavior.
      */
     public void writeAbove(String text) {
+        if (text != null && text.indexOf('\n') >= 0) {
+            // DiagnosticReport and other multi-line blobs must be one scrollback row each.
+            // A single append + truncateVisible would squash rails onto one terminal line.
+            for (String part : text.split("\n", -1)) {
+                if (part.endsWith("\r")) part = part.substring(0, part.length() - 1);
+                writeAbove(part);
+            }
+            return;
+        }
         synchronized (m.lock) {
-            if (m.done || !m.animate) {
+            if (m.done) {
                 m.out.println(text);
                 m.out.flush();
                 return;
             }
-            // Erase the live region back to its top.
             if (m.planMode) {
-                // Resize first: after a shrink the region reflowed to more physical
-                // rows than linesDrawn, so the logical-lines erase below would undershoot and —
-                // with lastLines cleared before repaint — the next syncTerminalSize would skip
-                // its reflow-aware wipe, stranding the region's top rows above the emitted text.
-                // syncTerminalSize wipes (and clears lastLines) itself when columns changed.
-                syncTerminalSize();
-                if (!m.lastLines.isEmpty()) {
-                    if (m.linesDrawn > 0) m.out.print(Ansi.cursorUp(m.linesDrawn));
-                    m.out.print(Ansi.ERASE_DISPLAY_TO_END);
+                // append() reports blank-strips; a size compare would misread ring-full
+                // eviction (size unchanged on every accepted append) as a strip.
+                if (!m.outputWindow.append(text)) return;
+                if (!m.animate || !Theme.active().isAnsi()) {
+                    // Piped mode — and --no-ansi TTY plain-animate mode: there is no live region
+                    // to lift (open/close/tick paints are all isAnsi-gated), so the ANSI path
+                    // would leak raw escapes when peek was visible and swallow tool output
+                    // entirely when hidden (no Ctrl-O repaint can ever reveal it). Print plainly
+                    // and sequentially, like the pre-peek writeAbove always did (JK-2091).
+                    m.out.println(text);
+                    m.out.flush();
+                    return;
                 }
-            } else {
-                m.out.print(Ansi.CLEAR_LINE);
+                if (m.outputWindow.visible()) {
+                    // Lift live region → emit one line into scrollback → repaint rule+wedge only.
+                    liftEmitRepaintLive(text);
+                }
+                return;
             }
-            // Emit the text where the region's top was — it becomes scrollback.
+            if (!m.animate) {
+                m.out.println(text);
+                m.out.flush();
+                return;
+            }
+            m.out.print(Ansi.CLEAR_LINE);
             m.out.print(text);
             m.out.print('\n');
-            // Repaint the region fresh, immediately below the emitted text.
-            if (m.planMode) {
-                m.lastLines = List.of();
-                m.linesDrawn = 0;
-                paintBuildPlan();
-            } else {
-                paintSimple();
-            }
+            paintSimple();
             m.out.flush();
         }
     }
 
     /**
-     * Repaint the multi-line plan region (must hold the manager lock), rewriting only the lines that
-     * changed since the last paint to avoid flicker. The spinner header changes every frame; the bar
-     * and step rows only on real updates, so a steady region mostly just rewrites its top line.
+     * Repaint the multi-line <em>live</em> plan region (separator + wedge + tree). Separator is the
+     * braille rule when peek is on, or a blank line when peek is off after process lines were
+     * committed. Process output in scrollback above is never redrawn here.
      *
      * <p>Cursor invariant: between paints the cursor is parked at the start of the line immediately
-     * below the region. We move up to the first line, walk down rewriting changed lines (and
-     * advancing past unchanged ones with a bare newline), then clear any lines a now-shorter region
-     * left behind.
-     *
-     * <p>Terminal size: re-read {@link TerminalSize} (cached; re-probes only after SIGWINCH). When
-     * columns or rows change, force a full rewrite — line <em>content</em> is often identical after a
-     * resize, but the truncation budget is not, so a content-only diff would leave the old clipped
-     * tree row on screen. A column <em>shrink</em> also reflows already-painted lines onto extra
-     * physical rows; a logical {@code cursorUp(lastLines.size())} then undershoots and the next
-     * paint stacks a second header under the orphan — so shrink wipes by estimated physical height.
+     * below the live region. Line-diff only rewrites changed rows (spinner header most frames).
      */
     void paintBuildPlan() {
         syncTerminalSize();
         long elapsed = m.elapsedMillis();
         List<String> lines = m.renderBuildPlanLines(m.width, elapsed);
-        // Keep the last terminal column free. Writing a full-width line leaves the cursor in
-        // DEC auto-wrap-pending state: the final glyph (usually … on a long test name) can land
-        // on the next row and be wiped by EL / the following tree line — so the row looks
-        // hard-clipped with no ellipsis until the window is widened and the line reflows.
         int colBudget = JkManagerColor.rowColumnBudget(m.width);
         boolean force = forceFullRepaint;
         forceFullRepaint = false;
         int prev = m.lastLines.size();
-        if (prev > 0) m.out.print(Ansi.cursorUp(prev)); // to the top of the region
+        int maxUp = OutputWindow.maxRegionLines(m.height);
+        int up = Math.min(prev, maxUp);
+        if (up > 0) m.out.print(Ansi.cursorUp(up));
         for (int i = 0; i < lines.size(); i++) {
             boolean changed = force || i >= prev || !lines.get(i).equals(m.lastLines.get(i));
             if (changed) {
                 m.out.print('\r');
                 m.out.print(JkManagerColor.truncateVisible(lines.get(i), colBudget));
-                m.out.print(Ansi.ERASE_LINE_TO_END); // wipe any tail from a longer prior line
+                m.out.print(Ansi.ERASE_LINE_TO_END);
             }
-            m.out.print('\n'); // advance to the next line / below region
+            m.out.print('\n');
         }
-        // A shorter region than last time: erase the orphaned lines below.
         if (prev > lines.size()) m.out.print(Ansi.ERASE_DISPLAY_TO_END);
         long[] bd = m.displayBar(elapsed);
         m.out.print(Ansi.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
-        // Plain decades can cross between weight events when open-loop R0 drives the bar.
         if (m.animate && !Theme.active().isAnsi() && bd[1] > 0) {
             synchronized (m.lock) {
                 m.emitPlainProgressDecades(bd[0], bd[1]);
@@ -432,6 +453,119 @@ final class JkManagerView {
         m.lastLines = lines;
         m.linesDrawn = lines.size();
         paintedCols = m.width;
+    }
+
+    /**
+     * Peek open: lift the live region, print buffered process lines into scrollback, paint rule +
+     * wedge. Must hold {@code m.lock}.
+     */
+    void openPeekPaint() {
+        if (!m.animate || !Theme.active().isAnsi()) return;
+        syncTerminalSize();
+        List<String> chrome = renderChromeLines(m.width, m.elapsedMillis());
+        int budget = OutputWindow.displayBudget(m.height, chrome.size());
+        // Uncommitted only: lines from an earlier open (dump or live appends) are already
+        // permanent scrollback right above — re-dumping them duplicates (JK-2092).
+        List<String> pane = m.outputWindow.uncommittedForDisplay(budget);
+        int colBudget = JkManagerColor.rowColumnBudget(m.width);
+        int up = Math.min(m.lastLines.size(), OutputWindow.maxRegionLines(m.height));
+        if (up > 0) {
+            m.out.print(Ansi.cursorUp(up));
+            m.out.print('\r');
+            m.out.print(Ansi.ERASE_DISPLAY_TO_END);
+        }
+        for (String line : pane) {
+            m.out.print('\r');
+            m.out.print(JkManagerColor.truncateVisible(line, colBudget));
+            m.out.print(Ansi.ERASE_LINE_TO_END);
+            m.out.print('\n');
+        }
+        m.outputWindow.noteCommitted(pane.size());
+        m.outputWindow.markAllCommitted();
+        writeLiveRegion(liveRegionLines(chrome, m.width));
+        m.out.flush();
+    }
+
+    /**
+     * Peek close: leave committed process lines in scrollback; replace the dotted rule with a blank
+     * separator (still between process output and the wedge) and repaint chrome. Must hold
+     * {@code m.lock}. Caller has already {@link OutputWindow#hide()}'d.
+     */
+    void closePeekPaint() {
+        if (!m.animate || !Theme.active().isAnsi()) return;
+        syncTerminalSize();
+        int up = Math.min(m.lastLines.size(), OutputWindow.maxRegionLines(m.height));
+        if (up > 0) {
+            m.out.print(Ansi.cursorUp(up));
+            m.out.print('\r');
+            m.out.print(Ansi.ERASE_DISPLAY_TO_END);
+        }
+        // liveRegionLines paints "" when peek is off but process lines were committed.
+        writeLiveRegion(liveRegionLines(renderChromeLines(m.width, m.elapsedMillis()), m.width));
+        m.out.flush();
+    }
+
+    /**
+     * Append one process line below existing output (above the live region), then repaint rule +
+     * wedge. Does not redraw prior process lines. Must hold {@code m.lock}.
+     */
+    private void liftEmitRepaintLive(String text) {
+        syncTerminalSize();
+        int colBudget = JkManagerColor.rowColumnBudget(m.width);
+        String painted = JkManagerColor.truncateVisible(text, colBudget);
+        int up = Math.min(m.lastLines.size(), OutputWindow.maxRegionLines(m.height));
+        if (up > 0) {
+            m.out.print(Ansi.cursorUp(up));
+            m.out.print('\r');
+            m.out.print(Ansi.ERASE_DISPLAY_TO_END);
+        }
+        m.out.print('\r');
+        m.out.print(painted);
+        m.out.print(Ansi.ERASE_LINE_TO_END);
+        m.out.print('\n');
+        m.outputWindow.noteCommitted(1);
+        m.outputWindow.markAllCommitted();
+        List<String> chrome = renderChromeLines(m.width, m.elapsedMillis());
+        writeLiveRegion(liveRegionLines(chrome, m.width));
+        m.out.flush();
+    }
+
+    /** Write live-region lines from the current cursor and update lastLines / linesDrawn. */
+    private void writeLiveRegion(List<String> live) {
+        int colBudget = JkManagerColor.rowColumnBudget(m.width);
+        for (String line : live) {
+            m.out.print('\r');
+            m.out.print(JkManagerColor.truncateVisible(line, colBudget));
+            m.out.print(Ansi.ERASE_LINE_TO_END);
+            m.out.print('\n');
+        }
+        m.lastLines = live;
+        m.linesDrawn = live.size();
+        paintedCols = m.width;
+        long[] bd = m.displayBar(m.elapsedMillis());
+        m.out.print(Ansi.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
+    }
+
+    /**
+     * Live region only: separator + wedge/tree chrome (never includes process lines).
+     *
+     * <p>When process output has been committed above the region, keep exactly one separator row
+     * between that scrollback and the wedge: the braille rule while peek is on, or a blank line
+     * when peek is off. Never omit the separator after process lines were shown.
+     */
+    private List<String> liveRegionLines(List<String> chrome, int cols) {
+        List<String> live = new ArrayList<>();
+        if (m.outputWindow.visible()) {
+            live.add(OutputWindow.ruleLine(cols));
+        } else if (m.outputWindow.committedScrollbackLines() > 0) {
+            live.add(""); // blank stand-in for the rule
+        }
+        live.addAll(chrome);
+        int maxRegion = OutputWindow.maxRegionLines(m.height);
+        if (live.size() > maxRegion) {
+            live = new ArrayList<>(live.subList(live.size() - maxRegion, live.size()));
+        }
+        return live;
     }
 
     /**
@@ -503,18 +637,33 @@ final class JkManagerView {
      * tail). Pure — no cursor control. Package-private for tests.
      *
      * <p>Tree (newest at top): only <em>running</em> and <em>failed</em> work — successful steps drop
-     * stdout. Each row is {@code ├─ ● group:name · Phase · detail} with a blue pulse spinner while
+     * stdout. Each row is {@code ├─ ● group:name › Phase › detail} with a blue pulse spinner while
      * running (no background pills). The trailing detail is the latest step {@link #stepMessage}
      * (test class, package sub-task, fetch artifact, …). Failed rows use a red cross and keep a
      * one-line brief under the branch. No blank spacer rails between rows — vertically compact.
      */
+    /**
+     * Live region only: separator (rule or blank) + wedge/tree chrome. Process lines are not
+     * included — once shown they are terminal scrollback above this region.
+     */
     public List<String> renderBuildPlanLines(int cols, long elapsedMillis) {
+        return liveRegionLines(renderChromeLines(cols, elapsedMillis), cols);
+    }
+
+    /** Wedge header + tree + completions (no rule, no process lines). */
+    List<String> renderChromeLines(int cols, long elapsedMillis) {
         AttributedStyle dim = Theme.active().darkGray();
-        List<String> lines = new ArrayList<>();
+        List<String> chrome = new ArrayList<>();
+        RenderContext frameCtx = RenderContext.current().withWidth(cols);
+        chrome.add(planHeader(frameCtx, elapsedMillis));
 
-        lines.add(planHeader(elapsedMillis));
-
-        int budget = Math.max(1, m.height - 2);
+        int rowsAfterHeader = Math.max(1, m.height - 2);
+        // Shrink the work tree so ✓ [N of M] still fits under the wedge (live region only).
+        int completionSlots = 0;
+        if (m.completedCount > 0 && rowsAfterHeader > 1) {
+            completionSlots = Math.min(JkManager.MAX_COMPLETIONS + 1, Math.max(1, rowsAfterHeader / 2));
+        }
+        int budget = Math.max(1, rowsAfterHeader - completionSlots);
         List<JkManager.TreeEntry> visible = collectVisibleTree();
         Tree work = Tree.untitled().gap(Tree.Gap.NONE);
         int shown = 0;
@@ -533,22 +682,25 @@ final class JkManagerView {
             work.child(node);
             if (shown >= JkManager.MAX_ROWS) break;
         }
-        lines.addAll(work.render(RenderContext.current()));
+        chrome.addAll(work.render(frameCtx));
 
-        if (m.completedCount > 0 && budget > 0) {
-            boolean overflow = m.completedCount > Math.min(JkManager.MAX_COMPLETIONS, budget);
-            int cap = Math.max(0, Math.min(JkManager.MAX_COMPLETIONS, overflow ? budget - 1 : budget));
-            int compShown = Math.min(m.recentCompletions.size(), cap);
-            int have = m.recentCompletions.size();
-            for (int i = 0; i < compShown; i++) {
-                lines.add("    " + m.recentCompletions.get(have - 1 - i));
-            }
-            int more = m.completedCount - compShown;
-            if (more > 0) {
-                lines.add(Theme.colorize("      … plus " + more + " more …", dim.italic()));
+        if (m.completedCount > 0) {
+            int room = Math.max(0, rowsAfterHeader - (chrome.size() - 1));
+            if (room > 0) {
+                boolean overflow = m.completedCount > Math.min(JkManager.MAX_COMPLETIONS, room);
+                int cap = Math.max(0, Math.min(JkManager.MAX_COMPLETIONS, overflow ? room - 1 : room));
+                int have = m.recentCompletions.size();
+                int compShown = Math.min(have, cap);
+                for (int i = 0; i < compShown; i++) {
+                    chrome.add("    " + m.recentCompletions.get(have - 1 - i));
+                }
+                int more = m.completedCount - compShown;
+                if (more > 0) {
+                    chrome.add(Theme.colorize("      … plus " + more + " more …", dim.italic()));
+                }
             }
         }
-        return lines;
+        return chrome;
     }
 
     /** Running/failed tree entries, newest first. Module rows when available; else preflight phases. */
@@ -598,7 +750,7 @@ final class JkManagerView {
     /**
      * Step label for the tree detail segment. Strips a leading {@code module:: } prefix when the
      * engine label already embeds the coordinate (test progress labels) so the row does not read
-     * {@code g:a · Test · g:a:: FooTest}.
+     * {@code g:a › Test › g:a:: FooTest}.
      */
     static String detailForDisplay(String module, String message) {
         return JkManagerColor.detailForDisplay(module, message);
@@ -607,6 +759,9 @@ final class JkManagerView {
     static String renderBriefErrorLine(boolean last, String brief) {
         return JkManagerColor.renderBriefErrorLine(last, brief);
     }
+
+    /** Dim segment separator between module, phase, and detail on a work row. */
+    private static final String WORK_ROW_SEP = "›";
 
     private String renderWorkRow(String module, String displayPhase, boolean failed, String detail) {
         Theme t = Theme.active();
@@ -622,17 +777,18 @@ final class JkManagerView {
             phaseStyle = t.blue().bold();
         }
         String phase = displayPhase == null || displayPhase.isEmpty() ? "?" : displayPhase;
+        String sep = Theme.colorize(WORK_ROW_SEP, t.darkGray());
         StringBuilder sb = new StringBuilder();
         sb.append(' ').append(icon).append(' ');
         if (module != null && !module.isEmpty()) {
             sb.append(JkManagerColor.coloredModule(module))
                     .append(' ')
-                    .append(Theme.colorize("·", t.darkGray()))
+                    .append(sep)
                     .append(' ');
         }
         sb.append(Theme.colorize(phase, phaseStyle));
         if (detail != null && !detail.isBlank()) {
-            sb.append(' ').append(Theme.colorize("·", t.darkGray())).append(' ').append(colorDetail(phase, detail, t));
+            sb.append(' ').append(sep).append(' ').append(colorDetail(phase, detail, t));
         }
         return sb.toString();
     }
@@ -705,7 +861,7 @@ final class JkManagerView {
      * BuildPlan header: pulse circle + name on the chip, powerline (or plain) cap, bar, clock.
      * Painted via {@link JkWedge} so live and settled chrome share one renderer.
      */
-    private String planHeader(long elapsedMillis) {
+    private String planHeader(RenderContext frameCtx, long elapsedMillis) {
         long[] bd = m.displayBar(elapsedMillis);
         long barNum = bd[0];
         long barDen = bd[1];
@@ -771,7 +927,7 @@ final class JkManagerView {
             }
         }
         RichText clock = clockFace(seeded, remainingSec, overrunSec, elapsedSec);
-        RenderContext ctx = m.headerContext();
+        RenderContext ctx = frameCtx.withCaps(m.nerdFont).withFrame(m.frame);
         if (phase1) {
             RichText msg = RichText.of(
                     RichText.ansi(Theme.colorize(sl, Theme.active().brightWhite())), RichText.plain(" "), clock);

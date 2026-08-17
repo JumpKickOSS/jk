@@ -142,7 +142,7 @@ public final class RunCommand {
                             cc.jumpkick.engine.EnginePaths.current(), request, listener);
                 }
                 if (wr != null && !wr.success()) {
-                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", "workspace build failed"));
+                    cc.jumpkick.cli.tui.CommandWedge.printFail("Run", "workspace build failed");
                     return 1;
                 }
                 // Synthetic success result so the exec chip path continues unchanged.
@@ -170,7 +170,7 @@ public final class RunCommand {
                 testResult = testResultHolder[0];
             }
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Run", e.getMessage());
             return Exit.SOFTWARE;
         }
 
@@ -194,11 +194,11 @@ public final class RunCommand {
             // first and cached the same plan) — VERBOSE/JSON print no chip, so give them the plain
             // text version there instead of leaving the command silent.
             if (mode == BuildPlanConsole.Mode.VERBOSE || mode == BuildPlanConsole.Mode.JSON) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", e.getMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Run", e.getMessage());
             }
             return Exit.DATA_ERR;
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Run", e.getMessage());
             return Exit.USAGE;
         }
         if (mode == BuildPlanConsole.Mode.VERBOSE || mode == BuildPlanConsole.Mode.JSON) {
@@ -232,17 +232,17 @@ public final class RunCommand {
             report = cc.jumpkick.cli.engine.EngineClient.pluginCommand(
                     cc.jumpkick.engine.EnginePaths.current(), projectDir, cache, command, appArgs);
         } catch (Exception e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Run", e.getMessage());
             return Exit.SOFTWARE;
         }
         if (!report.found()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "Run",
-                    "the packaging plugin declares deploy command `" + command + "` but does not" + " register it"));
+                    "the packaging plugin declares deploy command `" + command + "` but does not" + " register it");
             return Exit.SOFTWARE;
         }
         if (report.error() != null) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", report.error()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Run", report.error());
             return 1;
         }
         for (String line : report.output()) CliOutput.out(line);
@@ -331,7 +331,7 @@ public final class RunCommand {
      * rendered). Same shape as the chip-mode settle: {@code ▶ Run Executing `java …`}.
      */
     private static void printExecBanner(Path projectDir, cc.jumpkick.engine.protocol.ExecPlan plan) {
-        CliOutput.err(CommandWedge.working("Run", execTail(projectDir, plan)));
+        CommandWedge.printWorking("Run", execTail(projectDir, plan));
         CliOutput.err();
         // Reset any lingering SGR state so the program's own output starts from
         // the terminal's default colors (only when we're emitting color at all).

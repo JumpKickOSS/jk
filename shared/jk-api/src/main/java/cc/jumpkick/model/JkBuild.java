@@ -251,16 +251,27 @@ public record JkBuild(
         return nativeConfig.map(NativeConfig::graal).orElse(null);
     }
 
-    /** From {@code [native]} presence and its {@code always} flag. */
+    /**
+     * From {@code [native]} / {@code enabled}: absent table → {@link NativeMode#DISABLED}; present
+     * with no key or {@code enabled = true} → {@link NativeMode#SUPPORTED}; {@code enabled =
+     * "always"} → {@link NativeMode#ALWAYS}; {@code enabled = false} → {@link NativeMode#DISABLED}.
+     */
     public NativeMode nativeMode() {
-        return nativeConfig
-                .map(nc -> nc.always() ? NativeMode.ALWAYS : NativeMode.SUPPORTED)
-                .orElse(NativeMode.DISABLED);
+        return nativeConfig.map(NativeConfig::enabled).orElse(NativeMode.DISABLED);
     }
 
-    /** Backward-compat: true when native mode is not DISABLED. */
+    /** True when {@code jk native} should build this module ({@link NativeMode} not DISABLED). */
     public boolean nativeImage() {
         return nativeMode() != NativeMode.DISABLED;
+    }
+
+    /**
+     * True when a {@code [native]} table is present with {@code enabled = false} — an explicit
+     * opt-out. Distinct from an absent table: the unique-main fallback may pick up table-less
+     * modules, but must never pick up an explicitly disabled one (JK-2089).
+     */
+    public boolean nativeExplicitlyDisabled() {
+        return nativeConfig.isPresent() && nativeMode() == NativeMode.DISABLED;
     }
 
     public static JkBuild of(Project project) {
@@ -464,13 +475,21 @@ public record JkBuild(
         }
     }
 
-    /** From {@code [native]} presence and {@code always}; see {@link JkBuild#nativeMode}. */
+    /**
+     * Resolved {@code [native].enabled} (or legacy {@code always}). See {@link JkBuild#nativeMode}.
+     */
     public enum NativeMode {
-        /** {@code [native]} absent. */
+        /** No {@code [native]} table, or {@code enabled = false}. */
         DISABLED,
-        /** Eligible for {@code jk native}, not auto-built by {@code jk build}. */
+        /**
+         * {@code [native]} present (or {@code enabled = true}): {@code jk native} builds the image;
+         * plain {@code jk build} does not.
+         */
         SUPPORTED,
-        /** Native-image on {@code jk build}, {@code jk install}, and {@code jk native}. */
+        /**
+         * {@code enabled = "always"} (or legacy {@code always = true}): native-image on {@code jk
+         * build}, {@code jk install}, and {@code jk native}.
+         */
         ALWAYS;
 
         public boolean isEnabled() {
@@ -842,16 +861,23 @@ public record JkBuild(
     }
 
     /**
-     * {@code [native]} table for GraalVM native-image. Presence alone enables {@link NativeMode};
-     * see {@link JkBuild#nativeMode}.
+     * {@code [native]} table for GraalVM native-image. {@link #enabled} is the resolved
+     * {@code enabled} key (default {@link NativeMode#SUPPORTED} when the table is present with no
+     * key). See {@link JkBuild#nativeMode}.
      */
-    public record NativeConfig(String mainClass, String name, List<String> args, String graal, boolean always) {
+    public record NativeConfig(String mainClass, String name, List<String> args, String graal, NativeMode enabled) {
 
         public NativeConfig {
             args = args == null ? List.of() : List.copyOf(args);
             if (mainClass != null && mainClass.isBlank()) mainClass = null;
             if (name != null && name.isBlank()) name = null;
             if (graal != null && graal.isBlank()) graal = null;
+            if (enabled == null) enabled = NativeMode.SUPPORTED;
+        }
+
+        /** True when {@code enabled = "always"} (or legacy {@code always = true}). */
+        public boolean always() {
+            return enabled == NativeMode.ALWAYS;
         }
     }
 

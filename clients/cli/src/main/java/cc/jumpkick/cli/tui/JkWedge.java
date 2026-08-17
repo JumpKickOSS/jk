@@ -20,7 +20,9 @@ public final class JkWedge implements Widget {
         FAIL,
         WORK,
         MENU,
-        WARNING
+        WARNING,
+        /** Settled user/remote cancel — black on explain-pill gray, not the red fail chip. */
+        CANCELLED
     }
 
     private final Icon icon;
@@ -215,6 +217,7 @@ public final class JkWedge implements Widget {
                 new ChipColors(
                         theme.withBackground(theme.bright(0, 0, 0), JkDarkTheme.NORMAL_YELLOW),
                         JkDarkTheme.NORMAL_YELLOW);
+            case CANCELLED -> new ChipColors(theme.scopeBadge(), theme.grayColor());
             case MENU, WORK -> new ChipColors(theme.planChip(), theme.planBadgeColor());
         };
     }
@@ -248,13 +251,16 @@ public final class JkWedge implements Widget {
 
     public static JkWedge cancelled(String title, boolean byUser, String tookTail) {
         String took = tookTail == null || tookTail.isBlank() ? "" : " " + tookTail;
-        String body = "job was cancelled" + (byUser ? " by user" : "") + took;
+        String by = byUser ? " by user" : "";
         if (!Theme.active().isAnsi()) {
-            return fail(title, body);
+            return new JkWedge(
+                    Icon.bang(), title, RichText.plain("job was cancelled" + by + took), Variant.CANCELLED, null);
         }
-        String styled =
-                "job was " + Theme.colorize("cancelled", Theme.active().warning()) + (byUser ? " by user" : "") + took;
-        return fail(title, RichText.ansi(styled));
+        String styled = "job was "
+                + Theme.colorize("cancelled", Theme.active().brightWhite().bold())
+                + by
+                + took;
+        return new JkWedge(Icon.bang(), title, RichText.ansi(styled), Variant.CANCELLED, null);
     }
 
     public static String chipLine(String glyph, String command, NerdFontCaps caps, String message) {

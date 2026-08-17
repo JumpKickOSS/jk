@@ -148,8 +148,8 @@ public final class ToolInstallCommand implements CliCommand {
         if (classified instanceof cc.jumpkick.tool.ToolTarget.Directory dir) {
             Path projectDir = base.resolve(dir.path()).toAbsolutePath().normalize();
             if (!Files.isRegularFile(projectDir.resolve("jk.toml"))) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                        "Tool", "no jk.toml in " + projectDir + " — a directory target must be a jk project."));
+                cc.jumpkick.cli.tui.CommandWedge.printFail(
+                        "Tool", "no jk.toml in " + projectDir + " — a directory target must be a jk project.");
                 return Exit.CONFIG;
             }
             return appInstallDelegate().runProjectInstallBuildPlan(projectDir, "install");
@@ -172,7 +172,7 @@ public final class ToolInstallCommand implements CliCommand {
                 fetched = UrlToolSource.fetch(
                         u.raw(), cacheDirOverride != null ? cacheDirOverride : JkDirs.cache(), false);
             } catch (IOException e) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", e.getMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", e.getMessage());
                 return Exit.SOFTWARE;
             }
             return installFile(
@@ -215,7 +215,7 @@ public final class ToolInstallCommand implements CliCommand {
                             resolved.coordSpec(), with, bin, mainClass, repoUrl, cacheDir),
                     steps -> BuildPlanConsole.chooseConsoleListener("tool-install", steps, mode));
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", e.getMessage());
             return Exit.SOFTWARE;
         }
         if (!outcome.result().success() || outcome.mainClass() == null || outcome.coord() == null) return 1;
@@ -251,7 +251,7 @@ public final class ToolInstallCommand implements CliCommand {
         try {
             r = JBangCatalog.resolve(coord, new cc.jumpkick.http.Http());
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", e.getMessage());
             return Exit.SOFTWARE;
         }
         Path stateDirForTrust = stateDirOverride != null ? stateDirOverride : JkDirs.state();
@@ -259,10 +259,10 @@ public final class ToolInstallCommand implements CliCommand {
         if (gated != null) return gated;
         if (!r.arguments().isEmpty()) {
             // Default arguments can't ride a launcher's "$@" cleanly yet.
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "Tool",
                     "warning — this alias declares default arguments,"
-                            + " which installed launchers do not honor yet."));
+                            + " which installed launchers do not honor yet.");
         }
         if (binName == null || binName.isBlank()) binName = aliasName;
         String ref = r.scriptRef();
@@ -281,7 +281,7 @@ public final class ToolInstallCommand implements CliCommand {
         try {
             fetched = UrlToolSource.fetch(url, cacheDirOverride != null ? cacheDirOverride : JkDirs.cache(), false);
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", e.getMessage());
             return Exit.SOFTWARE;
         }
         return installFile(
@@ -306,7 +306,7 @@ public final class ToolInstallCommand implements CliCommand {
         String name = file.getFileName().toString();
         String lower = name.toLowerCase(Locale.ROOT);
         if (!Files.isRegularFile(file)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "file not found: " + file));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", "file not found: " + file);
             return Exit.NO_INPUT;
         }
         String mode =
@@ -330,7 +330,7 @@ public final class ToolInstallCommand implements CliCommand {
                             mode, file.toAbsolutePath(), cacheDir, stateDir, repoUrl, false, with),
                     steps -> BuildPlanConsole.chooseConsoleListener("tool-install", steps, consoleMode));
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", e.getMessage());
             return Exit.SOFTWARE;
         }
 

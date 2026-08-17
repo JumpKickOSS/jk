@@ -209,6 +209,7 @@ public final class EngineVerbBridge implements VerbHost {
                 Optional.of(Jsonl.bool(requestLine, "force", false) || refresh),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
         return Session.defaults()
                 .withConfig(config)

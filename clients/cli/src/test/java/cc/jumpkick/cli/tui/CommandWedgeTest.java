@@ -66,6 +66,47 @@ class CommandWedgeTest {
     }
 
     @Test
+    void printFail_opens_stderr_envelope_once() {
+        CommandWedge.resetEnvelope();
+        var err = new ByteArrayOutputStream();
+        var prev = System.err;
+        try {
+            System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
+            CommandWedge.printFail("Build", "boom");
+            CommandWedge.printFail("Build", "again");
+        } finally {
+            System.setErr(prev);
+        }
+        String out = err.toString(StandardCharsets.UTF_8);
+        assertThat(out).startsWith("\n");
+        assertThat(out).doesNotStartWith("\n\n");
+        assertThat(out).contains("Build").contains("boom").contains("again");
+        // Exactly one leading blank for the command (second printFail does not re-blank).
+        assertThat(out.indexOf('\n', 1)).isGreaterThan(0);
+        long leadingBlanks = 0;
+        for (int i = 0; i < out.length() && out.charAt(i) == '\n'; i++) leadingBlanks++;
+        assertThat(leadingBlanks).isEqualTo(1);
+    }
+
+    @Test
+    void printOk_opens_stdout_envelope_once() {
+        CommandWedge.resetEnvelope();
+        var buf = new ByteArrayOutputStream();
+        var prev = System.out;
+        try {
+            System.setOut(new PrintStream(buf, true, StandardCharsets.UTF_8));
+            CommandWedge.printOk("Add", "ok");
+            CommandWedge.printOk("Add", "again");
+        } finally {
+            System.setOut(prev);
+        }
+        String out = buf.toString(StandardCharsets.UTF_8);
+        assertThat(out).startsWith("\n");
+        assertThat(out).doesNotStartWith("\n\n");
+        assertThat(out).contains("Add").contains("ok");
+    }
+
+    @Test
     void analyzing_returns_live_wedge_spinner() {
         var buf = new ByteArrayOutputStream();
         try (Spinner s = CommandWedge.analyzing(
@@ -90,5 +131,21 @@ class CommandWedgeTest {
         assertThat(local).contains("job was cancelled by user");
         assertThat(local).containsOnlyOnce("Build");
         assertThat(local).contains("took 1.6s");
+    }
+
+    @Test
+    void cancelled_job_line_uses_explain_pill_gray_and_bang_not_the_red_fail_chip() {
+        String raw = JkWedge.cancelledJobLine("Build", NerdFontCaps.ALL, true, "took 1.2s");
+        String visible = raw.replaceAll("\u001B\\[[0-9;]*m", "");
+        assertThat(visible).contains("Build").contains("job was cancelled by user");
+        assertThat(visible).doesNotContain(Glyphs.CROSS);
+        Theme t = Theme.active();
+        if (t.isAnsi()) {
+            assertThat(visible).contains(Glyphs.BANG);
+            assertThat(raw).contains(Theme.colorize("cancelled", t.brightWhite().bold()));
+            assertThat(raw).contains(Theme.colorize(" " + Glyphs.BANG + " Build ", t.scopeBadge()));
+        } else {
+            assertThat(visible).contains(Glyphs.BANG_PLAIN);
+        }
     }
 }

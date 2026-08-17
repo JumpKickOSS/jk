@@ -28,6 +28,10 @@ const {
   testFailureReport,
   stackFrameLines,
   isTestFailureDiag,
+  isCompilerDiag,
+  parseCompilerBlock,
+  compilerFailureReports,
+  snippetWindow,
   parseAssertJMessage,
   shortTestLabel,
   shortDisplayLabel,
@@ -56,6 +60,16 @@ const start = (id, dir, extra = {}) => ({
   data: { requestId: id, kind: 'build', dir, ...extra },
 });
 const finish = (id, data = {}) => ({ type: 'request-finish', data: { requestId: id, ...data } });
+
+test('request-start ignores format and lock (Activity is build-like only)', () => {
+  const cards = [];
+  foldEvent(cards, { type: 'request-start', data: { requestId: 1, kind: 'format', dir: '/w' } });
+  foldEvent(cards, { type: 'request-start', data: { requestId: 2, kind: 'lock', dir: '/w' } });
+  foldEvent(cards, start(3, '/w'));
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].id, 3);
+  assert.equal(cards[0].kind, 'build');
+});
 
 test('request-start opens a running card, newest first', () => {
   const cards = [];
@@ -331,6 +345,30 @@ test('history backfill maps per-module steps; single-project synthesizes one mod
   assert.deepEqual(sp[0].modules[0].steps.map((p) => p.name + ':' + p.state), ['compile-java:failed']);
   assert.equal(sp[0].modules[0].diagnostics.length, 1);
   assert.equal(sp[0].modules[0].diagnostics[0].message, 'cannot find symbol');
+});
+
+test('history seeding keeps a FAILED-step module failed inside a cancelled record', async () => {
+  // JK-2094: module A fails compile (FAIL step journaled), the rest of the workspace is
+  // cancelled → rec.cancelled=true. Live painted A failed; the reload seed graying A out to
+  // 'cancelled' desynced the two and dropped A from the failure details. FAIL steps win, same
+  // precedence as outcomeOf.
+  const { seedFromHistory } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const cards = [];
+  seedFromHistory(cards, [{
+    id: 'c1', kind: 'build', dir: '/w', coord: 'g:w', finishedAt: 5000, success: false,
+    cancelled: true,
+    modules: [
+      { coord: 'g:a', dir: '/w/a', finished: true, success: false, millis: 90,
+        steps: [{ name: 'compile-java', status: 'FAIL' }] },
+      { coord: 'g:b', dir: '/w/b', finished: true, success: false, cancelled: true, millis: 10,
+        steps: [{ name: 'compile-java', status: 'CANCELLED' }] },
+    ],
+    steps: [], diagnostics: [],
+  }]);
+  const a = cards[0].modules.find((m) => m.dir === '/w/a');
+  const b = cards[0].modules.find((m) => m.dir === '/w/b');
+  assert.equal(a.state, 'failed');
+  assert.equal(b.state, 'cancelled');
 });
 
 test('workspace history replay applies the per-kind diagnostic ceilings', async () => {
@@ -985,9 +1023,44 @@ test('phaseChainOf collapses steps into coarse phase nodes in encounter order', 
   step('compile-kotlin', 'compile', 'SUCCESS');
   step('run-tests', 'test', 'SUCCESS');
   const chain = phaseChainOf(cards[0].modules[0]);
-  assert.deepEqual(chain.map((p) => p.label), ['Resolve', 'Compile', 'Test']); // one node per phase, in order
-  assert.deepEqual(chain.map((p) => p.state), ['success', 'success', 'success']);
-  assert.deepEqual(chain[1].steps.map((s) => s.name), ['compile-java', 'compile-kotlin']); // Compile collapses both
+  assert.deepEqual(chain.map((p) => p.label), ['Compile', 'Test']); // Resolve omitted when it succeeded
+  assert.deepEqual(chain.map((p) => p.state), ['success', 'success']);
+  assert.deepEqual(chain[0].steps.map((s) => s.name), ['compile-java', 'compile-kotlin']); // Compile collapses both
+});
+
+test('phaseChainOf keeps Resolve only when a resolve step failed', () => {
+  const ok = phaseChainOf({
+    steps: [
+      { name: 'resolve-deps', phase: 'resolve', state: 'success' },
+      { name: 'ksp', phase: 'generate', state: 'success' },
+      { name: 'compile-java', phase: 'compile', state: 'success' },
+    ],
+  });
+  assert.deepEqual(ok.map((p) => p.label), ['Generate', 'Compile']);
+
+  const failed = phaseChainOf({
+    steps: [
+      { name: 'resolve-deps', phase: 'resolve', state: 'failed' },
+      { name: 'compile-java', phase: 'compile', state: 'success' },
+    ],
+  });
+  assert.deepEqual(failed.map((p) => p.label), ['Resolve', 'Compile']);
+  assert.equal(failed[0].state, 'failed');
+});
+
+test('phaseChainOf paints Compile skipped when compile-java is skipped and only copy-resources succeeded', () => {
+  // Build #110 jk-cli: compile-java SKIPPED@2ms, copy-resources SUCCESS@2ms — not a javac run.
+  const chain = phaseChainOf({
+    steps: [
+      { name: 'compile-java', phase: 'compile', state: 'skipped', millis: 2 },
+      { name: 'build-logic-after-compile', phase: 'compile', state: 'skipped', millis: 0 },
+      { name: 'write-stamp', phase: 'compile', state: 'skipped', millis: 0 },
+      { name: 'copy-resources', phase: 'compile', state: 'success', millis: 2 },
+    ],
+  });
+  assert.equal(chain.length, 1);
+  assert.equal(chain[0].label, 'Compile');
+  assert.equal(chain[0].state, 'skipped');
 });
 
 test('phaseChainOf paints skip when compile is SKIPPED and stamp is 0ms success', () => {
@@ -1255,6 +1328,22 @@ test('FAIL steps beat a cancelled bit on the card (test failure must not read as
     }),
   ]);
   assert.equal(outcomeOf(cards[0]), 'failed');
+});
+
+test('cancelled module-finish after user cancel does not flip the card to failed', () => {
+  const cards = [];
+  foldEvent(cards, start(1, '/w'));
+  foldEvent(cards, {
+    type: 'module-finish',
+    data: { requestId: 1, dir: '/w/a', success: true, millis: 10 },
+  });
+  foldEvent(cards, {
+    type: 'module-finish',
+    data: { requestId: 1, dir: '/w/b', success: false, cancelled: true, millis: 5 },
+  });
+  foldEvent(cards, finish(1, { success: false, cancelled: true }));
+  assert.equal(cards[0].modules.find((m) => m.dir === '/w/b').state, 'cancelled');
+  assert.equal(outcomeOf(cards[0]), 'cancelled');
 });
 
 test('cancelled without FAIL steps still reads as cancelled', () => {
@@ -1526,4 +1615,95 @@ test('history seed keeps test-failure snippet for Activity backfill', () => {
   const rep = testFailureReport(mod.diagnostics[0], { count: 1 });
   assert.equal(rep.label, 'T.m()');
   assert.equal(rep.exceptionClass, 'AssertionFailedError');
+});
+
+// ---- compiler-failure rich report (CLI CompilerDiagnostic parity) ----
+
+test('isCompilerDiag matches javac kotlinc groovyc', () => {
+  assert.equal(isCompilerDiag({ code: 'javac' }), true);
+  assert.equal(isCompilerDiag({ code: 'kotlinc' }), true);
+  assert.equal(isCompilerDiag({ code: 'groovyc' }), true);
+  assert.equal(isCompilerDiag({ code: 'test-failure' }), false);
+  assert.equal(isCompilerDiag({ code: 'error' }), false);
+  assert.equal(isCompilerDiag(null), false);
+});
+
+test('parseCompilerBlock extracts error kv, caret column, and snippet line', () => {
+  const units = parseCompilerBlock(
+    '/ws/server/engine/src/main/java/cc/jumpkick/compile/AssemblyPackager.java:35: error: class, interface, enum, or record expected\n' +
+      'public final classaa AssemblyPackager {\n' +
+      '             ^\n',
+  );
+  assert.equal(units.length, 1);
+  assert.equal(units[0].file, '/ws/server/engine/src/main/java/cc/jumpkick/compile/AssemblyPackager.java');
+  assert.equal(units[0].line, 35);
+  assert.equal(units[0].col, 14);
+  assert.equal(units[0].kvs.length, 1);
+  assert.equal(units[0].kvs[0].key, 'error');
+  assert.equal(units[0].kvs[0].value, 'class, interface, enum, or record expected');
+  assert.equal(units[0].snippet, 'public final classaa AssemblyPackager {');
+});
+
+test('compilerFailureReports builds CLI-shaped compile model', () => {
+  const d = normalizeDiagnostic({
+    task: 'compile-java',
+    code: 'javac',
+    message:
+      '/home/bsant/src/oss/jk/server/engine/src/main/java/cc/jumpkick/compile/AssemblyPackager.java:35: error: class, interface, enum, or record expected\n' +
+      'public final classaa AssemblyPackager {\n' +
+      '             ^\n',
+    file: '/home/bsant/src/oss/jk/server/engine/src/main/java/cc/jumpkick/compile/AssemblyPackager.java',
+    line: 35,
+    col: 14,
+  });
+  assert.equal(d.col, 14);
+  const reps = compilerFailureReports(d, { showHeader: true, module: 'cc.jumpkick:jk-engine' });
+  assert.equal(reps.length, 1);
+  const rep = reps[0];
+  assert.equal(rep.kind, 'compile');
+  assert.equal(rep.showHeader, true);
+  assert.equal(rep.headerLabel, 'Compile failure');
+  assert.equal(rep.module, 'cc.jumpkick:jk-engine');
+  assert.equal(rep.kvs[0].key, 'error');
+  assert.equal(rep.kvs[0].value, 'class, interface, enum, or record expected');
+  assert.equal(rep.line, 35);
+  assert.equal(rep.col, 14);
+  assert.equal(rep.rows.length, 1);
+  assert.equal(rep.rows[0].num, 35);
+  assert.equal(rep.rows[0].error, true);
+  assert.equal(rep.rows[0].code, 'public final classaa AssemblyPackager {');
+});
+
+test('snippetWindow paints two lines of context around the error', () => {
+  const lines = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+  const rows = snippetWindow(lines, 4);
+  assert.deepEqual(
+    rows.map((r) => r.num),
+    [2, 3, 4, 5, 6],
+  );
+  assert.equal(rows[2].error, true);
+  assert.equal(rows[2].code, 'd');
+  assert.equal(rows.filter((r) => r.error).length, 1);
+});
+
+test('snippetWindow numbers a lone compiler line with the real error line', () => {
+  const rows = snippetWindow(['public final classaa AssemblyPackager {'], 35);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].num, 35);
+  assert.equal(rows[0].error, true);
+});
+
+test('compilerFailureReports subsequent unit suppresses the shared header', () => {
+  const d = normalizeDiagnostic({
+    code: 'javac',
+    message:
+      '/w/Foo.java:2: error: compact source file should not have package declaration\n' +
+      'package x;\n' +
+      '^\n',
+    file: '/w/Foo.java',
+    line: 2,
+    col: 1,
+  });
+  const hidden = compilerFailureReports(d, { showHeader: false, module: 'g:a' });
+  assert.equal(hidden[0].showHeader, false);
 });

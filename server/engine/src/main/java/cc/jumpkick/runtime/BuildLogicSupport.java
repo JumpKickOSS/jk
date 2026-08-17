@@ -685,7 +685,7 @@ public final class BuildLogicSupport {
         ProcessBuilder pb = new ProcessBuilder(
                 javaBin, "-cp", cp.toString(), main, "--project", projectDir.toString(), "--out", outDir.toString());
         pb.redirectErrorStream(true);
-        Process p = pb.start();
+        Process p = cc.jumpkick.engine.JobWorkers.start(pb);
         String log = new String(p.getInputStream().readAllBytes());
         int exit = p.waitFor();
         if (exit != 0 && !log.isBlank()) System.err.println(log);

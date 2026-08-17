@@ -1,0 +1,147 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.engine.http;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import cc.jumpkick.plugin.protocol.MiniJson;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.LongFunction;
+import java.util.function.Supplier;
+import org.junit.jupiter.api.Test;
+
+/** {@code jk_run wait=true} journal attribution — no HTTP bind. */
+class McpRunWaitTest {
+
+    private static final long JID = 45L;
+
+    private static final String FINISHED_OK =
+            "{\"id\":\"r9\",\"buildNumber\":9,\"kind\":\"build\",\"dir\":\"/ws\",\"projectId\":\"p\","
+                    + "\"success\":true,\"exitCode\":0,\"millis\":10,\"coord\":\"g:a\",\"requestId\":45,"
+                    + "\"startedAt\":1700000000000,\"modules\":[],\"diagnostics\":[]}";
+
+    private final AtomicInteger historyScans = new AtomicInteger();
+
+    private final EngineHttpJobs jobs = new EngineHttpJobs() {
+        @Override
+        public long triggerBuild(String dir) {
+            return JID;
+        }
+
+        @Override
+        public long triggerTest(String dir) {
+            return JID;
+        }
+
+        @Override
+        public long triggerLock(String dir) {
+            return JID;
+        }
+
+        @Override
+        public boolean cancel(long requestId) {
+            return false;
+        }
+    };
+
+    private McpHandler handler(Supplier<List<String>> history, LongFunction<String> finishedRecords) {
+        return new McpHandler(
+                () -> new StatusSnapshot(
+                        "0.12.0",
+                        1L,
+                        System.currentTimeMillis() - 5_000,
+                        0,
+                        0,
+                        1L << 20,
+                        2L << 20,
+                        256L << 20,
+                        -1L,
+                        0,
+                        8,
+                        16L << 30),
+                jobs,
+                dir -> Map.of("coord", "com.example:demo"),
+                history,
+                "0.12.0",
+                new ProgressTokenRegistry(),
+                List::of,
+                AdmissionYield.NONE,
+                finishedRecords);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> structured(String body) {
+        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
+        Map<String, Object> result = (Map<String, Object>) resp.get("result");
+        return (Map<String, Object>) result.get("structuredContent");
+    }
+
+    private static String runWait(McpHandler mcp) {
+        return mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_run\",\"arguments\":"
+                + "{\"kind\":\"build\",\"dir\":\"/ws\",\"wait\":true,\"timeout_s\":2}}}");
+    }
+
+    @Test
+    void wait_uses_the_by_jid_lookup_and_never_rescans_history() {
+        McpHandler mcp = handler(
+                () -> {
+                    historyScans.incrementAndGet();
+                    return List.of();
+                },
+                jid -> jid == JID ? FINISHED_OK : null);
+        Map<String, Object> fields = structured(runWait(mcp));
+        assertThat(fields.get("finished")).isEqualTo(true);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) fields.get("result");
+        assertThat(result.get("id")).isEqualTo("r9");
+        assertThat(result.get("success")).isEqualTo(true);
+        assertThat(((Number) result.get("requestId")).longValue()).isEqualTo(JID);
+        assertThat(historyScans).hasValue(0);
+    }
+
+    @Test
+    void wait_with_no_journal_row_never_reports_a_previous_runs_outcome() {
+        // History disabled: no row for this jid; the newest row on disk is an old success.
+        String stale = "{\"id\":\"old\",\"kind\":\"build\",\"dir\":\"/ws\",\"success\":true,"
+                + "\"exitCode\":0,\"startedAt\":1700000000000,\"modules\":[],\"diagnostics\":[]}";
+        McpHandler mcp = handler(() -> List.of(stale), jid -> null);
+        Map<String, Object> fields = structured(runWait(mcp));
+        assertThat(fields.get("finished")).isEqualTo(true);
+        assertThat(fields).doesNotContainKey("result");
+    }
+
+    @Test
+    void wait_fallback_accepts_an_unstamped_row_started_after_the_trigger() {
+        String fresh = "{\"id\":\"new\",\"kind\":\"build\",\"dir\":\"/ws\",\"success\":true,"
+                + "\"exitCode\":0,\"startedAt\":" + (System.currentTimeMillis() + 60_000)
+                + ",\"modules\":[],\"diagnostics\":[]}";
+        McpHandler mcp = handler(() -> List.of(fresh), jid -> null);
+        Map<String, Object> fields = structured(runWait(mcp));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) fields.get("result");
+        assertThat(result.get("id")).isEqualTo("new");
+    }
+
+    @Test
+    void failed_wait_outside_the_bound_dir_still_attaches_diagnostics() {
+        String failed = "{\"id\":\"rf\",\"kind\":\"build\",\"dir\":\"/ws/b\",\"success\":false,"
+                + "\"exitCode\":1,\"requestId\":45,\"startedAt\":1700000000000,\"modules\":[],"
+                + "\"diagnostics\":[{\"severity\":\"error\",\"dir\":\"/ws/b\","
+                + "\"message\":\"/ws/b/Bad.java:1: error: cannot find symbol\"}]}";
+        McpHandler mcp = handler(() -> List.of(failed), jid -> jid == JID ? failed : null);
+        mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_bind\",\"arguments\":{\"dir\":\"/ws/a\"}}}");
+        Map<String, Object> fields = structured(mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,"
+                + "\"method\":\"tools/call\",\"params\":{\"name\":\"jk_run\",\"arguments\":"
+                + "{\"kind\":\"build\",\"dir\":\"/ws/b\",\"wait\":true,\"timeout_s\":2}}}"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) fields.get("result");
+        assertThat(result.get("success")).isEqualTo(false);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> diags = (List<Map<String, Object>>) fields.get("diagnostics");
+        assertThat(diags).isNotEmpty();
+        assertThat(String.valueOf(diags.getFirst().get("file"))).contains("Bad.java");
+    }
+}

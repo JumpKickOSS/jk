@@ -286,6 +286,15 @@ public final class EngineSpawn {
      * required for a mappable AOT cache; a Graal pin is honoured but disables AOT (see {@link
      * #chooseAotMode}).
      */
+    /**
+     * {@code java} of the JDK that hosts the engine (installs the pin if none matches). Used by
+     * one-shot engine roles such as {@code --inflate-xz} that must not start the daemon.
+     */
+    public static Path engineJava() throws IOException {
+        Path home = resolveEngineJdk().home();
+        return home.resolve("bin").resolve(HostPlatform.isWindows() ? "java.exe" : "java");
+    }
+
     private static EngineJdk resolveEngineJdk() throws IOException {
         int floor = Runtime.version().feature();
         String pin = cc.jumpkick.config.GlobalConfig.engineJdkPin().orElse("temurin-" + floor);

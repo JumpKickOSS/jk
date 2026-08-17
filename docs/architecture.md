@@ -10,6 +10,9 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
 4. **Diagnostics as product** — PubGrub prose, `jk why` / `jk explain`, machine-readable output.
 5. **Adoption first** — `jk mvn` / `jk gradle`, import/export, Maven Central semantics.
 6. **Resist plugin sprawl** — first-party batteries; no public marketplace before a frozen SPI.
+7. **One build orchestrator** — `jk build` / `test` / `native` / `image` (workspace) share
+   `WorkspaceExecute.buildWorkspace`. Commands differ by **target** and **module cone**, not by
+   a second dirty/ETA/schedule loop. See [features/build-plan.md](features/build-plan.md#one-orchestrator-invariant).
 
 ## Process model
 
@@ -88,8 +91,10 @@ jk engine start | status | stop
 ### Dashboard static assets (`web-root`)
 
 The engine HTTP server serves the dashboard from **disk first**, then classpath `/web`
-(in the engine jar). Disk paths are always `Cache-Control: no-cache`, so edits show up on
-refresh without reinstalling.
+(in the engine jar). Both tiers are `Cache-Control: no-cache` (store, but revalidate every
+load): disk so worktree edits show up on refresh without reinstalling; classpath so a new
+engine jar is not hidden by a still-fresh `max-age`. Classpath responses also carry a
+version+mtime `ETag` (`"jk-<version>-<stamp>"`) — unchanged jar → `304`.
 
 | Source | Key |
 |---|---|

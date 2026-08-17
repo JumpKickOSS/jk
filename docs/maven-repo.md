@@ -8,9 +8,9 @@ fetch workers (test-runner, kotlin-compiler, …) without a prior `./gradlew ins
 
 | Role | URL |
 |------|-----|
-| **Canonical (CDN / site)** | `https://jumpkick.build/repo/` |
-| **Origin (always works)** | `https://storage.googleapis.com/jkbuild-releases/repo/` |
-| **GCS** | `gs://jkbuild-releases/repo/` |
+| **Product (baked into jk)** | `https://jumpkick.build/repo/` |
+| **Current origin** (Hosting 302) | `https://storage.googleapis.com/jumpkick/repo/` |
+| **GCS** | `gs://jumpkick/repo/` |
 
 Maven path (standard):
 
@@ -54,7 +54,7 @@ User guide (exclusive groups + custom internal repos): [guide.md](guide.md#auth-
 export JK_RELEASE_SIGNING_KEY=…   # optional for binary .sig
 scripts/assemble-release-dir.sh build/release/0.12.0
 # upload releases/
-gsutil -m rsync -r build/release/0.12.0/ gs://jkbuild-releases/releases/0.12.0/
+gsutil -m rsync -r build/release/0.12.0/ gs://jumpkick/releases/0.12.0/
 # upload first-party Maven modules
 scripts/publish-maven-repo.sh
 ```

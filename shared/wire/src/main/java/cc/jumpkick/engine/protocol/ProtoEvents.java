@@ -954,6 +954,14 @@ public final class ProtoEvents {
      */
     public static String moduleFinish(
             String dir, String coord, boolean success, int exitCode, long millis, boolean didWork) {
+        return moduleFinish(dir, coord, success, exitCode, millis, didWork, false);
+    }
+
+    /**
+     * @param cancelled session cancel ended this module (not a compile/test failure). Additive.
+     */
+    public static String moduleFinish(
+            String dir, String coord, boolean success, int exitCode, long millis, boolean didWork, boolean cancelled) {
         return "{\"type\":\""
                 + EngineProtocol.MODULE_FINISH
                 + "\",\"dir\":"
@@ -968,6 +976,8 @@ public final class ProtoEvents {
                 + millis
                 + ",\"didWork\":"
                 + didWork
+                + ",\"cancelled\":"
+                + cancelled
                 + "}";
     }
 

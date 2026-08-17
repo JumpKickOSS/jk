@@ -554,6 +554,8 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   border-bottom: 1px dotted var(--dim);
 }
 .ago { color: var(--dim); font-size: 11.5px; }
+.ago[data-tip],
+.when-tip[data-tip] { cursor: help; }
 /* ETA dual-clock: italic/dim "ETA" label + mid-gray ~remaining / 0s / +overrun. */
 .eta {
   display: inline-flex;
@@ -1244,7 +1246,7 @@ table.stats td.err { color: var(--err); }
 .diag-line { padding: 1px 0; }
 .console-err { color: var(--err); }
 
-/* Test-failure report (CLI TestFailureHighlight parity — flat, no thick outer rail). */
+/* Failure report (test + compiler — CLI parity, flat, no thick outer rail). */
 .fail-report {
   margin: 4px 0 10px;
   font: 400 12px/1.45 var(--mono);
@@ -1261,6 +1263,7 @@ table.stats td.err { color: var(--err); }
 .fail-failed { color: var(--err); font-weight: 700; }
 .fail-ok { color: var(--ok); }
 .fail-err { color: var(--err); }
+.fail-kv { color: var(--bright); }
 .fail-path {
   color: var(--path);
   text-decoration: underline;
@@ -1459,7 +1462,8 @@ a:focus-visible {
 .trigger button.ghost,
 .detail-actions button.ghost,
 .back,
-.new-project-form button.ghost {
+.new-project-form button.ghost,
+.confirm-modal button.ghost {
   background: var(--s1);
   color: var(--mu);
   border: 1px solid var(--bd);
@@ -1473,7 +1477,8 @@ a:focus-visible {
 .trigger button.ghost:hover,
 .detail-actions button.ghost:hover:not(:disabled),
 .back:hover,
-.new-project-form button.ghost:hover {
+.new-project-form button.ghost:hover,
+.confirm-modal button.ghost:hover {
   color: var(--tx);
   border-color: rgba(var(--cn-rgb), 0.45);
   background: rgba(var(--cn-rgb), 0.1);
@@ -1489,7 +1494,8 @@ a:focus-visible {
 .detail-actions button:not(.ghost):not(.browse):not(.action-cyan),
 button.action-green,
 button.new-project,
-.new-project-form button.primary {
+.new-project-form button.primary,
+.confirm-modal button.primary {
   position: relative;
   overflow: hidden;
   display: inline-flex;
@@ -1516,7 +1522,8 @@ button.new-project,
 .detail-actions button:not(.ghost):not(.browse):not(.action-cyan):hover:not(:disabled),
 button.action-green:hover:not(:disabled),
 button.new-project:hover:not(:disabled),
-.new-project-form button.primary:hover:not(:disabled) {
+.new-project-form button.primary:hover:not(:disabled),
+.confirm-modal button.primary:hover:not(:disabled) {
   background: rgba(var(--ok-rgb), 0.22);
   border-color: rgba(var(--ok-rgb), 0.65);
   box-shadow: 0 0 16px rgba(var(--ok-rgb), 0.22);
@@ -1526,7 +1533,8 @@ button.new-project:hover:not(:disabled),
 .detail-actions button:not(.ghost):not(.browse):not(.action-cyan)::before,
 button.action-green::before,
 button.new-project::before,
-.new-project-form button.primary::before {
+.new-project-form button.primary::before,
+.confirm-modal button.primary::before {
   content: '';
   position: absolute;
   top: 0;
@@ -1541,7 +1549,8 @@ button.new-project::before,
 .detail-actions button:not(.ghost):not(.browse):not(.action-cyan):hover:not(:disabled)::before,
 button.action-green:hover:not(:disabled)::before,
 button.new-project:hover:not(:disabled)::before,
-.new-project-form button.primary:hover:not(:disabled)::before {
+.new-project-form button.primary:hover:not(:disabled)::before,
+.confirm-modal button.primary:hover:not(:disabled)::before {
   left: 100%;
 }
 .new-project-form button.primary:disabled,
@@ -1785,6 +1794,31 @@ button.browse:hover::before {
 .modal.new-project-modal { width: min(520px, 94vw); }
 /* Stack above the new-project modal (base .modal-bg is z-index 60) when browsing a parent dir. */
 .browser-modal-bg { z-index: 70; }
+
+/* In-page confirm (code editor Save). Same framed-console modal as Help / New project. */
+.confirm-modal-bg { z-index: 80; }
+.modal.confirm-modal { width: min(400px, 92vw); }
+.confirm-modal .modal-head .ico {
+  color: var(--cn);
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.confirm-body {
+  margin: 0;
+  padding: 16px;
+  font: 500 13px/1.5 var(--mono);
+  color: var(--tx);
+}
+.confirm-file {
+  color: var(--path);
+  font-weight: 700;
+}
+.confirm-actions {
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--bd2);
+}
 .new-project-form {
   display: flex;
   flex-direction: column;
@@ -2300,6 +2334,17 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
 .code-line-err-gutter {
   background: rgba(var(--err-rgb), 0.3);
   border-left: 2px solid var(--err);
+}
+/* ?col=C: mark the diagnostic token. err=true is a red squiggle; otherwise cyan underline. */
+.code-col-err {
+  background: rgba(var(--err-rgb), 0.45);
+  border-bottom: 2px solid var(--err);
+  text-decoration: underline wavy var(--err);
+  text-underline-offset: 2px;
+}
+.code-col-hl {
+  background: rgba(var(--cn-rgb), 0.28);
+  border-bottom: 2px solid var(--cn);
 }
 /* Plain-text fallback: file over the highlight budget, or Monaco failed to load. */
 .code-pane .code-pre {

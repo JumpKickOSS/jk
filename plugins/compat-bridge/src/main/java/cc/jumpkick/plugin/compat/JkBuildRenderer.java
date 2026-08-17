@@ -109,10 +109,16 @@ public final class JkBuildRenderer {
         if (app.minified()) sb.append("minified = true\n");
     }
 
-    /** {@code [native]} table — its presence alone marks the project as native-image-eligible. */
+    /** {@code [native]} table — {@code enabled} defaults true when the table is present. */
     private static void renderNative(StringBuilder sb, JkBuild.NativeConfig nc) {
         if (nc == null) return;
         sb.append("\n[native]\n");
+        // Omit enabled when SUPPORTED (table presence == enabled true). Emit false / "always".
+        if (nc.enabled() == JkBuild.NativeMode.ALWAYS) {
+            sb.append("enabled    = \"always\"\n");
+        } else if (nc.enabled() == JkBuild.NativeMode.DISABLED) {
+            sb.append("enabled    = false\n");
+        }
         if (nc.mainClass() != null)
             sb.append("main-class = ").append(quote(nc.mainClass())).append('\n');
         if (nc.name() != null)
@@ -125,12 +131,13 @@ public final class JkBuildRenderer {
             }
             sb.append("]\n");
         }
-        // graal defaults to "native" at parse time when [native] is declared and the key is
-        // omitted — only emit it when it differs, so a round-trip stays minimal.
-        if (nc.graal() != null && !nc.graal().equals("native")) {
+        // graal defaults to "graalvm" at parse time when [native] is declared and the key is
+        // omitted — elide exactly that default so a round-trip stays minimal. "native" is a
+        // DISTINCT legal spec (parseGraalSpec: "graalvm-25", "25", or "native"); eliding it
+        // silently re-parsed as "graalvm" and flipped the toolchain choice (JK-2098).
+        if (nc.graal() != null && !nc.graal().equals("graalvm")) {
             sb.append("graal      = ").append(quote(nc.graal())).append('\n');
         }
-        if (nc.always()) sb.append("always     = true\n");
     }
 
     private static void renderWorkspace(StringBuilder sb, JkBuild jkBuild) {

@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import org.jline.utils.AttributedString;
+import org.jline.utils.AttributedStyle;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -55,7 +56,7 @@ class TestFailureHighlightTest {
         assertThat(all).doesNotContain("[dogfood:");
         assertThat(all).contains("Expected: 42");
         assertThat(all).contains("But Was: 41");
-        assertThat(all).contains("src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java");
+        assertThat(all).contains("src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java:23");
         assertThat(all).contains("isEqualTo");
         assertThat(all).doesNotContain("org.opentest4j");
         assertThat(all).doesNotContain("@@source");
@@ -70,6 +71,10 @@ class TestFailureHighlightTest {
         assertThat(pathAt).isGreaterThan(expectedAt);
         assertThat(thrownAt).isGreaterThan(pathAt);
         assertThat(footerAt).isGreaterThan(thrownAt);
+
+        assertThat(afterRail("Expected: 42", painted)).isEqualTo(" Expected: 42");
+        assertThat(afterRail("But Was: 41", painted)).isEqualTo("  But Was: 41");
+        assertThat(afterRail("\"dogfood: hello\"", painted)).isEqualTo("\"dogfood: hello\"");
 
         if (Theme.active().isAnsi()) {
             Theme t = Theme.active();
@@ -87,6 +92,44 @@ class TestFailureHighlightTest {
         return AttributedString.stripAnsi(s == null ? "" : s);
     }
 
+    /** Text after the rail on the first painted line that contains {@code needle}. Must be ANSI-free. */
+    private static String afterRail(String needle, List<String> painted) {
+        for (String line : painted) {
+            if (!plain(line).contains(needle)) continue;
+            String rest = extractAfterRail(line);
+            assertThat(rest)
+                    .as("assertion body must not be colorized: %s", rest)
+                    .doesNotContain("\u001b");
+            return rest;
+        }
+        throw new AssertionError("no painted line contained: " + needle);
+    }
+
+    private static String extractAfterRail(String painted) {
+        if (painted == null) return "";
+        String rail = TestFailureHighlight.RAIL;
+        int idx = painted.indexOf(rail);
+        int glyph = rail.length();
+        if (idx < 0) {
+            idx = painted.indexOf('|');
+            glyph = 1;
+            if (idx < 0) return painted;
+        }
+        return stripLeadingSgrAndOneSpace(painted.substring(idx + glyph));
+    }
+
+    /** {@code colorize(RAIL)} leaves an SGR reset immediately after the glyph, then a space. */
+    private static String stripLeadingSgrAndOneSpace(String s) {
+        int i = 0;
+        while (i < s.length() && s.charAt(i) == '\u001b') {
+            int m = s.indexOf('m', i);
+            if (m < 0) break;
+            i = m + 1;
+        }
+        if (i < s.length() && s.charAt(i) == ' ') i++;
+        return s.substring(i);
+    }
+
     @Test
     void source_path_is_osc8_deep_link_when_dashboard_is_known() {
         if (!Theme.active().isAnsi()) return;
@@ -99,10 +142,10 @@ class TestFailureHighlightTest {
             painted = TestFailureHighlight.paintSourcePath(
                     path, "@@source path=" + path + " line=9 lang=java", Theme.active());
         }
-        // AttributedString.stripAnsi leaves OSC-8; visible text is still the path.
+        // AttributedString.stripAnsi leaves OSC-8; visible text is path:line for copy-paste.
         assertThat(painted).contains(Ansi.OSC + "8;;" + expectedUrl);
         assertThat(painted).contains(path);
-        assertThat(cc.jumpkick.cli.tui.RenderContext.stripAnsi(painted)).isEqualTo(path);
+        assertThat(cc.jumpkick.cli.tui.RenderContext.stripAnsi(painted)).isEqualTo(path + ":9");
         // Full failure block also carries the OSC-8 target on the path line.
         List<String> block;
         try (var scope = DashboardCodeLink.open(Path.of("/ws"), Path.of("/ws"))) {
@@ -151,11 +194,35 @@ class TestFailureHighlightTest {
         assertThat(all).contains("FAILED NativeEffortTest.size_model()");
         assertThat(all).contains("21670L");
         assertThat(all).contains(DiagnosticReport.FOOTER);
-        if (Theme.active().isAnsi()) {
-            Theme t = Theme.active();
-            assertThat(String.join("", painted)).contains(Theme.colorize("21670L", t.error()));
-            assertThat(String.join("", painted)).contains(Theme.colorize("[28000L, 45000L]", t.success()));
-        }
+        assertThat(afterRail("Expecting actual:", painted)).isEqualTo("Expecting actual:");
+        assertThat(afterRail("21670L", painted)).isEqualTo("  21670L");
+        assertThat(afterRail("to be between:", painted)).isEqualTo("to be between:");
+        assertThat(afterRail("[28000L, 45000L]", painted)).isEqualTo("  [28000L, 45000L]");
+    }
+
+    @Test
+    void expecting_actual_body_is_uncolored() {
+        List<String> raw = List.of(
+                "Test Failure",
+                "1 test failed",
+                "",
+                "FAILED AssemblyPackagerTest.merges()",
+                "",
+                "Expecting actual:",
+                "  \"app.Provider",
+                "lib.Provider\"",
+                "to contain:",
+                "  \"lib.Prooovider\"");
+        List<String> painted = TestFailureHighlight.paintLines(raw);
+        String all = plain(String.join("\n", painted));
+        assertThat(all).contains("Expecting actual:");
+        assertThat(all).contains("to contain:");
+        assertThat(all).contains("lib.Prooovider");
+        assertThat(afterRail("Expecting actual:", painted)).isEqualTo("Expecting actual:");
+        assertThat(afterRail("app.Provider", painted)).isEqualTo("  \"app.Provider");
+        assertThat(afterRail("lib.Provider\"", painted)).isEqualTo("lib.Provider\"");
+        assertThat(afterRail("to contain:", painted)).isEqualTo("to contain:");
+        assertThat(afterRail("lib.Prooovider", painted)).isEqualTo("  \"lib.Prooovider\"");
     }
 
     @Test
@@ -188,7 +255,7 @@ class TestFailureHighlightTest {
         assertThat(all).contains("AssertionFailedError thrown at line 9");
         assertThat(all).contains("Expected: 42");
         assertThat(all).contains("But Was: 41");
-        assertThat(all).contains("Foo.java");
+        assertThat(all).contains("Foo.java:9");
         assertThat(all).contains(DiagnosticReport.FOOTER);
         assertThat(all).contains("Note: leftover output");
         assertThat(all).doesNotContain("Test Failure end");
@@ -226,6 +293,43 @@ class TestFailureHighlightTest {
                         "\n",
                         painted.stream().map(TestFailureHighlightTest::plain).toList()))
                 .contains("…");
+    }
+
+    @Test
+    void cjk_snippet_rows_clamp_by_columns_not_code_units() {
+        // A CJK comment measures ~half its real width in UTF-16 code units: measured by
+        // code units it escaped the clamp, padded every row past the terminal, and wrapped
+        // the band without the rail.
+        String cjkLine = "        int x = 1; // " + "构建工具诊断".repeat(20);
+        List<String> raw = List.of(
+                "Test Failure",
+                "1 test failed",
+                "",
+                "FAILED Foo.bar()",
+                "",
+                "@@source line=2 start=1 lang=java path=Foo.java",
+                "@@src 1|int ok = 1;",
+                "@@src 2*|" + cjkLine,
+                "@@src-end",
+                "Test Failure end");
+        List<String> painted = TestFailureHighlight.paintLines(raw);
+        int widest = painted.stream()
+                .map(TestFailureHighlightTest::plain)
+                .mapToInt(cc.jumpkick.cli.tui.RenderContext::visibleWidth)
+                .max()
+                .orElse(0);
+        assertThat(widest).isLessThanOrEqualTo(cc.jumpkick.cli.tui.TerminalSize.columns());
+        // No lone surrogate survives the cut.
+        for (String line : painted) {
+            String p = plain(line);
+            for (int i = 0; i < p.length(); i++) {
+                if (Character.isHighSurrogate(p.charAt(i))) {
+                    assertThat(i + 1 < p.length() && Character.isLowSurrogate(p.charAt(i + 1)))
+                            .as("lone high surrogate in: %s", p)
+                            .isTrue();
+                }
+            }
+        }
     }
 
     @Test
@@ -278,7 +382,7 @@ class TestFailureHighlightTest {
         List<String> painted = TestFailureHighlight.paintLines(raw);
         String all = String.join(
                 "\n", painted.stream().map(TestFailureHighlightTest::plain).toList());
-        assertThat(all).contains("src/test/groovy/My Specs/FooSpec.groovy");
+        assertThat(all).contains("src/test/groovy/My Specs/FooSpec.groovy:3");
 
         // Old-format header (path mid-line, no spaces) keeps parsing.
         List<String> old = List.of(
@@ -296,8 +400,16 @@ class TestFailureHighlightTest {
                 TestFailureHighlight.paintLines(old).stream()
                         .map(TestFailureHighlightTest::plain)
                         .toList());
-        assertThat(oldAll).contains("Foo.java");
+        assertThat(oldAll).contains("Foo.java:3");
         assertThat(oldAll).doesNotContain("Foo.java line=");
+    }
+
+    @Test
+    void locusLabel_appends_line_and_column() {
+        assertThat(TestFailureHighlight.locusLabel("", 1, 1)).isEmpty();
+        assertThat(TestFailureHighlight.locusLabel("src/Main.java", 0, 7)).isEqualTo("src/Main.java");
+        assertThat(TestFailureHighlight.locusLabel("src/Main.java", 12, 0)).isEqualTo("src/Main.java:12");
+        assertThat(TestFailureHighlight.locusLabel("src/Main.java", 12, 7)).isEqualTo("src/Main.java:12:7");
     }
 
     @Test
@@ -363,6 +475,36 @@ class TestFailureHighlightTest {
         List<String> painted = TestFailureHighlight.paintLines(raw);
         assertThat(plain(painted.get(0))).isEqualTo("Note: something");
         assertThat(plain(painted.get(1))).isEqualTo("\tat cc.jumpkick.Foo.bar(Foo.java:1)");
+    }
+
+    @Test
+    void expandedCol_translates_raw_indexes_through_tab_stops() {
+        // "\tfoo.bar()" expands to "    foo.bar()": raw index 1 ('f') displays at column 4.
+        assertThat(TestFailureHighlight.expandedCol("\tfoo.bar()", 1)).isEqualTo(4);
+        // Two tabs, then code: raw index 2 displays at column 8.
+        assertThat(TestFailureHighlight.expandedCol("\t\tbar()", 2)).isEqualTo(8);
+        // A mid-line tab pads to the next 4-column stop, not a fixed width.
+        assertThat(TestFailureHighlight.expandedCol("ab\tcd", 3)).isEqualTo(4);
+        // Tab-free lines and unset marks pass through untouched.
+        assertThat(TestFailureHighlight.expandedCol("    foo()", 4)).isEqualTo(4);
+        assertThat(TestFailureHighlight.expandedCol("\tfoo()", -1)).isEqualTo(-1);
+        assertThat(TestFailureHighlight.expandedCol("\tfoo()", 0)).isZero();
+    }
+
+    @Test
+    void tab_indented_error_line_underlines_the_right_token() {
+        if (!Theme.active().isAnsi()) return;
+        // Raw column 1 is 'f'; after tab expansion the underline must cover "foo", not drift
+        // into the indent.
+        List<String> window = TestFailureHighlight.paintSourceWindow(
+                "Foo.java", List.of("\tfoo.bar();"), 1, 1, SyntaxHighlight.Language.JAVA);
+        AttributedString row = AttributedString.fromAnsi(window.get(1));
+        long underlineBit = AttributedStyle.DEFAULT.underline().getStyle();
+        StringBuilder marked = new StringBuilder();
+        for (int i = 0; i < row.length(); i++) {
+            if ((row.styleAt(i).getStyle() & underlineBit) != 0) marked.append(row.charAt(i));
+        }
+        assertThat(marked.toString()).isEqualTo("foo");
     }
 
     @Test

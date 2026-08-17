@@ -80,16 +80,16 @@ public final class TreeCommand implements CliCommand {
                     .filter(s -> !s.isEmpty())
                     .toList();
             if (tokens.isEmpty()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                        "Tree", "--scopes requires at least one scope (valid: " + validScopes() + ")"));
+                cc.jumpkick.cli.tui.CommandWedge.printFail(
+                        "Tree", "--scopes requires at least one scope (valid: " + validScopes() + ")");
                 return Exit.CONFIG;
             }
             Set<Scope> ordered = new LinkedHashSet<>();
             for (String token : tokens) {
                 List<Scope> expanded = resolveScopeToken(token);
                 if (expanded == null) {
-                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                            "Tree", "invalid scope '" + token + "' (valid: " + validScopes() + ")"));
+                    cc.jumpkick.cli.tui.CommandWedge.printFail(
+                            "Tree", "invalid scope '" + token + "' (valid: " + validScopes() + ")");
                     return Exit.CONFIG;
                 }
                 ordered.addAll(expanded);
@@ -101,7 +101,7 @@ public final class TreeCommand implements CliCommand {
         String moduleSpec = in.positionals().isEmpty() ? null : in.positionals().getFirst();
         TreeDir target = resolveTreeDir(cwd, moduleSpec);
         if (!target.ok()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tree", target.error()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Tree", target.error());
             return Exit.CONFIG;
         }
         Path dir = target.dir();
@@ -111,10 +111,10 @@ public final class TreeCommand implements CliCommand {
         if (lockCode != 0) return lockCode;
         Path lockFile = proj.lockFile();
         if (!Files.isRegularFile(lockFile)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "Tree",
                     "no jk-lock.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir)
-                            + " (lock refresh did not produce one)"));
+                            + " (lock refresh did not produce one)");
             return Exit.CONFIG;
         }
 
@@ -132,7 +132,7 @@ public final class TreeCommand implements CliCommand {
             tagged = cc.jumpkick.cli.engine.EngineClient.treeRender(
                     cc.jumpkick.engine.EnginePaths.current(), dir, max, flatten, stack, scopeNames);
         } catch (IOException | RuntimeException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tree", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Tree", e.getMessage());
             return Exit.CONFIG;
         }
         String rendered = DependencyTree.applyStyling(tagged, styling(nerdFont.pill(), ansi));

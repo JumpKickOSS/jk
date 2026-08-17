@@ -58,6 +58,8 @@ public final class DrainView implements LiveRegion, AutoCloseable {
             t.setAttributes(raw);
             Wizard.drainInput(t.reader(), 40); // flush terminal probe replies
             DrainView v = new DrainView(t, saved, initialJobs, nerdFont, now);
+            // Leading blank before the live Engine drain wedge (same envelope as other chrome).
+            CommandWedge.envelopeStart();
             v.out.print(Ansi.HIDE_CURSOR);
             v.out.flush();
             LiveRegion.setActive(v);

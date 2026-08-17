@@ -94,4 +94,4 @@ unset JK_WORKER_AOT
 
 echo
 echo "Note: wall times include engine handshake; use warm engine (status above)."
-echo "Timeline: out/jk-chrome-profile.json after builds."
+echo "Timeline: out/jk-profile.json after builds."

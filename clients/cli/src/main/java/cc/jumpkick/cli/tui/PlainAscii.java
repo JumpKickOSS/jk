@@ -72,6 +72,8 @@ public final class PlainAscii {
                 case 0x2261 -> sb.append(Glyphs.MENU_PLAIN); // ≡
                 case 0x25A1 -> sb.append(Glyphs.PENDING_PLAIN); // □ → [ ]
                 case 0x00B7 -> sb.append('-'); // · middle dot (header separators)
+                case 0x2812 -> sb.append('-'); // ⠒ braille dots-25 (Ctrl-O peek rule)
+                case 0x2191 -> sb.append('^'); // ↑ up arrow (Ctrl-O "↑ output ↑" caption)
                 case 0x229B -> sb.append('*'); // ⊛ circled asterisk (history: cancelled)
                 case 0x2014 -> sb.append("--"); // — em dash (table titles, n/a durations)
                 default -> sb.appendCodePoint(cp);

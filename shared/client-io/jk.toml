@@ -4,6 +4,12 @@ description = "Client-side I/O: HTTP, forge auth, credentials, and CAS"
 [dependencies]
 jk-core.workspace = true
 
+[provided-dependencies]
+lombok = "latest"
+
+[processor-dependencies]
+lombok = "latest"
+
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"

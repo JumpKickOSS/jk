@@ -29,7 +29,7 @@ import org.jline.utils.AttributedStyle;
  *  ┃  Expected: 42
  *  ┃   But Was: 41
  *  ┃
- *  ┃     path/to/File.java   ← OSC-8 deep link into the dashboard code editor when known
+ *  ┃     path/to/File.java:23   ← OSC-8 deep link; line (and col) stay in the copied text
  *  ┃   19│ …
  *  ┃     AssertionFailedError thrown at line 23
  *  ┗━
@@ -202,7 +202,6 @@ public final class TestFailureHighlight {
         out.add(rail("", t)); // blank under header
 
         // ---- body (red rail around the existing content) -------------------
-        ValueRole nextValue = ValueRole.ACTUAL;
         List<String> assertBuf = new ArrayList<>();
         boolean collectingAssert = false;
 
@@ -307,8 +306,7 @@ public final class TestFailureHighlight {
             if (!t.isAnsi()) {
                 out.add(railPlain(raw));
             } else {
-                nextValue = updateValueRole(raw, nextValue);
-                out.add(rail(paintFallbackContent(raw, t, nextValue), t));
+                out.add(rail(paintFallbackContent(raw, t), t));
             }
             i++;
         }
@@ -319,7 +317,7 @@ public final class TestFailureHighlight {
 
     private static void flushAssert(List<String> out, List<String> assertBuf, boolean collecting, Theme t) {
         if (!collecting || assertBuf.isEmpty()) return;
-        List<String> painted = paintAssertionBody(assertBuf, t);
+        List<String> painted = paintAssertionBody(assertBuf);
         for (String line : painted) {
             out.add(rail(line == null ? "" : line, t));
         }
@@ -367,14 +365,15 @@ public final class TestFailureHighlight {
             SrcRow row = parseSrcRow(m);
             if (row == null) continue;
             String code = clampCode(expandTabs(row.code), budget, t.isAnsi());
-            row = new SrcRow(row.num, row.error, code);
+            row = new SrcRow(row.num, row.error, code, row.markCol);
             rows.add(row);
-            maxCode = Math.max(maxCode, row.code.length());
+            maxCode = Math.max(maxCode, columns(row.code));
         }
 
+        int line = parsePositiveInt(attr(header, "line"));
         List<String> out = new ArrayList<>();
         if (!t.isAnsi()) {
-            out.add(railPlain(BODY_INDENT + path));
+            out.add(railPlain(BODY_INDENT + locusLabel(path, line, 0)));
             for (SrcRow row : rows) out.add(railPlain(plainSrcLine(row, maxCode)));
             return out;
         }
@@ -388,19 +387,125 @@ public final class TestFailureHighlight {
     }
 
     /**
+     * Editor-style window around {@code errorLine} (1-based) of {@code fileLines} (file order).
+     * Returns unrailed painted rows (path + guttered source) so a caller can wrap them in its
+     * own rail. {@code errorCol} is 0-based; {@code -1} paints the error wash without a column mark.
+     */
+    public static List<String> paintSourceWindow(
+            String displayPath, List<String> fileLines, int errorLine, int errorCol, SyntaxHighlight.Language lang) {
+        return paintSourceWindow(displayPath, displayPath, fileLines, errorLine, errorCol, lang, null);
+    }
+
+    public static List<String> paintSourceWindow(
+            String displayPath,
+            String linkPath,
+            List<String> fileLines,
+            int errorLine,
+            int errorCol,
+            SyntaxHighlight.Language lang) {
+        return paintSourceWindow(displayPath, linkPath, fileLines, errorLine, errorCol, lang, null);
+    }
+
+    public static List<String> paintSourceWindow(
+            String displayPath,
+            String linkPath,
+            List<String> fileLines,
+            int errorLine,
+            int errorCol,
+            SyntaxHighlight.Language lang,
+            String note) {
+        if (displayPath == null) displayPath = "";
+        Theme t = Theme.active();
+        int budget = Math.max(40, cc.jumpkick.cli.tui.TerminalSize.columns() - ROW_OVERHEAD);
+        int n = fileLines == null ? 0 : fileLines.size();
+        int err = Math.max(1, errorLine);
+        // A lone snippet (file unread) still wears the real diagnostic line number.
+        boolean snippetOnly = n == 1 && err > 1;
+        int lo = snippetOnly ? 1 : Math.max(1, err - 2);
+        int hi = snippetOnly ? 1 : Math.min(n, err + 2);
+        int linkCol = errorCol >= 0 ? errorCol + 1 : 0;
+        if (n == 0) {
+            List<String> empty = new ArrayList<>();
+            if (!t.isAnsi()) {
+                empty.add(BODY_INDENT + locusLabel(displayPath, err, linkCol));
+            } else {
+                empty.add(BODY_INDENT + paintSourcePath(displayPath, linkPath, err, linkCol, t, note));
+            }
+            return empty;
+        }
+        List<SrcRow> rows = new ArrayList<>();
+        int maxCode = 0;
+        for (int line = lo; line <= hi; line++) {
+            String raw = fileLines.get(line - 1);
+            if (raw == null) raw = "";
+            String code = clampCode(expandTabs(raw), budget, t.isAnsi());
+            boolean isErr = snippetOnly || line == err;
+            // The mark indexes the displayed (tab-expanded) code, while errorCol indexes the raw
+            // line — translate, or every tab before the column shifts the underline right.
+            int mark = isErr ? expandedCol(raw, errorCol) : -1;
+            String num = Integer.toString(snippetOnly ? err : line);
+            SrcRow row = new SrcRow(num, isErr, code, mark);
+            rows.add(row);
+            maxCode = Math.max(maxCode, columns(row.code));
+        }
+        List<String> out = new ArrayList<>();
+        if (!t.isAnsi()) {
+            out.add(BODY_INDENT + locusLabel(displayPath, err, linkCol));
+            for (SrcRow row : rows) out.add(plainSrcLine(row, maxCode));
+            return out;
+        }
+        out.add(BODY_INDENT + paintSourcePath(displayPath, linkPath, err, linkCol, t, note));
+        Rgb pane = CONSOLE_BG;
+        for (SrcRow row : rows) {
+            out.add(paintSrcLine(row, maxCode, lang == null ? SyntaxHighlight.Language.JAVA : lang, t, pane));
+        }
+        return out;
+    }
+
+    /**
      * Path color + underline; when the dashboard HTTP surface and project id are known, wrap in an
      * OSC-8 deep link ({@code [link url][path underline]…[/][/]}) to the Monaco files pane.
      */
     static String paintSourcePath(String path, String sourceHeader, Theme t) {
-        if (path == null || path.isEmpty()) return "";
         int line = parsePositiveInt(attr(sourceHeader, "line"));
-        String url = DashboardCodeLink.urlForSnippet(path, line);
+        return paintSourcePath(path, line, 0, t);
+    }
+
+    /**
+     * Path color + underline; when the dashboard HTTP surface and project id are known, wrap in an
+     * OSC-8 deep link to the Monaco files pane ({@code ?line=N} and {@code &col=C} when set).
+     */
+    static String paintSourcePath(String path, int line, int col, Theme t) {
+        return paintSourcePath(path, path, line, col, t);
+    }
+
+    static String paintSourcePath(String display, String linkPath, int line, int col, Theme t) {
+        return paintSourcePath(display, linkPath, line, col, t, null);
+    }
+
+    static String paintSourcePath(String display, String linkPath, int line, int col, Theme t, String note) {
+        if (display == null || display.isEmpty()) return "";
+        String label = locusLabel(display, line, col);
+        String url = DashboardCodeLink.urlForSnippet(linkPath != null ? linkPath : display, line, col, note);
+        if (url == null && linkPath != null && !linkPath.equals(display)) {
+            url = DashboardCodeLink.urlForSnippet(display, line, col, note);
+        }
         if (url != null && !url.isBlank()) {
-            // RichText owns OSC-8; path + underline match the unlinked Theme.colorize form.
-            return RichText.parse("[link " + url + "][path underline]" + RichText.escape(path) + "[/][/]")
+            return RichText.parse("[link " + url + "][path underline]" + RichText.escape(label) + "[/][/]")
                     .render();
         }
-        return Theme.colorize(path, t.path().underline());
+        return Theme.colorize(label, t.path().underline());
+    }
+
+    /**
+     * Visible locus: {@code path}, {@code path:line}, or {@code path:line:col}. Copy-paste into an
+     * agent still carries the jump after OSC-8 / colour is stripped.
+     */
+    static String locusLabel(String path, int line, int col) {
+        if (path == null || path.isEmpty()) return "";
+        if (line <= 0) return path;
+        if (col > 0) return path + ":" + line + ":" + col;
+        return path + ":" + line;
     }
 
     private static int parsePositiveInt(String raw) {
@@ -432,18 +537,62 @@ public final class TestFailureHighlight {
         return sb.toString();
     }
 
-    private static String clampCode(String code, int budget, boolean ansi) {
-        if (code.length() <= budget) return code;
-        // Plain mode stays pure ASCII: the clamp ran before the ANSI/plain fork
-        // and re-leaked U+2026 into output the ASCII pass had just cleaned. Reserve the marker's
-        // own columns, and never cut a surrogate pair in half.
-        String ellipsis = ansi ? "…" : "...";
-        int cut = Math.max(1, budget - ellipsis.length());
-        if (Character.isHighSurrogate(code.charAt(cut - 1))) cut = Math.max(1, cut - 1);
-        return code.substring(0, cut) + ellipsis;
+    /** Raw char index {@code col} translated to its {@link #expandTabs} index (4-column stops). */
+    static int expandedCol(String raw, int col) {
+        if (raw == null || col <= 0 || raw.indexOf('\t') < 0) return col;
+        int out = 0;
+        int limit = Math.min(col, raw.length());
+        for (int i = 0; i < limit; i++) {
+            if (raw.charAt(i) == '\t') {
+                do {
+                    out++;
+                } while (out % 4 != 0);
+            } else {
+                out++;
+            }
+        }
+        return out + (col - limit);
     }
 
-    private record SrcRow(String num, boolean error, String code) {}
+    private static String clampCode(String code, int budget, boolean ansi) {
+        // Budget is in terminal COLUMNS: CJK code points are two wide and combining marks are
+        // zero, so measuring UTF-16 code units let wide lines escape the clamp and pad every
+        // row past the terminal (the band then wraps without the rail).
+        if (columns(code) <= budget) return code;
+        // Plain mode stays pure ASCII: the clamp ran before the ANSI/plain fork
+        // and re-leaked U+2026 into output the ASCII pass had just cleaned. Reserve the marker's
+        // own columns; cutting by code point never splits a surrogate pair.
+        String ellipsis = ansi ? "…" : "...";
+        return cutAtColumns(code, Math.max(1, budget - ellipsis.length())) + ellipsis;
+    }
+
+    /** Visible terminal columns of {@code code} (wcwidth-based, ANSI-free source text). */
+    private static int columns(String code) {
+        return cc.jumpkick.cli.tui.RenderContext.visibleWidth(code);
+    }
+
+    /** Longest prefix of {@code code} spending at most {@code maxCols} columns, whole code points. */
+    private static String cutAtColumns(String code, int maxCols) {
+        int cols = 0;
+        int i = 0;
+        while (i < code.length()) {
+            int cp = code.codePointAt(i);
+            int n = Character.charCount(cp);
+            int w = columns(code.substring(i, i + n));
+            if (cols + w > maxCols) break;
+            cols += w;
+            i += n;
+        }
+        // Never return empty for non-empty input: keep at least one whole code point.
+        if (i == 0 && !code.isEmpty()) return code.substring(0, Character.charCount(code.codePointAt(0)));
+        return code.substring(0, i);
+    }
+
+    private record SrcRow(String num, boolean error, String code, int markCol) {
+        SrcRow(String num, boolean error, String code) {
+            this(num, error, code, -1);
+        }
+    }
 
     private static SrcRow parseSrcRow(String marker) {
         int sp = marker.indexOf(' ');
@@ -452,7 +601,7 @@ public final class TestFailureHighlight {
         String numPart = marker.substring(sp + 1, bar);
         boolean isError = numPart.endsWith("*");
         String num = isError ? numPart.substring(0, numPart.length() - 1) : numPart;
-        return new SrcRow(num, isError, marker.substring(bar + 1));
+        return new SrcRow(num, isError, marker.substring(bar + 1), -1);
     }
 
     private static String plainSrcLine(SrcRow row, int maxCode) {
@@ -467,18 +616,52 @@ public final class TestFailureHighlight {
         String gutterRail = Theme.colorize("│", t.withBackground(t.darkGray(), lineBg));
         String gap = Theme.colorize(" ", t.withBackground(AttributedStyle.DEFAULT, lineBg));
         String code = row.code;
-        String codePainted = code.isEmpty() ? "" : SyntaxHighlight.highlight(code, language, lineBg);
-        int pad = Math.max(0, maxCode - code.length());
+        String codePainted = paintCode(row, language, lineBg, t);
+        int pad = Math.max(0, maxCode - columns(code));
         if (code.isEmpty() && pad == 0) pad = 1;
         String padPainted =
                 pad > 0 ? Theme.colorize(" ".repeat(pad), t.withBackground(AttributedStyle.DEFAULT, lineBg)) : "";
         return gutter + gutterRail + gap + codePainted + padPainted;
     }
 
+    /** Syntax-highlight {@code row.code}; mark the identifier at {@code markCol} in error style. */
+    private static String paintCode(SrcRow row, SyntaxHighlight.Language language, Rgb lineBg, Theme t) {
+        String code = row.code;
+        if (code.isEmpty()) return "";
+        int mark = row.markCol;
+        if (!row.error || mark < 0 || mark >= code.length()) {
+            return SyntaxHighlight.highlight(code, language, lineBg);
+        }
+        int to = identifierEnd(code, mark);
+        String left = mark > 0 ? SyntaxHighlight.highlight(code.substring(0, mark), language, lineBg) : "";
+        AttributedStyle err = t.error().bold().underline();
+        String mid = Theme.colorize(code.substring(mark, to), t.withBackground(err, lineBg));
+        String right = to < code.length() ? SyntaxHighlight.highlight(code.substring(to), language, lineBg) : "";
+        return left + mid + right;
+    }
+
+    /** End index (exclusive) of the identifier starting at {@code from}, or one code point. */
+    static int identifierEnd(String code, int from) {
+        if (code == null || from < 0 || from >= code.length()) return from;
+        int i = from;
+        int cp = code.codePointAt(i);
+        if (!Character.isJavaIdentifierStart(cp) && !Character.isJavaIdentifierPart(cp)) {
+            return i + Character.charCount(cp);
+        }
+        i += Character.charCount(cp);
+        while (i < code.length()) {
+            cp = code.codePointAt(i);
+            if (!Character.isJavaIdentifierPart(cp)) break;
+            i += Character.charCount(cp);
+        }
+        return i;
+    }
+
     private static String padRight(String s, int width) {
         if (s == null) s = "";
-        if (s.length() >= width) return s;
-        return s + " ".repeat(width - s.length());
+        int w = columns(s);
+        if (w >= width) return s;
+        return s + " ".repeat(width - w);
     }
 
     // --- labels / thrown-at / assertion --------------------------------------
@@ -679,7 +862,7 @@ public final class TestFailureHighlight {
         return d >= 0 ? fqcn.substring(d + 1) : fqcn;
     }
 
-    static List<String> paintAssertionBody(List<String> body, Theme t) {
+    static List<String> paintAssertionBody(List<String> body) {
         if (body == null || body.isEmpty()) return List.of();
         int lo = 0;
         int hi = body.size() - 1;
@@ -689,27 +872,17 @@ public final class TestFailureHighlight {
 
         List<String> slice = body.subList(lo, hi + 1);
         String joined = String.join("\n", slice);
-        List<String> assertj = tryPaintAssertJ(joined, t);
+        List<String> assertj = tryPaintAssertJ(joined);
         if (assertj != null) return assertj;
 
         List<String> out = new ArrayList<>();
-        ValueRole role = ValueRole.ACTUAL;
         for (String raw : slice) {
-            if (raw == null) {
-                out.add("");
-                continue;
-            }
-            if (!t.isAnsi()) {
-                out.add(raw);
-                continue;
-            }
-            role = updateValueRole(raw, role);
-            out.add(paintAssertionLine(raw, t, role));
+            out.add(raw == null ? "" : raw);
         }
         return out;
     }
 
-    static List<String> tryPaintAssertJ(String joined, Theme t) {
+    static List<String> tryPaintAssertJ(String joined) {
         String desc = null;
         String rest = joined.strip();
         if (rest.startsWith("[")) {
@@ -725,29 +898,16 @@ public final class TestFailureHighlight {
             Pattern one = Pattern.compile("(?i)^expected:\\s*(.+?)\\s+but was:\\s*(.+?)\\s*$");
             Matcher m1 = one.matcher(rest);
             if (!m1.matches()) return null;
-            return paintExpectedButWas(desc, m1.group(1).strip(), m1.group(2).strip(), t);
+            return paintExpectedButWas(desc, m1.group(1).strip(), m1.group(2).strip());
         }
-        return paintExpectedButWas(desc, m.group(1).strip(), m.group(2).strip(), t);
+        return paintExpectedButWas(desc, m.group(1).strip(), m.group(2).strip());
     }
 
-    private static List<String> paintExpectedButWas(String desc, String expected, String actual, Theme t) {
+    private static List<String> paintExpectedButWas(String desc, String expected, String actual) {
         List<String> out = new ArrayList<>();
-        if (!t.isAnsi()) {
-            if (desc != null && !desc.isEmpty()) out.add("\"" + desc + "\"");
-            out.add(" Expected: " + stripValueQuotes(expected));
-            out.add("  But Was: " + stripValueQuotes(actual));
-            return out;
-        }
-        // Flush-left under the rail (no extra indent on the description).
-        if (desc != null && !desc.isEmpty()) {
-            out.add(Theme.colorize("\"", t.darkGray())
-                    + Theme.colorize(desc, t.brightWhite().italic())
-                    + Theme.colorize("\"", t.darkGray()));
-        }
-        String expVal = stripValueQuotes(expected);
-        String actVal = stripValueQuotes(actual);
-        out.add(Theme.colorize(" Expected: ", t.midGray()) + Theme.colorize(expVal, t.success()));
-        out.add(Theme.colorize("  But Was: ", t.midGray()) + Theme.colorize(actVal, t.error()));
+        if (desc != null && !desc.isEmpty()) out.add("\"" + desc + "\"");
+        out.add(" Expected: " + stripValueQuotes(expected));
+        out.add("  But Was: " + stripValueQuotes(actual));
         return out;
     }
 
@@ -801,25 +961,6 @@ public final class TestFailureHighlight {
         };
     }
 
-    private enum ValueRole {
-        ACTUAL,
-        EXPECTED
-    }
-
-    private static ValueRole updateValueRole(String raw, ValueRole current) {
-        String lower = raw.toLowerCase(java.util.Locale.ROOT);
-        if (lower.contains("actual") || lower.contains("but was") || lower.contains("but had")) {
-            return ValueRole.ACTUAL;
-        }
-        if (lower.contains("expected")
-                || lower.contains("between")
-                || lower.contains("should be")
-                || lower.contains("to be")) {
-            return ValueRole.EXPECTED;
-        }
-        return current;
-    }
-
     /**
      * End of the report: {@link #FOOTER_SENTINEL} (exclusive), the next {@link #HEADER_SENTINEL},
      * or EOF. A blank-line heuristic would truncate assertion bodies that contain a blank followed
@@ -833,7 +974,7 @@ public final class TestFailureHighlight {
         return lines.size();
     }
 
-    private static String paintFallbackContent(String raw, Theme t, ValueRole valueRole) {
+    private static String paintFallbackContent(String raw, Theme t) {
         if (raw.isEmpty()) return "";
         Matcher cnt = COUNT_LINE.matcher(raw);
         if (cnt.matches()) {
@@ -844,18 +985,7 @@ public final class TestFailureHighlight {
         if (stripped.startsWith("at ") || stripped.startsWith("...")) {
             return StackTraceHighlight.line(raw);
         }
-        return paintAssertionLine(raw, t, valueRole);
-    }
-
-    static String paintAssertionLine(String raw, Theme t, ValueRole valueRole) {
-        String stripped = raw.stripLeading();
-        int indentLen = raw.length() - stripped.length();
-        String indent = raw.substring(0, indentLen);
-        if (indentLen >= 2 && !stripped.isEmpty() && !stripped.endsWith(":")) {
-            AttributedStyle v = valueRole == ValueRole.EXPECTED ? t.success() : t.error();
-            return Theme.colorize(indent, t.midGray()) + Theme.colorize(stripped, v);
-        }
-        return Theme.colorize(raw, t.midGray());
+        return raw;
     }
 
     private static String rail(String paintedContent, Theme t) {

@@ -787,4 +787,26 @@ public final class PlannerSupport {
             }
         }
     }
+    /**
+     * Mirror the javac diagnostic loop for worker compilers: one {@code ctx.error}/{@code warn}
+     * per diagnostic so each keeps its own {@code path:line[:col]:} header for journal locus
+     * parsing and CLI snippets, instead of one joined blob whose first header wins.
+     */
+    static void forwardWorkerDiagnostics(
+            cc.jumpkick.run.TaskContext ctx,
+            String code,
+            List<cc.jumpkick.compile.CompileResult.Diagnostic> diagnostics,
+            String emptyFallback) {
+        boolean errored = false;
+        for (cc.jumpkick.compile.CompileResult.Diagnostic d : diagnostics) {
+            if (d.severity() == cc.jumpkick.compile.CompileResult.Severity.ERROR) {
+                ctx.error(code, d.describe());
+                errored = true;
+            } else {
+                ctx.warn(code, d.describe());
+            }
+        }
+        // Never fail silently: a crash that produced no ERROR diagnostic still explains itself.
+        if (!errored) ctx.error(code, emptyFallback);
+    }
 }

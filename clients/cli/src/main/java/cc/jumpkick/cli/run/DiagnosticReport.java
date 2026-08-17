@@ -51,25 +51,64 @@ public final class DiagnosticReport {
 
     /** Full multi-line error report for a plan diagnostic. Empty when suppressed (test-failure). */
     public static String renderError(String step, String code, String message) {
+        return renderError(step, code, message, null);
+    }
+
+    /** Like {@link #renderError(String, String, String)} with a {@code group:artifact} module. */
+    public static String renderError(String step, String code, String message, String module) {
+        return renderError(step, code, message, module, true);
+    }
+
+    /**
+     * {@code showHeader} false omits the phase pill — used for later compiler errors in the same
+     * module so they stack under the first report (dashboard parity).
+     */
+    public static String renderError(String step, String code, String message, String module, boolean showHeader) {
         if ("test-failure".equals(code)) return "";
         if ("verbatim".equals(code)) return message == null ? "" : message;
         String title = titleFor(step, code);
-        if (ConsoleSpec.isCompilerCode(code)) {
-            return header(title, Role.ERROR) + "\n"
-                    + railBlock(CompilerDiagnostic.render(nullToEmpty(message)), Role.ERROR);
+        String body = ConsoleSpec.isCompilerCode(code)
+                ? railBlock(CompilerDiagnostic.render(nullToEmpty(message), "error"), Role.ERROR)
+                : railBlock(paintProse(nullToEmpty(message)), Role.ERROR);
+        if (!showHeader) return body;
+        return header(title, Role.ERROR, module) + "\n" + body;
+    }
+
+    /**
+     * Collapse key for consecutive compiler reports that share a pill. {@code null} means the
+     * report always carries its own header (non-compiler diagnostics).
+     */
+    public static String compilerHeaderKey(String step, String code, String module) {
+        if (!ConsoleSpec.isCompilerCode(code)) return null;
+        return titleFor(step, code) + "\0" + (module == null ? "" : module);
+    }
+
+    /** Tracks whether the next compiler diagnostic should repeat the phase pill. */
+    public static final class CompilerHeaderRun {
+        private String prev;
+
+        public boolean show(String step, String code, String module) {
+            String key = compilerHeaderKey(step, code, module);
+            boolean show = key == null || !key.equals(prev);
+            prev = key;
+            return show;
         }
-        return header(title, Role.ERROR) + "\n" + railBlock(paintProse(nullToEmpty(message)), Role.ERROR);
     }
 
     /** Warning report: yellow pill + rail (compiler warnings keep their body paint). */
     public static String renderWarning(String step, String code, String message) {
+        return renderWarning(step, code, message, null);
+    }
+
+    /** Like {@link #renderWarning(String, String, String)} with a {@code group:artifact} module. */
+    public static String renderWarning(String step, String code, String message, String module) {
         String title = titleFor(step, code);
         if (ConsoleSpec.isCompilerCode(code)) {
-            return header(title, Role.WARNING)
+            return header(title, Role.WARNING, module)
                     + "\n"
-                    + railBlock(CompilerDiagnostic.render(nullToEmpty(message)), Role.WARNING);
+                    + railBlock(CompilerDiagnostic.render(nullToEmpty(message), "warning"), Role.WARNING);
         }
-        return header(title, Role.WARNING) + "\n" + railBlock(paintProse(nullToEmpty(message)), Role.WARNING);
+        return header(title, Role.WARNING, module) + "\n" + railBlock(paintProse(nullToEmpty(message)), Role.WARNING);
     }
 
     /**
@@ -114,10 +153,15 @@ public final class DiagnosticReport {
     }
 
     static String header(String title, Role role) {
+        return header(title, role, null);
+    }
+
+    static String header(String title, Role role, String module) {
         Theme t = Theme.active();
         String word = role == Role.ERROR ? "Failure" : "Warning";
+        String in = module == null || module.isBlank() ? "" : " in " + module;
         if (!t.isAnsi()) {
-            return "[" + title + "] " + word;
+            return "[" + title + "] " + word + in;
         }
         // Fail chip: white on plan red. Warn chip: black on amber — same ink as Pill.Look.WARNING
         // / cancelled-job chips (white-on-amber washes out on most terminals).
@@ -126,9 +170,19 @@ public final class DiagnosticReport {
         AttributedStyle body = t.withBackground(ink, chipRgb);
         AttributedStyle caps = t.bright(chipRgb);
         String pill = Badge.pill(title, GlobalConfig.nerdFont().pill(), body, caps);
-        AttributedStyle wordStyle =
-                role == Role.ERROR ? t.error().bold() : t.warning().bold();
-        return pill + " " + Theme.colorize(word, wordStyle);
+        AttributedStyle wordStyle = t.midGray();
+        StringBuilder sb = new StringBuilder();
+        sb.append(pill).append(' ').append(Theme.colorize(word, wordStyle));
+        if (module != null && !module.isBlank()) {
+            sb.append(Theme.colorize(" in ", t.midGray()));
+            int colon = module.indexOf(':');
+            if (colon > 0 && colon < module.length() - 1) {
+                sb.append(Coords.ga(module.substring(0, colon), module.substring(colon + 1)));
+            } else {
+                sb.append(Theme.colorize(module, t.coordName()));
+            }
+        }
+        return sb.toString();
     }
 
     private static String railBlock(String paintedBody, Role role) {

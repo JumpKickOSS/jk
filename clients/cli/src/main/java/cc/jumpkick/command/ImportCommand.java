@@ -64,34 +64,32 @@ public final class ImportCommand implements CliCommand {
         if (source == null) {
             source = autoDetectSource(baseDir);
             if (source == null) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                cc.jumpkick.cli.tui.CommandWedge.printFail(
                         "Import",
-                        "no build file found in " + baseDir
-                                + " (looked for build.gradle.kts, build.gradle, pom.xml)."));
+                        "no build file found in " + baseDir + " (looked for build.gradle.kts, build.gradle, pom.xml).");
                 return Exit.NO_INPUT;
             }
             CliOutput.out("Importing " + PathDisplay.styled(source, baseDir));
         } else {
             source = source.isAbsolute() ? source : baseDir.resolve(source);
             if (!Files.exists(source)) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                        "Import", "source not found: " + PathDisplay.styled(source, baseDir)));
+                cc.jumpkick.cli.tui.CommandWedge.printFail(
+                        "Import", "source not found: " + PathDisplay.styled(source, baseDir));
                 return Exit.NO_INPUT;
             }
         }
 
         String filename = source.getFileName().toString().toLowerCase(Locale.ROOT);
         if (!filename.endsWith("pom.xml") && !filename.equals("build.gradle") && !filename.equals("build.gradle.kts")) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Import", "expected pom.xml, build.gradle, or build.gradle.kts"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Import", "expected pom.xml, build.gradle, or build.gradle.kts");
             return Exit.USAGE;
         }
 
         Path projectDir = source.toAbsolutePath().getParent();
         Path target = out != null ? out : projectDir.resolve("jk.toml");
         if (Files.exists(target) && !force) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Import", "refusing to overwrite " + PathDisplay.styled(target, baseDir) + " (use --force)."));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "Import", "refusing to overwrite " + PathDisplay.styled(target, baseDir) + " (use --force).");
             return Exit.CANT_CREATE;
         }
 
@@ -126,12 +124,12 @@ public final class ImportCommand implements CliCommand {
                     steps -> new cc.jumpkick.run.BuildPlanListener() {},
                     observer);
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Import", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Import", e.getMessage());
             return Exit.SOFTWARE;
         }
         if (!outcome.result().success()) {
             for (BuildPlanResult.Diagnostic d : outcome.result().errors()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Import", d.message()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Import", d.message());
             }
             return 1;
         }
@@ -140,10 +138,10 @@ public final class ImportCommand implements CliCommand {
         error = outcome.error();
         diag = outcome.diag();
 
-        if (error != null) CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Import", error));
+        if (error != null) cc.jumpkick.cli.tui.CommandWedge.printFail("Import", error);
         if (warnings != 0) CliOutput.out("Import notes: " + warnings + " issue(s)");
         if (exit != 0 && diag != null && !diag.isBlank()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Import", diag));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Import", diag);
         }
         return exit;
     }

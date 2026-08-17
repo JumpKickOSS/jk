@@ -39,6 +39,8 @@ final class TerminalReflow {
         if (notBlank(env.apply("VTE_VERSION"))) return true;
         // Windows Terminal rewraps.
         if (notBlank(env.apply("WT_SESSION"))) return true;
+        // Konsole rewraps (since 21.08); it exports KONSOLE_VERSION and no TERM_PROGRAM.
+        if (notBlank(env.apply("KONSOLE_VERSION"))) return true;
         String termProgram = lower(env.apply("TERM_PROGRAM"));
         String term = lower(env.apply("TERM"));
         switch (termProgram) {
@@ -49,8 +51,11 @@ final class TerminalReflow {
                 /* fall through to TERM */
             }
         }
+        // Alacritty rewraps (since 0.3.0): TERM=alacritty[-direct]; newer builds also set
+        // TERM_PROGRAM=alacritty.
+        if (term.startsWith("alacritty") || termProgram.startsWith("alacritty")) return true;
         if (term.equals("xterm-kitty") || term.equals("xterm-ghostty") || term.equals("foot")) return true;
-        // xterm, linux console, screen, tmux, alacritty variants, unknown: treat as clipping.
+        // xterm, linux console, screen, tmux, unknown: treat as clipping.
         return false;
     }
 

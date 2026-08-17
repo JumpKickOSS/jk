@@ -54,15 +54,26 @@ if [ ! -x "$BIN" ]; then
   case "$OS" in darwin) OS=macos ;; esac
   ARCH="$(uname -m)"
   case "$ARCH" in amd64) ARCH=x86_64 ;; arm64) ARCH=aarch64 ;; esac
-  URL="$RELEASES/$VERSION/jk-$OS-$ARCH.zip"
+  URL="$RELEASES/$VERSION/jk-$OS-$ARCH.xz"
   TMP="$(mktemp -d)"
   trap 'rm -rf "$TMP"' EXIT
   echo "jk wrapper: fetching jk $VERSION ..." >&2
-  curl -fsSL -o "$TMP/jk.zip" "$URL"
-  (cd "$TMP" && unzip -q jk.zip)
-  # Prefer a file named jk / jk-* from the release archive.
-  CLIENT="$(find "$TMP" -type f \( -name jk -o -name 'jk-*' \) ! -name jk.zip | head -1)"
-  [ -n "$CLIENT" ] || CLIENT="$(find "$TMP" -type f ! -name jk.zip | head -1)"
+  # Stock macOS has no xz binary; /usr/bin/compression_tool decodes the xz container.
+  if command -v xz >/dev/null 2>&1; then
+    UNXZ="xz"
+  elif [ "$(uname -s)" = "Darwin" ] && [ -x /usr/bin/compression_tool ]; then
+    UNXZ="compression_tool"
+  else
+    echo "jk wrapper: cannot decompress .xz; install xz and re-run (Linux: xz-utils; macOS: brew install xz)." >&2
+    exit 1
+  fi
+  curl -fsSL -o "$TMP/jk.xz" "$URL"
+  if [ "$UNXZ" = xz ]; then
+    xz -dc "$TMP/jk.xz" > "$TMP/jk"
+  else
+    /usr/bin/compression_tool -decode -A lzma -i "$TMP/jk.xz" -o "$TMP/jk"
+  fi
+  CLIENT="$TMP/jk"
   if [ -n "$SHA" ]; then
     GOT="$( (sha256sum "$CLIENT" 2>/dev/null || shasum -a 256 "$CLIENT") | awk '{print $1}')"
     if [ "$GOT" != "$SHA" ]; then

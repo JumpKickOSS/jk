@@ -72,8 +72,7 @@ public final class UpdateCommand implements CliCommand {
 
         Path dir = global.workingDir();
         if (!Files.exists(dir.resolve("jk.toml"))) {
-            CliOutput.err(
-                    cc.jumpkick.cli.tui.CommandWedge.fail("Update", "no jk.toml in " + PathDisplay.styledRaw(dir)));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Update", "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Exit.CONFIG;
         }
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
@@ -133,11 +132,11 @@ public final class UpdateCommand implements CliCommand {
             outcome = EngineClient.runUpdate(
                     cc.jumpkick.engine.EnginePaths.current(), updateRequest(dir, cache), handler);
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Update", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Update", e.getMessage());
             return Exit.SOFTWARE;
         }
         for (String err : outcome.errors()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Update", err));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Update", err);
         }
         return outcome.exitCode();
     }
@@ -149,11 +148,11 @@ public final class UpdateCommand implements CliCommand {
             outcome = EngineClient.runUpdateGitOnly(
                     cc.jumpkick.engine.EnginePaths.current(), updateRequest(dir, cache), gitTarget);
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Update", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Update", e.getMessage());
             return Exit.SOFTWARE;
         }
         for (String err : outcome.errors()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Update", err));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Update", err);
         }
         if (outcome.success() && !global.outputIsJson()) {
             printGitSummary(outcome.refreshed());

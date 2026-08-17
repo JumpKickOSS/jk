@@ -9,11 +9,9 @@ import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
-import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.JkThreads;
-import cc.jumpkick.run.TestSummary;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -96,8 +94,6 @@ public final class WorkspaceExecute {
     // Workspace build (the front-end-callable event-emitting entry point)
     // =========================================================================
 
-    private static final BuildPlanKey<TestSummary> TEST_RESULT = BuildPlanKey.of("test-result", TestSummary.class);
-
     /**
      * Build a whole workspace: resolve the module graph, size the worker-JVM memory plan (unless
      * {@link WorkspaceRequest#applyMemoryPlan} is {@code false} — see its javadoc), assemble each
@@ -169,6 +165,14 @@ public final class WorkspaceExecute {
             listener.onWorkspaceFinish(r);
             return r;
         }
+        // Selection cone (native/image/-m): filter before dirty forecast and ETA.
+        graph = applySelectionCone(graph, req);
+        units = graph.topoOrder();
+        if (units.isEmpty()) {
+            WorkspaceResult r = new WorkspaceResult(true, 0, List.of(), List.of());
+            listener.onWorkspaceFinish(r);
+            return r;
+        }
         // Size worker-JVM heaps/concurrency from free memory before any fork (engine resource plan).
         int cap = Runtime.getRuntime().availableProcessors();
         boolean parallelTests = SessionContext.current().parallelTests();
@@ -197,7 +201,13 @@ public final class WorkspaceExecute {
                     "checking", 1, 1, dirty.isEmpty() ? "Nothing dirty" : dirty.size() + " module(s) dirty");
         } else {
             listener.onPreflight("checking", 0, 0, "Checking cache…");
-            preflight = BuildForecasting.forecastWithFingerprints(graph, req.cache(), req.skipTests(), req.entryDir());
+            preflight = BuildForecasting.forecastWithFingerprints(
+                    graph,
+                    req.cache(),
+                    req.skipTests(),
+                    req.entryDir(),
+                    req.target(),
+                    terminalTargetDirs(units, req));
             dirty = preflight.dirty();
             listener.onPreflight(
                     "checking", 1, 1, dirty.isEmpty() ? "All modules up to date" : dirty.size() + " module(s) dirty");
@@ -243,6 +253,8 @@ public final class WorkspaceExecute {
         } else {
             // Memo hit with dirty set but no modules, or force/rebuild: one explain walk.
             etaPlan = BuildForecasting.explainFromGraph(graph, req.cache(), req.skipTests());
+            // explainFromGraph uses package tails; native/image extra work is in the live
+            // prepare weights. Dirty set already used target-aware forecast above.
         }
         if (req.dirtyHint() != null) {
             etaPlan = BuildForecasting.restrictToSelection(etaPlan, dirty);
@@ -288,6 +300,12 @@ public final class WorkspaceExecute {
         // Re-emit R0 after prepare (seed path; client freezes seed once execute starts; residual
         // still re-anchors the painted countdown mid-run).
         listener.onEtaEstimate(etaMs);
+
+        if (cc.jumpkick.run.SessionCancel.cancelled()) {
+            WorkspaceResult r = new WorkspaceResult(false, 1, List.of(), List.of(), true);
+            listener.onWorkspaceFinish(r);
+            return r;
+        }
 
         // Workspace artifact links for the whole graph (clean modules still own jars from prior builds).
         Map<Path, Path> wsLinks = computeWorkspaceLinks(moduleDirs, req.entryDir());
@@ -346,7 +364,10 @@ public final class WorkspaceExecute {
             // rewrites during the run would otherwise poison the next preflight (memo miss →
             // re-enter every module). Mid-build source edits during a monorepo build are not a
             // supported workflow; the next intentional edit still busts the memo on the following run.
-            if (req.dirtyHint() == null && !req.testOnly()) {
+            // Terminal targets (native/image/compile) never store: their graph may be
+            // cone-restricted and their clean-claim (binary present, push performed) is not
+            // what the memo's package-level check certifies — see BuildForecasting.memoSafe.
+            if (req.dirtyHint() == null && !req.testOnly() && req.target() == WorkspaceTarget.PACKAGE) {
                 Map<Path, String> fps = PreflightMemo.snapshotFingerprints(graph, req.skipTests());
                 if (!fps.isEmpty()) {
                     PreflightMemo.storeDirty(req.entryDir(), graph, req.skipTests(), Set.of(), fps);
@@ -378,6 +399,7 @@ public final class WorkspaceExecute {
             Map<Path, ModulePlan> plans = new LinkedHashMap<>();
             int prepared = 0;
             for (BuildGraph.BuildUnit u : dirtyUnits) {
+                if (cc.jumpkick.run.SessionCancel.cancelled()) break;
                 ModulePlan p = prepareModule(u, req, moduleDirs, true);
                 prepared++;
                 listener.onPreflight(
@@ -393,8 +415,10 @@ public final class WorkspaceExecute {
         Map<Path, ModulePlan> plans = new ConcurrentHashMap<>();
         List<CompletableFuture<Void>> futures = new ArrayList<>(dirtyUnits.size());
         for (BuildGraph.BuildUnit u : dirtyUnits) {
+            if (cc.jumpkick.run.SessionCancel.cancelled()) break;
             futures.add(CompletableFuture.runAsync(
                     () -> {
+                        if (cc.jumpkick.run.SessionCancel.cancelled()) return;
                         ModulePlan p = prepareModule(u, req, moduleDirs, true);
                         if (p == null) throw new PrepareFailed(u.coord(), u.dir());
                         p.plan().addListener(timingsRecorder(p, timingSamples, hostSamples));
@@ -474,21 +498,7 @@ public final class WorkspaceExecute {
         Path dir = u.dir();
         Path buildFile = dir.resolve("jk.toml");
         if (!Files.exists(buildFile)) return null;
-        BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
-                        dir,
-                        req.cache(),
-                        req.workers() > 0 ? req.workers() : 1,
-                        req.jdksDir(),
-                        req.profile(),
-                        req.skipTests(),
-                        req.verbose(),
-                        moduleDirs,
-                        req.testOnly())
-                .withVariant(req.variant(), req.clientEnv())
-                .withEphemeralActions(req.ephemeralActions());
-        BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, forceRebuild);
-        BuildPlanner.appendDeclaredTails(b, inputs);
-        BuildPlan plan = b.build();
+        BuildPlan plan = assemblePlan(u, req, moduleDirs, forceRebuild);
         // Bar weight must be live estimatedTotalWeight for dirty prepares: shape-memo weights ignore
         // source/upstream freshness and under-counted native-image (SKIP while Graal still runs).
         // Over-reserve tails so native/assembly/OCI reserve full learned walls up front when this
@@ -517,6 +527,103 @@ public final class WorkspaceExecute {
         return new ModulePlan(u.dir(), u.coord(), plan, weight, false, req.cache());
     }
 
+    /**
+     * Restrict {@code graph} to the request's selected module cone. Empty selection = whole graph.
+     * Tests on → all dependency scopes (so dirty test harnesses rebuild); {@code skipTests} →
+     * production scopes only.
+     */
+    static BuildGraph.Result applySelectionCone(BuildGraph.Result graph, WorkspaceRequest req) {
+        WorkspaceSpec spec = req.spec();
+        if (spec == null || !spec.hasSelection()) return graph;
+        Map<Path, JkBuild> byDir = new LinkedHashMap<>();
+        for (BuildGraph.BuildUnit u : graph.topoOrder()) byDir.put(u.dir(), u.manifest());
+        var scopes = req.skipTests()
+                ? cc.jumpkick.config.ModuleOrder.PRODUCTION_SCOPES
+                : List.of(cc.jumpkick.model.Scope.values());
+        Set<Path> cone = cc.jumpkick.config.WorkspaceCone.expand(byDir, spec.selectedModules(), scopes);
+        return graph.restrict(cone);
+    }
+
+    /**
+     * The module dirs that will receive the target's terminal step — the SAME eligibility
+     * {@link #assemblePlan} applies (selection membership; native additionally needs a resolvable
+     * Graal home). The forecast consumes this so dirty prediction and plan assembly can never
+     * disagree about which modules carry terminal work.
+     */
+    static Set<Path> terminalTargetDirs(List<BuildGraph.BuildUnit> units, WorkspaceRequest req) {
+        WorkspaceTarget target = req.target();
+        if (target != WorkspaceTarget.NATIVE && target != WorkspaceTarget.IMAGE) return Set.of();
+        WorkspaceSpec spec = req.spec() == null ? WorkspaceSpec.DEFAULT : req.spec();
+        Set<Path> out = new LinkedHashSet<>();
+        for (BuildGraph.BuildUnit u : units) {
+            Path dir = u.dir();
+            boolean selected = !spec.hasSelection()
+                    || spec.selectedModules().stream()
+                            .anyMatch(p -> BuildGraph.canonicalPath(p).equals(BuildGraph.canonicalPath(dir)));
+            if (!selected) continue;
+            if (target == WorkspaceTarget.NATIVE && GraalHomes.lookup(dir, spec.graalByDir()) == null) continue;
+            out.add(dir);
+        }
+        return out;
+    }
+
+    static BuildPlan assemblePlan(
+            BuildGraph.BuildUnit u, WorkspaceRequest req, Set<Path> moduleDirs, boolean forceRebuild) {
+        Path dir = u.dir();
+        WorkspaceTarget target = req.target();
+        WorkspaceSpec spec = req.spec() == null ? WorkspaceSpec.DEFAULT : req.spec();
+        boolean selected = !spec.hasSelection()
+                || spec.selectedModules().stream()
+                        .anyMatch(p -> BuildGraph.canonicalPath(p).equals(BuildGraph.canonicalPath(dir)));
+        if (target == WorkspaceTarget.NATIVE) {
+            Path graal = GraalHomes.lookup(dir, spec.graalByDir());
+            boolean allowNative = selected && graal != null;
+            return NativePlans.moduleBuildPlan(
+                    dir,
+                    u.manifest(),
+                    req.cache(),
+                    req.jdksDir(),
+                    graal,
+                    spec.nativeMain(),
+                    spec.nativeExtraArgs(),
+                    req.skipTests(),
+                    req.verbose(),
+                    allowNative);
+        }
+        if (target == WorkspaceTarget.IMAGE && selected) {
+            return ImagePlans.imageBuildPlan(
+                    dir,
+                    req.cache(),
+                    req.jdksDir(),
+                    req.skipTests(),
+                    req.verbose(),
+                    spec.imageMain(),
+                    spec.imageRegistry(),
+                    spec.imageTag(),
+                    spec.imageTarball(),
+                    spec.imageDocker());
+        }
+        if (target == WorkspaceTarget.COMPILE) {
+            return CompilePlans.compileBuildPlan(dir, req.cache(), req.profile(), req.verbose());
+        }
+        boolean testOnly = target.testOnly() || req.testOnly();
+        BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
+                        dir,
+                        req.cache(),
+                        req.workers() > 0 ? req.workers() : 1,
+                        req.jdksDir(),
+                        req.profile(),
+                        req.skipTests(),
+                        req.verbose(),
+                        moduleDirs,
+                        testOnly)
+                .withVariant(req.variant(), req.clientEnv())
+                .withEphemeralActions(req.ephemeralActions());
+        BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, forceRebuild);
+        if (!testOnly) BuildPlanner.appendDeclaredTails(b, inputs);
+        return b.build();
+    }
+
     /**learn run-tests rates from actual TestSummary counts when present. */
     private static StepTimingsRecorder timingsRecorder(
             ModulePlan p, List<StepTimings.Sample> timingSamples, List<HostLearnedRates.HostSample> hostSamples) {
@@ -539,26 +646,26 @@ public final class WorkspaceExecute {
             // cache hit; never grow the bar mid-run.
             BuildPlanResult r = EffortWeights.withOverReserveTails(module.plan()::run);
             long ms = (System.nanoTime() - t0) / 1_000_000;
-            int exit = r.success() ? 0 : exitCodeFor(module.plan());
+            boolean cancelled = r.userCancelled() || cc.jumpkick.run.SessionCancel.cancelled();
+            // NativePlans owns the full failure mapping (native main-class misconfig → USAGE,
+            // test failure → 4, else 1) so jk native --main bad exits 64 like the old verb did.
+            int exit = r.success() && !cancelled ? 0 : NativePlans.failureExitCode(module.plan(), r);
             // Failures always count as work; successes count only when a productive step ran
             // (not pure cache hits / no-ops —.
-            boolean didWork = !r.success() || BuildService.moduleDidWork(r);
-            ModuleOutcome o = new ModuleOutcome(module.coord(), module.dir(), r.success(), exit, ms, didWork);
+            boolean didWork = !r.success() || cancelled || BuildService.moduleDidWork(r);
+            ModuleOutcome o = new ModuleOutcome(
+                    module.coord(), module.dir(), r.success() && !cancelled, exit, ms, didWork, cancelled);
             listener.onModuleFinish(o);
             return o;
         } catch (RuntimeException e) {
             long ms = (System.nanoTime() - t0) / 1_000_000;
-            ModuleOutcome o = new ModuleOutcome(module.coord(), module.dir(), false, 1, ms, true);
+            boolean cancelled = cc.jumpkick.run.SessionCancel.cancelled();
+            ModuleOutcome o = new ModuleOutcome(module.coord(), module.dir(), false, 1, ms, true, cancelled);
             listener.onModuleFinish(o);
             return o;
         }
     }
 
-    /** Test failures exit 4; every other plan failure exits 1. */
-    private static int exitCodeFor(BuildPlan plan) {
-        TestSummary tr = plan.get(TEST_RESULT).orElse(null);
-        return tr != null && !tr.allPassed() ? 4 : 1;
-    }
 
     /** Apply the subset of {@code workspaceLinks} whose sources live under {@code moduleDir} (best-effort). */
     public static void linkModuleArtifacts(Path moduleDir, Map<Path, Path> workspaceLinks) {

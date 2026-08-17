@@ -43,7 +43,7 @@ public final class HookEnvCommand implements CliCommand {
         String shellName = in.value("shell").orElseThrow();
         var shell = Shell.byName(shellName);
         if (shell.isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Hook-env", "unsupported shell `" + shellName + "`"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Hook-env", "unsupported shell `" + shellName + "`");
             return Exit.USAGE;
         }
         var cwd = new GlobalOptions().workingDir();

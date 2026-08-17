@@ -21,6 +21,7 @@ import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -150,8 +151,11 @@ public final class ManifestBuild {
     }
 
     /**
-     * Optional {@code [native]}: empty when absent (presence marks native-eligible). Default
-     * {@code graal} is {@code "graalvm"}.
+     * Optional {@code [native]}: empty when the table is absent. Presence defaults to {@link
+     * JkBuild.NativeMode#SUPPORTED} ({@code enabled = true}). {@code enabled = false} keeps the
+     * table but disables native builds; {@code enabled = "always"} (or legacy {@code always =
+     * true}) auto-runs native-image on {@code jk build}. Default {@code graal} is {@code
+     * "graalvm"}.
      */
     static Optional<JkBuild.NativeConfig> parseNativeConfig(TomlTable root) {
         TomlTable native_ = root.getTable("native");
@@ -170,8 +174,39 @@ public final class ManifestBuild {
         }
         String graal = ManifestProject.parseGraalSpec(native_);
         if (graal == null) graal = "graalvm";
-        boolean always = Boolean.TRUE.equals(native_.getBoolean("always"));
-        return Optional.of(new JkBuild.NativeConfig(mainClass, name, args, graal, always));
+        JkBuild.NativeMode enabled = parseNativeEnabled(native_);
+        return Optional.of(new JkBuild.NativeConfig(mainClass, name, args, graal, enabled));
+    }
+
+    /**
+     * Resolve {@code [native].enabled}: boolean true/false, string {@code "always"}, or omit for
+     * enabled-true. Legacy {@code always = true} maps to {@link JkBuild.NativeMode#ALWAYS} when
+     * {@code enabled} is absent.
+     */
+    static JkBuild.NativeMode parseNativeEnabled(TomlTable native_) {
+        if (native_.contains("enabled")) {
+            Object raw = native_.get("enabled");
+            if (raw instanceof Boolean b) {
+                return b ? JkBuild.NativeMode.SUPPORTED : JkBuild.NativeMode.DISABLED;
+            }
+            if (raw instanceof String s) {
+                return switch (s.trim().toLowerCase(Locale.ROOT)) {
+                    case "always" -> JkBuild.NativeMode.ALWAYS;
+                    case "true", "yes", "on" -> JkBuild.NativeMode.SUPPORTED;
+                    case "false", "no", "off" -> JkBuild.NativeMode.DISABLED;
+                    default ->
+                        throw new JkBuildParseException(
+                                "[native].enabled must be true, false, or \"always\" (got \"" + s + "\")");
+                };
+            }
+            throw new JkBuildParseException("[native].enabled must be true, false, or \"always\"");
+        }
+        // Legacy always = true (pre-enabled key).
+        if (Boolean.TRUE.equals(native_.getBoolean("always"))) {
+            return JkBuild.NativeMode.ALWAYS;
+        }
+        // [native] present with no enabled key → enabled = true.
+        return JkBuild.NativeMode.SUPPORTED;
     }
 
     /**

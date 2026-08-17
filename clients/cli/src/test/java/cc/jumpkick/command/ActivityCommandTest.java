@@ -43,6 +43,21 @@ class ActivityCommandTest {
     }
 
     @Test
+    void formats_cancelled() {
+        String cancelled = "{\"type\":\"history-entry\",\"id\":\"c\",\"buildNumber\":104,"
+                + "\"kind\":\"build\",\"dir\":\"/p\",\"coord\":\"cc.jumpkick:jk\","
+                + "\"startedAt\":1,\"finishedAt\":2,\"millis\":6500,"
+                + "\"success\":false,\"cancelled\":true,\"running\":false,"
+                + "\"moduleCount\":12}";
+        String plain = strip(formatLine(cancelled, 10_000L, Theme.active()));
+        assertThat(plain).contains("#104");
+        assertThat(plain).contains("Cancel");
+        assertThat(plain).contains("12 modules");
+        var node = ActivityCommand.jobNode(cancelled, 10_000L, Theme.active(), 3);
+        assertThat(node.pill().look()).isEqualTo(cc.jumpkick.cli.tui.Pill.Look.CANCELLED);
+    }
+
+    @Test
     void formats_failure() {
         String plain = strip(formatLine(FAIL, 10_000L, Theme.active()));
         assertThat(plain).contains("#12");

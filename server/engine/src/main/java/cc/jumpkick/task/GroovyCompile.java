@@ -7,8 +7,10 @@ import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.GroovycResult;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Action-cache front for Groovy compile: a whole-input action-key hit/miss around the worker fork
@@ -18,11 +20,27 @@ public final class GroovyCompile {
 
     private GroovyCompile() {}
 
-    /** Outcome of a {@link #run}. {@code output} carries the worker's diagnostics. */
-    public record Result(boolean success, String outcome, String actionKey, String output) {
+    /** Outcome of a {@link #run}. {@code diagnostics} are the worker's, one entry each. */
+    public record Result(
+            boolean success,
+            String outcome,
+            String actionKey,
+            List<cc.jumpkick.compile.CompileResult.Diagnostic> diagnostics) {
+
+        public Result {
+            diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics);
+        }
+
         /** True when an existing record satisfied the request (no compile ran). */
         public boolean cacheHit() {
             return outcome.startsWith("cache-hit");
+        }
+
+        /** Joined diagnostics for logs and exception messages. */
+        public String output() {
+            return diagnostics.stream()
+                    .map(cc.jumpkick.compile.CompileResult.Diagnostic::describe)
+                    .collect(Collectors.joining("\n"));
         }
     }
 
@@ -61,7 +79,7 @@ public final class GroovyCompile {
                 // (missing/corrupt blob) falls through to the real compile below.
                 wipe(request);
                 if (actionCache.restore(hit.get(), request.outputDir())) {
-                    return new Result(true, "cache-hit:" + key.substring(0, 8), key, "");
+                    return new Result(true, "cache-hit:" + key.substring(0, 8), key, List.of());
                 }
             }
         }
@@ -79,17 +97,17 @@ public final class GroovyCompile {
             outputs = prewriter.finish();
         }
         if (!gr.success()) {
-            return new Result(false, "errors", key, gr.output());
+            return new Result(false, "errors", key, gr.diagnostics());
         }
         // Never cache a zero-output "success" for a non-empty source set: caching that
         // poisons every later run under the same key.
         if (outputs.isEmpty() && !request.sources().isEmpty()) {
-            return new Result(true, "compiled-no-outputs", key, gr.output());
+            return new Result(true, "compiled-no-outputs", key, gr.diagnostics());
         }
         // Store on rebuild/force too so the next explain sees CACHE_HIT; only ephemeral
         // (verify-scratch) runs skip the write — their keys never recur.
         if (persist) actionCache.storeWithOutputs(taskId, key, Map.of(), outputs);
-        return new Result(true, "compiled", key, gr.output());
+        return new Result(true, "compiled", key, gr.diagnostics());
     }
 
     /**

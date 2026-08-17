@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.plugin.protocol.MiniJson;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -83,7 +85,15 @@ class McpHandlerTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> tools = (List<Map<String, Object>>) result.get("tools");
         assertThat(tools.stream().map(t -> t.get("name")).toList())
-                .contains("jk_status", "jk_build", "jk_test", "jk_lock", "jk_cancel", "jk_project", "jk_history");
+                .contains(
+                        "jk_status",
+                        "jk_build",
+                        "jk_test",
+                        "jk_lock",
+                        "jk_cancel",
+                        "jk_bind",
+                        "jk_project",
+                        "jk_history");
     }
 
     @Test
@@ -97,8 +107,11 @@ class McpHandlerTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> content = (List<Map<String, Object>>) result.get("content");
         String text = (String) content.getFirst().get("text");
-        assertThat(text).contains("\"type\":\"status\"");
-        assertThat(text).contains("\"pid\":1");
+        assertThat(text).contains("pid");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> structured = (Map<String, Object>) result.get("structuredContent");
+        assertThat(structured.get("type")).isEqualTo("status");
+        assertThat(((Number) structured.get("pid")).longValue()).isEqualTo(1L);
     }
 
     @Test
@@ -112,8 +125,11 @@ class McpHandlerTest {
         @SuppressWarnings("unchecked")
         String text = (String)
                 ((List<Map<String, Object>>) result.get("content")).getFirst().get("text");
-        assertThat(text).contains("\"requestId\":42");
-        assertThat(text).contains("\"type\":\"build-accepted\"");
+        assertThat(text).isEqualTo("build accepted"); // summary only; payload is structured
+        @SuppressWarnings("unchecked")
+        Map<String, Object> structured = (Map<String, Object>) result.get("structuredContent");
+        assertThat(structured.get("type")).isEqualTo("build-accepted");
+        assertThat(((Number) structured.get("requestId")).longValue()).isEqualTo(42L);
     }
 
     @Test
@@ -134,6 +150,112 @@ class McpHandlerTest {
                 + "\"params\":{\"name\":\"jk_cancel\",\"arguments\":{\"requestId\":42}}}");
         assertThat(cancelBody).contains("cancelled");
         assertThat(cancelBody).contains("true");
+    }
+
+    @Test
+    void stalled_keys_on_event_silence_not_job_age() {
+        long now = System.currentTimeMillis();
+        // Old job, fresh progress signal: healthy. Old job, silent for the stall window: stalled.
+        HttpLive.Run healthy = new HttpLive.Run(
+                1L,
+                1L,
+                "build",
+                "/a",
+                "c",
+                now - 10 * 60_000,
+                now - 1_000,
+                40.0,
+                "j-1",
+                0,
+                0,
+                1,
+                2,
+                List.of(),
+                List.of());
+        HttpLive.Run silent = new HttpLive.Run(
+                2L,
+                2L,
+                "build",
+                "/b",
+                "c",
+                now - 10 * 60_000,
+                now - McpHandler.STALL_MS - 5_000,
+                40.0,
+                "j-2",
+                0,
+                0,
+                1,
+                2,
+                List.of(),
+                List.of());
+        // No signal ever: falls back to startedAt (young job — not stalled).
+        HttpLive.Run young = new HttpLive.Run(
+                3L, 3L, "lock", "/c", "c", now - 2_000, 0L, Double.NaN, "j-3", 0, 0, 1, 2, List.of(), List.of());
+        McpHandler withLive = new McpHandler(
+                () -> new StatusSnapshot("0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30),
+                jobs,
+                dir -> Map.of(),
+                List::of,
+                "0.12.0",
+                new ProgressTokenRegistry(),
+                () -> List.of(healthy, silent, young));
+        String body = withLive.handleBody(
+                "{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"tools/call\",\"params\":{\"name\":\"jk_status\",\"arguments\":{}}}");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) resp.get("result");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> structured = (Map<String, Object>) result.get("structuredContent");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> jobRows = (List<Map<String, Object>>) structured.get("jobs");
+        assertThat(jobRows).hasSize(3);
+        assertThat(jobRows.get(0).get("stalled")).isEqualTo(false); // ten minutes old, ticked 1s ago
+        assertThat(jobRows.get(1).get("stalled")).isEqualTo(true); // silent past the stall window
+        assertThat(jobRows.get(2).get("stalled")).isEqualTo(false); // no signal, but only 2s old
+    }
+
+    @Test
+    void run_wait_parks_inside_the_admission_yield_scope() {
+        AtomicInteger polls = new AtomicInteger();
+        AtomicInteger yields = new AtomicInteger();
+        HttpLive.Run live = new HttpLive.Run(
+                42L,
+                1L,
+                "build",
+                "/tmp/demo",
+                "com.example:demo",
+                1L,
+                0L,
+                50.0,
+                "j-1",
+                0,
+                0,
+                1,
+                2,
+                List.of(),
+                List.of());
+        McpHandler waiting = new McpHandler(
+                () -> new StatusSnapshot("0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30),
+                jobs,
+                dir -> Map.of(),
+                List::of,
+                "0.12.0",
+                new ProgressTokenRegistry(),
+                // Live for the first two polls, then gone — the wait loop must see both states.
+                () -> polls.incrementAndGet() <= 2 ? List.of(live) : List.of(),
+                new AdmissionYield() {
+                    @Override
+                    public <T> T yielding(Supplier<T> blocking) {
+                        yields.incrementAndGet();
+                        return blocking.get();
+                    }
+                });
+        String body = waiting.handleBody("{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_run\",\"arguments\":{\"dir\":\"/tmp/demo\",\"wait\":true}}}");
+        assertThat(body).contains("\"finished\":true");
+        // Both the live-run park and the journal lookup ran with the RPC permit yielded.
+        assertThat(yields.get()).isGreaterThanOrEqualTo(2);
     }
 
     @Test

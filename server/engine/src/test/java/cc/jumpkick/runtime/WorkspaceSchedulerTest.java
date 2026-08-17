@@ -10,6 +10,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
@@ -74,6 +75,46 @@ class WorkspaceSchedulerTest {
         return new Trace(peak.get(), new ArrayList<>(completed), sinkCalls[0], maxBatch[0]);
     }
 
+    @Test
+    void cancel_drains_in_flight_units_before_returning() {
+        // JK-2097: cancel(true) settled the futures instantly while suppliers kept running, so
+        // module-finish events could land AFTER workspace-finish. The cancel path must wait
+        // (bounded) for in-flight tasks to settle before run() returns.
+        AtomicBoolean cancelled = new AtomicBoolean();
+        AtomicBoolean slowFinished = new AtomicBoolean();
+        // Determinism: "fast" only flips cancel once "slow" is genuinely in flight — a
+        // not-yet-started "slow" would be (correctly) no-op'd by the admission gate instead.
+        java.util.concurrent.CountDownLatch slowStarted = new java.util.concurrent.CountDownLatch(1);
+        Object result = WorkspaceScheduler.run(
+                List.of("fast", "slow"),
+                WorkspaceSchedulerTest::p,
+                Map.of(p("fast"), Set.of(), p("slow"), Set.of()),
+                unit -> {
+                    if ("fast".equals(unit)) {
+                        try {
+                            slowStarted.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                        cancelled.set(true);
+                        return unit;
+                    }
+                    slowStarted.countDown();
+                    try {
+                        Thread.sleep(300);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    slowFinished.set(true);
+                    return unit;
+                },
+                (justCompleted, results, remaining) -> null,
+                2,
+                cancelled::get);
+        assertThat(result).isNull();
+        assertThat(slowFinished).isTrue();
+    }
+
     /** Assert every unit ran only after its prereqs finished (positional check on completion order). */
     private static void assertDependencyOrder(List<String> order) {
         assertThat(order).containsExactlyInAnyOrder("a", "b", "c", "d");
@@ -129,6 +170,46 @@ class WorkspaceSchedulerTest {
         assertThat(stop).isEqualTo("FAILED");
         // Serial + fail-fast: nothing past the failing unit's dependents should have started.
         assertThat(ran).containsExactly("a");
+    }
+
+    @Test
+    void bounded_stops_admitting_when_cancelled() {
+        AtomicInteger started = new AtomicInteger();
+        AtomicBoolean cancelled = new AtomicBoolean();
+        String stop = WorkspaceScheduler.run(
+                diamondUnits(),
+                WorkspaceSchedulerTest::p,
+                diamondEdges(),
+                unit -> {
+                    started.incrementAndGet();
+                    if ("a".equals(unit)) cancelled.set(true);
+                    return unit;
+                },
+                (justCompleted, results, remaining) -> null,
+                1,
+                cancelled::get);
+        assertThat(stop).isNull();
+        assertThat(started.get()).isEqualTo(1);
+    }
+
+    @Test
+    void unbounded_does_not_start_the_next_level_when_cancelled() {
+        AtomicInteger started = new AtomicInteger();
+        AtomicBoolean cancelled = new AtomicBoolean();
+        String stop = WorkspaceScheduler.run(
+                diamondUnits(),
+                WorkspaceSchedulerTest::p,
+                diamondEdges(),
+                unit -> {
+                    started.incrementAndGet();
+                    if ("a".equals(unit)) cancelled.set(true);
+                    return unit;
+                },
+                (justCompleted, results, remaining) -> null,
+                0,
+                cancelled::get);
+        assertThat(stop).isNull();
+        assertThat(started.get()).isEqualTo(1);
     }
 
     @Test

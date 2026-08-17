@@ -50,6 +50,28 @@ class AggregateModuleListenerTest {
     }
 
     @Test
+    void non_animating_buffered_output_prints_once_via_the_settled_block() {
+        // JK-2090: with a buffer and animate=false, output/error must buffer ONLY — writeAbove
+        // prints immediately in that mode and the module-finish block prints the buffer again,
+        // so doing both showed every tool and diagnostic line twice in piped/CI workspace builds.
+        var buf = new ByteArrayOutputStream();
+        JkManager view = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Building", false);
+        var agg = new AggregateContext(view);
+        var lis = new AggregateModuleListener(agg, "g:api", List.of(step("compile", "Compile")));
+        var outBuf = new java.util.ArrayList<String>();
+        lis.bufferOutputInto(outBuf);
+
+        lis.output("compile", "tool-line-xyz");
+        lis.error("compile", "E1", "boom-message");
+
+        assertThat(buf.toString(StandardCharsets.UTF_8))
+                .doesNotContain("tool-line-xyz")
+                .doesNotContain("boom-message");
+        assertThat(String.join("\n", outBuf)).contains("tool-line-xyz").contains("boom-message");
+        view.close();
+    }
+
+    @Test
     void concurrent_modules_show_in_phase_tree() {
         var buf = new ByteArrayOutputStream();
         JkManager view = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Building", false);

@@ -70,13 +70,13 @@ public final class RemoveCommand implements CliCommand {
         Path dir = global.workingDir();
         Path file = dir.resolve("jk.toml");
         if (!Files.exists(file)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Remove", "no jk.toml in current directory"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Remove", "no jk.toml in current directory");
             return Exit.CONFIG;
         }
         int selected = (test ? 1 : 0) + (runtime ? 1 : 0) + (provided ? 1 : 0) + (processor ? 1 : 0);
         if (selected > 1) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Remove", "--test / --runtime / --provided / --processor are mutually exclusive"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "Remove", "--test / --runtime / --provided / --processor are mutually exclusive");
             return Exit.USAGE;
         }
         Scope scope = test
@@ -104,7 +104,7 @@ public final class RemoveCommand implements CliCommand {
                 }
             }
         } catch (IllegalArgumentException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Remove", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Remove", e.getMessage());
             return Exit.USAGE;
         }
 
@@ -120,7 +120,7 @@ public final class RemoveCommand implements CliCommand {
             }
         }
         if (removed == null) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Remove", firstError.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Remove", firstError.getMessage());
             return 1;
         }
         CommandWedge.printOk(
@@ -164,8 +164,8 @@ public final class RemoveCommand implements CliCommand {
                         + cc.jumpkick.cli.PathDisplay.styledRaw(root));
             }
         } catch (IOException | RuntimeException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Remove", "could not unregister workspace module: " + e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "Remove", "could not unregister workspace module: " + e.getMessage());
         }
     }
 

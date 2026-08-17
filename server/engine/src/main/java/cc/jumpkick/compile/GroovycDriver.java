@@ -72,7 +72,7 @@ public final class GroovycDriver {
             List<String> cmd = cc.jumpkick.engine.plugin.JvmOptions.javaCommand(
                     hostJavaHome.resolve("bin").resolve("java").toString(), 1, rest);
 
-            List<String> diagnostics = new ArrayList<>();
+            List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
             String[] status = {null};
             // Non-protocol lines (JDK/compiler chatter) are dropped on success, but a plugin
             // that DIES before speaking protocol (a broken classpath, a JVM crash) leaves its
@@ -82,7 +82,12 @@ public final class GroovycDriver {
             int exit = new PluginClient(PROTOCOL_PREFIX)
                     .on(
                             PluginProtocol.DIAGNOSTIC,
-                            json -> diagnostics.add(Jsonl.str(json, "sev") + ": " + Jsonl.str(json, "msg")))
+                            json -> diagnostics.add(WorkerDiagnostics.located(
+                                    Jsonl.str(json, "sev"),
+                                    Jsonl.str(json, "file"),
+                                    Jsonl.longValue(json, "line", 0),
+                                    Jsonl.longValue(json, "col", 0),
+                                    Jsonl.str(json, "msg"))))
                     .on(PluginProtocol.RESULT, json -> status[0] = Jsonl.str(json, "status"))
                     .passthrough(line -> {
                         if (chatter.size() >= 40) chatter.removeFirst();
@@ -91,10 +96,13 @@ public final class GroovycDriver {
                     .run(cmd);
             boolean success = exit == 0 && "COMPILATION_SUCCESS".equals(status[0]);
             if (!success && diagnostics.isEmpty() && !chatter.isEmpty()) {
-                diagnostics.add("groovyc worker exited " + exit + " without diagnostics; last output:");
-                diagnostics.addAll(chatter);
+                StringBuilder tail =
+                        new StringBuilder("groovyc worker exited " + exit + " without diagnostics; last output:");
+                for (String line : chatter) tail.append('\n').append(line);
+                diagnostics.add(
+                        new CompileResult.Diagnostic(CompileResult.Severity.ERROR, null, 0, 0, tail.toString()));
             }
-            return new GroovycResult(success, String.join("\n", diagnostics));
+            return new GroovycResult(success, diagnostics);
         } finally {
             Files.deleteIfExists(spec);
         }

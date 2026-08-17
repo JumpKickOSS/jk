@@ -25,7 +25,7 @@ class NativeWeightDirtyJarTest {
                 java = 25
 
                 [native]
-                always = true
+                enabled = "always"
                 """);
         Path mainJava = dir.resolve("src/main/java/Demo.java");
         Files.createDirectories(mainJava.getParent());
@@ -61,7 +61,7 @@ class NativeWeightDirtyJarTest {
                 java = 25
 
                 [native]
-                always = true
+                enabled = "always"
                 """);
         Path mainJava = dir.resolve("src/main/java/Demo.java");
         Files.createDirectories(mainJava.getParent());
@@ -82,7 +82,7 @@ class NativeWeightDirtyJarTest {
                 java = 25
 
                 [native]
-                always = true
+                enabled = "always"
                 """);
         Path mainJava = dir.resolve("src/main/java/Demo.java");
         Files.createDirectories(mainJava.getParent());

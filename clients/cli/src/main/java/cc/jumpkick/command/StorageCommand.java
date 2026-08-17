@@ -254,7 +254,7 @@ public final class StorageCommand extends GroupCommand {
                         CacheCommand::printWait,
                         summary);
             } catch (IOException e) {
-                CliOutput.err(CommandWedge.fail("Storage", e.getMessage()));
+                CommandWedge.printFail("Storage", e.getMessage());
                 return cc.jumpkick.model.command.Exit.SOFTWARE;
             }
             if (summary[0] != null) {

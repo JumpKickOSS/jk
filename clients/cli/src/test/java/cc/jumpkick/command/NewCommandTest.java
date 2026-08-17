@@ -96,7 +96,7 @@ class NewCommandTest {
         assertThat(parsed.nativeMode()).isEqualTo(JkBuild.NativeMode.ALWAYS);
 
         String toml = Files.readString(tempDir.resolve("jk.toml"));
-        assertThat(toml).contains("[native]").contains("always     = true");
+        assertThat(toml).contains("[native]").contains("enabled    = \"always\"");
         assertThat(toml).doesNotContain("graal");
     }
 

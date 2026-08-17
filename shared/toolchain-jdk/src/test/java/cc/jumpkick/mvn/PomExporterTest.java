@@ -158,7 +158,7 @@ class PomExporterTest {
                 assembly = true
 
                 [native]
-                always = true
+                enabled = "always"
                 """);
 
         String xml = PomExporter.export(b).xml();

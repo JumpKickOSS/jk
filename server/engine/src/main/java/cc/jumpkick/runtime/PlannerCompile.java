@@ -416,7 +416,8 @@ public final class PlannerCompile {
                             workingDir,
                             kotlinJavaSourceRoots(mixedWithJava, compact, in.dir(), ctx.require(LAYOUT), pluginDecls));
                     if (!kr.success()) {
-                        ctx.error("kotlinc", kr.output());
+                        PlannerSupport.forwardWorkerDiagnostics(
+                                ctx, "kotlinc", kr.diagnostics(), "kotlinc failed without diagnostics");
                         throw new RuntimeException("kotlinc reported errors");
                     }
                     if (kr.cacheHit()) {
@@ -537,7 +538,8 @@ public final class PlannerCompile {
                                     : null,
                             mixedGroovy ? ctx.require(LAYOUT).groovyStubsDir() : null);
                     if (!gr.success()) {
-                        ctx.error("groovyc", gr.output());
+                        PlannerSupport.forwardWorkerDiagnostics(
+                                ctx, "groovyc", gr.diagnostics(), "groovyc failed without diagnostics");
                         throw new RuntimeException("groovyc reported errors");
                     }
                     if (gr.cacheHit()) {

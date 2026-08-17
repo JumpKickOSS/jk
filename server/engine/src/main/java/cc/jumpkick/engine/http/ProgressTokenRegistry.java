@@ -27,13 +27,24 @@ public final class ProgressTokenRegistry {
                 tokens.remove(it.next());
             }
         }
-        tokens.put(progressToken, requestId);
+        tokens.put(canonicalText(progressToken), requestId);
     }
 
     /** Resolve a progress token to a request id, or {@code null} if unknown. */
     public Long resolve(String progressToken) {
         if (progressToken == null || progressToken.isBlank()) return null;
-        return tokens.get(progressToken);
+        return tokens.get(canonicalText(progressToken));
+    }
+
+    /**
+     * Canonical text form of a token. MCP allows integer progress tokens; MiniJson parses every
+     * JSON number as Double, so {@code 5} stringifies as {@code "5.0"} while the SSE query carries
+     * {@code "5"}. Integral double forms drop the fraction; every other token passes through.
+     */
+    public static String canonicalText(String token) {
+        String s = token.trim();
+        if (!s.matches("-?\\d+\\.0+")) return s;
+        return s.substring(0, s.indexOf('.'));
     }
 
     /** Test seam: clear all bindings. */

@@ -51,21 +51,21 @@ public final class WebCommand implements CliCommand {
         try {
             EngineClient.ensureRunning(paths, Jk.VERSION);
         } catch (IOException e) {
-            CliOutput.err(CommandWedge.fail("Web", e.getMessage()));
+            CommandWedge.printFail("Web", e.getMessage());
             return Exit.SOFTWARE;
         }
 
         EngineClient.Status status =
                 EngineClient.status(EnginePaths.activeSocket(paths)).orElse(null);
         if (status == null) {
-            CliOutput.err(CommandWedge.fail("Web", "Engine did not answer after start"));
+            CommandWedge.printFail("Web", "Engine did not answer after start");
             return Exit.SOFTWARE;
         }
         if (status.httpUrl() == null || status.httpUrl().isBlank()) {
             String why = status.httpError() != null
                     ? "HTTP dashboard failed to start (" + status.httpError() + ")"
                     : "HTTP dashboard is disabled — set [http] enabled = true in config";
-            CliOutput.err(CommandWedge.fail("Web", why));
+            CommandWedge.printFail("Web", why);
             return Exit.FAILURE;
         }
 

@@ -33,21 +33,25 @@ import {
   etaTotalMillis,
   stepTimingLabel,
   isTestFailureDiag,
+  isCompilerDiag,
   testFailureReport,
+  compilerFailureReports,
+  snippetWindow,
 } from './fold.js';
 import { installTips } from './tip.js';
 import {
   routeFromHash,
   buildProjectHash,
   codePathForFailure,
+  locusLabel,
   CodeView,
 } from './code.js';
 
 // Guarded so the module can be imported headlessly (node --test) — JK-1986.
 if (typeof document !== 'undefined') bootstrapToken();
 
-// The build **phase-chain**: a single horizontal strip of coarse plan phases (Resolve →
-// Compile → Test → …), never wrapping. New phases advance rightward and push earlier ones off the
+// The build **phase-chain**: a single horizontal strip of coarse plan phases (Generate →
+// Compile → Test → …), never wrapping. Resolve is omitted unless it failed. New phases advance rightward and push earlier ones off the
 // left; when phases are hidden a ◂ / ▸ nav button pages the view (no scrollbar). Anchored to the
 // newest phase on mount and whenever the chain grows. Each phase node is a click-to-expand toggle
 // (single-open) that reveals the steps it collapses; the failed phase auto-opens. See
@@ -281,7 +285,14 @@ const FailReport = {
     checkoutDir: { type: String, default: null },
     moduleDir: { type: String, default: null },
   },
+  data: () => ({ fetchedLines: null }),
   computed: {
+    isCompile() {
+      return !!(this.rep && this.rep.kind === 'compile');
+    },
+    headerLabel() {
+      return this.isCompile ? 'Compile failure' : 'Test failure';
+    },
     codePath() {
       return codePathForFailure({
         checkoutDir: this.checkoutDir,
@@ -292,6 +303,24 @@ const FailReport = {
     canOpen() {
       return !!(this.projectId && this.codePath);
     },
+    displayRows() {
+      const r = this.rep;
+      if (this.isCompile && this.fetchedLines && r.line > 0 && r.line <= this.fetchedLines.length) {
+        const current = this.fetchedLines[r.line - 1];
+        const embedded = r.rows && r.rows.length === 1 ? r.rows[0].code : null;
+        if (embedded != null && current !== embedded) return r.rows;
+        return snippetWindow(this.fetchedLines, r.line);
+      }
+      return (r && r.rows) || [];
+    },
+    /** Path plus line/col so a copied fail-report still names the jump. */
+    fileLocus() {
+      const r = this.rep;
+      if (!r) return '';
+      const path = this.codePath || r.file || '';
+      if (!path) return '';
+      return locusLabel(path, r.line || 0, r.column || r.col || 0);
+    },
     /** Real hash deep link into the Monaco files pane (copyable, middle-clickable). */
     deepLink() {
       if (!this.canOpen) return undefined;
@@ -300,70 +329,116 @@ const FailReport = {
         files: true,
         path: this.codePath,
         line: this.rep.line || 0,
+        col: this.rep.column || this.rep.col || 0,
         err: true, // red error-line highlight on the fail jump
+        msg: this.hoverNote,
       });
     },
+    /** Assertion / exception / compiler note for the Monaco hover ({@code ?msg=}). */
+    hoverNote() {
+      const r = this.rep;
+      if (!r) return '';
+      if (r.kind === 'compile') {
+        return (r.kvs || []).map((kv) => kv.key + ': ' + (kv.value || '')).join('\n');
+      }
+      if (r.assertj) {
+        const lines = [];
+        if (r.assertj.desc) lines.push(String(r.assertj.desc));
+        lines.push('Expected: ' + (r.assertj.expected ?? ''));
+        lines.push('But was: ' + (r.assertj.actual ?? ''));
+        return lines.join('\n');
+      }
+      const lines = [];
+      if (r.exceptionClass) lines.push(String(r.exceptionClass));
+      if (r.message) lines.push(String(r.message));
+      return lines.join('\n');
+    },
+  },
+  watch: {
+    codePath: { immediate: true, handler() { this.loadSource(); } },
+    projectId() { this.loadSource(); },
   },
   methods: {
     failLabelSegs(label) {
       return detailSegments(label);
+    },
+    async loadSource() {
+      if (!this.isCompile || !this.projectId || !this.codePath) {
+        this.fetchedLines = null;
+        return;
+      }
+      const gen = (this._srcGen = (this._srcGen || 0) + 1);
+      const lines = await loadProjectFileLines(this.projectId, this.codePath);
+      if (gen !== this._srcGen) return;
+      this.fetchedLines = lines;
     },
   },
   template: `
     <template v-if="rep.showHeader">
       <div class="fail-head">
         <span class="console-err">\u2718</span>
-        <span class="fail-mid"> Test failure</span>
+        <span class="fail-mid">\u00a0{{ headerLabel }}</span>
         <template v-if="rep.module">
           <span class="fail-mid"> in </span><span class="det-coord">{{ rep.module }}</span>
         </template>
-        <span class="console-sep"> \u203a </span>
-        <span class="det-focus">{{ rep.count }}</span>
-        <span class="fail-mid"> test{{ rep.count === 1 ? '' : 's' }} failed</span>
+        <template v-if="!isCompile">
+          <span class="console-sep"> \u203a </span>
+          <span class="det-focus">{{ rep.count }}</span>
+          <span class="fail-mid"> test{{ rep.count === 1 ? '' : 's' }} failed</span>
+        </template>
       </div>
       <div class="fail-blank"></div>
     </template>
-    <div class="fail-line">
-      <span class="fail-failed">FAILED&nbsp;</span><template v-for="(seg, si) in failLabelSegs(rep.label)" :key="si">
-        <span :class="seg.cls">{{ seg.text }}</span>
+    <template v-if="isCompile">
+      <div v-for="(kv, ki) in (rep.kvs || [])" :key="'kv'+ki" class="fail-line">
+        <span class="fail-mid">{{ kv.key }}</span><span class="fail-dim">: </span><span class="fail-kv">{{ kv.value }}</span>
+      </div>
+      <div v-for="(ex, ei) in (rep.extras || [])" :key="'ex'+ei" class="fail-line fail-mid">{{ ex }}</div>
+    </template>
+    <template v-else>
+      <div class="fail-line">
+        <span class="fail-failed">FAILED&nbsp;</span><template v-for="(seg, si) in failLabelSegs(rep.label)" :key="si">
+          <span :class="seg.cls">{{ seg.text }}</span>
+        </template>
+      </div>
+      <div class="fail-blank"></div>
+      <template v-if="rep.assertj">
+        <div v-if="rep.assertj.desc" class="fail-line">
+          <span class="fail-dim">"</span><span class="fail-desc">{{ rep.assertj.desc }}</span><span class="fail-dim">"</span>
+        </div>
+        <div class="fail-line">
+          <span class="fail-mid">&nbsp;Expected:&nbsp;</span><span class="fail-ok">{{ rep.assertj.expected }}</span>
+        </div>
+        <div class="fail-line">
+          <span class="fail-mid">&nbsp;&nbsp;But Was:&nbsp;</span><span class="fail-err">{{ rep.assertj.actual }}</span>
+        </div>
       </template>
-    </div>
-    <div class="fail-blank"></div>
-    <template v-if="rep.assertj">
-      <div v-if="rep.assertj.desc" class="fail-line">
-        <span class="fail-dim">"</span><span class="fail-desc">{{ rep.assertj.desc }}</span><span class="fail-dim">"</span>
-      </div>
-      <div class="fail-line">
-        <span class="fail-mid">&nbsp;Expected:&nbsp;</span><span class="fail-ok">{{ rep.assertj.expected }}</span>
-      </div>
-      <div class="fail-line">
-        <span class="fail-mid">&nbsp;&nbsp;But Was:&nbsp;</span><span class="fail-err">{{ rep.assertj.actual }}</span>
-      </div>
+      <template v-else-if="rep.message">
+        <div class="fail-line fail-mid" v-for="(ml, mi) in rep.message.split('\\n')" :key="'m'+mi">{{ ml }}</div>
+      </template>
     </template>
-    <template v-else-if="rep.message">
-      <div class="fail-line fail-mid" v-for="(ml, mi) in rep.message.split('\\n')" :key="'m'+mi">{{ ml }}</div>
-    </template>
-    <template v-if="rep.file">
+    <template v-if="rep.file || displayRows.length">
       <div class="fail-blank"></div>
       <component
+        v-if="fileLocus"
         :is="canOpen ? 'a' : 'div'"
         class="fail-line fail-path"
         :class="{ link: canOpen }"
         :href="deepLink"
-      >{{ rep.file }}</component>
+      >{{ fileLocus }}</component>
       <div
-        v-for="(row, ri) in rep.rows"
+        v-for="(row, ri) in displayRows"
         :key="'s'+ri"
         class="fail-src"
         :class="{ 'fail-src-err': row.error }"
       >
         <span class="fail-gutter" :class="{ 'fail-gutter-err': row.error }">{{ row.gutter }}</span><span class="fail-gutter-rail">\u2502</span><span class="fail-src-code">{{ row.code }}{{ ' '.repeat(row.pad) }}</span>
       </div>
-      <div v-if="rep.exceptionClass" class="fail-line fail-thrown">
+      <div v-if="!isCompile && rep.exceptionClass" class="fail-line fail-thrown">
         <span class="det-type">{{ rep.exceptionClass }}</span><span class="fail-mid"> thrown at line </span><span class="det-focus">{{ rep.line }}</span>
       </div>
     </template>
-    <template v-else>
+    <template v-else-if="!isCompile">
       <div v-if="rep.exceptionClass" class="fail-line fail-thrown">
         <span class="det-type">{{ rep.exceptionClass }}</span>
       </div>
@@ -372,10 +447,35 @@ const FailReport = {
   `,
 };
 
+const SOURCE_CACHE = new Map();
+const MAX_SNIPPET_FILE = 1 << 20;
+
+/** Workspace file as lines, memoized per {@code projectId + path}. Failed reads are not cached. */
+function loadProjectFileLines(projectId, path) {
+  const key = String(projectId) + '\0' + String(path);
+  if (SOURCE_CACHE.has(key)) return SOURCE_CACHE.get(key);
+  const p = get(
+    '/api/project/file?project=' + encodeURIComponent(projectId) + '&path=' + encodeURIComponent(path),
+  )
+    .then((data) => {
+      const content = data && typeof data.content === 'string' ? data.content : '';
+      if (!content || content.length > MAX_SNIPPET_FILE) return null;
+      return content.split('\n');
+    })
+    .catch(() => {
+      SOURCE_CACHE.delete(key);
+      return null;
+    });
+  SOURCE_CACHE.set(key, p);
+  return p;
+}
+
 const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
 /** Memoized test-failure report models, keyed by the (immutable) diagnostic object. */
 const TF_REPORT_CACHE = new WeakMap();
+/** Memoized compile-failure report models, keyed by the (immutable) diagnostic object. */
+const CF_REPORT_CACHE = new WeakMap();
 /** Escape a value for interpolation into an HTML tooltip string — dependency names/versions/paths
  * come from a project's jk.toml/jk-lock.toml, which is attacker-adjacent (a shared or malicious
  * repo someone opens in the dashboard), so they must never reach innerHTML unescaped. */
@@ -858,7 +958,9 @@ export const appOptions = {
     filesOpen: !!routeFromHash().files, // #project/<id>/files[/<rel>]
     codePath: routeFromHash().path,
     codeLine: routeFromHash().line,
+    codeCol: routeFromHash().col || 0,
     codeLineErr: !!routeFromHash().lineErr,
+    codeMsg: routeFromHash().msg || '',
     selectedProjectDir: null, // checkout path resolved from project meta
     projectMeta: null, // live /api/project payload (coord + description + dir) for the open project
     // JK-1542: Dependencies panel on the Project page — closed by default; graph fetch + echarts
@@ -900,6 +1002,9 @@ export const appOptions = {
     _inflight: Object.create(null),
     _offlineStatusBackoffMs: 5_000,
     _offlineStatusTimer: null,
+    // projectId a meta load is running or has loaded for — the applyRoute reload guard keys on
+    // this, not on projectMeta, which is null for the whole in-flight window.
+    _projectMetaFor: null,
   }),
 
   async mounted() {
@@ -1235,6 +1340,9 @@ export const appOptions = {
               if (this.view === 'status' || this.view === 'projects' || this.view === 'project') {
                 this.refreshMetrics();
               }
+              // A build can change the open project's coord/description/dir (manifest edits,
+              // branch switches) — re-pull the header meta in place.
+              this.refreshProjectMeta();
             }, 500);
           }
         },
@@ -1293,6 +1401,27 @@ export const appOptions = {
     // wait seconds. New SSE cards prepend at index 0, so they land immediately.
     riseDelay(i) {
       return Math.min(i, 8) * 0.04 + 's';
+    },
+
+    /** Wall clock for relative-time hovers: {@code yyyy-MM-dd hh:mm:ss} in the local zone. */
+    fmtDateTime(ms) {
+      if (ms == null || !Number.isFinite(Number(ms)) || Number(ms) <= 0) return '';
+      const d = new Date(Number(ms));
+      if (Number.isNaN(d.getTime())) return '';
+      const p = (n) => String(n).padStart(2, '0');
+      return (
+        d.getFullYear() +
+        '-' +
+        p(d.getMonth() + 1) +
+        '-' +
+        p(d.getDate()) +
+        ' ' +
+        p(d.getHours()) +
+        ':' +
+        p(d.getMinutes()) +
+        ':' +
+        p(d.getSeconds())
+      );
     },
 
     // "just now" / "5m ago" / "3h ago" / "2d ago" from an epoch-millis stamp (drives the 1s clock).
@@ -1361,14 +1490,22 @@ export const appOptions = {
       this.filesOpen = !!r.files;
       this.codePath = r.path;
       this.codeLine = r.line;
+      this.codeCol = r.col || 0;
       this.codeLineErr = !!r.lineErr;
+      this.codeMsg = r.msg || '';
       // Collapse the expensive graph panel when leaving project view or switching projects.
       if (r.view !== 'project' || idChanged || r.files) this.projectGraphOpen = false;
       // Project identity cannot change between two clicks on the same #project/<id> route, and
       // every /api/project hit re-runs identity resolution engine-side (git probe + project-home
       // scan) — so reload metadata only on an actual project switch or when it was never loaded
       // (JK-1945). This also stops the header flicker from nulling projectMeta per file click.
-      if (r.view === 'project' && r.projectId && (idChanged || !this.projectMeta)) {
+      // A load already running for this id counts as loaded: projectMeta is null for the whole
+      // in-flight window, so testing only it would refetch on every file click until the response.
+      if (
+        r.view === 'project' &&
+        r.projectId &&
+        (idChanged || (!this.projectMeta && this._projectMetaFor !== r.projectId))
+      ) {
         this.loadProjectMeta(r.projectId);
       }
       if (r.view === 'projects') {
@@ -1382,7 +1519,7 @@ export const appOptions = {
       this.openCode({ projectId: this.selectedProjectId });
     },
 
-    openCode({ projectId, path, line, err, replace } = {}) {
+    openCode({ projectId, path, line, col, err, msg, replace } = {}) {
       if (this.authModal) return;
       const id = projectId || this.selectedProjectId;
       if (!id) return;
@@ -1391,7 +1528,9 @@ export const appOptions = {
         files: true,
         path: path || null,
         line: line || 0,
+        col: col || 0,
         err: !!err,
+        msg: msg || '',
       });
       if (replace) {
         // replaceState does not fire hashchange — apply the route ourselves.
@@ -1424,6 +1563,7 @@ export const appOptions = {
     // Live coord + description for the open project (by durable id).
     async loadProjectMeta(projectId) {
       if (this.authModal) return;
+      this._projectMetaFor = projectId;
       this.projectMeta = null;
       try {
         const meta = await this.fetchProjectMeta(projectId);
@@ -1436,10 +1576,37 @@ export const appOptions = {
           this.selectedProjectDir = meta.dir;
         }
       } catch (e) {
+        // A failed load must not latch the guard — the next click retries.
+        if (this._projectMetaFor === projectId) this._projectMetaFor = null;
         if (this.selectedProjectId !== projectId) return;
         this.handleHttpError(e);
       }
       if (!this.projectHistory.length) this.loadProjectHistory(); // detail rows come from history
+    },
+
+    /**
+     * Re-pull the open project's meta in place — coord/description/dir go stale after a manifest
+     * save or a finished build (branch switch, edited jk.toml). Unlike {@code loadProjectMeta}
+     * this never nulls {@code projectMeta}, so the header keeps its last values instead of
+     * flickering; errors keep the stale header rather than surfacing (the next full load does).
+     */
+    async refreshProjectMeta() {
+      const projectId = this.selectedProjectId;
+      if (this.authModal || this.view !== 'project' || !projectId) return;
+      try {
+        const meta = await this.fetchProjectMeta(projectId);
+        if (this.selectedProjectId !== projectId) return; // stale response (JK-1995)
+        this.projectMeta = meta;
+        this._projectMetaFor = projectId;
+        if (meta && meta.dir) this.selectedProjectDir = meta.dir;
+      } catch {
+        // keep the last known header
+      }
+    },
+
+    /** A code-view save landed. Manifest edits change the header — re-pull the meta. */
+    onCodeSaved({ path } = {}) {
+      if (path === 'jk.toml' || (path && path.endsWith('/jk.toml'))) this.refreshProjectMeta();
     },
 
     // The "Build" button: kick off a fresh build of this project and jump to the live Activity feed.
@@ -1679,6 +1846,11 @@ export const appOptions = {
       return isTestFailureDiag(d);
     },
 
+    /** True when this diagnostic is a javac / kotlinc / groovyc block. */
+    isCompiler(d) {
+      return isCompilerDiag(d);
+    },
+
     /**
      * CLI-parity report model for a test-failure diagnostic, as a 0/1-element array for a single
      * {@code v-for} evaluation. {@code count} is how many test-failure diags this module carries
@@ -1698,6 +1870,23 @@ export const appOptions = {
         TF_REPORT_CACHE.set(d, hit);
       }
       return hit.rep ? [hit.rep] : [];
+    },
+
+    /**
+     * CLI-parity compile-failure reports for a javac/kotlinc/groovyc diagnostic. First compiler
+     * diag in the module carries the {@code Compile failure in …} header.
+     */
+    cfReports(mod, d) {
+      if (!isCompilerDiag(d)) return [];
+      const diags = ((mod && mod.diagnostics) || []).filter((x) => isCompilerDiag(x));
+      const showHeader = diags.length === 0 || diags[0] === d;
+      const module = (mod && mod.coord) || d.module || '';
+      let hit = CF_REPORT_CACHE.get(d);
+      if (!hit || hit.showHeader !== showHeader || hit.module !== module) {
+        hit = { showHeader, module, reps: compilerFailureReports(d, { showHeader, module }) };
+        CF_REPORT_CACHE.set(d, hit);
+      }
+      return hit.reps || [];
     },
 
     /** Syntax segments for {@code SimpleClass.method()} labels. */
@@ -1723,17 +1912,19 @@ export const appOptions = {
     },
 
     // Multi-module cards split their module rows across two peer accordions: the failed modules
-    // (kept open) and everything else — succeeded, still-running, skipped, cancelled — which rolls
+    // (kept open) and everything else — succeeded, still-running, skipped — which rolls
     // up under a "success details" accordion that is open while running and collapsed once done. A
     // module carrying failure output counts as failed even if its state was never marked (covers
-    // request-level errors that land on a synthetic row).
+    // request-level errors that land on a synthetic row). Cancelled runs hide both accordions.
     // Order (CLI parity): active first (most recently updated), finished last.
     failedModules(card) {
+      if (this.outcome(card) === 'cancelled') return [];
       return orderedModules(
         card.modules.filter((m) => m.state === 'failed' || m.diagnostics.length > 0),
       );
     },
     okModules(card) {
+      if (this.outcome(card) === 'cancelled') return [];
       return orderedModules(
         card.modules.filter((m) => m.state !== 'failed' && m.diagnostics.length === 0),
       );

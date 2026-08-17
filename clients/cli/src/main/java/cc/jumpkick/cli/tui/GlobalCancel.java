@@ -29,6 +29,10 @@ import org.jline.utils.Signals;
  * <p>Uses {@link Signals#register} (JLine's reflective wrapper around {@code sun.misc.Signal})
  * instead of calling that class directly, so the compiler doesn't emit "internal proprietary API"
  * warnings.
+ *
+ * <p>JLine {@code TerminalBuilder} defaults to {@code nativeSignals(true)} + {@code SIG_DFL}, which
+ * replaces this handler. Every system-terminal open used for Ctrl-O / probes must pass
+ * {@code nativeSignals(false)} and/or call {@link #install} again after {@code build()}.
  */
 public final class GlobalCancel {
 

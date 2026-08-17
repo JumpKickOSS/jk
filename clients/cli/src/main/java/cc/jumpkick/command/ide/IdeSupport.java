@@ -313,7 +313,7 @@ public final class IdeSupport {
             chrome.note(cc.jumpkick.cli.tui.RichText.plain(message));
             return;
         }
-        cc.jumpkick.cli.CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("IDE", message));
+        cc.jumpkick.cli.tui.CommandWedge.printFail("IDE", message);
     }
 
     // =========================================================================

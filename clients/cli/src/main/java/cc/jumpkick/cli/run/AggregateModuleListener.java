@@ -29,6 +29,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
     private boolean inTestFailure;
 
     private final TestFailureHighlight.Stream testFailStream = new TestFailureHighlight.Stream();
+    private final DiagnosticReport.CompilerHeaderRun compilerHeaders = new DiagnosticReport.CompilerHeaderRun();
 
     /** Route this module's output into {@code buffer} (parallel build); see field doc. */
     public void bufferOutputInto(List<String> buffer) {
@@ -70,12 +71,41 @@ public final class AggregateModuleListener implements BuildPlanListener {
 
     @Override
     public void output(String step, String line) {
-        // Buffered path keeps raw lines; paint when the buffer is flushed (BuildCommand/TestCommand).
-        if (outBuffer != null) {
-            emit(line);
+        // Test-failure blocks: keep the curated path (raw lines in outBuffer or stream paint).
+        // Do not feed the Ctrl-O peek ring (and never force-show for tests).
+        if (TestFailureHighlight.isHeader(line) || inTestFailure) {
+            if (TestFailureHighlight.isHeader(line)) {
+                flushBufferedFailure();
+                inTestFailure = true;
+                testFailStream.reset();
+            }
+            if (outBuffer != null) {
+                synchronized (outBuffer) {
+                    outBuffer.add(line);
+                }
+                if (line != null && TestFailureHighlight.FOOTER_SENTINEL.equals(line.strip())) {
+                    inTestFailure = false;
+                }
+                return;
+            }
+            emit(paintOutputLine(line));
             return;
         }
-        emit(paintOutputLine(line));
+
+        // Tool/process chatter (native-image, compilers, …). Animating: feed the live peek ring
+        // so Ctrl-O works mid-step — and do NOT also park lines in outBuffer (that list is
+        // settled as a bulk dump and would re-print the whole Graal log after a successful
+        // native-image). Non-animating with a buffer: buffer ONLY — writeAbove prints
+        // immediately in that mode, and the module-finish block prints the buffer again, so
+        // doing both showed every line twice (JK-2090).
+        String painted = StackTraceHighlight.line(line);
+        if (outBuffer != null && !cm.animating()) {
+            synchronized (outBuffer) {
+                outBuffer.add(line);
+            }
+        } else {
+            cm.writeAbove(painted);
+        }
     }
 
     private String paintOutputLine(String line) {
@@ -96,7 +126,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
 
     @Override
     public void warn(String step, String code, String message) {
-        emit(ConsoleSpec.renderWarning(step, code, message));
+        emit(ConsoleSpec.renderWarning(step, code, message, module));
     }
 
     @Override
@@ -106,8 +136,21 @@ public final class AggregateModuleListener implements BuildPlanListener {
         // Per-test failures are fully rendered by run-tests output (styled "Test Failure" block).
         // Do not also print a second report — keep the diagnostic for JSON.
         if ("test-failure".equals(code)) return;
-        String report = ConsoleSpec.renderError(step, code, message);
-        if (report != null && !report.isEmpty()) emit(report);
+        String report = ConsoleSpec.renderError(step, code, message, module, compilerHeaders.show(step, code, module));
+        if (report != null && !report.isEmpty()) {
+            // Same buffer-XOR-print rule as output(): the settled block is the single printing
+            // path when not animating (JK-2090).
+            if (outBuffer != null && !cm.animating()) {
+                synchronized (outBuffer) {
+                    outBuffer.add(report);
+                }
+            } else {
+                cm.writeAbove(report);
+            }
+        }
+        if (JkManager.forceShowOnStepFailure(step, null)) {
+            cm.showProcessFailureOutput();
+        }
     }
 
     private void emit(String line) {
@@ -139,6 +182,9 @@ public final class AggregateModuleListener implements BuildPlanListener {
         // succeeded.
         boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;
         cm.stepDone(module, step, ok, group == null ? "" : group);
+        if (!ok && JkManager.forceShowOnStepFailure(step, group)) {
+            cm.showProcessFailureOutput();
+        }
     }
 
     /** Paint any buffered failure block now — already-received lines must not be dropped. */

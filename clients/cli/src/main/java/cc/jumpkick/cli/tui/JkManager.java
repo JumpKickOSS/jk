@@ -19,7 +19,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jline.terminal.Attributes;
+import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedStyle;
+import org.jline.utils.NonBlockingReader;
 
 /**
  * Live console for long-running commands: simple pulse-circle task mode, or plan mode (header
@@ -201,6 +204,22 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     volatile LineSink sink; // read by the animator thread for stale flushing
     boolean capturing;
 
+    /**
+     * Sliding process-output buffer for plan mode (Ctrl-O peek / force-show on tool failure). Always
+     * present; only plan+animate installs the key listener.
+     */
+    final OutputWindow outputWindow = new OutputWindow();
+
+    // Ctrl-O key listener (plan mode, interactive TTY only). Written by the plan-starting
+    // thread, read by whichever thread settles — often the SIGINT handler (renderCanceled →
+    // stopAnimator → stopKeyListener). keyLock serializes start/stop so the take-restore-null
+    // sequence is atomic and a stale-null read can never skip the attribute restore.
+    private final Object keyLock = new Object();
+    private Terminal keyTerminal;
+    private Attributes keyAttrsSaved;
+    private Thread keyThread;
+    private volatile boolean keysStopped;
+
     JkManager(PrintStream out, boolean animate, boolean planMode, int width) {
         // PlainAscii.wrap is identity under ANSI; under --no-ansi rewrites …/•/● in messages.
         this.out = PlainAscii.wrap(out);
@@ -255,13 +274,58 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         cm.startNanos = System.nanoTime();
         LiveRegion.setActive(cm);
         cm.ensureLeadingBlank(); // blank line before human chrome
+        // config.build-output / JK_BUILD_OUTPUT: start with the process-output peek open.
+        if (cc.jumpkick.config.SessionContext.current().config().buildOutputOr(false)) {
+            cm.outputWindow.show();
+        }
         if (animate && Theme.active().isAnsi()) {
             out.print(Ansi.HIDE_CURSOR);
             out.flush();
             cm.startAnimator();
+            cm.startKeyListener();
         }
         // Plain plan: no start line until progress() or settle (message may not exist yet).
         return cm;
+    }
+
+    /** Sliding process-output window for this plan (tests / force-show). */
+    public OutputWindow outputWindow() {
+        return outputWindow;
+    }
+
+    /**
+     * Force-open the process-output pane (non-zero tool/worker exit). No-op when not animating a
+     * plan. Does not run for test failures — callers must not invoke this for run-tests.
+     */
+    public void showProcessFailureOutput() {
+        if (!planMode) return;
+        synchronized (lock) {
+            if (done) return;
+            boolean wasOpen = outputWindow.visible();
+            outputWindow.show();
+            if (animate && Theme.active().isAnsi() && !wasOpen) {
+                view.openPeekPaint();
+            } else if (animate && Theme.active().isAnsi()) {
+                view.requestFullRepaint();
+                paintBuildPlan();
+                out.flush();
+            }
+        }
+    }
+
+    /** Toggle the process-output pane (Ctrl-O). */
+    public void toggleOutputWindow() {
+        if (!planMode) return;
+        synchronized (lock) {
+            if (done) return;
+            if (outputWindow.visible()) {
+                outputWindow.hide();
+                if (animate && Theme.active().isAnsi()) view.closePeekPaint();
+            } else {
+                outputWindow.show();
+                if (animate && Theme.active().isAnsi()) view.openPeekPaint();
+            }
+        }
     }
 
     /** Current terminal width in columns (updates on the next paint after a resize). */
@@ -578,7 +642,14 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     public void attachPhaseError(String module, String stepKey, String phase, String brief) {
         synchronized (lock) {
             String msg = brief == null ? "" : brief.trim().replace('\n', ' ');
-            if (msg.length() > 96) msg = msg.substring(0, 93) + "…";
+            if (msg.length() > 96) {
+                int cut = 93;
+                // Never split a surrogate pair: an emoji-heavy assertion brief cut mid-pair
+                // ends in a lone high surrogate (mojibake in the tree's brief-error row, and
+                // PlainAscii passes lone surrogates through).
+                if (Character.isHighSurrogate(msg.charAt(cut - 1))) cut--;
+                msg = msg.substring(0, cut) + ELLIPSIS;
+            }
             Row r = rows.get(key(module, stepKey));
             if (r != null && !msg.isEmpty()) r.briefError = msg;
             // Prefer the row's recorded wire phase (e.g. "compile") when callers pass empty
@@ -651,10 +722,11 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Record a finished unit's pre-formatted completion line in the live completed-tail rendered
-     * below the active rows (newest first, capped to {@link #MAX_COMPLETIONS}; the rest collapse into
-     * a "… plus N more …" footer). Callers that aren't animating should print append-only instead
-     * (see {@link #animating}) — this only feeds the live region.
+     * Record a finished unit's pre-formatted completion line in the live tail under the wedge
+     * (newest first, capped to {@link #MAX_COMPLETIONS}; the rest collapse into a
+     * {@code … plus N more …} footer). Does not write to the terminal or to process-output
+     * scrollback — the next plan paint includes it in the live region. Callers that aren't
+     * animating should print append-only instead (see {@link #animating}).
      */
     public void addCompletion(String line) {
         synchronized (lock) {
@@ -756,6 +828,16 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         view.writeAbove(text);
     }
 
+    /**
+     * True when a failed step should force-open the process-output pane (tool/worker crash), not
+     * when the failure is a curated test-runner result.
+     */
+    public static boolean forceShowOnStepFailure(String step, String group) {
+        // Only the test-runner step uses curated failure chrome; everything else is a tool/worker.
+        if (step == null) return true;
+        return !step.equals(cc.jumpkick.run.TaskNames.RUN_TESTS) && !step.startsWith("run-tests");
+    }
+
     public List<String> renderBuildPlanLines(int cols, long elapsedMillis) {
         return view.renderBuildPlanLines(cols, elapsedMillis);
     }
@@ -785,7 +867,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         // Ctrl-C: hand the streams back so any buffered output flushes above the
         // region, stop animating, then settle. BuildPlan mode replaces the wiped region
         // in place with the same cancelled-job wedge as a remote `jk cancel` / web cancel
-        // ("✘ Build job was cancelled by user took …") and returns true so GlobalCancel
+        // ("‼ Build  job was cancelled by user took …") and returns true so GlobalCancel
         // suppresses its generic notice. Simple / non-animating modes just settle and let
         // the handler print the notice.
         restoreStreams();
@@ -798,6 +880,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             if (!animate) return false;
             if (planMode) {
                 if (Theme.active().isAnsi()) {
+                    flushVisibleOutputToScrollback();
                     wipeRegion();
                     out.print(Ansi.taskbarClear());
                     out.print(Ansi.SHOW_CURSOR);
@@ -988,6 +1071,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
 
     void stopAnimator() {
         stopped = true;
+        stopKeyListener();
         Thread a;
         synchronized (lock) {
             a = animator;
@@ -1000,6 +1084,130 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+        }
+    }
+
+    /**
+     * Non-blocking Ctrl-O listener on the controlling TTY. ISIG stays on so Ctrl-C still raises
+     * SIGINT for {@link GlobalCancel}. Best-effort: if the terminal cannot be opened, peek is
+     * unavailable for this plan.
+     */
+    private void startKeyListener() {
+        if (!planMode || !animate || !Interactivity.canPrompt()) return;
+        synchronized (keyLock) {
+            startKeyListenerLocked();
+        }
+    }
+
+    private void startKeyListenerLocked() {
+        Terminal t = null;
+        Attributes saved = null;
+        try {
+            t = Interactivity.takeSharedTerminal();
+            if (t == null) {
+                t = Wizard.openTerminal();
+            }
+            saved = t.getAttributes();
+            Attributes raw = new Attributes(saved);
+            raw.setLocalFlag(Attributes.LocalFlag.ICANON, false);
+            raw.setLocalFlag(Attributes.LocalFlag.ECHO, false);
+            // ISIG remains: Ctrl-C → SIGINT → GlobalCancel. Do not call
+            // {@code terminal.handle(INT, …)} — that would steal the signal from GlobalCancel
+            // the same way JLine's default native SIG_DFL handlers did.
+            t.setAttributes(raw);
+            GlobalCancel.install();
+            Wizard.drainInput(t.reader(), 40L);
+            keyTerminal = t;
+            keyAttrsSaved = saved;
+            keysStopped = false;
+            keyThread = new Thread(this::readKeys, "jk-output-keys");
+            keyThread.setDaemon(true);
+            keyThread.start();
+        } catch (Exception ignored) {
+            // Peek is optional — plan continues without Ctrl-O. But never strand the taken tty:
+            // if we failed after setAttributes(raw), the shared terminal's restore hook already
+            // stood down (slot empty), so the shell would inherit a raw, echo-less terminal.
+            // Restore cooked and put the terminal back for the next consumer.
+            if (t != null) {
+                if (saved != null) {
+                    try {
+                        Wizard.restoreCooked(t, saved);
+                    } catch (RuntimeException ignored2) {
+                        // best-effort
+                    }
+                }
+                Interactivity.returnSharedTerminal(t);
+            }
+            keyTerminal = null;
+            keyAttrsSaved = null;
+        }
+    }
+
+    private void stopKeyListener() {
+        keysStopped = true; // volatile: unblocks readKeys before we take keyLock
+        Thread kt;
+        Terminal t;
+        Attributes saved;
+        synchronized (keyLock) {
+            kt = keyThread;
+            keyThread = null;
+            t = keyTerminal;
+            saved = keyAttrsSaved;
+            keyTerminal = null;
+            keyAttrsSaved = null;
+        }
+        if (kt != null) {
+            kt.interrupt();
+            try {
+                kt.join(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        if (t != null && saved != null) {
+            try {
+                Wizard.restoreCooked(t, saved);
+            } catch (RuntimeException ignored) {
+                // best-effort
+            }
+            // NEVER close: the system terminal owns FD 0 (see Interactivity) — closing it here
+            // broke stdin for everything after the plan in the same invocation (jk run's
+            // inheritIO app, wizard prompts, the next plan's Ctrl-O). Return it for reuse.
+            Interactivity.returnSharedTerminal(t);
+        }
+    }
+
+    private void readKeys() {
+        Terminal t;
+        synchronized (keyLock) {
+            t = keyTerminal;
+        }
+        if (t == null) return;
+        NonBlockingReader reader = t.reader();
+        while (!keysStopped && !stopped && !done) {
+            try {
+                KeyReader.Key key = KeyReader.readOrNull(reader, 100L);
+                if (key instanceof KeyReader.Key.CtrlO) {
+                    toggleOutputWindow();
+                }
+                // Ctrl-C is handled by the signal path (ISIG); ignore other keys.
+            } catch (RuntimeException e) {
+                return; // reader closed / failed
+            }
+        }
+    }
+
+    /**
+     * Peek close for settle/cancel: process lines are already permanent scrollback above the live
+     * region — hide the pane so wipe clears separator+wedge (not a re-dump of the log). The settle
+     * path then prints one blank between that scrollback and the settle chip when any lines were
+     * committed.
+     */
+    void flushVisibleOutputToScrollback() {
+        synchronized (lock) {
+            if (!outputWindow.visible()) return;
+            // Lines were committed above the region as they arrived; leave them in scrollback.
+            outputWindow.hide();
         }
     }
 
@@ -1145,6 +1353,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             String s = buf.toString(StandardCharsets.UTF_8);
             buf.reset();
             if (s.endsWith("\r")) s = s.substring(0, s.length() - 1);
+            if (s.isBlank()) return; // do not inject empty lines into the peek / settle layout
             cm.writeAbove(s);
         }
     }

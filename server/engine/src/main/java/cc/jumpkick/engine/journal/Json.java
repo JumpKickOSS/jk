@@ -82,6 +82,7 @@ final class Json {
                 dm.put("exceptionClass", d.exceptionClass());
             if (d.file() != null && !d.file().isEmpty()) dm.put("file", d.file());
             if (d.line() > 0) dm.put("line", d.line());
+            if (d.col() > 0) dm.put("col", d.col());
             if (d.snippetStart() > 0) dm.put("snippetStart", d.snippetStart());
             if (d.snippet() != null && !d.snippet().isEmpty()) dm.put("snippet", d.snippet());
             if (d.worker() > 0) dm.put("worker", d.worker());
@@ -100,6 +101,7 @@ final class Json {
         o.put("trigger", r.trigger());
         o.put("commit", r.commit());
         o.put("running", r.running());
+        if (r.requestId() > 0) o.put("requestId", r.requestId());
 
         if (r.benefit() == null) {
             o.put("benefit", null);
@@ -203,6 +205,7 @@ final class Json {
                     str(dm, "stack"),
                     str(dm, "file"),
                     (int) lng(dm, "line"),
+                    (int) lng(dm, "col"),
                     (int) lng(dm, "snippetStart"),
                     strList(dm, "snippet"),
                     (int) lng(dm, "worker")));
@@ -231,7 +234,8 @@ final class Json {
                 str(o, "commit"),
                 benefit,
                 bool(o, "running"),
-                io);
+                io,
+                lng(o, "requestId"));
     }
 
     private static String str(Map<String, Object> o, String key) {

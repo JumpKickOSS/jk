@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Bootstrap a usable `jk` from the Gradle-built primary tree, then print the dogfood path.
-# Usage (from jk-jk worktree or primary clone):
+# Bootstrap a usable `jk` from this dual-build tree (Gradle dist → install), then print dogfood steps.
+# Usage (from this repo, or pass another checkout that has gradlew):
 # ./scripts/bootstrap-from-gradle.sh
 # ./scripts/bootstrap-from-gradle.sh /path/to/oss/jk
 set -euo pipefail

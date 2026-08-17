@@ -8,8 +8,10 @@ import cc.jumpkick.compile.KotlincResult;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Action-cache front for Kotlin compile. The worker owns incremental recompile; this only does a
@@ -19,11 +21,27 @@ public final class KotlinCompile {
 
     private KotlinCompile() {}
 
-    /** Outcome of a {@link #run}. {@code output} carries the worker's diagnostics. */
-    public record Result(boolean success, String outcome, String actionKey, String output) {
+    /** Outcome of a {@link #run}. {@code diagnostics} are the worker's, one entry each. */
+    public record Result(
+            boolean success,
+            String outcome,
+            String actionKey,
+            List<cc.jumpkick.compile.CompileResult.Diagnostic> diagnostics) {
+
+        public Result {
+            diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics);
+        }
+
         /** True when an existing record satisfied the request (no compile ran). */
         public boolean cacheHit() {
             return outcome.startsWith("cache-hit");
+        }
+
+        /** Joined diagnostics for logs and exception messages. */
+        public String output() {
+            return diagnostics.stream()
+                    .map(cc.jumpkick.compile.CompileResult.Diagnostic::describe)
+                    .collect(Collectors.joining("\n"));
         }
     }
 
@@ -58,7 +76,7 @@ public final class KotlinCompile {
             Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
             // A failed restore (missing/corrupt blob) falls through to a real compile.
             if (hit.isPresent() && actionCache.restore(hit.get(), request.outputDir())) {
-                return new Result(true, "cache-hit:" + key.substring(0, 8), key, "");
+                return new Result(true, "cache-hit:" + key.substring(0, 8), key, List.of());
             }
         }
 
@@ -81,19 +99,19 @@ public final class KotlinCompile {
             outputs = prewriter.finish();
         }
         if (!kr.success()) {
-            return new Result(false, "errors", key, kr.output());
+            return new Result(false, "errors", key, kr.diagnostics());
         }
         // Never cache a zero-output "success" for a non-empty source set: stale incremental
         // state can convince the compiler nothing changed while the output dir is empty, and
         // caching that poisons every later run under the same key.
         if (outputs.isEmpty() && !request.sources().isEmpty()) {
-            return new Result(true, "compiled-no-outputs", key, kr.output());
+            return new Result(true, "compiled-no-outputs", key, kr.diagnostics());
         }
         // Store on rebuild/force too: the work re-ran and must refresh the action pointer so
         // the next non-rebuild explain sees CACHE_HIT (same as JavaIncrementalCompile). Only
         // ephemeral (verify-scratch) runs skip the write — their keys never recur.
         if (persist) actionCache.storeWithOutputs(taskId, key, Map.of(), outputs);
-        return new Result(true, "compiled", key, kr.output());
+        return new Result(true, "compiled", key, kr.diagnostics());
     }
 
     /** Any {@code .class} anywhere under {@code dir}? */

@@ -106,18 +106,8 @@ class HttpTest {
     @Test
     void offline_short_circuits_with_offline_exception() {
         var prev = cc.jumpkick.config.SessionContext.current().config();
-        cc.jumpkick.config.SessionContext.installConfig(prev.mergedWith(new cc.jumpkick.config.JkConfig(
-                Optional.empty(),
-                Optional.of(true),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty())));
+        cc.jumpkick.config.SessionContext.installConfig(
+                prev.mergedWith(cc.jumpkick.config.JkConfig.empty().withOffline(Optional.of(true))));
         try {
             assertThatThrownBy(() -> http().get(base.resolve("/anything")))
                     .isInstanceOf(OfflineException.class)

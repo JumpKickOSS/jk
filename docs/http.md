@@ -91,7 +91,14 @@ images shipped in the jar) is served under the SPA's own CSP so it can show the 
 authorization dialog, while files under the on-disk `web-root` (user reports and other
 build-written content) are served with `Content-Security-Policy: sandbox` — a unique opaque
 origin with scripts and forms disabled, so nothing dropped into `web-root` can script the
-dashboard origin or read the stored bearer token. Non-loopback clients carry the token the same way; `EventSource`
+dashboard origin or read the stored bearer token.
+
+Classpath shell files are `Cache-Control: no-cache` plus a version+mtime `ETag`, so a new
+engine jar is visible on the next load (revalidate always; unchanged bytes are a `304`). Disk
+`web-root` is also `no-cache` (`Last-Modified`). `/api/*` is `no-store`. There is no
+`max-age` on the shell: a still-fresh cached copy would hide a replacement engine, including
+security patches, and `location.reload()` after an `engineEpoch` mismatch does not bust
+subresources the browser still considers fresh. Non-loopback clients carry the token the same way; `EventSource`
 cannot send headers, so SSE passes it as an `access_token` query parameter. The SPA bootstraps
 from a `#t=` fragment. **`jk web`** starts the engine if needed, prints the tokenized URL, and
 opens a browser (`$BROWSER` or the platform default).
@@ -147,11 +154,14 @@ Allow-listed source paths under the identity checkout (`ProjectIdentity.pathForI
 fallback — a tree that merely contains a `jk.toml` is not enough.
 
 Response: `{ projectId, dir, truncated, files: [{ path, lang }] }`. `path` is workspace-relative
-with `/` separators. `lang` is `java` / `kotlin` / `groovy` / `toml` / `json` / `markdown` /
-`mermaid` / `graphviz` / `asciidoc` / `d2` / `image` (plus the usual source extensions). Hidden
-segments, `node_modules`, module-root `target`/`build`/`out`, and unknown extensions are omitted.
-The walk is breadth-first, capped at 2000 files and 32 directory levels, so truncation drops
-the deepest paths first; the workspace-root `jk.toml` is always included when it exists.
+with `/` separators. `lang` is `java` / `kotlin` / `groovy` / `scala` / `toml` / `xml` / `yaml` /
+`json` / `sql` / `properties` / `shell` / `markdown` / `mermaid` / `graphviz` / `asciidoc` / `d2` /
+`image` (plus the usual source extensions). Hidden
+segments, `node_modules`, module-root `build`/`out`, and unknown extensions are omitted.
+JumpKick's own `target/` is included when present (allow-listed files only — e.g. reports and
+diagrams; `.class` and other unknown extensions stay out). The walk is breadth-first, capped at
+5000 files and 32 directory levels, so truncation drops the deepest paths first; the
+workspace-root `jk.toml` is always included when it exists.
 In-root directory symlinks are walked (once — cycles are guarded by real path); links whose
 target escapes the workspace are omitted, matching the read endpoints. Entries are sorted by
 path; `truncated: true` means more remain (file cap or depth cap — deeper files stay readable

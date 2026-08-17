@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -61,6 +62,18 @@ public final class JobWorkers {
 
     private static final ConcurrentHashMap<Long, Set<Process>> BY_REQUEST = new ConcurrentHashMap<>();
 
+    /**
+     * Requests whose shutdown already ran. A cpu-pool thread still draining after cancel can call
+     * {@link #register} concurrently with {@link #shutdownForRequest}; without the tombstone it
+     * either re-created a {@code BY_REQUEST} entry nothing ever removes (leak + untracked live
+     * process) or added to the already-removed set after the kill loop (escaped worker) —
+     * JK-2096. Cleared on {@link #open} in case a request id is ever reused; clear-on-overflow
+     * bounds the set.
+     */
+    private static final Set<Long> TOMBSTONES = ConcurrentHashMap.newKeySet();
+
+    private static final int MAX_TOMBSTONES = 4_096;
+
     static {
         // SessionContext's static init uses bind() (displaces); force it to land before our add().
         cc.jumpkick.config.SessionContext.current();
@@ -106,6 +119,7 @@ public final class JobWorkers {
 
     /** Open a request scope on this thread so subsequent {@link #register} calls attach here. */
     public static void open(long requestId) {
+        TOMBSTONES.remove(requestId);
         CURRENT.set(requestId);
     }
 
@@ -147,7 +161,32 @@ public final class JobWorkers {
         if (process == null) return;
         Long id = CURRENT.get();
         if (id == null) return;
+        if (TOMBSTONES.contains(id)) {
+            // Request already shut down — kill on arrival instead of resurrecting the entry.
+            signalTree(process, true);
+            return;
+        }
         BY_REQUEST.computeIfAbsent(id, k -> ConcurrentHashMap.newKeySet()).add(process);
+        // Shutdown may have tombstoned + drained between the check above and the add: our set
+        // (or entry) may be orphaned. Kill directly — signalTree is idempotent, so racing the
+        // shutdown's own kill loop is harmless.
+        if (TOMBSTONES.contains(id)) {
+            signalTree(process, true);
+            Set<Process> orphan = BY_REQUEST.remove(id);
+            if (orphan != null) {
+                for (Process p : orphan) signalTree(p, true);
+            }
+        }
+    }
+
+    /**
+     * {@link ProcessBuilder#start()} then {@link #register}. No-op register when no request scope
+     * is open (probes, engine spawn, tests).
+     */
+    public static Process start(ProcessBuilder pb) throws IOException {
+        Process p = pb.start();
+        register(p);
+        return p;
     }
 
     /** Stop tracking {@code process} (e.g. after it exits normally). */
@@ -191,17 +230,20 @@ public final class JobWorkers {
      * <p>On Windows, step 1 may already be terminal (no SIGTERM); step 2 still bounds our wait.
      */
     public static int shutdownForRequest(long requestId, long graceMs) {
+        // Tombstone FIRST so a register racing us kills its process on arrival (JK-2096).
+        if (TOMBSTONES.size() >= MAX_TOMBSTONES) TOMBSTONES.clear();
+        TOMBSTONES.add(requestId);
         Set<Process> set = BY_REQUEST.remove(requestId);
         if (set == null || set.isEmpty()) return 0;
         int aliveAtStart = 0;
         boolean soft = graceMs > 0;
-        // Phase 1: signal everyone first (simultaneous for practical purposes).
+        // Phase 1: signal everyone first (simultaneous for practical purposes), including
+        // grandchildren (native-image under a plugin JVM, etc.).
         for (Process p : set) {
             try {
                 if (p.isAlive()) {
                     aliveAtStart++;
-                    if (soft) p.destroy();
-                    else p.destroyForcibly();
+                    signalTree(p, !soft);
                 }
             } catch (RuntimeException ignored) {
                 // best-effort
@@ -221,7 +263,7 @@ public final class JobWorkers {
             }
             for (Process p : set) {
                 try {
-                    if (p.isAlive()) p.destroyForcibly();
+                    if (p.isAlive() || anyDescendantAlive(p)) signalTree(p, true);
                 } catch (RuntimeException ignored) {
                     // best-effort
                 }
@@ -233,12 +275,47 @@ public final class JobWorkers {
     private static boolean anyAlive(Set<Process> set) {
         for (Process p : set) {
             try {
-                if (p.isAlive()) return true;
+                if (p.isAlive() || anyDescendantAlive(p)) return true;
             } catch (RuntimeException ignored) {
                 // treat as dead
             }
         }
         return false;
+    }
+
+    private static boolean anyDescendantAlive(Process p) {
+        try {
+            return p.descendants().anyMatch(ProcessHandle::isAlive);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** SIGTERM (or SIGKILL when {@code force}) the process and every live descendant. */
+    private static void signalTree(Process p, boolean force) {
+        try {
+            if (force) {
+                p.descendants().forEach(h -> {
+                    try {
+                        h.destroyForcibly();
+                    } catch (RuntimeException ignored) {
+                        // best-effort
+                    }
+                });
+                if (p.isAlive()) p.destroyForcibly();
+            } else {
+                if (p.isAlive()) p.destroy();
+                p.descendants().forEach(h -> {
+                    try {
+                        h.destroy();
+                    } catch (RuntimeException ignored) {
+                        // best-effort
+                    }
+                });
+            }
+        } catch (RuntimeException ignored) {
+            // best-effort
+        }
     }
 
     /**

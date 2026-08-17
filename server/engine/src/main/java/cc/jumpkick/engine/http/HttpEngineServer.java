@@ -165,8 +165,19 @@ public final class HttpEngineServer implements AutoCloseable {
         this.progressTokens = new ProgressTokenRegistry();
         // null when [mcp] enabled=false — dispatch 404s every /mcp path before reaching it.
         this.mcp = config.mcp().enabled()
-                ? new McpHandler(status, jobs, this::projectMap, () -> journal.rawRecords(200), version, progressTokens)
+                ? new McpHandler(
+                        status,
+                        jobs,
+                        this::projectMap,
+                        () -> journal.rawRecords(200),
+                        version,
+                        progressTokens,
+                        () -> this.liveRuns.get(),
+                        this::yieldingAdmission,
+                        jid -> journal.rawFinishedRecordByRequestId(jid).orElse(null))
                 : null;
+        // jk_disk / jk_doctor / jk://disk read the same memoized walk as GET /api/cache.
+        if (this.mcp != null) this.mcp.cacheSnapshot(cache);
         this.historyApi = new HttpHistoryApi(journal, () -> this.liveRuns.get());
         this.projectApi = new HttpProjectApi(journal);
         this.readApi = new HttpReadApi(config, webRoot, logFile, status, jobs, metrics, cache, this::url);
@@ -394,9 +405,14 @@ public final class HttpEngineServer implements AutoCloseable {
                 sendText(exchange, 404, "not found\n"); // [mcp] enabled = false
                 return;
             }
-            // MCP is agent-facing; always token-gated (even loopback) — same CSRF posture as POST /api/build.
-            if (!tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization")))
-                    && !tokenValid(queryParamLenient(exchange.getRequestURI().getRawQuery(), "access_token"))) {
+            // MCP is agent-facing; always token-gated (even loopback) — same CSRF posture as POST
+            // /api/build. ?access_token= exists solely for the SSE GET (EventSource cannot set
+            // headers); every other shape — mutating POSTs above all — must present the Bearer
+            // header, matching /api and the docs, so tokens stay out of shell history/proxy logs.
+            boolean sseQueryToken = exchange.getRequestMethod().equals("GET")
+                    && acceptsEventStream(exchange)
+                    && tokenValid(queryParamLenient(exchange.getRequestURI().getRawQuery(), "access_token"));
+            if (!tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization"))) && !sseQueryToken) {
                 exchange.getResponseHeaders().set("WWW-Authenticate", "Bearer");
                 sendText(exchange, 401, "missing or invalid bearer token\n");
                 return;
@@ -770,6 +786,21 @@ public final class HttpEngineServer implements AutoCloseable {
         }
         exchange.sendResponseHeaders(status, body.length);
         exchange.getResponseBody().write(body);
+    }
+
+    /**
+     * {@link AdmissionYield} over the RPC gate: MCP long-polls park here after releasing their
+     * permit, so 16 waiting agents cannot 503 the surface (including the {@code jk_cancel} that
+     * would un-wedge them). Reacquire is uninterruptible — the balancing {@code release()} in
+     * {@link #handle} must never release a permit this thread does not hold.
+     */
+    private <T> T yieldingAdmission(java.util.function.Supplier<T> blocking) {
+        admission.release();
+        try {
+            return blocking.get();
+        } finally {
+            admission.acquireUninterruptibly();
+        }
     }
 
     /** Test seam: the admission gate, so a saturated-server {@code 503} is deterministically testable. */

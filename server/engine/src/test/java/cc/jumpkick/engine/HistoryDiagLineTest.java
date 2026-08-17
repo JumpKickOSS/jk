@@ -32,6 +32,7 @@ class HistoryDiagLineTest {
                 "AssertionFailedError: nope\n\tat cc.jumpkick.FooTest.bar(FooTest.java:9)",
                 "src/test/java/cc/jumpkick/FooTest.java",
                 9,
+                0,
                 6,
                 List.of("int a = 1;", "assertEquals(1, 2);"),
                 2);
@@ -47,6 +48,7 @@ class HistoryDiagLineTest {
         assertThat(Jsonl.str(line, "stack")).contains("FooTest.java:9");
         assertThat(Jsonl.str(line, "file")).isEqualTo("src/test/java/cc/jumpkick/FooTest.java");
         assertThat(Jsonl.intValue(line, "line", 0)).isEqualTo(9);
+        assertThat(Jsonl.intValue(line, "col", 0)).isEqualTo(0);
         assertThat(Jsonl.intValue(line, "snippetStart", 0)).isEqualTo(6);
         assertThat(Jsonl.strArray(line, "snippet")).containsExactly("int a = 1;", "assertEquals(1, 2);");
         assertThat(Jsonl.intValue(line, "worker", 0)).isEqualTo(2);

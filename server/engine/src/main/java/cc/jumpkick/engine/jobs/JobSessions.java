@@ -88,6 +88,12 @@ public final class JobSessions {
         return s == null ? null : s.lastProgress();
     }
 
+    /** Wall clock of the newest progress/remaining signal for {@code id}; 0 when none. */
+    public long lastEventAt(long id) {
+        JobSession s = get(id);
+        return s == null ? 0L : s.lastEventAt();
+    }
+
     public void accumulator(long id, BuildAccumulator acc) {
         JobSession s = open(id);
         if (s != null) s.accumulator(acc);

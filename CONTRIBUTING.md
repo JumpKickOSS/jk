@@ -22,6 +22,13 @@ gradle=9.6.1
 With SDKMAN: `sdk env install && sdk env`. Otherwise Gradle can provision a JDK via the
 foojay resolver on first use.
 
+## Build-family commands
+
+`jk build`, `jk test`, `jk native`, and workspace `jk image` share **one** engine
+orchestrator (`WorkspaceExecute`). Do not add a new per-verb cascade (dirty set, ETA,
+prepare, schedule). Add a `WorkspaceTarget` + module filter. See
+[docs/features/build-plan.md](docs/features/build-plan.md#one-orchestrator-invariant).
+
 ## Building
 
 ```bash
@@ -58,7 +65,7 @@ Campaign epic JK-1923 preempts other work until it closes.
 
 ### Self-host (phase 2+) — workspace modules + thin workers with jk
 
-Long-form dogfood and the `jk-jk` worktree: **[docs/self-host.md](docs/self-host.md)**.
+Long-form dogfood (Gradle + pure-jk in this same repo): **[docs/self-host.md](docs/self-host.md)**.
 Bootstrap helper: `./scripts/bootstrap-from-gradle.sh`.
 
 Catalog short names resolve through the **system catalog** (downloaded global registry +

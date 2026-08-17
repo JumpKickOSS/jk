@@ -55,9 +55,19 @@ const LANG_BY_EXT = {
   '.kt': 'kotlin',
   '.kts': 'kotlin',
   '.groovy': 'groovy',
+  '.scala': 'scala',
+  '.sc': 'scala',
   '.toml': 'toml',
+  '.xml': 'xml',
+  '.yaml': 'yaml',
+  '.yml': 'yaml',
   '.json': 'json',
   '.jsonl': 'json',
+  '.sql': 'sql',
+  '.properties': 'properties',
+  '.sh': 'shell',
+  '.bash': 'shell',
+  '.zsh': 'shell',
   '.md': 'markdown',
   '.markdown': 'markdown',
   '.mmd': 'mermaid',
@@ -79,17 +89,23 @@ const LANG_BY_EXT = {
 };
 
 /**
- * Monaco language ids for the langs above. Monaco ships no Groovy or TOML grammar, so those fall
- * back to the closest one it has: Java (C-like — comments, strings, numbers, most keywords) and
- * ini (`[section]`, `key = value`, `#` comments). Anything unknown tokenizes as plain text rather
- * than handing Monaco an unregistered id.
+ * Monaco language ids for the langs above. Monaco ships no Groovy, TOML, or Java properties
+ * grammar, so those fall back to the closest one it has: Java (C-like), and ini (`[section]`,
+ * `key = value`, `#` comments). Anything unknown tokenizes as plain text rather than handing
+ * Monaco an unregistered id.
  */
 const MONACO_LANG = {
   java: 'java',
   kotlin: 'kotlin',
   groovy: 'java',
+  scala: 'scala',
   toml: 'ini',
+  xml: 'xml',
+  yaml: 'yaml',
   json: 'json',
+  sql: 'sql',
+  properties: 'ini',
+  shell: 'shell',
   markdown: 'markdown',
   mermaid: 'plaintext',
   graphviz: 'plaintext',
@@ -246,6 +262,16 @@ export function injectMermaidSvgs(html, svgs) {
   return out;
 }
 
+/**
+ * One DOMPurify chokepoint for renderer SVG (mermaid, graphviz, d2): SVG profile plus filters.
+ * Renderer output derives from workspace source text — never inject it unsanitized.
+ */
+export function sanitizeDiagramSvg(purify, svg) {
+  return purify.sanitize(svg == null ? '' : String(svg), {
+    USE_PROFILES: { svg: true, svgFilters: true },
+  });
+}
+
 /** Human-readable save failure (network / auth / concurrency). */
 export function saveErrorMessage(e) {
   if (!e) return 'Failed to save file';
@@ -316,18 +342,32 @@ export function parseTruthy(raw) {
  *   #project/<id>
  *   #project/<id>/files
  *   #project/<id>/files/<rel/path>?line=<n>
- *   #project/<id>/files/<rel/path>?line=<n>&err=true  (fail-report / OSC-8 jump)
+ *   #project/<id>/files/<rel/path>?line=<n>&col=<c>&err=true&msg=<note>  (fail-report / OSC-8)
  */
+function routeFields(over = {}) {
+  return {
+    view: 'activity',
+    projectId: null,
+    files: false,
+    path: null,
+    line: 0,
+    col: 0,
+    lineErr: false,
+    msg: '',
+    ...over,
+  };
+}
+
 export function routeFromHash(hash = typeof location !== 'undefined' ? location.hash : '') {
   const h = hash || '';
   const q = parseHashQuery(h);
   const pathPart = h.indexOf('?') >= 0 ? h.slice(0, h.indexOf('?')) : h;
-  const empty = { view: 'activity', projectId: null, files: false, path: null, line: 0, lineErr: false };
+  const empty = routeFields();
   if (pathPart === '#projects') {
-    return { view: 'projects', projectId: null, files: false, path: null, line: 0, lineErr: false };
+    return routeFields({ view: 'projects' });
   }
   if (pathPart === '#status') {
-    return { view: 'status', projectId: null, files: false, path: null, line: 0, lineErr: false };
+    return routeFields({ view: 'status' });
   }
   if (pathPart.startsWith('#project/')) {
     const segs = pathPart.slice('#project/'.length).split('/');
@@ -339,32 +379,35 @@ export function routeFromHash(hash = typeof location !== 'undefined' ? location.
         if (raw === '') continue;
         const s = decodeComp(raw);
         if (s == null || s === '' || s === '.' || s === '..') {
-          return {
+          return routeFields({
             view: 'project',
             projectId: id,
             files: true,
-            path: null,
             line: parseLine(q.line),
+            col: parseLine(q.col),
             lineErr: parseTruthy(q.err),
-          };
+            msg: q.msg || '',
+          });
         }
         rel.push(s);
       }
-      return {
+      return routeFields({
         view: 'project',
         projectId: id,
         files: true,
         path: rel.length ? rel.join('/') : null,
         line: parseLine(q.line),
+        col: parseLine(q.col),
         lineErr: parseTruthy(q.err),
-      };
+        msg: q.msg || '',
+      });
     }
-    return { view: 'project', projectId: id, files: false, path: null, line: 0, lineErr: false };
+    return routeFields({ view: 'project', projectId: id });
   }
   return empty;
 }
 
-export function buildProjectHash({ projectId, files, path, line, err } = {}) {
+export function buildProjectHash({ projectId, files, path, line, col, err, msg } = {}) {
   if (!projectId) return '#projects';
   let h = '#project/' + encodeURIComponent(projectId);
   if (files || path) {
@@ -381,9 +424,43 @@ export function buildProjectHash({ projectId, files, path, line, err } = {}) {
   }
   if (line > 0) {
     h += '?line=' + line;
+    if (col > 0) h += '&col=' + col;
     if (err) h += '&err=true';
+    const note = clipHashMsg(msg);
+    if (note) h += '&msg=' + encodeURIComponent(note);
   }
   return h;
+}
+
+/**
+ * Visible locus on a failure path: {@code path}, {@code path:line}, or {@code path:line:col}.
+ * Copy-paste still carries the jump after the hash / OSC-8 link is stripped.
+ */
+export function locusLabel(path, line = 0, col = 0) {
+  const p = path == null ? '' : String(path);
+  if (!p) return '';
+  const n = Number(line) || 0;
+  if (n < 1) return p;
+  const c = Number(col) || 0;
+  return c > 0 ? p + ':' + n + ':' + c : p + ':' + n;
+}
+
+/** Keep hash / OSC-8 URLs from ballooning; compiler notes are a few short lines. */
+export function clipHashMsg(msg, max = 800) {
+  const t = msg == null ? '' : String(msg).trim();
+  if (!t) return '';
+  if (t.length <= max) return t;
+  return t.slice(0, Math.max(1, max - 1)) + '…';
+}
+
+/**
+ * Monaco {@code hoverMessage} payload for a decoration. Wrapped as a text fence so
+ * identifiers like {@code List<T>} don't go through Markdown emphasis.
+ */
+export function hoverMessage(msg) {
+  const t = clipHashMsg(msg);
+  if (!t) return undefined;
+  return { value: '```text\n' + t.replace(/```/g, "'''") + '\n```' };
 }
 
 export function langFromPath(path) {
@@ -450,30 +527,77 @@ export function monacoLang(lang) {
 }
 
 /**
+ * 1-based [start, end) span covering the identifier at {@code col}, or a single column
+ * when the character is not an identifier. Used so {@code ?col=} paints the token, not a sliver.
+ */
+export function columnSpan(text, col) {
+  const n = Number(col) || 0;
+  if (n < 1) return null;
+  const s = text == null ? '' : String(text);
+  if (!s.length) return { start: n, end: n + 1 };
+  const i = Math.min(Math.max(n, 1), s.length + 1) - 1;
+  const isId = (ch) => ch != null && /[A-Za-z0-9_$]/.test(ch);
+  if (i >= s.length || !isId(s[i])) {
+    return { start: i + 1, end: i + 2 };
+  }
+  let start = i;
+  while (start > 0 && isId(s[start - 1])) start--;
+  let end = i + 1;
+  while (end < s.length && isId(s[end])) end++;
+  return { start: start + 1, end: end + 1 };
+}
+
+/**
  * `?line=` whole-line decoration — plain IRange objects, testable without a monaco global.
  * Empty for line 0. Neutral (cyan/soft) by default; {@code err: true} uses the fail-report red wash
  * ({@code ?line=N&err=true} from Activity / OSC-8).
+ *
+ * When {@code col} is set, a second inline decoration marks that column (identifier span when
+ * {@code lineText} is supplied). {@code err} paints a red squiggle; otherwise a cyan underline.
+ * {@code msg} is a hover on the whole-line decoration only — attaching it to both stacks the
+ * same note twice when the cursor sits on the token.
  */
-export function lineDecorations(line, err = false) {
+export function lineDecorations(line, err = false, col = 0, lineText = '', msg = '') {
   const n = Number(line) || 0;
   if (n < 1) return [];
   const error = !!err;
+  const hover = hoverMessage(msg);
   const opts = {
     isWholeLine: true,
     className: error ? 'code-line-err' : 'code-line-hl',
     linesDecorationsClassName: error ? 'code-line-err-gutter' : 'code-line-hl-gutter',
   };
+  if (hover) opts.hoverMessage = hover;
   if (error) {
     // Stick the mark in the overview/minimap so a long file still shows where the jump landed.
     opts.overviewRuler = { color: 'rgba(255, 51, 102, 0.85)', position: 1 };
     opts.minimap = { color: 'rgba(255, 51, 102, 0.85)', position: 1 };
   }
-  return [
+  const out = [
     {
       range: { startLineNumber: n, startColumn: 1, endLineNumber: n, endColumn: 1 },
       options: opts,
     },
   ];
+  const span = columnSpan(lineText, col);
+  if (span) {
+    const colOpts = {
+      inlineClassName: error ? 'code-col-err' : 'code-col-hl',
+      overviewRuler: error
+        ? { color: 'rgba(255, 51, 102, 0.95)', position: 1 }
+        : { color: 'rgba(0, 240, 255, 0.85)', position: 1 },
+    };
+    out.push({
+      range: {
+        startLineNumber: n,
+        startColumn: span.start,
+        endLineNumber: n,
+        endColumn: span.end,
+      },
+      options: colOpts,
+    });
+  }
+  return out;
 }
 
 /**
@@ -706,7 +830,12 @@ export function ensureMonaco() {
     return monacoPromise;
   }
   monacoPromise = (async () => {
-    await loadScript(MONACO_LOADER);
+    // A partial-failure retry (loader OK, editor.main rejected) finds the AMD loader already
+    // installed — re-injecting loader.js would append a duplicate tag and redefine
+    // require/define, so only load it when require is absent.
+    if (!window.require || typeof window.require.config !== 'function') {
+      await loadScript(MONACO_LOADER);
+    }
     if (!window.require || typeof window.require.config !== 'function') {
       throw new Error('monaco loader did not install require');
     }
@@ -832,10 +961,14 @@ export const CodeView = {
     projectId: { type: String, default: null },
     path: { type: String, default: null },
     line: { type: Number, default: 0 },
+    /** 1-based column from {@code ?col=}; 0 means line-only. */
+    col: { type: Number, default: 0 },
     /** True when the hash carried {@code err=true} (fail-report / OSC-8 jump). */
     lineErr: { type: Boolean, default: false },
+    /** Compiler / failure note from {@code ?msg=} — shown on hover. */
+    msg: { type: String, default: '' },
   },
-  emits: ['navigate', 'build'],
+  emits: ['navigate', 'build', 'saved'],
   data: () => ({
     loadingList: false,
     loadingFile: false,
@@ -864,6 +997,7 @@ export const CodeView = {
     _fileAbort: null,
     _baseline: '',
     _etag: null,
+    saveConfirmOpen: false,
     // The editor/model/decorations handles stay OFF data() on purpose: data is deeply reactive,
     // and wrapping Monaco's instances in a Proxy breaks them. They live on the raw instance
     // (this._editor, set in mount()).
@@ -965,14 +1099,18 @@ export const CodeView = {
     line() {
       this.$nextTick(() => this.scrollToLine());
     },
+    col() {
+      this.$nextTick(() => this.scrollToLine());
+    },
+    msg() {
+      this.$nextTick(() => this.applyLineDecorations());
+    },
     // A buffer going clean releases an epoch reload the user declined while dirty (JK-1973).
     dirty(next) {
       if (!next && this._api) this._api.releaseDeferredEpochReload();
     },
     lineErr() {
-      this.$nextTick(() => {
-        if (this._decorations) this._decorations.set(lineDecorations(this.line, this.lineErr));
-      });
+      this.$nextTick(() => this.applyLineDecorations());
     },
     // Preview open/close changes flex slots; Monaco only remeasures on layout().
     paneMode() {
@@ -1000,6 +1138,15 @@ export const CodeView = {
       }
     };
     window.addEventListener('beforeunload', this._beforeUnload);
+    // Capture phase so Ctrl/Cmd+S wins over Monaco and the browser "Save page" default.
+    this._onSaveKey = (e) => {
+      if (e.defaultPrevented) return;
+      if (!(e.key === 's' || e.key === 'S')) return;
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      e.preventDefault();
+      this.requestSave();
+    };
+    window.addEventListener('keydown', this._onSaveKey, true);
     await this.loadList();
     await this.loadFile();
   },
@@ -1012,10 +1159,15 @@ export const CodeView = {
         window.removeEventListener('beforeunload', this._beforeUnload);
         this._beforeUnload = null;
       }
+      if (this._onSaveKey) {
+        window.removeEventListener('keydown', this._onSaveKey, true);
+        this._onSaveKey = null;
+      }
       if (this._api && this._dirtyProbe) {
         this._api.unregisterDirtyGuard(this._dirtyProbe);
         this._dirtyProbe = null;
       }
+      this.settleSaveConfirm(false, { restoreFocus: false });
       if (this._listAbort) this._listAbort.abort();
       if (this._fileAbort) this._fileAbort.abort();
       if (this._copiedTimer) clearTimeout(this._copiedTimer);
@@ -1166,6 +1318,86 @@ export const CodeView = {
     confirmDiscard() {
       if (typeof window === 'undefined' || !window.confirm) return true;
       return window.confirm('Discard unsaved changes?');
+    },
+    /** In-page Save confirm. Resolves true only on Save. */
+    confirmSave() {
+      if (this.saveConfirmOpen) return this._saveConfirmPromise || Promise.resolve(false);
+      this.saveConfirmOpen = true;
+      this.bindSaveConfirmKeys();
+      this._saveConfirmPromise = new Promise((resolve) => {
+        this._saveConfirmResolve = resolve;
+      });
+      this.$nextTick(() => {
+        const btn = this.$refs.saveConfirmOk;
+        if (btn && typeof btn.focus === 'function') btn.focus();
+      });
+      return this._saveConfirmPromise;
+    },
+    settleSaveConfirm(ok, opts) {
+      if (!this.saveConfirmOpen && !this._saveConfirmResolve) return;
+      this.saveConfirmOpen = false;
+      this.unbindSaveConfirmKeys();
+      const resolve = this._saveConfirmResolve;
+      this._saveConfirmResolve = null;
+      this._saveConfirmPromise = null;
+      if (!opts || opts.restoreFocus !== false) {
+        this.$nextTick(() => {
+          if (this._editor && typeof this._editor.focus === 'function') this._editor.focus();
+        });
+      }
+      if (resolve) resolve(!!ok);
+    },
+    bindSaveConfirmKeys() {
+      if (this._onSaveConfirmKey) return;
+      this._onSaveConfirmKey = (e) => this.onSaveConfirmKey(e);
+      window.addEventListener('keydown', this._onSaveConfirmKey, true);
+    },
+    unbindSaveConfirmKeys() {
+      if (!this._onSaveConfirmKey) return;
+      window.removeEventListener('keydown', this._onSaveConfirmKey, true);
+      this._onSaveConfirmKey = null;
+    },
+    onSaveConfirmKey(e) {
+      if (!this.saveConfirmOpen) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.settleSaveConfirm(false);
+        return;
+      }
+      if (e.key === 'Tab') {
+        const root = this.$refs.saveConfirmDialog;
+        if (!root) return;
+        const list = root.querySelectorAll('button');
+        if (!list.length) return;
+        const first = list[0];
+        const last = list[list.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+        return;
+      }
+      if (e.key === 'Enter' && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        if (e.target && e.target.closest && e.target.closest('.confirm-modal button')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        this.settleSaveConfirm(true);
+      }
+    },
+    /** Save button + Ctrl/Cmd+S: confirm, then PUT when the buffer is dirty and writable. */
+    async requestSave() {
+      if (!this.canSave || this._savePromptOpen) return;
+      this._savePromptOpen = true;
+      try {
+        if (!(await this.confirmSave())) return;
+        await this.save();
+      } finally {
+        this._savePromptOpen = false;
+      }
     },
     fileName(p) {
       return baseFileName(p);
@@ -1368,6 +1600,10 @@ export const CodeView = {
       }
       if (!this._editor) {
         this._editor = monaco.editor.create(host, options);
+        // Monaco-local binding so Ctrl/Cmd+S still works when the editor owns focus.
+        this._editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+          this.requestSave();
+        });
         // create() can land before the host's box is measurable, and a viewport-less editor
         // reveals ?line= at the top instead of the middle. Measure now, and again after layout
         // settles (flex + tab strip can still be sizing on the first paint).
@@ -1384,19 +1620,39 @@ export const CodeView = {
         this._editor.layout();
       }
       if (!this._model) this._model = this._editor.getModel();
-      this._decorations = this._editor.createDecorationsCollection(
-        lineDecorations(this.line, this.lineErr),
-      );
+      this._decorations = this._editor.createDecorationsCollection(this.lineDecorationSpecs());
       if (!options.readOnly && this._model) {
         this._contentSub = this._model.onDidChangeContent(() => this.recomputeDirty());
       }
       this.recomputeDirty();
     },
+    lineDecorationSpecs() {
+      let text = '';
+      if (this._model && this.line > 0) {
+        try {
+          text = this._model.getLineContent(this.line) || '';
+        } catch {
+          text = '';
+        }
+      }
+      return lineDecorations(this.line, this.lineErr, this.col, text, this.msg);
+    },
+    applyLineDecorations() {
+      if (this._decorations) this._decorations.set(this.lineDecorationSpecs());
+    },
     scrollToLine() {
       if (this.line < 1) return;
       if (this._editor) {
-        if (this._decorations) this._decorations.set(lineDecorations(this.line, this.lineErr));
-        this._editor.revealLineInCenter(this.line);
+        this.applyLineDecorations();
+        const col = this.col > 0 ? this.col : 1;
+        this._editor.setPosition({ lineNumber: this.line, column: col });
+        this._editor.revealPositionInCenter({ lineNumber: this.line, column: col });
+        if (this.msg) {
+          // Land with the compiler / failure note open, not only after the user hunts for hover.
+          requestAnimationFrame(() => {
+            if (this._editor && this.msg) this._editor.trigger('jk', 'editor.action.showHover', {});
+          });
+        }
         return;
       }
       const pre = this.$refs.pre;
@@ -1451,6 +1707,8 @@ export const CodeView = {
           this.notice = 'Manifest saved — the lock is now stale; the next build will re-resolve dependencies';
         }
         this.flashSaved();
+        // The parent refreshes project meta on manifest saves (header coord/description).
+        this.$emit('saved', { path: savedPath });
       } catch (e) {
         if (this.path !== savedPath) return; // stale failure belongs to a file no longer shown
         this.error = saveErrorMessage(e);
@@ -1522,7 +1780,7 @@ export const CodeView = {
               try {
                 const id = 'jk-md-mmd-' + gen + '-' + i;
                 const { svg } = await mermaid.render(id, fences[i]);
-                svgs.push('<div class="code-preview-diagram">' + svg + '</div>');
+                svgs.push('<div class="code-preview-diagram">' + sanitizeDiagramSvg(purify, svg) + '</div>');
               } catch (err) {
                 const msg = (err && err.message) || 'Mermaid diagram failed';
                 svgs.push('<pre class="code-preview-diagram-err">' + escapeHtml(msg) + '</pre>');
@@ -1538,13 +1796,13 @@ export const CodeView = {
           if (gen !== this._previewGen) return;
           this.previewHtml = html;
         } else if (kind === 'mermaid') {
-          const mermaid = await ensureCdn('mermaid');
+          const [mermaid, purify] = await Promise.all([ensureCdn('mermaid'), ensureCdn('purify')]);
           if (gen !== this._previewGen) return;
           mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' });
           const id = 'jk-mmd-' + gen;
           const { svg } = await mermaid.render(id, this.currentContent());
           if (gen !== this._previewGen) return;
-          this.previewHtml = '<div class="code-preview-diagram">' + svg + '</div>';
+          this.previewHtml = '<div class="code-preview-diagram">' + sanitizeDiagramSvg(purify, svg) + '</div>';
         } else if (kind === 'graphviz') {
           // Sanitize like markdown/asciidoc (JK-1976): .dot files from a cloned repo control
           // the SVG (URL= attrs, arbitrary markup) — one DOMPurify chokepoint for all renderers.
@@ -1554,9 +1812,7 @@ export const CodeView = {
           if (gen !== this._previewGen) return;
           this.previewHtml =
             '<div class="code-preview-diagram">' +
-            purify.sanitize(viz.renderSVGElement(this.currentContent()).outerHTML, {
-              USE_PROFILES: { svg: true, svgFilters: true },
-            }) +
+            sanitizeDiagramSvg(purify, viz.renderSVGElement(this.currentContent()).outerHTML) +
             '</div>';
         } else if (kind === 'asciidoc') {
           const Asciidoctor = await ensureCdn('asciidoctor');
@@ -1577,9 +1833,7 @@ export const CodeView = {
           if (gen !== this._previewGen) return;
           this.previewHtml =
             '<div class="code-preview-diagram">' +
-            purify.sanitize(typeof rendered === 'string' ? rendered : String(rendered), {
-              USE_PROFILES: { svg: true, svgFilters: true },
-            }) +
+            sanitizeDiagramSvg(purify, rendered) +
             '</div>';
         } else {
           this.previewError = 'No preview for this file type';
@@ -1601,7 +1855,7 @@ export const CodeView = {
           <input class="code-filter" v-model="filter" placeholder="Filter files" spellcheck="false"
                  aria-label="Filter files">
         </div>
-        <p v-if="truncated" class="warn">File list truncated at 2000</p>
+        <p v-if="truncated" class="warn">File list truncated at 5000</p>
         <p v-if="loadingList" class="empty">Listing…</p>
         <p v-else-if="!treeRows.length" class="empty">{{ filtering ? 'No matching files' : 'No files' }}</p>
         <button v-for="row in treeRows" :key="row.path" type="button"
@@ -1635,8 +1889,8 @@ export const CodeView = {
                     :data-tip="previewable ? (previewOpen ? 'Back to source' : 'Preview this file') : 'Preview not available for this file type'">
               <jk-icon name="eye"></jk-icon>{{ previewOpen ? 'Source' : 'Preview' }}
             </button>
-            <button type="button" class="action-cyan" :disabled="!canSave" @click="save()"
-                    :data-tip="canSave ? 'Save changes' : (saving ? 'Saving…' : (saved ? 'Saved' : 'No unsaved changes'))">
+            <button type="button" class="action-cyan" :disabled="!canSave" @click="requestSave()"
+                    :data-tip="canSave ? 'Save changes (Ctrl/⌘S)' : (saving ? 'Saving…' : (saved ? 'Saved' : 'No unsaved changes'))">
               <jk-icon name="save"></jk-icon>{{ saving ? 'Saving…' : (saved ? 'Saved' : 'Save') }}
             </button>
           </div>
@@ -1656,7 +1910,8 @@ export const CodeView = {
               <p v-else class="warn">Highlighter failed to load — showing plain text</p>
               <pre class="code-pre code-plain" ref="pre">
                 <div v-for="(row, i) in rows" :key="i" class="code-plain-row fail-src"
-                     :class="{ 'code-line-on': line === i + 1 && !lineErr, 'code-line-err-plain': line === i + 1 && lineErr }">
+                     :class="{ 'code-line-on': line === i + 1 && !lineErr, 'code-line-err-plain': line === i + 1 && lineErr }"
+                     :title="line === i + 1 && msg ? msg : undefined">
                   <span class="fail-gutter">{{ i + 1 }}</span><span class="fail-gutter-rail">\u2502</span><span class="fail-src-code">{{ row }}</span>
                 </div>
               </pre>
@@ -1673,5 +1928,29 @@ export const CodeView = {
           <div v-show="editorVisible" class="code-editor" ref="editor"></div>
         </section>
       </div>
+      <teleport to="body">
+        <div v-if="saveConfirmOpen" class="modal-bg confirm-modal-bg" role="presentation"
+             @click.self="settleSaveConfirm(false)">
+          <div class="modal confirm-modal" role="alertdialog" aria-modal="true"
+               aria-labelledby="save-confirm-title" aria-describedby="save-confirm-desc"
+               tabindex="-1" ref="saveConfirmDialog">
+            <div class="modal-head">
+              <jk-icon name="save"></jk-icon>
+              <span id="save-confirm-title" class="lbl">Save file</span>
+            </div>
+            <p id="save-confirm-desc" class="confirm-body">
+              Are you sure you want to save
+              <span class="confirm-file" :data-tip="path || undefined">{{ fileName(path) }}</span>?
+            </p>
+            <div class="modal-foot confirm-actions">
+              <button type="button" class="ghost" @click="settleSaveConfirm(false)">Cancel</button>
+              <button type="button" class="primary" ref="saveConfirmOk" @click="settleSaveConfirm(true)">
+                <jk-icon name="save"></jk-icon>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      </teleport>
     </div>`,
 };

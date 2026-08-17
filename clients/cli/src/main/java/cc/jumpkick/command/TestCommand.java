@@ -114,7 +114,7 @@ public final class TestCommand implements CliCommand {
         try {
             this.testSelection = resolveTestSelection(in);
         } catch (IllegalArgumentException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Test", e.getMessage());
             return Exit.CONFIG;
         }
         cc.jumpkick.config.SessionContext.install(cc.jumpkick.config.SessionContext.current()
@@ -146,7 +146,7 @@ public final class TestCommand implements CliCommand {
                 var selected =
                         cc.jumpkick.config.ModuleSelection.resolveOptional(dir, entry, modulesSpec, affectedSince);
                 if (selected != null && !selected.ok()) {
-                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", selected.errorMessage()));
+                    cc.jumpkick.cli.tui.CommandWedge.printFail("Test", selected.errorMessage());
                     if (session != null) session.error(selected.errorMessage());
                     return finishSession(Exit.CONFIG);
                 }
@@ -171,7 +171,7 @@ public final class TestCommand implements CliCommand {
         if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
             var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(dir, entry, modulesSpec, affectedSince);
             if (selected != null && !selected.ok()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", selected.errorMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Test", selected.errorMessage());
                 if (session != null) session.error(selected.errorMessage());
                 return finishSession(Exit.CONFIG);
             }
@@ -220,7 +220,7 @@ public final class TestCommand implements CliCommand {
                     steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, module),
                     testResultHolder);
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Test", e.getMessage());
             if (session != null) session.error(e.getMessage());
             return finishSession(Exit.SOFTWARE);
         }
@@ -325,6 +325,7 @@ public final class TestCommand implements CliCommand {
                         @Override
                         public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
                             agg.applySnapshot(snap);
+                            if (snap.modulesTotal() > total[0]) total[0] = snap.modulesTotal();
                             JsonlShape.emitJsonl(
                                     JsonlShape.workspaceProgress(
                                             entryDir.toString(),
@@ -427,10 +428,12 @@ public final class TestCommand implements CliCommand {
         }
         if (!result.success()) {
             List<String> failAbove = new ArrayList<>(above);
+            List<BuildPlanResult.Diagnostic> settleErrors = new ArrayList<>();
             for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
                 if ("test-failure".equals(d.code())) continue;
-                failAbove.add(ConsoleSpec.renderError(d));
+                settleErrors.add(d);
             }
+            ConsoleSpec.appendErrors(failAbove, settleErrors);
             String failTail = workspaceTestFailureTail(result, elapsedMs);
             view.finishBuildPlanFailure(failTail, failAbove);
             if (session != null) session.wedge(failTail);
@@ -532,7 +535,7 @@ public final class TestCommand implements CliCommand {
                     });
         } catch (IOException e) {
             if (!json) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", e.getMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Test", e.getMessage());
             }
             if (session != null) session.error(String.valueOf(e.getMessage()));
             return Exit.SOFTWARE;
@@ -553,7 +556,7 @@ public final class TestCommand implements CliCommand {
             // Workspace-level errors (graph/lock problems) never reach a module listener —
             // print them before the wedge or a failing run shows no diagnostic at all.
             for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", workspaceTestFailureTail(result, ms)));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Test", workspaceTestFailureTail(result, ms));
         }
         return result.exitCode();
     }

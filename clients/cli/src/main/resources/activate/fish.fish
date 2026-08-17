@@ -1,6 +1,5 @@
-# `jk activate fish` — directory-aware JAVA_HOME / PATH (hook-env).
-# Wired from the installer rc block: command jk activate fish | source
-# Real `jk` / `jkx` live on PATH (platform bin); this file does not wrap them.
+# Directory-aware JAVA_HOME / PATH (hook-env). PATH ensure + completions wrap this in
+# `jk activate fish` full output; the rc block is: "$HOME/…/jk" activate fish | source
 set -gx __JK_EXE __JK_EXE__
 set -gx __JK_SHELL fish
 

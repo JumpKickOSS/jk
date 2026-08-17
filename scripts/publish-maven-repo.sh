@@ -2,11 +2,11 @@
 # Publish first-party plugin jars to the official JumpKick Maven layout on GCS.
 #
 # Layout (Maven standard under the repo root):
-# gs://jkbuild-releases/repo/cc/jumpkick/<artifact>/<version>/<artifact>-<version>.jar
-# gs://jkbuild-releases/repo/cc/jumpkick/<artifact>/<version>/<artifact>-<version>.jar.sha256
+# gs://jumpkick/repo/cc/jumpkick/<artifact>/<version>/<artifact>-<version>.jar
+# gs://jumpkick/repo/cc/jumpkick/<artifact>/<version>/<artifact>-<version>.jar.sha256
 #
 # Public HTTPS:
-# https://storage.googleapis.com/jkbuild-releases/repo/...
+# https://storage.googleapis.com/jumpkick/repo/...
 # https://jumpkick.build/repo/... (Firebase redirect once DNS is live)
 #
 # Usage:
@@ -16,7 +16,7 @@
 # Env:
 # JK_VERSION default: from JkVersion.java
 # JK_CACHE_DIR default: ~/.cache/jk
-# JK_MAVEN_BUCKET default: jkbuild-releases
+# JK_MAVEN_BUCKET default: jumpkick
 # JK_MAVEN_PREFIX default: repo
 # CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE SA key for CI
 set -euo pipefail
@@ -27,7 +27,7 @@ if [[ -z "$VERSION" ]]; then
   VERSION="$(grep -E 'VERSION = "' "$ROOT/shared/jk-api/src/main/java/cc/jumpkick/model/JkVersion.java" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
 fi
 CACHE="${JK_CACHE_DIR:-${JK_HOME:-$HOME/.jk}/cache}"
-BUCKET="${JK_MAVEN_BUCKET:-jkbuild-releases}"
+BUCKET="${JK_MAVEN_BUCKET:-jumpkick}"
 PREFIX="${JK_MAVEN_PREFIX:-repo}"
 LOCAL="$CACHE/repos/local/cc/jumpkick"
 

@@ -30,3 +30,37 @@ jobs:
 
       - name: Integration test
         run: ./gradlew integrationTest --no-daemon
+
+  lombok-scope-guard:
+    name: Lombok scope guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lombok stays compile-time only
+        run: ./scripts/check-lombok-diet.sh
+
+  engine-heap-guard:
+    name: Engine heap guard (committed-after-idle)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: gradle
+
+      - name: Bootstrap thin client + engine jar + workers
+        run: |
+          ./gradlew :cli:installDist :engine:shadowJar installLocal --no-daemon
+          CLIENT_BIN="$PWD/clients/cli/build/install/jk/bin/jk"
+          ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
+          "$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
+          echo "$PWD/clients/cli/build/install/jk/bin" >> "$GITHUB_PATH"
+
+      - name: Build synthetic monorepo and gate committed-after-idle
+        run: |
+          JK_BIN=jk MODULES=60 GATE_COMMITTED_MIB=64 GATE_USED_MIB=24 \
+            ./scripts/heap-monorepo-measure.sh

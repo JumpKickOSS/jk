@@ -73,19 +73,37 @@ Violations name the plugin task and say which window it is in.
 
 ## Targets
 
-A **target** is a task name that closes the plan. Examples:
+A **target** is a task name that closes the **module** plan. Selecting a target includes every
+task reachable as an upstream dependency. Tasks not on any path to the target are omitted
+(e.g. skip tests when the target is package and tests are not required).
 
-| CLI / engine kind | Typical target |
-|-------------------|----------------|
-| `jk build` | `package-jar` (or packager-provided artifact task) |
+### One orchestrator (invariant)
+
+Build-family commands share **one** workspace lifecycle — `WorkspaceExecute.buildWorkspace`
+(`jk build`’s path). They are **not** allowed to grow a second cascade (dirty set, ETA seed,
+prepare, schedule, progress). The only intentional differences:
+
+| CLI | `WorkspaceTarget` | Module cone |
+|-----|-------------------|-------------|
+| `jk build` | `PACKAGE` | Whole graph (or `-m` / dirty hint) |
+| `jk test` | `TEST` (`testOnly`) | Same as build |
+| `jk native` | `NATIVE` | Native-eligible modules + dependency closure |
+| `jk image` | `IMAGE` | The one image module + closure |
+| `jk compile` | `COMPILE` | Compile-only plans |
+| `jk run` (build half) | `PACKAGE` | Then client exec-handoff |
+
+Dependency closure uses **all scopes** when tests run (dirty test harnesses rebuild) and
+**production scopes** when `--skip-tests`. New build-family verbs add a target + filter —
+they do not copy `NativeVerb`’s old hand-rolled loop.
+
+| CLI / engine kind | Typical module terminal |
+|-------------------|-------------------------|
+| `jk build` | `package-jar` (or packager-provided artifact / declared tails) |
 | `jk test` | `run-tests` |
-| `jk image` | `write-image` |
+| `jk native` | `native-image` (prereqs stay at package) |
+| `jk image` | `write-image` (prereqs stay at package) |
 | `jk publish` | publish terminal task |
 | `jk run` (build half) | package (or classes) before client exec |
-
-Selecting a target includes every task reachable as an upstream dependency. Tasks not on any
-path to the target are omitted (e.g. skip tests when the target is package and tests are not
-required).
 
 ## Tasks and the BuildPlan
 

@@ -16,7 +16,7 @@ class ChromeTimelineTest {
         Files.createDirectories(project);
         ChromeTimeline timeline = ChromeTimeline.open(project);
         assertThat(timeline).isNotNull();
-        assertThat(timeline.file().toString().replace('\\', '/')).endsWith("target/jk-chrome-profile.json");
+        assertThat(timeline.file().toString().replace('\\', '/')).endsWith("target/jk-profile.json");
 
         timeline.complete("demo", "compile-main", "SUCCESS", 12);
         timeline.complete("demo", "run-tests", "SKIPPED", 3);

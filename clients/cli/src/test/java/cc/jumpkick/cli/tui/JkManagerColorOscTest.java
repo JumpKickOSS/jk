@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
-/** OSC handling in the private width/truncation scanners (JK-1967). */
+/** OSC handling in the private width/truncation scanners. */
 class JkManagerColorOscTest {
 
     private static final String ESC = "\u001b";
@@ -63,7 +63,7 @@ class JkManagerColorOscTest {
 
     @Test
     void truncate_inside_a_link_emits_a_synthetic_close_before_the_ellipsis() {
-        // JK-1974: the cut lands inside the linked label, so the input's own close is dropped —
+        // the cut lands inside the linked label, so the input's own close is dropped —
         // without a synthetic close the ellipsis, EL, and every later row join the hyperlink.
         String linked = "go " + OSC_LINK_OPEN + "clickable label text" + OSC_LINK_CLOSE + " tail";
         String cut = JkManagerColor.truncateVisible(linked, 8);
@@ -74,6 +74,36 @@ class JkManagerColorOscTest {
         assertThat(cut.indexOf(JkManager.ELLIPSIS))
                 .as("ellipsis is outside the link")
                 .isGreaterThan(close);
+    }
+
+    @Test
+    void truncate_never_splits_a_surrogate_pair() {
+        // astral chars (JUnit display names can carry emoji) must be cut whole — a lone
+        // high surrogate before the ellipsis is mojibake.
+        String emoji = "😀"; // 😀 (width 2)
+        String s = emoji.repeat(6);
+        for (int cols = 1; cols <= 12; cols++) {
+            String cut = JkManagerColor.truncateVisible(s, cols);
+            for (int i = 0; i < cut.length(); i++) {
+                if (Character.isHighSurrogate(cut.charAt(i))) {
+                    assertThat(i + 1).as("pair complete in %s @%d", cut, i).isLessThan(cut.length());
+                    assertThat(Character.isLowSurrogate(cut.charAt(i + 1))).isTrue();
+                }
+            }
+        }
+    }
+
+    @Test
+    void truncate_counts_wide_glyphs_as_two_columns() {
+        // the paint path and the reflow estimator share one width metric (wcwidth).
+        String cjk = "漢漢漢"; // 3 glyphs, 6 columns
+        assertThat(JkManagerColor.truncateVisible(cjk, 6)).isEqualTo(cjk);
+        String cut = JkManagerColor.truncateVisible(cjk, 4);
+        assertThat(cut).startsWith("漢").contains(JkManager.ELLIPSIS);
+        assertThat(RenderContext.visibleWidth(cut)).isLessThanOrEqualTo(4);
+        // Budget 5: two glyphs (4 cols) + ellipsis (1) fits exactly.
+        assertThat(RenderContext.visibleWidth(JkManagerColor.truncateVisible(cjk, 5)))
+                .isLessThanOrEqualTo(5);
     }
 
     @Test

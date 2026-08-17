@@ -86,11 +86,16 @@ The cyan **code** control (**View/edit this codebase**) sits next to **Build** a
 also where the header's back control drops its label: a bare chevron that goes up one level to
 `#project/<id>`, not out to the project list.
 Selecting a file appends the workspace-relative path as extra hash segments (each `encodeURIComponent`;
-`/` stays a separator). Optional `?line=` is a 1-based highlight; fail-report and CLI OSC-8 jumps
+`/` stays a separator). Optional `?line=` is a 1-based highlight; compiler jumps also add `&col=` so
+Monaco lands on the diagnostic column. Fail-report and CLI OSC-8 jumps
 add `&err=true` so the target line uses the error-red wash (plain `?line=` stays a soft cyan
-rail).
-The underlined path above a test-failure snippet is a real hash deep link into that route (so
-middle-click / copy-link work). Module-relative paths join `rel(checkout, module.dir)` +
+rail). Compiler (and fail-report) jumps also pass `&msg=` — a short, URL-encoded note (capped at
+800 characters) shown as a Monaco hover on the highlighted line and column.
+The underlined path above a test-failure or compile-failure snippet is a real hash deep link
+into that route (so middle-click / copy-link work). Visible text is `path:line` (and `:col`
+for compiler jumps) so a copied snippet still names the locus after colour / OSC-8 is stripped.
+Compiler errors use the same report chrome as test failures (`✘ Compile failure in coord`,
+`error:` body, then a 5-line source window) instead of a mashed one-liner. Module-relative paths join `rel(checkout, module.dir)` +
 `rep.file`; an empty live single-plan module dir leaves `rep.file` as already checkout-relative.
 Basename-only paths stay plain text.
 
@@ -111,7 +116,7 @@ case-insensitively. `buildFileTree` **compacts single-child directory chains** i
 node keys off its deepest path, which is what `ancestorDirs` yields for files under it. Folders are
 closed by default, except the ancestors of the open file — so a `?line=` deep link or a fail-report
 jump lands with its file revealed and selected. `visibleRows` flattens only the open parts, so the
-whole tree is one non-recursive `v-for` (2000 paths, no recursive components). Typing in the filter
+whole tree is one non-recursive `v-for` (up to 5000 paths, no recursive components). Typing in the filter
 box switches to a **flat list of matching full paths** — the tree is for browsing, the filter
 answers like GitHub's file finder; every row carries its full path as a `data-tip`.
 
@@ -130,7 +135,9 @@ tab bar: [ file-name-pill ]   [ Copy ] [ Preview ] [ Save ]
   (same geometry as Build: `inline-flex`, `gap: 6px`, shimmer on hover, shared `min-width`).
 - **Build** stays in the project header (green primary).
 - **Save** is disabled until the Monaco buffer differs from the last load/save; oversized plain-text
-  fallback and image-only opens are not editable. On success the label flips to **Saved** briefly
+  fallback and image-only opens are not editable. **Ctrl+S / ⌘S** (and the Save button) open an
+  in-page themed confirm (Cancel / Save; Escape cancels) before writing. On success the label flips
+  to **Saved** briefly
   (same pattern as Copy → Copied). Failures use plain-language messages (engine down, unauthorized,
   too large, concurrency). Saves send the load-time `etag`; a **409 file changed on disk** means
   another tab or process rewrote the file — reload to continue.
@@ -153,8 +160,11 @@ Monaco **0.56.0** loads lazily from unpkg (AMD loader SRI-pinned; see the CDN se
 suggestions. The theme is registered as `jk-vs-dark` — vs-dark inherited verbatim with a single
 override, `editor.background` read from style.css's `--console-bg`, so a source pane reads as the
 same surface as the console tail and log panels instead of VS Code's `#1e1e1e`. `?line=` is a
-whole-line decoration (`.code-line-hl` soft/cyan, or `.code-line-err` red when `err=true`) plus
-`revealLineInCenter`, not a selection. Monaco ships no
+whole-line decoration (`.code-line-hl` soft/cyan, or `.code-line-err` red when `err=true`);
+`?col=` marks the token (red wavy underline when `err=true`). The whole-line decoration
+carries `hoverMessage` when `?msg=` is present (compiler key/value details from the CLI
+OSC-8 link) — the column mark is visual only so Monaco does not stack the same note twice.
+The editor reveals the position and opens that hover on landing. Monaco ships no
 Groovy or TOML grammar, so `.groovy` tokenizes as `java` and `.toml` as
 `ini` (`MONACO_LANG` in `code.js`); anything unknown falls back to `plaintext`. Highlighting is
 skipped above 200 KiB / 4000 lines, and when the CDN is unreachable; the file then renders as
@@ -195,7 +205,9 @@ blocks the shell before the panel opens.
 
 **Builds Running** stays in lockstep with Live activity (running card count while live). **API
 calls** after the first status hydrate send `X-Jk-Engine-Epoch`; a **409** or a changed epoch on
-status triggers a full page reload so static assets match the new engine.
+status triggers a full page reload so static assets match the new engine. Classpath shell
+files revalidate on every load (`Cache-Control: no-cache` plus a version+mtime `ETag`), so
+that reload is not served a still-fresh copy of the previous jar.
 
 While the stream is **live**, the SPA does **not** poll `/api/status` or `/api/cache` on a timer.
 REST hydrate runs on load/reconnect. **Offline** status fallback uses stepped backoff (5 s → 30 s

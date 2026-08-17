@@ -8,9 +8,12 @@ public final class HttpLive {
     private HttpLive() {}
 
     /**
-     * One in-flight job. {@code progress} is NaN when unknown. {@code remainingMs}/{@code r0Ms}
-     * are {@code -1} when unknown. {@code modules}/{@code tasks} carry finished + currently-running
-     * phase chains so a hard refresh can paint the same strip as a tab that was open from the start.
+     * One in-flight job. {@code progress} is NaN when unknown. {@code lastEventAt} is the wall
+     * clock of the newest progress/remaining-work signal ({@code 0} when the job has emitted
+     * none) — stall detection keys on this, never on {@code startedAt}. {@code remainingMs}/
+     * {@code r0Ms} are {@code -1} when unknown. {@code modules}/{@code tasks} carry finished +
+     * currently-running phase chains so a hard refresh can paint the same strip as a tab that
+     * was open from the start.
      */
     public record Run(
             long requestId,
@@ -19,6 +22,7 @@ public final class HttpLive {
             String dir,
             String coord,
             long startedAt,
+            long lastEventAt,
             double progress,
             String journalId,
             long remainingMs,
@@ -50,6 +54,7 @@ public final class HttpLive {
                     dir,
                     coord,
                     startedAt,
+                    0L,
                     progress,
                     journalId,
                     -1L,

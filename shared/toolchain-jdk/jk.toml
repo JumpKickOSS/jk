@@ -5,6 +5,12 @@ description = "Client JDK tooling: discovery, install flow, and launchers"
 jk-core.workspace = true
 jk-client-io.workspace = true
 
+[provided-dependencies]
+lombok = "latest"
+
+[processor-dependencies]
+lombok = "latest"
+
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"

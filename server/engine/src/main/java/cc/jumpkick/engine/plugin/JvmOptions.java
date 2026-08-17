@@ -3,9 +3,14 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.SessionContext;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Properties;
 
 /**
  * JVM flags for forked worker processes (compilers, test runners, …). Concurrent workers share a
@@ -28,6 +33,15 @@ public final class JvmOptions {
      * user code sees the same collector as other runners.
      */
     public static final String BATCH_DEFAULT_GC = "parallel";
+
+    /**
+     * First JDK feature that accepts {@code --sun-misc-unsafe-memory-access} (JEP 498). Older hosts
+     * abort with "Unrecognized option" if the flag is present.
+     */
+    public static final int JEP498_UNSAFE_MEMORY_ACCESS_MIN_FEATURE = 23;
+
+    /** Acknowledges memory-access {@code sun.misc.Unsafe} use on JDK ≥ 23 batch hosts. */
+    public static final String JEP498_UNSAFE_MEMORY_ACCESS_ALLOW = "--sun-misc-unsafe-memory-access=allow";
 
     /** Metaspace cap outside the heap budget (avoids concurrent-worker native overcommit). */
     public static final long DEFAULT_MAX_METASPACE_MB = 256;
@@ -108,9 +122,76 @@ public final class JvmOptions {
      * {@link #workerFlags} with the {@linkplain #BATCH_DEFAULT_GC batch collector} as the GC
      * default — for jk-owned batch forks (compilers, plugin tools), never test workers. An
      * explicit {@code [jvm] gc} still wins.
+     *
+     * <p>When the host JVM is feature ≥ {@link #JEP498_UNSAFE_MEMORY_ACCESS_MIN_FEATURE}, also
+     * acknowledges JEP 498 memory-access {@code sun.misc.Unsafe} use so annotation processors and
+     * compiler hosts (Lombok, KSP's IntelliJ containers, …) do not flood stderr with HotSpot's
+     * terminal-deprecation banner. The running engine feature is assumed (engine-hosted workers).
+     * For a different host (e.g. project-pinned {@code javac}), use {@link #batchFlags(int, int)}.
      */
     public static List<String> batchFlags(int concurrency) {
-        return workerFlags(concurrency, BATCH_DEFAULT_GC);
+        return batchFlags(concurrency, Runtime.version().feature());
+    }
+
+    /**
+     * As {@link #batchFlags(int)}, but sizes the JEP 498 allow flag for {@code hostFeature} — the
+     * feature major of the JVM that will actually start (from {@code release} / {@link
+     * Runtime#version()}). Hosts below {@link #JEP498_UNSAFE_MEMORY_ACCESS_MIN_FEATURE} never get
+     * the flag.
+     */
+    public static List<String> batchFlags(int concurrency, int hostFeature) {
+        List<String> out = new ArrayList<>(workerFlags(concurrency, BATCH_DEFAULT_GC));
+        appendJep498AllowIfSupported(out, hostFeature);
+        return out;
+    }
+
+    /**
+     * Feature major of {@code javaHome} from its {@code release} file ({@code JAVA_VERSION}), or
+     * {@link Runtime#version()} when the file is missing or unreadable.
+     */
+    public static int hostFeature(Path javaHome) {
+        Integer fromRelease = featureFromRelease(javaHome);
+        return fromRelease != null ? fromRelease : Runtime.version().feature();
+    }
+
+    /** Feature major for a {@code java}/{@code javac} executable under {@code <home>/bin/}. */
+    public static int hostFeatureFromExe(Path javaOrJavac) {
+        if (javaOrJavac != null) {
+            Path parent = javaOrJavac.getParent();
+            if (parent != null && parent.getParent() != null) {
+                return hostFeature(parent.getParent());
+            }
+        }
+        return Runtime.version().feature();
+    }
+
+    private static void appendJep498AllowIfSupported(List<String> out, int hostFeature) {
+        if (hostFeature < JEP498_UNSAFE_MEMORY_ACCESS_MIN_FEATURE) return;
+        if (!hasArgPrefix(out, "--sun-misc-unsafe-memory-access")) {
+            out.add(JEP498_UNSAFE_MEMORY_ACCESS_ALLOW);
+        }
+    }
+
+    private static Integer featureFromRelease(Path javaHome) {
+        if (javaHome == null) return null;
+        Path release = javaHome.resolve("release");
+        if (!Files.isRegularFile(release)) return null;
+        Properties props = new Properties();
+        try (InputStream in = Files.newInputStream(release)) {
+            props.load(in);
+        } catch (IOException e) {
+            return null;
+        }
+        String raw = props.getProperty("JAVA_VERSION", "").trim();
+        if (raw.length() >= 2 && raw.startsWith("\"") && raw.endsWith("\"")) {
+            raw = raw.substring(1, raw.length() - 1);
+        }
+        if (raw.isEmpty()) return null;
+        try {
+            return Integer.parseInt(raw.split("[.+-]")[0]);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private static List<String> workerFlags(int concurrency, String defaultGc) {
@@ -260,25 +341,35 @@ public final class JvmOptions {
     }
 
     /**
-     * {@code workerFlags}, but each flag {@code -J}-prefixed for launcher tools that wrap their own
-     * JVM (javac, native-image) rather than being exec'd as {@code java} directly.
+     * {@link #batchFlags(int)}, each flag {@code -J}-prefixed for launcher tools that wrap their own
+     * JVM (javac, native-image) rather than being exec'd as {@code java} directly. Uses the running
+     * engine feature; prefer {@link #launcherFlags(int, int)} when the launcher host differs (project
+     * pin).
      */
     public static List<String> launcherFlags(int concurrency) {
+        return launcherFlags(concurrency, Runtime.version().feature());
+    }
+
+    /** As {@link #launcherFlags(int)} for a known host feature major. */
+    public static List<String> launcherFlags(int concurrency, int hostFeature) {
         List<String> out = new ArrayList<>();
-        for (String f : batchFlags(concurrency)) out.add("-J" + f);
+        for (String f : batchFlags(concurrency, hostFeature)) out.add("-J" + f);
         return out;
     }
 
     /**
      * Assemble a worker JVM command line: {@code javaExe}, then the tuning flags ({@link
-     * #workerFlags}), then {@code rest} (e.g. {@code -cp <jar> Main <spec>}). For forks not driven by
+     * #batchFlags}), then {@code rest} (e.g. {@code -cp <jar> Main <spec>}). For forks not driven by
      * {@link cc.jumpkick.engine.plugin.PluginLoader} — the compiler/git plugins and the CLI's standalone
-     * plugin commands.
+     * plugin commands. Host feature is taken from {@code javaExe}'s JDK home when possible.
      */
     public static List<String> javaCommand(String javaExe, int concurrency, List<String> rest) {
+        int feature = javaExe != null
+                ? hostFeatureFromExe(Path.of(javaExe))
+                : Runtime.version().feature();
         List<String> cmd = new ArrayList<>();
         cmd.add(javaExe);
-        cmd.addAll(batchFlags(concurrency));
+        cmd.addAll(batchFlags(concurrency, feature));
         cmd.addAll(rest);
         return cmd;
     }

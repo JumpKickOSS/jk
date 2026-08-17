@@ -511,10 +511,11 @@ jk new --template quarkus my-api # Giter8 short name (same single-module shape)
 - Default package is **fast-jar** (`quarkus-run.jar` + `lib/` + `quarkus-app/`). Set
   `package = "uber-jar"` for a single runner. Packaging uses pure bootstrap (no permanent
   `mvn` CLI).
-- **Native:** `[native] always = true` builds the binary through Quarkus's own native-image
-  command. Quarkus computes the argument list — the generated `--features` entry point, the runner
-  jar, the Netty flags — and jk runs it with its own GraalVM toolchain. Nothing jk composes is
-  added on top, because that list is already complete; `[native] args` still applies.
+- **Native:** `[native] enabled = "always"` (or a bare `[native]` / `enabled = true` for
+  `jk native` only) builds the binary through Quarkus's own native-image command. Quarkus computes
+  the argument list — the generated `--features` entry point, the runner jar, the Netty flags —
+  and jk runs it with its own GraalVM toolchain. Nothing jk composes is added on top, because that
+  list is already complete; `[native] args` still applies.
 - Use a plain `main` + `Quarkus.run` (as scaffolded). Avoid `@QuarkusMain` under jk’s
   `target/classes/main` layout — `@QuarkusTest` can report two mains with the same name.
 - Keep `quarkus-junit5` / RestAssured on **`[test-dependencies]`** only so MAIN does not pull
@@ -699,7 +700,7 @@ jk audit                     # OSV
 jk deny                      # apply [deny.sources] host denylist (see Deny policy)
 jk publish                   # optional --sign / --sigstore / --slsa / --sbom
 jk image                     # OCI (daemonless)
-jk native                    # GraalVM native-image
+jk native                    # GraalVM native-image ([native] enabled; else unique main)
 jk verify                    # rebuild in a scratch dir and compare hashes
 jk new --template quarkus x  # Giter8 short name (or local path)
 jk jobs                      # running + recent engine jobs (jid, build #); alias: builds
@@ -737,7 +738,7 @@ export JK_OUTPUT=json        # same for any command that uses BuildPlanConsole
   with web SSE and **MCP** (`POST /mcp`; `jk engine status` prints **MCP**).
 - Session log (same JSONL shape, live append) lands in the project run dir under
   `~/.local/state/jk/builds/projects/<key>/runs/<id>/details.jsonl` (jid + ETA included)
-  (below). Deep timings: `target/jk-chrome-profile.json`.
+  (below). Deep timings: `target/jk-profile.json`.
 
 ### CLI UX (human-first)
 
@@ -778,6 +779,7 @@ no-progress = false     # hide bars/spinners; also suppresses build notification
 no-ansi = false         # ASCII-only; implies no-progress
 no-osc = false          # no window title, taskbar progress, or desktop notifications
 notify = "auto"         # auto | always | never   (booleans: true=always, false=never)
+build-output = false    # open live-plan process-output peek by default (Ctrl-O)
 force = false
 # directory = "/path"   # optional default -C
 ```
@@ -789,6 +791,7 @@ force = false
 | `no-ansi` | `--no-ansi` | `JK_NO_ANSI` |
 | `no-osc` | `--no-osc` | `JK_NO_OSC` |
 | `notify` | `--notify` / `--no-notify` | `JK_NOTIFY` |
+| `build-output` | — | `JK_BUILD_OUTPUT` |
 | `quiet` / `verbose` / `offline` / `force` | `-q` / `-v` / `--offline` / `-F` | `JK_QUIET` / `JK_VERBOSE` / `JK_OFFLINE` / `JK_FORCE` |
 
 **`notify`:** `auto` (default) sends an OSC desktop notification when a build’s ETA **or**
@@ -978,7 +981,7 @@ jk tasks show package-jar --modules 'libs/*'
 ### Build timeline (chrome tracing)
 
 Every `jk build` / `jk test` has the **engine** write a Chrome Trace Event file at
-`target/jk-chrome-profile.json` (no terminal noise). Spans use the same step durations as
+`target/jk-profile.json` (no terminal noise). Spans use the same step durations as
 build metrics. Open the file in Perfetto or `chrome://tracing`. **CI tip:** archive that
 path as a build artifact.
 
@@ -1178,7 +1181,11 @@ jk build -m :server:engine
 
 # The same -m/--modules and --affected-since flags work across the build family:
 # build, test, explain, native, compile, image, show, tasks, inspect.
-# jk native -m compiles only the selection to native; prereqs build to jars.
+# jk native builds only native-eligible modules plus their dependency closure
+# (then native-image). With tests on, the cone includes test/dev workspace deps
+# so a dirty harness (e.g. test-only engine) is rebuilt first. --skip-tests uses
+# production scopes only. Prefer modules with [native] enabled (true or "always").
+# -m further restricts which native targets are considered.
 
 # Intersection when both flags set
 jk build -m 'libs/*' --affected-since=origin/main
@@ -1258,13 +1265,14 @@ jk shell                       # subshell with project JDK
 
 ```text
 # >>> jk installer >>>
-# PATH ← platform bin (~/.local/bin) so real jk / jkx resolve
-eval "$(command jk activate zsh)"   # bash/zsh; fish: command jk activate fish | source
-# completions under ~/.local/share/jk/completions/…
+# JumpKick shell integration. Hi-ya!
+eval "$("$HOME/.local/bin/jk" activate zsh)"
 # <<< jk installer <<<
 ```
 
-- **PATH** — real `jk` / `jkx` on the platform bin dir (no shell function wrapper).
+(bash is the same with `activate bash`; fish: `"$HOME/.local/bin/jk" activate fish | source`.)
+
+- **PATH** — `jk activate <shell>` prepends the platform bin so real `jk` / `jkx` resolve (no shell function wrapper).
 - **Hooks** — `jk hook-env` updates `JAVA_HOME` / `PATH` when you cd (SDKMAN-like).
 - **Completions** — bash, zsh, fish, pwsh (`jk completion` refreshes files under data).
 - **`jk deactivate`** — prints how to drop session env (new shell) or remove the marker block.

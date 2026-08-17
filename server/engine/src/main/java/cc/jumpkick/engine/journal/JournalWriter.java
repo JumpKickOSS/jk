@@ -3,7 +3,6 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkHistoryConfig;
-import cc.jumpkick.engine.BuildHistoryKinds;
 import cc.jumpkick.engine.EngineServer;
 import cc.jumpkick.engine.http.JsonOut;
 import cc.jumpkick.engine.jobs.JobSessions;
@@ -52,7 +51,6 @@ public final class JournalWriter {
             boolean rebuild,
             long buildNumber,
             String journalId) {
-        if (!BuildHistoryKinds.isBuildLike(kind)) return;
         Path projectDir = null;
         try {
             if (dir != null && !dir.isBlank()) projectDir = Path.of(dir);
@@ -62,7 +60,8 @@ public final class JournalWriter {
         ChromeTimeline timeline = ChromeTimeline.open(projectDir, noTimeline);
         sessions.accumulator(
                 requestId,
-                new BuildAccumulator(kind, dir, coordOf(dir), trigger, timeline, rebuild, buildNumber, journalId));
+                new BuildAccumulator(
+                        kind, dir, coordOf(dir), trigger, timeline, rebuild, buildNumber, journalId, requestId));
     }
 
     public static @Nullable String coordOf(String dir) {
@@ -187,6 +186,7 @@ public final class JournalWriter {
         if (d.stack() != null && !d.stack().isEmpty()) o.put("stack", d.stack());
         if (d.file() != null && !d.file().isEmpty()) o.put("file", d.file());
         if (d.line() > 0) o.put("line", d.line());
+        if (d.col() > 0) o.put("col", d.col());
         if (d.snippetStart() > 0) o.put("snippetStart", d.snippetStart());
         if (d.snippet() != null && !d.snippet().isEmpty()) o.putStrings("snippet", d.snippet());
         if (d.worker() > 0) o.put("worker", d.worker());

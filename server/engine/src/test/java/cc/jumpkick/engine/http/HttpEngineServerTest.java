@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -301,20 +303,18 @@ class HttpEngineServerTest {
         HttpResponse<String> resp = get("/classpath-only.txt");
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.body()).isEqualTo("from classpath\n");
-        // The classpath ETag carries a content stamp after the version.
+        // Revalidate every load so a new engine jar is not hidden by a still-fresh max-age; the
+        // ETag carries a content stamp after the version so an unchanged jar is a 304.
         assertThat(resp.headers().firstValue("ETag").orElseThrow())
                 .startsWith("\"jk-9.9.9-test")
                 .endsWith("\"");
-        assertThat(resp.headers().firstValue("Cache-Control")).contains("max-age=3600");
+        assertThat(resp.headers().firstValue("Cache-Control")).contains("no-cache");
     }
 
     @Test
-    void snapshot_versions_revalidate_classpath_assets_every_load() throws Exception {
-        // A -SNAPSHOT jar swap doesn't move the version-derived ETag, so snapshot builds must not
-        // let the browser cache classpath assets — otherwise an upgraded engine serves last jar's
-        // dashboard for up to an hour.
-        // Version string must end with -SNAPSHOT so StaticContent sets no-cache (release pins use
-        // max-age + ETag). The status supplier's own version field is unrelated.
+    void snapshot_versions_use_the_same_revalidation_headers() throws Exception {
+        // -SNAPSHOT is not a distinct cache policy. The version string is only an ETag prefix;
+        // no-cache + stamp still revalidates after installLocal of the same snapshot line.
         HttpEngineServer snapshot = new HttpEngineServer(
                 httpConfig("127.0.0.1", 0, 16),
                 webRoot,
@@ -336,7 +336,9 @@ class HttpEngineServerTest {
                     HttpResponse.BodyHandlers.ofString());
             assertThat(resp.statusCode()).isEqualTo(200);
             assertThat(resp.headers().firstValue("Cache-Control")).contains("no-cache");
-            assertThat(resp.headers().firstValue("ETag")).isEmpty();
+            assertThat(resp.headers().firstValue("ETag").orElseThrow())
+                    .startsWith("\"jk-0.12.0-SNAPSHOT-")
+                    .endsWith("\"");
         } finally {
             snapshot.close();
         }
@@ -811,7 +813,10 @@ class HttpEngineServerTest {
                     """);
             Files.writeString(checkout.resolve("src/Main.java"), "class Main {}\n");
             Files.createDirectories(checkout.resolve("target"));
+            Files.createDirectories(checkout.resolve("build"));
             Files.writeString(checkout.resolve("target/Gen.java"), "class Gen {}");
+            Files.writeString(checkout.resolve("target/report.md"), "# report\n");
+            Files.writeString(checkout.resolve("build/Skip.java"), "class Skip {}");
             Files.writeString(checkout.resolve(".env"), "SECRET=1");
             var identity = cc.jumpkick.builds.ProjectIdentity.resolve(checkout);
             cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(
@@ -842,7 +847,9 @@ class HttpEngineServerTest {
                     .contains("\"path\":\"src/Main.java\"")
                     .contains("\"lang\":\"java\"")
                     .contains("\"path\":\"jk.toml\"")
-                    .doesNotContain("target/Gen.java")
+                    .contains("target/Gen.java")
+                    .contains("target/report.md")
+                    .doesNotContain("build/Skip.java")
                     .doesNotContain(".env");
 
             HttpResponse<String> file = get("/api/project/file?project=" + id + "&path=src%2FMain.java");
@@ -850,6 +857,9 @@ class HttpEngineServerTest {
             assertThat(file.body()).contains("class Main").contains("\"lang\":\"java\"");
 
             assertThat(get("/api/project/file?project=" + id + "&path=target%2FGen.java")
+                            .statusCode())
+                    .isEqualTo(200);
+            assertThat(get("/api/project/file?project=" + id + "&path=build%2FSkip.java")
                             .statusCode())
                     .isEqualTo(404);
             assertThat(get("/api/project/file?project=" + id + "&path=.env").statusCode())
@@ -1445,6 +1455,107 @@ class HttpEngineServerTest {
             assertThat(rpc.statusCode()).isEqualTo(200); // RPC admission untouched by the streams
         } finally {
             streams.forEach(r -> r.body().close());
+            tiny.close();
+        }
+    }
+
+    @Test
+    void mcp_query_token_only_authorizes_the_sse_get() throws Exception {
+        String tok = token();
+        // A mutation authorized by a URL token would land in shell history and proxy logs.
+        HttpResponse<String> post = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "mcp?access_token=" + tok))
+                        .POST(HttpRequest.BodyPublishers.ofString("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}"))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(post.statusCode()).isEqualTo(401);
+        // Bearer-only everywhere except the SSE GET — discovery included.
+        HttpResponse<String> discovery = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "mcp?access_token=" + tok))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(discovery.statusCode()).isEqualTo(401);
+        // The SSE GET keeps the query form: EventSource cannot set headers.
+        HttpResponse<Stream<String>> sse = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "mcp?access_token=" + tok))
+                        .header("Accept", "text/event-stream")
+                        .build(),
+                HttpResponse.BodyHandlers.ofLines());
+        try {
+            assertThat(sse.statusCode()).isEqualTo(200);
+            assertThat(nextLine(sse.body().iterator())).isEqualTo(": mcp-events connected");
+        } finally {
+            sse.body().close();
+        }
+    }
+
+    @Test
+    void mcp_wait_parks_without_holding_the_only_admission_permit() throws Exception {
+        // RPC budget of 1: pre-JK-2028 a parked jk_job wait held the permit, so every other
+        // request (including the jk_cancel that could un-wedge it) 503'd until timeout.
+        HttpEngineServer tiny = new HttpEngineServer(
+                httpConfig("127.0.0.1", 0, 1),
+                webRoot,
+                stateDir.resolve("wait.http-token"),
+                stateDir.resolve("wait.log"),
+                "9.9.9-test",
+                () -> SNAPSHOT,
+                new HttpEvents(),
+                stubJobs,
+                testJournal(),
+                List::of,
+                () -> EMPTY_CACHE,
+                null);
+        AtomicBoolean live = new AtomicBoolean(true);
+        AtomicInteger livePolls = new AtomicInteger();
+        HttpLive.Run run =
+                new HttpLive.Run(7L, 1L, "build", "/tmp/x", "c", 1L, 0L, 50.0, "j-1", 0, 0, 1, 2, List.of(), List.of());
+        tiny.setLiveRunSupport(
+                () -> {
+                    livePolls.incrementAndGet();
+                    return live.get() ? List.of(run) : List.of();
+                },
+                null);
+        try {
+            tiny.start();
+            String url = tiny.url();
+            String tok = Files.readString(stateDir.resolve("wait.http-token")).trim();
+            CompletableFuture<HttpResponse<String>> parked = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return client.send(
+                            HttpRequest.newBuilder(URI.create(url + "mcp"))
+                                    .header("Authorization", "Bearer " + tok)
+                                    .POST(
+                                            HttpRequest.BodyPublishers.ofString(
+                                                    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":"
+                                                            + "{\"name\":\"jk_job\",\"arguments\":{\"action\":\"wait\",\"jid\":7,\"timeout_s\":30}}}"))
+                                    .build(),
+                            HttpResponse.BodyHandlers.ofString());
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            // Wait until the request is provably parked inside the wait loop (it polls the live
+            // view) with the only permit back in the semaphore — then probe. Probing earlier
+            // would race the parked request's own pre-park admission on the budget of one.
+            long deadline = System.currentTimeMillis() + 5_000;
+            while ((livePolls.get() < 2 || tiny.admission().availablePermits() < 1)
+                    && System.currentTimeMillis() < deadline) {
+                Thread.sleep(10);
+            }
+            assertThat(livePolls.get()).isGreaterThanOrEqualTo(2); // inside waitUntilGone
+            assertThat(tiny.admission().availablePermits()).isEqualTo(1); // permit yielded
+            HttpResponse<String> probe = client.send(
+                    HttpRequest.newBuilder(URI.create(url + "api/status"))
+                            .header("Authorization", "Bearer " + tok)
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(probe.statusCode()).isEqualTo(200); // surface alive while the wait parks
+            live.set(false); // job "finishes"; the parked wait completes and reacquires
+            HttpResponse<String> done = parked.get(10, TimeUnit.SECONDS);
+            assertThat(done.statusCode()).isEqualTo(200);
+            assertThat(done.body()).contains("\"finished\":true");
+        } finally {
             tiny.close();
         }
     }

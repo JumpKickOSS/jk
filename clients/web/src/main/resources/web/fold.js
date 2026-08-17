@@ -18,6 +18,13 @@ export const MAX_DIAGNOSTICS = 12;
  */
 export const MAX_TEST_FAILURE_DIAGNOSTICS = 120;
 
+/** Same set as {@code BuildHistoryKinds} — Activity tracks builds, not format/lock/cache. */
+export const BUILD_LIKE_KINDS = new Set(['build', 'test', 'compile', 'native', 'image']);
+
+export function isBuildLikeKind(kind) {
+  return BUILD_LIKE_KINDS.has(kind);
+}
+
 /**
  * Fold one SSE event into the newest-first card list, mutating and returning it.
  * An event is `{type, data, at}` where `data` is the parsed flat JSON payload the engine
@@ -50,6 +57,7 @@ export function foldEvent(cards, event) {
   const d = event.data || {};
   switch (event.type) {
     case 'request-start': {
+      if (!isBuildLikeKind(d.kind || 'build')) break;
       // Engine startedAt (admission) beats client receipt time — late join / rehydrate must match TUI.
       const engineStart =
         typeof d.startedAt === 'number' && d.startedAt > 0 ? d.startedAt : null;
@@ -286,9 +294,17 @@ export function foldEvent(cards, event) {
         const row = moduleRow(card, d.dir, event.at);
         // didWork=false → pure cache check (JK-1296); treat as success but label checked.
         row.didWork = d.didWork !== false;
-        row.state = d.success ? (row.didWork ? 'success' : 'checked') : 'failed';
+        row.state = d.success
+          ? row.didWork
+            ? 'success'
+            : 'checked'
+          : d.cancelled
+            ? 'cancelled'
+            : 'failed';
         row.millis = d.millis ?? row.millis;
         if (d.coord) row.coord = d.coord;
+        // User-cancel stamp as soon as a module reports it — do not wait for request-finish.
+        if (d.cancelled) card.cancelled = true;
       }
       break;
     }
@@ -710,6 +726,7 @@ export function normalizeDiagnostic(d) {
     stack: d.stack || (d.throwable && d.throwable.stack) || '',
     file: d.file || '',
     line: typeof d.line === 'number' ? d.line : 0,
+    col: typeof d.col === 'number' ? d.col : typeof d.column === 'number' ? d.column : 0,
     snippetStart: typeof d.snippetStart === 'number' ? d.snippetStart : 0,
     snippet,
     worker: typeof d.worker === 'number' ? d.worker : 0,
@@ -756,7 +773,14 @@ function historyModules(rec) {
             ? m.didWork === false
               ? 'checked'
               : 'success'
-            : 'failed';
+            : steps.some((s) => s.state === 'failed')
+              // A real FAIL recorded before the cancel still reads as failed — same precedence
+              // as outcomeOf and the legacy branch below (JK-2094): a compile failure followed
+              // by a workspace cancel must not gray out to 'cancelled' on reload.
+              ? 'failed'
+              : rec.cancelled || m.cancelled || steps.some((s) => s.state === 'cancelled')
+                ? 'cancelled'
+                : 'failed';
       } else if (running && !m.success && steps.some((s) => s.state === 'running')) {
         state = 'running';
       } else if (running && !m.success && steps.length > 0 && !steps.every((s) => s.state === 'failed' || s.state === 'cancelled')) {
@@ -852,9 +876,8 @@ function hasFailedStep(card) {
  * builds do), else derived from module rows (socket requests encode their outcome in wire
  * messages, not events): any failed module → failed; all finished and some succeeded → success.
  *
- * <p>FAIL steps / failed modules take priority over {@code cancelled}. Cooperative fail-fast and
- * post-finish socket EOF can leave {@code cancelled=true} on a run that actually finished with
- * test/compile failures — those must read as failed, not cancelled.
+ * <p>A real test/compile FAIL recorded before cancel still reads as failed. Modules that ended
+ * because the session was cancelled ({@code state === 'cancelled'}) do not flip the badge.
  */
 export function outcomeOf(card) {
   if (card.state === 'running') return 'running';
@@ -896,7 +919,16 @@ export function phaseChainOf(module) {
     node.steps.push(s);
   }
   for (const node of nodes) node.state = phaseState(node.steps);
-  return nodes;
+  // Resolve is setup noise on a happy path. Keep it only when a resolve step failed
+  // so the chain starts at Generate (or the next real phase) otherwise.
+  return nodes.filter((n) => !isQuietResolve(n));
+}
+
+/** True for a non-failed {@code resolve} phase node (hide from the strip). */
+function isQuietResolve(node) {
+  const phase = (node.phase || '').toLowerCase();
+  if (phase !== 'resolve') return false;
+  return node.state !== 'failed';
 }
 
 /** Display label for a phase wire-name: capitalize the first letter ('compile' → 'Compile'). */
@@ -904,22 +936,33 @@ function phaseLabel(wire) {
   return wire ? wire.charAt(0).toUpperCase() + wire.slice(1) : '?';
 }
 
+/**
+ * Stamp / resource / build-logic tails. A 1–2ms SUCCESS here is not "the compiler ran" —
+ * {@link #phaseState} judges skip/success from the other steps in the phase.
+ */
+function isHousekeepingStep(step) {
+  const n = step && step.name ? String(step.name) : '';
+  return n === 'copy-resources' || n.startsWith('write-stamp') || n.startsWith('build-logic-');
+}
+
 /** A phase node's aggregate state from its steps: failed › running › skipped/cancelled › success. */
 function phaseState(steps) {
   if (!steps.length) return 'running';
   if (steps.some((s) => s.state === 'failed')) return 'failed';
   if (steps.some((s) => s.state === 'running')) return 'running';
-  if (steps.every((s) => s.state === 'skipped')) return 'skipped';
-  if (steps.every((s) => s.state === 'skipped' || s.state === 'cancelled')) return 'cancelled';
+  // Judge productive work only. copy-resources SUCCESS@2ms must not turn Compile green
+  // when compile-java was SKIPPED (action-cache / stamp hit).
+  const primary = steps.filter((s) => !isHousekeepingStep(s));
+  const judged = primary.length ? primary : steps;
+  if (judged.every((s) => s.state === 'skipped')) return 'skipped';
+  if (judged.every((s) => s.state === 'skipped' || s.state === 'cancelled')) return 'cancelled';
   // Idle bookkeeping only (explicit 0ms success + skips): paint the phase as skipped so
-  // Compile/Generate with a skipped compile-java and a 0ms write-stamp is not solid "success".
-  // Missing millis is not treated as idle (history/tests often omit duration).
-  // (No 'checked' alternative here: stepState never yields it — checked is a MODULE state from
-  // module-finish didWork=false; the step-level clause was dead, JK-1858.)
-  if (steps.every((s) => s.state === 'skipped' || (s.state === 'success' && s.millis === 0))) {
+  // Generate with a 0ms empty generate is not solid "success". Missing millis is not
+  // treated as idle (history/tests often omit duration).
+  if (judged.every((s) => s.state === 'skipped' || (s.state === 'success' && s.millis === 0))) {
     return 'skipped';
   }
-  return 'success'; // all terminal, at least one success with real wall-clock
+  return 'success';
 }
 
 /**
@@ -1490,4 +1533,187 @@ export function stackFrameLines(stack) {
 /** True when the diagnostic should use the rich test-failure report. */
 export function isTestFailureDiag(d) {
   return !!(d && d.code === 'test-failure');
+}
+
+/** javac / kotlinc / groovyc — same set as CLI {@code ConsoleSpec.isCompilerCode}. */
+export function isCompilerDiag(d) {
+  const c = d && d.code;
+  return c === 'javac' || c === 'kotlinc' || c === 'groovyc';
+}
+
+/** {@code path.ext:line[:col]:rest} — same shape as {@code CompilerLocus.HEADER}. */
+const COMPILER_HEADER =
+  /^(?<file>.+?\.(?:java|kt|kts|groovy|gvy|gy)):(?<line>\d+)(?::(?<col>\d+))?:(?<rest>.*)$/;
+const COMPILER_CARET = /^\s*\^\s*$/;
+const COMPILER_KV = /^\s*([^:]+):(.*)$/;
+
+/**
+ * Split a compiler block into units (one per header). Empty when the message has no locus header.
+ *
+ * @param {string} raw
+ * @param {string} [severity]
+ * @returns {Array<{file:string,line:number,col:number,kvs:Array<{key:string,value:string}>,extras:string[],snippet:string|null}>}
+ */
+export function parseCompilerBlock(raw, severity = 'error') {
+  if (!raw) return [];
+  const lines = String(raw).split('\n');
+  const headers = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (COMPILER_HEADER.test(lines[i])) headers.push(i);
+  }
+  if (!headers.length) return [];
+  const units = [];
+  for (let h = 0; h < headers.length; h++) {
+    const start = headers[h];
+    const end = h + 1 < headers.length ? headers[h + 1] : lines.length;
+    units.push(parseCompilerUnit(lines, start, end, severity));
+  }
+  return units;
+}
+
+function parseCompilerUnit(lines, start, end, severity) {
+  const m = COMPILER_HEADER.exec(lines[start]);
+  if (!m) {
+    return { file: '', line: 0, col: 0, kvs: [], extras: [], snippet: null };
+  }
+  const file = m.groups.file;
+  const line = parsePositiveInt(m.groups.line);
+  let col = parsePositiveInt(m.groups.col);
+  const rest = (m.groups.rest || '').trim();
+  const kvs = [];
+  if (rest) kvs.push(splitCompilerKv(rest, severity));
+  let snippet = null;
+  const extras = [];
+  for (let i = start + 1; i < end; i++) {
+    const row = lines[i];
+    if (COMPILER_CARET.test(row)) {
+      const at = row.indexOf('^');
+      if (at >= 0 && col <= 0) col = at + 1;
+      continue;
+    }
+    if (i + 1 < end && COMPILER_CARET.test(lines[i + 1])) {
+      snippet = row;
+      continue;
+    }
+    const kv = COMPILER_KV.exec(row);
+    if (kv && looksLikeCompilerTrailer(kv[1])) {
+      kvs.push({ key: kv[1].trim(), value: (kv[2] || '').trim() });
+      continue;
+    }
+    if (row != null && row.trim()) extras.push(row);
+  }
+  return { file, line, col, kvs, extras, snippet };
+}
+
+function splitCompilerKv(rest, severity) {
+  const s = String(rest).trim();
+  const colon = s.indexOf(':');
+  if (colon <= 0) return { key: severity || 'error', value: s };
+  return { key: s.slice(0, colon).trim(), value: s.slice(colon + 1).trim() };
+}
+
+function looksLikeCompilerTrailer(rawKey) {
+  if (!rawKey) return false;
+  const k = rawKey.trim();
+  if (!k || k.length > 24) return false;
+  return /^[A-Za-z][A-Za-z0-9_-]*$/.test(k);
+}
+
+function parsePositiveInt(raw) {
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/**
+ * Editor-style window around {@code errorLine} (1-based): two lines of context each side, or a
+ * single numbered row when only the compiler's one-line snippet is available.
+ *
+ * @param {string[]} fileLines
+ * @param {number} errorLine
+ */
+export function snippetWindow(fileLines, errorLine) {
+  const n = fileLines == null ? 0 : fileLines.length;
+  if (n === 0) return [];
+  const err = Math.max(1, errorLine || 1);
+  const snippetOnly = n === 1 && err > 1;
+  const lo = snippetOnly ? 1 : Math.max(1, err - 2);
+  const hi = snippetOnly ? 1 : Math.min(n, err + 2);
+  const slice = [];
+  let maxCode = 0;
+  for (let line = lo; line <= hi; line++) {
+    const raw = fileLines[line - 1] == null ? '' : String(fileLines[line - 1]);
+    slice.push(raw);
+    maxCode = Math.max(maxCode, raw.length);
+  }
+  const gutter = Math.max(4, String(snippetOnly ? err : hi).length);
+  return slice.map((text, i) => {
+    const num = snippetOnly ? err : lo + i;
+    return {
+      num,
+      gutter: String(num).padStart(gutter, ' '),
+      error: snippetOnly || num === err,
+      code: text,
+      pad: Math.max(0, maxCode - text.length),
+    };
+  });
+}
+
+/**
+ * Structured compile-failure report (CLI CompilerDiagnostic body, web test-failure chrome).
+ * Returns one report per header in the message. Non-compiler diags return [].
+ *
+ * @param {object} d normalized diagnostic
+ * @param {{ showHeader?: boolean, module?: string }} [opts]
+ */
+export function compilerFailureReports(d, opts) {
+  if (!isCompilerDiag(d)) return [];
+  const showHeader = !opts || opts.showHeader !== false;
+  const module = (opts && opts.module) || d.module || '';
+  const units = parseCompilerBlock(d.message || '', 'error');
+  if (!units.length) {
+    const rest = String(d.message || '').trim();
+    return [
+      makeCompilerReport({
+        showHeader,
+        module,
+        file: d.file || '',
+        line: d.line || 0,
+        col: d.col || 0,
+        kvs: rest ? [{ key: 'error', value: rest }] : [],
+        extras: [],
+        snippet: null,
+      }),
+    ];
+  }
+  return units.map((unit, i) =>
+    makeCompilerReport({
+      showHeader: showHeader && i === 0,
+      module,
+      file: d.file || unit.file || '',
+      line: d.line > 0 && i === 0 ? d.line : unit.line,
+      col: d.col > 0 && i === 0 ? d.col : unit.col,
+      kvs: unit.kvs,
+      extras: unit.extras,
+      snippet: unit.snippet,
+    }),
+  );
+}
+
+function makeCompilerReport({ showHeader, module, file, line, col, kvs, extras, snippet }) {
+  let rows = [];
+  if (snippet != null && snippet !== '') {
+    rows = snippetWindow([snippet], line > 0 ? line : 1);
+  }
+  return {
+    kind: 'compile',
+    showHeader,
+    headerLabel: 'Compile failure',
+    module,
+    kvs: kvs || [],
+    extras: extras || [],
+    file: file || '',
+    line: line || 0,
+    col: col || 0,
+    rows,
+  };
 }

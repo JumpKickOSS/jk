@@ -73,6 +73,22 @@ class JUnitLauncherAggregatorTest {
     }
 
     @Test
+    void worker_capped_messages_keep_their_original_remainder_count() {
+        // The worker cap emits cap-sized content + marker; that exceeds the engine cap by the
+        // marker's tail alone, and a re-cut would replace the accurate remainder count with the
+        // marker's own length.
+        String workerCapped = "x".repeat(JUnitLauncher.ResultAggregator.MAX_MESSAGE_CHARS)
+                + JUnitLauncher.MESSAGE_TRUNCATION_MARKER
+                + "3000000 more chars)";
+        assertThat(JUnitLauncher.ResultAggregator.truncateMessage(workerCapped)).isSameAs(workerCapped);
+        // A message that merely quotes the marker mid-body is still worker-controlled input
+        // past the cap and gets cut.
+        String quoting = "y".repeat(20_000) + JUnitLauncher.MESSAGE_TRUNCATION_MARKER + "12 more chars)";
+        String cut = JUnitLauncher.ResultAggregator.truncateMessage(quoting);
+        assertThat(cut.length()).isLessThanOrEqualTo(JUnitLauncher.ResultAggregator.MAX_MESSAGE_CHARS + 64);
+    }
+
+    @Test
     void container_events_do_not_count_toward_test_totals() {
         // JUnit fires FINISHED for engine roots and test classes too — those
         // are CONTAINER nodes and must not inflate the test count.

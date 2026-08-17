@@ -530,18 +530,7 @@ class JkManagerTest {
     @Test
     void window_title_suppressed_in_no_ansi_mode() {
         // --no-ansi on a real TTY: still animated, but ANSI sequences are promised away.
-        var noAnsi = new cc.jumpkick.config.JkConfig(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.of(true), // noAnsi
-                Optional.empty(),
-                Optional.empty()); // noOsc
+        var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
         cc.jumpkick.config.SessionContext.runWhere(
                 cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
                     var buf = new ByteArrayOutputStream();
@@ -554,18 +543,7 @@ class JkManagerTest {
 
     @Test
     void plain_progress_emits_decades_then_100_done() {
-        var noAnsi = new cc.jumpkick.config.JkConfig(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.of(true),
-                Optional.empty(),
-                Optional.empty());
+        var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
         cc.jumpkick.config.SessionContext.runWhere(
                 cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
                     var buf = new ByteArrayOutputStream();
@@ -692,11 +670,10 @@ class JkManagerTest {
                 .contains("1m 52s")
                 .doesNotContain("acme:api"); // module lives on the tree row, not the header
         assertThat(all).contains("45%");
-        // Only running Compile stays; Resolve succeeded and is gone. Module + phase on the row.
-        assertThat(all).contains("acme:api").contains("Compile").contains("·");
+        // Only running Compile stays; Resolve succeeded and is gone. Module › phase on the row.
+        assertThat(all).contains("acme:api").contains("Compile").contains("›");
         assertThat(all).doesNotContain("Resolve");
         assertThat(all).containsAnyOf("├─", "╰─", "+-", "`-");
-        assertThat(all).doesNotContain("›");
     }
 
     @Test
@@ -750,13 +727,13 @@ class JkManagerTest {
         String joined = String.join("\n", raw);
         String visible = String.join("\n", stripAll(raw));
         Theme t = Theme.active();
-        // Compact module · phase: no bg pills / powerline caps on the tree.
-        assertThat(visible).contains("com.foo:bar").contains("·").contains("Compile");
+        // Compact module › phase: no bg pills / powerline caps on the tree.
+        assertThat(visible).contains("com.foo:bar").contains("›").contains("Compile");
         assertThat(visible).contains("com.foo:baz").contains("Test");
         // Running phase is bold blue (web parity); failed phase stays red.
         assertThat(joined).contains(Theme.colorize("Compile", t.blue().bold()));
         assertThat(joined).contains(Theme.colorize("Test", t.error()));
-        assertThat(joined).contains(Theme.colorize("·", t.darkGray()));
+        assertThat(joined).contains(Theme.colorize("›", t.darkGray()));
         assertThat(joined).doesNotContain(Glyphs.PILL_LEFT_NERD);
         // Running row uses fill-circle (○) in constant blue — not the solid ● pulse glyph.
         assertThat(visible).contains("\u25CB"); // ○ frame 0
@@ -785,11 +762,12 @@ class JkManagerTest {
         cm.stepMessage("cc.jumpkick:jk-java-compiler", "package-jar", "shrinking jar");
 
         String all = String.join("\n", stripAll(cm.renderBuildPlanLines(120, 0)));
-        // ● module · Package · shrinking jar
+        // ● module › Package › shrinking jar
         assertThat(all)
                 .contains("cc.jumpkick:jk-java-compiler")
                 .contains("Package")
-                .contains("shrinking jar");
+                .contains("shrinking jar")
+                .contains("›");
         assertThat(all.indexOf("Package")).isLessThan(all.indexOf("shrinking jar"));
     }
 
@@ -984,14 +962,45 @@ class JkManagerTest {
             TerminalReflow.force(true);
             int estimate = Math.max(JkManagerView.physicalRowsAfterReflow(last, 80, 40), last.size());
             buf.reset();
+            // Hidden write only buffers; open the pane so paint runs under the new column budget.
             cm.view.writeAbove("WARN something happened");
+            assertThat(cm.outputWindow().size()).isEqualTo(1);
+            cm.showProcessFailureOutput();
             String out = buf.toString(StandardCharsets.UTF_8);
-            // The reflow-aware climb ran before the text landed, and the text precedes the repaint.
-            assertThat(out).contains(Ansi.cursorUp(estimate));
-            assertThat(out.indexOf(Ansi.cursorUp(estimate))).isLessThan(out.indexOf("WARN something happened"));
+            // Region repainted under the new width with the pane line included.
+            assertThat(TestAnsi.strip(out)).contains("WARN something happened");
             assertThat(cm.width()).isEqualTo(40);
+            assertThat(estimate).isGreaterThan(0); // reflow estimate still computed above
         } finally {
             TerminalReflow.force(null);
+            TerminalSize.probe = savedProbe;
+            TerminalSize.reset();
+        }
+    }
+
+    @Test
+    void renderBuildPlanLines_uses_its_cols_argument_not_a_second_terminal_read() {
+        // One width sample per frame: a SIGWINCH landing between paintBuildPlan's size sync and
+        // the tree render must not leak a second TerminalSize read into row content while the
+        // truncation budget, paintedCols, and the reflow-wipe estimate still use the sample.
+        var savedProbe = TerminalSize.probe;
+        try {
+            var buf = new ByteArrayOutputStream();
+            var cm = new JkManager(stream(buf), true, true, 120);
+            cm.height = 24;
+            cm.name = "Build";
+            cm.startNanos = System.nanoTime();
+            cm.nerdFont = NerdFontCaps.NONE;
+            cm.stepRunning("cc.jumpkick:jk-cli", "compile", "compile");
+            cm.stepMessage("cc.jumpkick:jk-cli", "compile", "compiling 42 sources");
+
+            TerminalSize.probe = () -> new int[] {24, 200};
+            TerminalSize.reset();
+            List<String> sampled = cm.renderBuildPlanLines(120, 4_000);
+            TerminalSize.probe = () -> new int[] {24, 30};
+            TerminalSize.reset();
+            assertThat(cm.renderBuildPlanLines(120, 4_000)).isEqualTo(sampled);
+        } finally {
             TerminalSize.probe = savedProbe;
             TerminalSize.reset();
         }
@@ -1322,6 +1331,23 @@ class JkManagerTest {
     }
 
     @Test
+    void attachPhaseError_clamp_never_splits_a_surrogate_pair() {
+        // The 96-code-unit clamp lands the cut at index 93; when that splits an emoji's
+        // surrogate pair the brief-error row would end in a lone high surrogate (mojibake).
+        var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdFont = NerdFontCaps.NONE;
+        cm.stepRunning("m", "compile", "compile");
+        String brief = "a".repeat(92) + "😀" + " trailing context that forces the clamp";
+        cm.attachPhaseError("m", "compile", "compile", brief);
+        cm.stepDone("m", "compile", false, "compile");
+
+        String all = String.join("\n", stripAll(cm.renderBuildPlanLines(120, 0)));
+        assertThat(all).contains("a".repeat(92) + "…");
+        assertThat(all.chars().anyMatch(c -> Character.isHighSurrogate((char) c) || Character.isLowSurrogate((char) c)))
+                .isFalse();
+    }
+
+    @Test
     void attachPhaseError_uses_row_wire_phase_when_callers_pass_empty_phase() {
         // listeners pass phase=""; step key is compile-java, phase node is compile.
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
@@ -1380,8 +1406,8 @@ class JkManagerTest {
         var lines = stripAll(cm.renderBuildPlanLines(120, 0));
         // header + two tree rows only (no leading │, no blank │ between).
         assertThat(lines).hasSize(3);
-        assertThat(lines.get(1)).matches(" [├+].*").contains("com.foo").contains("·");
-        assertThat(lines.get(2)).matches(" [╰`].*").contains("com.foo").contains("·");
+        assertThat(lines.get(1)).matches(" [├+].*").contains("com.foo").contains("›");
+        assertThat(lines.get(2)).matches(" [╰`].*").contains("com.foo").contains("›");
         for (String line : lines) {
             assertThat(line.strip()).isNotEqualTo("│");
         }
@@ -1423,6 +1449,54 @@ class JkManagerTest {
     }
 
     @Test
+    void addCompletion_does_not_print_into_scrollback() {
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(stream(buf), true, true, 80);
+        cm.name = "Build";
+        cm.startNanos = System.nanoTime();
+        cm.stepRunning("m", "compile");
+        cm.tick();
+        buf.reset();
+
+        cm.addCompletion("✓ [01 of 3] ex:lib took 1s");
+
+        assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8))).doesNotContain("✓ [01 of 3] ex:lib took 1s");
+        assertThat(stripAll(cm.renderBuildPlanLines(80, 0)).stream()
+                        .anyMatch(l -> l.contains("✓ [01 of 3] ex:lib took 1s")))
+                .isTrue();
+    }
+
+    @Test
+    void completed_tail_is_wiped_on_settle_not_copied_above_chrome() {
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(stream(buf), true, true, 80);
+        cm.name = "Build";
+        cm.startNanos = System.nanoTime();
+        cm.stepRunning("m", "compile");
+        cm.addCompletion("✓ [01 of 3] ex:lib took 1s");
+        cm.tick();
+        buf.reset();
+
+        cm.finishBuildPlanSuccess("built 3 modules");
+
+        assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8))).doesNotContain("✓ [01 of 3] ex:lib took 1s");
+    }
+
+    @Test
+    void completed_tail_is_not_starved_by_a_full_work_tree() {
+        var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdFont = NerdFontCaps.NONE;
+        cm.height = 10;
+        for (int i = 0; i < 8; i++) {
+            cm.stepRunning("g:m" + i, "compile");
+        }
+        cm.addCompletion("✓ [01 of 3] g:a took 1s");
+
+        var all = String.join("\n", stripAll(cm.renderBuildPlanLines(120, 0)));
+        assertThat(all).contains("✓ [01 of 3] g:a took 1s");
+    }
+
+    @Test
     void completed_tail_caps_and_collapses_overflow_into_a_footer() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.stepRunning("m", "compile");
@@ -1436,7 +1510,7 @@ class JkManagerTest {
     }
 
     @Test
-    void write_above_prints_the_line_then_repaints_the_region_below() {
+    void write_above_buffers_when_hidden_and_repaints_when_shown() {
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(stream(buf), true, true, 80);
         cm.progress(1, 4);
@@ -1445,17 +1519,71 @@ class JkManagerTest {
         buf.reset();
 
         cm.writeAbove("javac: warning in Foo.java");
+        // Hidden by default: buffered only — no permanent scrollback line.
+        assertThat(cm.outputWindow().size()).isEqualTo(1);
+        assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8))).doesNotContain("javac: warning in Foo.java");
 
+        cm.showProcessFailureOutput(); // force-open: commit buffer + paint rule/wedge
         String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
-        // The log line appears, and the bar (region) is repainted after it.
-        int log = visible.indexOf("javac: warning in Foo.java");
-        int bar = visible.indexOf("█");
-        assertThat(log).isGreaterThanOrEqualTo(0);
-        assertThat(bar).isGreaterThan(log); // region re-drawn below the log line
+        assertThat(visible).contains("javac: warning in Foo.java");
+        assertThat(visible).contains("output"); // rule caption
+
+        // Further lines while open: lift live region, emit line, repaint wedge (immediate).
+        buf.reset();
+        cm.writeAbove("second line");
+        assertThat(cm.outputWindow().size()).isEqualTo(2);
+        assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8))).contains("second line");
     }
 
     @Test
-    void capture_output_routes_system_out_above_the_region_then_restores() {
+    void writeAbove_splits_a_multiline_diagnostic_into_scrollback_rows() {
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(stream(buf), true, true, 80);
+        cm.name = "Build";
+        cm.progress(1, 4);
+        cm.stepRunning("m", "compile-java");
+        cm.tick();
+        buf.reset();
+
+        String report = "Compile Java Failure\n ┃ error: class expected\n ┃     Foo.java:1\n ┗━";
+        cm.writeAbove(report);
+        assertThat(cm.outputWindow().size()).isEqualTo(4);
+
+        cm.showProcessFailureOutput();
+        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
+        assertThat(visible).contains("Compile Java Failure");
+        assertThat(visible).contains("error: class expected");
+        assertThat(visible).contains("Foo.java:1");
+        // Still multi-line — not one squash of rails onto the header.
+        assertThat(visible.indexOf("Compile Java Failure")).isLessThan(visible.indexOf("error: class expected"));
+        cm.close();
+    }
+
+    @Test
+    void toggle_off_replaces_peek_rule_with_blank_separator() {
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(stream(buf), true, true, 80);
+        cm.name = "Build";
+        cm.progress(1, 4);
+        cm.stepRunning("m", "compile");
+        cm.tick();
+        cm.outputWindow().show();
+        cm.writeAbove("native-image: step");
+        assertThat(cm.outputWindow().committedScrollbackLines()).isEqualTo(1);
+        List<String> on = cm.renderBuildPlanLines(80, 0);
+        assertThat(TestAnsi.strip(on.get(0))).contains("output");
+
+        cm.toggleOutputWindow(); // hide: rule → blank, not delete separator
+        assertThat(cm.outputWindow().visible()).isFalse();
+        List<String> off = cm.renderBuildPlanLines(80, 0);
+        assertThat(off.get(0)).isEmpty();
+        assertThat(TestAnsi.strip(off.get(1))).doesNotContain("output");
+        assertThat(off.get(1)).isNotEmpty();
+        assertThat(cm.outputWindow().committedScrollbackLines()).isEqualTo(1);
+    }
+
+    @Test
+    void capture_output_buffers_system_out_in_the_output_window() {
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(stream(buf), true, true, 80);
         cm.stepRunning("m", "compile");
@@ -1467,8 +1595,8 @@ class JkManagerTest {
             System.out.println("from a step");
         }
         assertThat(System.out).isSameAs(original); // streams restored
-        assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8)))
-                .contains("from a step"); // routed to the region's real stdout
+        assertThat(cm.outputWindow().size()).isEqualTo(1);
+        assertThat(cm.outputWindow().linesForDisplay(10)).contains("from a step");
     }
 
     @Test
@@ -1493,6 +1621,30 @@ class JkManagerTest {
         // Fits in 6 columns → original bytes preserved exactly (jk's SGR byte order).
         assertThat(JkManager.truncateVisible(colored, 6)).isEqualTo(colored);
         assertThat(JkManager.truncateVisible("plain", 10)).isEqualTo("plain");
+    }
+
+    @Test
+    void truncate_visible_drops_control_characters_instead_of_emitting_them() {
+        // A stray tab/backspace/CR in a step message (wcwidth -1) copied at weight 0 advances
+        // real terminal columns past the charged budget — the row wraps and desyncs cursor
+        // bookkeeping. Controls are dropped, never forwarded.
+        assertThat(JkManager.truncateVisible("ab\tcd\re", 10)).isEqualTo("abcde");
+        assertThat(JkManager.truncateVisible("a\bb", 2)).isEqualTo("ab");
+        assertThat(RenderContext.visibleWidth(JkManager.truncateVisible("a\tb\tc", 3)))
+                .isEqualTo(3);
+    }
+
+    @Test
+    void truncate_visible_zero_width_tail_is_not_an_ellipsis_reserve() {
+        // Zero-width code points cost no columns: base+combining at exact budget must render
+        // fully — reserving an ellipsis column for the tail cut the last glyph one early.
+        String cafe = "cafe\u0301"; // e + combining acute, 4 columns
+        assertThat(JkManager.truncateVisible(cafe, 4)).isEqualTo(cafe);
+        String sun = "\u2600\uFE0F"; // emoji + VS16 at its exact width
+        assertThat(JkManager.truncateVisible(sun, 1)).isEqualTo(sun);
+        assertThat(JkManager.truncateVisible("abc\t", 3)).isEqualTo("abc"); // dropped-control tail
+        // A tail that still costs columns keeps the reserve.
+        assertThat(TestAnsi.strip(JkManager.truncateVisible("cafe\u0301s", 4))).isEqualTo("caf…");
     }
 
     @Test

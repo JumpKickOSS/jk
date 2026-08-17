@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
@@ -90,11 +89,11 @@ public final class SyncCommand implements CliCommand {
                     info == null ? null : info.jdk(),
                     info == null ? 0 : info.javaRelease(),
                     info == null ? null : info.lockJdk(),
-                    m -> CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Sync", m)),
+                    m -> cc.jumpkick.cli.tui.CommandWedge.printFail("Sync", m),
                     true);
         } catch (Exception e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Sync", (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage())));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "Sync", (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
             return 1;
         }
 
@@ -124,7 +123,7 @@ public final class SyncCommand implements CliCommand {
                     fetched,
                     upToDate);
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Sync", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Sync", e.getMessage());
             return Exit.SOFTWARE;
         }
         // The engine ran the opportunistic cache prune on success (it did the work); nothing more

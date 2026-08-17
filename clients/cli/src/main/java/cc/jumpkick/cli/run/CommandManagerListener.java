@@ -45,6 +45,7 @@ public final class CommandManagerListener implements BuildPlanListener {
 
     private JkManager cm;
     private JkManager.OutputScope capture;
+    private final DiagnosticReport.CompilerHeaderRun compilerHeaders = new DiagnosticReport.CompilerHeaderRun();
 
     public CommandManagerListener(PrintStream out, ConsoleSpec spec, String module, List<Task> steps, boolean animate) {
         this(out, spec, module, steps, animate, true);
@@ -141,8 +142,12 @@ public final class CommandManagerListener implements BuildPlanListener {
         cm.attachPhaseError(module, step, "", brief);
         // Styled "Test Failure" block already covers per-test failures; keep JSON diagnostics only.
         if ("test-failure".equals(code)) return;
-        String report = ConsoleSpec.renderError(step, code, message);
+        String report = ConsoleSpec.renderError(step, code, message, module, compilerHeaders.show(step, code, module));
         if (report != null && !report.isEmpty()) cm.writeAbove(report);
+        // Non-test diagnostic: treat as tool/worker failure — force-open the process-output pane.
+        if (JkManager.forceShowOnStepFailure(step, null)) {
+            cm.showProcessFailureOutput();
+        }
     }
 
     @Override
@@ -163,6 +168,11 @@ public final class CommandManagerListener implements BuildPlanListener {
         // SKIPPED = cache hit / up-to-date — green terminal, same as SUCCESS.
         boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;
         cm.stepDone(module, step, ok, group == null ? "" : group);
+        // Failed tool/worker (e.g. native-image): force-open the process-output peek. Test-runner
+        // failures keep curated chrome and do not force-open.
+        if (!ok && JkManager.forceShowOnStepFailure(step, group)) {
+            cm.showProcessFailureOutput();
+        }
     }
 
     @Override
@@ -189,10 +199,7 @@ public final class CommandManagerListener implements BuildPlanListener {
         for (BuildPlanResult.Diagnostic d : result.warnings()) {
             above.add(ConsoleSpec.renderWarning(d));
         }
-        for (BuildPlanResult.Diagnostic d : result.errors()) {
-            String rendered = ConsoleSpec.renderError(d);
-            if (rendered != null && !rendered.isEmpty()) above.add(rendered);
-        }
+        ConsoleSpec.appendErrors(above, result.errors());
         // A soft failure overrides an otherwise-successful result: the plan itself is fine, but the
         // command discovered afterward that it can't proceed (e.g. jk run found no runnable entry
         // point). Rendered as the red failure chip with the caller's exact sentence — no "Failed to

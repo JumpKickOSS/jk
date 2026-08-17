@@ -28,7 +28,7 @@ class NativeArgsContributionTest {
                 version = "5"
 
                 [native]
-                always = true
+                enabled = "always"
                 """);
 
         assertThat(PluginContributions.nativeArgs(build, dir))
@@ -62,7 +62,7 @@ class NativeArgsContributionTest {
                 jdk = 25
 
                 [native]
-                always = true
+                enabled = "always"
                 """);
 
         assertThat(PluginContributions.nativeArgs(build, dir)).isEmpty();

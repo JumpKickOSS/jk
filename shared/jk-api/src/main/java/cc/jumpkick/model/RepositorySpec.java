@@ -61,13 +61,13 @@ public record RepositorySpec(
             GOOGLE_ANDROID_EXCLUSIVE_GROUPS);
 
     /**
-     * JumpKick's first-party Maven repository (GCS-backed). Exclusive for {@code cc.jumpkick.*}
-     * and {@code build.jumpkick.*}. Public URL is {@code https://jumpkick.build/repo/} (Hosting
-     * redirect); the transport URL is the GCS HTTPS origin so resolves work before custom DNS.
+     * JumpKick's first-party Maven repository. Exclusive for {@code cc.jumpkick.*} and
+     * {@code build.jumpkick.*}. The product URL is {@code https://jumpkick.build/repo/};
+     * Hosting redirects that prefix to whatever object store is current (GCS today).
      */
     public static final RepositorySpec JUMPKICK = new RepositorySpec(
             "jumpkick",
-            URI.create("https://storage.googleapis.com/jkbuild-releases/repo/"),
+            URI.create("https://jumpkick.build/repo/"),
             Optional.empty(),
             Optional.empty(),
             List.of("cc.jumpkick", "cc.jumpkick.*", "build.jumpkick", "build.jumpkick.*"));

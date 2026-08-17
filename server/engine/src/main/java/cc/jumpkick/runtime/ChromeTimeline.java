@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * this so every client (CLI, web, IDE) gets the same per-run timeline without re-implementing
  * capture; write moved off the CLI).
  *
- * <p>Default path: {@code <project>/target/jk-chrome-profile.json} (canonical build output dir).
+ * <p>Default path: {@code <project>/target/jk-profile.json} (canonical build output dir).
  * Disable with request {@code noTimeline=true} or env {@code JK_CHROME_PROFILE=off}. Override path
  * with {@code JK_CHROME_PROFILE=<file>}.
  *
@@ -30,7 +30,7 @@ public final class ChromeTimeline {
 
     static final String ENV = "JK_CHROME_PROFILE";
     /** Under {@link cc.jumpkick.layout.BuildLayout}'s module output root ({@code target/}). */
-    static final String DEFAULT_REL = "target/jk-chrome-profile.json";
+    static final String DEFAULT_REL = "target/jk-profile.json";
 
     private final Path file;
     /**

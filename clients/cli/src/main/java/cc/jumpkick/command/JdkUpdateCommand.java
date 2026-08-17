@@ -232,7 +232,7 @@ public final class JdkUpdateCommand implements CliCommand {
                     updated == 1 ? "Updated 1 JumpKick-managed JDK." : "Updated " + updated + " JumpKick-managed JDKs.";
             CommandWedge.printOk("JDK", msg);
         } else {
-            CliOutput.out(CommandWedge.fail("JDK", updated + " updated, " + failed + " failed."));
+            CommandWedge.printFail("JDK", updated + " updated, " + failed + " failed.");
         }
         return failed == 0;
     }
@@ -334,12 +334,12 @@ public final class JdkUpdateCommand implements CliCommand {
 
     private boolean hostSupported() {
         if (HostPlatform.supported()) return true;
-        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+        cc.jumpkick.cli.tui.CommandWedge.printFail(
                 "JDK",
                 "host " + System.getProperty("os.name")
                         + "/"
                         + System.getProperty("os.arch")
-                        + " is not covered by the JetBrains JDK feed. Set JAVA_HOME explicitly."));
+                        + " is not covered by the JetBrains JDK feed. Set JAVA_HOME explicitly.");
         return false;
     }
 

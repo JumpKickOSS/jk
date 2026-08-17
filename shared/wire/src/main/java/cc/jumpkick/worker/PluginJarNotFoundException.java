@@ -41,7 +41,7 @@ public final class PluginJarNotFoundException extends RuntimeException {
         }
         sb.append("Run `./gradlew :").append(artifactId.replace("jk-", "")).append(":installLocal`");
         sb.append(" or set -D").append(jarProperty).append(" to override.");
-        sb.append("\nOfficial repo: https://jumpkick.build/repo/ (GCS: storage.googleapis.com/jkbuild-releases/repo/)");
+        sb.append("\nOfficial repo: https://jumpkick.build/repo/");
         return sb.toString();
     }
 

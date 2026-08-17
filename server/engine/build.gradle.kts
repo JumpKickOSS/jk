@@ -37,6 +37,9 @@ dependencies {
     // builds the git fixtures in tests. The native CLI (:cli) does not depend on :engine, so this
     // never enters a native image — only the engine fat jar.
     implementation(libs.jgit)
+    // XZ inflate for release client binaries (`EngineMain --inflate-xz`). The native CLI must
+    // not link this — it shells out to the engine jar.
+    implementation(libs.tukaani.xz)
 }
 
 application {

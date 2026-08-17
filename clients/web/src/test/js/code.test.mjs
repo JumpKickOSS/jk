@@ -15,6 +15,10 @@ const {
   monacoLang,
   viewerOptions,
   lineDecorations,
+  columnSpan,
+  clipHashMsg,
+  hoverMessage,
+  locusLabel,
   consoleBackground,
   themeDefinition,
   buildFileTree,
@@ -34,6 +38,7 @@ const {
   isTextWritableLang,
   extractMermaidFences,
   injectMermaidSvgs,
+  sanitizeDiagramSvg,
   saveErrorMessage,
   markedParse,
   baseFileName,
@@ -50,7 +55,9 @@ test('routeFromHash nests files under #project/<id>', () => {
     files: false,
     path: null,
     line: 0,
+    col: 0,
     lineErr: false,
+    msg: '',
   });
   assert.deepEqual(routeFromHash('#project/ab12/files'), {
     view: 'project',
@@ -58,7 +65,9 @@ test('routeFromHash nests files under #project/<id>', () => {
     files: true,
     path: null,
     line: 0,
+    col: 0,
     lineErr: false,
+    msg: '',
   });
   const r = routeFromHash('#project/ab12/files/src/Main.java?line=42');
   assert.equal(r.view, 'project');
@@ -66,10 +75,19 @@ test('routeFromHash nests files under #project/<id>', () => {
   assert.equal(r.files, true);
   assert.equal(r.path, 'src/Main.java');
   assert.equal(r.line, 42);
+  assert.equal(r.col, 0);
   assert.equal(r.lineErr, false);
-  const err = routeFromHash('#project/ab12/files/src/Main.java?line=84&err=true');
+  assert.equal(r.msg, '');
+  const err = routeFromHash('#project/ab12/files/src/Main.java?line=84&col=9&err=true');
   assert.equal(err.line, 84);
+  assert.equal(err.col, 9);
   assert.equal(err.lineErr, true);
+  const noted = routeFromHash(
+    '#project/ab12/files/src/Main.java?line=2&col=5&err=true&msg=error%3A%20cannot%20find%20symbol',
+  );
+  assert.equal(noted.msg, 'error: cannot find symbol');
+  assert.equal(noted.col, 5);
+  assert.equal(noted.lineErr, true);
   assert.equal(routeFromHash('#code').view, 'activity');
   assert.equal(routeFromHash('#project/').view, 'activity');
 });
@@ -92,6 +110,42 @@ test('buildProjectHash keeps slashes in the file path', () => {
     buildProjectHash({ projectId: 'ab', path: 'src/Main.java', line: 84, err: true }),
     '#project/ab/files/src/Main.java?line=84&err=true',
   );
+  assert.equal(
+    buildProjectHash({ projectId: 'ab', path: 'src/Main.java', line: 12, col: 7, err: true }),
+    '#project/ab/files/src/Main.java?line=12&col=7&err=true',
+  );
+  assert.equal(
+    buildProjectHash({
+      projectId: 'ab',
+      path: 'src/Main.java',
+      line: 12,
+      col: 7,
+      err: true,
+      msg: 'error: cannot find symbol',
+    }),
+    '#project/ab/files/src/Main.java?line=12&col=7&err=true&msg=error%3A%20cannot%20find%20symbol',
+  );
+});
+
+test('locusLabel appends line and column for copy-paste', () => {
+  assert.equal(locusLabel(''), '');
+  assert.equal(locusLabel('src/Main.java'), 'src/Main.java');
+  assert.equal(locusLabel('src/Main.java', 0), 'src/Main.java');
+  assert.equal(locusLabel('src/Main.java', 12), 'src/Main.java:12');
+  assert.equal(locusLabel('src/Main.java', 12, 0), 'src/Main.java:12');
+  assert.equal(locusLabel('src/Main.java', 12, 7), 'src/Main.java:12:7');
+});
+
+test('clipHashMsg and hoverMessage wrap compiler notes', () => {
+  assert.equal(clipHashMsg(null), '');
+  assert.equal(clipHashMsg('  hi  '), 'hi');
+  assert.equal(clipHashMsg('x'.repeat(801)).length, 800);
+  assert.ok(clipHashMsg('x'.repeat(801)).endsWith('…'));
+  assert.equal(hoverMessage(''), undefined);
+  assert.equal(hoverMessage('  '), undefined);
+  assert.equal(hoverMessage('cannot find symbol').value, '```text\ncannot find symbol\n```');
+  assert.match(hoverMessage('List<T>').value, /List<T>/);
+  assert.match(hoverMessage('```evil```').value, /'''evil'''/);
 });
 
 test('langFromPath is case-insensitive and closed', () => {
@@ -100,8 +154,19 @@ test('langFromPath is case-insensitive and closed', () => {
   assert.equal(langFromPath('a.jsonl'), 'json');
   assert.equal(langFromPath('diagram.mmd'), 'mermaid');
   assert.equal(langFromPath('logo.PNG'), 'image');
+  assert.equal(langFromPath('pom.xml'), 'xml');
+  assert.equal(langFromPath('Logback.XML'), 'xml');
+  assert.equal(langFromPath('config.yaml'), 'yaml');
+  assert.equal(langFromPath('config.YML'), 'yaml');
+  assert.equal(langFromPath('schema.sql'), 'sql');
+  assert.equal(langFromPath('app.properties'), 'properties');
+  assert.equal(langFromPath('setup.sh'), 'shell');
+  assert.equal(langFromPath('run.bash'), 'shell');
+  assert.equal(langFromPath('env.zsh'), 'shell');
+  assert.equal(langFromPath('Main.scala'), 'scala');
+  assert.equal(langFromPath('Scratch.sc'), 'scala');
   assert.equal(langFromPath('build.gradle'), null);
-  assert.equal(langFromPath('pom.xml'), null);
+  assert.equal(langFromPath('notes.txt'), null);
 });
 
 test('preview eligibility is extension-driven', () => {
@@ -128,6 +193,66 @@ test('extractMermaidFences pulls fenced mermaid blocks out of markdown', () => {
   assert.match(markdown, /```js/);
   const html = injectMermaidSvgs('<p>JKMERMAIDPLACEHOLDER0X</p>', ['<svg></svg>']);
   assert.equal(html, '<p><svg></svg></p>');
+});
+
+test('monaco partial-failure retry does not re-inject loader.js', async () => {
+  // loader.js loads and installs AMD require, but editor.main rejects once; the retry must
+  // reuse the installed loader instead of appending a duplicate script tag. Fresh module
+  // instance: a successful load memoizes, which would latch the shared instance's memo.
+  const { ensureMonaco } = await import(pathToFileURL(process.env.JK_CODE_MJS).href + '?jk-monaco-retry');
+  const tags = [];
+  let mainLoads = 0;
+  let failFirst = true;
+  const fakeRequire = Object.assign(
+    (deps, resolve, reject) => {
+      mainLoads++;
+      if (failFirst) {
+        failFirst = false;
+        reject(new Error('editor.main network hiccup'));
+        return;
+      }
+      globalThis.window.monaco = { editor: { defineTheme() {} } };
+      resolve();
+    },
+    { config() {} },
+  );
+  globalThis.document = {
+    createElement: () => ({ remove() {} }),
+    head: {
+      appendChild(s) {
+        tags.push(s);
+        globalThis.window.require = fakeRequire;
+        s.onload();
+      },
+    },
+  };
+  globalThis.window = {};
+  try {
+    await assert.rejects(ensureMonaco(), /hiccup/);
+    const monaco = await ensureMonaco();
+    assert.equal(monaco, globalThis.window.monaco);
+    assert.equal(tags.length, 1, 'loader.js injected exactly once across the retry');
+    assert.equal(mainLoads, 2, 'editor.main was retried');
+  } finally {
+    delete globalThis.document;
+    delete globalThis.window;
+  }
+});
+
+test('sanitizeDiagramSvg is the DOMPurify chokepoint with the SVG profiles', () => {
+  const calls = [];
+  const purify = {
+    sanitize(html, opts) {
+      calls.push({ html, opts });
+      return '[clean]' + html;
+    },
+  };
+  assert.equal(sanitizeDiagramSvg(purify, '<svg onload="x()"></svg>'), '[clean]<svg onload="x()"></svg>');
+  assert.equal(sanitizeDiagramSvg(purify, null), '[clean]');
+  assert.equal(calls.length, 2);
+  for (const c of calls) {
+    assert.deepEqual(c.opts, { USE_PROFILES: { svg: true, svgFilters: true } });
+  }
 });
 
 test('saveErrorMessage covers network and concurrency', () => {
@@ -298,6 +423,28 @@ test('lineDecorations: neutral vs error styles', () => {
   assert.equal(e.options.linesDecorationsClassName, 'code-line-err-gutter');
   assert.ok(e.options.overviewRuler);
   assert.ok(e.options.minimap);
+  const marked = lineDecorations(2, true, 7, '    b.key(x);');
+  assert.equal(marked.length, 2);
+  assert.deepEqual(marked[1].range, {
+    startLineNumber: 2,
+    startColumn: 7,
+    endLineNumber: 2,
+    endColumn: 10,
+  });
+  assert.equal(marked[1].options.inlineClassName, 'code-col-err');
+  assert.equal(marked[0].options.hoverMessage, undefined);
+  const jump = lineDecorations(2, false, 1, 'abc');
+  assert.equal(jump[1].options.inlineClassName, 'code-col-hl');
+  const noted = lineDecorations(2, true, 7, '    b.key(x);', 'error: cannot find symbol');
+  assert.match(noted[0].options.hoverMessage.value, /cannot find symbol/);
+  assert.equal(noted[1].options.hoverMessage, undefined);
+});
+
+test('columnSpan covers the identifier at col', () => {
+  assert.equal(columnSpan('', 0), null);
+  assert.deepEqual(columnSpan('    b.key(x);', 7), { start: 7, end: 10 });
+  assert.deepEqual(columnSpan('    @Test', 6), { start: 6, end: 10 });
+  assert.deepEqual(columnSpan('foo + bar', 5), { start: 5, end: 6 });
 });
 
 const TREE_PATHS = [

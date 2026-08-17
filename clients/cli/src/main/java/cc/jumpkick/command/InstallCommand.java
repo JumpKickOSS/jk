@@ -56,8 +56,8 @@ public final class InstallCommand {
         Path projectDir = global.workingDir();
         Path manifest = projectDir.resolve("jk.toml");
         if (!Files.exists(manifest)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Install", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir)));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "Install", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir));
             return Exit.CONFIG;
         }
         return runProjectInstallBuildPlan(projectDir, "install");
@@ -74,8 +74,7 @@ public final class InstallCommand {
     /** Package-private: `jk tool install <file> --group/--name/--ver` delegates here. */
     int installFromFile(Path filePath) throws IOException {
         if (!Files.exists(filePath)) {
-            CliOutput.err(
-                    cc.jumpkick.cli.tui.CommandWedge.fail("Install", PathDisplay.styled(filePath) + ": no such file"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Install", PathDisplay.styled(filePath) + ": no such file");
             return Exit.CONFIG;
         }
 
@@ -94,8 +93,8 @@ public final class InstallCommand {
 
         if (group == null || artifact == null || version == null) {
             if (!isJar) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                        "Install", "--group, --name, and --ver are required for non-JAR files"));
+                cc.jumpkick.cli.tui.CommandWedge.printFail(
+                        "Install", "--group, --name, and --ver are required for non-JAR files");
             } else {
                 StringBuilder msg = new StringBuilder("jk install: could not detect");
                 if (group == null) msg.append(" group");
@@ -159,7 +158,7 @@ public final class InstallCommand {
                             resolved.coordSpec(), List.of(), bin, mainClass, repoUrl, cacheDir),
                     steps -> BuildPlanConsole.chooseConsoleListener("install-maven", steps, mode));
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Install", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Install", e.getMessage());
             return Exit.SOFTWARE;
         }
         if (!outcome.result().success() || outcome.mainClass() == null || outcome.coord() == null) {
@@ -203,7 +202,7 @@ public final class InstallCommand {
                             expanded, canonical, refStr, cacheDir, refresh),
                     steps -> BuildPlanConsole.chooseConsoleListener("install-git-fetch", steps, mode));
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Install", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Install", e.getMessage());
             return Exit.SOFTWARE;
         }
         fetchResult = outcome.result();
@@ -241,17 +240,17 @@ public final class InstallCommand {
         // parsed summary comes from the engine, never a client-side parse.
         cc.jumpkick.engine.protocol.ProjectInfo proj = projectInfo(projectDir);
         if (proj.error() != null) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Install", proj.error()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Install", proj.error());
             return Exit.CONFIG;
         }
         if (proj.application()
                 && "DISABLED".equals(proj.nativeMode())
                 && proj.mainClass().isEmpty()
                 && !proj.springBoot()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "Install",
                     "application project at " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir)
-                            + " has no `main` class set in [application]"));
+                            + " has no `main` class set in [application]");
             return Exit.USAGE;
         }
         // ALWAYS: native is part of the standard build and install produces a native binary.
@@ -293,7 +292,7 @@ public final class InstallCommand {
                     steps -> BuildPlanConsole.chooseConsoleListener(planName, steps, mode),
                     testResultHolder);
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Install", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Install", e.getMessage());
             return Exit.SOFTWARE;
         }
         testResult = testResultHolder[0];
@@ -312,8 +311,7 @@ public final class InstallCommand {
             try {
                 launcher = applyInstallPlan(projectDir, cacheDir);
             } catch (IOException e) {
-                CliOutput.err(
-                        cc.jumpkick.cli.tui.CommandWedge.fail("Install", "make install failed: " + e.getMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Install", "make install failed: " + e.getMessage());
                 return 1;
             }
         }

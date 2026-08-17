@@ -17,7 +17,6 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -28,9 +27,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * {@code jk native} — GraalVM native-image of modules that have a unique main. Pre-fails when
- * {@code GRAALVM_HOME} is missing, {@code native-image} is not under it, or no / several mains
- * are found. {@code [native] always = true} is only the {@code jk build} tail — not this gate.
+ * {@code jk native} — GraalVM native-image for opted-in modules. Pre-fails when {@code
+ * GRAALVM_HOME} is missing, {@code native-image} is not under it, or no eligible main is found.
+ *
+ * <p>Workspace eligibility: modules with {@code [native]} enabled ({@code true} or {@code
+ * "always"}) and a unique main. When none declare {@code [native]}, fall back to unique-main
+ * discovery. Cascade is the dependency closure of those targets only (prereqs package/test;
+ * targets end at {@code native-image}) — siblings outside the cone are not built.
  */
 public final class NativeCommand implements CliCommand {
 
@@ -95,8 +98,8 @@ public final class NativeCommand implements CliCommand {
         Path cache = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
 
         if (!Files.exists(buildFile)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Native", cc.jumpkick.cli.PathDisplay.styledRaw(buildFile) + " not found."));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "Native", cc.jumpkick.cli.PathDisplay.styledRaw(buildFile) + " not found.");
             return Exit.NO_INPUT;
         }
 
@@ -119,12 +122,12 @@ public final class NativeCommand implements CliCommand {
                 && !peek.workspaceRootDir().equals(startDir.toString())) {
             Path wsRoot = Path.of(peek.workspaceRootDir());
             {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                cc.jumpkick.cli.tui.CommandWedge.printFail(
                         "Native",
                         "building from workspace root " + wsRoot.getFileName()
                                 + " (module: "
                                 + startDir.getFileName()
-                                + ")"));
+                                + ")");
                 return runWorkspaceNative(wsRoot, cache);
             }
         }
@@ -134,7 +137,7 @@ public final class NativeCommand implements CliCommand {
             var entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
             var sel = cc.jumpkick.config.ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affectedSince);
             if (sel != null && !sel.ok()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", sel.errorMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Native", sel.errorMessage());
                 return Exit.CONFIG;
             }
             if (sel != null && sel.moduleDirs().isEmpty()) {
@@ -146,7 +149,7 @@ public final class NativeCommand implements CliCommand {
     }
 
     static int failPreflight(String message) {
-        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", message));
+        cc.jumpkick.cli.tui.CommandWedge.printFail("Native", message);
         return Exit.CONFIG;
     }
 
@@ -179,8 +182,7 @@ public final class NativeCommand implements CliCommand {
         // install owns this terminal and must never run inside the engine.
         var rootInfo = BuildCommand.projectInfoOrNull(wsRoot);
         if (rootInfo == null) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Native", "could not read the workspace summary at " + wsRoot));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Native", "could not read the workspace summary at " + wsRoot);
             return Exit.CONFIG;
         }
         if (rootInfo.moduleDirs().isEmpty()) {
@@ -195,14 +197,14 @@ public final class NativeCommand implements CliCommand {
             try {
                 rootBuild = cc.jumpkick.config.JkBuildParser.parse(wsRoot.resolve("jk.toml"));
             } catch (Exception e) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", String.valueOf(e.getMessage())));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Native", String.valueOf(e.getMessage()));
                 return Exit.CONFIG;
             }
             var sel = cc.jumpkick.config.ModuleSelection.resolveOptional(wsRoot, rootBuild, modulesSpec, affectedSince);
             if (sel == null) {
                 // neither set — whole workspace
             } else if (!sel.ok()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", sel.errorMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Native", sel.errorMessage());
                 return Exit.CONFIG;
             } else if (sel.moduleDirs().isEmpty()) {
                 CliOutput.out("(no modules matched selection)");
@@ -212,35 +214,70 @@ public final class NativeCommand implements CliCommand {
             }
         }
 
-        Map<Path, Path> graalHomes = new HashMap<>();
-        long nativeCount = 0;
+        List<Path> candidates = new ArrayList<>();
         int considered = 0;
         for (String rel : rootInfo.moduleDirs()) {
             Path moduleDir = wsRoot.resolve(rel).toAbsolutePath().normalize();
             if (selectedDirs != null && !selectedDirs.contains(moduleDir)) continue;
             considered++;
-            var main = cc.jumpkick.layout.NativePreflight.resolveMain(moduleDir, mainClass);
-            if (main instanceof cc.jumpkick.layout.NativePreflight.Main.None) continue;
-            if (main instanceof cc.jumpkick.layout.NativePreflight.Main.Ambiguous) {
-                return failPreflight(cc.jumpkick.layout.NativePreflight.MANY_MAINS);
-            }
-            nativeCount++;
-            graalHomes.put(moduleDir, graalHome);
+            candidates.add(moduleDir);
         }
         if (selectedDirs != null && considered == 0) {
             CliOutput.out("(no modules matched selection)");
             return 0;
         }
+        Map<Path, Path> graalHomes;
+        try {
+            graalHomes = graalHomesForModules(candidates, graalHome, mainClass);
+        } catch (AmbiguousMainException e) {
+            return failPreflight(cc.jumpkick.layout.NativePreflight.MANY_MAINS);
+        }
         if (graalHomes.isEmpty()) return failPreflight(cc.jumpkick.layout.NativePreflight.NO_MAIN);
+        // Always pass native targets as the engine selection: expands transitive build prereqs only.
+        // Never cascade the whole workspace (sibling modules outside the native dependency cone).
+        List<Path> cascadeRoots = List.copyOf(graalHomes.keySet());
         return runWorkspaceHosted(
-                wsRoot,
-                cache,
-                graalHomes,
-                selectedDirs,
-                mode,
-                buildStart,
-                selectedDirs != null ? considered : rootInfo.moduleDirs().size(),
-                nativeCount);
+                wsRoot, cache, graalHomes, cascadeRoots, mode, buildStart, cascadeRoots.size(), graalHomes.size());
+    }
+
+    /**
+     * Map each native-eligible module dir to {@code graalHome}. Prefers modules that declare
+     * {@code [native]} so workspace plugin harness mains do not each start a native-image run.
+     * When none declare the table, every module with a unique main is eligible.
+     */
+    static Map<Path, Path> graalHomesForModules(List<Path> moduleDirs, Path graalHome, String mainOverride)
+            throws AmbiguousMainException {
+        Map<Path, Path> withTable = new HashMap<>();
+        Map<Path, Path> withMain = new HashMap<>();
+        for (Path moduleDir : moduleDirs) {
+            boolean hasNativeTable = false;
+            boolean explicitlyDisabled = false;
+            try {
+                var build = cc.jumpkick.config.JkBuildParser.parse(moduleDir.resolve("jk.toml"));
+                hasNativeTable = build.nativeImage();
+                explicitlyDisabled = build.nativeExplicitlyDisabled();
+            } catch (Exception ignored) {
+                // Unreadable module toml — still try main discovery below.
+            }
+            // enabled = false keeps the table but opts the module out of native builds — it must
+            // not re-enter through the unique-main fallback (JK-2089).
+            if (explicitlyDisabled) continue;
+            var main = cc.jumpkick.layout.NativePreflight.resolveMain(moduleDir, mainOverride);
+            if (main instanceof cc.jumpkick.layout.NativePreflight.Main.None) continue;
+            if (main instanceof cc.jumpkick.layout.NativePreflight.Main.Ambiguous) {
+                throw new AmbiguousMainException();
+            }
+            withMain.put(moduleDir, graalHome);
+            if (hasNativeTable) withTable.put(moduleDir, graalHome);
+        }
+        return withTable.isEmpty() ? withMain : withTable;
+    }
+
+    /** Checked-style signal for multiple discovered mains in one module. */
+    static final class AmbiguousMainException extends Exception {
+        AmbiguousMainException() {
+            super(cc.jumpkick.layout.NativePreflight.MANY_MAINS);
+        }
     }
 
     /**
@@ -304,8 +341,8 @@ public final class NativeCommand implements CliCommand {
                 @Override
                 public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
                     if (!o.success() && !json) {
-                        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                                "Native", wsRoot.relativize(o.dir()) + " failed (exit " + o.exitCode() + ")"));
+                        cc.jumpkick.cli.tui.CommandWedge.printFail(
+                                "Native", wsRoot.relativize(o.dir()) + " failed (exit " + o.exitCode() + ")");
                     }
                 }
             };
@@ -313,10 +350,10 @@ public final class NativeCommand implements CliCommand {
             try {
                 result = EngineClient.runNative(paths, req, listener);
             } catch (IOException e) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", e.getMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Native", e.getMessage());
                 return Exit.SOFTWARE;
             }
-            for (String err : result.errors()) CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", err));
+            for (String err : result.errors()) cc.jumpkick.cli.tui.CommandWedge.printFail("Native", err);
             return result.exitCode();
         }
 
@@ -326,6 +363,7 @@ public final class NativeCommand implements CliCommand {
         JkManager view = JkManager.plan(CliOutput.stdout(), "Build", animate);
         cc.jumpkick.cli.run.AggregateContext agg = new cc.jumpkick.cli.run.AggregateContext(view);
         int[] built = {0};
+        int[] finished = {0};
         var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
             @Override
             public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
@@ -344,6 +382,12 @@ public final class NativeCommand implements CliCommand {
             @Override
             public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
                 if (o.success()) built[0]++;
+                int n = ++finished[0];
+                String completion =
+                        BuildCommand.completionLine(o.success(), n, Math.max(totalModules, n), o.coord(), o.millis());
+                if (view.animating()) {
+                    view.addCompletion(completion);
+                }
             }
         };
         cc.jumpkick.runtime.WorkspaceResult result;
@@ -365,9 +409,9 @@ public final class NativeCommand implements CliCommand {
                     .findFirst()
                     .orElse("build");
             view.finishBuildPlanFailure(Coord.module(failedCoord) + " " + BuildCommand.elapsedSince(buildStart));
-            for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
-                CliOutput.err(ConsoleSpec.renderError(d));
-            }
+            List<String> rendered = new ArrayList<>();
+            ConsoleSpec.appendErrors(rendered, agg.lastErrors());
+            for (String line : rendered) CliOutput.err(line);
             return result.exitCode();
         }
         view.finishBuildPlanSuccess(
@@ -397,7 +441,7 @@ public final class NativeCommand implements CliCommand {
         }
         cc.jumpkick.engine.protocol.ProjectInfo build = BuildCommand.projectInfoOrNull(projectDir);
         if (build == null) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", "could not read the project."));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Native", "could not read the project.");
             return Exit.CONFIG;
         }
 
@@ -427,10 +471,10 @@ public final class NativeCommand implements CliCommand {
                     hostedRequest(projectDir, cache, Map.of(projectDir, graalHome), null),
                     listener);
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Native", e.getMessage());
             return Exit.SOFTWARE;
         }
-        for (String err : result.errors()) CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", err));
+        for (String err : result.errors()) cc.jumpkick.cli.tui.CommandWedge.printFail("Native", err);
         return result.exitCode();
     }
 }

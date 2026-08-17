@@ -102,7 +102,7 @@ public final class PluginCommand extends GroupCommand {
                 removed = true;
             }
             if (!removed) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Plugin", "nothing installed for " + artifactId));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Plugin", "nothing installed for " + artifactId);
                 return Exit.CONFIG;
             }
             cc.jumpkick.cli.tui.CommandWedge.printOk("Plugin", "Uninstalled " + artifactId);
@@ -140,8 +140,7 @@ public final class PluginCommand extends GroupCommand {
             Path dir = global.workingDir();
             Path rootToml = dir.resolve("jk.toml");
             if (!Files.isRegularFile(rootToml)) {
-                CliOutput.err(
-                        cc.jumpkick.cli.tui.CommandWedge.fail("Plugin", "no jk.toml in " + PathDisplay.styledRaw(dir)));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Plugin", "no jk.toml in " + PathDisplay.styledRaw(dir));
                 return Exit.CONFIG;
             }
 
@@ -262,8 +261,8 @@ public final class PluginCommand extends GroupCommand {
                 skipped = missing.size();
             }
             if (installed == 0 && skipped == 0) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                        "Plugin", "no PluginMain modules found (need [application] main = PluginMain)"));
+                cc.jumpkick.cli.tui.CommandWedge.printFail(
+                        "Plugin", "no PluginMain modules found (need [application] main = PluginMain)");
                 return Exit.CONFIG;
             }
             if (skipped > 0 && installed == 0) return Exit.FAILURE;

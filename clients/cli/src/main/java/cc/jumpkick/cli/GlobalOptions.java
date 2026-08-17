@@ -192,7 +192,8 @@ public final class GlobalOptions {
                 g.force ? Optional.of(true) : Optional.empty(),
                 g.noAnsi ? Optional.of(true) : Optional.empty(),
                 g.noOsc ? Optional.of(true) : Optional.empty(),
-                Optional.of(g.notify));
+                Optional.of(g.notify),
+                Optional.empty()); // build-output: config/env only (no CLI flag)
         cc.jumpkick.config.SessionContext.installConfig(cfg.mergedWith(cliOverlay));
         // Engine-owned chrome profile; CLI only forwards the preference on the wire.
         cc.jumpkick.cli.run.TimelineOpts.setNoTimeline(g.noTimeline);
@@ -247,7 +248,7 @@ public final class GlobalOptions {
                 Opt.flag("Suppress informational output", "-q", "--quiet"),
                 Opt.flag("Print additional diagnostic output", "-v", "--verbose"),
                 Opt.flag("Disable all progress bars and spinners", "--no-progress"),
-                Opt.flag("Skip writing target/jk-chrome-profile.json", "--no-timeline"),
+                Opt.flag("Skip writing target/jk-profile.json", "--no-timeline"),
                 Opt.flag("Disable all ANSI/color/Unicode; ASCII-only output", "--no-ansi"),
                 Opt.flag("Disable OSC (title, taskbar, notifications)", "--no-osc"),
                 Opt.flag("Always notify when a build finishes", "--notify"),

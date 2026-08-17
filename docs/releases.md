@@ -18,22 +18,18 @@ coordinates together (search for the old version string).
 
 | Layer | Role |
 |-------|------|
-| **GCS** | Object storage for release blobs (`gs://jkbuild-releases/releases/<ver>/…`) |
+| **GCS** | Object storage for release blobs (`gs://jumpkick/releases/<ver>/…`) |
 | **Firebase CDN** | Public edge for `https://jumpkick.build` (wire later on Blaze) |
 | **install.sh** | Fetches `https://jumpkick.build/releases/…` once Firebase fronts the bucket |
 
-**Until Firebase Hosting is live**, the public HTTPS origin is:
-
-```text
-https://storage.googleapis.com/jkbuild-releases/releases/
-```
-
-Example install against GCS directly:
+The product only knows `https://jumpkick.build/releases/`. Hosting 302s that prefix to
+the current object store (GCS today). Override with `JK_RELEASES_URL` for a mirror
+or an air-gapped origin — never bake a bucket hostname into the client.
 
 ```bash
-export JK_RELEASES_URL=https://storage.googleapis.com/jkbuild-releases/releases
-curl -fsSL https://jumpkick.build/install.sh | bash   # or install.sh from repo once URL is swapped
-# or: bash install.sh with JK_RELEASES_URL set
+curl -fsSL https://jumpkick.build/install.sh | bash
+# air-gap / mirror:
+export JK_RELEASES_URL=https://mirror.example/releases
 ```
 
 Layout under the bucket (and under the CDN path `/releases`):
@@ -47,14 +43,18 @@ releases/
     jk-linux-aarch64.xz
     jk-macos-x86_64.xz
     jk-macos-aarch64.xz
-    jk-windows-x86_64.zip   # or .exe
+    jk-windows-x86_64.xz    # self-update (engine inflates; no system xz needed)
+    jk-windows-x86_64.zip   # install.ps1 / jk.bat only
     jk-engine-0.12.0.jar
     SHA256SUMS              # coreutils: <hex>  <filename>
     SHA256SUMS.sig          # base64 Ed25519 signature over SHA256SUMS bytes
 ```
 
-`install.sh` and self-update read `latest/VERSION`, then fetch **only** from that version
-directory so a mid-install publish cannot mix artifacts.
+`install.sh` and the Unix `jk` wrapper fetch `jk-<os>-<arch>.xz`. `jk.bat` / install.ps1
+fetch the Windows `.zip`. `jk self update` prefers `.xz` on every OS (the engine jar
+inflates; the native CLI does not link tukaani) and falls back to `.zip` on Windows
+when the sums have no xz entry. All three read `latest/VERSION`, then fetch **only**
+from that version directory so a mid-install publish cannot mix artifacts.
 
 Wire Firebase Hosting (or Firebase CDN / load balancer) so `jumpkick.build/releases/*` is
 served from the GCS prefix `releases/*` (custom domain + backend bucket, or Hosting rewrites
@@ -86,7 +86,7 @@ Workflow: [`.github/workflows/release.yml`](../.github/workflows/release.yml)
 | Secret | Role |
 |--------|------|
 | `JK_RELEASE_SIGNING_KEY` | PKCS#8 base64 Ed25519 private key (signing) |
-| `JK_RELEASE_GCS_BUCKET` | GCS bucket name only (no `gs://`), e.g. `jumpkick-releases` |
+| `JK_RELEASE_GCS_BUCKET` | GCS bucket name only (no `gs://`), e.g. `jumpkick` |
 | `JK_RELEASE_GCS_SA_JSON` | Service account JSON with object create/overwrite on that bucket |
 
 Until GCS secrets exist, the workflow still **builds and signs** artifacts as GitHub Actions

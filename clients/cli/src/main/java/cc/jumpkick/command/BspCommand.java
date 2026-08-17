@@ -60,8 +60,7 @@ public final class BspCommand implements CliCommand {
             case "install" -> install(dir);
             case "serve", "run" -> serve(dir, global);
             default -> {
-                CliOutput.err(
-                        cc.jumpkick.cli.tui.CommandWedge.fail("BSP", "expected install or serve (got " + action + ")"));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("BSP", "expected install or serve (got " + action + ")");
                 yield Exit.USAGE;
             }
         };
@@ -69,8 +68,8 @@ public final class BspCommand implements CliCommand {
 
     private static int install(Path projectDir) throws Exception {
         if (!Files.isRegularFile(projectDir.resolve("jk.toml"))) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "BSP", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.of(projectDir)));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "BSP", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.of(projectDir));
             return Exit.CONFIG;
         }
         Path out = writeConnectionFile(projectDir);

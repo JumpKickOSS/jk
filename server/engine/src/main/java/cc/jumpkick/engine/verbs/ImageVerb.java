@@ -10,9 +10,14 @@ import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.runtime.BuildService;
+import cc.jumpkick.runtime.WorkspaceRequest;
+import cc.jumpkick.runtime.WorkspaceResult;
+import cc.jumpkick.runtime.WorkspaceSpec;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.Set;
 
 public final class ImageVerb implements HostedVerb {
 
@@ -63,6 +68,7 @@ public final class ImageVerb implements HostedVerb {
                         Optional.of(Jsonl.bool(requestLine, "force", false)),
                         Optional.empty(),
                         Optional.empty(),
+                        Optional.empty(),
                         Optional.empty());
                 Session session = Session.defaults()
                         .withConfig(config)
@@ -71,6 +77,59 @@ public final class ImageVerb implements HostedVerb {
                         .withJdksDir(jdksDir)
                         .withCancel(cancelToken)
                         .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
+                var wsRoot = cc.jumpkick.config.WorkspaceLocator.findRoot(entryDir);
+                if (wsRoot.isPresent()) {
+                    JkBuild rootBuild =
+                            cc.jumpkick.config.JkBuildParser.parse(wsRoot.get().resolve("jk.toml"));
+                    if (rootBuild.isWorkspaceRoot()
+                            && !cc.jumpkick.runtime.BuildGraph.canonicalPath(wsRoot.get())
+                                    .equals(cc.jumpkick.runtime.BuildGraph.canonicalPath(entryDir))) {
+                        // Workspace member: same orchestrator as jk build; image terminal on this
+                        // module; prereqs package. Events are workspace-progress (not single-plan).
+                        WorkspaceRequest req = new WorkspaceRequest(
+                                        wsRoot.get(),
+                                        rootBuild,
+                                        cache,
+                                        jdksDir,
+                                        0,
+                                        null,
+                                        skipTests,
+                                        verbose,
+                                        0,
+                                        null,
+                                        true,
+                                        true)
+                                .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                                .withSpec(WorkspaceSpec.image(
+                                        Set.of(entryDir.toAbsolutePath().normalize()),
+                                        Jsonl.str(requestLine, "mainClass"),
+                                        Jsonl.str(requestLine, "registry"),
+                                        Jsonl.str(requestLine, "tag"),
+                                        Jsonl.str(requestLine, "tarball"),
+                                        Jsonl.str(requestLine, "dockerExecutable")));
+                        long rid = host.eventRequestId();
+                        if (rid > 0) host.putProgressRoot(rid, wsRoot.get().toString());
+                        WorkspaceResult result = SessionContext.where(
+                                session,
+                                () -> BuildService.buildWorkspace(
+                                        req,
+                                        host.workspaceListener(
+                                                writer, wsRoot.get().toString())));
+                        host.releaseExclusiveSlot();
+                        boolean cancelled = result.cancelled() || host.effectiveCancelled(rid, cancelToken.cancelled());
+                        host.accOutcome(rid, result.success() && !cancelled, result.exitCode());
+                        if (rid > 0) {
+                            if (result.success() && !cancelled) host.finishProgress(rid);
+                            host.emitWorkspaceProgress(rid, writer, true);
+                        }
+                        host.flushTimeline(rid, writer);
+                        host.sendQuiet(
+                                writer,
+                                ProtoEvents.workspaceFinish(
+                                        result.success() && !cancelled, result.exitCode(), result.errors(), cancelled));
+                        return;
+                    }
+                }
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 // Constructed in-session: the plan factory's BuildPlanner.Inputs captures the
                 // ambient SessionContext at construction, so building it outside where would

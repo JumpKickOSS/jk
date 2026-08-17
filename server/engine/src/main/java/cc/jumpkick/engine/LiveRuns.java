@@ -52,6 +52,7 @@ public final class LiveRuns {
                     h.dir(),
                     h.coord(),
                     h.startedAt(),
+                    sessions.lastEventAt(h.requestId()),
                     p != null && !p.isNaN() ? p : Double.NaN,
                     h.journalId(),
                     remainingMs,

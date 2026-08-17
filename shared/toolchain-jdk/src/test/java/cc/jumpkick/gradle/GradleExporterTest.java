@@ -95,7 +95,7 @@ class GradleExporterTest {
                 assembly = true
 
                 [native]
-                always = true
+                enabled = "always"
                 """);
 
         String kts = GradleExporter.export(b, Map.of()).buildFiles().get("");

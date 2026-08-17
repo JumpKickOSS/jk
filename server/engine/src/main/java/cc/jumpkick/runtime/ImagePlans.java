@@ -468,10 +468,8 @@ public final class ImagePlans {
     /** Run a subprocess, streaming each output line via {@code ctx.output()}. */
     private static void runSubprocess(TaskContext ctx, List<String> cmd, Path cwd)
             throws IOException, InterruptedException {
-        Process p = new ProcessBuilder(cmd)
-                .directory(cwd.toFile())
-                .redirectErrorStream(true)
-                .start();
+        Process p = cc.jumpkick.engine.JobWorkers.start(
+                new ProcessBuilder(cmd).directory(cwd.toFile()).redirectErrorStream(true));
         try (var reader =
                 new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
             String line;

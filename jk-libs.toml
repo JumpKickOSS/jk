@@ -1,17 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-#
-# Self-host catalog pins (JK-1840). Workspace short-name -> group:artifact, the top layer of
-# the catalog chain (project -> system global -> bundled). jk's own manifests resolve their
-# short names HERE, so an edited/compromised registry catalog (the downloaded
-# libs.global.toml shadows the bundled floor) can never silently repoint jk's own
-# dependencies at the next re-lock (the JK-1811/JK-1812 hazard class).
-#
-# Keep every catalog-resolved short name used by any workspace jk.toml in this table, with
-# the same GA the bundled catalog ships. SelfHostingTomlTest#catalog_pins_cover_every
-# _self_host_short_name fails when a manifest starts using a short name missing here, and
-# when a pin drifts from the bundled coordinate.
-#
-# Name -> GA only. Versions live in the manifests / jk-lock.toml, never here.
+# Project catalog pins: short name → group:artifact (versions live in manifests / lock).
 
 [libraries]
 apksig = "com.android.tools.build:apksig"
@@ -32,6 +20,7 @@ junit-platform-engine = "org.junit.platform:junit-platform-engine"
 junit-platform-launcher = "org.junit.platform:junit-platform-launcher"
 kotlin-build-tools-api = "org.jetbrains.kotlin:kotlin-build-tools-api"
 kotlin-stdlib = "org.jetbrains.kotlin:kotlin-stdlib"
+lombok = "org.projectlombok:lombok"
 maven-artifact = "org.apache.maven:maven-artifact"
 openrewrite-java = "org.openrewrite:rewrite-java"
 openrewrite-java21 = "org.openrewrite:rewrite-java-21"
@@ -43,3 +32,4 @@ slf4j-api = "org.slf4j:slf4j-api"
 slf4j-nop = "org.slf4j:slf4j-nop"
 spotless-lib = "com.diffplug.spotless:spotless-lib"
 tomlj = "org.tomlj:tomlj"
+xz = "org.tukaani:xz"

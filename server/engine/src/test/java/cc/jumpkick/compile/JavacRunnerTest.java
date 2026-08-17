@@ -52,6 +52,37 @@ class JavacRunnerTest {
     }
 
     @Test
+    void jvm_unsafe_host_banners_are_noise_not_javac_warnings() {
+        // JEP 498 four-line form (Lombok, KSP, …) must not pollute the warning channel.
+        assertThat(JavacRunner.isJvmHostNoise(
+                        "WARNING: A terminally deprecated method in sun.misc.Unsafe has been called"))
+                .isTrue();
+        assertThat(JavacRunner.isJvmHostNoise(
+                        "WARNING: sun.misc.Unsafe::objectFieldOffset has been called by lombok.permit.Permit"))
+                .isTrue();
+        assertThat(JavacRunner.isJvmHostNoise(
+                        "WARNING: Please consider reporting this to the maintainers of class lombok.permit.Permit"))
+                .isTrue();
+        assertThat(JavacRunner.isJvmHostNoise(
+                        "WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release"))
+                .isTrue();
+        // Real javac header-less warnings stay.
+        assertThat(JavacRunner.isJvmHostNoise(
+                        "warning: [options] system modules path not set in conjunction with -source 11"))
+                .isFalse();
+        assertThat(JavacRunner.isJvmHostNoise("error: error reading corrupt.jar; zip END header not found"))
+                .isFalse();
+        // JK-2095: lowercase warning: = javac / annotation-processor Messager channel — a
+        // processor warning that mentions the banner phrases must reach diagnostics.
+        assertThat(JavacRunner.isJvmHostNoise(
+                        "warning: generated code calls a terminally deprecated method in sun.misc.Unsafe"))
+                .isFalse();
+        assertThat(JavacRunner.isJvmHostNoise(
+                        "warning: please consider reporting this to the maintainers of class Foo"))
+                .isFalse();
+    }
+
+    @Test
     void captures_deprecation_warning_with_severity(@TempDir Path tempDir) throws IOException {
         // Uses a (non-removal) deprecated API; with -Xlint:deprecation javac emits
         // a WARNING. The build still succeeds — warnings are surfaced, not fatal.

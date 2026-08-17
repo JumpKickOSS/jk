@@ -71,6 +71,7 @@ public final class ExplainVerb implements HostedVerb {
                         Optional.of(force),
                         Optional.empty(),
                         Optional.empty(),
+                        Optional.empty(),
                         Optional.empty());
                 Session session = Session.defaults()
                         .withConfig(config)

@@ -311,10 +311,10 @@ final class SourceProjectBuilder {
         pb.redirectError(ProcessBuilder.Redirect.DISCARD);
         if (!captureStdout) {
             pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-            Process p = pb.start();
+            Process p = cc.jumpkick.engine.JobWorkers.start(pb);
             return new RunResult(p.waitFor(), "");
         }
-        Process p = pb.start();
+        Process p = cc.jumpkick.engine.JobWorkers.start(pb);
         // Drain stdout fully before waitFor() to avoid a pipe-buffer deadlock.
         String out;
         try (InputStream in = p.getInputStream()) {

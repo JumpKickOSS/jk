@@ -112,6 +112,18 @@ class ShellTest {
     }
 
     @Test
+    void full_activate_script_includes_path_hooks_and_completions() {
+        Path home = Path.of("/home/u");
+        Path bin = home.resolve(".local/bin");
+        Path data = home.resolve(".local/share/jk");
+        String out = new ZshShell().fullActivateScript("/home/u/.local/bin/jk", bin, data, home);
+        assertThat(out).contains("$HOME/.local/bin");
+        assertThat(out).contains("hook-env -s zsh");
+        assertThat(out).contains("$HOME/.local/share/jk/completions/zsh");
+        assertThat(out).contains("add-zsh-hook");
+    }
+
+    @Test
     void zsh_rc_file_is_dot_zshrc_not_zshenv() {
         // .zshrc is the interactive-shell config; .zshenv runs even for
         // non-interactive subshells where our precmd/chpwd hooks don't fit.
@@ -135,31 +147,54 @@ class ShellTest {
     }
 
     @Test
-    void activation_lines_use_command_jk_path_idioms() {
-        assertThat(new BashShell().activationLine("ignored")).isEqualTo("eval \"$(command jk activate bash)\"");
-        assertThat(new ZshShell().activationLine("ignored")).isEqualTo("eval \"$(command jk activate zsh)\"");
-        assertThat(new FishShell().activationLine("ignored")).isEqualTo("command jk activate fish | source");
-        assertThat(new PwshShell().activationLine("ignored"))
-                .contains("Invoke-Expression")
-                .contains("activate pwsh");
+    void activation_lines_use_home_relative_command() {
+        Path home = Path.of("/home/u");
+        Path jk = home.resolve(".local/bin/jk");
+        assertThat(new BashShell().activationLine(new BashShell().commandExpr(jk, home)))
+                .isEqualTo("eval \"$(\"$HOME/.local/bin/jk\" activate bash)\"");
+        assertThat(new ZshShell().activationLine(new ZshShell().commandExpr(jk, home)))
+                .isEqualTo("eval \"$(\"$HOME/.local/bin/jk\" activate zsh)\"");
+        assertThat(new FishShell().activationLine(new FishShell().commandExpr(jk, home)))
+                .isEqualTo("\"$HOME/.local/bin/jk\" activate fish | source");
+        assertThat(new PwshShell().activationLine(new PwshShell().commandExpr(jk, home)))
+                .isEqualTo("& \"$HOME/.local/bin/jk\" activate pwsh | Out-String | Invoke-Expression");
     }
 
     @Test
-    void installer_block_has_markers_path_and_hooks() {
-        String block = ShellInstallerBlock.render(
-                new ZshShell(), Path.of("/home/u/.local/bin"), Path.of("/home/u/.local/share/jk"));
+    void activation_lines_use_absolute_command_outside_home() {
+        Path home = Path.of("/home/u");
+        Path jk = Path.of("/opt/jk/bin/jk");
+        assertThat(new ZshShell().activationLine(new ZshShell().commandExpr(jk, home)))
+                .isEqualTo("eval \"$(\"/opt/jk/bin/jk\" activate zsh)\"");
+    }
+
+    @Test
+    void installer_block_is_one_line_with_home_relative_path() {
+        Path home = Path.of("/home/u");
+        String block = ShellInstallerBlock.render(new ZshShell(), home.resolve(".local/bin"), home);
         assertThat(block).contains(ShellInstallerBlock.BEGIN).contains(ShellInstallerBlock.END);
-        assertThat(block).contains("/home/u/.local/bin");
-        assertThat(block).contains("command jk activate zsh");
-        assertThat(block).contains("completions/zsh");
+        assertThat(block).contains(ShellInstallerBlock.COMMENT);
+        assertThat(block).contains("eval \"$(\"$HOME/.local/bin/jk\" activate zsh)\"");
+        assertThat(block).doesNotContain("/home/u");
+        assertThat(block).doesNotContain("fpath=");
+        assertThat(block).doesNotContain("case \":$PATH:\"");
     }
 
     @Test
     void installer_block_upsert_is_idempotent() {
-        String block = ShellInstallerBlock.render(new BashShell(), Path.of("/b"), Path.of("/d"));
+        String block = ShellInstallerBlock.render(new BashShell(), Path.of("/b"), Path.of("/home/u"));
         String once = ShellInstallerBlock.upsert("", block);
         String twice = ShellInstallerBlock.upsert(once, block);
         assertThat(twice.split(ShellInstallerBlock.BEGIN, -1)).hasSize(2);
+    }
+
+    @Test
+    void shell_path_expr_prefers_home() {
+        Path home = Path.of("/home/u");
+        assertThat(ShellPathExpr.posix(home.resolve(".local/bin"), home)).isEqualTo("$HOME/.local/bin");
+        assertThat(ShellPathExpr.posix(Path.of("/opt/bin"), home)).isEqualTo("/opt/bin");
+        assertThat(ShellPathExpr.posixCommand(home.resolve(".local/bin/jk"), home))
+                .isEqualTo("\"$HOME/.local/bin/jk\"");
     }
 
     @Test

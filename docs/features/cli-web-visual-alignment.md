@@ -17,7 +17,8 @@
 | **identity / chrome** | brand accents, coords, nav | cyan (`--cg` / `--cn`), violet gradient (`--prog-*`) |
 
 Chips and wedges use the same vocabulary: **status on a chip**, not rainbow decoration.
-Command wedges (`CommandWedge`): working → blue plan chip; success → green chip; fail → red chip.
+Command wedges (`CommandWedge`): working → blue plan chip; success → green chip; fail → red chip;
+cancel → black on badge gray (`GRAY` / `--mu`), same fill as `jk explain` pills.
 
 ## Token map (web CSS → CLI)
 

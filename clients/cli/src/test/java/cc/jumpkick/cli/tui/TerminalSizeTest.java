@@ -4,6 +4,8 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -113,6 +115,26 @@ class TerminalSizeTest {
         assertThat(TerminalSize.size()).containsExactly(50, 100);
         assertThat(TerminalSize.size()).containsExactly(50, 100); // now cached
         assertThat(probes.get()).isEqualTo(2);
+    }
+
+    @Test
+    void windows_init_publishes_the_attempted_flag_even_when_linking_fails() throws Exception {
+        // ensureWindows mirrors ensurePosix: the attempted flag is written last (finally), so a
+        // racing reader can never observe attempted=true with unpublished handles — that race
+        // caches the 80x24 env fallback process-wide, and Windows has no WINCH to recover. The
+        // finally also memoizes a linker failure (kernel32 absent off-Windows) so it is paid
+        // once, never re-thrown per probe.
+        Method ensure = TerminalSize.class.getDeclaredMethod("ensureWindows");
+        ensure.setAccessible(true);
+        try {
+            ensure.invoke(null);
+        } catch (InvocationTargetException expectedOffWindows) {
+            // no kernel32 on this OS — the flag must still have been published
+        }
+        Field attempted = TerminalSize.class.getDeclaredField("winInitAttempted");
+        attempted.setAccessible(true);
+        assertThat(attempted.getBoolean(null)).isTrue();
+        ensure.invoke(null); // memoized: a second call never re-links or re-throws
     }
 
     @Test

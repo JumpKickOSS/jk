@@ -63,6 +63,49 @@ class DiagnosticReportTest {
     }
 
     @Test
+    void compiler_error_header_includes_module_coord() {
+        String report = DiagnosticReport.renderError(
+                "compile-java", "javac", "Foo.java:1: error: cannot find symbol", "cc.jumpkick:jk-core");
+        String p = plain(report);
+        assertThat(p).contains("Compile Java");
+        assertThat(p).contains("Failure");
+        assertThat(p).contains("in cc.jumpkick:jk-core");
+        assertThat(p).contains("error:");
+        assertThat(p).contains("Foo.java:1");
+        assertThat(p.lines().count()).isGreaterThan(2);
+        if (Theme.active().isAnsi()) {
+            assertThat(report).contains(Coords.ga("cc.jumpkick", "jk-core"));
+        }
+    }
+
+    @Test
+    void later_compiler_error_omits_the_repeated_pill() {
+        String first = DiagnosticReport.renderError(
+                "compile-java", "javac", "Foo.java:1: error: cannot find symbol", "cc.jumpkick:jk-core", true);
+        String later = DiagnosticReport.renderError(
+                "compile-java", "javac", "Foo.java:8: error: cannot find symbol", "cc.jumpkick:jk-core", false);
+        String firstPlain = plain(first);
+        String laterPlain = plain(later);
+        assertThat(firstPlain).contains("Compile Java");
+        assertThat(firstPlain).contains("Failure");
+        assertThat(laterPlain).doesNotContain("Compile Java");
+        assertThat(laterPlain).doesNotContain("Failure");
+        assertThat(laterPlain).contains("error:");
+        assertThat(laterPlain).contains("Foo.java:8");
+        assertThat(laterPlain.stripTrailing()).endsWith(DiagnosticReport.FOOTER);
+    }
+
+    @Test
+    void compiler_header_run_collapses_same_module_and_reopens_on_change() {
+        DiagnosticReport.CompilerHeaderRun run = new DiagnosticReport.CompilerHeaderRun();
+        assertThat(run.show("compile-java", "javac", "g:a")).isTrue();
+        assertThat(run.show("compile-java", "javac", "g:a")).isFalse();
+        assertThat(run.show("compile-java", "javac", "g:b")).isTrue();
+        assertThat(run.show("parse-build", "workspace", "g:b")).isTrue();
+        assertThat(run.show("compile-java", "javac", "g:b")).isTrue();
+    }
+
+    @Test
     void warning_pill_uses_black_ink_on_amber() {
         String report = DiagnosticReport.renderWarning("compile-java", "javac", "src/Main.java:1: warning: something");
         String plain = plain(report);

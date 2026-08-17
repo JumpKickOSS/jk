@@ -20,7 +20,7 @@ public final class NativePlans {
 
     /**
      * {@code jk native} adds a native-image tail when the client resolved a GraalVM home for the
-     * module (unique main + {@code GRAALVM_HOME}). {@code [native] always = true} is {@code jk
+     * module (unique main + {@code GRAALVM_HOME}). {@code [native] enabled = "always"} is {@code jk
      * build}'s tail, not this gate.
      */
     public static boolean isNativeEligible(Path graalHome) {
@@ -95,6 +95,8 @@ public final class NativePlans {
                 cc.jumpkick.config.SessionContext.current());
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
         // Assembly / sources tails only here — native carries CLI main/args from this command.
+        // Do not append [native] always via allowNative; that is the jk build path. jk native
+        // attaches native-image only for modules the client marked with a Graal home (unique main).
         BuildPlanner.appendDeclaredTails(builder, inputs, graalHome, /*allowNative*/ false);
         if (allowNative && isNativeEligible(graalHome)) {
             builder.addTask(BuildPlanner.nativeStep(
@@ -106,8 +108,11 @@ public final class NativePlans {
                     resolveMain(buildFile, mainOverride),
                     extraArgs == null ? List.of() : extraArgs,
                     /*allowShared*/ false));
+            // Re-root only when the native task is present. Prereq / non-main modules stay at
+            // package-jar (or assembly/sources tails) so the workspace cascade can still build them.
+            return builder.terminal(TaskNames.NATIVE_IMAGE).build();
         }
-        return builder.terminal(TaskNames.NATIVE_IMAGE).build();
+        return builder.build();
     }
 
     /**

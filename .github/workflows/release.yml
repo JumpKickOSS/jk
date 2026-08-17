@@ -4,7 +4,7 @@
 #
 # Secrets:
 #   JK_RELEASE_SIGNING_KEY     — PKCS#8 base64 Ed25519 private key (required for .sig)
-#   JK_RELEASE_GCS_BUCKET      — GCS bucket name (no gs://), e.g. jkbuild-releases
+#   JK_RELEASE_GCS_BUCKET      — GCS bucket name (no gs://), e.g. jumpkick
 #   JK_RELEASE_GCS_SA_JSON     — GCP service-account JSON (storage.objectAdmin on the bucket)
 #
 # Hosting: objects in GCS; public CDN will be Firebase later. Path:

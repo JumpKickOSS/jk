@@ -70,12 +70,34 @@ public final class ModuleOrder {
     }
 
     /**
-     * Sibling-dep + {@code [build].order-after} prereqs (self-refs dropped). Shared edge primitive.
+     * Scopes that contribute to a packaged / native-image classpath (not test or dev-only).
+     * Used by {@code jk native} to expand the dependency cone without pulling
+     * {@code [test-dependencies]} siblings (e.g. a CLI's test harness engine).
+     */
+    public static final List<Scope> PRODUCTION_SCOPES =
+            List.of(Scope.EXPORT, Scope.MAIN, Scope.PROVIDED, Scope.RUNTIME, Scope.PROCESSOR, Scope.PLATFORM);
+
+    /**
+     * Sibling-dep + {@code [build].order-after} prereqs (self-refs dropped). All scopes — the
+     * default workspace build-order edge.
      */
     public static Set<Path> modulePrereqs(
             Path moduleDir, JkBuild m, Map<String, Path> dirByCoord, Map<String, Path> dirByName) {
+        return modulePrereqs(moduleDir, m, dirByCoord, dirByName, List.of(Scope.values()));
+    }
+
+    /**
+     * As {@link #modulePrereqs(Path, JkBuild, Map, Map)} restricted to {@code scopes} (e.g.
+     * {@link #PRODUCTION_SCOPES} for native-image closure).
+     */
+    public static Set<Path> modulePrereqs(
+            Path moduleDir,
+            JkBuild m,
+            Map<String, Path> dirByCoord,
+            Map<String, Path> dirByName,
+            Collection<Scope> scopes) {
         Set<Path> prereqs = new LinkedHashSet<>();
-        for (Scope scope : Scope.values()) {
+        for (Scope scope : scopes) {
             for (Dependency d : m.dependencies().of(scope)) {
                 Path depDir = resolveSibling(d, dirByCoord, dirByName);
                 if (depDir != null && !depDir.equals(moduleDir)) prereqs.add(depDir);

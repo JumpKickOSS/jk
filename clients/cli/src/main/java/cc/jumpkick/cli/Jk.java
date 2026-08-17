@@ -228,7 +228,18 @@ public final class Jk {
             }
         }
         JkConfig cli = new JkConfig(
-                color, offline, rebuild, noProgress, quiet, verbose, directory, force, noAnsi, noOsc, notify);
+                color,
+                offline,
+                rebuild,
+                noProgress,
+                quiet,
+                verbose,
+                directory,
+                force,
+                noAnsi,
+                noOsc,
+                notify,
+                Optional.empty()); // build-output: config/env only
         cc.jumpkick.config.SessionContext.installConfig(
                 cc.jumpkick.config.SessionContext.current().config().mergedWith(cli));
     }

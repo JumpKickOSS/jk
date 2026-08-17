@@ -191,7 +191,7 @@ public final class CleanCommand implements CliCommand {
                     summary);
             return result.success() ? 0 : 1;
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Clean", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Clean", e.getMessage());
             return cc.jumpkick.model.command.Exit.SOFTWARE;
         }
     }

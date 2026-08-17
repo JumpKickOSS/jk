@@ -18,6 +18,7 @@ public final class KeyReader {
 
     public sealed interface Key
             permits Key.CtrlC,
+                    Key.CtrlO,
                     Key.CtrlX,
                     Key.Enter,
                     Key.Space,
@@ -33,6 +34,11 @@ public final class KeyReader {
 
         record CtrlC() implements Key {
             public static final CtrlC INSTANCE = new CtrlC();
+        }
+
+        /** Ctrl-O (ASCII 0x0F) — toggle the process-output peek pane on a live plan. */
+        record CtrlO() implements Key {
+            public static final CtrlO INSTANCE = new CtrlO();
         }
 
         record CtrlX() implements Key {
@@ -108,6 +114,7 @@ public final class KeyReader {
     private static Key dispatch(NonBlockingReader reader, int c) throws IOException {
         return switch (c) {
             case 0x03 -> Key.CtrlC.INSTANCE;
+            case 0x0F -> Key.CtrlO.INSTANCE;
             case 0x18 -> Key.CtrlX.INSTANCE;
             case 0x0A, 0x0D -> Key.Enter.INSTANCE;
             case 0x09 -> Key.Tab.INSTANCE;

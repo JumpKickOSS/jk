@@ -126,4 +126,4 @@ echo "- Arms are both cold process starts: AOT map vs no AOT. Warm *pool* is not
 echo "- A pool must beat AOT-on on HotSpot (Temurin), not Graal (ineligible)."
 echo "- Confirm: ps shows …/temurin…/bin/javac and -J-XX:AOTCache= during AOT-on rebuild."
 echo "- Engine RSS is a coarse sample after each run (not peak worker set)."
-echo "- Timeline: target/jk-chrome-profile.json after a build."
+echo "- Timeline: target/jk-profile.json after a build."

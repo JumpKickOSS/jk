@@ -307,7 +307,7 @@ public final class GitCliExtension implements GitBackend {
 
         Process p;
         try {
-            p = pb.start();
+            p = cc.jumpkick.engine.JobWorkers.start(pb);
         } catch (IOException e) {
             throw new IOException("failed to launch git: " + e.getMessage(), e);
         }

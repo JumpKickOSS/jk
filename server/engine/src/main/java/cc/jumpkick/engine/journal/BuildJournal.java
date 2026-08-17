@@ -3,6 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.engine.BuildHistoryKinds;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -106,8 +107,18 @@ public final class BuildJournal {
                     ? record.finishedAt()
                     : (record.startedAt() > 0 ? record.startedAt() : System.currentTimeMillis());
             String timestamp = ID_TS.format(LocalDateTime.ofInstant(Instant.ofEpochMilli(stampMillis), ZoneOffset.UTC));
-            long n = record.buildNumber() > 0 ? record.buildNumber() : ProjectBuilds.allocateRunNumber(home);
-            String dirName = ProjectBuilds.runDirName(n);
+            long n = record.buildNumber();
+            String dirName;
+            if (n > 0) {
+                dirName = ProjectBuilds.runDirName(n);
+            } else if (BuildHistoryKinds.isBuildLike(record.kind())) {
+                n = ProjectBuilds.allocateRunNumber(home);
+                dirName = ProjectBuilds.runDirName(n);
+            } else {
+                // format/lock/… — persist, but do not bump the per-project #N sequence.
+                dirName = jobDirName(timestamp, record.requestId());
+                n = 0;
+            }
             Path target = home.resolve(ProjectBuilds.RUNS).resolve(dirName);
             Path tmp = home.resolve(ProjectBuilds.RUNS).resolve("." + dirName + ".tmp");
             deleteTreeQuietly(tmp);
@@ -129,7 +140,7 @@ public final class BuildJournal {
                     deleteTreeQuietly(target);
                 }
                 move(tmp, target);
-                if (!record.running() && !record.synthetic())
+                if (!record.running() && !record.synthetic() && BuildHistoryKinds.isBuildLike(record.kind()))
                     MetricsHarvest.get().request();
                 return dirName;
             } catch (IOException e) {
@@ -209,7 +220,7 @@ public final class BuildJournal {
             }
             deleteTreeQuietly(tmp);
             // Synthetic optimize/calibrate fixtures must not train host ETA aggregates.
-            if (!toWrite.synthetic()) {
+            if (!toWrite.synthetic() && BuildHistoryKinds.isBuildLike(toWrite.kind())) {
                 MetricsHarvest.get().request();
             }
             return true;
@@ -463,9 +474,12 @@ public final class BuildJournal {
                     r.commit(),
                     null,
                     false,
-                    r.io());
-            String locator = ProjectBuilds.runDirName(r.buildNumber());
-            if (complete(locator, done, Snapshot.NONE)) n++;
+                    r.io(),
+                    r.requestId());
+            String locator = r.buildNumber() > 0
+                    ? ProjectBuilds.runDirName(r.buildNumber())
+                    : (r.id() != null ? "j-" + r.id() : null);
+            if (locator != null && complete(locator, done, Snapshot.NONE)) n++;
         }
         return n;
     }
@@ -546,6 +560,47 @@ public final class BuildJournal {
             if (r.isPresent() && idOrLocator.equals(r.get().id())) return r;
         }
         return Optional.empty();
+    }
+
+    /**
+     * Run dirs located by {@link #rawFinishedRecordByRequestId} — a wait loop re-reads one
+     * {@code record.json} per poll instead of re-scanning the journal. Bounded residue: cleared
+     * wholesale once full (same posture as {@code METRICS_LOCKS}).
+     */
+    private final ConcurrentHashMap<Long, Path> runDirsByRequestId = new ConcurrentHashMap<>();
+
+    /**
+     * Raw JSON of the <em>finished</em> record stamped with {@code requestId}, or empty while the
+     * run is absent or still {@code running}. The run dir is found with one newest-first scan and
+     * memoized, so repeated polls for the same id cost a single file read.
+     */
+    public Optional<String> rawFinishedRecordByRequestId(long requestId) {
+        if (requestId <= 0) return Optional.empty();
+        Path dir = runDirsByRequestId.get(requestId);
+        if (dir != null) {
+            if (Files.isDirectory(dir)) return readFinished(dir, requestId);
+            runDirsByRequestId.remove(requestId, dir); // pruned since memoized — re-locate
+        }
+        for (Loaded l : loadNewest(200)) {
+            if (l.record().requestId() != requestId) continue;
+            if (runDirsByRequestId.size() >= 1_024) runDirsByRequestId.clear();
+            runDirsByRequestId.put(requestId, l.dir());
+            return l.record().running() ? Optional.empty() : Optional.of(l.json());
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<String> readFinished(Path dir, long requestId) {
+        Path record = dir.resolve(RECORD);
+        if (!Files.isRegularFile(record)) return Optional.empty();
+        try {
+            String json = Files.readString(record, StandardCharsets.UTF_8);
+            BuildRecord parsed = Json.read(json);
+            if (parsed == null || parsed.requestId() != requestId || parsed.running()) return Optional.empty();
+            return Optional.of(json);
+        } catch (IOException | RuntimeException e) {
+            return Optional.empty();
+        }
     }
 
     /** The newest {@code limit} records as their raw JSON — no second read (see {@link #loadNewest}). */
@@ -682,7 +737,21 @@ public final class BuildJournal {
             } catch (NumberFormatException ignored) {
             }
         }
+        if (isJobLocator(locator)) {
+            return ProjectBuilds.findRunDirByName(buildsRoot, locator);
+        }
         return Optional.empty();
+    }
+
+    /** Non-build journal dirs: {@code j-<timestamp>} (no run-number allocation). */
+    static String jobDirName(String timestamp, long requestId) {
+        String base = "j-" + timestamp;
+        if (requestId > 0) return base + "-" + requestId;
+        return base;
+    }
+
+    static boolean isJobLocator(String locator) {
+        return locator != null && locator.startsWith("j-") && locator.length() > 2;
     }
 
     private List<Path> entryDirs() {

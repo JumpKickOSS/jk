@@ -33,6 +33,40 @@ API: `cc.jumpkick.cli.tui.JkWedge` (`CommandWedge` is envelope + printOk).
 | Indeterminate / short | Spinner-only wedge (`CommandWedge.analyzing` / `Spinner.showWedge`) |
 | Settled | Static icon — `CommandWedge.ok` / `fail` / `chip` (never leave a spinner running) |
 
+### Process-output peek (Ctrl-O)
+
+On an interactive TTY live plan (`jk build`, `jk test`, `jk lock`, …), worker and tool stdout/stderr
+are buffered in a **sliding window of at most 200 lines**, hidden by default so the wedge + progress
+stay clean. Long tools (e.g. `native-image`) stream into this channel live — not only on
+`--verbose` or failure — so Ctrl-O can show them mid-run.
+
+| Action | Behavior |
+|--------|----------|
+| **Ctrl-O** | Toggle process-output peek. When **on**: buffered lines are committed above a full-width braille rule (`⠒… ↑ output ↑ …⠒`); only the rule + wedge/tree is the live region (normal spinner line-diff). New output lifts that small region, appends one line, and repaints the wedge — no full-screen redraw. When **off**: the rule is **replaced by a blank line** (not deleted); already-printed lines stay in scrollback. Always keep either the rule or that blank between process output and the wedge. Opening the controlling TTY for this key listener must **not** install JLine's default native {@code SIG_DFL} handlers — those replace {@code GlobalCancel}'s Ctrl-C intercept. |
+| **`[config] build-output = true`** (or `JK_BUILD_OUTPUT=true`) | Start with the peek **open** on live plans. Default **`false`** (hidden until Ctrl-O or force-show). Machine or project `[config]`. |
+| **Failed tool/worker** (non-zero sub-process exit, e.g. `native-image`) | Force-opens the pane while the plan is still live. |
+| **Test failures** | Do **not** force-open — curated test-failure chrome owns that path. |
+| Plan settle | Does **not** dump the buffer. If process lines were committed (pane open or force-show), they stay in scrollback; the live region is wiped; **one blank** is printed between that output and the settle chip. |
+| `-v` / non-TTY / `--no-progress` / JSONL | Unchanged; no key listener. |
+
+Document only — no on-screen “press Ctrl-O” hint. InheritIO handoffs (`jk run`, `jshell`, …) are out of scope.
+
+**Type-ahead is consumed during animated plans.** The Ctrl-O listener holds the controlling TTY
+in raw, no-echo mode for the life of the plan and discards every key except Ctrl-O (Ctrl-C still
+raises SIGINT via ISIG). Keys typed during a build — a queued-up shell command, stray Enters —
+are *not* delivered to the shell afterwards, unlike the pre-peek behavior where the tty buffered
+them. This is inherent to listening at all: any byte read is consumed, and there is no portable
+way to push bytes back into the tty input queue (`TIOCSTI` is root-gated or compiled out on
+modern kernels). Accepted as the cost of the peek; piped/non-TTY runs install no listener and
+are unaffected.
+
+### Completed-module tail
+
+Workspace plans (`jk build`, `jk test`, `jk run`, `jk native`, `jk image`) keep the last few
+`✓ [N of M] group:artifact took …` lines **in the live region under the wedge**, newest first.
+They are not written into terminal scrollback and they are not part of the process-output peek.
+Settle wipes the live region, so those lines do not remain after the result chip.
+
 ### Blank-line envelope (JK-1373)
 
 Every **wedge-bearing** human command prints:
@@ -40,13 +74,15 @@ Every **wedge-bearing** human command prints:
 1. Exactly **one blank line before** the **first** chrome of the invocation — whichever comes first: prep spinner (`EnsureFreshLock` / `CommandWedge.analyzing`), open spinner, live `JkManager` bar, or settle chip  
 2. **No** automatic blank after the last settle line (extra empty row before the shell prompt)
 
-`CommandWedge.envelopeStart()` is **idempotent per leaf command**. Dispatch calls `CommandWedge.resetEnvelope()` before `run`. Spinners, `JkManager`, and `printOk`/`printFail` all go through `envelopeStart`, so conditional paths (cache-hit vs rebuild, lock freshen before explain) cannot skip or double the blank.
+`CommandWedge.envelopeStart()` is **idempotent per leaf command**. Dispatch calls `CommandWedge.resetEnvelope()` before `run`. Spinners, `JkManager`, `JdkDownloadBar`, wizards (`markEnvelopeStarted` after their own leading blank), and the `print*` helpers all open the envelope, so conditional paths (cache-hit vs rebuild, lock freshen before explain) cannot skip or double the blank.
 
 Helpers:
 
 - One-shot success: `CommandWedge.printOk(command, message)`  
 - One-shot failure: `CommandWedge.printFail(command, message)`  
-- Multi-line chrome: `envelopeStart()` then body lines  
+- Working / handoff: `CommandWedge.printWorking(command, message)` (stderr)  
+- Pre-rendered wedge line: `CommandWedge.printLine(line)` / `printErrLine(line)`  
+- Multi-line chrome: `envelopeStart()` / `envelopeStartErr()` then body lines  
 - Live plans: `JkManager` opens the leading blank if prep has not already  
 - **Exec handoff** (`jk run`): command may print a single separator before `inheritIO`  
 
@@ -54,7 +90,7 @@ Optional blank lines **between** chrome and follow-up tips (e.g. after `jk add`)
 
 **Script-mode** commands must **not** use the envelope (paths, tokens, shell hooks, `jk --version`).
 
-**Do not** print raw `JkWedge.chipLine` / `CommandWedge.ok` without `printOk` or `envelopeStart` — that is how the fully-cached `jk build` fast path skipped the blank.
+**Do not** print raw `JkWedge.chipLine` / `CommandWedge.ok` / `CommandWedge.fail` via `CliOutput` without a `print*` helper or `envelopeStart` — that is how the fully-cached `jk build` fast path skipped the blank.
 
 ## Script-mode allowlist (no wedge)
 
@@ -62,7 +98,7 @@ These commands intentionally emit only machine-consumable stdout:
 
 | Command | Typical stdout | Consumer |
 |---------|----------------|----------|
-| `jk activate <shell>` | Shell hook script | `eval "$(jk activate bash)"` |
+| `jk activate <shell>` | PATH + hooks + completions | `eval "$("$HOME/.local/bin/jk" activate bash)"` |
 | `jk deactivate` | Teardown script | activate proxy |
 | `jk hook-env -s <shell>` | Env sync lines | shell hook |
 | `jk jdk home` | `export JAVA_HOME=…` | `eval "$(jk jdk home)"` |

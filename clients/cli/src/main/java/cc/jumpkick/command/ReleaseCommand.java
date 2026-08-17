@@ -74,8 +74,7 @@ public final class ReleaseCommand implements CliCommand {
         Path dir = global.workingDir();
         Path rootToml = dir.resolve("jk.toml");
         if (!Files.isRegularFile(rootToml)) {
-            CliOutput.err(
-                    cc.jumpkick.cli.tui.CommandWedge.fail("Release", "no jk.toml in " + PathDisplay.styledRaw(dir)));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Release", "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Exit.CONFIG;
         }
 
@@ -140,10 +139,10 @@ public final class ReleaseCommand implements CliCommand {
             cc.jumpkick.cli.tui.CommandWedge.printOk("Release", "no native CLI yet — running `jk native --skip-tests`");
             code = runNative(dir, cacheDir);
             if (code != 0) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                cc.jumpkick.cli.tui.CommandWedge.printFail(
                         "Release",
                         "`jk native` failed — re-run with --skip-native to stage the running client, "
-                                + "or fix GraalVM / native-image and retry"));
+                                + "or fix GraalVM / native-image and retry");
                 return code;
             }
         }
@@ -158,9 +157,9 @@ public final class ReleaseCommand implements CliCommand {
 
         Path engineJar = findEngineAssembly(dir, root, engineDir);
         if (engineJar == null) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "Release",
-                    "no engine assembly jar found — need server/engine with assembly = true and a successful build"));
+                    "no engine assembly jar found — need server/engine with assembly = true and a successful build");
             return Exit.FAILURE;
         }
         Path stagedEngine = out.resolve("lib").resolve("jk-engine-" + version + ".jar");
@@ -169,10 +168,10 @@ public final class ReleaseCommand implements CliCommand {
 
         Path clientBin = resolveClientBinary(cliDir);
         if (clientBin == null || !Files.isRegularFile(clientBin)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "Release",
-                    "no client binary — run `jk native` (clients/cli has [native] always = true), "
-                            + "or ensure `jk` is on PATH for a bootstrap client"));
+                    "no client binary — run `jk native` (clients/cli has [native] enabled = \"always\"), "
+                            + "or ensure `jk` is on PATH for a bootstrap client");
             return Exit.FAILURE;
         }
         Path stagedClient = out.resolve("jk");
@@ -200,8 +199,7 @@ public final class ReleaseCommand implements CliCommand {
         promoteReleasedArtifacts(cacheDir, clientBin, engineJar, nativeClient);
 
         CliOutput.out("");
-        CliOutput.out(
-                cc.jumpkick.cli.tui.CommandWedge.ok("Release", "distribution ready at " + PathDisplay.styledRaw(out)));
+        cc.jumpkick.cli.tui.CommandWedge.printOk("Release", "distribution ready at " + PathDisplay.styledRaw(out));
         CliOutput.out("  next: ./install.sh " + out.resolve("jk"));
         CliOutput.out("    or: jk self materialize " + out.resolve("jk") + " " + stagedEngine);
         return 0;
@@ -330,7 +328,7 @@ public final class ReleaseCommand implements CliCommand {
     }
 
     /**
-     * Workspace module paths minus every {@code [native] always = true} module — not just the
+     * Workspace module paths minus every {@code [native] enabled = "always"} module — not just the
      * discovered CLI module — so {@code --skip-native} never re-enters any of them.
      */
     static List<String> modulesWithoutNativeAlways(Path workspaceRoot, JkBuild root) {

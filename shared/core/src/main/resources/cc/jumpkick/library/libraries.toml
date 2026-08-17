@@ -102,6 +102,7 @@ hibernate-core               = "org.hibernate.orm:hibernate-core"
 # Apache Commons
 commons-lang3                = "org.apache.commons:commons-lang3"
 commons-compress             = "org.apache.commons:commons-compress"
+xz                           = "org.tukaani:xz"
 commons-io                   = "commons-io:commons-io"
 commons-codec                = "commons-codec:commons-codec"
 commons-text                 = "org.apache.commons:commons-text"

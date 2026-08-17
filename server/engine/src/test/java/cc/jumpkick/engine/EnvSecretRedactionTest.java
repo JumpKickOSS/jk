@@ -60,7 +60,8 @@ class EnvSecretRedactionTest {
                 null,
                 null,
                 false,
-                null);
+                null,
+                0L);
 
         String id = journal.append(record, new BuildJournal.Snapshot(null, null, redacted + "\n"));
         assertThat(id).isNotNull();

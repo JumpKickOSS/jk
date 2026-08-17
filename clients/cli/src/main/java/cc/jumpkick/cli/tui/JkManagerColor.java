@@ -548,17 +548,18 @@ public final class JkManagerColor {
     /**
      * Hard-truncate an ANSI-colored string to {@code maxCols} visible columns (never wraps). When
      * cut, ends with {@code …} so long test member names stay on one line. Copies escape sequences
-     * without counting them and appends a reset if the text was cut. Treats every visible code unit
-     * as one column (good enough for our ASCII + single-width glyphs).
+     * without counting them and appends a reset if the text was cut.
      *
      * <p>Callers painting to a live TTY should pass {@link #rowColumnBudget(int)} of the terminal
      * width, not the raw column count — see that method.
      *
-     * <p>JLine can do this width-aware ({@code AttributedString.fromAnsi} / {@code WCWidth}), but
-     * measured at +187–312 KB on the native image — its ANSI parser / width tables aren't otherwise
-     * reachable — to gain East-Asian wide-glyph handling that jk's ASCII coordinates and single-width
-     * box/spinner glyphs never need. Not worth the binary growth, so this stays hand-rolled by
-     * design.
+     * <p>Width metric: {@code WCWidth} per code point (CJK = 2 columns), matching
+     * {@link RenderContext#visibleWidth} and the resize reflow estimator — the two metrics
+     * disagreeing inside one paint path let a CJK-heavy row exceed its painted budget, wrap, and
+     * desync the cursor bookkeeping. WCWidth's tables are already linked into the
+     * native image via {@code AttributedString.columnLength}; the ANSI scanning stays hand-rolled
+     * ({@code AttributedString.fromAnsi} would add its parser, measured at +187–312 KB).
+     * Surrogate pairs are consumed whole, so a cut can never emit a lone high surrogate.
      */
     static String truncateVisible(String s, int maxCols) {
         if (maxCols <= 0) return "";
@@ -571,7 +572,7 @@ public final class JkManagerColor {
         boolean linkOpen = false;
         for (int i = 0; i < s.length(); ) {
             char c = s.charAt(i);
-            if (c == '\033') { // copy the whole escape (CSI or OSC) verbatim — zero columns (JK-1967)
+            if (c == '\033') { // copy the whole escape (CSI or OSC) verbatim — zero columns
                 int j = RenderContext.skipEscape(s, i);
                 boolean unterminatedOsc = i + 1 < s.length()
                         && s.charAt(i + 1) == ']'
@@ -584,23 +585,35 @@ public final class JkManagerColor {
                     sb.append(s, i, j);
                     // Track OSC-8 hyperlink state: a cut inside the linked label drops the close
                     // that follows it, and SGR RESET does not end a hyperlink — the ellipsis, EL,
-                    // and later rows would all become part of the link (JK-1974).
+                    // and later rows would all become part of the link.
                     int state = osc8LinkState(s, i, j);
                     if (state != 0) linkOpen = state > 0;
                 }
                 i = j;
             } else {
-                // Reserve one column for … when more content remains after this code unit.
-                // need=1 ⇒ stop once visible == budget-1 so the ellipsis still fits in budget.
-                boolean moreAfter = i + 1 < s.length() && !isOnlyAnsiFrom(s, i + 1);
+                // One code point per step (never splitting a surrogate pair), wcwidth columns.
+                int cp = s.codePointAt(i);
+                int cpLen = Character.charCount(cp);
+                int w = org.jline.utils.WCWidth.wcwidth(cp);
+                if (w < 0) {
+                    // C0/C1 controls (stray tab/backspace/CR in a step message — @DisplayName
+                    // content flows in unsanitized). Emitting one at weight 0 advances real
+                    // columns past the charged budget, wraps the row, and desyncs the cursor
+                    // bookkeeping — drop it.
+                    i += cpLen;
+                    continue;
+                }
+                // Reserve one column for … only when the tail still costs columns.
+                // need=1 ⇒ stop while the ellipsis still fits in budget.
+                boolean moreAfter = hasVisibleFrom(s, i + cpLen);
                 int need = moreAfter ? 1 : 0;
-                if (visible + 1 + need > budget) {
+                if (visible + w + need > budget) {
                     truncated = true;
                     break;
                 }
-                sb.append(c);
-                visible++;
-                i++;
+                sb.appendCodePoint(cp);
+                visible += w;
+                i += cpLen;
             }
         }
         if (truncated) {
@@ -630,13 +643,23 @@ public final class JkManagerColor {
         return semi + 1 < end ? 1 : -1;
     }
 
-    /** True when {@code s[from..]} is only ANSI escapes (CSI or OSC — no more visible text). */
-    static boolean isOnlyAnsiFrom(String s, int from) {
+    /**
+     * True when {@code s[from..]} still spends at least one terminal column — skips ANSI escapes
+     * (CSI or OSC) and zero-/negative-width code points (combining marks, VS16, ZWJ, controls).
+     * Feeds the ellipsis reserve: a tail that costs nothing (cafe + combining acute at budget 4,
+     * emoji + VS16 at its exact width) must render fully, not lose its last glyph to a {@code …}.
+     */
+    static boolean hasVisibleFrom(String s, int from) {
         for (int i = from; i < s.length(); ) {
-            if (s.charAt(i) != '\033') return false;
-            i = RenderContext.skipEscape(s, i);
+            if (s.charAt(i) == '\033') {
+                i = RenderContext.skipEscape(s, i);
+                continue;
+            }
+            int cp = s.codePointAt(i);
+            if (org.jline.utils.WCWidth.wcwidth(cp) > 0) return true;
+            i += Character.charCount(cp);
         }
-        return true;
+        return false;
     }
 
     /** Restores {@code System.out}/{@code System.err} when closed (no checked exception). */

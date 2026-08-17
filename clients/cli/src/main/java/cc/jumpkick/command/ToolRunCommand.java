@@ -206,8 +206,8 @@ public final class ToolRunCommand implements CliCommand {
             return delegate.runProject(dir, args);
         }
         if (Files.isRegularFile(dir.resolve("jbang-catalog.json"))) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Tool", dir + " is a JBang catalog — `alias@…` references aren't" + " supported yet."));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "Tool", dir + " is a JBang catalog — `alias@…` references aren't" + " supported yet.");
             return Exit.USAGE;
         }
         ScriptRunner runner = new ScriptRunner(global, cacheDirOverride, stateDirOverride, repoUrl, forceRecompile);
@@ -224,11 +224,11 @@ public final class ToolRunCommand implements CliCommand {
                     .toList();
         }
         if (scripts.size() == 1) return runner.run(scripts.get(0), args);
-        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+        cc.jumpkick.cli.tui.CommandWedge.printFail(
                 "Tool",
                 "nothing runnable in " + dir
                         + " — looked for jk.toml, main.java, or exactly one .java/.kt/.kts (found "
-                        + scripts.size() + ")."));
+                        + scripts.size() + ").");
         return Exit.USAGE;
     }
 
@@ -267,7 +267,7 @@ public final class ToolRunCommand implements CliCommand {
                             expanded, canonical, refStr, cacheDir, refresh, /* requireJkToml */ false),
                     steps -> BuildPlanConsole.chooseConsoleListener("tool-git-fetch", steps, mode));
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", e.getMessage());
             return Exit.SOFTWARE;
         }
         if (!outcome.result().success() || outcome.checkout() == null) return 1;
@@ -276,8 +276,7 @@ public final class ToolRunCommand implements CliCommand {
         if (subdir != null) {
             Path sub = checkout.resolve(subdir).normalize();
             if (!sub.startsWith(checkout) || !Files.isDirectory(sub)) {
-                CliOutput.err(
-                        cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "no directory `" + subdir + "` in " + input));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", "no directory `" + subdir + "` in " + input);
                 return Exit.USAGE;
             }
             checkout = sub;
@@ -361,7 +360,7 @@ public final class ToolRunCommand implements CliCommand {
         try {
             moduleHit = resolveWorkspaceModule(global.workingDir(), target);
         } catch (AmbiguousModuleTarget e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Run", e.getMessage());
             return cc.jumpkick.model.command.Exit.USAGE;
         }
         if (moduleHit != null) {
@@ -400,7 +399,7 @@ public final class ToolRunCommand implements CliCommand {
                 fetched = UrlToolSource.fetch(
                         u.raw(), cacheDirOverride != null ? cacheDirOverride : JkDirs.cache(), forceRecompile);
             } catch (IOException e) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", e.getMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", e.getMessage());
                 return Exit.SOFTWARE;
             }
             return new ScriptRunner(global, cacheDirOverride, stateDirOverride, repoUrl, forceRecompile)
@@ -438,7 +437,7 @@ public final class ToolRunCommand implements CliCommand {
                     steps -> BuildPlanConsole.chooseConsoleListener(
                             "tool-run", steps, BuildPlanConsole.modeFor(global)));
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", e.getMessage()));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", e.getMessage());
             return Exit.SOFTWARE;
         }
         if (!outcome.result().success() || outcome.mainClass() == null || outcome.coord() == null) return 1;

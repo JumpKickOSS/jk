@@ -41,7 +41,7 @@ class JkBuildRendererTest {
                         .kotlin(VersionSelector.parseFloating("=2.3.21"))
                         .build())
                 .application(new JkBuild.Application("com.example.App", true))
-                .nativeConfig(new JkBuild.NativeConfig(null, null, List.of(), null, false))
+                .nativeConfig(new JkBuild.NativeConfig(null, null, List.of(), null, JkBuild.NativeMode.SUPPORTED))
                 .build();
         String out = JkBuildRenderer.render(model);
         assertThat(out).contains("kotlin   = \"=2.3.21\"");
@@ -49,6 +49,25 @@ class JkBuildRendererTest {
         assertThat(out).contains("main       = \"com.example.App\"");
         assertThat(out).contains("assembly = true");
         assertThat(out).contains("[native]");
+    }
+
+    @Test
+    void graal_native_spec_round_trips_but_graalvm_default_is_elided() {
+        // JK-2098: "native" is a distinct legal spec — eliding it re-parses as "graalvm".
+        JkBuild base = JkBuild.builder(JkBuild.Project.builder("com.example", "widget", "1.0.0")
+                        .jdkMajor(25)
+                        .build())
+                .nativeConfig(new JkBuild.NativeConfig(null, null, List.of(), "native", JkBuild.NativeMode.SUPPORTED))
+                .build();
+        assertThat(JkBuildRenderer.render(base)).contains("graal      = \"native\"");
+
+        JkBuild dflt = JkBuild.builder(JkBuild.Project.builder("com.example", "widget", "1.0.0")
+                        .jdkMajor(25)
+                        .build())
+                .nativeConfig(
+                        new JkBuild.NativeConfig(null, null, List.of(), "graalvm", JkBuild.NativeMode.SUPPORTED))
+                .build();
+        assertThat(JkBuildRenderer.render(dflt)).doesNotContain("graal      =");
     }
 
     @Test

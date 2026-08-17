@@ -6,34 +6,31 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Marker-bounded shell rc / profile block. Ensures platform bin on PATH, evals hook integration,
- * and wires completions under the data directory.
+ * Marker-bounded shell rc / profile block. One eval/source line loads PATH, directory hooks, and
+ * completions from {@code jk activate &lt;shell&gt;}.
  */
 public final class ShellInstallerBlock {
 
     public static final String BEGIN = "# >>> jk installer >>>";
     public static final String END = "# <<< jk installer <<<";
+    public static final String COMMENT = "# JumpKick shell integration. Hi-ya!";
 
     private static final Pattern BLOCK =
             Pattern.compile(Pattern.quote(BEGIN) + "[\\s\\S]*?" + Pattern.quote(END), Pattern.MULTILINE);
 
     private ShellInstallerBlock() {}
 
-    /** Full block for {@code shell}, with absolute {@code binDir} and {@code dataDir}. */
-    public static String render(Shell shell, Path binDir, Path dataDir) {
-        String bin = binDir.toAbsolutePath().normalize().toString();
-        String data = dataDir.toAbsolutePath().normalize().toString();
-        String hooks = shell.activationLine("jk"); // uses `command jk` idioms
-        String completions = shell.completionWiring(data);
+    /**
+     * Full block for {@code shell}. {@code binDir} is the platform bin directory; paths under
+     * {@code home} are emitted as {@code $HOME/…} so the snippet is username-free.
+     */
+    public static String render(Shell shell, Path binDir, Path home) {
+        Path jkExe = binDir.toAbsolutePath().normalize().resolve("jk");
+        String command = shell.commandExpr(jkExe, home);
         StringBuilder sb = new StringBuilder();
         sb.append(BEGIN).append('\n');
-        sb.append("# JumpKick: PATH, directory env hooks, completions\n");
-        sb.append(shell.pathEnsureSnippet(bin));
-        sb.append(hooks).append('\n');
-        if (completions != null && !completions.isBlank()) {
-            sb.append(completions);
-            if (!completions.endsWith("\n")) sb.append('\n');
-        }
+        sb.append(COMMENT).append('\n');
+        sb.append(shell.activationLine(command)).append('\n');
         sb.append(END);
         return sb.toString();
     }

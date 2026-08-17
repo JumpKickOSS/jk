@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import cc.jumpkick.diagnostic.CompilerLocus;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.CacheBenefit;
@@ -79,9 +80,12 @@ public final class BuildAccumulator {
     /** In-flight journal id from begin(); null when history disabled or non-journaled. */
     private final @Nullable String journalId;
 
+    /** Engine request id (MCP jid); 0 when unknown. */
+    private final long requestId;
+
     public BuildAccumulator(
             String kind, String dir, String coord, String trigger, ChromeTimeline timeline, boolean rebuild) {
-        this(kind, dir, coord, trigger, timeline, rebuild, 0L, null);
+        this(kind, dir, coord, trigger, timeline, rebuild, 0L, null, 0L);
     }
 
     public BuildAccumulator(
@@ -93,6 +97,19 @@ public final class BuildAccumulator {
             boolean rebuild,
             long buildNumber,
             String journalId) {
+        this(kind, dir, coord, trigger, timeline, rebuild, buildNumber, journalId, 0L);
+    }
+
+    public BuildAccumulator(
+            String kind,
+            String dir,
+            String coord,
+            String trigger,
+            ChromeTimeline timeline,
+            boolean rebuild,
+            long buildNumber,
+            String journalId,
+            long requestId) {
         this.kind = kind;
         this.dir = dir;
         this.coord = coord;
@@ -102,6 +119,7 @@ public final class BuildAccumulator {
         this.rebuild = rebuild;
         this.buildNumber = buildNumber;
         this.journalId = journalId;
+        this.requestId = requestId;
     }
 
     public boolean rebuild() {
@@ -212,6 +230,7 @@ public final class BuildAccumulator {
                         null,
                         null,
                         null,
+                        0,
                         0,
                         0,
                         List.of(),
@@ -339,44 +358,10 @@ public final class BuildAccumulator {
         // Prefer the plan's own dir for.env lookup; fall back to the run's entry dir.
         String redactDir = (dir != null && !dir.isBlank()) ? dir : this.dir;
         for (BuildPlanResult.Diagnostic d : result.errors()) {
-            addDiag(new BuildRecord.Diag(
-                    "error",
-                    d0,
-                    d.step(),
-                    d.code(),
-                    redactEnv(redactDir, d.message()),
-                    d.test(),
-                    d.exceptionClass(),
-                    d.module(),
-                    d.engine(),
-                    d.className(),
-                    d.method(),
-                    redactEnv(redactDir, d.stack()),
-                    d.file(),
-                    d.line(),
-                    d.snippetStart(),
-                    d.snippet(),
-                    d.worker()));
+            addDiag(diagFromPlan("error", d0, redactDir, d));
         }
         for (BuildPlanResult.Diagnostic d : result.warnings()) {
-            addDiag(new BuildRecord.Diag(
-                    "warning",
-                    d0,
-                    d.step(),
-                    d.code(),
-                    redactEnv(redactDir, d.message()),
-                    d.test(),
-                    d.exceptionClass(),
-                    d.module(),
-                    d.engine(),
-                    d.className(),
-                    d.method(),
-                    redactEnv(redactDir, d.stack()),
-                    d.file(),
-                    d.line(),
-                    d.snippetStart(),
-                    d.snippet(),
-                    d.worker()));
+            addDiag(diagFromPlan("warning", d0, redactDir, d));
         }
         // Capture the step dependency edges from the genuine in-process result (engine-side
         // result.steps is reliably populated, unlike a client-side reconstruction).
@@ -385,6 +370,46 @@ public final class BuildAccumulator {
         }
         if (!result.success()) anyFailure = true;
         if (result.userCancelled()) userCancelled = true;
+    }
+
+    /**
+     * Copy a plan diagnostic into the journal, filling {@code file}/{@code line}/{@code col} from
+     * a javac/kotlinc/groovyc header (and caret) when the plan row left them empty.
+     */
+    static BuildRecord.Diag diagFromPlan(String severity, String dir, String redactDir, BuildPlanResult.Diagnostic d) {
+        String message = redactEnv(redactDir, d.message());
+        String file = d.file() == null ? "" : d.file();
+        int line = d.line();
+        int col = 0;
+        CompilerLocus loc = CompilerLocus.parse(message);
+        if (loc != null) {
+            // The parsed column belongs with the parsed file/line: a diag whose file/line came
+            // from elsewhere (test identity) must not adopt a column from a locus its message
+            // merely quotes.
+            boolean fromMessage = file.isEmpty() && line <= 0;
+            if (file.isEmpty()) file = loc.file();
+            if (line <= 0) line = loc.line();
+            if (fromMessage) col = loc.col();
+        }
+        return new BuildRecord.Diag(
+                severity,
+                dir,
+                d.step(),
+                d.code(),
+                message,
+                d.test(),
+                d.exceptionClass(),
+                d.module(),
+                d.engine(),
+                d.className(),
+                d.method(),
+                redactEnv(redactDir, d.stack()),
+                file,
+                line,
+                col,
+                d.snippetStart(),
+                d.snippet(),
+                d.worker());
     }
 
     public void setModuleEdges(Map<Path, Set<Path>> edges) {
@@ -525,7 +550,8 @@ public final class BuildAccumulator {
                 commit,
                 benefitRow,
                 false,
-                ioRow);
+                ioRow,
+                requestId);
     }
 
     private static boolean notBlank(String s) {

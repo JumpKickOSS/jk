@@ -3,7 +3,6 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.compile.ClasspathResolver;
@@ -76,11 +75,11 @@ public final class JshellCommand implements CliCommand {
 
         Path jshellBin = findJshell();
         if (jshellBin == null) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "JShell",
                     "jshell not found under java.home="
                             + System.getProperty("java.home")
-                            + " (need a full JDK, not a JRE)"));
+                            + " (need a full JDK, not a JRE)");
             return Exit.CONFIG;
         }
 
@@ -102,8 +101,8 @@ public final class JshellCommand implements CliCommand {
             }
             int code = new BuildCommand().run(bb.build());
             if (code != 0) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                        "JShell", "preparatory build failed (exit " + code + "); try --no-build after a green build"));
+                cc.jumpkick.cli.tui.CommandWedge.printFail(
+                        "JShell", "preparatory build failed (exit " + code + "); try --no-build after a green build");
                 return code;
             }
         }
@@ -111,23 +110,22 @@ public final class JshellCommand implements CliCommand {
         int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cacheDir, global, "JShell");
         if (lockCode != 0) return lockCode;
         if (!Files.isRegularFile(proj.lockFile())) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "JShell", "no jk-lock.toml — lock refresh did not produce one"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail("JShell", "no jk-lock.toml — lock refresh did not produce one");
             return Exit.CONFIG;
         }
 
         JkBuild build = JkBuildParser.parse(proj.buildFile());
         if (build.isWorkspaceRoot()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "JShell", "run from a module directory (workspace roots have no single compile classpath)"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "JShell", "run from a module directory (workspace roots have no single compile classpath)");
             return Exit.CONFIG;
         }
 
         BuildLayout layout = BuildLayout.of(dir, build);
         Path classes = layout.classesDir();
         if (!Files.isDirectory(classes)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "JShell", "no classes at " + classes + " — run `jk build --skip-tests` or drop `--no-build`"));
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "JShell", "no classes at " + classes + " — run `jk build --skip-tests` or drop `--no-build`");
             return Exit.CONFIG;
         }
 
@@ -147,10 +145,10 @@ public final class JshellCommand implements CliCommand {
             }
         }
         if (missing > 0) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.chip(
+            cc.jumpkick.cli.tui.CommandWedge.printChipErr(
                     cc.jumpkick.cli.tui.Glyphs.BANG,
                     "JShell",
-                    missing + " lock classpath entry(ies) missing on disk — run `jk sync`"));
+                    missing + " lock classpath entry(ies) missing on disk — run `jk sync`");
         }
         String classpath = String.join(File.pathSeparator, cp);
 
@@ -162,9 +160,9 @@ public final class JshellCommand implements CliCommand {
         cmd.addAll(in.positionals());
 
         if (global.verbose) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "JShell",
-                    cmd.stream().map(s -> s.contains(" ") ? "\"" + s + "\"" : s).collect(Collectors.joining(" "))));
+                    cmd.stream().map(s -> s.contains(" ") ? "\"" + s + "\"" : s).collect(Collectors.joining(" ")));
         }
 
         ProcessBuilder pb = new ProcessBuilder(cmd);

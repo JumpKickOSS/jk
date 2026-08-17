@@ -301,14 +301,23 @@ public final class TerminalSize {
         if (winInitAttempted) return;
         synchronized (TerminalSize.class) {
             if (winInitAttempted) return;
-            winInitAttempted = true;
-            Linker linker = Linker.nativeLinker();
-            SymbolLookup k32 = SymbolLookup.libraryLookup("kernel32", Arena.global());
-            winGetStdHandle = linker.downcallHandle(
-                    k32.findOrThrow("GetStdHandle"), FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-            winGetConsoleScreenBufferInfo = linker.downcallHandle(
-                    k32.findOrThrow("GetConsoleScreenBufferInfo"),
-                    FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            // Same shape as ensurePosix: the volatile flag is written LAST (finally). The
+            // unsynchronized fast path reads it without the monitor, so publishing it before the
+            // handles lets a second thread see attempted=true with null handles and cache the
+            // 80x24 env fallback process-wide — and Windows has no WINCH to recover. finally
+            // keeps a linker failure from re-throwing on every later probe.
+            try {
+                Linker linker = Linker.nativeLinker();
+                SymbolLookup k32 = SymbolLookup.libraryLookup("kernel32", Arena.global());
+                winGetStdHandle = linker.downcallHandle(
+                        k32.findOrThrow("GetStdHandle"),
+                        FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+                winGetConsoleScreenBufferInfo = linker.downcallHandle(
+                        k32.findOrThrow("GetConsoleScreenBufferInfo"),
+                        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            } finally {
+                winInitAttempted = true;
+            }
         }
     }
 
