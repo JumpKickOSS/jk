@@ -1651,8 +1651,8 @@ class HttpEngineServerTest {
         assertThat(nextLine(lines)).isEqualTo(": connected");
         assertThat(nextLine(lines)).isEqualTo(""); // blank line terminating the connected comment
         // Connect hydrate may publish status/cache before our frame.
-        events.publish("request-start", JsonOut.object().put("requestId", 1).put("kind", "build"));
-        assertThat(awaitSseEvent(lines, "request-start")).isEqualTo("data: {\"requestId\":1,\"kind\":\"build\"}");
+        events.publish("request-start", JsonOut.object().put("jid", 1).put("kind", "build"));
+        assertThat(awaitSseEvent(lines, "request-start")).isEqualTo("data: {\"jid\":1,\"kind\":\"build\"}");
     }
 
     @Test
@@ -1746,7 +1746,7 @@ class HttpEngineServerTest {
     void build_trigger_acknowledges_with_request_id() throws Exception {
         HttpResponse<String> resp = postBuild("{\"dir\":\"/some/workspace\"}");
         assertThat(resp.statusCode()).isEqualTo(202);
-        assertThat(resp.body()).contains("\"requestId\":7").contains("\"events\":\"/api/events\"");
+        assertThat(resp.body()).contains("\"jid\":7").contains("\"events\":\"/api/events\"");
         assertThat(triggeredDirs).containsExactly("/some/workspace");
     }
 

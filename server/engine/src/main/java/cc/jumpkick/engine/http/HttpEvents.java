@@ -180,20 +180,20 @@ public final class HttpEvents {
                     "module-finish",
                     "buildplan-finish",
                     "plan",
-                    "diagnostic" -> true;
+                    "error" -> true;
             default -> false;
         };
     }
 
     /**
-     * Best-effort parse of {@code "requestId": <number>} from a JsonOut object string. Returns
+     * Best-effort parse of {@code "jid": <number>} from a JsonOut object string. Returns
      * {@code null} when absent or unparseable.
      */
     static Long extractRequestId(String data) {
         if (data == null || data.isEmpty()) return null;
-        int key = data.indexOf("\"requestId\"");
+        int key = data.indexOf("\"jid\"");
         if (key < 0) return null;
-        int colon = data.indexOf(':', key + 11);
+        int colon = data.indexOf(':', key + 5);
         if (colon < 0) return null;
         int i = colon + 1;
         while (i < data.length() && data.charAt(i) <= ' ') i++;

@@ -502,13 +502,12 @@ public final class HttpEngineServer implements AutoCloseable {
                             .put("events", "/api/events")
                             .put(
                                     "mcpEvents",
-                                    "GET /mcp (Accept: text/event-stream); optional ?requestId=N or "
-                                            + "?progressToken=T")
+                                    "GET /mcp (Accept: text/event-stream); optional ?jid=N or " + "?progressToken=T")
                             .put(
                                     "instructions",
                                     "JSON-RPC 2.0 POST. Methods: initialize, tools/list, tools/call, ping. "
                                             + "Bearer token required. Live progress: GET /mcp with "
-                                            + "Accept: text/event-stream (optional ?requestId= or "
+                                            + "Accept: text/event-stream (optional ?jid= or "
                                             + "?progressToken=) or GET /api/events (dashboard SSE).")
                             .toString());
             return;
@@ -531,7 +530,7 @@ public final class HttpEngineServer implements AutoCloseable {
     /**
      * MCP progress SSE: same hub as {@code /api/events}, framed as Streamable-HTTP {@code message}
      * events with {@code notifications/jk/event} JSON-RPC bodies. Optional query filters: {@code
-     * requestId} (engine job id) or {@code progressToken} (bound from tools/call {@code
+     * jid} (engine job id) or {@code progressToken} (bound from tools/call {@code
      * _meta.progressToken}).
      */
     private void handleMcpEvents(HttpExchange exchange) throws IOException {
@@ -539,12 +538,11 @@ public final class HttpEngineServer implements AutoCloseable {
         exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
         if (filter != null) {
-            exchange.getResponseHeaders().set("X-Jk-Request-Id", Long.toString(filter));
+            exchange.getResponseHeaders().set("X-Jk-Jid", Long.toString(filter));
         }
         exchange.sendResponseHeaders(200, 0);
         var out = exchange.getResponseBody();
-        String hello =
-                filter == null ? ": mcp-events connected\n\n" : ": mcp-events connected requestId=" + filter + "\n\n";
+        String hello = filter == null ? ": mcp-events connected\n\n" : ": mcp-events connected jid=" + filter + "\n\n";
         try (HttpEvents.Subscription subscription = events.subscribe(HttpEvents.FrameStyle.MCP, filter)) {
             out.write(hello.getBytes(StandardCharsets.UTF_8));
             out.flush();
@@ -561,12 +559,12 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * Resolve optional SSE filter from query string. {@code requestId} wins over {@code
+     * Resolve optional SSE filter from query string. {@code jid} wins over {@code
      * progressToken}. An unknown progress token filters to a never-matching id (no wrong-job
      * leakage); open SSE after tools/call returns, or use {@code requestId} from the tool result.
      */
     Long resolveMcpEventFilter(String query) {
-        String rid = queryParamLenient(query, "requestId");
+        String rid = queryParamLenient(query, "jid");
         if (rid != null && !rid.isBlank()) {
             try {
                 return Long.parseLong(rid.trim());

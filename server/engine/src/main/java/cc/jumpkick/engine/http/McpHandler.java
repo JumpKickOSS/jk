@@ -284,8 +284,8 @@ public final class McpHandler {
                 objectSchema(Map.of())));
         tools.add(tool(
                 "jk_build",
-                "Start a workspace/module build for dir (async). Returns requestId; stream progress "
-                        + "via GET /mcp?requestId=N (or ?progressToken=T with _meta.progressToken) "
+                "Start a workspace/module build for dir (async). Returns jid; stream progress "
+                        + "via GET /mcp?jid=N (or ?progressToken=T with _meta.progressToken) "
                         + "Accept: text/event-stream. Same as POST /api/build.",
                 objectSchema(Map.of(
                         "dir",
@@ -297,7 +297,7 @@ public final class McpHandler {
         tools.add(tool(
                 "jk_test",
                 "Start a true test-only job for dir (async; compile + tests, no package — same as "
-                        + "jk test). Journal kind test. Progress: GET /mcp?requestId=N. Returns requestId.",
+                        + "jk test). Journal kind test. Progress: GET /mcp?jid=N. Returns jid.",
                 objectSchema(Map.of(
                         "dir",
                         Map.of(
@@ -307,7 +307,7 @@ public final class McpHandler {
                                 "Project/workspace root (jk.toml): absolute, ~/…, or home-relative")))));
         tools.add(tool(
                 "jk_lock",
-                "Resolve dependencies and write jk-lock.toml for dir (async). Progress: GET /mcp?requestId=N.",
+                "Resolve dependencies and write jk-lock.toml for dir (async). Progress: GET /mcp?jid=N.",
                 objectSchema(Map.of(
                         "dir",
                         Map.of(
@@ -317,16 +317,14 @@ public final class McpHandler {
                                 "Project/workspace root (jk.toml): absolute, ~/…, or home-relative")))));
         tools.add(tool(
                 "jk_cancel",
-                "Cancel an in-flight job by jid (or requestId alias). Grace then force workers.",
+                "Cancel an in-flight job by jid. Grace then force workers.",
                 objectSchema(Map.of(
                         "jid",
                         Map.of(
                                 "type",
                                 "integer",
                                 "description",
-                                "Job id from jk_build / jk_test / jk_lock / job-start (preferred)"),
-                        "requestId",
-                        Map.of("type", "integer", "description", "Alias for jid (kept for one release cycle)")))));
+                                "Job id from jk_build / jk_test / jk_lock / job-start")))));
         tools.add(tool(
                 "jk_bind",
                 "Set the default workspace for later tools (omit dir after this). Returns a project card.",
@@ -663,7 +661,7 @@ public final class McpHandler {
         one.put("success", sum.get("success"));
         one.put("exitCode", sum.get("exitCode"));
         one.put("failedModules", sum.get("failedModules"));
-        if (sum.get("requestId") != null) one.put("requestId", sum.get("requestId"));
+        if (sum.get("jid") != null) one.put("jid", sum.get("jid"));
         return one;
     }
 
@@ -673,11 +671,10 @@ public final class McpHandler {
             if (progressToken != null) progressTokens.bind(progressToken, requestId);
             Map<String, Object> fields = new LinkedHashMap<>();
             fields.put("kind", spec.kind());
-            fields.put("requestId", requestId);
             fields.put("jid", requestId);
             fields.put("dir", spec.dir());
             fields.put("events", "/api/events");
-            fields.put("mcpEvents", "GET /mcp?requestId=" + requestId);
+            fields.put("mcpEvents", "GET /mcp?jid=" + requestId);
             if (!spec.modules().isEmpty()) fields.put("modules", spec.modules());
             if (spec.hasTestFilter()) {
                 fields.put("include_tags", spec.includeTags());
@@ -693,7 +690,7 @@ public final class McpHandler {
                     fields,
                     false,
                     null,
-                    "Stream GET /mcp?requestId=" + requestId + " or jk_cancel jid=" + requestId);
+                    "Stream GET /mcp?jid=" + requestId + " or jk_cancel jid=" + requestId);
         } catch (IllegalStateException e) {
             throw new McpError(-32000, e.getMessage());
         } catch (IllegalArgumentException e) {
@@ -702,15 +699,12 @@ public final class McpHandler {
     }
 
     private Map<String, Object> cancelResult(Map<String, Object> args) {
-        Object raw = args.get("jid");
-        if (!(raw instanceof Number)) raw = args.get("requestId");
-        if (!(raw instanceof Number n)) {
-            throw new McpError(-32602, "jk_cancel requires arguments.jid (or requestId)");
+        if (!(args.get("jid") instanceof Number n)) {
+            throw new McpError(-32602, "jk_cancel requires arguments.jid");
         }
         long id = n.longValue();
         boolean ok = jobs.cancel(id);
         Map<String, Object> fields = new LinkedHashMap<>();
-        fields.put("requestId", id);
         fields.put("jid", id);
         fields.put("cancelled", ok);
         if (!ok) fields.put("note", "unknown or already finished jid");
@@ -856,7 +850,6 @@ public final class McpHandler {
         Map<String, Object> fields = new LinkedHashMap<>();
         fields.put("kind", spec.kind());
         fields.put("jid", jid);
-        fields.put("requestId", jid);
         fields.put("dir", spec.dir());
         if (!spec.modules().isEmpty()) fields.put("modules", spec.modules());
         if (spec.hasTestFilter()) {
@@ -865,7 +858,7 @@ public final class McpHandler {
             fields.put("suites", spec.suites());
         }
         if (!wait) {
-            fields.put("mcpEvents", "GET /mcp?requestId=" + jid);
+            fields.put("mcpEvents", "GET /mcp?jid=" + jid);
             return ok(
                     McpEnvelope.of("job-accepted", fields, false, null, "jk_job action=wait jid=" + jid), "jid " + jid);
         }

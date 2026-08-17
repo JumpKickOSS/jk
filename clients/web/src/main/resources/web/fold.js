@@ -29,9 +29,9 @@ export function isBuildLikeKind(kind) {
  * Fold one SSE event into the newest-first card list, mutating and returning it.
  * An event is `{type, data, at}` where `data` is the parsed flat JSON payload the engine
  * publishes and `at` is the client-clock receipt time (fold stays clock-free and pure):
- * request-start/finish carry requestId/kind/dir (+ coord on start when the project's jk.toml
+ * request-start/finish carry jid/kind/dir (+ coord on start when the project's jk.toml
  * parses; + success/cancelled/millis on finish); module/step/output/plan events carry
- * requestId/dir plus their specifics.
+ * jid/dir plus their specifics.
  */
 /**
  * Latch the card's client-epoch start anchor. `startedAt` is engine wall clock; comparing it
@@ -62,7 +62,7 @@ export function foldEvent(cards, event) {
       const engineStart =
         typeof d.startedAt === 'number' && d.startedAt > 0 ? d.startedAt : null;
       // Already attached (SSE connect rehydrate replayed, or this tab started the job).
-      const attached = cards.find((c) => c.id === d.requestId);
+      const attached = cards.find((c) => c.id === d.jid);
       if (attached) {
         if (engineStart != null && (attached.startedAt == null || engineStart < attached.startedAt)) {
           attached.startedAt = engineStart;
@@ -89,7 +89,7 @@ export function foldEvent(cards, event) {
           c.buildNumber === d.buildNumber,
       );
       if (existing) {
-        existing.id = d.requestId; // prefer live request id for subsequent SSE
+        existing.id = d.jid; // prefer live jid for subsequent SSE
         if (d.coord) existing.coord = d.coord;
         if (d.projectId) existing.projectId = d.projectId;
         if (engineStart != null && (existing.startedAt == null || engineStart < existing.startedAt)) {
@@ -105,7 +105,7 @@ export function foldEvent(cards, event) {
         break;
       }
       cards.unshift({
-        id: d.requestId,
+        id: d.jid,
         kind: d.kind || 'request',
         dir: d.dir || '',
         coord: d.coord || null,
@@ -186,7 +186,7 @@ export function foldEvent(cards, event) {
       if (card) card.planWeight = d.weight || 0;
       break;
     }
-    case 'plan-progress': {
+    case 'progress': {
       const card = resolveCard(cards, d);
       // Fine-grained only — do not drive the request bar from module-local fractions.
       if (card) {
@@ -266,7 +266,7 @@ export function foldEvent(cards, event) {
       }
       break;
     }
-    case 'diagnostic': {
+    case 'error': {
       const card = resolveCard(cards, d);
       if (card) {
         const mod = moduleRow(card, d.dir, event.at);
@@ -340,17 +340,16 @@ export function foldEvent(cards, event) {
  * chains. Idempotent with history seed and subsequent live events.
  */
 function applyRunSnapshot(cards, d, at) {
-  if (!d || d.requestId == null) return;
+  if (!d || d.jid == null) return;
   // A snapshot captured while the run was still live can arrive after the finish frame in a
   // reconnect race — it must never resurrect a finished card as running (JK-1837).
-  const pre = cards.find((c) => c.id === d.requestId);
+  const pre = cards.find((c) => c.id === d.jid);
   if (pre && pre.state !== 'running') return;
   // Ensure a running card exists (same paths as request-start rehydrate).
   foldEvent(cards, {
     type: 'request-start',
     data: {
-      requestId: d.requestId,
-      jid: d.jid ?? d.requestId,
+      jid: d.jid,
       kind: d.kind,
       dir: d.dir,
       coord: d.coord,
@@ -528,8 +527,8 @@ export function seedFromHistory(cards, records) {
         const finals = historyModules(rec);
         if (finals.length > 0) live.modules = mergeSnapshotModules(live.modules, finals);
       }
-      // Enriched history may carry the engine requestId — rebind a journal stub for SSE.
-      const liveId = rec.requestId ?? rec.jid;
+      // Enriched history carries the engine jid (stored records keep requestId) — rebind a stub.
+      const liveId = rec.jid ?? rec.requestId;
       if (rec.running && typeof liveId === 'number' && liveId > 0) live.id = liveId;
       // Prefer engine admission time over browser receipt of a late request-start.
       if (typeof rec.startedAt === 'number' && rec.startedAt > 0) {
@@ -571,9 +570,9 @@ export function seedFromHistory(cards, records) {
 /** One persisted record → a card matching {@link foldEvent}'s shape (finished or still running). */
 function historyCard(rec) {
   const running = !!rec.running;
-  // Prefer live engine requestId (enriched by GET /api/history) so SSE events rebind without
+  // Prefer the live engine jid (enriched by GET /api/history) so SSE events rebind without
   // waiting for a second request-start after a hard refresh mid-build.
-  const liveId = rec.requestId ?? rec.jid;
+  const liveId = rec.jid ?? rec.requestId;
   const id = running && typeof liveId === 'number' && liveId > 0 ? liveId : 'h:' + rec.id;
   let progressPercent = null;
   if (typeof rec.progress === 'number') progressPercent = rec.progress;
@@ -992,12 +991,12 @@ export function moduleSummary(card) {
 }
 
 /**
- * Find the card for an SSE payload. Live cards key on the numeric engine {@code requestId}.
+ * Find the card for an SSE payload. Live cards key on the numeric engine {@code jid}.
  * After a hard refresh mid-build the journal seeds a stub with id {@code h:<historyId>} — rebind
- * that stub to the live requestId on the first matching event so progress/ETA/finish attach.
+ * that stub to the live jid on the first matching event so progress/ETA/finish attach.
  */
 function resolveCard(cards, d) {
-  const requestId = d && d.requestId;
+  const requestId = d && d.jid;
   if (requestId == null) return null;
   const exact = cards.find((c) => c.id === requestId);
   if (exact) return exact;
@@ -1039,8 +1038,8 @@ function resolveCard(cards, d) {
 }
 
 /** @deprecated use {@link resolveCard} — kept name for any external callers. */
-function byId(cards, requestId) {
-  return resolveCard(cards, { requestId });
+function byId(cards, jid) {
+  return resolveCard(cards, { jid });
 }
 
 /**

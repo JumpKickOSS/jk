@@ -267,27 +267,23 @@ final class HttpReadApi {
                 exchange,
                 202,
                 JsonOut.object()
-                        .put("requestId", requestId)
                         .put("jid", requestId)
                         .put("events", "/api/events")
                         .toString());
     }
 
     /**
-     * {@code POST /api/cancel} — body {@code {"jid":N}} or {@code {"requestId":N}} (alias).
+     * {@code POST /api/cancel} — body {@code {"jid":N}}.
      */
     void handleCancel(HttpExchange exchange) throws IOException {
         String body = new String(
                 exchange.getRequestBody().readNBytes(HttpEngineServer.MAX_BODY_BYTES), StandardCharsets.UTF_8);
         long jid = cc.jumpkick.plugin.protocol.Jsonl.longValue(body, "jid", -1);
-        if (jid < 0) jid = cc.jumpkick.plugin.protocol.Jsonl.longValue(body, "requestId", -1);
         if (jid < 0) {
             HttpEngineServer.sendJson(
                     exchange,
                     400,
-                    JsonOut.object()
-                            .put("error", "missing \"jid\" (or requestId)")
-                            .toString());
+                    JsonOut.object().put("error", "missing \"jid\"").toString());
             return;
         }
         boolean ok = jobs.cancel(jid);
@@ -296,7 +292,6 @@ final class HttpReadApi {
                 ok ? 200 : 404,
                 JsonOut.object()
                         .put("jid", jid)
-                        .put("requestId", jid)
                         .put("cancelled", ok)
                         .put("note", ok ? "" : "unknown or already finished jid")
                         .toString());

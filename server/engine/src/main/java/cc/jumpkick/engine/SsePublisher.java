@@ -274,7 +274,7 @@ public final class SsePublisher {
                 var body = cc.jumpkick.engine.JsonOut.object()
                         .put("schema", 1)
                         .put("type", "workspace-progress")
-                        .put("requestId", requestId)
+                        .put("jid", requestId)
                         .put("dir", dir)
                         .put("numerator", num)
                         .put("denominator", den)
@@ -342,7 +342,6 @@ public final class SsePublisher {
         var payload = cc.jumpkick.engine.JsonOut.object()
                 .put("schema", 1)
                 .put("type", "request-start")
-                .put("requestId", requestId)
                 .put("jid", requestId)
                 .put("kind", kind)
                 .put("dir", dir)
@@ -373,7 +372,7 @@ public final class SsePublisher {
                         cc.jumpkick.engine.JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "task-start")
-                                .put("requestId", requestId)
+                                .put("jid", requestId)
                                 .put("dir", dir)
                                 .put("task", step)
                                 .put("stage", phase),
@@ -394,7 +393,7 @@ public final class SsePublisher {
                         cc.jumpkick.engine.JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "task-finish")
-                                .put("requestId", requestId)
+                                .put("jid", requestId)
                                 .put("dir", dir)
                                 .put("task", step)
                                 .put("stage", phase)
@@ -416,7 +415,7 @@ public final class SsePublisher {
                         cc.jumpkick.engine.JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "label")
-                                .put("requestId", requestId)
+                                .put("jid", requestId)
                                 .put("dir", dir)
                                 .put("task", step)
                                 .put("label", EventRedaction.redactEnv(dir, label)),
@@ -436,7 +435,7 @@ public final class SsePublisher {
                         cc.jumpkick.engine.JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "output")
-                                .put("requestId", requestId)
+                                .put("jid", requestId)
                                 .put("dir", dir)
                                 .put("task", step)
                                 .put("line", EventRedaction.redactEnv(dir, line)),
@@ -485,11 +484,11 @@ public final class SsePublisher {
     public void publishDiagnostics(long requestId, String dir, List<BuildPlanResult.Diagnostic> errors) {
         if (!eventsWanted() || errors.isEmpty()) return;
         for (BuildPlanResult.Diagnostic d : selectPublishedDiagnostics(errors)) {
-            // type "error" matches CLI JsonlShape; SSE event name stays "diagnostic" for the SPA.
+            // SSE event name equals the payload type ("error"), same as CLI JsonlShape.
             var o = cc.jumpkick.engine.JsonOut.object()
                     .put("schema", 1)
                     .put("type", "error")
-                    .put("requestId", requestId)
+                    .put("jid", requestId)
                     .put("dir", dir)
                     .put("task", d.step())
                     .put("code", d.code())
@@ -507,7 +506,7 @@ public final class SsePublisher {
             if (d.snippet() != null && !d.snippet().isEmpty()) o.putStrings("snippet", d.snippet());
             if (d.worker() > 0) o.put("worker", d.worker());
             if (d.test() != null && !d.test().isEmpty()) o.put("test", d.test());
-            publishEvent("diagnostic", withProgress(o, requestId));
+            publishEvent("error", withProgress(o, requestId));
         }
         int dropped = unpublishedCount(errors);
         if (dropped > 0) {
@@ -519,12 +518,12 @@ public final class SsePublisher {
     public void publishRequestError(long requestId, String dir, String message) {
         if (!eventsWanted() || message == null || message.isBlank()) return;
         publishEvent(
-                "diagnostic",
+                "error",
                 withProgress(
                         cc.jumpkick.engine.JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "error")
-                                .put("requestId", requestId)
+                                .put("jid", requestId)
                                 .put("dir", dir)
                                 .put("task", "request")
                                 .put("code", "error")
@@ -549,7 +548,7 @@ public final class SsePublisher {
                         cc.jumpkick.engine.JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "plan")
-                                .put("requestId", requestId)
+                                .put("jid", requestId)
                                 .put("weight", totalWeight),
                         requestId));
     }
@@ -567,12 +566,12 @@ public final class SsePublisher {
         }
         if (!eventsWanted()) return;
         publishEvent(
-                "plan-progress",
+                "progress",
                 withProgress(
                         cc.jumpkick.engine.JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "progress")
-                                .put("requestId", requestId)
+                                .put("jid", requestId)
                                 .put("dir", dir)
                                 .put("numerator", numerator)
                                 .put("denominator", denominator),
@@ -592,7 +591,7 @@ public final class SsePublisher {
                         cc.jumpkick.engine.JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "eta")
-                                .put("requestId", requestId)
+                                .put("jid", requestId)
                                 .put("millis", millis),
                         requestId));
     }
@@ -618,7 +617,7 @@ public final class SsePublisher {
                         cc.jumpkick.engine.JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "module-start")
-                                .put("requestId", requestId)
+                                .put("jid", requestId)
                                 .put("dir", dir)
                                 .put("coord", coord),
                         requestId),
@@ -657,7 +656,7 @@ public final class SsePublisher {
                         cc.jumpkick.engine.JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "module-finish")
-                                .put("requestId", requestId)
+                                .put("jid", requestId)
                                 .put("dir", dir)
                                 .put("coord", coord)
                                 .put("success", success)
@@ -678,7 +677,7 @@ public final class SsePublisher {
                         cc.jumpkick.engine.JsonOut.object()
                                 .put("schema", 1)
                                 .put("type", "buildplan-finish")
-                                .put("requestId", requestId)
+                                .put("jid", requestId)
                                 .put("dir", dir)
                                 .put("success", success),
                         requestId));

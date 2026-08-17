@@ -55,7 +55,7 @@ final class EngineBuildListenerAdapter {
     private static void bindTranscript(String jobStartLine) {
         CliSessionTranscript s = CliSessionTranscript.active();
         if (s == null || jobStartLine == null) return;
-        long jid = Jsonl.longValue(jobStartLine, "jid", Jsonl.longValue(jobStartLine, "requestId", -1));
+        long jid = Jsonl.longValue(jobStartLine, "jid", -1);
         long buildNumber = Jsonl.longValue(jobStartLine, "buildNumber", 0);
         String detailsPath = Jsonl.str(jobStartLine, "detailsPath");
         long etaMs = Jsonl.longValue(jobStartLine, "etaMs", -1);
@@ -449,7 +449,7 @@ final class EngineBuildListenerAdapter {
                     String type = EngineProtocol.typeOf(line);
                     if (type == null) continue;
                     if (EngineProtocol.JOB_START.equals(type)) {
-                        notedJid = Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1));
+                        notedJid = Jsonl.longValue(line, "jid", -1);
                         cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(notedJid);
                         bindTranscript(line);
                         continue;
@@ -759,7 +759,7 @@ final class EngineBuildListenerAdapter {
                 String type = EngineProtocol.typeOf(line);
                 if (type == null) continue;
                 if (EngineProtocol.JOB_START.equals(type)) {
-                    notedJid = Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1));
+                    notedJid = Jsonl.longValue(line, "jid", -1);
                     cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(notedJid);
                     bindTranscript(line);
                     continue;
@@ -882,7 +882,7 @@ final class EngineBuildListenerAdapter {
                 String type = EngineProtocol.typeOf(line);
                 if (type == null) continue;
                 if (EngineProtocol.JOB_START.equals(type)) {
-                    notedJid = Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1));
+                    notedJid = Jsonl.longValue(line, "jid", -1);
                     cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(notedJid);
                     bindTranscript(line);
                     continue;

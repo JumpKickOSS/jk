@@ -1202,7 +1202,7 @@ class EngineServerTest {
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
         assertThat(accepted.statusCode()).isEqualTo(202);
-        assertThat(accepted.body()).contains("\"requestId\":");
+        assertThat(accepted.body()).contains("\"jid\":");
 
         String startData = awaitSseData(lines, "request-start");
         assertThat(startData).contains("\"kind\":\"build\"").contains(project.toString());

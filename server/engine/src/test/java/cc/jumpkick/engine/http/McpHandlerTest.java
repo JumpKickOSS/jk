@@ -124,7 +124,7 @@ class McpHandlerTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> structured = (Map<String, Object>) result.get("structuredContent");
         assertThat(structured.get("type")).isEqualTo("build-accepted");
-        assertThat(((Number) structured.get("requestId")).longValue()).isEqualTo(42L);
+        assertThat(((Number) structured.get("jid")).longValue()).isEqualTo(42L);
     }
 
     @Test
@@ -133,7 +133,7 @@ class McpHandlerTest {
                 + "\"params\":{\"name\":\"jk_test\",\"arguments\":{\"dir\":\"/tmp/demo\"}}}");
         // Nested tool payload is JSON-escaped inside content.text
         assertThat(testBody).contains("test-accepted");
-        assertThat(testBody).contains("requestId");
+        assertThat(testBody).contains("jid");
         assertThat(testBody).contains("43");
 
         String lockBody = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\","
@@ -142,7 +142,7 @@ class McpHandlerTest {
         assertThat(lockBody).contains("44");
 
         String cancelBody = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_cancel\",\"arguments\":{\"requestId\":42}}}");
+                + "\"params\":{\"name\":\"jk_cancel\",\"arguments\":{\"jid\":42}}}");
         assertThat(cancelBody).contains("cancelled");
         assertThat(cancelBody).contains("true");
     }
@@ -281,7 +281,7 @@ class McpHandlerTest {
         assertThat(body).contains("progressToken");
         assertThat(body).contains("tok-1");
         assertThat(tokens.resolve("tok-1")).isEqualTo(42L);
-        assertThat(body).contains("requestId=42");
+        assertThat(body).contains("jid=42");
     }
 
     @Test

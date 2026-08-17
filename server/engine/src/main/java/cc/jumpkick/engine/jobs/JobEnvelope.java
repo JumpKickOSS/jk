@@ -432,7 +432,6 @@ public final class JobEnvelope {
                 JsonOut finishPayload = JsonOut.object()
                         .put("schema", 1)
                         .put("type", "request-finish")
-                        .put("requestId", eventRequestId)
                         .put("jid", eventRequestId)
                         .put("kind", eventKind)
                         .put("dir", eventDir)

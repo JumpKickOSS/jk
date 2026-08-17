@@ -203,7 +203,6 @@ final class HttpHistoryApi {
             }
             HttpLive.Run match = matchLiveRun(m);
             if (match == null) return cc.jumpkick.plugin.protocol.MiniJson.write(m);
-            m.put("requestId", match.requestId());
             m.put("jid", match.requestId());
             if (match.startedAt() > 0) {
                 m.put("startedAt", match.startedAt());

@@ -829,7 +829,6 @@ public final class EngineServer implements AutoCloseable {
 
     private void handleCancelRequest(String requestLine, BufferedWriter writer) throws IOException {
         long jid = Jsonl.longValue(requestLine, "jid", -1);
-        if (jid < 0) jid = Jsonl.longValue(requestLine, "requestId", -1);
         String dir = Jsonl.str(requestLine, "dir");
         if (jid >= 0) {
             boolean ok = cancelJob(jid);

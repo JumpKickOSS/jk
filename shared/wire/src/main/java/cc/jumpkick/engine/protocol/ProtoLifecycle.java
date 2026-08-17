@@ -315,7 +315,7 @@ public final class ProtoLifecycle {
 
     /**
      * {@link EngineProtocol#ERR_ALREADY_RUNNING}: same fingerprint already in flight. Includes {@code buildNumber}
-     * and holder {@code requestId} when known so clients can render {@code Build #N is already running}.
+     * and holder {@code jid} when known so clients can render {@code Build #N is already running}.
      */
     public static String alreadyRunning(long buildNumber, long holderRequestId, String message) {
         return "{\"type\":\""
@@ -326,8 +326,6 @@ public final class ProtoLifecycle {
                 + Jsonl.quote(message)
                 + ",\"buildNumber\":"
                 + buildNumber
-                + ",\"requestId\":"
-                + holderRequestId
                 + ",\"jid\":"
                 + holderRequestId
                 + "}";
@@ -349,8 +347,6 @@ public final class ProtoLifecycle {
                 .append(EngineProtocol.JOB_START)
                 .append("\",\"jid\":")
                 .append(jid)
-                .append(",\"requestId\":")
-                .append(jid)
                 .append(",\"kind\":")
                 .append(Jsonl.quote(kind == null ? "" : kind))
                 .append(",\"dir\":")
@@ -365,7 +361,7 @@ public final class ProtoLifecycle {
 
     /** {@link EngineProtocol#CANCEL_REQUEST}: cancel by {@code jid} (optional {@code dir} to cancel all for a project). */
     public static String cancelRequest(long jid) {
-        return "{\"type\":\"" + EngineProtocol.CANCEL_REQUEST + "\",\"jid\":" + jid + ",\"requestId\":" + jid + "}";
+        return "{\"type\":\"" + EngineProtocol.CANCEL_REQUEST + "\",\"jid\":" + jid + "}";
     }
 
     /** {@link EngineProtocol#CANCEL_REQUEST} with no jid: cancel every live job under {@code dir}. */
@@ -379,8 +375,6 @@ public final class ProtoLifecycle {
         StringBuilder b = new StringBuilder("{\"type\":\"")
                 .append(EngineProtocol.CANCEL_ACK)
                 .append("\",\"jid\":")
-                .append(jid)
-                .append(",\"requestId\":")
                 .append(jid)
                 .append(",\"cancelled\":")
                 .append(cancelled);

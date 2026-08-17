@@ -300,7 +300,7 @@ public final class ProtoEvents {
     }
 
     public static String label(String dir, String step, String label) {
-        return "{\"type\":\""
+        return "{\"schema\":1,\"type\":\""
                 + EngineProtocol.LABEL
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -312,7 +312,7 @@ public final class ProtoEvents {
     }
 
     public static String output(String dir, String step, String line) {
-        return "{\"type\":\""
+        return "{\"schema\":1,\"type\":\""
                 + EngineProtocol.OUTPUT
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)

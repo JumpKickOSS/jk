@@ -28,11 +28,11 @@ class HttpEventsTest {
         HttpEvents.Subscription s = hub.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null);
         try {
             assertThat(hub.hasSubscribers()).isFalse();
-            hub.publish("task-finish", JsonOut.object().put("requestId", 1)); // pre-attach broadcast: not queued
-            hub.deliverTo(s, "run-snapshot", JsonOut.object().put("requestId", 1)); // connect hydrate
+            hub.publish("task-finish", JsonOut.object().put("jid", 1)); // pre-attach broadcast: not queued
+            hub.deliverTo(s, "run-snapshot", JsonOut.object().put("jid", 1)); // connect hydrate
             hub.attach(s);
             assertThat(hub.hasSubscribers()).isTrue();
-            hub.publish("task-start", JsonOut.object().put("requestId", 1));
+            hub.publish("task-start", JsonOut.object().put("jid", 1));
             assertThat(s.next(1000)).contains("event: run-snapshot");
             assertThat(s.next(1000)).contains("event: task-start");
         } finally {
@@ -48,7 +48,7 @@ class HttpEventsTest {
             // frames (evict-oldest), not an hours-stale prefix.
             int flood = 600; // > QUEUE_CAPACITY
             for (int i = 0; i < flood; i++) {
-                hub.publish("output", JsonOut.object().put("requestId", 1).put("line", "l-" + i));
+                hub.publish("output", JsonOut.object().put("jid", 1).put("line", "l-" + i));
             }
             String last = null;
             for (String f; (f = s.next(10)) != null; ) last = f;
@@ -69,10 +69,10 @@ class HttpEventsTest {
     void frames_carry_monotonic_ids_and_sse_framing() throws Exception {
         HttpEvents hub = new HttpEvents();
         try (HttpEvents.Subscription s = hub.subscribe()) {
-            hub.publish("request-start", JsonOut.object().put("requestId", 1));
-            hub.publish("request-finish", JsonOut.object().put("requestId", 1));
-            assertThat(s.next(1000)).isEqualTo("id: 1\nevent: request-start\ndata: {\"requestId\":1}\n\n");
-            assertThat(s.next(1000)).isEqualTo("id: 2\nevent: request-finish\ndata: {\"requestId\":1}\n\n");
+            hub.publish("request-start", JsonOut.object().put("jid", 1));
+            hub.publish("request-finish", JsonOut.object().put("jid", 1));
+            assertThat(s.next(1000)).isEqualTo("id: 1\nevent: request-start\ndata: {\"jid\":1}\n\n");
+            assertThat(s.next(1000)).isEqualTo("id: 2\nevent: request-finish\ndata: {\"jid\":1}\n\n");
         }
     }
 
@@ -110,10 +110,9 @@ class HttpEventsTest {
     void output_flood_does_not_evict_workspace_progress() throws Exception {
         HttpEvents hub = new HttpEvents();
         try (HttpEvents.Subscription s = hub.subscribe()) {
-            hub.publish(
-                    "workspace-progress", JsonOut.object().put("requestId", 1).put("progress", 12.0));
+            hub.publish("workspace-progress", JsonOut.object().put("jid", 1).put("progress", 12.0));
             for (int i = 0; i < HttpEvents.QUEUE_CAPACITY * 2; i++) {
-                hub.publish("output", JsonOut.object().put("requestId", 1).put("line", "noise-" + i));
+                hub.publish("output", JsonOut.object().put("jid", 1).put("line", "noise-" + i));
             }
             // Progress must still be the first frame; later output may be truncated.
             String first = s.next(1000);
@@ -147,7 +146,7 @@ class HttpEventsTest {
         HttpEvents hub = new HttpEvents();
         HttpEvents.Subscription s = hub.subscribe();
         s.close();
-        hub.publish("request-start", JsonOut.object().put("requestId", 1));
+        hub.publish("request-start", JsonOut.object().put("jid", 1));
         assertThat(s.next(10)).isNull();
     }
 
@@ -190,18 +189,18 @@ class HttpEventsTest {
         HttpEvents hub = new HttpEvents();
         try (HttpEvents.Subscription only2 = hub.subscribe(HttpEvents.FrameStyle.MCP, 2L);
                 HttpEvents.Subscription all = hub.subscribe(HttpEvents.FrameStyle.MCP, null)) {
-            hub.publish("task-start", JsonOut.object().put("requestId", 1).put("step", "a"));
-            hub.publish("task-start", JsonOut.object().put("requestId", 2).put("step", "b"));
-            assertThat(only2.next(1000)).contains("\"requestId\":2");
+            hub.publish("task-start", JsonOut.object().put("jid", 1).put("step", "a"));
+            hub.publish("task-start", JsonOut.object().put("jid", 2).put("step", "b"));
+            assertThat(only2.next(1000)).contains("\"jid\":2");
             assertThat(only2.next(50)).isNull(); // job 1 never arrives
-            assertThat(all.next(1000)).contains("\"requestId\":1");
-            assertThat(all.next(1000)).contains("\"requestId\":2");
+            assertThat(all.next(1000)).contains("\"jid\":1");
+            assertThat(all.next(1000)).contains("\"jid\":2");
         }
     }
 
     @Test
     void extract_request_id_from_payload() {
-        assertThat(HttpEvents.extractRequestId("{\"requestId\":42,\"kind\":\"test\"}"))
+        assertThat(HttpEvents.extractRequestId("{\"jid\":42,\"kind\":\"test\"}"))
                 .isEqualTo(42L);
         assertThat(HttpEvents.extractRequestId("{\"step\":\"x\"}")).isNull();
         assertThat(HttpEvents.extractRequestId(null)).isNull();

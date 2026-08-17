@@ -88,7 +88,7 @@ class McpRunWaitTest {
         Map<String, Object> result = (Map<String, Object>) fields.get("result");
         assertThat(result.get("id")).isEqualTo("r9");
         assertThat(result.get("success")).isEqualTo(true);
-        assertThat(((Number) result.get("requestId")).longValue()).isEqualTo(JID);
+        assertThat(((Number) result.get("jid")).longValue()).isEqualTo(JID);
         assertThat(historyScans).hasValue(0);
     }
 
