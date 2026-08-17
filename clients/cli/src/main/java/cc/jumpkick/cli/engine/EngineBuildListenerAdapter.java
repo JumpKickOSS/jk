@@ -615,6 +615,29 @@ final class EngineBuildListenerAdapter {
      * case) — this method itself just sends the request. Best-effort: swallows the engine's error
      * rather than throwing, since the caller falls back to whatever the local cache already holds.
      */
+    static cc.jumpkick.engine.protocol.CacheInventoryAck cacheInventory(
+            EnginePaths.Paths paths,
+            String query,
+            Path cache,
+            Path store,
+            List<String> terms,
+            List<String> coords,
+            boolean dryRun)
+            throws IOException {
+        return request(
+                paths,
+                ProtoReads.cacheInventoryRequest(
+                        query,
+                        cache == null ? "" : cache.toString(),
+                        store == null ? "" : store.toString(),
+                        terms,
+                        coords,
+                        dryRun),
+                EngineProtocol.CACHE_INVENTORY_ACK,
+                "cache-inventory request",
+                cc.jumpkick.engine.protocol.CacheInventoryAck::decode);
+    }
+
     static cc.jumpkick.engine.protocol.CatalogReadAck catalogRead(
             EnginePaths.Paths paths,
             Path dir,

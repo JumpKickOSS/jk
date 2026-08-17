@@ -1,25 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.engine.protocol.CacheInventoryAck;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.repo.RepoArtifactStore;
-import cc.jumpkick.resolver.Versions;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * {@code jk repo} — offline coordinate search, mirror refresh, and repository credentials. Store
@@ -78,51 +73,41 @@ public final class RepoCommand extends GroupCommand {
         public int run(Invocation in) {
             Path cacheRoot = CacheCommand.resolveCacheRoot(
                     in.value("cache-dir").map(Path::of).orElse(null));
-            Path reposRoot = JkStores.storeRootFor(cacheRoot).resolve("repos");
-            List<String> repoNames = repoNames(reposRoot);
-            int evicted = 0;
-            int missed = 0;
-            for (String spec : in.positionals()) {
-                cc.jumpkick.model.Coordinate coord;
-                try {
-                    coord = cc.jumpkick.model.Coordinate.parse(spec);
-                } catch (IllegalArgumentException e) {
-                    CliOutput.err(e.getMessage());
-                    return 2;
-                }
-                String relPath = cc.jumpkick.repo.MavenLayout.artifactPath(coord);
-                List<String> hitRepos = new ArrayList<>();
-                for (String repo : repoNames) {
-                    if (RepoArtifactStore.forRepoName(cacheRoot, repo).evict(relPath)) hitRepos.add(repo);
-                }
-                if (hitRepos.isEmpty()) {
-                    missed++;
-                    CliOutput.out("not mirrored: " + Coords.gav(coord));
+            CacheInventoryAck ack;
+            try {
+                ack = cc.jumpkick.cli.engine.EngineClient.cacheInventory(
+                        cc.jumpkick.engine.EnginePaths.current(),
+                        "repo-refresh",
+                        cacheRoot,
+                        null,
+                        List.of(),
+                        in.positionals(),
+                        false);
+            } catch (IOException e) {
+                CliOutput.err(String.valueOf(e.getMessage()));
+                return 2;
+            }
+            if (ack.error() != null) {
+                CliOutput.err(ack.error());
+                return 2;
+            }
+            for (String packed : ack.lines()) {
+                String[] f = packed.split("\\|", -1);
+                String group = f.length > 0 ? f[0] : "";
+                String artifact = f.length > 1 ? f[1] : "";
+                String version = f.length > 2 ? f[2] : "";
+                String repos = f.length > 3 ? f[3] : "";
+                if (repos.isEmpty()) {
+                    CliOutput.out("not mirrored: " + Coords.gav(group, artifact, version));
                 } else {
-                    evicted++;
-                    CliOutput.out("evicted " + Coords.gav(coord) + " from " + String.join(", ", hitRepos));
+                    CliOutput.out("evicted " + Coords.gav(group, artifact, version) + " from " + repos);
                 }
             }
-            if (evicted > 0) {
+            if (ack.evicted() > 0) {
                 CliOutput.out("");
                 CliOutput.out("Re-fetches on the next resolve (`jk lock` or a build).");
             }
-            // Nothing evicted at all is a soft failure: the user named something jk does not hold.
-            return evicted == 0 && missed > 0 ? 1 : 0;
-        }
-
-        /** Named mirror directories under {@code store/repos/}, or the well-known set if unlistable. */
-        private static List<String> repoNames(Path reposRoot) {
-            if (!Files.isDirectory(reposRoot)) return List.of("central", "local");
-            try (var s = Files.list(reposRoot)) {
-                List<String> names = s.filter(Files::isDirectory)
-                        .map(p -> p.getFileName().toString())
-                        .sorted()
-                        .toList();
-                return names.isEmpty() ? List.of("central", "local") : names;
-            } catch (IOException e) {
-                return List.of("central", "local");
-            }
+            return ack.evicted() == 0 && ack.missed() > 0 ? 1 : 0;
         }
     }
 
@@ -159,15 +144,25 @@ public final class RepoCommand extends GroupCommand {
             Integer limit = in.value("limit").map(Integer::parseInt).orElse(null);
             Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
             Path cacheRoot = CacheCommand.resolveCacheRoot(cacheDir);
-            List<String> lowerTerms =
-                    terms.stream().map(t -> t.toLowerCase(Locale.ROOT)).toList();
-            List<RepoArtifactStore.Module> hits = RepoArtifactStore.allModules(cacheRoot).stream()
-                    .filter(m -> allMatch(
-                            lowerTerms,
-                            m.group().toLowerCase(Locale.ROOT),
-                            m.artifact().toLowerCase(Locale.ROOT)))
-                    .sorted(Comparator.comparing(RepoArtifactStore.Module::moduleKey))
-                    .toList();
+            CacheInventoryAck ack;
+            try {
+                ack = cc.jumpkick.cli.engine.EngineClient.cacheInventory(
+                        cc.jumpkick.engine.EnginePaths.current(),
+                        "repo-search",
+                        cacheRoot,
+                        null,
+                        terms,
+                        List.of(),
+                        false);
+            } catch (IOException e) {
+                CliOutput.err(String.valueOf(e.getMessage()));
+                return 1;
+            }
+            if (ack.error() != null) {
+                CliOutput.err(ack.error());
+                return 1;
+            }
+            List<String> hits = ack.entries();
             if (hits.isEmpty()) {
                 CliOutput.out("No cached coordinates match: " + String.join(" ", terms));
                 return 1;
@@ -175,21 +170,28 @@ public final class RepoCommand extends GroupCommand {
             int total = hits.size();
             int shown = limit != null && limit > 0 && total > limit ? limit : total;
             int keyWidth = 0;
+            List<String> keys = new ArrayList<>();
+            List<List<String>> versions = new ArrayList<>();
+            for (String packed : hits) {
+                String[] f = packed.split("\\|", -1);
+                String key = (f.length > 0 ? f[0] : "") + ":" + (f.length > 1 ? f[1] : "");
+                keys.add(key);
+                List<String> vers = f.length > 2 && !f[2].isEmpty() ? List.of(f[2].split(",", -1)) : List.of();
+                versions.add(vers);
+            }
             for (int i = 0; i < shown; i++)
-                keyWidth = Math.max(keyWidth, hits.get(i).moduleKey().length());
+                keyWidth = Math.max(keyWidth, keys.get(i).length());
             long versionCount = 0;
             for (int i = 0; i < shown; i++) {
-                RepoArtifactStore.Module m = hits.get(i);
-                List<String> versions = new ArrayList<>(m.versions());
-                versions.sort((a, b) -> Versions.compare(b, a));
-                versionCount += versions.size();
-                String key = m.moduleKey();
+                versionCount += versions.get(i).size();
+                String key = keys.get(i);
                 String gap = " ".repeat(Math.max(0, keyWidth - key.length()));
                 CliOutput.out(Coords.module(key)
                         + gap
                         + "  "
                         + String.join(
-                                ", ", versions.stream().map(Coords::version).toList()));
+                                ", ",
+                                versions.get(i).stream().map(Coords::version).toList()));
             }
             if (shown < total) {
                 Theme st = Theme.active();
@@ -213,20 +215,6 @@ public final class RepoCommand extends GroupCommand {
                         + Theme.colorize("version" + (versionCount == 1 ? "" : "s") + " cached", st.settled()));
             }
             return 0;
-        }
-
-        private static boolean allMatch(List<String> terms, String... fields) {
-            for (String t : terms) {
-                boolean found = false;
-                for (String f : fields) {
-                    if (f.contains(t)) {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) return false;
-            }
-            return true;
         }
     }
 }

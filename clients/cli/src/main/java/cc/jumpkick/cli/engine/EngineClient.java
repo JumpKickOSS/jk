@@ -582,6 +582,18 @@ public final class EngineClient {
         return EngineBuildListenerAdapter.editDetail(paths, file, op, args);
     }
 
+    public static cc.jumpkick.engine.protocol.CacheInventoryAck cacheInventory(
+            cc.jumpkick.engine.EnginePaths.Paths paths,
+            String query,
+            Path cache,
+            Path store,
+            List<String> terms,
+            List<String> coords,
+            boolean dryRun)
+            throws IOException {
+        return EngineBuildListenerAdapter.cacheInventory(paths, query, cache, store, terms, coords, dryRun);
+    }
+
     public static cc.jumpkick.engine.protocol.PluginInstallLocalAck pluginInstallLocal(
             cc.jumpkick.engine.EnginePaths.Paths paths,
             Path dir,

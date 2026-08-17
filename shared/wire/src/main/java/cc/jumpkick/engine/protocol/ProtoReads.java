@@ -312,6 +312,17 @@ public final class ProtoReads {
      * Catalog list/search. {@code query} is {@code list} or {@code search}; {@code terms} apply to
      * search only. {@code bundledOnly} skips project/global layers (wizard picker).
      */
+    public static String cacheInventoryRequest(
+            String query, String cache, String store, List<String> terms, List<String> coords, boolean dryRun) {
+        return "{\"type\":\"" + EngineProtocol.CACHE_INVENTORY_REQUEST + "\",\"query\":" + Jsonl.quote(query)
+                + ",\"cache\":" + Jsonl.quote(cache)
+                + ",\"store\":" + Jsonl.quote(store)
+                + ",\"terms\":" + EngineProtocol.quoteArray(terms == null ? List.of() : terms)
+                + ",\"coords\":" + EngineProtocol.quoteArray(coords == null ? List.of() : coords)
+                + ",\"dryRun\":" + dryRun
+                + "}";
+    }
+
     public static String catalogReadRequest(
             String dir,
             String cache,

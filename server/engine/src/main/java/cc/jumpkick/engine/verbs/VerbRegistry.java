@@ -53,6 +53,7 @@ public final class VerbRegistry {
                 new ToolResolveVerb(host),
                 new NativeVerb(host),
                 new CacheMaintenanceVerb(host),
+                new CacheInventoryVerb(host),
                 new ProjectInfoVerb(host),
                 new OutdatedVerb(host),
                 new TreeVerb(host),

@@ -411,6 +411,15 @@ public final class EngineProtocol {
     public static final String CACHE_PRUNE_REQUEST = "cache-prune-request";
 
     /**
+     * Client → server: cache/store inventory ({@code usage}, {@code store-usage}, {@code
+     * repo-search}, {@code repo-refresh}, {@code wipe-store}); one {@link #CACHE_INVENTORY_ACK}.
+     */
+    public static final String CACHE_INVENTORY_REQUEST = "cache-inventory-request";
+
+    /** Server → client, terminal for {@link #CACHE_INVENTORY_REQUEST}. */
+    public static final String CACHE_INVENTORY_ACK = "cache-inventory-ack";
+
+    /**
      * Client → server: prepare a script/jar for {@code jk tool run} (header parse, deps, compile);
      * client keeps the exec that owns the terminal.
      */
