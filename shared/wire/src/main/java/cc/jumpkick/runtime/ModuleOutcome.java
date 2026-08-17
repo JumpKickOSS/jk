@@ -15,14 +15,38 @@ import java.nio.file.Path;
  * not a compile/test failure. Additive; older callers omit it.
  */
 public record ModuleOutcome(
-        String coord, Path dir, boolean success, int exitCode, long millis, boolean didWork, boolean cancelled) {
+        String coord,
+        Path dir,
+        boolean success,
+        int exitCode,
+        long millis,
+        boolean didWork,
+        boolean cancelled,
+        Image image) {
+
+    /**
+     * Image-terminal outcome for a {@code jk image} workspace module — what the terminal step
+     * actually did (push / daemon load / tarball write), so the CLI can print the same
+     * "Pushed &lt;ref&gt;" / "Wrote OCI tarball" / "Loaded … into docker" tail the single-project
+     * path shows (JK-2100). {@code null} for non-image modules; all fields nullable.
+     */
+    public record Image(String ref, String tarball, String name, String version, String daemonExe) {}
+
+    public ModuleOutcome(
+            String coord, Path dir, boolean success, int exitCode, long millis, boolean didWork, boolean cancelled) {
+        this(coord, dir, success, exitCode, millis, didWork, cancelled, null);
+    }
 
     /** Back-compat: assume work was done when the caller does not know (fail-open for "built"). */
     public ModuleOutcome(String coord, Path dir, boolean success, int exitCode, long millis) {
-        this(coord, dir, success, exitCode, millis, true, false);
+        this(coord, dir, success, exitCode, millis, true, false, null);
     }
 
     public ModuleOutcome(String coord, Path dir, boolean success, int exitCode, long millis, boolean didWork) {
-        this(coord, dir, success, exitCode, millis, didWork, false);
+        this(coord, dir, success, exitCode, millis, didWork, false, null);
+    }
+
+    public ModuleOutcome withImage(Image img) {
+        return new ModuleOutcome(coord, dir, success, exitCode, millis, didWork, cancelled, img);
     }
 }

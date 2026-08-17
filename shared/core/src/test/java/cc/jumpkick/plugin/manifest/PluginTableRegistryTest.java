@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.JkBuildParseException;
-import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.model.PluginConfig;
 import org.junit.jupiter.api.Test;
 import org.tomlj.Toml;
 

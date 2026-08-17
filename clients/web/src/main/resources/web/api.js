@@ -298,11 +298,11 @@ const EVENT_TYPES = [
   'task-start',
   'task-finish',
   'label',
-  'plan-progress',
+  'progress',
   'workspace-progress',
   'eta',
   'output',
-  'diagnostic',
+  'error',
   'buildplan-finish',
   'module-finish',
   'request-finish',
@@ -317,7 +317,7 @@ const EVENT_TYPES = [
  */
 const COALESCE_TYPES = new Set([
   'workspace-progress',
-  'plan-progress',
+  'progress',
   'eta',
   'label',
   'status',
@@ -353,14 +353,14 @@ export function events(onEvent, onState) {
   function coalesceKey(type, data) {
     if (!COALESCE_TYPES.has(type)) return null;
     if (type === 'status' || type === 'cache') return type;
-    const rid = data && data.requestId != null ? data.requestId : '';
-    // plan-progress is per-module; label targets a specific STEP row — with parallel workers in
+    const rid = data && data.jid != null ? data.jid : '';
+    // progress is per-module; label targets a specific STEP row — with parallel workers in
     // one plan, a (type, rid, dir) key let step B's pending label overwrite step A's before the
     // drain, leaving A's detail stale until its next tick (JK-1848).
     if (type === 'label') {
       return type + ':' + rid + ':' + ((data && data.dir) || '') + ':' + ((data && (data.task || data.step)) || '');
     }
-    if (type === 'plan-progress') {
+    if (type === 'progress') {
       return type + ':' + rid + ':' + ((data && data.dir) || '');
     }
     return type + ':' + rid;

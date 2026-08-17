@@ -288,13 +288,16 @@ public final class PlannerPlugin {
                     cc.jumpkick.util.PathUtil.deleteRecursively(scratch); // stale outputs never survive
                     Files.createDirectories(scratch);
                     ctx.label(step.name());
-                    PluginBuild.SpecWriter specWriter = new PluginBuild.SpecWriter()
-                            .op("run-step", step.name(), active.manifest().id())
-                            .config(active.config())
-                            .project(project, startClass)
+                    cc.jumpkick.plugin.protocol.SpecWriter specWriter = new cc.jumpkick.plugin.protocol.SpecWriter()
+                            .op(
+                                    cc.jumpkick.plugin.protocol.PluginProtocol.OP_RUN_STEP,
+                                    step.name(),
+                                    active.manifest().id())
+                            .configValues(active.config().values())
+                            .project(PluginBuild.facts(project, startClass))
                             .layout(classes, in.dir(), scratch)
                             .javaHome(javaHome)
-                            .classpath(classpath);
+                            .classpath(classpath, cc.jumpkick.plugin.protocol.PluginProtocol.ROLE_COMPILE);
                     for (var pe : prodEntries) {
                         specWriter.entry(
                                 pe.fileName(),
@@ -314,7 +317,7 @@ public final class PlannerPlugin {
                             specWriter.stepOutput(other, PluginBuild.taskScratch(layout, other));
                         }
                     }
-                    Path spec = specWriter.write();
+                    Path spec = specWriter.writeTempSpec();
                     try {
                         PluginBuild.runWorker(active, in.cache(), spec, ctx::label);
                     } catch (IOException e) {
@@ -459,10 +462,13 @@ public final class PlannerPlugin {
         Path sbomFile = Files.createTempFile("jk-plugin-sbom-", ".cdx.json");
         Files.write(sbomFile, sbom);
 
-        PluginBuild.SpecWriter spec = new PluginBuild.SpecWriter()
-                .op("package", null, active.manifest().id())
-                .config(active.config())
-                .project(project, startClass)
+        cc.jumpkick.plugin.protocol.SpecWriter spec = new cc.jumpkick.plugin.protocol.SpecWriter()
+                .op(
+                        cc.jumpkick.plugin.protocol.PluginProtocol.OP_PACKAGE,
+                        null,
+                        active.manifest().id())
+                .configValues(active.config().values())
+                .project(PluginBuild.facts(project, startClass))
                 .layout(classes, in.dir(), layout.moduleTargetDir().resolve("plugin"))
                 .javaHome(ctx.require(JAVA_HOME))
                 .artifact(jarPath);
@@ -476,7 +482,7 @@ public final class PlannerPlugin {
             Path scratch = PluginBuild.taskScratch(layout, step.name());
             if (Files.isDirectory(scratch)) spec.stepOutput(step.name(), scratch);
         }
-        Path specFile = spec.write();
+        Path specFile = spec.writeTempSpec();
         // A stale conventional sibling from an earlier run must never survive a re-package.
         String staleName = jarPath.getFileName().toString();
         int staleDot = staleName.lastIndexOf('.');
@@ -514,8 +520,8 @@ public final class PlannerPlugin {
         // are a packager bug.
         Path outBase = jarPath.getParent().toAbsolutePath().normalize();
         for (String line : workerLines) {
-            if (!"produced".equals(cc.jumpkick.plugin.protocol.Jsonl.str(line, "t"))) continue;
-            Path p = Path.of(String.valueOf(cc.jumpkick.plugin.protocol.Jsonl.str(line, "path")))
+            if (!"produced".equals(cc.jumpkick.jsonl.Jsonl.str(line, "t"))) continue;
+            Path p = Path.of(String.valueOf(cc.jumpkick.jsonl.Jsonl.str(line, "path")))
                     .toAbsolutePath()
                     .normalize();
             if (!p.startsWith(outBase)) {

@@ -19,7 +19,7 @@ import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.engine.verbs.VerbShape;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -195,9 +195,6 @@ public final class EngineServer implements AutoCloseable {
     // answering, but new jobs are refused and the engine exits cleanly once in-flight jobs finish.
     private volatile boolean draining;
 
-    /** One-shot child mode ({@code --job}): no election, no endpoint, no re-delegation. */
-    private volatile boolean jobMode;
-
     private FileChannel lockChannel;
     private FileLock lock;
     /** The generation this engine bound (socket/lock/pid/token) — see EnginePaths.generation. */
@@ -338,12 +335,10 @@ public final class EngineServer implements AutoCloseable {
                 peakActiveConnections,
                 this::liveConnectionCount,
                 jobs,
-                sessions,
-                sse,
-                journalWriter,
-                this::eventRequestId,
-                listeners,
-                this::cancelJob);
+                verbs,
+                this::cancelJob,
+                this::cancelJobsForDir,
+                cacheGate);
         this.vitals = new EngineVitals(
                 this.version,
                 this.pid,
@@ -561,9 +556,9 @@ public final class EngineServer implements AutoCloseable {
             w.flush();
             String ack = r.readLine();
             if (ack == null || !EngineProtocol.HELLO_ACK.equals(EngineProtocol.typeOf(ack))) return null;
-            String v = cc.jumpkick.plugin.protocol.Jsonl.str(ack, "version");
+            String v = cc.jumpkick.jsonl.Jsonl.str(ack, "version");
             if (v == null) return null;
-            String id = cc.jumpkick.plugin.protocol.Jsonl.str(ack, "buildId");
+            String id = cc.jumpkick.jsonl.Jsonl.str(ack, "buildId");
             return new Incumbent(v, id == null ? "" : id);
         } catch (IOException | RuntimeException e) {
             return null;
@@ -688,7 +683,7 @@ public final class EngineServer implements AutoCloseable {
 
     private void handleConnection(SocketChannel ch) {
         try (ch;
-                BufferedReader reader = new cc.jumpkick.plugin.protocol.BoundedLineReader(
+                BufferedReader reader = new cc.jumpkick.jsonl.BoundedLineReader(
                         new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
                 BufferedWriter writer = new BufferedWriter(
                         new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8))) {
@@ -700,25 +695,6 @@ public final class EngineServer implements AutoCloseable {
             serveConnection(reader, writer);
         } catch (IOException ignored) {
             // client disconnected / socket error mid-exchange — nothing to do
-        } finally {
-            onConnectionFinished();
-        }
-    }
-
-    /**
-     * One-shot {@code jk-engine --job}: serve requests over the given streams and return (no
-     * socket/daemon/election). Used when a newer daemon runs a build pinned to this older version.
-     */
-    public void serveJob(BufferedReader reader, BufferedWriter writer) {
-        jobMode = true;
-        connectionExecutor = Executors.newThreadPerTaskExecutor(
-                Thread.ofVirtual().name("jk-engine-job-", 0).factory());
-        planSharedWorkerMemoryOnce();
-        noteConnectionOpened();
-        try {
-            serveConnection(reader, writer);
-        } catch (IOException ignored) {
-            // parent disconnected mid-exchange — nothing to do
         } finally {
             onConnectionFinished();
         }
@@ -737,10 +713,17 @@ public final class EngineServer implements AutoCloseable {
                                 EngineProtocol.ERR_PROTOCOL, "unparseable request line (no \"type\" discriminator)"));
                 continue;
             }
-            // Downward-delegation gate for artifact-producing requests (engine-versioning §3).
-            if (EngineDelegate.DELEGATABLE.contains(type)
-                    && EngineDelegate.maybeDelegate(jobMode, version, line, reader, writer, paths.log(), log)) {
-                return; // served by the pinned version's child engine (see EngineDelegate)
+            // Lock floor: a jk older than the lock's jk-min refuses with the upgrade error —
+            // newer always wins, and nothing runs an older engine to satisfy a lock.
+            if (LockFloor.GUARDED.contains(type)) {
+                String dir = Jsonl.str(line, "dir");
+                String floor = dir == null ? null : LockFloor.requiredNewer(Path.of(dir), version);
+                if (floor != null) {
+                    send(
+                            writer,
+                            ProtoLifecycle.error(EngineProtocol.ERR_VERSION_SKEW, LockFloor.message(floor, version)));
+                    return;
+                }
             }
             HostedVerb verb = verbs.find(type);
             if (verb != null) {
@@ -788,7 +771,7 @@ public final class EngineServer implements AutoCloseable {
                                     s.peakActiveBuildPlans()));
                 }
                 case EngineProtocol.SHUTDOWN -> {
-                    boolean force = cc.jumpkick.plugin.protocol.Jsonl.bool(line, "force", false);
+                    boolean force = cc.jumpkick.jsonl.Jsonl.bool(line, "force", false);
                     // Takeover already repointed the endpoint before sending shutdown — kill the
                     // engine AOT sidecar so it cannot re-publish engine-<old-v>-*.
                     // Voluntary `jk engine stop` still names us; leave train to finish then.
@@ -831,25 +814,22 @@ public final class EngineServer implements AutoCloseable {
             throws IOException {
         return switch (verb.shape()) {
             case VerbShape.AsyncPlan() -> {
-                jobs.submit(line, verb.toJobRequest(), new JobTransport.SocketWatch(reader, writer));
+                jobs.submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer));
                 yield true;
             }
             case VerbShape.CacheMaint() -> {
-                jobs.submit(line, verb.toJobRequest(), new JobTransport.SocketWatch(reader, writer));
+                jobs.submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer));
                 yield true;
             }
             case VerbShape.SyncRead() -> {
                 verb.run(line, cc.jumpkick.config.Session.defaults().cancel(), writer);
                 yield false;
             }
-            case VerbShape.Lifecycle() ->
-                throw new IllegalStateException("lifecycle stays on the process, not the verb registry");
         };
     }
 
     private void handleCancelRequest(String requestLine, BufferedWriter writer) throws IOException {
         long jid = Jsonl.longValue(requestLine, "jid", -1);
-        if (jid < 0) jid = Jsonl.longValue(requestLine, "requestId", -1);
         String dir = Jsonl.str(requestLine, "dir");
         if (jid >= 0) {
             boolean ok = cancelJob(jid);

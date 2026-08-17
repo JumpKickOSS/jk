@@ -580,8 +580,11 @@ public final class JkManagerColor {
                                 && (s.charAt(j - 1) == '\u0007'
                                         || (j - 2 > i && s.charAt(j - 2) == '\u001b' && s.charAt(j - 1) == '\\')));
                 // A live unterminated OSC must never reach the terminal — it would swallow the
-                // following output up to the next BEL.
-                if (!unterminatedOsc) {
+                // following output up to the next BEL. Non-SGR CSI (cursor motion ESC[1A, erase
+                // ESC[2K, …) from raw tool output would move the real cursor mid-region-paint
+                // and desync row bookkeeping — drop it too; only SGR coloring passes (JK-2109).
+                boolean motionCsi = i + 1 < s.length() && s.charAt(i + 1) == '[' && j > i + 1 && s.charAt(j - 1) != 'm';
+                if (!unterminatedOsc && !motionCsi) {
                     sb.append(s, i, j);
                     // Track OSC-8 hyperlink state: a cut inside the linked label drops the close
                     // that follows it, and SGR RESET does not end a hyperlink — the ellipsis, EL,

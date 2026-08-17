@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.protocol;
 
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 
 /**
@@ -248,17 +248,26 @@ public final class EngineProtocol {
      * process). {@code url}/{@code cacheFile} override the default source/destination ({@code
      * libraries}/{@code jdks} only, for tests and power users); one {@link #FRESHEN_CATALOG_ACK}.
      *
-     * <p>Clients that only ever talk to an already-running engine (the web dashboard, MCP) can
-     * always use {@code jdks} here too — that is how they install JDKs. {@code jk jdk
-     * install}/{@code update} is the one exception with a bootstrap concern: the engine is a JVM
-     * process that needs a JDK to run, so it cannot be the sole path to provisioning the first JDK
-     * on a bare machine. That CLI path only sends this request when an engine already answers, and
-     * fetches {@code jdks.json} directly itself otherwise.
+     * <p>JDK installs themselves ride one shared path everywhere: {@code JdkService.install}
+     * fetches the catalog and installs (CLI {@code jk jdk install} and MCP {@code jk_jdk} both
+     * call it). This request is the engine-hosted <em>catalog refresh</em> channel; the CLI only
+     * sends it when an engine already answers — the engine is a JVM process that needs a JDK to
+     * run, so this cannot be the sole path to provisioning the first JDK on a bare machine.
      */
     public static final String FRESHEN_CATALOG_REQUEST = "freshen-catalog-request";
 
     /** Server → client, terminal for {@link #FRESHEN_CATALOG_REQUEST}. */
     public static final String FRESHEN_CATALOG_ACK = "freshen-catalog-ack";
+
+    /**
+     * Client → server: read the layered library catalog ({@code jk library list}/{@code search},
+     * wizard picker). Engine walks {@code LibraryCatalog} + cached artifact versions; one {@link
+     * #CATALOG_READ_ACK}.
+     */
+    public static final String CATALOG_READ_REQUEST = "catalog-read-request";
+
+    /** Server → client, terminal for {@link #CATALOG_READ_REQUEST}. */
+    public static final String CATALOG_READ_ACK = "catalog-read-ack";
 
     /**
      * Client → server: evaluate {@code [deny]} against the lock ({@code jk deny}). Engine-hosted so
@@ -287,6 +296,18 @@ public final class EngineProtocol {
     /** Server → client, terminal for {@link #GENERATE_REQUEST}. */
     public static final String GENERATE_ACK = "generate-ack";
 
+    /** Client → server: scaffold a project ({@code jk new} / HTTP / MCP). */
+    public static final String NEW_PROJECT_REQUEST = "new-project-request";
+
+    /** Server → client, terminal for {@link #NEW_PROJECT_REQUEST}. */
+    public static final String NEW_PROJECT_ACK = "new-project-ack";
+
+    /** Client → server: {@code jk plugin install-local}. */
+    public static final String PLUGIN_INSTALL_LOCAL_REQUEST = "plugin-install-local-request";
+
+    /** Server → client, terminal for {@link #PLUGIN_INSTALL_LOCAL_REQUEST}. */
+    public static final String PLUGIN_INSTALL_LOCAL_ACK = "plugin-install-local-ack";
+
     /** Client → server: plugin-declared command; one {@link #PLUGIN_VERB_ACK}. */
     public static final String PLUGIN_VERB_REQUEST = "plugin-command-request";
 
@@ -307,6 +328,15 @@ public final class EngineProtocol {
 
     /** Server → client, terminal: the explain burst is complete. */
     public static final String EXPLAIN_DONE = "explain-done";
+
+    /**
+     * Client → server: module DAG for {@code jk explain --graph} ({@code dot}/{@code mermaid}); one
+     * {@link #MODULE_GRAPH_ACK}.
+     */
+    public static final String MODULE_GRAPH_REQUEST = "module-graph-request";
+
+    /** Server → client, terminal for {@link #MODULE_GRAPH_REQUEST}. */
+    public static final String MODULE_GRAPH_ACK = "module-graph-ack";
 
     /** Client → server: write {@code jk-lock.toml} ({@code jk lock}). Terminal: {@link #LOCK_FINISH}. */
     public static final String LOCK_REQUEST = "lock-request";
@@ -388,6 +418,15 @@ public final class EngineProtocol {
      * boundary under {@code.prune.lock}; may emit {@link #PRUNE_WAIT} first.
      */
     public static final String CACHE_PRUNE_REQUEST = "cache-prune-request";
+
+    /**
+     * Client → server: cache/store inventory ({@code usage}, {@code store-usage}, {@code
+     * repo-search}, {@code repo-refresh}, {@code wipe-store}); one {@link #CACHE_INVENTORY_ACK}.
+     */
+    public static final String CACHE_INVENTORY_REQUEST = "cache-inventory-request";
+
+    /** Server → client, terminal for {@link #CACHE_INVENTORY_REQUEST}. */
+    public static final String CACHE_INVENTORY_ACK = "cache-inventory-ack";
 
     /**
      * Client → server: prepare a script/jar for {@code jk tool run} (header parse, deps, compile);

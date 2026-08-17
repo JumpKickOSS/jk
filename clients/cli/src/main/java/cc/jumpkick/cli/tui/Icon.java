@@ -28,6 +28,10 @@ public sealed interface Icon {
         return new Glyph(Glyphs.BANG, Glyphs.BANG_PLAIN);
     }
 
+    static Icon cancelled() {
+        return new Glyph(Glyphs.CANCELLED, Glyphs.CANCELLED_PLAIN);
+    }
+
     static Icon play() {
         return new Glyph(Glyphs.PLAY, Glyphs.PLAY_PLAIN);
     }
@@ -54,6 +58,7 @@ public sealed interface Icon {
         if (Glyphs.CHECK.equals(glyph) || Glyphs.CHECK_PLAIN.equals(glyph)) return check();
         if (Glyphs.CROSS.equals(glyph) || Glyphs.CROSS_PLAIN.equals(glyph)) return cross();
         if (Glyphs.BANG.equals(glyph) || Glyphs.BANG_PLAIN.equals(glyph)) return bang();
+        if (Glyphs.CANCELLED.equals(glyph)) return cancelled();
         if (Glyphs.PLAY.equals(glyph) || Glyphs.PLAY_PLAIN.equals(glyph)) return play();
         if (Glyphs.MENU.equals(glyph) || Glyphs.MENU_PLAIN.equals(glyph)) return menu();
         if (Glyphs.PULSE.equals(glyph) || Glyphs.PULSE_PLAIN.equals(glyph)) return pulse();
@@ -83,6 +88,9 @@ public sealed interface Icon {
                 }
                 if (Glyphs.BANG.equals(unicode) || Glyphs.BANG_PLAIN.equals(ascii)) {
                     yield JkWedge.Variant.WARNING;
+                }
+                if (Glyphs.CANCELLED.equals(unicode) || Glyphs.CANCELLED_PLAIN.equals(ascii)) {
+                    yield JkWedge.Variant.CANCELLED;
                 }
                 if (Glyphs.MENU.equals(unicode) || Glyphs.MENU_PLAIN.equals(ascii)) {
                     yield JkWedge.Variant.MENU;

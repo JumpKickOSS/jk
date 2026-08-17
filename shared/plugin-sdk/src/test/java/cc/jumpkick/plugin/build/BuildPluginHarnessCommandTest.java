@@ -56,7 +56,7 @@ class BuildPluginHarnessCommandTest {
     void unknown_verb_reports_an_error(@TempDir Path dir) throws Exception {
         var out = capture();
         Path spec = dir.resolve("bad.spec");
-        Files.write(spec, List.of("{\"t\":\"op\",\"op\":\"command\",\"step\":\"nope\",\"plugin\":\"fx\"}"));
+        Files.write(spec, List.of("{\"t\":\"op\",\"op\":\"command\",\"name\":\"nope\",\"plugin\":\"fx\"}"));
         int exit = BuildPluginHarness.run(FIXTURE, List.of(spec.toString()), out.writer);
         assertThat(exit).isEqualTo(65);
         assertThat(out.lines()).anyMatch(l -> l.contains("unknown-command"));
@@ -71,7 +71,7 @@ class BuildPluginHarnessCommandTest {
         }
         argsArr.append(']');
         Files.write(spec, List.of(
-                "{\"t\":\"op\",\"op\":\"" + op + "\",\"step\":\"hello-fixture\",\"plugin\":\"fx\"}",
+                "{\"t\":\"op\",\"op\":\"" + op + "\",\"name\":\"hello-fixture\",\"plugin\":\"fx\"}",
                 "{\"t\":\"config\",\"key\":\"version\",\"kind\":\"string\",\"value\":\"1.0\"}",
                 "{\"t\":\"project\",\"group\":\"g\",\"name\":\"n\",\"version\":\"1\",\"javaRelease\":25,"
                         + "\"nativeDeclared\":false,\"kotlin\":false}",

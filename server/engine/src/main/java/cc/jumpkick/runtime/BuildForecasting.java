@@ -129,13 +129,7 @@ public final class BuildForecasting {
             Cas cas = JkStores.cas(cache); // artifact CAS for classpath fingerprints
             ActionCache ac = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
             List<TaskForecast.Module> modules = TaskForecaster.of(
-                    graph,
-                    cas,
-                    ac,
-                    cache,
-                    skipTests,
-                    t,
-                    terminalDirs == null ? Set.of() : terminalDirs);
+                    graph, cas, ac, cache, skipTests, t, terminalDirs == null ? Set.of() : terminalDirs);
             Set<Path> dirty = new HashSet<>();
             for (TaskForecast.Module m : modules) {
                 if (m.dirty()) dirty.add(m.dir());

@@ -13,37 +13,41 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
-/** Engine services a hosted verb may not own. */
+/**
+ * Engine services a hosted verb may not own. Every {@code writer} parameter is {@code null} for a
+ * detached (HTTP/MCP) job: send/sendQuiet become no-ops and the listener factories return the
+ * hub-only (SSE + journal) listeners.
+ */
 public interface VerbHost {
 
     long eventRequestId();
 
     void putProgressRoot(long rid, String dir);
 
-    WorkspaceBuildListener workspaceListener(BufferedWriter writer, String dir);
+    WorkspaceBuildListener workspaceListener(@Nullable BufferedWriter writer, String dir);
 
-    BuildPlanListener planListener(String dir, BufferedWriter writer, BuildPlan plan);
+    BuildPlanListener planListener(String dir, @Nullable BufferedWriter writer, BuildPlan plan);
 
     BuildPlanListener planListener(
-            String dir, BufferedWriter writer, Function<cc.jumpkick.run.BuildPlanResult, String> finishEncoder);
+            String dir,
+            @Nullable BufferedWriter writer,
+            Function<cc.jumpkick.run.BuildPlanResult, String> finishEncoder);
 
     void releaseExclusiveSlot();
 
     boolean effectiveCancelled(long rid, boolean tokenCancelled);
 
-    void accOutcome(long rid, boolean success, int exit);
-
     void accTests(long rid, @Nullable TestSummary tests);
 
     void finishProgress(long rid);
 
-    void emitWorkspaceProgress(long rid, BufferedWriter writer, boolean force);
+    void emitWorkspaceProgress(long rid, @Nullable BufferedWriter writer, boolean force);
 
-    void flushTimeline(long rid, BufferedWriter writer);
+    void flushTimeline(long rid, @Nullable BufferedWriter writer);
 
-    void send(BufferedWriter writer, String line) throws IOException;
+    void send(@Nullable BufferedWriter writer, String line) throws IOException;
 
-    void sendQuiet(BufferedWriter writer, String line);
+    void sendQuiet(@Nullable BufferedWriter writer, String line);
 
     String redactEnv(@Nullable String dir, @Nullable String text);
 
@@ -62,7 +66,7 @@ public interface VerbHost {
     default void streamSinglePlan(
             BuildPlan plan,
             Session session,
-            BufferedWriter writer,
+            @Nullable BufferedWriter writer,
             Function<cc.jumpkick.run.BuildPlanResult, String> finishEncoder)
             throws Exception {
         PlanBurst.stream(this, plan, session, writer, finishEncoder);

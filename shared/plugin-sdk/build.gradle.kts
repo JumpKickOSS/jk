@@ -5,8 +5,8 @@ plugins {
     `maven-publish`
 }
 
-description = "jk plugin SPI: the stable surface plugins compile against, plus " +
-        "the host<->plugin wire protocol codec."
+description = "jk plugin SPI: the stable surface plugins compile against. " +
+        "The JSONL codec lives in :jsonl (S1/S7 share only that)."
 
 // Published as `cc.jumpkick:jk-plugin-sdk` on its OWN version line, independent of
 // cc.jumpkick.model.JkVersion (jk's release train): the SPI freezes on a different cadence. Keep
@@ -15,11 +15,9 @@ description = "jk plugin SPI: the stable surface plugins compile against, plus "
 group = "cc.jumpkick"
 version = "0.1.0"
 
-// Dependency-free BY DESIGN — this is the bottom of the contract-leaf pair (see
-// shared/plugin-sdk/build.gradle.kts): its classes are vendored into jk-test-runner and ride
-// the user's test JVM on the project's pinned JDK, so this module holds jk's promised
-// JDK 17 project floor. model depends on THIS module (for PluginConfig), never the
-// reverse.
+// The plugin SPI leaf (plus :jsonl for the shared codec). Classes ride the user's
+// test JVM on the project's pinned JDK — JDK 17 floor. model depends on THIS
+// module (for PluginConfig), never the reverse.
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(25))
@@ -27,6 +25,10 @@ java {
 }
 tasks.compileJava {
     options.release.set(17)
+}
+
+dependencies {
+    api(project(":jsonl"))
 }
 
 // The one library artifact a third-party build plugin compiles against. NOT jk.plugin-conventions:
@@ -40,8 +42,8 @@ publishing {
             pom {
                 name.set("jk plugin SDK")
                 description.set(
-                        "The stable API third-party jk build plugins compile against, plus the " +
-                                "host<->plugin JSONL wire codec.")
+                        "The stable API third-party jk build plugins compile against. " +
+                                "JSONL codec is cc.jumpkick:jk-jsonl.")
                 url.set("https://github.com/JumpKickOSS/jk")
                 licenses {
                     license {

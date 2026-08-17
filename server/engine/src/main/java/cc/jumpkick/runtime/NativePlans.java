@@ -9,6 +9,7 @@ import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import java.util.function.UnaryOperator;
 
 /**
  * {@code jk native} plan: {@link BuildPlanner} plus {@link BuildPlanner#nativeStep} for
@@ -73,6 +74,37 @@ public final class NativePlans {
             boolean skipTests,
             boolean verbose,
             boolean allowNative) {
+        return moduleBuildPlan(
+                moduleDir,
+                module,
+                cache,
+                jdksDir,
+                graalHome,
+                mainOverride,
+                extraArgs,
+                skipTests,
+                verbose,
+                allowNative,
+                null);
+    }
+
+    /**
+     * As above with {@code decorate}: request-level Inputs decoration (workers, profile, variant +
+     * client env, module set, ephemeral actions) applied by the one orchestrator so the NATIVE
+     * branch honors the same knobs as PACKAGE (JK-2102). {@code null} = none.
+     */
+    public static BuildPlan moduleBuildPlan(
+            Path moduleDir,
+            JkBuild module,
+            Path cache,
+            Path jdksDir,
+            Path graalHome,
+            String mainOverride,
+            List<String> extraArgs,
+            boolean skipTests,
+            boolean verbose,
+            boolean allowNative,
+            UnaryOperator<BuildPlanner.Inputs> decorate) {
         Path buildFile = moduleDir.resolve("jk.toml");
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
         boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(moduleDir);
@@ -93,6 +125,7 @@ public final class NativePlans {
                 false,
                 Set.of(),
                 cc.jumpkick.config.SessionContext.current());
+        if (decorate != null) inputs = decorate.apply(inputs);
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
         // Assembly / sources tails only here — native carries CLI main/args from this command.
         // Do not append [native] always via allowNative; that is the jk build path. jk native
@@ -116,12 +149,17 @@ public final class NativePlans {
     }
 
     /**
-     * {@code jk native}'s exit-code mapping for a failed module plan: a native-step "main class"
-     * misconfiguration exits {@link Exit#USAGE}, a test failure exits 4, anything else 1.
+     * Build-family exit-code mapping for a failed module plan: a native-step "main class"
+     * misconfiguration or an image "no-main" diagnostic exits {@link Exit#USAGE}, a test failure
+     * exits 4, anything else 1. Shared by the workspace path for native AND image terminals
+     * (JK-2099/JK-2100).
      */
     public static int failureExitCode(BuildPlan plan, BuildPlanResult result) {
         for (BuildPlanResult.Diagnostic d : result.errors()) {
             if ("native".equals(d.code()) && d.message() != null && d.message().contains("main class")) {
+                return Exit.USAGE;
+            }
+            if ("no-main".equals(d.code())) {
                 return Exit.USAGE;
             }
         }

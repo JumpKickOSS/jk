@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.build;
 
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.PluginConfig;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -28,7 +29,8 @@ import java.util.Optional;
  *
  * <p>Spec lines are flat JSONL objects ({@code {"t":"config",…}}, {@code {"t":"cp",…}}, …);
  * replies ride the plugin's {@link ProtocolWriter} ({@code {"t":"label"}}, {@code {"t":"error"}},
- * {@code {"t":"step"}}/{@code {"t":"packager"}} for describe, and a terminal {@code {"t":"done"}}).
+ * {@code {"t":"step"}}/{@code {"t":"packager"}} for describe). The process exit code is the
+ * terminal signal — there is no protocol end marker.
  */
 public final class BuildPluginHarness {
 
@@ -126,8 +128,7 @@ public final class BuildPluginHarness {
                 }
                 try {
                     int exit = command.body().run(new SpecCommandExec(spec, out));
-                    out.emit("{\"t\":\"done\"}");
-                    return exit;
+                            return exit;
                 } catch (Exception e) {
                     out.emit("{\"t\":\"error\",\"code\":\"command-failed\",\"message\":"
                             + Jsonl.quote(String.valueOf(e.getMessage())) + "}");
@@ -154,7 +155,6 @@ public final class BuildPluginHarness {
                 return 64;
             }
         }
-        out.emit("{\"t\":\"done\"}");
         return 0;
     }
 
@@ -318,8 +318,7 @@ public final class BuildPluginHarness {
                 switch (String.valueOf(Jsonl.str(line, "t"))) {
                     case "op" -> {
                         op = String.valueOf(Jsonl.str(line, "op"));
-                        stepName = Jsonl.str(line, "task");
-                        if (stepName == null || stepName.isBlank()) stepName = Jsonl.str(line, "step");
+                        stepName = Jsonl.str(line, PluginProtocol.NAME);
                         pluginId = String.valueOf(Jsonl.str(line, "plugin"));
                     }
                     case "config" -> {
@@ -490,7 +489,7 @@ public final class BuildPluginHarness {
 
         @Override
         public void out(String line) {
-            out.emit("{\"t\":\"command-out\",\"line\":" + Jsonl.quote(line) + "}");
+            out.emit(cc.jumpkick.plugin.protocol.PluginReply.commandOut(line));
         }
 
         @Override

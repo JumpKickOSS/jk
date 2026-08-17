@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.protocol;
 
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 import java.util.Map;
 
@@ -16,6 +16,18 @@ public final class ProtoReads {
      * {@code profile} may be {@code null}); the computed estimate rides back as an {@link EngineProtocol#ETA}
      * event inside the explain burst.
      */
+    public static String moduleGraphRequest(String dir, String format, String modules, String affectedSince) {
+        String extra = "";
+        if (modules != null && !modules.isBlank()) extra += ",\"modules\":" + Jsonl.quote(modules);
+        if (affectedSince != null && !affectedSince.isBlank()) {
+            extra += ",\"affectedSince\":" + Jsonl.quote(affectedSince);
+        }
+        return "{\"type\":\"" + EngineProtocol.MODULE_GRAPH_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
+                + ",\"format\":" + Jsonl.quote(format)
+                + extra
+                + "}";
+    }
+
     public static String explainRequest(
             String dir,
             String cache,
@@ -211,6 +223,63 @@ public final class ProtoReads {
         return Jsonl.strMap(requestLine, "params");
     }
 
+    /** Scaffold a project (CLI {@code jk new}, HTTP, MCP). */
+    public static String newProjectRequest(
+            String name,
+            String parentDir,
+            String group,
+            String lang,
+            String layout,
+            String template,
+            boolean executable,
+            String framework,
+            String jdk,
+            int javaRelease,
+            boolean assembly,
+            boolean nativeImage,
+            boolean plugin,
+            String kotlinModule,
+            List<String> deps,
+            boolean sample,
+            boolean standalone,
+            Map<String, String> templateParams,
+            boolean relaxParent,
+            String targetDir) {
+        return "{\"type\":\"" + EngineProtocol.NEW_PROJECT_REQUEST + "\""
+                + ",\"name\":" + Jsonl.quote(name)
+                + ",\"parentDir\":" + Jsonl.quote(parentDir)
+                + ",\"group\":" + Jsonl.quote(group)
+                + ",\"lang\":" + Jsonl.quote(lang)
+                + ",\"layout\":" + Jsonl.quote(layout)
+                + ",\"template\":" + Jsonl.quote(template)
+                + ",\"executable\":" + executable
+                + ",\"framework\":" + Jsonl.quote(framework)
+                + ",\"jdk\":" + Jsonl.quote(jdk)
+                + ",\"javaRelease\":" + javaRelease
+                + ",\"assembly\":" + assembly
+                + ",\"nativeImage\":" + nativeImage
+                + ",\"plugin\":" + plugin
+                + ",\"kotlinModule\":" + Jsonl.quote(kotlinModule)
+                + ",\"deps\":" + EngineProtocol.quoteArray(deps == null ? List.of() : deps)
+                + ",\"sample\":" + sample
+                + ",\"standalone\":" + standalone
+                + ",\"templateParams\":" + Jsonl.map(templateParams == null ? Map.of() : templateParams)
+                + ",\"relaxParent\":" + relaxParent
+                + ((targetDir == null || targetDir.isBlank()) ? "" : ",\"targetDir\":" + Jsonl.quote(targetDir))
+                + "}";
+    }
+
+    public static String pluginInstallLocalRequest(
+            String dir, String cache, String installRoot, String modules, boolean dryRun, boolean ambientStore) {
+        return "{\"type\":\"" + EngineProtocol.PLUGIN_INSTALL_LOCAL_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
+                + ",\"cache\":" + Jsonl.quote(cache)
+                + ",\"installRoot\":" + Jsonl.quote(installRoot)
+                + ",\"modules\":" + Jsonl.quote(modules)
+                + ",\"dryRun\":" + dryRun
+                + ",\"ambientStore\":" + ambientStore
+                + "}";
+    }
+
     public static String pluginCommandRequest(String dir, String cache, String command, List<String> args) {
         return "{\"type\":\"" + EngineProtocol.PLUGIN_VERB_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
                 + ",\"cache\":" + Jsonl.quote(cache)
@@ -230,15 +299,27 @@ public final class ProtoReads {
     }
 
     public static String editAck(boolean changed, String error) {
+        return editAck(changed, error, "");
+    }
+
+    public static String editAck(boolean changed, String error, String detail) {
         return "{\"type\":\"" + EngineProtocol.EDIT_ACK + "\",\"changed\":" + changed + ",\"error\":"
-                + Jsonl.quote(error) + "}";
+                + Jsonl.quote(error)
+                + ((detail == null || detail.isBlank()) ? "" : ",\"detail\":" + Jsonl.quote(detail))
+                + "}";
     }
 
     public static String freshenCatalogRequest(String catalog, boolean offline, String url, String cacheFile) {
+        return freshenCatalogRequest(catalog, offline, url, cacheFile, false);
+    }
+
+    public static String freshenCatalogRequest(
+            String catalog, boolean offline, String url, String cacheFile, boolean force) {
         return "{\"type\":\"" + EngineProtocol.FRESHEN_CATALOG_REQUEST + "\",\"catalog\":" + Jsonl.quote(catalog)
                 + ",\"offline\":" + offline
                 + ",\"url\":" + Jsonl.quote(url)
                 + ",\"cacheFile\":" + Jsonl.quote(cacheFile)
+                + ",\"force\":" + force
                 + "}";
     }
 
@@ -247,9 +328,57 @@ public final class ProtoReads {
                 + Jsonl.quote(error) + "}";
     }
 
+    /**
+     * Catalog list/search. {@code query} is {@code list} or {@code search}; {@code terms} apply to
+     * search only. {@code bundledOnly} skips project/global layers (wizard picker).
+     */
+    public static String cacheInventoryRequest(
+            String query, String cache, String store, List<String> terms, List<String> coords, boolean dryRun) {
+        return "{\"type\":\"" + EngineProtocol.CACHE_INVENTORY_REQUEST + "\",\"query\":" + Jsonl.quote(query)
+                + ",\"cache\":" + Jsonl.quote(cache)
+                + ",\"store\":" + Jsonl.quote(store)
+                + ",\"terms\":" + EngineProtocol.quoteArray(terms == null ? List.of() : terms)
+                + ",\"coords\":" + EngineProtocol.quoteArray(coords == null ? List.of() : coords)
+                + ",\"dryRun\":" + dryRun
+                + "}";
+    }
+
+    public static String catalogReadRequest(
+            String dir,
+            String cache,
+            String query,
+            List<String> terms,
+            boolean offline,
+            boolean includeCached,
+            boolean bundledOnly) {
+        return "{\"type\":\"" + EngineProtocol.CATALOG_READ_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
+                + ",\"cache\":" + Jsonl.quote(cache)
+                + ",\"query\":" + Jsonl.quote(query)
+                + ",\"terms\":" + EngineProtocol.quoteArray(terms == null ? List.of() : terms)
+                + ",\"offline\":" + offline
+                + ",\"includeCached\":" + includeCached
+                + ",\"bundledOnly\":" + bundledOnly
+                + "}";
+    }
+
     public static String projectInfoRequest(String dir, String cache) {
+        return projectInfoRequest(dir, cache, null, null);
+    }
+
+    /**
+     * As {@link #projectInfoRequest(String, String)} with optional {@code -m}/{@code
+     * --affected-since} filters (omitted when blank).
+     */
+    public static String projectInfoRequest(String dir, String cache, String modules, String affectedSince) {
+        String extra = "";
+        if (modules != null && !modules.isBlank()) extra += ",\"modules\":" + Jsonl.quote(modules);
+        if (affectedSince != null && !affectedSince.isBlank()) {
+            extra += ",\"affectedSince\":" + Jsonl.quote(affectedSince);
+        }
         return "{\"type\":\"" + EngineProtocol.PROJECT_INFO_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + ",\"cache\":"
-                + Jsonl.quote(cache) + "}";
+                + Jsonl.quote(cache)
+                + extra
+                + "}";
     }
 
     public static String outdatedRequest(String dir, String cache, String repoUrl, boolean offline, boolean force) {

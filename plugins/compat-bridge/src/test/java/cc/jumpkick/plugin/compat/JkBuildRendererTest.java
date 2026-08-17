@@ -64,8 +64,7 @@ class JkBuildRendererTest {
         JkBuild dflt = JkBuild.builder(JkBuild.Project.builder("com.example", "widget", "1.0.0")
                         .jdkMajor(25)
                         .build())
-                .nativeConfig(
-                        new JkBuild.NativeConfig(null, null, List.of(), "graalvm", JkBuild.NativeMode.SUPPORTED))
+                .nativeConfig(new JkBuild.NativeConfig(null, null, List.of(), "graalvm", JkBuild.NativeMode.SUPPORTED))
                 .build();
         assertThat(JkBuildRenderer.render(dflt)).doesNotContain("graal      =");
     }

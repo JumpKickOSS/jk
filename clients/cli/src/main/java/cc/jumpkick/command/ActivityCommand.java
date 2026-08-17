@@ -9,10 +9,10 @@ import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Tree;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.plugin.protocol.Jsonl;
 import java.util.List;
 
 /**
@@ -171,7 +171,7 @@ public final class ActivityCommand implements CliCommand {
             glyph = t.isAnsi() ? Glyphs.PLAY : "*";
             outcomeWord = "Building";
         } else if (cancelled) {
-            glyph = t.isAnsi() ? "⊛" : "o";
+            glyph = t.isAnsi() ? Glyphs.CANCELLED : Glyphs.CANCELLED_PLAIN;
             outcomeWord = "Cancel ";
         } else if (success) {
             glyph = t.isAnsi() ? Glyphs.CHECK : "+";

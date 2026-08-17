@@ -6,9 +6,10 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import java.util.List;
 
 public final class InstallVerb implements HostedVerb {
 
@@ -39,7 +40,30 @@ public final class InstallVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public List<String> jobKinds() {
+        return List.of("install");
+    }
+
+    @Override
+    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+        String m2 =
+                Path.of(System.getProperty("user.home"), ".m2", "repository").toString();
+        return cc.jumpkick.engine.protocol.ProtoSession.withTrigger(
+                cc.jumpkick.engine.protocol.ProtoJobs.installRequest(
+                        spec.dir(),
+                        cc.jumpkick.util.JkDirs.cache().toString(),
+                        m2,
+                        null,
+                        spec.skipTests(),
+                        false,
+                        false,
+                        false),
+                "web");
+    }
+
+    @Override
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
@@ -78,5 +102,6 @@ public final class InstallVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
+        return null;
     }
 }

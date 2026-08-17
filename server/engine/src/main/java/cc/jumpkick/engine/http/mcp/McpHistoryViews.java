@@ -18,8 +18,8 @@ public final class McpHistoryViews {
         m.put("id", str(rec, "id"));
         m.put("buildNumber", lng(rec, "buildNumber"));
         m.put("kind", str(rec, "kind"));
-        long rid = lng(rec, "requestId");
-        if (rid > 0) m.put("requestId", rid);
+        long rid = lng(rec, "requestId"); // the journal's stored field name
+        if (rid > 0) m.put("jid", rid);
         m.put("success", bool(rec, "success"));
         m.put("exitCode", lng(rec, "exitCode"));
         m.put("millis", lng(rec, "millis"));

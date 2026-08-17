@@ -4,13 +4,13 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.tui.Table;
-import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.engine.protocol.CatalogReadAck;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 /** {@code jk library list} — print every library known to the catalog. */
 public final class LibraryListCommand implements CliCommand {
@@ -47,23 +47,41 @@ public final class LibraryListCommand implements CliCommand {
         this.layerFilter = in.value("layer").orElse(null);
         this.showLayer = in.isSet("show-layer");
         this.groupByLayer = in.isSet("group-by-layer");
+        GlobalOptions global = GlobalOptions.from(in);
 
-        LibraryCatalog catalog =
-                LibraryCatalog.forProject(GlobalOptions.from(in).workingDir(), CliOutput.stderr()::println);
-        Set<String> names = catalog.names();
-        if (names.isEmpty()) {
+        CatalogReadAck ack;
+        try {
+            ack = cc.jumpkick.cli.engine.EngineClient.catalogRead(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    global.workingDir(),
+                    null,
+                    "list",
+                    List.of(),
+                    global.offline,
+                    false,
+                    false);
+        } catch (IOException e) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Library", String.valueOf(e.getMessage()));
+            return 1;
+        }
+        for (String w : ack.warnings()) CliOutput.stderr().println(w);
+        if (ack.error() != null) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Library", ack.error());
+            return 1;
+        }
+        List<CatalogReadAck.Entry> entries = ack.entries();
+        if (entries.isEmpty()) {
             CliOutput.out("(no libraries registered)");
             return 0;
         }
-        return groupByLayer ? listGrouped(catalog, names) : listFlat(catalog, names);
+        return groupByLayer ? listGrouped(ack.layerNames(), entries) : listFlat(entries);
     }
 
-    private int listFlat(LibraryCatalog catalog, Set<String> names) {
+    private int listFlat(List<CatalogReadAck.Entry> entries) {
         List<List<String>> rows = new ArrayList<>();
-        for (String name : names) {
-            var src = catalog.source(name).orElseThrow();
-            if (layerFilter != null && !src.layer().equals(layerFilter)) continue;
-            rows.add(row(name, src));
+        for (CatalogReadAck.Entry e : entries) {
+            if (layerFilter != null && !e.layer().equals(layerFilter)) continue;
+            rows.add(row(e));
         }
         if (rows.isEmpty() && layerFilter != null) {
             CliOutput.out("(no libraries in layer `" + layerFilter + "`)");
@@ -73,20 +91,19 @@ public final class LibraryListCommand implements CliCommand {
         return 0;
     }
 
-    private int listGrouped(LibraryCatalog catalog, Set<String> names) {
+    private int listGrouped(List<String> layerNames, List<CatalogReadAck.Entry> entries) {
         Table table = null;
         int shown = 0;
-        for (String layer : catalog.layerNames()) {
+        for (String layer : layerNames) {
             if (layerFilter != null && !layer.equals(layerFilter)) continue;
             Table section = new Table("Libraries — " + layer)
                     .columns(headers().toArray(String[]::new))
                     .showTitle(true)
                     .showColumns(true);
             int added = 0;
-            for (String name : names) {
-                if (catalog.source(name).orElseThrow().layer().equals(layer)) {
-                    var src = catalog.source(name).orElseThrow();
-                    section.row(row(name, src).toArray(String[]::new));
+            for (CatalogReadAck.Entry e : entries) {
+                if (e.layer().equals(layer)) {
+                    section.row(row(e).toArray(String[]::new));
                     added++;
                 }
             }
@@ -115,9 +132,9 @@ public final class LibraryListCommand implements CliCommand {
         table.print();
     }
 
-    private List<String> row(String name, LibraryCatalog.Source src) {
-        List<String> cells = new ArrayList<>(List.of(name, src.module().moduleKey()));
-        if (showLayer && !groupByLayer) cells.add(src.layer());
+    private List<String> row(CatalogReadAck.Entry e) {
+        List<String> cells = new ArrayList<>(List.of(e.name(), e.moduleKey()));
+        if (showLayer && !groupByLayer) cells.add(e.layer());
         return cells;
     }
 }

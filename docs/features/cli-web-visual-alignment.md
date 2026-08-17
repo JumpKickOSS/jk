@@ -49,6 +49,10 @@ BuildPlan chips (CLI):
 | Success | `PIPELINE_GREEN` = `--okc` × 0.7 | Darker deep green for contrast |
 | Failure | `NORMAL_RED` = `--err` | Same as web failed badges |
 
+Test-failure assertion bodies (AssertJ Expected / But Was values) are **uncolored on both
+surfaces** (CLI d8dd7760, web JK-2111): values are data, not verdicts — the FAILED chip carries
+the verdict.
+
 Gradients (CLI title / spinner / progress): blue → violet (`PRIMARY`/`BRIGHT_BLUE` → `ACCENT`/`BRIGHT_MAGENTA`), matching web’s electric blue → neon violet story (`--prog-a` → `--prog-b`).
 
 ## Intentionally not synced

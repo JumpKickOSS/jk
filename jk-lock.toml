@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
 jk = { version = "0.12.0", sha256 = "ce2933be6ff5b481265ab26d0ed0aa0f0fbde5bc0065d6329c183171cc8aaf19" }
-manifests-sha256 = "d0c1b1930add6d3c64d35b55ea276594fe6630c9b5dfc3e1e6862564ab502e42"
+manifests-sha256 = "d37fd137b3f160d45bc0e09ba45c1f01693828a2fd4acfefb146da22caf81df9"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [[artifact]]
@@ -2261,12 +2261,20 @@ java    = 25
 description = "Domain model: dependencies, build plans, and coordinates"
 
 [[module]]
+path    = "shared/jsonl"
+group   = "cc.jumpkick"
+name    = "jk-jsonl"
+version = "0.12.0"
+java    = 17
+description = "JSONL field codec and MiniJson tree codec (CLI wire + plugin workers)"
+
+[[module]]
 path    = "shared/plugin-sdk"
 group   = "cc.jumpkick"
 name    = "jk-plugin-sdk"
 version = "0.12.0"
 java    = 17
-description = "Plugin SPI and host-event wire codec"
+description = "Plugin SPI; JSONL codec is jk-jsonl"
 
 [[module]]
 path    = "shared/toolchain-jdk"

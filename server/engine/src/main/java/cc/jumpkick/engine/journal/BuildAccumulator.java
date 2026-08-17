@@ -64,6 +64,7 @@ public final class BuildAccumulator {
     private volatile BuildRecord.Tests tests;
     private volatile boolean anyFailure;
     private volatile boolean userCancelled;
+    private volatile @Nullable String cancelReason;
     private volatile @Nullable Boolean success;
     private volatile int exitCode;
 
@@ -184,6 +185,41 @@ public final class BuildAccumulator {
         if (success != null) return;
         if (!explicit && anyFailure) return;
         userCancelled = true;
+    }
+
+    /**
+     * As {@link #markUserCancelled(boolean)}, recording <em>why</em> (wall deadline, …). The first
+     * reason wins; it rides the journal as a warning diagnostic so a job with no wire writer still
+     * records the cause, and {@code request-finish} carries it as {@code cancelReason}.
+     */
+    public void markUserCancelled(boolean explicit, String reason) {
+        markUserCancelled(explicit);
+        if (!userCancelled || reason == null || reason.isBlank() || cancelReason != null) return;
+        cancelReason = reason;
+        addDiag(new BuildRecord.Diag(
+                "warning",
+                "",
+                null,
+                "cancelled",
+                reason,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                0,
+                0,
+                0,
+                List.of(),
+                0));
+    }
+
+    /** Why the job was cancelled (deadline, …), or {@code null} when no reason was recorded. */
+    public @Nullable String cancelReason() {
+        return cancelReason;
     }
 
     public void addModule(ModuleOutcome o) {

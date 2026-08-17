@@ -97,7 +97,7 @@ final class JkManagerView {
     }
 
     /**
-     * Settle as a remote engine cancel ({@code jk cancel} / web): gray {@code ‼ Build} chip, then
+     * Settle as a remote engine cancel ({@code jk cancel} / web): gray {@code ⊛ Build} chip, then
      * {@code job was cancelled took …} — no "by user".
      */
     public void finishBuildPlanCancelled(List<String> above) {
@@ -382,10 +382,14 @@ final class JkManagerView {
                 return;
             }
             if (m.planMode) {
+                if (text == null) return;
                 // append() reports blank-strips; a size compare would misread ring-full
                 // eviction (size unchanged on every accepted append) as a strip.
-                if (!m.outputWindow.append(text)) return;
+                boolean accepted = m.outputWindow.append(text);
                 if (!m.animate || !Theme.active().isAnsi()) {
+                    // Non-TTY fidelity (JK-2108): the peek ring strips blanks (they only make
+                    // gaps under the rule), but piped/CI output prints tool lines VERBATIM —
+                    // docs/tui.md promises the non-TTY path is unchanged.
                     // Piped mode — and --no-ansi TTY plain-animate mode: there is no live region
                     // to lift (open/close/tick paints are all isAnsi-gated), so the ANSI path
                     // would leak raw escapes when peek was visible and swallow tool output
@@ -395,6 +399,7 @@ final class JkManagerView {
                     m.out.flush();
                     return;
                 }
+                if (!accepted) return; // blank-stripped: nothing new for the live region
                 if (m.outputWindow.visible()) {
                     // Lift live region → emit one line into scrollback → repaint rule+wedge only.
                     liftEmitRepaintLive(text);
@@ -563,7 +568,19 @@ final class JkManagerView {
         live.addAll(chrome);
         int maxRegion = OutputWindow.maxRegionLines(m.height);
         if (live.size() > maxRegion) {
-            live = new ArrayList<>(live.subList(live.size() - maxRegion, live.size()));
+            // Overflow drops TREE rows, never the separator or the header: a plain tail-slice
+            // deleted the rule/blank first (violating the invariant above) and, one more over,
+            // the spinner header too (JK-2106). Keep separator rows + chrome head, then fill
+            // the rest with the newest chrome tail rows.
+            int separatorRows = live.size() - chrome.size();
+            List<String> trimmed = new ArrayList<>(maxRegion);
+            for (int i = 0; i < separatorRows && trimmed.size() < maxRegion; i++) trimmed.add(live.get(i));
+            if (!chrome.isEmpty() && trimmed.size() < maxRegion) trimmed.add(chrome.getFirst());
+            int room = maxRegion - trimmed.size();
+            if (room > 0 && chrome.size() > 1) {
+                trimmed.addAll(chrome.subList(Math.max(1, chrome.size() - room), chrome.size()));
+            }
+            live = trimmed;
         }
         return live;
     }

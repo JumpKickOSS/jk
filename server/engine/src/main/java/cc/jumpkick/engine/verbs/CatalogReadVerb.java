@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.engine.verbs;
+
+import cc.jumpkick.config.Session;
+import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.protocol.CatalogReadAck;
+import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.runtime.CatalogReadOps;
+import cc.jumpkick.jsonl.Jsonl;
+import java.io.BufferedWriter;
+import java.nio.file.Path;
+
+public final class CatalogReadVerb implements HostedVerb {
+
+    private final VerbHost host;
+
+    public CatalogReadVerb(VerbHost host) {
+        this.host = host;
+    }
+
+    @Override
+    public String wireType() {
+        return EngineProtocol.CATALOG_READ_REQUEST;
+    }
+
+    @Override
+    public JobKind jobKind() {
+        return JobKind.plan("catalog-read");
+    }
+
+    @Override
+    public VerbShape shape() {
+        return new VerbShape.SyncRead();
+    }
+
+    @Override
+    public String threadPrefix() {
+        return "jk-engine-catalog-";
+    }
+
+    @Override
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+        try {
+            CatalogReadAck ack;
+            try {
+                String dir = Jsonl.str(requestLine, "dir");
+                String cache = Jsonl.str(requestLine, "cache");
+                ack = CatalogReadOps.read(new CatalogReadOps.Request(
+                        dir == null || dir.isBlank() ? Path.of(".") : Path.of(dir),
+                        cache == null || cache.isBlank() ? null : Path.of(cache),
+                        Jsonl.str(requestLine, "query"),
+                        Jsonl.strArray(requestLine, "terms"),
+                        Jsonl.bool(requestLine, "offline", false),
+                        Jsonl.bool(requestLine, "includeCached", false),
+                        Jsonl.bool(requestLine, "bundledOnly", false)));
+            } catch (Exception e) {
+                ack = CatalogReadAck.error(String.valueOf(e.getMessage()));
+            }
+            host.sendQuiet(writer, ack.encode());
+        } catch (Exception e) {
+            host.sendQuiet(writer, host.requestFailedLine(null, e));
+        }
+        return null;
+    }
+}

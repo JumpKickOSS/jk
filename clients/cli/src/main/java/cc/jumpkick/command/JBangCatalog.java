@@ -2,11 +2,12 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.http.Http;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  * JBang catalog resolution for {@code alias@catalog} targets ({@code @user}, {@code @user/repo},
@@ -25,22 +26,34 @@ final class JBangCatalog {
 
     private JBangCatalog() {}
 
+    /**
+     * Candidate catalog origins for {@code alias@rest} in fetch order, computed without any
+     * network I/O — the first entry is the origin the target names. Callers gate trust on these
+     * BEFORE {@link #resolve}: no request leaves the machine for an origin the user never allowed.
+     */
+    static List<String> origins(String target) {
+        return candidatesOf(target).stream().map(Candidate::pageOrigin).toList();
+    }
+
     /** Resolve {@code alias@rest}; throws {@link IOException} with a user-ready message. */
     static Resolved resolve(String target, Http http) throws IOException, InterruptedException {
+        return resolve(target, http, origin -> true);
+    }
+
+    /**
+     * As {@link #resolve(String, Http)}, but only candidates whose page origin passes
+     * {@code originAllowed} are fetched — the forge-fallback list may mix trusted and untrusted
+     * origins, and the untrusted ones must not be contacted.
+     */
+    static Resolved resolve(String target, Http http, Predicate<String> originAllowed)
+            throws IOException, InterruptedException {
         int at = target.indexOf('@');
         String alias = target.substring(0, at);
-        String rest = target.substring(at + 1);
 
-        String path = "";
-        int tilde = rest.indexOf('~');
-        if (tilde >= 0) {
-            path = rest.substring(tilde + 1);
-            rest = rest.substring(0, tilde);
-        }
-
-        List<Candidate> candidates = candidatesFor(rest, path);
+        List<Candidate> candidates = candidatesOf(target);
         IOException lastFailure = null;
         for (Candidate c : candidates) {
+            if (!originAllowed.test(c.pageOrigin())) continue;
             try {
                 var response = http.get(URI.create(c.catalogUrl()));
                 if (response.statusCode() != 200) continue;
@@ -53,8 +66,12 @@ final class JBangCatalog {
             }
         }
         if (lastFailure != null) throw lastFailure;
-        throw new IOException("no jbang-catalog.json found for `" + rest + "` (tried "
-                + candidates.stream().map(Candidate::catalogUrl).toList() + ")");
+        throw new IOException("no jbang-catalog.json found for `" + target.substring(at + 1) + "` (tried "
+                + candidates.stream()
+                        .filter(c -> originAllowed.test(c.pageOrigin()))
+                        .map(Candidate::catalogUrl)
+                        .toList()
+                + ")");
     }
 
     private static Resolved toResolved(String target, String alias, Candidate c, String json) throws IOException {
@@ -98,6 +115,18 @@ final class JBangCatalog {
     }
 
     private record Candidate(String catalogUrl, String pageOrigin) {}
+
+    /** Parse {@code alias@rest[~path]} and expand the forge candidates. */
+    private static List<Candidate> candidatesOf(String target) {
+        String rest = target.substring(target.indexOf('@') + 1);
+        String path = "";
+        int tilde = rest.indexOf('~');
+        if (tilde >= 0) {
+            path = rest.substring(tilde + 1);
+            rest = rest.substring(0, tilde);
+        }
+        return candidatesFor(rest, path);
+    }
 
     private static List<Candidate> candidatesFor(String rest, String path) {
         String sub = path.isEmpty() ? "" : path + "/";

@@ -72,7 +72,6 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
                 if (result.daemon()) fields.put("daemon", true);
             }
             out.emit(PluginReply.result(fields));
-            out.emit(PluginReply.done(0));
             return 0;
         } catch (Exception e) {
             out.emit(PluginReply.error("image", e.getMessage()));

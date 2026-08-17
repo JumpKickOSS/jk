@@ -5,9 +5,10 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import java.util.List;
 
 public final class FormatVerb implements HostedVerb {
 
@@ -38,7 +39,42 @@ public final class FormatVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public List<String> jobKinds() {
+        return List.of("format");
+    }
+
+    @Override
+    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+        Path entryDir = Path.of(spec.dir());
+        cc.jumpkick.model.JkBuild entry;
+        try {
+            entry = cc.jumpkick.config.JkBuildParser.parse(entryDir.resolve("jk.toml"));
+        } catch (Exception e) {
+            throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
+        }
+        // Same style/hygiene precedence as `jk format` without CLI flags: the entry [format]
+        // table, then the built-in defaults — one verb, one result across entry points.
+        cc.jumpkick.config.FormatStyles.Resolved styles =
+                cc.jumpkick.config.FormatStyles.resolve(null, null, null, null, null, null, entry.format());
+        return cc.jumpkick.engine.protocol.ProtoSession.withTrigger(
+                cc.jumpkick.engine.protocol.ProtoJobs.formatRequest(
+                        spec.dir(),
+                        cc.jumpkick.util.JkDirs.cache().toString(),
+                        false,
+                        styles.java(),
+                        styles.kotlin(),
+                        styles.optimizeImports(),
+                        styles.importOrder(),
+                        styles.removeUnusedImports(),
+                        null,
+                        false,
+                        false),
+                "web");
+    }
+
+    @Override
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 boolean check = Jsonl.bool(requestLine, "check", false);
@@ -83,5 +119,6 @@ public final class FormatVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
+        return null;
     }
 }

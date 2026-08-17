@@ -53,23 +53,18 @@ class McpManifestTest {
     void applied_manifest_edits_carry_the_relock_hint() {
         cc.jumpkick.engine.http.EngineHttpJobs jobs = new cc.jumpkick.engine.http.EngineHttpJobs() {
             @Override
-            public long triggerBuild(String dir) {
-                return 1L;
-            }
-
-            @Override
-            public long triggerTest(String dir) {
-                return 1L;
-            }
-
-            @Override
-            public long triggerLock(String dir) {
+            public long trigger(cc.jumpkick.engine.jobs.JobSpec spec) {
                 return 1L;
             }
 
             @Override
             public boolean cancel(long requestId) {
                 return false;
+            }
+
+            @Override
+            public int cancelDir(String dir) {
+                return 0;
             }
         };
         cc.jumpkick.engine.http.McpHandler mcp = new cc.jumpkick.engine.http.McpHandler(

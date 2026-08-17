@@ -5,7 +5,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoReads;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Path;
@@ -40,7 +40,8 @@ public final class FreshenCatalogVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String catalog = Jsonl.str(requestLine, "catalog");
             boolean offline = Jsonl.bool(requestLine, "offline", false);
@@ -52,13 +53,17 @@ public final class FreshenCatalogVerb implements HostedVerb {
                     case "templates" -> {
                         if (!offline) cc.jumpkick.templates.OfficialTemplatesFreshen.refreshNow(msg -> {});
                     }
-                    case "libraries" ->
-                        cc.jumpkick.repo.LibraryRegistrySync.ensurePresent(
-                                offline,
-                                url != null ? URI.create(url) : cc.jumpkick.repo.LibraryRegistryClient.DEFAULT_SOURCE,
-                                cacheFile != null
-                                        ? Path.of(cacheFile)
-                                        : cc.jumpkick.library.LibraryCatalog.downloadedFile());
+                    case "libraries" -> {
+                        URI src = url != null ? URI.create(url) : cc.jumpkick.repo.LibraryRegistryClient.DEFAULT_SOURCE;
+                        Path dest = cacheFile != null
+                                ? Path.of(cacheFile)
+                                : cc.jumpkick.library.LibraryCatalog.downloadedFile();
+                        if (Jsonl.bool(requestLine, "force", false)) {
+                            cc.jumpkick.repo.LibraryRegistrySync.refreshNow(src, dest);
+                        } else {
+                            cc.jumpkick.repo.LibraryRegistrySync.ensurePresent(offline, src, dest);
+                        }
+                    }
                     case "jdks" -> {
                         if (!offline) {
                             cc.jumpkick.jdk.JdkCatalogClient client = url != null
@@ -83,5 +88,6 @@ public final class FreshenCatalogVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
+        return null;
     }
 }

@@ -10,6 +10,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.jar.JarOutputStream;
+import java.util.zip.ZipEntry;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
@@ -59,6 +61,58 @@ class JshellCommandTest {
         boolean finished = p.waitFor(30, TimeUnit.SECONDS);
         assertThat(finished).isTrue();
         assertThat(p.exitValue()).isZero();
+    }
+
+    @Test
+    @EnabledIf("jshellAvailable")
+    void withJarExtension_makes_cas_blob_acceptable_to_jshell(@TempDir Path tempDir) throws Exception {
+        // Mimic a CAS blob: jar bytes at an extensionless path.
+        Path casBlob = tempDir.resolve("ab12cd34ef");
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(casBlob))) {
+            jos.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF"));
+            jos.write("Manifest-Version: 1.0\n".getBytes(StandardCharsets.UTF_8));
+            jos.closeEntry();
+        }
+
+        List<Path> aliased = JshellCommand.withJarExtension(List.of(casBlob));
+        assertThat(aliased).hasSize(1);
+        assertThat(aliased.getFirst().getFileName().toString()).endsWith(".jar");
+        assertThat(Files.isRegularFile(aliased.getFirst())).isTrue();
+
+        Path jshell = JshellCommand.findJshell();
+        List<String> cmd = new ArrayList<>();
+        cmd.add(jshell.toString());
+        cmd.add("--class-path");
+        cmd.add(aliased.getFirst().toString());
+        cmd.add("-q");
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        p.getOutputStream().write("1 + 1\n/exit\n".getBytes(StandardCharsets.UTF_8));
+        p.getOutputStream().close();
+        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        boolean finished = p.waitFor(30, TimeUnit.SECONDS);
+        assertThat(finished).isTrue();
+        assertThat(out).doesNotContain("Invalid '--class-path'");
+        assertThat(p.exitValue()).isZero();
+    }
+
+    @Test
+    void withJarExtension_passes_through_directories_and_jars(@TempDir Path tempDir) throws Exception {
+        Path dir = Files.createDirectories(tempDir.resolve("classes"));
+        Path jar = tempDir.resolve("lib.jar");
+        Files.writeString(jar, "not a real jar");
+        List<Path> out = JshellCommand.withJarExtension(List.of(dir, jar));
+        assertThat(out).containsExactly(dir, jar);
+    }
+
+    @Test
+    void hasExecutionSpec_detects_user_override() {
+        assertThat(JshellCommand.hasExecutionSpec(List.of())).isFalse();
+        assertThat(JshellCommand.hasExecutionSpec(List.of("-q"))).isFalse();
+        assertThat(JshellCommand.hasExecutionSpec(List.of("--execution", "jdi")))
+                .isTrue();
+        assertThat(JshellCommand.hasExecutionSpec(List.of("--execution=local"))).isTrue();
     }
 
     @Test

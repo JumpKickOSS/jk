@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.engine.JsonOut;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -86,7 +87,7 @@ final class HttpReadApi {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("path", cc.jumpkick.config.EffectiveUserConfig.configPath().toString());
         body.put("rows", rows);
-        HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
+        HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.jsonl.MiniJson.write(body));
     }
 
     /**
@@ -196,25 +197,14 @@ final class HttpReadApi {
                 HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "dir");
         StringBuilder body = new StringBuilder("[");
         for (cc.jumpkick.runtime.BuildMetrics.Entry e : metrics.get()) {
-            if (dirFilter != null && !e.dir().isEmpty() && !e.dir().equals(dirFilter)) continue;
+            // Same base-dir filter semantics as the wire metrics verb (project rows fold dir#dN).
+            if (dirFilter != null
+                    && !e.dir().isEmpty()
+                    && !cc.jumpkick.runtime.BuildMetrics.sameBaseDir(dirFilter, e.dir())) {
+                continue;
+            }
             if (body.length() > 1) body.append(',');
-            body.append(JsonOut.object()
-                    .put("scope", e.scope())
-                    .put("kind", e.kind())
-                    .put("dir", e.dir())
-                    .put("coord", e.coord())
-                    .put("task", e.step())
-                    .put("okCount", e.ok().count())
-                    .put("okTotalMillis", e.ok().totalMillis())
-                    .put("okMinMillis", e.ok().minMillis())
-                    .put("okMaxMillis", e.ok().maxMillis())
-                    .put("okAvgMillis", e.ok().avgMillis())
-                    .put("failCount", e.failed().count())
-                    .put("failTotalMillis", e.failed().totalMillis())
-                    .put("failMinMillis", e.failed().minMillis())
-                    .put("failMaxMillis", e.failed().maxMillis())
-                    .put("cancelledCount", e.cancelled().count())
-                    .put("updated", e.updatedMillis()));
+            body.append(cc.jumpkick.engine.verbs.MetricsVerb.metricsFields(JsonOut.object(), e));
         }
         HttpEngineServer.sendJson(exchange, 200, body.append(']').toString());
     }
@@ -224,11 +214,15 @@ final class HttpReadApi {
         HttpEngineServer.sendJson(exchange, 200, cache.get().toJson().toString());
     }
 
-    /** {@code POST /api/build} — acknowledge with a request id; progress streams on {@code /api/events}. */
+    /**
+     * {@code POST /api/build} — acknowledge with a request id; progress streams on
+     * {@code /api/events}. Optional {@code kind} (default {@code build}) starts any HTTP-exposed
+     * job kind (test, lock, …) through the same admission point MCP {@code jk_run} uses.
+     */
     void handleBuild(HttpExchange exchange) throws IOException {
         String body = new String(
                 exchange.getRequestBody().readNBytes(HttpEngineServer.MAX_BODY_BYTES), StandardCharsets.UTF_8);
-        String dir = cc.jumpkick.plugin.protocol.Jsonl.str(body, "dir");
+        String dir = cc.jumpkick.jsonl.Jsonl.str(body, "dir");
         if (dir == null || dir.isBlank()) {
             HttpEngineServer.sendJson(
                     exchange,
@@ -236,16 +230,30 @@ final class HttpReadApi {
                     JsonOut.object().put("error", "missing \"dir\"").toString());
             return;
         }
+        String kind = cc.jumpkick.jsonl.Jsonl.str(body, "kind");
         long requestId;
         try {
-            requestId = jobs.triggerBuild(dir);
+            requestId = jobs.trigger(cc.jumpkick.engine.jobs.JobSpec.of(kind, dir));
+        } catch (cc.jumpkick.engine.jobs.JobEnvelope.AlreadyRunning e) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    409,
+                    JsonOut.object()
+                            .put("error", e.getMessage())
+                            .put("jid", e.jid())
+                            .toString());
+            return;
+        } catch (cc.jumpkick.engine.LockFloor.LockFloorRefused e) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    409,
+                    JsonOut.object()
+                            .put("error", e.getMessage())
+                            .put("requiredVersion", e.requiredVersion())
+                            .toString());
+            return;
         } catch (IllegalStateException e) {
             String msg = e.getMessage() == null ? "" : e.getMessage();
-            if (msg.contains("already running")) {
-                HttpEngineServer.sendJson(
-                        exchange, 409, JsonOut.object().put("error", msg).toString());
-                return;
-            }
             exchange.getResponseHeaders().set("Retry-After", "1");
             HttpEngineServer.sendJson(
                     exchange, 503, JsonOut.object().put("error", msg).toString());
@@ -259,27 +267,37 @@ final class HttpReadApi {
                 exchange,
                 202,
                 JsonOut.object()
-                        .put("requestId", requestId)
                         .put("jid", requestId)
                         .put("events", "/api/events")
                         .toString());
     }
 
     /**
-     * {@code POST /api/cancel} — body {@code {"jid":N}} or {@code {"requestId":N}} (alias).
+     * {@code POST /api/cancel} — body {@code {"jid":N}}, or {@code {"dir":"…"}} to cancel every
+     * live job for a checkout (the wire's dir-scoped cancel, now on every surface).
      */
     void handleCancel(HttpExchange exchange) throws IOException {
         String body = new String(
                 exchange.getRequestBody().readNBytes(HttpEngineServer.MAX_BODY_BYTES), StandardCharsets.UTF_8);
-        long jid = cc.jumpkick.plugin.protocol.Jsonl.longValue(body, "jid", -1);
-        if (jid < 0) jid = cc.jumpkick.plugin.protocol.Jsonl.longValue(body, "requestId", -1);
+        long jid = cc.jumpkick.jsonl.Jsonl.longValue(body, "jid", -1);
         if (jid < 0) {
+            String dir = cc.jumpkick.jsonl.Jsonl.str(body, "dir");
+            if (dir != null && !dir.isBlank()) {
+                int n = jobs.cancelDir(dir);
+                HttpEngineServer.sendJson(
+                        exchange,
+                        n > 0 ? 200 : 404,
+                        JsonOut.object()
+                                .put("dir", dir)
+                                .put("cancelled", n)
+                                .put("note", n > 0 ? "" : "no running jobs for dir")
+                                .toString());
+                return;
+            }
             HttpEngineServer.sendJson(
                     exchange,
                     400,
-                    JsonOut.object()
-                            .put("error", "missing \"jid\" (or requestId)")
-                            .toString());
+                    JsonOut.object().put("error", "missing \"jid\" or \"dir\"").toString());
             return;
         }
         boolean ok = jobs.cancel(jid);
@@ -288,7 +306,6 @@ final class HttpReadApi {
                 ok ? 200 : 404,
                 JsonOut.object()
                         .put("jid", jid)
-                        .put("requestId", jid)
                         .put("cancelled", ok)
                         .put("note", ok ? "" : "unknown or already finished jid")
                         .toString());

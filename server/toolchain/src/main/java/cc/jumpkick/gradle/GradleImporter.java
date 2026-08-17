@@ -78,9 +78,9 @@ public final class GradleImporter {
      * recognition-only (their construct is absorbed by another contribution, e.g. Boot's BOM
      * auto-import covering dependency-management).
      */
-    private static List<cc.jumpkick.plugin.PluginConfig> mapPluginTables(
+    private static List<cc.jumpkick.model.PluginConfig> mapPluginTables(
             String pluginsBody, Map<String, PluginImportRule> rules, ImportReport.Builder report) {
-        List<cc.jumpkick.plugin.PluginConfig> out = new ArrayList<>();
+        List<cc.jumpkick.model.PluginConfig> out = new ArrayList<>();
         for (Map.Entry<String, PluginImportRule> e : rules.entrySet()) {
             if (!pluginsBody.contains(e.getKey())) continue;
             PluginImportRule rule = e.getValue();
@@ -89,7 +89,7 @@ public final class GradleImporter {
                     "id\\s*\\(?\\s*[\"']" + Pattern.quote(e.getKey()) + "[\"']\\s*\\)?\\s*version\\s*" + STR);
             Matcher m = versionPattern.matcher(pluginsBody);
             if (m.find()) {
-                out.add(new cc.jumpkick.plugin.PluginConfig(
+                out.add(new cc.jumpkick.model.PluginConfig(
                         rule.manifestId(), Map.of(rule.versionTo(), firstNonNull(m.group(1), m.group(2)))));
             } else if (rule.missingVersionWarning() != null) {
                 report.warning(rule.missingVersionWarning());
@@ -202,7 +202,7 @@ public final class GradleImporter {
         // `version`, which auto-imports the BOM so versionless starters stay versionless).
         // Applied-without-version (settings pluginManagement) can't be resolved from this file
         // alone -- the rule's warning asks the user to fill it in.
-        List<cc.jumpkick.plugin.PluginConfig> pluginConfigs = mapPluginTables(pluginsBody, importRules, report);
+        List<cc.jumpkick.model.PluginConfig> pluginConfigs = mapPluginTables(pluginsBody, importRules, report);
 
         Map<Scope, List<Dependency>> deps = parseDependencies(stripped, catalog, report);
         List<RepositorySpec> repos = parseRepositories(stripped, report);
@@ -222,7 +222,7 @@ public final class GradleImporter {
                 .dependencies(new JkBuild.Dependencies(deps))
                 .repositories(repos)
                 .application(application);
-        for (cc.jumpkick.plugin.PluginConfig config : pluginConfigs) {
+        for (cc.jumpkick.model.PluginConfig config : pluginConfigs) {
             builder.pluginConfig(config);
         }
         JkBuild jkBuild = builder.build();

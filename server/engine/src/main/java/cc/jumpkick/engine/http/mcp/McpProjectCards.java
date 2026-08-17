@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
-import cc.jumpkick.builds.ProjectBuilds;
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.lock.LockFreshness;
-import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.plugin.protocol.MiniJson;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.util.PathUtil;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -28,50 +24,27 @@ public final class McpProjectCards {
             m.put("dir", dir);
             return m;
         }
-        String abs = root.toString();
-        m.put("dir", abs);
-        try {
-            JkBuild build = JkBuildParser.parse(root.resolve("jk.toml"));
-            var p = build.project();
-            m.put("coord", p.group() + ":" + p.name());
-            if (p.description() != null) m.put("description", p.description());
-            m.put("version", p.version());
-            int java = p.javaRelease();
-            if (java > 0) m.put("java", java);
-            if (p.jdk() != null) m.put("jdk", p.jdk());
-            m.put("members", members(root, build));
-        } catch (Exception ignored) {
-            // missing/unparseable jk.toml — still return dir + id if we can
-        }
-        try {
-            String id = ProjectBuilds.key(root);
-            if (id != null && !id.isBlank()) m.put("projectId", id);
-        } catch (RuntimeException ignored) {
-            // no identity yet
-        }
-        try {
-            m.put("lockStale", LockFreshness.needsRefresh(root));
-        } catch (RuntimeException e) {
-            m.put("lockStale", true);
-        }
-        Map<String, Object> last = lastRun(abs, historyRaw);
+        cc.jumpkick.runtime.ProjectCard card = cc.jumpkick.runtime.ProjectCard.of(root);
+        m.put("dir", card.dir());
+        if (card.coord() != null) m.put("coord", card.coord());
+        if (card.description() != null) m.put("description", card.description());
+        if (card.version() != null) m.put("version", card.version());
+        if (card.javaRelease() > 0) m.put("java", card.javaRelease());
+        if (card.jdk() != null) m.put("jdk", card.jdk());
+        if (card.coord() != null) m.put("members", members(card));
+        if (card.projectId() != null) m.put("projectId", card.projectId());
+        m.put("lockStale", card.lockStale());
+        Map<String, Object> last = lastRun(card.dir(), historyRaw);
         if (last != null) m.put("lastRun", last);
         return m;
     }
 
-    private static List<Map<String, Object>> members(Path root, JkBuild build) {
+    private static List<Map<String, Object>> members(cc.jumpkick.runtime.ProjectCard card) {
         List<Map<String, Object>> out = new ArrayList<>();
-        if (!build.isWorkspaceRoot() || build.workspace() == null) return out;
-        for (String rel : build.workspace().modules()) {
+        for (cc.jumpkick.runtime.ProjectCard.Member member : card.members()) {
             Map<String, Object> row = new LinkedHashMap<>();
-            Path moduleDir = root.resolve(rel).normalize();
-            row.put("dir", moduleDir.toString());
-            try {
-                var p = JkBuildParser.parseLocal(moduleDir.resolve("jk.toml")).project();
-                row.put("coord", p.group() + ":" + p.name());
-            } catch (Exception ignored) {
-                // path-only member
-            }
+            row.put("dir", member.dir());
+            if (member.coord() != null) row.put("coord", member.coord());
             out.add(row);
         }
         return out;

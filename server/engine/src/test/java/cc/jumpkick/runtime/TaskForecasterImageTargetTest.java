@@ -78,7 +78,10 @@ class TaskForecasterImageTargetTest {
 
             // Baseline: clean under PACKAGE.
             var pkg = TaskForecaster.of(graph, cas, ac, cache, false, WorkspaceTarget.PACKAGE, Set.of());
-            assertThat(pkg.stream().filter(m -> m.dir().equals(app)).findFirst().orElseThrow()
+            assertThat(pkg.stream()
+                            .filter(m -> m.dir().equals(app))
+                            .findFirst()
+                            .orElseThrow()
                             .dirty())
                     .isFalse();
 
@@ -86,12 +89,14 @@ class TaskForecasterImageTargetTest {
             var img = TaskForecaster.of(graph, cas, ac, cache, false, WorkspaceTarget.IMAGE, Set.of(app));
             var m = img.stream().filter(x -> x.dir().equals(app)).findFirst().orElseThrow();
             assertThat(m.dirty()).isTrue();
-            assertThat(m.steps())
-                    .anyMatch(s -> "write-image".equals(s.name()) && !s.cached());
+            assertThat(m.steps()).anyMatch(s -> "write-image".equals(s.name()) && !s.cached());
 
             // IMAGE but NOT in the terminal set (unselected prereq): stays clean.
             var pre = TaskForecaster.of(graph, cas, ac, cache, false, WorkspaceTarget.IMAGE, Set.of());
-            assertThat(pre.stream().filter(x -> x.dir().equals(app)).findFirst().orElseThrow()
+            assertThat(pre.stream()
+                            .filter(x -> x.dir().equals(app))
+                            .findFirst()
+                            .orElseThrow()
                             .dirty())
                     .isFalse();
             return null;
@@ -107,15 +112,13 @@ class TaskForecasterImageTargetTest {
         var units = graph.topoOrder();
         Path cache = root.resolve("cache");
 
-        WorkspaceRequest base =
-                new WorkspaceRequest(root, rootBuild, cache, null, 0, null, false, false, 0, null, true, true);
+        WorkspaceRequest base = new WorkspaceRequest(root, cache, null, 0, null, false, false, 0, null, true, true);
 
         // PACKAGE: no terminal dirs.
         assertThat(WorkspaceExecute.terminalTargetDirs(units, base)).isEmpty();
 
         // IMAGE, selected: the module.
-        WorkspaceRequest image =
-                base.withSpec(WorkspaceSpec.image(Set.of(app), null, null, null, null, null));
+        WorkspaceRequest image = base.withSpec(WorkspaceSpec.image(Set.of(app), null, null, null, null, null));
         assertThat(WorkspaceExecute.terminalTargetDirs(units, image)).containsExactly(app);
 
         // IMAGE, empty selection: whole graph.
@@ -123,11 +126,10 @@ class TaskForecasterImageTargetTest {
         assertThat(WorkspaceExecute.terminalTargetDirs(units, imageAll)).containsExactly(app);
 
         // NATIVE needs a resolvable Graal home; without one the module is not a terminal.
-        WorkspaceRequest nat =
-                base.withSpec(WorkspaceSpec.nativeImage(Set.of(app), Map.of(), null, List.of()));
+        WorkspaceRequest nat = base.withSpec(WorkspaceSpec.nativeImage(Set.of(app), Map.of(), null, List.of()));
         assertThat(WorkspaceExecute.terminalTargetDirs(units, nat)).isEmpty();
-        WorkspaceRequest natWithHome =
-                base.withSpec(WorkspaceSpec.nativeImage(Set.of(app), Map.of(app, root.resolve("graal")), null, List.of()));
+        WorkspaceRequest natWithHome = base.withSpec(
+                WorkspaceSpec.nativeImage(Set.of(app), Map.of(app, root.resolve("graal")), null, List.of()));
         assertThat(WorkspaceExecute.terminalTargetDirs(units, natWithHome)).containsExactly(app);
     }
 }

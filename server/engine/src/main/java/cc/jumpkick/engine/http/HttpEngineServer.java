@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.EngineTransport;
+import cc.jumpkick.engine.JsonOut;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -109,6 +110,11 @@ public final class HttpEngineServer implements AutoCloseable {
     /** Engine hook: bump the combined-connection high-water mark on every SSE admission. */
     private volatile Runnable onSseAdmitted = () -> {};
 
+    /** Engine hook: the cache maintenance gate for MCP {@code jk_disk clean|nuke}. */
+    public void setCacheGate(java.util.concurrent.locks.ReentrantReadWriteLock cacheGate) {
+        if (mcp != null && cacheGate != null) mcp.cacheGate(cacheGate);
+    }
+
     public void setOnSseAdmitted(Runnable onSseAdmitted) {
         this.onSseAdmitted = onSseAdmitted != null ? onSseAdmitted : () -> {};
     }
@@ -164,20 +170,26 @@ public final class HttpEngineServer implements AutoCloseable {
         this.engineVersion = version;
         this.progressTokens = new ProgressTokenRegistry();
         // null when [mcp] enabled=false — dispatch 404s every /mcp path before reaching it.
+        // MCP journal reads are redacted at the supplier — every consumer (history view=full,
+        // diagnostics, project cards, run-wait summaries) sees the same defense-in-depth as REST.
         this.mcp = config.mcp().enabled()
                 ? new McpHandler(
                         status,
                         jobs,
                         this::projectMap,
-                        () -> journal.rawRecords(200),
+                        () -> HttpHistoryApi.redactRecords(journal.rawRecords(200)),
                         version,
                         progressTokens,
                         () -> this.liveRuns.get(),
                         this::yieldingAdmission,
-                        jid -> journal.rawFinishedRecordByRequestId(jid).orElse(null))
+                        jid -> journal.rawFinishedRecordByRequestId(jid)
+                                .map(r -> HttpHistoryApi.redactRecordJson(r, new java.util.HashMap<>()))
+                                .orElse(null))
                 : null;
         // jk_disk / jk_doctor / jk://disk read the same memoized walk as GET /api/cache.
         if (this.mcp != null) this.mcp.cacheSnapshot(cache);
+        // jk_details serves a budgeted tail of the journal-owned details.jsonl transcript.
+        if (this.mcp != null) this.mcp.detailsFile(journal::detailsFile);
         this.historyApi = new HttpHistoryApi(journal, () -> this.liveRuns.get());
         this.projectApi = new HttpProjectApi(journal);
         this.readApi = new HttpReadApi(config, webRoot, logFile, status, jobs, metrics, cache, this::url);
@@ -492,13 +504,12 @@ public final class HttpEngineServer implements AutoCloseable {
                             .put("events", "/api/events")
                             .put(
                                     "mcpEvents",
-                                    "GET /mcp (Accept: text/event-stream); optional ?requestId=N or "
-                                            + "?progressToken=T")
+                                    "GET /mcp (Accept: text/event-stream); optional ?jid=N or " + "?progressToken=T")
                             .put(
                                     "instructions",
                                     "JSON-RPC 2.0 POST. Methods: initialize, tools/list, tools/call, ping. "
                                             + "Bearer token required. Live progress: GET /mcp with "
-                                            + "Accept: text/event-stream (optional ?requestId= or "
+                                            + "Accept: text/event-stream (optional ?jid= or "
                                             + "?progressToken=) or GET /api/events (dashboard SSE).")
                             .toString());
             return;
@@ -521,7 +532,7 @@ public final class HttpEngineServer implements AutoCloseable {
     /**
      * MCP progress SSE: same hub as {@code /api/events}, framed as Streamable-HTTP {@code message}
      * events with {@code notifications/jk/event} JSON-RPC bodies. Optional query filters: {@code
-     * requestId} (engine job id) or {@code progressToken} (bound from tools/call {@code
+     * jid} (engine job id) or {@code progressToken} (bound from tools/call {@code
      * _meta.progressToken}).
      */
     private void handleMcpEvents(HttpExchange exchange) throws IOException {
@@ -529,12 +540,11 @@ public final class HttpEngineServer implements AutoCloseable {
         exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
         if (filter != null) {
-            exchange.getResponseHeaders().set("X-Jk-Request-Id", Long.toString(filter));
+            exchange.getResponseHeaders().set("X-Jk-Jid", Long.toString(filter));
         }
         exchange.sendResponseHeaders(200, 0);
         var out = exchange.getResponseBody();
-        String hello =
-                filter == null ? ": mcp-events connected\n\n" : ": mcp-events connected requestId=" + filter + "\n\n";
+        String hello = filter == null ? ": mcp-events connected\n\n" : ": mcp-events connected jid=" + filter + "\n\n";
         try (HttpEvents.Subscription subscription = events.subscribe(HttpEvents.FrameStyle.MCP, filter)) {
             out.write(hello.getBytes(StandardCharsets.UTF_8));
             out.flush();
@@ -551,12 +561,12 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * Resolve optional SSE filter from query string. {@code requestId} wins over {@code
+     * Resolve optional SSE filter from query string. {@code jid} wins over {@code
      * progressToken}. An unknown progress token filters to a never-matching id (no wrong-job
      * leakage); open SSE after tools/call returns, or use {@code requestId} from the tool result.
      */
     Long resolveMcpEventFilter(String query) {
-        String rid = queryParamLenient(query, "requestId");
+        String rid = queryParamLenient(query, "jid");
         if (rid != null && !rid.isBlank()) {
             try {
                 return Long.parseLong(rid.trim());
@@ -595,7 +605,7 @@ public final class HttpEngineServer implements AutoCloseable {
         return accept.toLowerCase(java.util.Locale.ROOT).contains("text/event-stream");
     }
 
-    /** Project metadata for MCP {@code jk_project} (same parse as GET /api/project). */
+    /** Project metadata fallback for MCP {@code jk_project} — one card, one parse path. */
     private java.util.Map<String, Object> projectMap(String dir) {
         java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
         Path root;
@@ -605,16 +615,11 @@ public final class HttpEngineServer implements AutoCloseable {
             m.put("dir", dir);
             return m;
         }
-        m.put("dir", root.toString());
-        try {
-            var project = cc.jumpkick.config.JkBuildParser.parse(root.resolve("jk.toml"))
-                    .project();
-            m.put("coord", project.group() + ":" + project.name());
-            if (project.description() != null) m.put("description", project.description());
-            m.put("version", project.version());
-        } catch (Exception ignored) {
-            // missing/unparseable jk.toml
-        }
+        cc.jumpkick.runtime.ProjectCard card = cc.jumpkick.runtime.ProjectCard.of(root);
+        m.put("dir", card.dir());
+        if (card.coord() != null) m.put("coord", card.coord());
+        if (card.description() != null) m.put("description", card.description());
+        if (card.version() != null) m.put("version", card.version());
         return m;
     }
 

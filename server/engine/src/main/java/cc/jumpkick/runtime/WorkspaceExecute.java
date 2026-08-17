@@ -27,6 +27,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.UnaryOperator;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NullMarked;
 
 /**
@@ -108,11 +110,19 @@ public final class WorkspaceExecute {
      * {@code HeapPlan}/{@code PluginSlots} state sized for just itself.
      */
     public static WorkspaceResult buildWorkspace(WorkspaceRequest req, WorkspaceBuildListener listener) {
+        cc.jumpkick.model.JkBuild entryBuild;
+        try {
+            entryBuild = JkBuildParser.parse(req.entryDir().resolve("jk.toml"));
+        } catch (Exception e) {
+            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(String.valueOf(e.getMessage())));
+            listener.onWorkspaceFinish(r);
+            return r;
+        }
         // Re-lock when the workspace lock is stale so unsatisfiable deps fail here instead of
         // a false "all up to date" from per-module forecasts. Soft I/O failures don't block.
         if (req.freshenLock()) {
             Path rootLock = cc.jumpkick.lock.LockPaths.lockFile(req.entryDir());
-            boolean lockStale = WorkspaceLock.workspaceLockStale(req.entryDir(), req.entryBuild(), rootLock);
+            boolean lockStale = WorkspaceLock.workspaceLockStale(req.entryDir(), entryBuild, rootLock);
             if (lockStale) {
                 // Countdown during lock: price lock + a coarse remaining-build prior so the TUI
                 // does not pure count-up for the whole re-lock window. Remaining-work semantics —
@@ -141,7 +151,7 @@ public final class WorkspaceExecute {
         listener.onPreflight("graph", 0, 0, "Resolving module graph…");
         BuildGraph.Result graph;
         try {
-            graph = BuildGraph.resolve(req.entryDir(), req.entryBuild());
+            graph = BuildGraph.resolve(req.entryDir(), entryBuild);
         } catch (IOException e) {
             WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(String.valueOf(e.getMessage())));
             listener.onWorkspaceFinish(r);
@@ -169,6 +179,19 @@ public final class WorkspaceExecute {
         graph = applySelectionCone(graph, req);
         units = graph.topoOrder();
         if (units.isEmpty()) {
+            // A NON-EMPTY selection that matches nothing is an error, not a clean no-op —
+            // success(0) here silently "built" a mistyped -m selection (JK-2101).
+            WorkspaceSpec spec = req.spec();
+            if (spec != null && spec.hasSelection()) {
+                String sel = spec.selectedModules().stream()
+                        .map(Path::toString)
+                        .sorted()
+                        .collect(Collectors.joining(", "));
+                WorkspaceResult r = new WorkspaceResult(
+                        false, 2, List.of(), List.of("selection matched no workspace module: " + sel));
+                listener.onWorkspaceFinish(r);
+                return r;
+            }
             WorkspaceResult r = new WorkspaceResult(true, 0, List.of(), List.of());
             listener.onWorkspaceFinish(r);
             return r;
@@ -199,15 +222,16 @@ public final class WorkspaceExecute {
             dirty = req.dirtyHint();
             listener.onPreflight(
                     "checking", 1, 1, dirty.isEmpty() ? "Nothing dirty" : dirty.size() + " module(s) dirty");
+        } else if (req.testOnly()) {
+            // Workspace {@code jk test} with no client dirty hint: run every module in the
+            // (already cone-filtered) graph — not a cache-forecast subset.
+            listener.onPreflight("checking", 0, 0, "Testing all selected modules…");
+            dirty = Set.copyOf(moduleDirs);
+            listener.onPreflight("checking", 1, 1, dirty.size() + " module(s)");
         } else {
             listener.onPreflight("checking", 0, 0, "Checking cache…");
             preflight = BuildForecasting.forecastWithFingerprints(
-                    graph,
-                    req.cache(),
-                    req.skipTests(),
-                    req.entryDir(),
-                    req.target(),
-                    terminalTargetDirs(units, req));
+                    graph, req.cache(), req.skipTests(), req.entryDir(), req.target(), terminalTargetDirs(units, req));
             dirty = preflight.dirty();
             listener.onPreflight(
                     "checking", 1, 1, dirty.isEmpty() ? "All modules up to date" : dirty.size() + " module(s) dirty");
@@ -575,6 +599,14 @@ public final class WorkspaceExecute {
         boolean selected = !spec.hasSelection()
                 || spec.selectedModules().stream()
                         .anyMatch(p -> BuildGraph.canonicalPath(p).equals(BuildGraph.canonicalPath(dir)));
+        // One request-knob decoration for every terminal branch — the PACKAGE branch applies the
+        // same set via inputsFor below. Divergence here was exactly the drift JK-2078 names:
+        // jk native --variant/profile/workers silently ignored the knobs (JK-2102).
+        UnaryOperator<BuildPlanner.Inputs> decorate = in -> in.withWorkerCount(req.workers() > 0 ? req.workers() : 1)
+                .withProfileName(req.profile())
+                .withProjectModules(moduleDirs)
+                .withVariant(req.variant(), req.clientEnv())
+                .withEphemeralActions(req.ephemeralActions());
         if (target == WorkspaceTarget.NATIVE) {
             Path graal = GraalHomes.lookup(dir, spec.graalByDir());
             boolean allowNative = selected && graal != null;
@@ -588,7 +620,8 @@ public final class WorkspaceExecute {
                     spec.nativeExtraArgs(),
                     req.skipTests(),
                     req.verbose(),
-                    allowNative);
+                    allowNative,
+                    decorate);
         }
         if (target == WorkspaceTarget.IMAGE && selected) {
             return ImagePlans.imageBuildPlan(
@@ -601,10 +634,13 @@ public final class WorkspaceExecute {
                     spec.imageRegistry(),
                     spec.imageTag(),
                     spec.imageTarball(),
-                    spec.imageDocker());
+                    spec.imageDocker(),
+                    decorate);
         }
-        if (target == WorkspaceTarget.COMPILE) {
-            return CompilePlans.compileBuildPlan(dir, req.cache(), req.profile(), req.verbose());
+        if (target == WorkspaceTarget.COMPILE && selected) {
+            // Unselected cone prereqs fall through to PACKAGE below: the selected module's
+            // compile classpath consumes sibling JARS, so prereqs must package, not just compile.
+            return CompilePlans.compileBuildPlan(dir, req.cache(), req.profile(), req.verbose(), decorate);
         }
         boolean testOnly = target.testOnly() || req.testOnly();
         BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
@@ -622,6 +658,29 @@ public final class WorkspaceExecute {
         BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, forceRebuild);
         if (!testOnly) BuildPlanner.appendDeclaredTails(b, inputs);
         return b.build();
+    }
+
+    /**
+     * Image-terminal outcome from the plan's structured keys ({@code null} for non-image plans) —
+     * the same fields the single-plan path reads for {@code planFinishImage}, so the workspace
+     * {@code jk image} chip can show the identical Pushed/Wrote/Loaded tail (JK-2100).
+     */
+    private static ModuleOutcome.Image imageOutcomeOf(BuildPlan plan) {
+        var cfg = plan.get(ImagePlans.CONFIG).orElse(null);
+        Path tarball = plan.get(ImagePlans.TARBALL_PATH).orElse(null);
+        String ref = plan.get(ImagePlans.IMAGE_REF).orElse(null);
+        if (cfg == null && tarball == null && ref == null) return null;
+        var project = plan.get(BuildPlanner.PROJECT).orElse(null);
+        boolean daemonMode = tarball == null
+                && (cfg == null || cfg.registry() == null || cfg.registry().isBlank());
+        String daemonExe =
+                !daemonMode ? null : cfg != null && cfg.dockerExecutable() != null ? cfg.dockerExecutable() : "docker";
+        return new ModuleOutcome.Image(
+                ref,
+                tarball != null ? tarball.toString() : null,
+                project != null ? project.project().name() : null,
+                project != null ? project.project().version() : null,
+                daemonExe);
     }
 
     /**learn run-tests rates from actual TestSummary counts when present. */
@@ -655,6 +714,8 @@ public final class WorkspaceExecute {
             boolean didWork = !r.success() || cancelled || BuildService.moduleDidWork(r);
             ModuleOutcome o = new ModuleOutcome(
                     module.coord(), module.dir(), r.success() && !cancelled, exit, ms, didWork, cancelled);
+            ModuleOutcome.Image img = imageOutcomeOf(module.plan());
+            if (img != null) o = o.withImage(img);
             listener.onModuleFinish(o);
             return o;
         } catch (RuntimeException e) {
@@ -665,7 +726,6 @@ public final class WorkspaceExecute {
             return o;
         }
     }
-
 
     /** Apply the subset of {@code workspaceLinks} whose sources live under {@code moduleDir} (best-effort). */
     public static void linkModuleArtifacts(Path moduleDir, Map<Path, Path> workspaceLinks) {

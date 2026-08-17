@@ -2,7 +2,7 @@
 package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.JkBuildParseException;
-import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.model.PluginConfig;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -37,7 +37,7 @@ public final class PluginTableRegistry {
     /** Load a plugin resource relative to its manifest ({@code <id>/<relPath>}). */
     public static String resourceText(PluginDescriptor manifest, String relPath) {
         String resource = manifest.id() + "/" + relPath;
-        try (InputStream in = PluginTableRegistry.class.getResourceAsStream(resource)) {
+        try (InputStream in = openBuiltIn(resource)) {
             if (in == null) {
                 throw new cc.jumpkick.config.JkBuildParseException(
                         "plugin " + manifest.id() + " names a missing resource: " + relPath);
@@ -251,12 +251,31 @@ public final class PluginTableRegistry {
         return sb.toString();
     }
 
+    /**
+     * Built-in manifests sit on the engine classpath (JK-2149), not next to this class in {@code
+     * :core}. Try the class, then the context loader, then the defining loader with the full path.
+     */
+    private static InputStream openBuiltIn(String resource) {
+        InputStream in = PluginTableRegistry.class.getResourceAsStream(resource);
+        if (in != null) return in;
+        String full = "cc/jumpkick/plugin/manifest/" + resource;
+        ClassLoader ctx = Thread.currentThread().getContextClassLoader();
+        if (ctx != null) {
+            in = ctx.getResourceAsStream(full);
+            if (in != null) return in;
+        }
+        ClassLoader def = PluginTableRegistry.class.getClassLoader();
+        return def == null ? null : def.getResourceAsStream(full);
+    }
+
     private static Map<String, PluginDescriptor> loadBuiltIns() {
         Map<String, PluginDescriptor> byTable = new LinkedHashMap<>();
+        int missing = 0;
         for (String resource : BUILT_IN) {
-            try (InputStream in = PluginTableRegistry.class.getResourceAsStream(resource)) {
+            try (InputStream in = openBuiltIn(resource)) {
                 if (in == null) {
-                    throw new IllegalStateException("missing built-in plugin manifest resource: " + resource);
+                    missing++;
+                    continue;
                 }
                 PluginDescriptor manifest =
                         PluginDescriptors.parse(new String(in.readAllBytes(), StandardCharsets.UTF_8), resource);
@@ -269,6 +288,13 @@ public final class PluginTableRegistry {
                 throw new UncheckedIOException("failed to load built-in plugin manifest " + resource, e);
             }
         }
-        return byTable;
+        // Native CLI / :core main have no baked manifests (JK-2149). Engine and workers do.
+        if (missing == 0) return byTable;
+        if (missing == BUILT_IN.size()) return Map.of();
+        throw new IllegalStateException("missing built-in plugin manifest resources ("
+                + missing
+                + "/"
+                + BUILT_IN.size()
+                + "; first-party manifests live on the engine and worker classpaths, not :core)");
     }
 }

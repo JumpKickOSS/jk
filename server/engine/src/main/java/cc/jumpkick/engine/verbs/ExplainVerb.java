@@ -4,14 +4,12 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoReads;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.plugin.protocol.Jsonl;
-import cc.jumpkick.runtime.BuildService;
 import cc.jumpkick.runtime.ExplainPlan;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -46,7 +44,8 @@ public final class ExplainVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 String entryDirStr = Jsonl.str(requestLine, "dir");
@@ -78,14 +77,32 @@ public final class ExplainVerb implements HostedVerb {
                         .withWorkingDir(entryDir)
                         .withCacheDir(cache);
                 JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve("jk.toml"));
-                ExplainPlan plan = SessionContext.where(
-                        session, () -> BuildService.explain(entryDir, entryBuild, cache, skipTests));
+                String etaJdksDirStr = Jsonl.str(requestLine, "jdksDir");
+                int workers = Jsonl.intValue(requestLine, "workers", 0); // 0 = auto (bare jk build)
+                int maxModuleConcurrency = Jsonl.intValue(requestLine, "maxModuleConcurrency", 0);
+                if (maxModuleConcurrency <= 0 && Jsonl.bool(requestLine, "serial", false)) {
+                    maxModuleConcurrency = 1;
+                }
+                cc.jumpkick.runtime.ExplainReport report = cc.jumpkick.runtime.ExplainReport.compute(
+                        entryDir,
+                        entryBuild,
+                        cache,
+                        session,
+                        new cc.jumpkick.runtime.ExplainReport.Knobs(
+                                etaJdksDirStr != null ? Path.of(etaJdksDirStr) : null,
+                                Jsonl.str(requestLine, "profile"),
+                                workers,
+                                maxModuleConcurrency,
+                                Jsonl.bool(requestLine, "parallelTests", false),
+                                skipTests,
+                                verbose));
+                ExplainPlan plan = report.plan();
                 if (plan.hasErrors()) {
                     for (String err : plan.errors()) {
                         host.sendQuiet(writer, host.requestFailedLine(entryDir.toString(), err));
                     }
                     host.sendQuiet(writer, ProtoReads.explainDone(1, 0));
-                    return;
+                    return null;
                 }
                 for (cc.jumpkick.runtime.TaskForecast.Module m : plan.modules()) {
                     String dir = m.dir().toString();
@@ -112,49 +129,7 @@ public final class ExplainVerb implements HostedVerb {
                 // Schedule-aware ETA; 0 = fully cached. Same estimateEtaMillis as jk build countdown.
                 // fullMillis prices the same graph as a full rebuild (--redo) so explain can report
                 // rebuild effort as remaining/full (weight/time, not a count average).
-                String etaJdksDirStr = Jsonl.str(requestLine, "jdksDir");
-                int workers = Jsonl.intValue(requestLine, "workers", 0); // 0 = auto (bare jk build)
-                int maxModuleConcurrency = Jsonl.intValue(requestLine, "maxModuleConcurrency", 0);
-                if (maxModuleConcurrency <= 0 && Jsonl.bool(requestLine, "serial", false)) {
-                    maxModuleConcurrency = 1;
-                }
-                boolean parallelTests = Jsonl.bool(requestLine, "parallelTests", false);
-                int maxConc = maxModuleConcurrency;
-                Path etaJdksDir = etaJdksDirStr != null ? Path.of(etaJdksDirStr) : null;
-                String etaProfile = Jsonl.str(requestLine, "profile");
-                long etaMillis = SessionContext.where(
-                        session,
-                        () -> BuildService.estimateEtaMillis(
-                                plan,
-                                entryDir,
-                                cache,
-                                workers,
-                                etaJdksDir,
-                                etaProfile,
-                                skipTests,
-                                verbose,
-                                parallelTests,
-                                maxConc));
-                long fullMillis;
-                if (rebuild || force) {
-                    fullMillis = etaMillis; // already priced as full rebuild
-                } else {
-                    Session fullSession = session.withConfig(config.withRebuild(Optional.of(true)));
-                    fullMillis = SessionContext.where(
-                            fullSession,
-                            () -> BuildService.estimateEtaMillis(
-                                    plan,
-                                    entryDir,
-                                    cache,
-                                    workers,
-                                    etaJdksDir,
-                                    etaProfile,
-                                    skipTests,
-                                    verbose,
-                                    parallelTests,
-                                    maxConc));
-                }
-                host.sendQuiet(writer, ProtoEvents.eta(etaMillis, fullMillis));
+                host.sendQuiet(writer, ProtoEvents.eta(report.etaMillis(), report.fullMillis()));
                 host.sendQuiet(
                         writer,
                         ProtoReads.explainDone(
@@ -167,5 +142,6 @@ public final class ExplainVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
+        return null;
     }
 }

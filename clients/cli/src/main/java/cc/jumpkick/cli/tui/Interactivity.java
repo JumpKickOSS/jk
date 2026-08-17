@@ -97,6 +97,13 @@ public final class Interactivity {
             noEcho.setLocalFlag(Attributes.LocalFlag.ECHO, false);
             probe.setAttributes(noEcho);
             Wizard.drainInput(probe.reader(), 40L);
+            // Timed drain leaves JLine's NonBlocking I/O thread blocked on stdin; wake it so a
+            // later System.exit (JLine closer) does not hang on macOS when no key listener runs.
+            Wizard.unblockBlockingInput(probe);
+            // Keep ECHO off for later consumers; unblock flips ICANON/VMIN only.
+            Attributes stillQuiet = new Attributes(probe.getAttributes());
+            stillQuiet.setLocalFlag(Attributes.LocalFlag.ECHO, false);
+            probe.setAttributes(stillQuiet);
             sharedTerminal = probe;
             installRestoreHook(probe, saved);
             return true;
@@ -147,16 +154,68 @@ public final class Interactivity {
      */
     private static void installRestoreHook(Terminal terminal, Attributes saved) {
         Runtime.getRuntime()
-                .addShutdownHook(new Thread(
-                        () -> {
-                            synchronized (Interactivity.class) {
-                                if (sharedTerminal == terminal) {
-                                    terminal.setAttributes(saved);
-                                    terminal.flush();
-                                }
-                            }
-                        },
-                        "jk-terminal-restore"));
+                .addShutdownHook(new Thread(() -> restoreOwnedAttributes(terminal, saved), "jk-terminal-restore"));
+    }
+
+    /**
+     * Best-effort attribute restore for the still-owned shared terminal. JLine registers its own
+     * closer on a system terminal; that hook and this one run concurrently at JVM exit, and
+     * {@link Terminal#setAttributes} / {@link Terminal#flush} throw {@link IllegalStateException}
+     * once the terminal is closed. Swallowing keeps a successful command from dumping
+     * {@code Exception in thread "jk-terminal-restore"} — JLine's closer already restored the
+     * original attributes.
+     */
+    static void restoreOwnedAttributes(Terminal terminal, Attributes saved) {
+        synchronized (Interactivity.class) {
+            if (sharedTerminal != terminal) return;
+            try {
+                // Same macOS hang as restoreCooked: wake NonBlocking stdin before cooked restore.
+                Wizard.restoreCooked(terminal, saved);
+            } catch (RuntimeException ignored) {
+                // JLine closer already shut the terminal, or the tty vanished under us.
+            }
+        }
+    }
+
+    /**
+     * Best-effort pre-exit cleanup for the shared system terminal. Unblocks any stuck JLine stdin
+     * reader, restores cooked attributes, and closes the terminal so JLine's shutdown closer is
+     * deregistered (that closer otherwise hangs on macOS until Enter when a NonBlocking {@code
+     * read} is still pending). Safe when no terminal was opened. FD 0 close at process exit is
+     * intentional — nothing after {@code System.exit} needs stdin.
+     */
+    public static void prepareProcessExit() {
+        Terminal t;
+        synchronized (Interactivity.class) {
+            t = sharedTerminal;
+            sharedTerminal = null;
+        }
+        if (t == null) {
+            // No shared slot, but a NonBlocking read may still be pending on FD 0 from an earlier
+            // take that was never returned — pulse O_NONBLOCK so System.exit's JLine closer can
+            // finish if that terminal is still registered with ShutdownHooks.
+            StdinWake.pulseNonBlocking();
+            return;
+        }
+        try {
+            // restoreCooked wakes the NonBlocking I/O thread (VMIN=0 + O_NONBLOCK) before ICANON.
+            Wizard.restoreCooked(t, t.getAttributes());
+            // One more pulse after cooked restore in case a late timed-read re-blocked.
+            StdinWake.pulseNonBlocking();
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            t.close(); // removes JLine ShutdownHooks closer once the reader is no longer in read()
+        } catch (Exception ignored) {
+            // shutting down — ignore; StdinWake already ran inside restoreCooked
+            try {
+                StdinWake.pulseNonBlocking();
+            } catch (RuntimeException ignored2) {
+                // ignore
+            }
+        }
     }
 
     /**

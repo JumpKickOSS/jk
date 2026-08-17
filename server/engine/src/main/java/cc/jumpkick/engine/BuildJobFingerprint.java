@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -58,14 +58,6 @@ public final class BuildJobFingerprint {
                 Jsonl.str(requestLine, "modules"),
                 Jsonl.str(requestLine, "variant"),
                 Jsonl.str(requestLine, "assemblyOverride"));
-    }
-
-    /** Fingerprint for HTTP/MCP workspace jobs (absolute dir + kind + test-only shape). */
-    public static String ofHttp(String kind, Path dir, boolean skipTests, boolean testOnly) {
-        if (BuildHistoryKinds.isBuildLike(kind)) {
-            return ofProject(kind, dir != null ? dir.toString() : "");
-        }
-        return of(kind, dir != null ? dir.toString() : "", false, false, skipTests, testOnly, null, null, null);
     }
 
     /**

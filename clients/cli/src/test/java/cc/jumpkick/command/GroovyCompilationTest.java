@@ -116,7 +116,7 @@ class GroovyCompilationTest {
                 tempDir.toString());
         // Opt into Java too — a mixed module declares both java and groovy.
         Path toml = tempDir.resolve("jk.toml");
-        Files.writeString(toml, Files.readString(toml).replace("", "java = 25\n"));
+        Files.writeString(toml, Files.readString(toml) + "java = 25\n");
         // Groovy→Java: the Groovy class calls a Java helper (joint sweep).
         Path javaSrc = tempDir.resolve("src/main/java/com/example/Util.java");
         Files.createDirectories(javaSrc.getParent());

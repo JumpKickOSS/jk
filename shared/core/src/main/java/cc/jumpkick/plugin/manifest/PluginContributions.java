@@ -3,7 +3,7 @@ package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.model.PluginConfig;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;

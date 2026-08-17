@@ -89,7 +89,7 @@ prepare, schedule, progress). The only intentional differences:
 | `jk test` | `TEST` (`testOnly`) | Same as build |
 | `jk native` | `NATIVE` | Native-eligible modules + dependency closure |
 | `jk image` | `IMAGE` | The one image module + closure |
-| `jk compile` | `COMPILE` | Compile-only plans |
+| `jk compile` | `COMPILE` | Selection compiles-only; cone prereqs package (standalone single projects keep the single plan) |
 | `jk run` (build half) | `PACKAGE` | Then client exec-handoff |
 
 Dependency closure uses **all scopes** when tests run (dirty test harnesses rebuild) and

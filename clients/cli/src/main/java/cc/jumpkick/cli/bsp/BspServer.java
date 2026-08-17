@@ -529,7 +529,7 @@ public final class BspServer {
         // Structural parse — the old needle/brace-slicing degraded silently on
         // pretty-printed payloads ("suites": [...]) and non-object data values.
         try {
-            Object parsed = cc.jumpkick.plugin.protocol.MiniJson.parse(requestJson);
+            Object parsed = cc.jumpkick.jsonl.MiniJson.parse(requestJson);
             if (!(parsed instanceof Map<?, ?> outer)) {
                 return cc.jumpkick.config.TestSelection.DEFAULT;
             }
@@ -609,7 +609,7 @@ public final class BspServer {
         // Structural — the old regex collected any "uri" anywhere — including ones
         // nested inside data payloads.
         try {
-            Object parsed = cc.jumpkick.plugin.protocol.MiniJson.parse(json);
+            Object parsed = cc.jumpkick.jsonl.MiniJson.parse(json);
             if (!(parsed instanceof Map<?, ?> outer)) return List.of();
             Map<?, ?> params = outer.get("params") instanceof Map<?, ?> inner ? inner : outer;
             Object targets = params.get("targets");

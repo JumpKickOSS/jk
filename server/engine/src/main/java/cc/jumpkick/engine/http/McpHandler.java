@@ -9,8 +9,11 @@ import cc.jumpkick.engine.http.mcp.McpManifest;
 import cc.jumpkick.engine.http.mcp.McpProjectCards;
 import cc.jumpkick.engine.http.mcp.McpReads;
 import cc.jumpkick.engine.http.mcp.McpSession;
-import cc.jumpkick.plugin.protocol.MiniJson;
+import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.util.PathUtil;
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -18,6 +21,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import java.util.function.LongFunction;
 import java.util.function.Supplier;
@@ -66,6 +71,19 @@ public final class McpHandler {
      */
     private volatile Supplier<CacheSnapshot> cacheSnapshot;
 
+    /**
+     * Journal locator → {@code details.jsonl} path for {@code jk_details}. Optional wiring;
+     * unset resolves empty and the tool reports transcripts unavailable.
+     */
+    private volatile Function<String, Optional<Path>> detailsFileResolver = locator -> Optional.empty();
+
+    /**
+     * The engine's plan-vs-maintenance lock ({@code cacheGate}); {@code jk_disk clean|nuke} must
+     * hold its write side (plus {@code .prune.lock}) before deleting. {@code null} only in tests
+     * with no engine — the file lock still applies there.
+     */
+    private volatile ReentrantReadWriteLock cacheGate;
+
     /** Age after which a live job with no progress is marked stalled. */
     static final long STALL_MS = 60_000;
 
@@ -73,14 +91,15 @@ public final class McpHandler {
     static final int MAX_WAIT_S = 3600;
 
     static final String INSTRUCTIONS = "Bind first: jk_bind {dir}. "
-            + "Failing build / where is it failing → jk_diagnostics. "
-            + "Why dep X → jk_why. Slow / next-build ETA → jk_explain. "
+            + "Failing build / where is it failing → jk_diagnostics; raw transcript → jk_details. "
+            + "Why dep X → jk_why. Module/dep DAG → jk_graph. Slow / next-build ETA → jk_explain. "
             + "Frozen / kill → jk_status then jk_job cancel. "
-            + "Run / test / lock → jk_run (wait defaults true). "
+            + "Run / test / lock / publish (dry-run) / install / import → jk_run (wait defaults true). "
+            + "Scaffold → jk_new (preview first). Export maven/gradle/bom → jk_export. "
             + "Add/remove deps → jk_deps. Git/path as workspace member → jk_workspace. "
             + "java= → jk_manifest. Heap / nerd-font / CI → jk_config. "
             + "Disk → jk_disk. Host health → jk_doctor. "
-            + "History is summaries only. Live progress: GET /mcp?requestId=N "
+            + "History is summaries only. Live progress: GET /mcp?jid=N "
             + "(Accept: text/event-stream).";
 
     public McpHandler(
@@ -152,8 +171,17 @@ public final class McpHandler {
     }
 
     /** Wire the shared cache/store snapshot supplier (memoized in the live engine). Optional. */
+    public void detailsFile(Function<String, Optional<Path>> resolver) {
+        if (resolver != null) this.detailsFileResolver = resolver;
+    }
+
     public void cacheSnapshot(Supplier<CacheSnapshot> cacheSnapshot) {
         this.cacheSnapshot = cacheSnapshot;
+    }
+
+    /** Wire the engine's cache maintenance gate so destructive disk tools take the real locks. */
+    public void cacheGate(ReentrantReadWriteLock cacheGate) {
+        this.cacheGate = cacheGate;
     }
 
     /**
@@ -270,8 +298,8 @@ public final class McpHandler {
                 objectSchema(Map.of())));
         tools.add(tool(
                 "jk_build",
-                "Start a workspace/module build for dir (async). Returns requestId; stream progress "
-                        + "via GET /mcp?requestId=N (or ?progressToken=T with _meta.progressToken) "
+                "Start a workspace/module build for dir (async). Returns jid; stream progress "
+                        + "via GET /mcp?jid=N (or ?progressToken=T with _meta.progressToken) "
                         + "Accept: text/event-stream. Same as POST /api/build.",
                 objectSchema(Map.of(
                         "dir",
@@ -283,7 +311,7 @@ public final class McpHandler {
         tools.add(tool(
                 "jk_test",
                 "Start a true test-only job for dir (async; compile + tests, no package — same as "
-                        + "jk test). Journal kind test. Progress: GET /mcp?requestId=N. Returns requestId.",
+                        + "jk test). Journal kind test. Progress: GET /mcp?jid=N. Returns jid.",
                 objectSchema(Map.of(
                         "dir",
                         Map.of(
@@ -293,7 +321,7 @@ public final class McpHandler {
                                 "Project/workspace root (jk.toml): absolute, ~/…, or home-relative")))));
         tools.add(tool(
                 "jk_lock",
-                "Resolve dependencies and write jk-lock.toml for dir (async). Progress: GET /mcp?requestId=N.",
+                "Resolve dependencies and write jk-lock.toml for dir (async). Progress: GET /mcp?jid=N.",
                 objectSchema(Map.of(
                         "dir",
                         Map.of(
@@ -303,16 +331,16 @@ public final class McpHandler {
                                 "Project/workspace root (jk.toml): absolute, ~/…, or home-relative")))));
         tools.add(tool(
                 "jk_cancel",
-                "Cancel an in-flight job by jid (or requestId alias). Grace then force workers.",
+                "Cancel an in-flight job by jid, or every live job for a dir. Grace then force workers.",
                 objectSchema(Map.of(
                         "jid",
                         Map.of(
                                 "type",
                                 "integer",
                                 "description",
-                                "Job id from jk_build / jk_test / jk_lock / job-start (preferred)"),
-                        "requestId",
-                        Map.of("type", "integer", "description", "Alias for jid (kept for one release cycle)")))));
+                                "Job id from jk_build / jk_test / jk_lock / job-start"),
+                        "dir",
+                        Map.of("type", "string", "description", "Cancel every live job for this checkout")))));
         tools.add(tool(
                 "jk_bind",
                 "Set the default workspace for later tools (omit dir after this). Returns a project card.",
@@ -375,7 +403,7 @@ public final class McpHandler {
                         Map.of("type", "integer", "description", "Skip this many unique rows")))));
         tools.add(tool(
                 "jk_run",
-                "Start a job (build|test|lock|update|format|native|image|assemble|compile|clean). "
+                "Start a job (build|test|lock|update|format|native|image|assemble|compile|clean|publish|install|import; publish is always a dry-run — credentialed uploads are CLI-only). "
                         + "wait defaults true. dir optional after jk_bind. Aliases: jk_build/jk_test/jk_lock.",
                 objectSchema(Map.of(
                         "kind",
@@ -383,7 +411,7 @@ public final class McpHandler {
                                 "type",
                                 "string",
                                 "description",
-                                "build|test|lock|update|format|native|image|assemble|compile|clean"),
+                                "build|test|lock|update|format|native|image|assemble|compile|clean|publish|install|import"),
                         "dir",
                         Map.of("type", "string", "description", "Project root (default: bound dir)"),
                         "modules",
@@ -496,6 +524,101 @@ public final class McpHandler {
                         Map.of("type", "integer", "description", "uninstall jk-owned majors below this"),
                         "confirm",
                         Map.of("type", "boolean")))));
+        tools.add(tool(
+                "jk_new",
+                "Scaffold a project (same scaffolder as jk new / the dashboard). "
+                        + "action=templates lists catalog + local template short names; "
+                        + "preview=true returns the exact file set without writing.",
+                objectSchema(Map.of(
+                        "action",
+                        Map.of("type", "string", "description", "create (default) | templates | preview"),
+                        "name",
+                        Map.of("type", "string", "description", "Project name (letters, digits, . _ -)"),
+                        "parentDir",
+                        Map.of("type", "string", "description", "Parent directory (default: parent of bound dir)"),
+                        "group",
+                        Map.of("type", "string", "description", "Group id (default com.example)"),
+                        "lang",
+                        Map.of("type", "string", "description", "java (default) | kotlin | groovy"),
+                        "layout",
+                        Map.of("type", "string", "description", "simple (default) | traditional"),
+                        "template",
+                        Map.of("type", "string", "description", "Giter8 short name or path (see action=templates)"),
+                        "preview",
+                        Map.of("type", "boolean", "description", "List files without writing")))));
+        tools.add(tool(
+                "jk_publish",
+                "Validate the publish bundle — ALWAYS a dry-run (same planner as jk publish; "
+                        + "credentials never enter the engine). Real uploads: jk publish CLI.",
+                objectSchema(Map.of(
+                        "dir",
+                        Map.of("type", "string", "description", "Project root (default: bound dir)"),
+                        "wait",
+                        Map.of("type", "boolean", "description", "Block until finish (default true)")))));
+        tools.add(tool(
+                "jk_install",
+                "Install the project app into the local Maven repo (jk install), or "
+                        + "action=list for installed jkx tools. Tool installs stay CLI-side (trust gates).",
+                objectSchema(Map.of(
+                        "action",
+                        Map.of("type", "string", "description", "install (default) | list"),
+                        "dir",
+                        Map.of("type", "string", "description", "Project root (default: bound dir)"),
+                        "wait",
+                        Map.of("type", "boolean", "description", "Block until finish (default true)")))));
+        tools.add(tool(
+                "jk_import",
+                "Import a Maven/Gradle build into jk.toml (auto-detects build.gradle.kts / "
+                        + "build.gradle / pom.xml). Same importer as jk import.",
+                objectSchema(Map.of(
+                        "dir",
+                        Map.of("type", "string", "description", "Checkout with the foreign build (default: bound dir)"),
+                        "wait",
+                        Map.of("type", "boolean", "description", "Block until finish (default true)")))));
+        tools.add(tool(
+                "jk_export",
+                "Export the full model as maven | gradle | bom files (same generators as jk export). "
+                        + "Returns written paths; read them yourself. IDE files: jk ide (CLI).",
+                objectSchema(
+                        Map.of(
+                                "format",
+                                Map.of("type", "string", "description", "maven | gradle | bom"),
+                                "dir",
+                                Map.of("type", "string", "description", "Project root (default: bound dir)")),
+                        List.of("format"))));
+        tools.add(tool(
+                "jk_details",
+                "Budgeted tail of a run's details.jsonl transcript (default: last-fail, error + "
+                        + "task-finish, 80 events). jk_diagnostics is the first-line failure tool.",
+                objectSchema(Map.of(
+                        "run",
+                        Map.of("type", "string", "description", "last-fail (default) or history id"),
+                        "tail",
+                        Map.of("type", "integer", "description", "Max events (default 80, max 400)"),
+                        "types",
+                        Map.of(
+                                "type",
+                                "array",
+                                "items",
+                                Map.of("type", "string"),
+                                "description",
+                                "Event types (default error, task-finish)"),
+                        "next",
+                        Map.of("type", "integer", "description", "Cursor from a prior truncated call"),
+                        "dir",
+                        Map.of("type", "string", "description", "Checkout filter (default: bound dir)")))));
+        tools.add(tool(
+                "jk_graph",
+                "Compact module/dep graph (same model as the dashboard graph). Default: workspace "
+                        + "members + declared deps. transitive=true is opt-in and budget-capped. "
+                        + "For one artifact's origin prefer jk_why.",
+                objectSchema(Map.of(
+                        "dir",
+                        Map.of("type", "string", "description", "Project root (default: bound dir)"),
+                        "scopes",
+                        Map.of("type", "string", "description", "CSV scopes (default export,main,runtime)"),
+                        "transitive",
+                        Map.of("type", "boolean", "description", "Expand lockfile closure (default false)")))));
         tools.add(tool("jk_doctor", "Host health snapshot (config + disk).", objectSchema(Map.of())));
         return Map.of("tools", tools);
     }
@@ -513,11 +636,11 @@ public final class McpHandler {
                 yield ok(st, statusSummary(st));
             }
             case "jk_build" ->
-                ok(jobPayload(HttpJobSpec.of("build", resolveDir(args, true)), progressToken), "build accepted");
+                ok(jobPayload(JobSpec.of("build", resolveDir(args, true)), progressToken), "build accepted");
             case "jk_test" ->
-                ok(jobPayload(HttpJobSpec.of("test", resolveDir(args, true)), progressToken), "test accepted");
+                ok(jobPayload(JobSpec.of("test", resolveDir(args, true)), progressToken), "test accepted");
             case "jk_lock" ->
-                ok(jobPayload(HttpJobSpec.of("lock", resolveDir(args, true)), progressToken), "lock accepted");
+                ok(jobPayload(JobSpec.of("lock", resolveDir(args, true)), progressToken), "lock accepted");
             case "jk_cancel" -> cancelResult(args);
             case "jk_bind" -> bindResult(args);
             case "jk_project" -> projectResult(args);
@@ -534,9 +657,119 @@ public final class McpHandler {
             case "jk_config" -> configResult(args);
             case "jk_disk" -> diskResult(args);
             case "jk_jdk" -> jdkResult(args);
+            case "jk_new" -> newResult(args);
+            case "jk_publish" -> runResult(withKind(args, "publish"), progressToken);
+            case "jk_install" ->
+                "list".equalsIgnoreCase(string(args.get("action")))
+                        ? ok(McpEnvelope.of("tools", cc.jumpkick.engine.http.mcp.McpMachine.tools()), "installed tools")
+                        : runResult(withKind(args, "install"), progressToken);
+            case "jk_import" -> runResult(withKind(args, "import"), progressToken);
+            case "jk_export" ->
+                ok(
+                        McpEnvelope.of(
+                                "export",
+                                cc.jumpkick.engine.http.mcp.McpReads.export(
+                                        resolveDir(args, true), string(args.get("format")))),
+                        "export");
+            case "jk_details" -> detailsResult(args);
+            case "jk_graph" ->
+                ok(
+                        McpEnvelope.of(
+                                "graph",
+                                cc.jumpkick.engine.http.mcp.McpReads.graph(
+                                        resolveDir(args, true),
+                                        string(args.get("scopes")),
+                                        Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("transitive"))))),
+                        "graph");
             case "jk_doctor" -> ok(McpEnvelope.of("doctor", McpMachine.doctor(cacheSnapshot)), "doctor");
             default -> throw new McpError(-32602, "unknown tool: " + name);
         };
+    }
+
+    /** Copy of {@code args} with the job kind pinned — the thin verb aliases ride runResult. */
+    private static Map<String, Object> withKind(Map<String, Object> args, String kind) {
+        Map<String, Object> out = new LinkedHashMap<>(args);
+        out.put("kind", kind);
+        return out;
+    }
+
+    private Map<String, Object> newResult(Map<String, Object> args) {
+        String action = string(args.get("action"));
+        if ("templates".equalsIgnoreCase(action)) {
+            return ok(
+                    McpEnvelope.of("templates", cc.jumpkick.engine.http.mcp.McpScaffold.templates()),
+                    "template catalog");
+        }
+        var req = new cc.jumpkick.engine.runtime.NewProjectOps.Request(
+                string(args.get("name")),
+                newParentDir(args),
+                string(args.get("group")),
+                string(args.get("lang")),
+                string(args.get("layout")),
+                string(args.get("template")),
+                !Boolean.FALSE.equals(McpHistoryViews.parseBool(args.get("executable"))),
+                string(args.get("framework")));
+        boolean preview = "preview".equalsIgnoreCase(action)
+                || Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("preview")));
+        try {
+            if (preview) {
+                return ok(
+                        McpEnvelope.of(
+                                "new-preview",
+                                cc.jumpkick.engine.http.mcp.McpScaffold.preview(req),
+                                false,
+                                null,
+                                "Nothing was written — call again without preview to create"),
+                        "new preview");
+            }
+            Map<String, Object> created = cc.jumpkick.engine.http.mcp.McpScaffold.create(req);
+            return ok(
+                    McpEnvelope.of("created", created, false, null, "jk_bind {dir: " + created.get("path") + "} next"),
+                    "created " + created.get("path"));
+        } catch (IllegalArgumentException e) {
+            throw new McpError(-32602, e.getMessage());
+        } catch (IllegalStateException e) {
+            throw new McpError(-32000, e.getMessage());
+        } catch (IOException e) {
+            throw new McpError(-32000, String.valueOf(e.getMessage()));
+        }
+    }
+
+    /** Default scaffold parent: explicit arg, else the bound dir's parent. */
+    private String newParentDir(Map<String, Object> args) {
+        String parent = string(args.get("parentDir"));
+        if (parent != null && !parent.isBlank()) return parent;
+        String bound = session.dir();
+        if (bound != null && !bound.isBlank()) {
+            Path p = Path.of(bound).getParent();
+            if (p != null) return p.toString();
+        }
+        throw new McpError(-32602, "requires arguments.parentDir (or jk_bind first — its parent is the default)");
+    }
+
+    private Map<String, Object> detailsResult(Map<String, Object> args) {
+        Map<String, Object> rec =
+                McpDiagnostics.findRun(historyRaw.get(), string(args.get("run")), resolveDir(args, false));
+        Map<String, Object> fields = cc.jumpkick.engine.http.mcp.McpDetails.tail(
+                rec,
+                detailsFileResolver,
+                stringList(args.get("types")),
+                intArg(
+                        args.get("tail"),
+                        cc.jumpkick.engine.http.mcp.McpDetails.DEFAULT_TAIL,
+                        1,
+                        cc.jumpkick.engine.http.mcp.McpDetails.MAX_TAIL),
+                intArg(args.get("next"), 0, 0, Integer.MAX_VALUE));
+        boolean truncated = Boolean.TRUE.equals(fields.remove("truncatedTail"));
+        Object next = fields.remove("nextCursor");
+        return ok(
+                McpEnvelope.of(
+                        "details",
+                        fields,
+                        truncated,
+                        next,
+                        "jk_diagnostics is the first-line failure tool; this is the raw transcript"),
+                "details " + fields.getOrDefault("run", ""));
     }
 
     private Map<String, Object> ok(Map<String, Object> envelope, String summary) {
@@ -649,21 +882,20 @@ public final class McpHandler {
         one.put("success", sum.get("success"));
         one.put("exitCode", sum.get("exitCode"));
         one.put("failedModules", sum.get("failedModules"));
-        if (sum.get("requestId") != null) one.put("requestId", sum.get("requestId"));
+        if (sum.get("jid") != null) one.put("jid", sum.get("jid"));
         return one;
     }
 
-    private Map<String, Object> jobPayload(HttpJobSpec spec, String progressToken) {
+    private Map<String, Object> jobPayload(JobSpec spec, String progressToken) {
         try {
             long requestId = jobs.trigger(spec);
             if (progressToken != null) progressTokens.bind(progressToken, requestId);
             Map<String, Object> fields = new LinkedHashMap<>();
             fields.put("kind", spec.kind());
-            fields.put("requestId", requestId);
             fields.put("jid", requestId);
             fields.put("dir", spec.dir());
             fields.put("events", "/api/events");
-            fields.put("mcpEvents", "GET /mcp?requestId=" + requestId);
+            fields.put("mcpEvents", "GET /mcp?jid=" + requestId);
             if (!spec.modules().isEmpty()) fields.put("modules", spec.modules());
             if (spec.hasTestFilter()) {
                 fields.put("include_tags", spec.includeTags());
@@ -679,7 +911,7 @@ public final class McpHandler {
                     fields,
                     false,
                     null,
-                    "Stream GET /mcp?requestId=" + requestId + " or jk_cancel jid=" + requestId);
+                    "Stream GET /mcp?jid=" + requestId + " or jk_cancel jid=" + requestId);
         } catch (IllegalStateException e) {
             throw new McpError(-32000, e.getMessage());
         } catch (IllegalArgumentException e) {
@@ -688,15 +920,22 @@ public final class McpHandler {
     }
 
     private Map<String, Object> cancelResult(Map<String, Object> args) {
-        Object raw = args.get("jid");
-        if (!(raw instanceof Number)) raw = args.get("requestId");
-        if (!(raw instanceof Number n)) {
-            throw new McpError(-32602, "jk_cancel requires arguments.jid (or requestId)");
+        if (!(args.get("jid") instanceof Number n)) {
+            String dir = string(args.get("dir"));
+            if (dir != null && !dir.isBlank()) {
+                int count = jobs.cancelDir(dir);
+                Map<String, Object> fields = new LinkedHashMap<>();
+                fields.put("dir", dir);
+                fields.put("cancelled", count);
+                return ok(
+                        McpEnvelope.of("cancel", fields),
+                        count > 0 ? "cancelled " + count + " job(s)" : "no running jobs for dir");
+            }
+            throw new McpError(-32602, "jk_cancel requires arguments.jid (or dir)");
         }
         long id = n.longValue();
         boolean ok = jobs.cancel(id);
         Map<String, Object> fields = new LinkedHashMap<>();
-        fields.put("requestId", id);
         fields.put("jid", id);
         fields.put("cancelled", ok);
         if (!ok) fields.put("note", "unknown or already finished jid");
@@ -827,7 +1066,7 @@ public final class McpHandler {
         }
         String kind = string(args.get("kind"));
         if (kind == null || kind.isBlank()) kind = "build";
-        HttpJobSpec spec = new HttpJobSpec(
+        JobSpec spec = new JobSpec(
                 kind,
                 resolveDir(args, true),
                 stringList(args.get("modules")),
@@ -842,7 +1081,6 @@ public final class McpHandler {
         Map<String, Object> fields = new LinkedHashMap<>();
         fields.put("kind", spec.kind());
         fields.put("jid", jid);
-        fields.put("requestId", jid);
         fields.put("dir", spec.dir());
         if (!spec.modules().isEmpty()) fields.put("modules", spec.modules());
         if (spec.hasTestFilter()) {
@@ -851,7 +1089,7 @@ public final class McpHandler {
             fields.put("suites", spec.suites());
         }
         if (!wait) {
-            fields.put("mcpEvents", "GET /mcp?requestId=" + jid);
+            fields.put("mcpEvents", "GET /mcp?jid=" + jid);
             return ok(
                     McpEnvelope.of("job-accepted", fields, false, null, "jk_job action=wait jid=" + jid), "jid " + jid);
         }
@@ -881,7 +1119,7 @@ public final class McpHandler {
         return ok(McpEnvelope.of("job", fields), done ? "finished " + jid : "jid " + jid);
     }
 
-    private long jobPayloadId(HttpJobSpec spec, String progressToken) {
+    private long jobPayloadId(JobSpec spec, String progressToken) {
         Map<String, Object> accepted = jobPayload(spec, progressToken);
         Object jid = accepted.get("jid");
         if (jid instanceof Number n) return n.longValue();
@@ -1070,7 +1308,7 @@ public final class McpHandler {
             return ok(McpEnvelope.of("disk", McpMachine.diskUsage(cacheSnapshot)), "disk usage");
         }
         boolean confirm = Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("confirm")));
-        Map<String, Object> m = McpMachine.diskAction(action, confirm);
+        Map<String, Object> m = McpMachine.diskAction(action, confirm, cacheGate);
         if (confirm && cacheSnapshot instanceof CacheSnapshot.Memoizing memo) {
             memo.invalidate(); // clean/nuke moved bytes; the next read must re-walk
         }

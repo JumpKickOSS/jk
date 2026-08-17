@@ -3,7 +3,8 @@ package cc.jumpkick.engine.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.plugin.protocol.MiniJson;
+import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.jsonl.MiniJson;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -33,23 +34,17 @@ class McpDiskTest {
 
     private final EngineHttpJobs jobs = new EngineHttpJobs() {
         @Override
-        public long triggerBuild(String dir) {
-            return 1L;
-        }
-
-        @Override
-        public long triggerTest(String dir) {
-            return 1L;
-        }
-
-        @Override
-        public long triggerLock(String dir) {
+        public long trigger(JobSpec spec) {
             return 1L;
         }
 
         @Override
         public boolean cancel(long requestId) {
             return false;
+        }
+
+        public int cancelDir(String dir) {
+            return 0;
         }
     };
 

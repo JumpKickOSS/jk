@@ -362,7 +362,20 @@ public final class EngineRequests {
 
     /** Everything an engine-hosted {@code jk compile} needs — mirrors {@code CompileCommand}'s local fields. */
     public record CompileRequest(
-            Path entryDir, Path cache, String profile, boolean offline, boolean force, boolean verbose) {}
+            Path entryDir,
+            Path cache,
+            String profile,
+            boolean offline,
+            boolean force,
+            boolean verbose,
+            List<String> modules) {
+
+        /** Back-compat: no module selection (entry dir / whole graph). */
+        public CompileRequest(
+                Path entryDir, Path cache, String profile, boolean offline, boolean force, boolean verbose) {
+            this(entryDir, cache, profile, offline, force, verbose, List.of());
+        }
+    }
 
     /** Everything an engine-hosted {@code jk train} needs. */
     public record TrainRequest(
@@ -412,6 +425,72 @@ public final class EngineRequests {
             boolean verbose) {}
 
     /** Everything an engine-hosted {@code jk install <git-url>} fetch needs — pre-split/expanded client-side. */
+    /** Engine-hosted {@code jk new}. {@code relaxParent} skips the dashboard HOME/tmp allowlist. */
+    public record NewProjectRequest(
+            String name,
+            String parentDir,
+            String group,
+            String lang,
+            String layout,
+            String template,
+            boolean executable,
+            String framework,
+            String jdk,
+            int javaRelease,
+            boolean assembly,
+            boolean nativeImage,
+            boolean plugin,
+            String kotlinModule,
+            List<String> deps,
+            boolean sample,
+            boolean standalone,
+            Map<String, String> templateParams,
+            boolean relaxParent,
+            String targetDir) {
+        public NewProjectRequest(
+                String name,
+                String parentDir,
+                String group,
+                String lang,
+                String layout,
+                String template,
+                boolean executable,
+                String framework,
+                String jdk,
+                int javaRelease,
+                boolean assembly,
+                boolean nativeImage,
+                boolean plugin,
+                String kotlinModule,
+                List<String> deps,
+                boolean sample,
+                boolean standalone,
+                Map<String, String> templateParams,
+                boolean relaxParent) {
+            this(
+                    name,
+                    parentDir,
+                    group,
+                    lang,
+                    layout,
+                    template,
+                    executable,
+                    framework,
+                    jdk,
+                    javaRelease,
+                    assembly,
+                    nativeImage,
+                    plugin,
+                    kotlinModule,
+                    deps,
+                    sample,
+                    standalone,
+                    templateParams,
+                    relaxParent,
+                    null);
+        }
+    }
+
     public record GitFetchRequest(
             String url, String canonicalUrl, String ref, Path cache, boolean refresh, boolean requireJkToml) {
         public GitFetchRequest(String url, String canonicalUrl, String ref, Path cache, boolean refresh) {

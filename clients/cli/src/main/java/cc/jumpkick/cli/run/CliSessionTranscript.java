@@ -2,7 +2,7 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.builds.ProjectBuilds;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanResult;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;

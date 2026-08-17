@@ -12,7 +12,7 @@ import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.engine.verbs.VerbHost;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -60,19 +60,19 @@ public final class EngineVerbBridge implements VerbHost {
     }
 
     @Override
-    public WorkspaceBuildListener workspaceListener(BufferedWriter writer, String dir) {
-        return listeners.wire(writer, dir);
+    public WorkspaceBuildListener workspaceListener(@Nullable BufferedWriter writer, String dir) {
+        return listeners.workspace(writer, dir);
     }
 
     @Override
-    public BuildPlanListener planListener(String dir, BufferedWriter writer, BuildPlan plan) {
-        return listeners.wirePlan(dir, writer, plan);
+    public BuildPlanListener planListener(String dir, @Nullable BufferedWriter writer, BuildPlan plan) {
+        return listeners.plan(dir, writer, plan);
     }
 
     @Override
     public BuildPlanListener planListener(
-            String dir, BufferedWriter writer, Function<BuildPlanResult, String> finishEncoder) {
-        return listeners.wirePlan(dir, writer, finishEncoder);
+            String dir, @Nullable BufferedWriter writer, Function<BuildPlanResult, String> finishEncoder) {
+        return listeners.plan(dir, writer, finishEncoder);
     }
 
     @Override
@@ -84,11 +84,6 @@ public final class EngineVerbBridge implements VerbHost {
     @Override
     public boolean effectiveCancelled(long rid, boolean tokenCancelled) {
         return jobs.effectiveCancelled(rid, tokenCancelled);
-    }
-
-    @Override
-    public void accOutcome(long rid, boolean success, int exit) {
-        journalWriter.accOutcome(rid, success, exit);
     }
 
     @Override
@@ -112,12 +107,14 @@ public final class EngineVerbBridge implements VerbHost {
     }
 
     @Override
-    public void send(BufferedWriter writer, String line) throws IOException {
+    public void send(@Nullable BufferedWriter writer, String line) throws IOException {
+        if (writer == null) return; // detached job — the sinks and hooks carry the facts
         EngineServer.send(writer, line);
     }
 
     @Override
-    public void sendQuiet(BufferedWriter writer, String line) {
+    public void sendQuiet(@Nullable BufferedWriter writer, String line) {
+        if (writer == null) return;
         EngineServer.sendQuiet(writer, line);
     }
 

@@ -159,8 +159,8 @@ public class IdeEngineClient {
         int[] modules = {0};
         int[] failed = {0};
         if (info.workspaceRoot()) {
-            WorkspaceRequest req = new WorkspaceRequest(
-                    projectDir, null, cacheDir, jdksDir, 1, null, false, false, 0, null, true, true);
+            WorkspaceRequest req =
+                    new WorkspaceRequest(projectDir, cacheDir, jdksDir, 1, null, false, false, 0, null, true, true);
             WorkspaceBuildListener wbl = new WorkspaceBuildListener() {
                 @Override
                 public void onPlan(List<ModulePlan> plan) {

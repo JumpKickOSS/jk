@@ -166,7 +166,7 @@ public final class SecretRedactor {
     private volatile SecretRedactor escapedJsonView;
 
     /**
-     * JSON string-body escaping — MUST stay in lock-step with {@code Jsonl.quote} (shared/plugin-sdk;
+     * JSON string-body escaping — MUST stay in lock-step with {@code Jsonl.quote} (shared/jsonl;
      * that module is not visible from here, hence the copy): quote and backslash get a backslash,
      * {@code \n \r \t} use the short forms, other control chars become lowercase backslash-u00xx.
      */

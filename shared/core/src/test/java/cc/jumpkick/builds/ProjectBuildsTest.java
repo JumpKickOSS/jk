@@ -69,7 +69,7 @@ class ProjectBuildsTest {
 
     /**
      * Two engines are routinely alive at once (a draining predecessor plus its successor,
-     * or {@code --job} children). Every allocation must be unique across processes, not just
+     * successor). Every allocation must be unique across processes, not just
      * threads, or two runs collide on one {@code runs/<n>} directory and one is destroyed.
      */
     @Test

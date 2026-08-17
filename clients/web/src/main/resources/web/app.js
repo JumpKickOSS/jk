@@ -406,11 +406,13 @@ const FailReport = {
         <div v-if="rep.assertj.desc" class="fail-line">
           <span class="fail-dim">"</span><span class="fail-desc">{{ rep.assertj.desc }}</span><span class="fail-dim">"</span>
         </div>
+        <!-- JK-2111: expected/actual bodies stay uncolored, matching the CLI (d8dd7760) —
+             values are data, not verdicts; the FAILED chip already carries the verdict. -->
         <div class="fail-line">
-          <span class="fail-mid">&nbsp;Expected:&nbsp;</span><span class="fail-ok">{{ rep.assertj.expected }}</span>
+          <span class="fail-mid">&nbsp;Expected:&nbsp;</span><span>{{ rep.assertj.expected }}</span>
         </div>
         <div class="fail-line">
-          <span class="fail-mid">&nbsp;&nbsp;But Was:&nbsp;</span><span class="fail-err">{{ rep.assertj.actual }}</span>
+          <span class="fail-mid">&nbsp;&nbsp;But Was:&nbsp;</span><span>{{ rep.assertj.actual }}</span>
         </div>
       </template>
       <template v-else-if="rep.message">
@@ -449,11 +451,24 @@ const FailReport = {
 
 const SOURCE_CACHE = new Map();
 const MAX_SNIPPET_FILE = 1 << 20;
+const MAX_SOURCE_CACHE = 64;
+
+// An editor save makes the memoized lines stale: the next failure's displayRows would compare
+// the fresh embedded snippet against old lines, mismatch, and silently degrade to the 1-row
+// snippet until a full page reload (JK-2114). code.js announces saves; evict here.
+if (typeof window !== 'undefined') {
+  window.addEventListener('jk:file-saved', (e) => {
+    const d = (e && e.detail) || {};
+    SOURCE_CACHE.delete(String(d.project) + '\0' + String(d.path));
+  });
+}
 
 /** Workspace file as lines, memoized per {@code projectId + path}. Failed reads are not cached. */
 function loadProjectFileLines(projectId, path) {
   const key = String(projectId) + '\0' + String(path);
   if (SOURCE_CACHE.has(key)) return SOURCE_CACHE.get(key);
+  // Clear-on-overflow bound: one entry per distinct failing file ever viewed.
+  if (SOURCE_CACHE.size >= MAX_SOURCE_CACHE) SOURCE_CACHE.clear();
   const p = get(
     '/api/project/file?project=' + encodeURIComponent(projectId) + '&path=' + encodeURIComponent(path),
   )

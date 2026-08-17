@@ -1,16 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cache.Cas;
-import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.cache.Linking;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
-import cc.jumpkick.compile.ClasspathResolver;
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.LockfileReader;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -19,10 +12,12 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.util.JkDirs;
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
@@ -109,58 +104,41 @@ public final class JshellCommand implements CliCommand {
 
         int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cacheDir, global, "JShell");
         if (lockCode != 0) return lockCode;
-        if (!Files.isRegularFile(proj.lockFile())) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("JShell", "no jk-lock.toml — lock refresh did not produce one");
+
+        cc.jumpkick.engine.protocol.ExecPlan plan;
+        try {
+            plan = cc.jumpkick.cli.engine.EngineClient.execPlan(
+                    cc.jumpkick.engine.EnginePaths.current(), dir, cacheDir, "jshell", null, null);
+        } catch (IOException e) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("JShell", e.getMessage());
+            return Exit.SOFTWARE;
+        }
+        if (plan.error() != null && !plan.error().isBlank()) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("JShell", plan.error());
             return Exit.CONFIG;
         }
-
-        JkBuild build = JkBuildParser.parse(proj.buildFile());
-        if (build.isWorkspaceRoot()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "JShell", "run from a module directory (workspace roots have no single compile classpath)");
-            return Exit.CONFIG;
+        if (plan.display() != null && !plan.display().isBlank()) {
+            cc.jumpkick.cli.tui.CommandWedge.printChipErr(cc.jumpkick.cli.tui.Glyphs.BANG, "JShell", plan.display());
         }
-
-        BuildLayout layout = BuildLayout.of(dir, build);
-        Path classes = layout.classesDir();
-        if (!Files.isDirectory(classes)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "JShell", "no classes at " + classes + " — run `jk build --skip-tests` or drop `--no-build`");
-            return Exit.CONFIG;
-        }
-
-        Lockfile lock = LockfileReader.read(proj.lockFile());
-        Cas cas = JkStores.cas(cacheDir.resolve("cas"));
-        List<Path> depCp = new ClasspathResolver(cas).classpathFor(lock, ClasspathResolver.COMPILE_MAIN);
-
-        List<String> cp = new ArrayList<>();
-        cp.add(classes.toString());
-        int missing = 0;
-        for (Path p : depCp) {
-            if (p == null) continue;
-            if (Files.exists(p)) {
-                cp.add(p.toString());
-            } else {
-                missing++;
-            }
-        }
-        if (missing > 0) {
-            cc.jumpkick.cli.tui.CommandWedge.printChipErr(
-                    cc.jumpkick.cli.tui.Glyphs.BANG,
-                    "JShell",
-                    missing + " lock classpath entry(ies) missing on disk — run `jk sync`");
-        }
+        List<String> cp =
+                plan.libPaths() == null || plan.libPaths().isEmpty() ? List.of(plan.mainJar()) : plan.libPaths();
         String classpath = String.join(File.pathSeparator, cp);
 
         List<String> cmd = new ArrayList<>();
         cmd.add(jshellBin.toString());
         cmd.add("--class-path");
         cmd.add(classpath);
+        // Local execution: remote demux hits IOContext.charset() UOE on JDK 25 startup.
+        List<String> extra = in.positionals();
+        if (!hasExecutionSpec(extra)) {
+            cmd.add("--execution");
+            cmd.add("local");
+        }
         // Forward extra positionals to jshell.
-        cmd.addAll(in.positionals());
+        cmd.addAll(extra);
 
         if (global.verbose) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            cc.jumpkick.cli.tui.CommandWedge.printWorking(
                     "JShell",
                     cmd.stream().map(s -> s.contains(" ") ? "\"" + s + "\"" : s).collect(Collectors.joining(" ")));
         }
@@ -171,6 +149,15 @@ public final class JshellCommand implements CliCommand {
         Process p = pb.start();
         int exit = p.waitFor();
         return exit;
+    }
+
+    /** True when the user already chose an execution engine ({@code --execution …}). */
+    static boolean hasExecutionSpec(List<String> args) {
+        for (String a : args) {
+            if (a == null) continue;
+            if (a.equals("--execution") || a.startsWith("--execution=")) return true;
+        }
+        return false;
     }
 
     /** Prefer {@code $JAVA_HOME/bin/jshell}, then {@code java.home}/bin/jshell. */
@@ -198,5 +185,39 @@ public final class JshellCommand implements CliCommand {
             if (c != null && Files.isRegularFile(c)) return c;
         }
         return null;
+    }
+
+    /**
+     * jshell only accepts directories and {@code .jar}/{@code .zip} files on {@code --class-path}.
+     * JumpKick's CAS store paths are extensionless content hashes — hard-link (or copy) them to a
+     * {@code .jar}-suffixed alias under a temp dir so jshell accepts them.
+     */
+    static List<Path> withJarExtension(List<Path> jars) throws IOException {
+        List<Path> out = new ArrayList<>(jars.size());
+        Path dir = null;
+        int i = 0;
+        for (Path jar : jars) {
+            if (jar == null) continue;
+            if (Files.isDirectory(jar) || hasJarOrZipExtension(jar)) {
+                out.add(jar);
+                continue;
+            }
+            if (dir == null) {
+                dir = Files.createTempDirectory("jk-jshell-cp-");
+                dir.toFile().deleteOnExit();
+            }
+            // Keep the CAS hex in the name so aliases stay unique across modules.
+            Path alias = dir.resolve(i + "-" + jar.getFileName() + ".jar");
+            Linking.linkOrCopy(jar, alias);
+            alias.toFile().deleteOnExit();
+            out.add(alias);
+            i++;
+        }
+        return out;
+    }
+
+    private static boolean hasJarOrZipExtension(Path path) {
+        String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
+        return name.endsWith(".jar") || name.endsWith(".zip");
     }
 }

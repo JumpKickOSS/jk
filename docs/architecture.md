@@ -27,7 +27,8 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
 
 - **Client** — presentation, shell hooks, JDK install prompts, anything that owns your terminal
   (`jk run` exec, `jk mvn`/`gradle` interactive). Sub-50 ms cold start; no engine code in the
-  native image.
+  native image. The CLI does not interpret plugin schemas — `*.jk-plugin.toml` and scaffold
+  templates are baked into the engine jar only, never `:core` / the native client.
 - **Engine** — dependency resolution, task graph / BuildPlan execution, CAS, toolchains,
   compiler/test workers, hosted verbs (`build`, `test`, `lock`, `publish`, …). Default heap ceiling
   **256 MiB** (or **512 MiB** when `CI=1`/`true` and unset) via
@@ -50,16 +51,21 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
   belong; without it, `JK_STORE_DIR` silently did nothing. A machine can therefore hold several
   engines: `jk engine status` lists them, `jk engine stop --all` stops all of them.
 - **Versioning** — side-by-side installs under `~/.local/share/jk/versions/<v>/`; client and engine jar
-  share a version; handshake detects skew and takes over.
+  share a version; handshake detects skew and takes over. **Newer always wins**: the lock's
+  `jk-min` is a *floor*, never a pin — a jk older than the floor refuses artifact jobs with an
+  upgrade error (`jk self update`) on every surface, and nothing ever fetches or runs an older
+  engine to satisfy a lock. The lock pins inputs (artifacts, checksums, BOMs), not the operator;
+  `generated-by` is provenance only. Same lock ⇒ same resolved graph across jk versions until
+  `jk update`; tool behavior may still change pre-1.0 (a newer jk may rebuild).
 - **Liveness** — a listening socket alone is not proof the engine is healthy (ticket-1043):
 
 | Layer | What proves health | Bound |
 |---|---|---|
 | **Probe** (`ping` / `hello` / `status`) | One request/reply | ~2s client watchdog |
 | **Stream** (build / test / sync) | Protocol lines keep flowing | `JK_STREAM_IDLE_MS` (default 60 minutes between lines; `0` disables) |
-| **Job heartbeat** (ticket-1051) | Engine emits `heartbeat` while async jobs run | `JK_ENGINE_HEARTBEAT_MS` (default **30s**; `0` disables) — resets client stream idle |
+| **Job heartbeat** (ticket-1051) | Engine emits `heartbeat` while async wire jobs run; detached (HTTP/MCP) jobs have no stream to keep alive, so only the wall-deadline watchdog runs | `JK_ENGINE_HEARTBEAT_MS` (default **30s**; `0` disables) — resets client stream idle |
 | **Job wall deadline** (ticket-1051 / JK-1067) | Cancel token + worker shutdown + interrupt runner; connection join bounded | `JK_ENGINE_JOB_DEADLINE_MS` (default **0** = off); join grace `JK_ENGINE_JOB_DEADLINE_GRACE_MS` (default **30s**, last-chance wait capped ~1s) |
-| **User cancel / EOF** (JK-1096 / JK-1252) | Cancel token + **grace→force** worker kill; join bounded by cancel grace + 500 ms. Public cancel handle is **jid** (`requestId` alias). Entry points: Ctrl-C, `jk cancel` / `jk cancel <jid>`, `POST /api/cancel`, MCP `jk_cancel`. | `JK_CANCEL_GRACE_MS` (default **500**; max 5000). **Never hangs.** |
+| **User cancel / EOF** (JK-1096 / JK-1252) | Cancel token + **grace→force** worker kill; join bounded by cancel grace + 500 ms. Public cancel handle is **jid**. Entry points: Ctrl-C, `jk cancel` / `jk cancel <jid>`, `POST /api/cancel` (`jid` or `dir`), MCP `jk_cancel`. | `JK_CANCEL_GRACE_MS` (default **500**; max 5000). **Never hangs.** |
 | **Ensure** | Handshake must succeed | Silent peer (connect works, no reply) → hard-kill once + respawn |
 | **Stop** | Process death, not only `bye` | Force-stop waits for pid exit (~1.5s) then escalates |
 
@@ -176,12 +182,12 @@ Bootstrap build: **Java 25 + Gradle** (until self-hosting CI is complete). Runti
 
 | Area | Modules | Role |
 |---|---|---|
-| `shared/` | `jk-api`, `plugin-sdk`, `core`, `client-io`, `toolchain-jdk`, `wire` | Client-safe contracts, config/lock, CLI I/O, JDK tools, wire codec |
+| `shared/` | `jsonl`, `jk-api`, `plugin-sdk`, `core`, `client-io`, `toolchain-jdk`, `wire` | JSONL codec, client-safe contracts, config/lock, CLI I/O, JDK tools, wire |
 | `server/` | `io`, `resolver`, `toolchain`, `engine` | Repo fetch, PubGrub, import/export tools, build plan; `EngineMain` + fat jar packaging (never links CLI) |
 | `clients/` | `cli`, `web` | Slim wire client (native/JVM), dashboard SPA |
 | `plugins/` | `java-compiler`, `kotlin-compiler`, `groovy-compiler`, `test-runner`, `auditor`, `publisher`, `image-builder`, `formatter`, `compat-bridge`, `spring-boot`, `quarkus`, `grails`, `android`, `protobuf`, `minified` | First-party workers / build plugins |
 
-**Layering:** `jk-api` → `core` → `{client-io, wire, …}` → server `{io, resolver, toolchain}` → `engine` → clients. Plugins depend on `plugin-sdk`, not on engine internals.
+**Layering:** `jsonl` → `{plugin-sdk, wire, cli}` ; `jk-api` → `core` → `{client-io, wire, …}` → server `{io, resolver, toolchain}` → `engine` → clients. Plugins depend on `plugin-sdk` (+ transitive `jsonl`), not on engine internals.
 
 Ship layout (`./gradlew dist`): slim native `jk` + `lib/jk-engine-<version>.jar`.
 

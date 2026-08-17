@@ -53,14 +53,14 @@ class NativeCommandEligibilityTest {
         assertThat(homes).containsOnlyKeys(app);
 
         // A lone disabled module yields nothing (jk native then fails preflight, by design).
-        assertThat(NativeCommand.graalHomesForModules(List.of(off), graal, null)).isEmpty();
+        assertThat(NativeCommand.graalHomesForModules(List.of(off), graal, null))
+                .isEmpty();
     }
 
     private Path moduleDisabledNative(String name) throws Exception {
         Path dir = module(name, true, false);
         Files.writeString(
-                dir.resolve("jk.toml"),
-                Files.readString(dir.resolve("jk.toml")) + "\n[native]\nenabled = false\n");
+                dir.resolve("jk.toml"), Files.readString(dir.resolve("jk.toml")) + "\n[native]\nenabled = false\n");
         return dir;
     }
 

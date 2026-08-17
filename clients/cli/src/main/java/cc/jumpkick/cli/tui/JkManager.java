@@ -867,7 +867,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         // Ctrl-C: hand the streams back so any buffered output flushes above the
         // region, stop animating, then settle. BuildPlan mode replaces the wiped region
         // in place with the same cancelled-job wedge as a remote `jk cancel` / web cancel
-        // ("‼ Build  job was cancelled by user took …") and returns true so GlobalCancel
+        // ("⊛ Build  job was cancelled by user took …") and returns true so GlobalCancel
         // suppresses its generic notice. Simple / non-animating modes just settle and let
         // the handler print the notice.
         restoreStreams();
@@ -1111,6 +1111,10 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             Attributes raw = new Attributes(saved);
             raw.setLocalFlag(Attributes.LocalFlag.ICANON, false);
             raw.setLocalFlag(Attributes.LocalFlag.ECHO, false);
+            // VMIN=1/VTIME=0: one byte per read (same as JLine enterRawMode). VMIN=0 would make
+            // FileInputStream.read() return EOF on idle and thrash the NonBlocking I/O thread.
+            raw.setControlChar(Attributes.ControlChar.VMIN, 1);
+            raw.setControlChar(Attributes.ControlChar.VTIME, 0);
             // ISIG remains: Ctrl-C → SIGINT → GlobalCancel. Do not call
             // {@code terminal.handle(INT, …)} — that would steal the signal from GlobalCancel
             // the same way JLine's default native SIG_DFL handlers did.

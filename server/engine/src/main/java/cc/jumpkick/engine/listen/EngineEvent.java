@@ -3,7 +3,12 @@ package cc.jumpkick.engine.listen;
 
 import org.jspecify.annotations.Nullable;
 
-/** Domain events the engine emits. Sinks encode these for CLI JSONL or dashboard SSE. */
+/**
+ * Domain events the engine emits — the one build-event vocabulary. Sinks encode these per
+ * surface: {@link WireEventSink} (CLI JSONL) and {@link SseEventSink} (dashboard/MCP SSE);
+ * production listeners compose both. Chrome ({@code status}/{@code cache}/{@code run-snapshot})
+ * is dashboard sampling, not a build event, and stays off this spine.
+ */
 public sealed interface EngineEvent {
 
     record PlanStart(
@@ -86,11 +91,27 @@ public sealed interface EngineEvent {
 
     record PlanDone(int modules) implements EngineEvent {}
 
-    record ModuleStart(String dir) implements EngineEvent {}
+    record ModuleStart(String dir, @Nullable String coord) implements EngineEvent {}
 
     record ModuleFinish(
-            String dir, String coord, boolean success, int exitCode, long millis, boolean didWork, boolean cancelled)
+            String dir,
+            String coord,
+            boolean success,
+            int exitCode,
+            long millis,
+            boolean didWork,
+            boolean cancelled,
+            cc.jumpkick.runtime.ModuleOutcome.Image image)
             implements EngineEvent {}
 
     record Eta(long remainingMs) implements EngineEvent {}
+
+    /** Total plan weight (Σ modules) — seeds the dashboard bar denominator; not a wire line. */
+    record Plan(long totalWeight, int modules) implements EngineEvent {}
+
+    /**
+     * A plan finished ({@code buildplan-finish} on SSE). The wire terminal stays
+     * {@link PlanFinishLine} — its kind-specific tails are encoded by the owning verb.
+     */
+    record PlanFinish(String dir, boolean success) implements EngineEvent {}
 }

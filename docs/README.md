@@ -25,4 +25,6 @@ Competitive notes (maintainers): [mill-comparison.md](mill-comparison.md) — ad
 
 How we write the tree (maintainers): [code-as-art.md](code-as-art.md) — size budgets, Typed Envelope, JSpecify, fluent Lombok.
 
+Engine integration surfaces (maintainer / agent brief): [engine-refactor.md](engine-refactor.md) — design review prompt for consolidating wire, HTTP/SSE, and MCP; the verdict and executed design live in [engine-refactor-implementation.md](engine-refactor-implementation.md).
+
 Contributing and build instructions: [../CONTRIBUTING.md](../CONTRIBUTING.md).

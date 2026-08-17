@@ -4,9 +4,9 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.protocol.PluginCommandReport;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -52,10 +52,13 @@ public final class PluginCommands {
 
             Path scratch = layout.moduleTargetDir().resolve("plugin").resolve("command-" + command);
             Files.createDirectories(scratch);
-            PluginBuild.SpecWriter specWriter = new PluginBuild.SpecWriter()
-                    .op("command", command, active.manifest().id())
-                    .config(active.config())
-                    .project(project, project.mainClass())
+            cc.jumpkick.plugin.protocol.SpecWriter specWriter = new cc.jumpkick.plugin.protocol.SpecWriter()
+                    .op(
+                            cc.jumpkick.plugin.protocol.PluginProtocol.OP_COMMAND,
+                            command,
+                            active.manifest().id())
+                    .configValues(active.config().values())
+                    .project(PluginBuild.facts(project, project.mainClass()))
                     .layout(layout.classesDir(), dir, scratch)
                     .artifact(PluginBuild.mainArtifactPath(layout, active))
                     .commandArgs(args);
@@ -71,13 +74,15 @@ public final class PluginCommands {
                     .entrySet()) {
                 specWriter.extra(tool.getKey(), tool.getValue());
             }
-            Path spec = specWriter.write();
+            Path spec = specWriter.writeTempSpec();
             try {
                 Path jar = PluginBuild.workerJarFor(active, cache);
                 List<String> output = new ArrayList<>();
                 String[] error = new String[1];
                 PluginClient client = new PluginClient(active.manifest().code().protocolPrefix())
-                        .on("command-out", line -> output.add(Jsonl.str(line, "line")))
+                        .on(
+                                cc.jumpkick.plugin.protocol.PluginProtocol.COMMAND_OUT,
+                                line -> output.add(Jsonl.str(line, "line")))
                         .on("error", line -> error[0] = Jsonl.str(line, "message"))
                         .onOther(line -> {
                             // labels/done — not part of the command's user-facing output

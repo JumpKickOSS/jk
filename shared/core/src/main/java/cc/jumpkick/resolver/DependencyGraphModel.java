@@ -179,14 +179,13 @@ public final class DependencyGraphModel {
             return Graph.empty(scopeNames, transitive);
         }
         JkBuild entry = JkBuildParser.parse(toml);
-        Lockfile lock = readLock(root);
-        Map<String, Lockfile.Artifact> byModule = lock == null ? Map.of() : DependencyTree.indexByModule(lock);
+        LockGraph graph = LockGraph.forLock(readLock(root));
 
         if (entry.isWorkspaceRoot()) {
             Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(root, entry);
-            return buildWorkspace(root, entry, modules, scopeList, transitive, byModule);
+            return buildWorkspace(root, entry, modules, scopeList, transitive, graph);
         }
-        return buildStandalone(root, entry, scopeList, transitive, byModule);
+        return buildStandalone(root, entry, scopeList, transitive, graph);
     }
 
     private static Lockfile readLock(Path projectDir) {
@@ -206,8 +205,8 @@ public final class DependencyGraphModel {
      * best-effort: a broken workspace root never blocks the module's own graph.
      */
     private static Graph buildStandalone(
-            Path dir, JkBuild build, List<Scope> scopes, boolean transitive, Map<String, Lockfile.Artifact> byModule) {
-        Builder b = new Builder(scopes, transitive, byModule);
+            Path dir, JkBuild build, List<Scope> scopes, boolean transitive, LockGraph graph) {
+        Builder b = new Builder(scopes, transitive, graph);
         try {
             Path wsRoot = WorkspaceLocator.findRoot(dir).orElse(null);
             if (wsRoot != null) {
@@ -232,8 +231,8 @@ public final class DependencyGraphModel {
             Map<Path, JkBuild> modulesByDir,
             List<Scope> scopes,
             boolean transitive,
-            Map<String, Lockfile.Artifact> byModule) {
-        Builder b = new Builder(scopes, transitive, byModule);
+            LockGraph graph) {
+        Builder b = new Builder(scopes, transitive, graph);
         Map<Path, String> idByDir = new LinkedHashMap<>();
 
         // The workspace root is a node too: its own [dependencies] are part of the build and were
@@ -304,7 +303,7 @@ public final class DependencyGraphModel {
     private static final class Builder {
         private final List<Scope> scopes;
         private final boolean transitive;
-        private final Map<String, Lockfile.Artifact> byModule;
+        private final LockGraph graph;
         private final Map<String, Node> nodes = new LinkedHashMap<>();
         private final List<Edge> edges = new ArrayList<>();
         private final Set<String> edgeKeys = new LinkedHashSet<>();
@@ -326,10 +325,10 @@ public final class DependencyGraphModel {
 
         private boolean truncated;
 
-        Builder(List<Scope> scopes, boolean transitive, Map<String, Lockfile.Artifact> byModule) {
+        Builder(List<Scope> scopes, boolean transitive, LockGraph graph) {
             this.scopes = scopes;
             this.transitive = transitive;
-            this.byModule = byModule;
+            this.graph = graph;
         }
 
         String moduleNode(Path dir, JkBuild build, String path) {
@@ -402,7 +401,7 @@ public final class DependencyGraphModel {
                 return id;
             }
             String version = null;
-            Lockfile.Artifact art = byModule.get(key);
+            Lockfile.Artifact art = graph.artifact(key);
             if (art != null) version = art.version();
             nodes.put(id, new Node(id, nodeLabel(key), version, null, kind));
             return id;
@@ -420,11 +419,10 @@ public final class DependencyGraphModel {
             q.add(fromKey);
             while (!q.isEmpty()) {
                 String parentKey = q.remove();
-                Lockfile.Artifact art = byModule.get(parentKey);
-                if (art == null) continue;
+                if (graph.artifact(parentKey) == null) continue;
                 String parentId = "a:" + parentKey;
-                for (String depRef : art.deps()) {
-                    String childKey = canonicalKey(DependencyTree.stripVersion(depRef));
+                for (String dep : graph.forward(parentKey)) {
+                    String childKey = canonicalKey(dep);
                     if (childKey.isEmpty()) continue;
                     boolean isNewNode = !nodes.containsKey("a:" + childKey);
                     if ((isNewNode && nodes.size() >= MAX_NODES) || edges.size() >= MAX_EDGES) {

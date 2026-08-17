@@ -1261,8 +1261,6 @@ table.stats td.err { color: var(--err); }
 .fail-dim { color: var(--dim); }
 .fail-desc { color: var(--bright); font-style: italic; }
 .fail-failed { color: var(--err); font-weight: 700; }
-.fail-ok { color: var(--ok); }
-.fail-err { color: var(--err); }
 .fail-kv { color: var(--bright); }
 .fail-path {
   color: var(--path);

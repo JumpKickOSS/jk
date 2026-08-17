@@ -25,17 +25,12 @@ public record Lockfile(
         List<PluginEntry> plugins,
         List<SdkEntry> sdk,
         List<ModuleEntry> modules,
-        JkToolchain jk,
+        /** Minimum jk able to run this lock — a floor, never an artifact pin; null on legacy locks. */
+        String jkMin,
         /** SHA-256 of every {@code jk.toml} that fed this lock; null on legacy locks. */
         String manifestsSha256,
         /** Durable auto project identity; null until minted. */
         String projectId) {
-
-    /**
-     * Pinned jk version and engine-jar sha256 (empty for -SNAPSHOT). The wrapper's contract for
-     * this checkout.
-     */
-    public record JkToolchain(String version, String sha256) {}
 
     /**
      * Resolved first-party project identity for one workspace member (or the standalone root at
@@ -77,7 +72,7 @@ public record Lockfile(
         modules = modules == null ? List.of() : List.copyOf(modules);
     }
 
-    /** Back-compat constructor without the jk toolchain pin. */
+    /** Back-compat constructor without the jk floor. */
     public Lockfile(
             int version,
             String generatedBy,
@@ -102,7 +97,7 @@ public record Lockfile(
                 null);
     }
 
-    /** Back-compat constructor with toolchain pin but no module pins. */
+    /** Back-compat constructor with the jk floor but no module pins. */
     public Lockfile(
             int version,
             String generatedBy,
@@ -112,7 +107,7 @@ public record Lockfile(
             List<Artifact> artifacts,
             List<PluginEntry> plugins,
             List<SdkEntry> sdk,
-            JkToolchain jk) {
+            String jkMin) {
         this(
                 version,
                 generatedBy,
@@ -123,12 +118,12 @@ public record Lockfile(
                 plugins,
                 sdk,
                 List.of(),
-                jk,
+                jkMin,
                 null,
                 null);
     }
 
-    /** Back-compat constructor with modules + toolchain, no manifests digest. */
+    /** Back-compat constructor with modules + the jk floor, no manifests digest. */
     public Lockfile(
             int version,
             String generatedBy,
@@ -139,12 +134,24 @@ public record Lockfile(
             List<PluginEntry> plugins,
             List<SdkEntry> sdk,
             List<ModuleEntry> modules,
-            JkToolchain jk) {
-        this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, modules, jk, null, null);
+            String jkMin) {
+        this(
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                kotlin,
+                artifacts,
+                plugins,
+                sdk,
+                modules,
+                jkMin,
+                null,
+                null);
     }
 
-    /** This lock with the jk toolchain pin set. */
-    public Lockfile withJk(JkToolchain toolchain) {
+    /** This lock with the jk floor set. */
+    public Lockfile withJkMin(String floor) {
         return new Lockfile(
                 version,
                 generatedBy,
@@ -155,7 +162,7 @@ public record Lockfile(
                 plugins,
                 sdk,
                 modules,
-                toolchain,
+                floor,
                 manifestsSha256,
                 projectId);
     }
@@ -172,7 +179,7 @@ public record Lockfile(
                 plugins,
                 sdk,
                 modules,
-                jk,
+                jkMin,
                 digest,
                 projectId);
     }
@@ -189,7 +196,7 @@ public record Lockfile(
                 plugins,
                 sdk,
                 modules,
-                jk,
+                jkMin,
                 manifestsSha256,
                 id);
     }
@@ -239,7 +246,7 @@ public record Lockfile(
                 plugins,
                 sdk,
                 modules,
-                jk,
+                jkMin,
                 manifestsSha256,
                 projectId);
     }
@@ -256,7 +263,7 @@ public record Lockfile(
                 newPlugins,
                 sdk,
                 modules,
-                jk,
+                jkMin,
                 manifestsSha256,
                 projectId);
     }
@@ -273,7 +280,7 @@ public record Lockfile(
                 plugins,
                 newSdk,
                 modules,
-                jk,
+                jkMin,
                 manifestsSha256,
                 projectId);
     }
@@ -290,7 +297,7 @@ public record Lockfile(
                 plugins,
                 sdk,
                 newModules,
-                jk,
+                jkMin,
                 manifestsSha256,
                 projectId);
     }

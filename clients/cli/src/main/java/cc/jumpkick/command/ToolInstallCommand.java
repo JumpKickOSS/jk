@@ -247,16 +247,28 @@ public final class ToolInstallCommand implements CliCommand {
      */
     private Integer resolveJBangAliasForInstall() throws IOException, InterruptedException {
         String aliasName = coord.substring(0, coord.indexOf('@'));
+        Path stateDirForTrust = stateDirOverride != null ? stateDirOverride : JkDirs.state();
+        // Trust decides BEFORE any fetch — same rule as tool run: no request leaves the machine
+        // for an origin the user never allowed.
+        var trust = cc.jumpkick.tool.TrustedSources.load(stateDirForTrust);
+        List<String> origins = JBangCatalog.origins(coord);
+        boolean preTrusted = origins.stream().anyMatch(trust::isTrusted);
+        if (!preTrusted) {
+            Integer gated = UrlToolSource.gate(origins.get(0), stateDirForTrust, "jk tool install");
+            if (gated != null) return gated;
+        }
         JBangCatalog.Resolved r;
         try {
-            r = JBangCatalog.resolve(coord, new cc.jumpkick.http.Http());
+            r = JBangCatalog.resolve(coord, new cc.jumpkick.http.Http(), preTrusted ? trust::isTrusted : o -> true);
         } catch (IOException e) {
             cc.jumpkick.cli.tui.CommandWedge.printFail("Tool", e.getMessage());
             return Exit.SOFTWARE;
         }
-        Path stateDirForTrust = stateDirOverride != null ? stateDirOverride : JkDirs.state();
-        Integer gated = UrlToolSource.gate(r.pageOrigin(), stateDirForTrust, "jk tool install");
-        if (gated != null) return gated;
+        if (!r.pageOrigin().equals(origins.get(0)) && !trust.isTrusted(r.pageOrigin())) {
+            // Forge fallback landed on a different origin than the one the user allowed.
+            Integer gated = UrlToolSource.gate(r.pageOrigin(), stateDirForTrust, "jk tool install");
+            if (gated != null) return gated;
+        }
         if (!r.arguments().isEmpty()) {
             // Default arguments can't ride a launcher's "$@" cleanly yet.
             cc.jumpkick.cli.tui.CommandWedge.printFail(

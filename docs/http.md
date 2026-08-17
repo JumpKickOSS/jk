@@ -275,7 +275,7 @@ progress/structure, and the freshest sample always survives); the engine skips w
 
 | Kind | Events | When published |
 | --- | --- | --- |
-| **Inflicted** | `request-start` / `plan` / `module-*` / `task-start` / `task-finish` / `label` / `plan-progress` / `workspace-progress` / `eta` / `output` / `diagnostic` / `*-finish` / `request-finish` | As the plan mutates state. Structural events are immediate; hot ticks (`progress`/`tick-update`/`label`/`output`) ride the 500 ms wire coalescer — see "Live smoothness" below |
+| **Inflicted** | `request-start` / `plan` / `module-*` / `task-start` / `task-finish` / `label` / `progress` / `workspace-progress` / `eta` / `output` / `error` / `*-finish` / `request-finish` | As the plan mutates state. Structural events are immediate; hot ticks (`progress`/`tick-update`/`label`/`output`) ride the 500 ms wire coalescer — see "Live smoothness" below |
 | **Sampled** (change-gated) | `status` | ~every 2 s while any client is subscribed, **and** only when presentation-quantized vitals change (CPU ~1 pp, RAM/heap ~1 MiB, counters exact). Also forced on stream connect and nudged on request start/finish |
 | **Sampled** (change-gated, IO) | `cache` | Safety-net tick (60 s) while subscribed, plus after request finish; snapshot walks are single-flight and TTL-memoized (30 s) engine-side; **not** on the 2 s status sampler. Live frames are **thin** (dual surface totals + budgets, `"thin": true`); full section breakdown is REST-only |
 
@@ -298,7 +298,7 @@ reflected in the snapshot or delivered to the queue after it; overlap folds idem
 are impossible. Independently, `GET /api/history` enriches `running: true` rows with the same
 live fields so the SPA's initial GET matches the TUI even before the first SSE frame.
 
-`run-snapshot` payload (same shape as an enriched history row): `requestId`/`jid`, `kind`,
+`run-snapshot` payload (same shape as an enriched history row): `jid`, `kind`,
 `dir`, `coord?`, `projectId?`, `buildNumber?`, `historyId?` (journal id, present for journaled
 kinds), `startedAt` + `serverNow` (engine wall-clock pair — the SPA derives skew-free elapsed
 as `serverNow − startedAt` and re-anchors it to its own clock at receipt; both omitted until
@@ -359,11 +359,14 @@ left SerialGC holding ~90 MiB used/committed at idle.
 REST `GET /api/status` and `GET /api/cache` remain for hydrate, offline fallback, CLI/MCP tools,
 and curl. Metrics (`GET /api/metrics`) stay **REST-only / view-scoped** — not on the vitals SSE bus.
 
-### Build SSE publish map (JK-1499)
+### Build SSE publish map
 
-Inflicted publishers live on `EngineServer` (socket listener + HTTP job listeners). Every dashboard
-fold type has a site; progress is coalesced by the intentional `JK_WIRE_PROGRESS_MS` (default 500 ms) filter on
-`workspace-progress` (same as the TUI), never by `LiveVitals`.
+Build events are produced once: job bridges emit `EngineEvent` into the composed sinks
+(`WireEventSink` + `SseEventSink`), so the wire and SSE can't diverge; aggregate
+`workspace-progress` and the capped diagnostics publication are the engine folds beside the
+sinks. The SSE event name always equals the payload `type`. Progress is coalesced by the
+intentional `JK_WIRE_PROGRESS_MS` (default 500 ms) filter on `workspace-progress` (same as
+the TUI), never by `LiveVitals`.
 
 | Event | Publisher (typical) | Notes |
 | --- | --- | --- |
@@ -372,10 +375,10 @@ fold type has a site; progress is coalesced by the intentional `JK_WIRE_PROGRESS
 | `module-start` / `module-finish` | workspace listener | Per-module rows |
 | `task-start` / `task-finish` | plan listener | Phase-tagged steps |
 | `label` | plan listener | Live step detail (test class.method, “shrinking jar”, …); SPA paints after the running phase node |
-| `plan-progress` | plan ticks | Single-module / per-module detail |
+| `progress` | plan ticks | Single-module / per-module detail |
 | `workspace-progress` | `emitWorkspaceProgress` | Aggregate %; peak-hold + 0.1% / frame filter |
 | `eta` | `publishEta` | Seed + re-projections |
-| `output` / `diagnostic` | step output / failures | Bounded diagnostics |
+| `output` / `error` | step output / failures | Bounded diagnostics |
 | `buildplan-finish` | plan end | Module-level success |
 | `request-finish` | request finally | Always includes `success` + `cancelled` (CLI + HTTP) |
 | `run-snapshot` | `rehydrateLiveRunsOnSseConnect` | Connect-only, delivered to the joining subscription (never broadcast); payload documented under "Mid-build connect" above |

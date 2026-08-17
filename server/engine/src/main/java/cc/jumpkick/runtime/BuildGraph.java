@@ -13,6 +13,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Resolves the build graph for an entry project: the workspace root + its modules, as one
@@ -242,9 +243,24 @@ public final class BuildGraph {
      * looking nodes/edges up by client-supplied dirs must canonicalize with this same function —
      * a normalize-only lookup silently misses under symlinked checkouts.
      */
+    /**
+     * Successful {@code toRealPath} resolutions, memoized — the preflight path canonicalizes the
+     * same module dirs repeatedly (restrict: per unit + per edge endpoint; assemblePlan:
+     * selection × dirty modules; GraalHomes: per lookup miss), each an uncached syscall
+     * (JK-2104). Failed resolutions (path does not exist yet) are NOT cached so a later create
+     * resolves fresh; clear-on-overflow bounds the map (ProjectIds idiom). Mid-build symlink
+     * retargeting was never supported — the syscall answer would have changed mid-build anyway.
+     */
+    private static final ConcurrentHashMap<Path, Path> CANONICAL_CACHE = new ConcurrentHashMap<>();
+
     public static Path canonicalPath(Path p) {
+        Path hit = CANONICAL_CACHE.get(p);
+        if (hit != null) return hit;
         try {
-            return p.toRealPath();
+            Path real = p.toRealPath();
+            if (CANONICAL_CACHE.size() >= 4_096) CANONICAL_CACHE.clear();
+            CANONICAL_CACHE.put(p, real);
+            return real;
         } catch (IOException e) {
             return p.toAbsolutePath().normalize();
         }

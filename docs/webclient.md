@@ -216,7 +216,7 @@ cap) and pauses when the tab is hidden (`document.hidden`); EventSource stays op
 through a single-flight gate (`fetchOnce`) so reconnect cannot stack duplicate in-flight calls.
 Relative “ago” labels use a local 1 s `now` tick only (no network).
 
-**Hard refresh mid-build:** `GET /api/history` enriches in-flight rows with live `requestId`,
+**Hard refresh mid-build:** `GET /api/history` enriches in-flight rows with live `jid`,
 `progress`, `startedAt`, residual/`R0`, and mid-flight `modules`/`tasks`. On SSE connect the
 engine delivers **one** `run-snapshot` frame per running job to **that subscription only**
 (phases + progress + ETA anchors + `startedAt`) — not a phase-by-phase replay, which filled the

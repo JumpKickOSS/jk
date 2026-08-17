@@ -3,7 +3,8 @@ package cc.jumpkick.engine.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.plugin.protocol.MiniJson;
+import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.jsonl.MiniJson;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -25,23 +26,17 @@ class McpRunWaitTest {
 
     private final EngineHttpJobs jobs = new EngineHttpJobs() {
         @Override
-        public long triggerBuild(String dir) {
-            return JID;
-        }
-
-        @Override
-        public long triggerTest(String dir) {
-            return JID;
-        }
-
-        @Override
-        public long triggerLock(String dir) {
+        public long trigger(JobSpec spec) {
             return JID;
         }
 
         @Override
         public boolean cancel(long requestId) {
             return false;
+        }
+
+        public int cancelDir(String dir) {
+            return 0;
         }
     };
 
@@ -97,7 +92,7 @@ class McpRunWaitTest {
         Map<String, Object> result = (Map<String, Object>) fields.get("result");
         assertThat(result.get("id")).isEqualTo("r9");
         assertThat(result.get("success")).isEqualTo(true);
-        assertThat(((Number) result.get("requestId")).longValue()).isEqualTo(JID);
+        assertThat(((Number) result.get("jid")).longValue()).isEqualTo(JID);
         assertThat(historyScans).hasValue(0);
     }
 

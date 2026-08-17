@@ -7,7 +7,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.PreflightMemo;
 import java.io.BufferedWriter;
@@ -45,7 +45,8 @@ public final class SingleBuildVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String entryDirStr = Jsonl.str(requestLine, "dir");
             String cacheStr = Jsonl.str(requestLine, "cache");
@@ -119,7 +120,8 @@ public final class SingleBuildVerb implements HostedVerb {
             host.accTests(
                     host.eventRequestId(),
                     plan.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT).orElse(null));
-            host.accOutcome(host.eventRequestId(), result.success(), result.success() ? 0 : 1);
+            cc.jumpkick.engine.jobs.JobOutcome outcome =
+                    cc.jumpkick.engine.jobs.JobOutcome.of(result.success(), result.success() ? 0 : 1);
             if (result.success() && barWeight > 0) {
                 long moduleMs = (System.nanoTime() - startNanos) / 1_000_000;
                 if (moduleMs > 0) {
@@ -131,8 +133,10 @@ public final class SingleBuildVerb implements HostedVerb {
                 PreflightMemo.storeDirty(entryDir, preGraph, skipTests, Set.of(), preFps);
                 PreflightMemo.storeGraph(entryDir, preGraph);
             }
+            return outcome;
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return null;
         }
     }
 }

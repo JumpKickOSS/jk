@@ -21,10 +21,8 @@ public final class PluginProtocol {
     public static final String OP_PACKAGE = "package";
     public static final String OP_COMMAND = "command";
     public static final String OP_COMPILE = "compile";
-    public static final String OP_TEST = "test";
     public static final String OP_IMAGE = "image";
     public static final String OP_PUBLISH = "publish";
-    public static final String OP_RUN = "run";
 
     // ---- spec line types (engine → plugin) ------------------------------------------------
 
@@ -47,8 +45,7 @@ public final class PluginProtocol {
     // ---- reply line types (plugin → engine) -----------------------------------------------
 
     public static final String LABEL = "label"; // free-text progress label
-    public static final String PROGRESS = "progress"; // numeric progress {done,total?}
-    public static final String OUT = "out"; // user-facing output line
+    public static final String COMMAND_OUT = "command-out"; // user-facing output line (command ops)
     public static final String DIAGNOSTIC = "diagnostic"; // {sev,file?,line?,col?,msg}
     public static final String PROVENANCE = "provenance"; // {gen,src[]}
     public static final String TEST = "test"; // {event,…} test lifecycle event
@@ -60,7 +57,6 @@ public final class PluginProtocol {
     public static final String WROTE = "wrote"; // compat import wrote a file
     public static final String RESULT = "result"; // terminal typed payload
     public static final String ERROR = "error"; // {code,message}
-    public static final String DONE = "done"; // {exit} terminal marker
 
     // ---- common field names ---------------------------------------------------------------
 

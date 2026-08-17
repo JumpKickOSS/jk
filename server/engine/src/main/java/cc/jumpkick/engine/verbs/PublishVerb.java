@@ -5,10 +5,11 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.List;
 
 public final class PublishVerb implements HostedVerb {
 
@@ -39,7 +40,44 @@ public final class PublishVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public List<String> jobKinds() {
+        return List.of("publish");
+    }
+
+    /**
+     * Detached publish is always a DRY RUN: credentials are resolved client-side by design
+     * ({@code PublishCommand} — env/keychain reads never happen inside the engine), so the seam
+     * can validate the bundle but never upload. The placeholder repo URL only rides the plan
+     * config; the worker skips the network on {@code dryRun}.
+     */
+    @Override
+    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+        return cc.jumpkick.engine.protocol.ProtoSession.withTrigger(
+                cc.jumpkick.engine.protocol.ProtoJobs.publishRequest(
+                        spec.dir(),
+                        cc.jumpkick.util.JkDirs.cache().toString(),
+                        "https://publish.invalid/",
+                        null,
+                        null,
+                        null,
+                        false,
+                        true,
+                        null,
+                        null,
+                        false,
+                        false,
+                        false,
+                        "anonymous",
+                        null,
+                        null,
+                        null,
+                        false),
+                "web");
+    }
+
+    @Override
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
@@ -91,5 +129,6 @@ public final class PublishVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
+        return null;
     }
 }

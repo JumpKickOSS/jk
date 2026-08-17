@@ -55,7 +55,7 @@ public final class EngineWire {
                 }
             }
         }
-        return new cc.jumpkick.plugin.protocol.BoundedLineReader(
+        return new cc.jumpkick.jsonl.BoundedLineReader(
                 new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8), ch, idleMs);
     }
 

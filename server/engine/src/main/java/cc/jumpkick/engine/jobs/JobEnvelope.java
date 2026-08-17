@@ -6,14 +6,14 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.BuildJobFingerprint;
 import cc.jumpkick.engine.InFlightBuilds;
 import cc.jumpkick.engine.JobWorkers;
-import cc.jumpkick.engine.http.JsonOut;
+import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -111,34 +111,36 @@ public final class JobEnvelope {
         this.host = host;
     }
 
+    /** Detached admission refusal: a same-fingerprint job is already in flight. */
+    public static final class AlreadyRunning extends IllegalStateException {
+        private final long jid;
+        private final long buildNumber;
+
+        AlreadyRunning(String message, long jid, long buildNumber) {
+            super(message);
+            this.jid = jid;
+            this.buildNumber = buildNumber;
+        }
+
+        public long jid() {
+            return jid;
+        }
+
+        public long buildNumber() {
+            return buildNumber;
+        }
+    }
+
+    /**
+     * One submit path for every transport. {@link JobTransport.SocketWatch} forks the job and keeps
+     * reading the connection for a {@link EngineProtocol#BUILD_CANCEL} or EOF, joining before
+     * return; {@link JobTransport.FireAndForget} returns the jid immediately (progress is the
+     * sink) and throws {@link AlreadyRunning} / {@link IllegalStateException} on refusal.
+     */
     public long submit(String requestLine, JobRequest job, JobTransport transport) {
-        return switch (transport) {
-            case JobTransport.SocketWatch w -> submitSocket(requestLine, job, w.reader(), w.writer(), false, null);
-            case JobTransport.FireAndForget _ ->
-                submitSocket(
-                        requestLine, job, null, null, true, BuildJobFingerprint.ofRequest(job.verb(), requestLine));
-        };
-    }
-
-    /**
-     * HTTP/MCP: same envelope, no socket. {@code fingerprint} is {@link BuildJobFingerprint#ofHttp}.
-     * Throws if the engine is draining or the project is already running.
-     */
-    public long submitAsync(String requestLine, JobRequest job, String fingerprint) {
-        return submitSocket(requestLine, job, null, null, true, fingerprint);
-    }
-
-    /**
-     * Fork {@code job} onto its own thread (so this method can keep reading the connection for a
-     * {@link EngineProtocol#BUILD_CANCEL} or EOF meanwhile) and wait for it to finish.
-     */
-    private long submitSocket(
-            String requestLine,
-            JobRequest job,
-            @Nullable BufferedReader reader,
-            @Nullable BufferedWriter writer,
-            boolean detached,
-            @Nullable String fingerprintOverride) {
+        BufferedReader reader = transport instanceof JobTransport.SocketWatch w ? w.reader() : null;
+        BufferedWriter writer = transport instanceof JobTransport.SocketWatch w ? w.writer() : null;
+        boolean detached = transport instanceof JobTransport.FireAndForget;
         String threadPrefix = job.threadPrefix();
         String kind = job.verb();
         JobBody runner = job.body();
@@ -183,9 +185,7 @@ public final class JobEnvelope {
         String trigger = Jsonl.str(requestLine, "trigger");
         if (trigger == null || trigger.isBlank()) trigger = "cli";
         // exclusive fingerprint + start-time build number for journaled kinds.
-        String fingerprint = fingerprintOverride != null
-                ? fingerprintOverride
-                : BuildJobFingerprint.ofRequest(eventKind, requestLine);
+        String fingerprint = BuildJobFingerprint.ofRequest(eventKind, requestLine);
         AdmitResult admit = JobAdmit.admit(host, eventRequestId, eventKind, eventDir, fingerprint, trigger);
         if (admit.rejected() != null) {
             InFlightBuilds.Hold h = admit.rejected();
@@ -193,7 +193,7 @@ public final class JobEnvelope {
             String msg = label + " #" + h.buildNumber() + " is already running";
             if (detached) {
                 if (claimedBuildPlanSlot) host.abandonBuildPlanSlot();
-                throw new IllegalStateException(msg);
+                throw new AlreadyRunning(msg, h.requestId(), h.buildNumber());
             }
             try {
                 send(writer, ProtoLifecycle.alreadyRunning(h.buildNumber(), h.requestId(), msg));
@@ -209,7 +209,7 @@ public final class JobEnvelope {
                 eventKind,
                 eventDir,
                 trigger,
-                Jsonl.bool(requestLine, "noTimeline", false),
+                !job.kind().writesTimeline() || Jsonl.bool(requestLine, "noTimeline", false),
                 rebuildRun,
                 admit.buildNumber(),
                 admit.journalId());
@@ -252,7 +252,13 @@ public final class JobEnvelope {
                 // Every Session this request builds adopts this ledger, so fetches/cache traffic on
                 // the shared pools all land in one place (see IoLedger).
                 cc.jumpkick.task.IoLedger.open(host.runIo(eventRequestId));
-                runner.run(requestLine, cancelToken, writer);
+                JobOutcome outcome = runner.run(requestLine, cancelToken, writer);
+                // The one success law: the body's verdict is stamped here, nowhere else. A null
+                // verdict leaves the journal to the accumulated facts (failures, cancel stamps).
+                if (outcome != null) {
+                    BuildAccumulator acc = host.accumulatorOf(eventRequestId);
+                    if (acc != null) acc.setOutcome(outcome.success(), outcome.exitCode());
+                }
             } finally {
                 cc.jumpkick.task.IoLedger.close();
                 // Kill leftovers — never clear() the registry without shutdown, or a racing
@@ -262,11 +268,12 @@ public final class JobEnvelope {
                 JobWorkers.close();
                 host.unbindEventRequestId();
                 if (plan) host.cacheGate().readLock().unlock();
-                // Free exclusive fingerprint as soon as plan work ends — before the
-                // connection thread finishes teardown — so a follow-up same-project build is
-                // not rejected as already-running while journal/idle chores run.
-                host.inFlight().release(eventRequestId);
+                // Unregister the live job BEFORE releasing the in-flight hold: waiters watch the
+                // hold, cancel watches liveJobs — this order means a job never looks finished
+                // while cancelJob would still succeed. The hold still frees before the connection
+                // thread's teardown so a follow-up same-project build is not rejected.
                 unregisterLiveJob(eventRequestId);
+                host.inFlight().release(eventRequestId);
                 done.countDown();
                 // Unblock the connection thread only if it is parked on client readLine
                 // waiting for BUILD_CANCEL / EOF — remote cancel finishes the runner without
@@ -287,7 +294,9 @@ public final class JobEnvelope {
         long deadlineMs = jobDeadlineMs();
         long graceMs = jobDeadlineGraceMs();
         long cancelGraceMs = JobWorkers.cancelGraceMs();
-        if (heartbeatMs > 0 || deadlineMs > 0) {
+        // Heartbeats are a wire line — a detached job has no writer, so its watchdog exists only
+        // to enforce a wall deadline. No deadline, no writer → no thread and no idle wakeups.
+        if ((heartbeatMs > 0 && writer != null) || deadlineMs > 0) {
             heartbeatThread = Thread.ofVirtual().name("jk-job-watchdog", 0).start(() -> {
                 long start = host.nowMillis();
                 while (done.getCount() > 0) {
@@ -308,7 +317,7 @@ public final class JobEnvelope {
                         return;
                     }
                     if (done.getCount() == 0) return;
-                    if (heartbeatMs > 0) {
+                    if (heartbeatMs > 0 && writer != null) {
                         sendQuiet(writer, ProtoLifecycle.heartbeat(host.nowMillis() - start));
                     }
                 }
@@ -427,24 +436,22 @@ public final class JobEnvelope {
                 // Release the plan slot before request-finish so status SSE carries the post-finish
                 // activeBuildPlans count — Live activity finishes in the same frame.
                 if (plan) host.noteBuildPlanFinished();
+                JsonOut finishPayload = JsonOut.object()
+                        .put("schema", 1)
+                        .put("type", "request-finish")
+                        .put("jid", eventRequestId)
+                        .put("kind", eventKind)
+                        .put("dir", eventDir)
+                        .put("projectId", cc.jumpkick.runtime.ProjectIds.idOf(eventDir))
+                        .put("success", success)
+                        .put("cancelled", cancelled)
+                        .put("millis", elapsedMillis)
+                        .put("activeBuildPlans", host.activeBuildPlans());
+                String cancelReason = finishAcc != null ? finishAcc.cancelReason() : null;
+                if (cancelled && cancelReason != null) finishPayload.put("cancelReason", cancelReason);
                 host.publishEvent(
                         "request-finish",
-                        host.withProgress(
-                                host.withIo(
-                                        JsonOut.object()
-                                                .put("schema", 1)
-                                                .put("type", "request-finish")
-                                                .put("requestId", eventRequestId)
-                                                .put("jid", eventRequestId)
-                                                .put("kind", eventKind)
-                                                .put("dir", eventDir)
-                                                .put("projectId", cc.jumpkick.runtime.ProjectIds.idOf(eventDir))
-                                                .put("success", success)
-                                                .put("cancelled", cancelled)
-                                                .put("millis", elapsedMillis)
-                                                .put("activeBuildPlans", host.activeBuildPlans()),
-                                        eventRequestId),
-                                eventRequestId));
+                        host.withProgress(host.withIo(finishPayload, eventRequestId), eventRequestId));
                 // Journal first: clearProgress retires the JobSession (drops the accumulator).
                 // Writing after retire leaves a permanent running=true stub in jk jobs.
                 host.writeJournal(eventRequestId, cancelled, elapsedMillis, writer);
@@ -606,7 +613,14 @@ public final class JobEnvelope {
             @Nullable BufferedWriter writer,
             long deadlineMs) {
         cancelToken.cancel();
-        markUserCancelled(eventRequestId, true);
+        // Reason rides the accumulator so a job with no wire writer (HTTP/MCP) still journals WHY
+        // it was cancelled and request-finish can carry it — the ERR_DEADLINE line below is
+        // wire-only.
+        BuildAccumulator a = host.accumulatorOf(eventRequestId);
+        if (a != null) {
+            a.markUserCancelled(
+                    true, "exceeded the " + deadlineMs + "ms wall deadline (JK_ENGINE_JOB_DEADLINE_MS); cancelled");
+        }
         int killed = JobWorkers.shutdownForRequest(eventRequestId, JobWorkers.cancelGraceMs());
         interruptRunner(runnerThread);
         sendQuiet(

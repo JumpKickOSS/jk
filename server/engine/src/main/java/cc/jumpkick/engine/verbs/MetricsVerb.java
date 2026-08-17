@@ -2,10 +2,10 @@
 package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
-import cc.jumpkick.engine.http.JsonOut;
+import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.BuildMetrics;
 import java.io.BufferedWriter;
 
@@ -38,7 +38,8 @@ public final class MetricsVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String dirFilter = Jsonl.str(requestLine, "dir");
             int n = 0;
@@ -61,12 +62,17 @@ public final class MetricsVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
+        return null;
     }
 
     private static String metricsEntryJson(BuildMetrics.Entry e) {
-        return JsonOut.object()
-                .put("type", EngineProtocol.METRICS_ENTRY)
-                .put("scope", e.scope())
+        return metricsFields(JsonOut.object().put("type", EngineProtocol.METRICS_ENTRY), e)
+                .toString();
+    }
+
+    /** The one metrics-row field map — wire lines and {@code GET /api/metrics} both encode here. */
+    public static JsonOut metricsFields(JsonOut o, BuildMetrics.Entry e) {
+        return o.put("scope", e.scope())
                 .put("kind", e.kind())
                 .put("dir", e.dir())
                 .put("coord", e.coord())
@@ -84,7 +90,6 @@ public final class MetricsVerb implements HostedVerb {
                 .put("cancelledTotalMillis", e.cancelled().totalMillis())
                 .put("cancelledMinMillis", e.cancelled().minMillis())
                 .put("cancelledMaxMillis", e.cancelled().maxMillis())
-                .put("updated", e.updatedMillis())
-                .toString();
+                .put("updated", e.updatedMillis());
     }
 }

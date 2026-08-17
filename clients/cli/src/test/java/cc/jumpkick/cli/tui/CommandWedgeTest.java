@@ -134,18 +134,19 @@ class CommandWedgeTest {
     }
 
     @Test
-    void cancelled_job_line_uses_explain_pill_gray_and_bang_not_the_red_fail_chip() {
+    void cancelled_job_line_uses_explain_pill_gray_and_circled_asterisk_not_the_red_fail_chip() {
         String raw = JkWedge.cancelledJobLine("Build", NerdFontCaps.ALL, true, "took 1.2s");
         String visible = raw.replaceAll("\u001B\\[[0-9;]*m", "");
         assertThat(visible).contains("Build").contains("job was cancelled by user");
         assertThat(visible).doesNotContain(Glyphs.CROSS);
+        assertThat(visible).doesNotContain(Glyphs.BANG);
         Theme t = Theme.active();
         if (t.isAnsi()) {
-            assertThat(visible).contains(Glyphs.BANG);
+            assertThat(visible).contains(Glyphs.CANCELLED);
             assertThat(raw).contains(Theme.colorize("cancelled", t.brightWhite().bold()));
-            assertThat(raw).contains(Theme.colorize(" " + Glyphs.BANG + " Build ", t.scopeBadge()));
+            assertThat(raw).contains(Theme.colorize(" " + Glyphs.CANCELLED + " Build ", t.scopeBadge()));
         } else {
-            assertThat(visible).contains(Glyphs.BANG_PLAIN);
+            assertThat(visible).contains(Glyphs.CANCELLED_PLAIN);
         }
     }
 }

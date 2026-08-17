@@ -254,13 +254,13 @@ public final class JkWedge implements Widget {
         String by = byUser ? " by user" : "";
         if (!Theme.active().isAnsi()) {
             return new JkWedge(
-                    Icon.bang(), title, RichText.plain("job was cancelled" + by + took), Variant.CANCELLED, null);
+                    Icon.cancelled(), title, RichText.plain("job was cancelled" + by + took), Variant.CANCELLED, null);
         }
         String styled = "job was "
                 + Theme.colorize("cancelled", Theme.active().brightWhite().bold())
                 + by
                 + took;
-        return new JkWedge(Icon.bang(), title, RichText.ansi(styled), Variant.CANCELLED, null);
+        return new JkWedge(Icon.cancelled(), title, RichText.ansi(styled), Variant.CANCELLED, null);
     }
 
     public static String chipLine(String glyph, String command, NerdFontCaps caps, String message) {

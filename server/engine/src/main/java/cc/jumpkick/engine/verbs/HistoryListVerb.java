@@ -4,11 +4,11 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.BuildHistoryKinds;
 import cc.jumpkick.engine.InFlightBuilds;
-import cc.jumpkick.engine.http.JsonOut;
+import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.BufferedWriter;
 import java.util.List;
 
@@ -41,7 +41,8 @@ public final class HistoryListVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             int limit = Math.max(1, Jsonl.intValue(requestLine, "limit", 200));
             // Truncate in the journal (synthetic fixtures are already filtered there) rather
@@ -115,5 +116,6 @@ public final class HistoryListVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
+        return null;
     }
 }

@@ -8,6 +8,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskNames;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -111,18 +112,34 @@ class NativePlansTest {
         var usage = new cc.jumpkick.run.BuildPlanResult(
                 "native",
                 false,
-                java.time.Duration.ZERO,
-                java.util.List.of(),
-                java.util.List.of(),
-                java.util.List.of(new cc.jumpkick.run.BuildPlanResult.Diagnostic(
+                Duration.ZERO,
+                List.of(),
+                List.of(),
+                List.of(new cc.jumpkick.run.BuildPlanResult.Diagnostic(
                         "native-image", "native", "main class no.Such.Class not found")),
                 false);
         org.assertj.core.api.Assertions.assertThat(NativePlans.failureExitCode(plan, usage))
                 .isEqualTo(cc.jumpkick.model.command.Exit.USAGE);
         var plain = new cc.jumpkick.run.BuildPlanResult(
-                "native", false, java.time.Duration.ZERO,
-                java.util.List.of(), java.util.List.of(), java.util.List.of(), false);
+                "native", false, Duration.ZERO, List.of(), List.of(), List.of(), false);
         org.assertj.core.api.Assertions.assertThat(NativePlans.failureExitCode(plan, plain))
                 .isEqualTo(1);
+    }
+
+    @org.junit.jupiter.api.Test
+    void failure_exit_code_maps_image_no_main_to_usage() {
+        // JK-2100: workspace jk image lost the single path's no-main USAGE exit.
+        var plan = cc.jumpkick.run.BuildPlan.builder("image").build();
+        var noMain = new cc.jumpkick.run.BuildPlanResult(
+                "image",
+                false,
+                Duration.ZERO,
+                List.of(),
+                List.of(),
+                List.of(new cc.jumpkick.run.BuildPlanResult.Diagnostic(
+                        "image-plan", "no-main", "no main class - pass --main")),
+                false);
+        org.assertj.core.api.Assertions.assertThat(NativePlans.failureExitCode(plan, noMain))
+                .isEqualTo(cc.jumpkick.model.command.Exit.USAGE);
     }
 }

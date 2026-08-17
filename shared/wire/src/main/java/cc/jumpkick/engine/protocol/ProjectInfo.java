@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.protocol;
 
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 
 /**
@@ -49,7 +49,18 @@ public record ProjectInfo(
         List<String> pathDeps,
         String sourcesJarPath,
         String javadocJarPath,
-        List<String> envRefs) {
+        List<String> envRefs,
+        List<String> moduleNames,
+        int sourceCount,
+        int testCount,
+        boolean nativeExplicitlyDisabled,
+        String classesDir,
+        String testClassesDir,
+        String kotlinClassesDir,
+        String groovyClassesDir,
+        String testResultsDir,
+        List<String> testIncludeTags,
+        List<String> testExcludeTags) {
 
     /** The {@code group:name} display coordinate. */
     public String coord() {
@@ -94,6 +105,17 @@ public record ProjectInfo(
                 List.of(),
                 "",
                 "",
+                List.of(),
+                List.of(),
+                0,
+                0,
+                false,
+                "",
+                "",
+                "",
+                "",
+                "",
+                List.of(),
                 List.of());
     }
 
@@ -136,6 +158,17 @@ public record ProjectInfo(
                 + ",\"sourcesJarPath\":" + Jsonl.quote(sourcesJarPath)
                 + ",\"javadocJarPath\":" + Jsonl.quote(javadocJarPath)
                 + ",\"envRefs\":" + EngineProtocol.quoteArray(envRefs)
+                + ",\"moduleNames\":" + EngineProtocol.quoteArray(moduleNames)
+                + ",\"sourceCount\":" + sourceCount
+                + ",\"testCount\":" + testCount
+                + ",\"nativeExplicitlyDisabled\":" + nativeExplicitlyDisabled
+                + ",\"classesDir\":" + Jsonl.quote(classesDir)
+                + ",\"testClassesDir\":" + Jsonl.quote(testClassesDir)
+                + ",\"kotlinClassesDir\":" + Jsonl.quote(kotlinClassesDir)
+                + ",\"groovyClassesDir\":" + Jsonl.quote(groovyClassesDir)
+                + ",\"testResultsDir\":" + Jsonl.quote(testResultsDir)
+                + ",\"testIncludeTags\":" + EngineProtocol.quoteArray(testIncludeTags)
+                + ",\"testExcludeTags\":" + EngineProtocol.quoteArray(testExcludeTags)
                 + "}";
     }
 
@@ -178,7 +211,18 @@ public record ProjectInfo(
                 Jsonl.strArray(line, "pathDeps"),
                 orEmpty(Jsonl.str(line, "sourcesJarPath")),
                 orEmpty(Jsonl.str(line, "javadocJarPath")),
-                Jsonl.strArray(line, "envRefs"));
+                Jsonl.strArray(line, "envRefs"),
+                Jsonl.strArray(line, "moduleNames"),
+                Jsonl.intValue(line, "sourceCount", 0),
+                Jsonl.intValue(line, "testCount", 0),
+                Jsonl.bool(line, "nativeExplicitlyDisabled", false),
+                orEmpty(Jsonl.str(line, "classesDir")),
+                orEmpty(Jsonl.str(line, "testClassesDir")),
+                orEmpty(Jsonl.str(line, "kotlinClassesDir")),
+                orEmpty(Jsonl.str(line, "groovyClassesDir")),
+                orEmpty(Jsonl.str(line, "testResultsDir")),
+                Jsonl.strArray(line, "testIncludeTags"),
+                Jsonl.strArray(line, "testExcludeTags"));
     }
 
     /** {@code ,"key":true|false} when set; empty string when unset (tri-state). */

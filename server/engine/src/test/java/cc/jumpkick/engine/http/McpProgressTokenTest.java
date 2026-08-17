@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.jobs.JobSpec;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -12,23 +13,17 @@ class McpProgressTokenTest {
 
     private final EngineHttpJobs jobs = new EngineHttpJobs() {
         @Override
-        public long triggerBuild(String dir) {
+        public long trigger(JobSpec spec) {
             return 42L;
-        }
-
-        @Override
-        public long triggerTest(String dir) {
-            return 43L;
-        }
-
-        @Override
-        public long triggerLock(String dir) {
-            return 44L;
         }
 
         @Override
         public boolean cancel(long requestId) {
             return false;
+        }
+
+        public int cancelDir(String dir) {
+            return 0;
         }
     };
 

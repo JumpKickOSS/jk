@@ -136,7 +136,14 @@ public final class AggregateModuleListener implements BuildPlanListener {
         // Per-test failures are fully rendered by run-tests output (styled "Test Failure" block).
         // Do not also print a second report — keep the diagnostic for JSON.
         if ("test-failure".equals(code)) return;
-        String report = ConsoleSpec.renderError(step, code, message, module, compilerHeaders.show(step, code, module));
+        // Header suppression stacks consecutive same-key compiler reports — safe only on the
+        // buffered path, where the module's block prints contiguously at finish. On the live
+        // (animating) path, prints from parallel modules interleave in the merged stream, and a
+        // headerless body from module A can land directly under module B's output, reading as
+        // B's continuation (JK-2110) — always repeat the pill there.
+        boolean grouped = outBuffer != null && !cm.animating();
+        boolean showHeader = !grouped || compilerHeaders.show(step, code, module);
+        String report = ConsoleSpec.renderError(step, code, message, module, showHeader);
         if (report != null && !report.isEmpty()) {
             // Same buffer-XOR-print rule as output(): the settled block is the single printing
             // path when not animating (JK-2090).

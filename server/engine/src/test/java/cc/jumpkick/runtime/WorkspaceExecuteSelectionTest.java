@@ -9,6 +9,7 @@ import cc.jumpkick.config.WorkspaceCone;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.TaskNames;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -74,7 +75,7 @@ class WorkspaceExecuteSelectionTest {
         var libUnit = new BuildGraph.BuildUnit(lib, libB, "ex:lib", BuildGraph.Origin.MODULE);
         var appUnit = new BuildGraph.BuildUnit(app, appB, "ex:app", BuildGraph.Origin.MODULE);
         WorkspaceRequest req = new WorkspaceRequest(
-                        tmp, appB, tmp.resolve("cache"), null, 0, null, true, false, 0, null, true, true)
+                        tmp, tmp.resolve("cache"), null, 0, null, true, false, 0, null, true, true)
                 .withSpec(WorkspaceSpec.nativeImage(Set.of(app), Map.of(app, graal), null, List.of()));
 
         var libPlan = WorkspaceExecute.assemblePlan(libUnit, req, Set.of(lib, app), false);
@@ -84,6 +85,33 @@ class WorkspaceExecuteSelectionTest {
         assertThat(libNames).contains(TaskNames.PACKAGE_JAR);
         assertThat(libNames).doesNotContain(TaskNames.NATIVE_IMAGE);
         assertThat(appNames).contains(TaskNames.PACKAGE_JAR, TaskNames.NATIVE_IMAGE);
+    }
+
+    @Test
+    void symlinked_seed_still_expands_prereqs() throws Exception {
+        // JK-2101: cone identity is the canonical path — a seed reached through a symlink must
+        // still match its graph module and pull dirty prereqs into the cone.
+        Path core = module("jk-core", "core", "");
+        Path cli = module("jk-cli", "cli", """
+                [application]
+                main = "ex.Main"
+
+                [dependencies]
+                jk-core = { workspace = true }
+                """);
+        Map<Path, JkBuild> mods = new LinkedHashMap<>();
+        mods.put(core, JkBuildParser.parse(core.resolve("jk.toml")));
+        mods.put(cli, JkBuildParser.parse(cli.resolve("jk.toml")));
+
+        Path link = tmp.resolve("cli-link");
+        try {
+            Files.createSymbolicLink(link, cli);
+        } catch (UnsupportedOperationException | IOException e) {
+            org.junit.jupiter.api.Assumptions.abort("symlinks unsupported here: " + e);
+        }
+
+        Set<Path> cone = WorkspaceCone.expand(mods, List.of(link), List.of(Scope.values()));
+        assertThat(cone).contains(core, cli);
     }
 
     private Path module(String name, String dirName, String extra) throws Exception {

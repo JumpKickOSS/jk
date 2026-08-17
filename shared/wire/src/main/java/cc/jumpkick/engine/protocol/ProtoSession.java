@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.protocol;
 
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 import java.util.Map;
 
@@ -298,6 +298,23 @@ public final class ProtoSession {
             if (!t.extraArgs().isEmpty()) b.append(",\"jvmArgs\":").append(quoteArray(t.extraArgs()));
         }
         return b.append('}').toString();
+    }
+
+    /**
+     * Attach the journal-classification {@code trigger} ({@code web}, {@code optimize}, …) to an
+     * encoded request line. The engine synthesizes wire lines for HTTP/MCP job submissions and
+     * marks them here — same validated splice as {@link #withSession}, never call-site string
+     * surgery. A null/blank trigger returns the line unchanged.
+     */
+    public static String withTrigger(String request, String trigger) {
+        if (trigger == null || trigger.isBlank()) return request;
+        if (request == null
+                || request.length() < 2
+                || request.charAt(0) != '{'
+                || request.charAt(request.length() - 1) != '}') {
+            throw new IllegalArgumentException("withTrigger needs an encoded single-line request object");
+        }
+        return request.substring(0, request.length() - 1) + ",\"trigger\":" + Jsonl.quote(trigger) + "}";
     }
 
     /** Decode {@code assemblyOverride} from a session envelope ({@code fat}/{@code minified}/empty). */

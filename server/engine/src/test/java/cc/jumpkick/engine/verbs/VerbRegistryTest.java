@@ -19,7 +19,7 @@ class VerbRegistryTest {
     @Test
     void standard_lists_workspace_test_and_single_build() {
         VerbRegistry reg = VerbRegistry.standard(new FakeHost());
-        assertThat(reg.all()).hasSize(39);
+        assertThat(reg.all()).hasSize(44);
         HostedVerb build = reg.find(EngineProtocol.BUILD_REQUEST);
         HostedVerb test = reg.find(EngineProtocol.TEST_REQUEST);
         HostedVerb single = reg.find(EngineProtocol.SINGLE_BUILD_REQUEST);
@@ -31,7 +31,8 @@ class VerbRegistryTest {
         assertThat(reg.find(EngineProtocol.SYNC_REQUEST)).isInstanceOf(SyncVerb.class);
         assertThat(build.shape()).isInstanceOf(VerbShape.AsyncPlan.class);
         assertThat(test.jobKind().verb()).isEqualTo("test");
-        assertThat(single.toJobRequest().verb()).isEqualTo("build");
+        assertThat(single.toJobRequest("{\"type\":\"single-build-request\"}").verb())
+                .isEqualTo("build");
         assertThat(reg.find(EngineProtocol.AUDIT_REQUEST)).isInstanceOf(AuditVerb.class);
         assertThat(reg.find(EngineProtocol.CACHE_PRUNE_REQUEST).shape()).isInstanceOf(VerbShape.CacheMaint.class);
         assertThat(reg.find(EngineProtocol.EXPLAIN_REQUEST).shape()).isInstanceOf(VerbShape.SyncRead.class);
@@ -79,9 +80,6 @@ class VerbRegistryTest {
         public boolean effectiveCancelled(long rid, boolean tokenCancelled) {
             return tokenCancelled;
         }
-
-        @Override
-        public void accOutcome(long rid, boolean success, int exit) {}
 
         @Override
         public void accTests(long rid, TestSummary tests) {}

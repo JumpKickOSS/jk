@@ -3,19 +3,17 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.engine.protocol.CatalogReadAck;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.repo.RepoArtifactStore;
-import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.util.JkDirs;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /** {@code jk library search <term>...} — substring match against the library catalog. */
 public final class LibrarySearchCommand implements CliCommand {
@@ -62,26 +60,28 @@ public final class LibrarySearchCommand implements CliCommand {
         Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
         GlobalOptions global = GlobalOptions.from(in);
 
-        LibraryCatalog catalog = LibraryCatalog.forProject(global.workingDir(), CliOutput.stderr()::println);
-        Path cacheRoot = cacheDir != null ? cacheDir : JkDirs.cache();
-        List<String> lowerTerms =
-                terms.stream().map(t -> t.toLowerCase(Locale.ROOT)).toList();
-
-        List<Hit> hits = new ArrayList<>();
-        for (String name : catalog.names()) {
-            var src = catalog.source(name).orElseThrow();
-            if (!allMatch(
-                    lowerTerms,
-                    name.toLowerCase(Locale.ROOT),
-                    src.module().group().toLowerCase(Locale.ROOT),
-                    src.module().artifact().toLowerCase(Locale.ROOT))) continue;
-            List<String> cached = new ArrayList<>(RepoArtifactStore.allVersions(
-                    cacheRoot, src.module().group(), src.module().artifact()));
-            cached.sort((a, b) -> Versions.compare(b, a));
-            if (global.offline && cached.isEmpty()) continue;
-            hits.add(new Hit(name, src, cached));
+        CatalogReadAck ack;
+        try {
+            ack = cc.jumpkick.cli.engine.EngineClient.catalogRead(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    global.workingDir(),
+                    cacheDir != null ? cacheDir : JkDirs.cache(),
+                    "search",
+                    terms,
+                    global.offline,
+                    true,
+                    false);
+        } catch (IOException e) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Library", String.valueOf(e.getMessage()));
+            return 1;
+        }
+        for (String w : ack.warnings()) CliOutput.stderr().println(w);
+        if (ack.error() != null) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Library", ack.error());
+            return 1;
         }
 
+        List<CatalogReadAck.Entry> hits = ack.entries();
         if (hits.isEmpty()) {
             CliOutput.out(
                     "No matches" + (global.offline ? " (cached locally)" : "") + " for: " + String.join(" ", terms));
@@ -89,10 +89,10 @@ public final class LibrarySearchCommand implements CliCommand {
         }
         int total = hits.size();
         int shown = limit != null && limit > 0 && total > limit ? limit : total;
-        List<Hit> visible = hits.subList(0, shown);
+        List<CatalogReadAck.Entry> visible = hits.subList(0, shown);
 
         if (groupByLayer) {
-            renderGrouped(catalog, visible);
+            renderGrouped(ack.layerNames(), visible);
         } else {
             printTable("Library search", visible);
         }
@@ -101,11 +101,11 @@ public final class LibrarySearchCommand implements CliCommand {
         return 0;
     }
 
-    private void renderGrouped(LibraryCatalog catalog, List<Hit> visible) {
+    private void renderGrouped(List<String> layerNames, List<CatalogReadAck.Entry> visible) {
         boolean firstGroup = true;
-        for (String layer : catalog.layerNames()) {
-            List<Hit> inLayer =
-                    visible.stream().filter(h -> h.src.layer().equals(layer)).toList();
+        for (String layer : layerNames) {
+            List<CatalogReadAck.Entry> inLayer =
+                    visible.stream().filter(h -> h.layer().equals(layer)).toList();
             if (inLayer.isEmpty()) continue;
             if (!firstGroup) CliOutput.out();
             firstGroup = false;
@@ -113,15 +113,15 @@ public final class LibrarySearchCommand implements CliCommand {
         }
     }
 
-    private void printTable(String title, List<Hit> visible) {
+    private void printTable(String title, List<CatalogReadAck.Entry> visible) {
         List<String> headers = new ArrayList<>(List.of("Name", "Coordinates"));
         if (showLayer && !groupByLayer) headers.add("Layer");
         headers.add("Cached");
         List<List<String>> rows = new ArrayList<>();
-        for (Hit h : visible) {
-            List<String> cells = new ArrayList<>(List.of(h.name, h.src.module().moduleKey()));
-            if (showLayer && !groupByLayer) cells.add(h.src.layer());
-            cells.add(String.join(", ", h.cached));
+        for (CatalogReadAck.Entry h : visible) {
+            List<String> cells = new ArrayList<>(List.of(h.name(), h.moduleKey()));
+            if (showLayer && !groupByLayer) cells.add(h.layer());
+            cells.add(String.join(", ", h.cached()));
             rows.add(cells);
         }
         cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
@@ -129,20 +129,4 @@ public final class LibrarySearchCommand implements CliCommand {
             CliOutput.out(line);
         }
     }
-
-    private static boolean allMatch(List<String> terms, String... fields) {
-        for (String t : terms) {
-            boolean found = false;
-            for (String f : fields) {
-                if (f.contains(t)) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) return false;
-        }
-        return true;
-    }
-
-    private record Hit(String name, LibraryCatalog.Source src, List<String> cached) {}
 }

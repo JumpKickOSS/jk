@@ -6,7 +6,6 @@ import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
-import cc.jumpkick.http.Http;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -61,49 +60,44 @@ public final class LibraryUpdateCommand implements CliCommand {
 
         long startNanos = System.nanoTime();
         Path cacheFile = cacheFileOverride != null ? cacheFileOverride : LibraryCatalog.downloadedFile();
-        Path etagFile = LibraryCatalog.etagFileFor(cacheFile);
         Path previousBackup = cacheFile.resolveSibling(cacheFile.getFileName() + ".prev");
         Map<String, LibraryCatalog.Module> before = currentEntries(cacheFile);
 
-        LibraryRegistryClient.Result result;
+        if (Files.exists(cacheFile)) {
+            Files.createDirectories(cacheFile.getParent());
+            Files.copy(cacheFile, previousBackup, StandardCopyOption.REPLACE_EXISTING);
+        }
         try {
-            result = new LibraryRegistryClient(new Http()).fetch(source, etagFile, cacheFile);
+            String error = cc.jumpkick.cli.engine.EngineClient.freshenCatalogNow(
+                    cc.jumpkick.engine.EnginePaths.current(), "libraries", source.toString(), cacheFile);
+            if (error != null) {
+                restoreBackup(cacheFile, previousBackup);
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Library", error);
+                return 1;
+            }
         } catch (IOException e) {
-            CommandWedge.printFail("Library", "failed to reach " + source + "\n  " + e.getMessage());
+            restoreBackup(cacheFile, previousBackup);
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Library", String.valueOf(e.getMessage()));
             return 1;
         }
-        if (result instanceof LibraryRegistryClient.Result.Unchanged) {
-            printSummary(
-                    before.size(),
-                    Diff.compute(before, before),
-                    Duration.ofNanos(System.nanoTime() - startNanos),
-                    /* fetched= */ false);
-            return 0;
+        Map<String, LibraryCatalog.Module> after = currentEntries(cacheFile);
+        boolean fetched = !after.equals(before) || (Files.isRegularFile(cacheFile) && before.isEmpty());
+        if (Files.isRegularFile(cacheFile) && Files.isRegularFile(previousBackup) && after.equals(before)) {
+            Files.deleteIfExists(previousBackup);
         }
-        LibraryRegistryClient.Result.Updated updated = (LibraryRegistryClient.Result.Updated) result;
-        String body = new String(updated.body(), StandardCharsets.UTF_8);
-
-        Map<String, LibraryCatalog.Module> after;
-        try {
-            after = materialise(body);
-        } catch (RuntimeException e) {
-            CommandWedge.printFail(
-                    "Library", "refusing to replace cache — upstream payload did not validate:\\n  " + e.getMessage());
-            return 1;
-        }
-
-        Files.createDirectories(cacheFile.getParent());
-        if (Files.exists(cacheFile)) Files.copy(cacheFile, previousBackup, StandardCopyOption.REPLACE_EXISTING);
-        Files.writeString(cacheFile, body, StandardCharsets.UTF_8);
-        if (updated.etag() != null) {
-            Files.writeString(etagFile, updated.etag(), StandardCharsets.UTF_8);
-        } else {
-            Files.deleteIfExists(etagFile);
-        }
-
         Diff diff = Diff.compute(before, after);
-        printSummary(after.size(), diff, Duration.ofNanos(System.nanoTime() - startNanos), /* fetched= */ true);
+        printSummary(after.size(), diff, Duration.ofNanos(System.nanoTime() - startNanos), fetched);
         return 0;
+    }
+
+    private static void restoreBackup(Path cacheFile, Path previousBackup) {
+        try {
+            if (Files.isRegularFile(previousBackup)) {
+                Files.copy(previousBackup, cacheFile, StandardCopyOption.REPLACE_EXISTING);
+                Files.deleteIfExists(previousBackup);
+            }
+        } catch (IOException ignored) {
+        }
     }
 
     private static Map<String, LibraryCatalog.Module> currentEntries(Path cacheFile) {

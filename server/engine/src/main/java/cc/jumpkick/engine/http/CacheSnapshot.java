@@ -4,6 +4,7 @@ package cc.jumpkick.engine.http;
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkCacheConfig;
+import cc.jumpkick.engine.JsonOut;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;

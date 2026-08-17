@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
@@ -41,37 +42,23 @@ final class HttpProjectApi {
     void handleNewProject(HttpExchange exchange) throws IOException {
         String body = new String(
                 exchange.getRequestBody().readNBytes(HttpEngineServer.MAX_BODY_BYTES), StandardCharsets.UTF_8);
-        String name = cc.jumpkick.plugin.protocol.Jsonl.str(body, "name");
-        String parentDir = cc.jumpkick.plugin.protocol.Jsonl.str(body, "parentDir");
-        String group = cc.jumpkick.plugin.protocol.Jsonl.str(body, "group");
-        String lang = cc.jumpkick.plugin.protocol.Jsonl.str(body, "lang");
-        String layout = cc.jumpkick.plugin.protocol.Jsonl.str(body, "layout");
-        String template = cc.jumpkick.plugin.protocol.Jsonl.str(body, "template");
-        String framework = cc.jumpkick.plugin.protocol.Jsonl.str(body, "framework");
-        boolean executable = cc.jumpkick.plugin.protocol.Jsonl.bool(body, "executable", true);
+        String name = cc.jumpkick.jsonl.Jsonl.str(body, "name");
+        String parentDir = cc.jumpkick.jsonl.Jsonl.str(body, "parentDir");
+        String group = cc.jumpkick.jsonl.Jsonl.str(body, "group");
+        String lang = cc.jumpkick.jsonl.Jsonl.str(body, "lang");
+        String layout = cc.jumpkick.jsonl.Jsonl.str(body, "layout");
+        String template = cc.jumpkick.jsonl.Jsonl.str(body, "template");
+        String framework = cc.jumpkick.jsonl.Jsonl.str(body, "framework");
+        boolean executable = cc.jumpkick.jsonl.Jsonl.bool(body, "executable", true);
         try {
-            var result = cc.jumpkick.engine.runtime.NewProjectOps.create(
+            // The SPA routes #project/<id> immediately, so identity materializes with creation.
+            var result = cc.jumpkick.engine.runtime.NewProjectOps.createWithIdentity(
                     new cc.jumpkick.engine.runtime.NewProjectOps.Request(
                             name, parentDir, group, lang, layout, template, executable, framework));
-            // Resolve the durable projectId so the SPA can route #project/<id> immediately
-            // — an absolute path in the hash 404s (isValidId rejects '/'). The
-            // scaffolder writes no lock, so materialize identity.toml under the project home;
-            // without it GET /api/project?project=<id> cannot map the id back to the checkout.
-            String projectId = null;
-            try {
-                var identity = cc.jumpkick.builds.ProjectIdentity.resolve(result.path());
-                cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(
-                        cc.jumpkick.builds.ProjectBuilds.projectHome(identity.id()), identity);
-                cc.jumpkick.runtime.ProjectIds.refresh(result.path().toString());
-                projectId = identity.id();
-            } catch (RuntimeException | IOException e) {
-                // Identity resolution/persist is best-effort — creation succeeded; the SPA
-                // skips the project route when projectId is absent.
-            }
             JsonOut created = JsonOut.object()
                     .put("path", result.path().toString())
                     .put("dir", result.path().toString());
-            if (projectId != null) created.put("projectId", projectId);
+            if (result.projectId() != null) created.put("projectId", result.projectId());
             HttpEngineServer.sendJson(exchange, 201, created.toString());
         } catch (IllegalArgumentException e) {
             HttpEngineServer.sendJson(
@@ -192,29 +179,21 @@ final class HttpProjectApi {
             }
             dir = path.get().toString();
         }
-        // Resolve identity BEFORE the jk.toml parse: resolution succeeds without a parseable
-        // manifest (lock / identity.toml / hash), so a ?dir= call on a broken or deleted
-        // workspace still gets its durable projectId in the fallback branch.
-        String resolvedId = projectId;
-        try {
-            resolvedId =
-                    cc.jumpkick.builds.ProjectIdentity.resolve(Path.of(dir)).id();
-        } catch (RuntimeException e) {
-            // Invalid path — keep whatever the caller supplied (empty for ?dir= calls).
-        }
-        try {
-            var project = cc.jumpkick.config.JkBuildParser.parse(Path.of(dir).resolve("jk.toml"))
-                    .project();
+        // One card, one parse path (shared with MCP jk_project): identity resolves without a
+        // parseable manifest, so a ?dir= call on a broken workspace still gets its durable id.
+        cc.jumpkick.runtime.ProjectCard card = cc.jumpkick.runtime.ProjectCard.of(Path.of(dir));
+        String resolvedId = card.projectId() != null ? card.projectId() : projectId;
+        if (card.coord() != null) {
             HttpEngineServer.sendJson(
                     exchange,
                     200,
                     JsonOut.object()
                             .put("dir", dir)
                             .put("projectId", resolvedId)
-                            .put("coord", project.group() + ":" + project.name())
-                            .put("description", project.description())
+                            .put("coord", card.coord())
+                            .put("description", card.description())
                             .toString());
-        } catch (RuntimeException e) {
+        } else {
             HttpEngineServer.sendJson(
                     exchange,
                     200,
@@ -287,7 +266,7 @@ final class HttpProjectApi {
         body.put("availableScopes", data.availableScopes());
         body.put("nodes", nodes);
         body.put("edges", edges);
-        HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
+        HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.jsonl.MiniJson.write(body));
     }
 
     /**
@@ -345,7 +324,7 @@ final class HttpProjectApi {
         body.put("dir", list.root().toString());
         body.put("truncated", list.truncated());
         body.put("files", files);
-        HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
+        HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.jsonl.MiniJson.write(body));
     }
 
     /**
@@ -426,7 +405,7 @@ final class HttpProjectApi {
                 body.put("encoding", b.encoding());
                 body.put("etag", b.etag());
                 body.put("content", b.content());
-                HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
+                HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.jsonl.MiniJson.write(body));
             }
         }
     }
@@ -525,11 +504,11 @@ final class HttpProjectApi {
             return;
         }
         String body = new String(raw, StandardCharsets.UTF_8);
-        String projectId = cc.jumpkick.plugin.protocol.Jsonl.topStr(body, "project");
-        String path = cc.jumpkick.plugin.protocol.Jsonl.topStr(body, "path");
-        String content = cc.jumpkick.plugin.protocol.Jsonl.topStr(body, "content");
-        String etag = cc.jumpkick.plugin.protocol.Jsonl.topStr(body, "etag");
-        String encoding = cc.jumpkick.plugin.protocol.Jsonl.topStr(body, "encoding");
+        String projectId = cc.jumpkick.jsonl.Jsonl.topStr(body, "project");
+        String path = cc.jumpkick.jsonl.Jsonl.topStr(body, "path");
+        String content = cc.jumpkick.jsonl.Jsonl.topStr(body, "content");
+        String etag = cc.jumpkick.jsonl.Jsonl.topStr(body, "etag");
+        String encoding = cc.jumpkick.jsonl.Jsonl.topStr(body, "encoding");
         if (projectId == null || projectId.isBlank()) {
             HttpEngineServer.sendJson(
                     exchange,
@@ -614,7 +593,7 @@ final class HttpProjectApi {
                 if (fileName.equals("jk.toml") || fileName.equals("jk-libs.toml")) {
                     resp.put("lockStale", Boolean.TRUE);
                 }
-                HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(resp));
+                HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.jsonl.MiniJson.write(resp));
             }
         }
     }

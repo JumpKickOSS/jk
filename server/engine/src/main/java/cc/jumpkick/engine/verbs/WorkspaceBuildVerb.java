@@ -10,8 +10,8 @@ import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.runtime.BuildService;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
 import cc.jumpkick.runtime.WorkspaceRequest;
@@ -20,6 +20,7 @@ import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /** Workspace {@code build-request}: CLI JSONL stream. */
@@ -52,7 +53,62 @@ public final class WorkspaceBuildVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public List<String> jobKinds() {
+        return List.of("build", "assemble", "test");
+    }
+
+    @Override
+    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+        Path entryDir = Path.of(spec.dir());
+        Set<Path> dirty = null;
+        if (!spec.modules().isEmpty()) {
+            // Module selection needs the manifest; without a filter an unparseable jk.toml is
+            // accepted here and fails as a job (202 + request-finish), never a bare 400.
+            JkBuild entry;
+            try {
+                entry = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+            } catch (Exception e) {
+                throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
+            }
+            dirty = cc.jumpkick.engine.jobs.JobSelect.dirtyHint(entryDir, entry, spec.modules());
+        }
+        boolean testOnly = "test".equals(spec.kind());
+        boolean skipTests = spec.skipTests() || "assemble".equals(spec.kind());
+        return ProtoSession.withTrigger(
+                ProtoJobs.buildRequest(
+                        entryDir.toString(),
+                        cc.jumpkick.util.JkDirs.cache().toString(),
+                        cc.jumpkick.util.JkDirs.jdks().toString(),
+                        0,
+                        null,
+                        skipTests,
+                        false,
+                        0,
+                        false,
+                        false,
+                        false,
+                        true,
+                        false,
+                        testOnly,
+                        dirty == null
+                                ? null
+                                : dirty.stream().map(Path::toString).sorted().toList(),
+                        cc.jumpkick.engine.jobs.JobSelect.testSelection(
+                                spec.includeTags(), spec.excludeTags(), spec.suites())),
+                "web");
+    }
+
+    /** A workspace test job journals as kind {@code test} on every surface, not {@code build}. */
+    @Override
+    public cc.jumpkick.engine.jobs.JobRequest toJobRequest(String requestLine) {
+        boolean testOnly = Jsonl.bool(requestLine, "testOnly", false);
+        return new cc.jumpkick.engine.jobs.JobRequest(
+                JobKind.workspace(testOnly ? "test" : "build"), threadPrefix(), this::run);
+    }
+
+    @Override
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String entryDirStr = Jsonl.str(requestLine, "dir");
             String cacheStr = Jsonl.str(requestLine, "cache");
@@ -75,10 +131,26 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             Path cache = Path.of(cacheStr);
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
 
-            JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+            List<String> moduleTokens = Jsonl.strArray(requestLine, "modules");
+            Set<Path> dirty = dirtyHintDirs == null
+                    ? null
+                    : dirtyHintDirs.stream().map(Path::of).collect(Collectors.toUnmodifiableSet());
+            if (dirty == null && !moduleTokens.isEmpty()) {
+                JkBuild entry = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+                var hit = cc.jumpkick.engine.jobs.JobSelect.resolveTokens(entryDir, entry, moduleTokens);
+                if (hit != null && !hit.ok()) {
+                    host.sendQuiet(
+                            writer, host.requestFailedLine(null, new IllegalArgumentException(hit.errorMessage())));
+                    return cc.jumpkick.engine.jobs.JobOutcome.failed(2);
+                }
+                if (hit != null) {
+                    dirty = hit.moduleDirs().stream()
+                            .map(cc.jumpkick.runtime.BuildGraph::canonicalPath)
+                            .collect(Collectors.toUnmodifiableSet());
+                }
+            }
             WorkspaceRequest req = new WorkspaceRequest(
                             entryDir,
-                            entryBuild,
                             cache,
                             jdksDir,
                             workers,
@@ -86,11 +158,10 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                             skipTests,
                             verbose,
                             maxModuleConcurrency,
-                            dirtyHintDirs == null
-                                    ? null
-                                    : dirtyHintDirs.stream().map(Path::of).collect(Collectors.toUnmodifiableSet()),
+                            dirty,
                             false,
                             freshenLock)
+                    .withModules(moduleTokens)
                     .withTestOnly(testOnly)
                     .withEphemeralActions(ephemeralActions)
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
@@ -124,7 +195,8 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             WorkspaceResult result = SessionContext.where(session, () -> BuildService.buildWorkspace(req, listener));
             host.releaseExclusiveSlot();
             boolean cancelled = result.cancelled() || host.effectiveCancelled(rid, cancelToken.cancelled());
-            host.accOutcome(rid, result.success() && !cancelled, result.exitCode());
+            cc.jumpkick.engine.jobs.JobOutcome outcome =
+                    cc.jumpkick.engine.jobs.JobOutcome.of(result.success() && !cancelled, result.exitCode());
             if (rid > 0) {
                 if (result.success() && !cancelled) host.finishProgress(rid);
                 host.emitWorkspaceProgress(rid, writer, true);
@@ -142,18 +214,19 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     host.publishRequestError(host.eventRequestId(), entryDirStr, error);
                 }
             }
+            return outcome;
         } catch (Exception e) {
             String dir = Jsonl.str(requestLine, "dir");
             long rid = host.eventRequestId();
             boolean cancelled = host.effectiveCancelled(rid, cancelToken.cancelled());
             if (cancelled) {
                 host.sendQuiet(writer, ProtoEvents.workspaceFinish(false, 1, List.of(), true));
-            } else {
-                host.accOutcome(rid, false, 1);
-                String msg = host.redactEnv(dir, String.valueOf(e.getMessage()));
-                host.sendQuiet(writer, host.requestFailedLine(dir, e));
-                host.publishRequestError(rid, dir, msg);
+                return null;
             }
+            String msg = host.redactEnv(dir, String.valueOf(e.getMessage()));
+            host.sendQuiet(writer, host.requestFailedLine(dir, e));
+            host.publishRequestError(rid, dir, msg);
+            return cc.jumpkick.engine.jobs.JobOutcome.failed(1);
         }
     }
 }

@@ -10,6 +10,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -84,7 +86,7 @@ class WorkspaceSchedulerTest {
         AtomicBoolean slowFinished = new AtomicBoolean();
         // Determinism: "fast" only flips cancel once "slow" is genuinely in flight — a
         // not-yet-started "slow" would be (correctly) no-op'd by the admission gate instead.
-        java.util.concurrent.CountDownLatch slowStarted = new java.util.concurrent.CountDownLatch(1);
+        CountDownLatch slowStarted = new CountDownLatch(1);
         Object result = WorkspaceScheduler.run(
                 List.of("fast", "slow"),
                 WorkspaceSchedulerTest::p,
@@ -92,7 +94,7 @@ class WorkspaceSchedulerTest {
                 unit -> {
                     if ("fast".equals(unit)) {
                         try {
-                            slowStarted.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                            slowStarted.await(5, TimeUnit.SECONDS);
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
                         }

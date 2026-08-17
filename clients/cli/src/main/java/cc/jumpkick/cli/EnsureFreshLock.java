@@ -6,11 +6,9 @@ import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Spinner;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.util.JkDirs;
@@ -165,13 +163,13 @@ public final class EnsureFreshLock {
             Path owner = LockPaths.lockOwnerDir(projectDir);
             Path toml = owner.resolve("jk.toml");
             if (!Files.isRegularFile(toml)) return owner.getFileName().toString();
-            JkBuild build = JkBuildParser.parseLocal(toml);
-            String g = build.project().group();
-            String n = build.project().name();
-            if (g != null && !g.isBlank() && n != null && !n.isBlank()) {
-                return g + ":" + n;
+            var info = cc.jumpkick.command.BuildCommand.projectInfoOrNull(owner);
+            if (info != null && info.error() == null) {
+                String g = info.group();
+                String n = info.name();
+                if (g != null && !g.isBlank() && n != null && !n.isBlank()) return g + ":" + n;
+                if (n != null && !n.isBlank()) return n;
             }
-            if (n != null && !n.isBlank()) return n;
         } catch (Exception ignored) {
             // fall through
         }

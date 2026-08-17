@@ -5,7 +5,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.BufferedWriter;
 
 public final class OptimizeVerb implements HostedVerb {
@@ -28,6 +28,7 @@ public final class OptimizeVerb implements HostedVerb {
 
     @Override
     public VerbShape shape() {
+        // Schedules host warmup on the idle worker and acks immediately — genuinely a sync read.
         return new VerbShape.SyncRead();
     }
 
@@ -37,7 +38,8 @@ public final class OptimizeVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 boolean force = Jsonl.bool(requestLine, "force", false);
@@ -56,5 +58,6 @@ public final class OptimizeVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
+        return null;
     }
 }

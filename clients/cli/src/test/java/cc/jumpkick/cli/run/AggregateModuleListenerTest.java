@@ -12,6 +12,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -58,7 +59,7 @@ class AggregateModuleListenerTest {
         JkManager view = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Building", false);
         var agg = new AggregateContext(view);
         var lis = new AggregateModuleListener(agg, "g:api", List.of(step("compile", "Compile")));
-        var outBuf = new java.util.ArrayList<String>();
+        var outBuf = new ArrayList<String>();
         lis.bufferOutputInto(outBuf);
 
         lis.output("compile", "tool-line-xyz");
@@ -69,6 +70,41 @@ class AggregateModuleListenerTest {
                 .doesNotContain("boom-message");
         assertThat(String.join("\n", outBuf)).contains("tool-line-xyz").contains("boom-message");
         view.close();
+    }
+
+    @Test
+    void live_path_repeats_the_compiler_pill_grouped_path_stacks() {
+        // JK-2110: on the animating (live) path parallel modules interleave in the merged
+        // stream, so a headerless second report could land under another module's output.
+        var buf = new ByteArrayOutputStream();
+        JkManager view = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Building", true);
+        var agg = new AggregateContext(view);
+        var live = new AggregateModuleListener(agg, "g:api", List.of(step("compile", "Compile")));
+        live.error("compile-java", "javac", "A.java:1: error: boom");
+        live.error("compile-java", "javac", "A.java:2: error: boom2");
+        long pills = view.outputWindow().linesForDisplay(200).stream()
+                .map(cc.jumpkick.cli.TestAnsi::strip)
+                .filter(l -> l.contains("Failure") && l.contains("g:api"))
+                .count();
+        assertThat(pills).isEqualTo(2);
+        view.close();
+
+        // Grouped (buffered, non-animating): consecutive same-key reports stack under one pill.
+        var buf2 = new ByteArrayOutputStream();
+        JkManager plain = JkManager.plan(new PrintStream(buf2, true, StandardCharsets.UTF_8), "Building", false);
+        var agg2 = new AggregateContext(plain);
+        var grouped = new AggregateModuleListener(agg2, "g:api", List.of(step("compile", "Compile")));
+        var outBuf = new ArrayList<String>();
+        grouped.bufferOutputInto(outBuf);
+        grouped.error("compile-java", "javac", "A.java:1: error: boom");
+        grouped.error("compile-java", "javac", "A.java:2: error: boom2");
+        long groupedPills = outBuf.stream()
+                .flatMap(b -> b.lines())
+                .map(cc.jumpkick.cli.TestAnsi::strip)
+                .filter(l -> l.contains("Failure") && l.contains("g:api"))
+                .count();
+        assertThat(groupedPills).isEqualTo(1);
+        plain.close();
     }
 
     @Test

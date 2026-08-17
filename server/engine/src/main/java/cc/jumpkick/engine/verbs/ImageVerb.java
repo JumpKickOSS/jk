@@ -8,14 +8,15 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoSession;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.runtime.BuildService;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.runtime.WorkspaceSpec;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -48,7 +49,33 @@ public final class ImageVerb implements HostedVerb {
     }
 
     @Override
-    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public List<String> jobKinds() {
+        return List.of("image");
+    }
+
+    @Override
+    public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
+        // No test toggle on the dashboard/agent surface: an image job's deliverable is the image.
+        return cc.jumpkick.engine.protocol.ProtoSession.withTrigger(
+                cc.jumpkick.engine.protocol.ProtoJobs.imageRequest(
+                        spec.dir(),
+                        cc.jumpkick.util.JkDirs.cache().toString(),
+                        cc.jumpkick.util.JkDirs.jdks().toString(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        true,
+                        false,
+                        false,
+                        false),
+                "web");
+    }
+
+    @Override
+    public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
+            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
@@ -87,18 +114,7 @@ public final class ImageVerb implements HostedVerb {
                         // Workspace member: same orchestrator as jk build; image terminal on this
                         // module; prereqs package. Events are workspace-progress (not single-plan).
                         WorkspaceRequest req = new WorkspaceRequest(
-                                        wsRoot.get(),
-                                        rootBuild,
-                                        cache,
-                                        jdksDir,
-                                        0,
-                                        null,
-                                        skipTests,
-                                        verbose,
-                                        0,
-                                        null,
-                                        true,
-                                        true)
+                                        wsRoot.get(), cache, jdksDir, 0, null, skipTests, verbose, 0, null, true, true)
                                 .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
                                 .withSpec(WorkspaceSpec.image(
                                         Set.of(entryDir.toAbsolutePath().normalize()),
@@ -117,7 +133,8 @@ public final class ImageVerb implements HostedVerb {
                                                 writer, wsRoot.get().toString())));
                         host.releaseExclusiveSlot();
                         boolean cancelled = result.cancelled() || host.effectiveCancelled(rid, cancelToken.cancelled());
-                        host.accOutcome(rid, result.success() && !cancelled, result.exitCode());
+                        cc.jumpkick.engine.jobs.JobOutcome outcome = cc.jumpkick.engine.jobs.JobOutcome.of(
+                                result.success() && !cancelled, result.exitCode());
                         if (rid > 0) {
                             if (result.success() && !cancelled) host.finishProgress(rid);
                             host.emitWorkspaceProgress(rid, writer, true);
@@ -127,7 +144,7 @@ public final class ImageVerb implements HostedVerb {
                                 writer,
                                 ProtoEvents.workspaceFinish(
                                         result.success() && !cancelled, result.exitCode(), result.errors(), cancelled));
-                        return;
+                        return outcome;
                     }
                 }
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
@@ -183,5 +200,6 @@ public final class ImageVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
+        return null;
     }
 }

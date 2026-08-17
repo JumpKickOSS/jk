@@ -54,10 +54,11 @@ resident host (election, accept, hosted ops). Reality:
 | Event encoding | three anonymous listener graphs (CLI / SSE hub / workspace wrap) |
 | Outcome law | inner `BuildAccumulator` (~480 lines) |
 
-The bug is not file length. It is **two job lifecycles** (CLI vs HTTP)
-and **three serializers** of the same facts. HTTP jobs have no heartbeat
-and no wall deadline. HTTP lock skips `admitJob`. A late progress emit
-after teardown can resurrect a map (JK-1474).
+The bug was not file length. It was **two job lifecycles** (CLI vs HTTP)
+and **three serializers** of the same facts. Before the envelope, HTTP
+jobs had no heartbeat and no wall deadline, HTTP lock skipped
+`admitJob`, and a late progress emit after teardown could resurrect a
+map (JK-1474).
 
 Load-bearing races — preserve the *invariant*, not the method shape:
 
@@ -72,7 +73,7 @@ Load-bearing races — preserve the *invariant*, not the method shape:
 | JK-1861 | Peak connections is one metric across UDS + SSE |
 
 Existing peels to copy, not relitigate: `BuildService`, `runtime.*Plans`,
-`InFlightBuilds`, `EngineDelegate`, `EngineMaintenance`, `http/*`,
+`InFlightBuilds`, `EngineMaintenance`, `http/*`,
 `CoalescingBuildPlanListener`. `EngineMain` is the composition root.
 There is no DI container and there must not be one.
 
@@ -115,9 +116,9 @@ sealed interface JobKind {
 }
 ```
 
-**`VerbShape`** (sealed) — dispatch is four arms, forever:
+**`VerbShape`** (sealed) — dispatch is three arms, forever (process lifecycle —
+hello, ping, status, shutdown — stays on the process, never the registry):
 
-- `Lifecycle` — hello, ping, status, shutdown (stay on the process)
 - `SyncRead` — explain, tree, why, edit, ide-model, …
 - `AsyncPlan` — fork + watch; joins `activeBuildPlans`; cache read lock
 - `CacheMaint` — idle-boundary; takes the cache write lock itself
@@ -147,9 +148,11 @@ Not `AbstractAsyncJob`.
 - `SocketWatch(reader, writer)` — connection owns the job
 - `FireAndForget()` — return the request id; progress is the sink
 
-Delete `httpCancelTokens`, `httpJobThreads`, `cancelHttpJob`, and
-`startHttpWorkspace` / `startHttpLock`. HTTP lock goes through
-`admitJob`. HTTP/MCP jobs get the same heartbeat and deadline as CLI.
+`httpCancelTokens`, `httpJobThreads`, `cancelHttpJob`, and
+`startHttpWorkspace` / `startHttpLock` are gone. HTTP lock goes through
+`admitJob`. HTTP/MCP jobs share the envelope's admission, deadline, and
+cancel; heartbeats are wire lines, so detached jobs run only the
+wall-deadline watchdog.
 
 **`EngineEvent`** (sealed) + **`EventSink`** — one domain vocabulary.
 Implementations: `WireEventSink`, `SseEventSink`, `CompositeEventSink`,
@@ -322,7 +325,7 @@ User projects scaffold Lombok under `[processor-dependencies]` and
 | Decorator (`CoalescingBuildPlanListener`) | A second coalescer “for HTTP” |
 | Composite (`CompositeEventSink`) | EventBus |
 | `@Builder` / fluent Lombok where multi-field construction is real | Hand-rolled builders that only restate fields |
-| Proxy (`EngineDelegate`, `PluginClient`) | Dynamic proxies for tests |
+| Proxy (`PluginClient`) | Dynamic proxies for tests |
 | Process-as-singleton | `getInstance()`, static maps that outlive `close()` |
 | Existing listeners | A second observer SPI |
 | CAS / action cache as flyweight | Interning `JobSession` |
@@ -368,7 +371,7 @@ Exit: `EngineServer` ≤ 4,500, maps ≤ 2.
 Gate: cancel, deadline, `CancelStampGuardTest`, `EngineServerTest`.
 
 **Phase 3 — One envelope.** HTTP/MCP become `FireAndForget`. Delete the
-second registry. HTTP jobs gain heartbeat, deadline, and `admitJob`.
+second registry. HTTP jobs share `admitJob`, the deadline, and cancel.
 Success semantics converge on `effectiveSuccess`. This is an
 improvement, not a regression to document and keep.
 

@@ -3,7 +3,10 @@ package cc.jumpkick.engine.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.plugin.protocol.MiniJson;
+import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.jsonl.MiniJson;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -17,23 +20,21 @@ class McpHandlerTest {
 
     private final EngineHttpJobs jobs = new EngineHttpJobs() {
         @Override
-        public long triggerBuild(String dir) {
-            return 42L;
-        }
-
-        @Override
-        public long triggerTest(String dir) {
-            return 43L;
-        }
-
-        @Override
-        public long triggerLock(String dir) {
-            return 44L;
+        public long trigger(JobSpec spec) {
+            return switch (spec.kind()) {
+                case "test" -> 43L;
+                case "lock" -> 44L;
+                default -> 42L;
+            };
         }
 
         @Override
         public boolean cancel(long requestId) {
             return requestId == 42L;
+        }
+
+        public int cancelDir(String dir) {
+            return 0;
         }
     };
 
@@ -129,7 +130,7 @@ class McpHandlerTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> structured = (Map<String, Object>) result.get("structuredContent");
         assertThat(structured.get("type")).isEqualTo("build-accepted");
-        assertThat(((Number) structured.get("requestId")).longValue()).isEqualTo(42L);
+        assertThat(((Number) structured.get("jid")).longValue()).isEqualTo(42L);
     }
 
     @Test
@@ -138,7 +139,7 @@ class McpHandlerTest {
                 + "\"params\":{\"name\":\"jk_test\",\"arguments\":{\"dir\":\"/tmp/demo\"}}}");
         // Nested tool payload is JSON-escaped inside content.text
         assertThat(testBody).contains("test-accepted");
-        assertThat(testBody).contains("requestId");
+        assertThat(testBody).contains("jid");
         assertThat(testBody).contains("43");
 
         String lockBody = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\","
@@ -147,7 +148,7 @@ class McpHandlerTest {
         assertThat(lockBody).contains("44");
 
         String cancelBody = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_cancel\",\"arguments\":{\"requestId\":42}}}");
+                + "\"params\":{\"name\":\"jk_cancel\",\"arguments\":{\"jid\":42}}}");
         assertThat(cancelBody).contains("cancelled");
         assertThat(cancelBody).contains("true");
     }
@@ -286,7 +287,83 @@ class McpHandlerTest {
         assertThat(body).contains("progressToken");
         assertThat(body).contains("tok-1");
         assertThat(tokens.resolve("tok-1")).isEqualTo(42L);
-        assertThat(body).contains("requestId=42");
+        assertThat(body).contains("jid=42");
+    }
+
+    @Test
+    void tools_list_includes_the_agent_followup_tools() {
+        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":20,\"method\":\"tools/list\"}");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) resp.get("result");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> tools = (List<Map<String, Object>>) result.get("tools");
+        assertThat(tools.stream().map(t -> t.get("name")).toList())
+                .contains("jk_new", "jk_publish", "jk_install", "jk_import", "jk_export", "jk_details", "jk_graph");
+    }
+
+    @Test
+    void publish_import_and_install_ride_jk_run(@org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
+        // The thin aliases pin the kind and go through the one runResult path.
+        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":21,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_publish\",\"arguments\":{\"dir\":\"" + dir + "\",\"wait\":false}}}");
+        assertThat(body).contains("\"kind\":\"publish\"");
+        assertThat(body).contains("\"jid\"");
+
+        String install = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":22,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_import\",\"arguments\":{\"dir\":\"" + dir + "\",\"wait\":false}}}");
+        assertThat(install).contains("\"kind\":\"import\"");
+    }
+
+    @Test
+    void install_list_reports_installed_tools_without_a_job() {
+        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":23,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_install\",\"arguments\":{\"action\":\"list\"}}}");
+        assertThat(body).contains("\"type\":\"tools\"");
+        assertThat(body).contains("\"tools\"");
+    }
+
+    @Test
+    void graph_returns_members_and_declared_deps(@org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "t"
+                name = "app"
+                version = "0.1.0"
+
+                [dependencies]
+                gson = { group = "com.google.code.gson", version = "2.11.0" }
+                """);
+        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":24,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_graph\",\"arguments\":{\"dir\":\"" + dir + "\"}}}");
+        assertThat(body).contains("\"type\":\"graph\"");
+        assertThat(body).contains("gson");
+        assertThat(body).contains("\"kind\":\"module\"");
+        assertThat(body).doesNotContain("\"isError\"");
+    }
+
+    @Test
+    void details_with_no_matching_run_is_a_tool_error() {
+        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":25,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_details\",\"arguments\":{}}}");
+        // The fixture history has a finished row but no transcript on disk — still a tool error.
+        assertThat(body).contains("no details.jsonl");
+        assertThat(body).contains("\"isError\":true");
+    }
+
+    @Test
+    void new_templates_and_preview_write_nothing(@org.junit.jupiter.api.io.TempDir Path parent) throws Exception {
+        String templates = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":26,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_new\",\"arguments\":{\"action\":\"templates\"}}}");
+        assertThat(templates).contains("builtinLayouts");
+
+        String preview = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":27,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_new\",\"arguments\":{\"name\":\"demo\",\"parentDir\":\""
+                + parent + "\",\"preview\":true}}}");
+        assertThat(preview).contains("new-preview");
+        assertThat(preview).contains("jk.toml");
+        // Preview never touches the target.
+        assertThat(Files.exists(parent.resolve("demo"))).isFalse();
     }
 
     @Test

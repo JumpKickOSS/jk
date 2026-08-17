@@ -3,7 +3,6 @@ package cc.jumpkick.engine;
 
 import cc.jumpkick.engine.http.HttpEvents;
 import cc.jumpkick.engine.http.HttpLive;
-import cc.jumpkick.engine.http.JsonOut;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import java.util.ArrayList;
@@ -82,7 +81,6 @@ public final class LiveRuns {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("schema", 1);
         m.put("type", "run-snapshot");
-        m.put("requestId", run.requestId());
         m.put("jid", run.requestId());
         m.put("kind", run.kind() == null ? "build" : run.kind());
         m.put("dir", run.dir() == null ? "" : run.dir());

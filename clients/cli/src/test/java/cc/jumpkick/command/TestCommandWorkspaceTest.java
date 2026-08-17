@@ -3,18 +3,17 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.TomlScan;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** Workspace-root test selection fans out to members. */
+/** Workspace-root module lists come from bootstrap TOML (engine owns the full parse). */
 class TestCommandWorkspaceTest {
 
     @Test
-    void all_workspace_module_dirs_lists_members(@TempDir Path tmp) throws Exception {
+    void workspace_modules_scan_lists_members(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
                 name = "ws"
                 group = "g"
@@ -28,22 +27,18 @@ class TestCommandWorkspaceTest {
         Files.writeString(tmp.resolve("a/jk.toml"), "name = \"a\"\ngroup = \"g\"\nversion = \"0.1.0\"\n");
         Files.writeString(tmp.resolve("b/c/jk.toml"), "name = \"c\"\ngroup = \"g\"\nversion = \"0.1.0\"\n");
 
-        var entry = JkBuildParser.parse(tmp.resolve("jk.toml"));
-        Set<Path> dirs = TestCommand.allWorkspaceModuleDirs(tmp, entry);
-        assertThat(dirs)
-                .containsExactly(
-                        tmp.resolve("a").toAbsolutePath().normalize(),
-                        tmp.resolve("b/c").toAbsolutePath().normalize());
+        assertThat(TomlScan.scan(tmp.resolve("jk.toml"), "workspace.modules").stringArray("workspace.modules"))
+                .containsExactly("a", "b/c");
     }
 
     @Test
-    void all_workspace_module_dirs_empty_for_standalone(@TempDir Path tmp) throws Exception {
+    void workspace_modules_scan_empty_for_standalone(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
                 name = "solo"
                 group = "g"
                 version = "0.1.0"
                 """);
-        var entry = JkBuildParser.parse(tmp.resolve("jk.toml"));
-        assertThat(TestCommand.allWorkspaceModuleDirs(tmp, entry)).isEmpty();
+        assertThat(TomlScan.scan(tmp.resolve("jk.toml"), "workspace.modules").stringArray("workspace.modules"))
+                .isEmpty();
     }
 }

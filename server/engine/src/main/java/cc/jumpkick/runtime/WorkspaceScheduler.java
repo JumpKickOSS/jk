@@ -15,6 +15,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
@@ -216,12 +217,12 @@ public final class WorkspaceScheduler {
 
     /** Cancel path: wait (bounded) for in-flight tasks so their events precede our return. */
     private static void drainCancelled(Iterable<? extends CompletableFuture<?>> futures) {
-        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(CANCEL_DRAIN_MS);
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(CANCEL_DRAIN_MS);
         for (CompletableFuture<?> f : futures) {
             long left = deadline - System.nanoTime();
             if (left <= 0) return; // residual: a task outliving the drain may emit late events
             try {
-                f.get(left, java.util.concurrent.TimeUnit.NANOSECONDS);
+                f.get(left, TimeUnit.NANOSECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;

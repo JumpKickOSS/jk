@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.protocol;
 
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -103,6 +103,89 @@ public final class ProtoJobs {
             boolean ephemeralActions,
             boolean testOnly,
             List<String> dirtyHint) {
+        return buildRequest(
+                dir,
+                cache,
+                jdksDir,
+                workers,
+                profile,
+                skipTests,
+                verbose,
+                maxModuleConcurrency,
+                parallelTests,
+                offline,
+                force,
+                freshenLock,
+                ephemeralActions,
+                testOnly,
+                dirtyHint,
+                null);
+    }
+
+    /**
+     * As above with an optional suite/tag {@code selection} ({@code null} or DEFAULT emits
+     * nothing) — how a workspace test job carries the same selection fields as
+     * {@link #testRequest}.
+     */
+    public static String buildRequest(
+            String dir,
+            String cache,
+            String jdksDir,
+            int workers,
+            String profile,
+            boolean skipTests,
+            boolean verbose,
+            int maxModuleConcurrency,
+            boolean parallelTests,
+            boolean offline,
+            boolean force,
+            boolean freshenLock,
+            boolean ephemeralActions,
+            boolean testOnly,
+            List<String> dirtyHint,
+            cc.jumpkick.config.TestSelection selection) {
+        return buildRequest(
+                dir,
+                cache,
+                jdksDir,
+                workers,
+                profile,
+                skipTests,
+                verbose,
+                maxModuleConcurrency,
+                parallelTests,
+                offline,
+                force,
+                freshenLock,
+                ephemeralActions,
+                testOnly,
+                dirtyHint,
+                selection,
+                List.of());
+    }
+
+    /**
+     * As above with optional {@code modules} selector tokens ({@code affected:<ref>} prefix). The
+     * engine resolves them; omitted when empty so older engines see an unchanged request.
+     */
+    public static String buildRequest(
+            String dir,
+            String cache,
+            String jdksDir,
+            int workers,
+            String profile,
+            boolean skipTests,
+            boolean verbose,
+            int maxModuleConcurrency,
+            boolean parallelTests,
+            boolean offline,
+            boolean force,
+            boolean freshenLock,
+            boolean ephemeralActions,
+            boolean testOnly,
+            List<String> dirtyHint,
+            cc.jumpkick.config.TestSelection selection,
+            List<String> modules) {
         // noTimeline rides the session envelope ({@link #withSession}) only when true — never emit
         // a false default here (Jsonl.bool takes the first key match).
         return "{\"type\":\""
@@ -134,6 +217,10 @@ public final class ProtoJobs {
                 + (ephemeralActions ? ",\"ephemeralActions\":true" : "")
                 + (testOnly ? ",\"testOnly\":true" : "")
                 + (dirtyHint != null && !dirtyHint.isEmpty() ? ",\"dirtyHint\":" + jsonStringArray(dirtyHint) : "")
+                + (selection != null && !selection.equals(cc.jumpkick.config.TestSelection.DEFAULT)
+                        ? testSelectionFields(selection)
+                        : "")
+                + (modules != null && !modules.isEmpty() ? ",\"modules\":" + jsonStringArray(modules) : "")
                 + triggerJsonSuffix()
                 + progressModeJsonSuffix()
                 + "}";
@@ -745,6 +832,22 @@ public final class ProtoJobs {
      */
     public static String compileRequest(
             String dir, String cache, String profile, boolean offline, boolean force, boolean verbose) {
+        return compileRequest(dir, cache, profile, offline, force, verbose, List.of());
+    }
+
+    /**
+     * As above with {@code moduleDirs}: the {@code -m}/{@code --affected-since} selection for the
+     * workspace COMPILE path (JK-2103). Empty = the entry dir itself (member) or the whole graph
+     * (workspace root).
+     */
+    public static String compileRequest(
+            String dir,
+            String cache,
+            String profile,
+            boolean offline,
+            boolean force,
+            boolean verbose,
+            List<String> moduleDirs) {
         return "{\"type\":\""
                 + EngineProtocol.COMPILE_REQUEST
                 + "\",\"dir\":"
@@ -759,6 +862,8 @@ public final class ProtoJobs {
                 + force
                 + ",\"verbose\":"
                 + verbose
+                + ",\"moduleDirs\":"
+                + EngineProtocol.quoteArray(moduleDirs == null ? List.of() : moduleDirs)
                 + "}";
     }
 

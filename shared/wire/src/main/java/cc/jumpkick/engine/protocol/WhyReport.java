@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.protocol;
 
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The engine's {@code jk why} answer ({@link EngineProtocol#WHY_REQUEST}): the lock artifacts
@@ -32,6 +35,33 @@ public record WhyReport(
                 + ",\"pathOwners\":" + EngineProtocol.quoteArray(pathOwners)
                 + ",\"paths\":" + EngineProtocol.quoteArray(paths)
                 + "}";
+    }
+
+    /**
+     * Structured form for map-shaped surfaces (MCP {@code structuredContent}): one row per match
+     * with its own provenance paths — the same facts {@link #encode} flattens for the wire.
+     */
+    public Map<String, Object> toStructured() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (error != null) {
+            m.put("error", error);
+            return m;
+        }
+        List<Map<String, Object>> matches = new ArrayList<>();
+        for (int i = 0; i < matchNames.size(); i++) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("name", matchNames.get(i));
+            row.put("version", i < matchVersions.size() ? matchVersions.get(i) : "");
+            List<String> mine = new ArrayList<>();
+            String idx = Integer.toString(i);
+            for (int p = 0; p < paths.size(); p++) {
+                if (idx.equals(pathOwners.get(p))) mine.add(paths.get(p));
+            }
+            row.put("paths", mine);
+            matches.add(row);
+        }
+        m.put("matches", matches);
+        return m;
     }
 
     public static WhyReport decode(String line) {

@@ -25,6 +25,12 @@ public final class Glyphs {
     /** Warning marker — U+203C double exclamation. Paint with {@code Theme.warning()}. */
     public static final String BANG = "‼";
 
+    /**
+     * Cancelled-job marker — U+229B circled asterisk. Same glyph as {@code jk jobs} / history
+     * cancelled rows. Paint with the cancelled (explain-pill gray) chip, not the red fail chip.
+     */
+    public static final String CANCELLED = "⊛";
+
     /** Pending / active step-row marker — white square (Neutral East Asian Width; avoids the
      * Ambiguous-width medium square, which some terminal/font combos render double-wide). */
     public static final String PENDING = "□";
@@ -51,6 +57,8 @@ public final class Glyphs {
     public static final String CHECK_PLAIN = "+";
     public static final String CROSS_PLAIN = "!";
     public static final String BANG_PLAIN = "!";
+    /** Cancelled under plain — {@code o}, matching {@code jk jobs} ASCII pills. */
+    public static final String CANCELLED_PLAIN = "o";
     /** Unchecked / pending box under plain — bracket form so it still reads as a checkbox. */
     public static final String PENDING_PLAIN = "[ ]";
 
@@ -99,6 +107,11 @@ public final class Glyphs {
     /** {@link #BANG} or {@link #BANG_PLAIN}. */
     public static String bang() {
         return Theme.active().isAnsi() ? BANG : BANG_PLAIN;
+    }
+
+    /** {@link #CANCELLED} or {@link #CANCELLED_PLAIN}. */
+    public static String cancelled() {
+        return Theme.active().isAnsi() ? CANCELLED : CANCELLED_PLAIN;
     }
 
     /** {@link #PLAY} or {@link #PLAY_PLAIN}. */

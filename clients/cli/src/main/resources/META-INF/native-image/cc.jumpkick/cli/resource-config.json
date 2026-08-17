@@ -15,9 +15,6 @@
       },
       {
         "pattern": "cc/jumpkick/command/wrapper/.*"
-      },
-      {
-        "pattern": "cc/jumpkick/plugin/manifest/.*"
       }
     ]
   }

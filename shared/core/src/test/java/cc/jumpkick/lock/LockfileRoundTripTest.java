@@ -4,7 +4,6 @@ package cc.jumpkick.lock;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
-import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 class LockfileRoundTripTest {
@@ -14,16 +13,35 @@ class LockfileRoundTripTest {
         Lockfile lock = Lockfile.empty("0.1.0-SNAPSHOT");
         String rendered = LockfileWriter.render(lock);
 
-        // The header is deterministic; the jk toolchain line carries the RUNNING version and,
-        // when this machine has it materialized, its engine sha (dev builds stamp "").
+        // The header is deterministic; a floor-less lock is stamped with the FORMAT floor —
+        // never the running version (the floor moves only when the lock format requires it).
         assertThat(rendered).startsWith("""
                 version = 1
                 generated-by = "jk 0.1.0-SNAPSHOT"
                 resolution-algorithm = "pubgrub-v1"
                 """);
-        assertThat(rendered)
-                .matches("(?s).*\\njk = \\{ version = \"" + Pattern.quote(cc.jumpkick.model.JkVersion.VERSION)
-                        + "\", sha256 = \"[0-9a-f]*\" \\}\\n.*");
+        assertThat(rendered).contains("\njk-min = \"" + LockfileWriter.FORMAT_FLOOR + "\"\n");
+        assertThat(rendered).doesNotContain("jk = {");
+    }
+
+    @Test
+    void jk_floor_round_trips_and_legacy_pin_reads_as_the_floor() {
+        Lockfile lock = Lockfile.empty("0.1.0-SNAPSHOT").withJkMin("0.11.0");
+        String rendered = LockfileWriter.render(lock);
+        assertThat(rendered).contains("jk-min = \"0.11.0\"");
+        assertThat(LockfileReader.parse(rendered).jkMin()).isEqualTo("0.11.0");
+
+        // A legacy artifact pin reads as the floor; the sha is ignored (a floor needs no engine
+        // artifact) and the next write renders it in floor form.
+        String legacy = """
+                version = 1
+                generated-by = "jk 0.9.0"
+                resolution-algorithm = "pubgrub-v1"
+                jk = { version = "0.9.0", sha256 = "abcd" }
+                """;
+        Lockfile parsed = LockfileReader.parse(legacy);
+        assertThat(parsed.jkMin()).isEqualTo("0.9.0");
+        assertThat(LockfileWriter.render(parsed)).contains("jk-min = \"0.9.0\"").doesNotContain("sha256 = \"abcd\"");
     }
 
     @Test

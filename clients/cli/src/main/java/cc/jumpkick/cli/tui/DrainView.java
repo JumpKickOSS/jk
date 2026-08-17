@@ -54,6 +54,8 @@ public final class DrainView implements LiveRegion, AutoCloseable {
             Attributes raw = new Attributes(saved);
             raw.setLocalFlag(Attributes.LocalFlag.ICANON, false); // byte-at-a-time
             raw.setLocalFlag(Attributes.LocalFlag.ECHO, false); // don't echo the keypress
+            raw.setControlChar(Attributes.ControlChar.VMIN, 1);
+            raw.setControlChar(Attributes.ControlChar.VTIME, 0);
             // ISIG stays on: Ctrl-C keeps raising SIGINT so GlobalCancel settles this region.
             t.setAttributes(raw);
             Wizard.drainInput(t.reader(), 40); // flush terminal probe replies

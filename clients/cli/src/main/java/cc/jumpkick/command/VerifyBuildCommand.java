@@ -8,7 +8,6 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.protocol.ProjectInfo;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -204,12 +203,8 @@ public final class VerifyBuildCommand implements CliCommand {
     private static void buildScratch(Path scratch, Path cache, ErrorSink errors) throws Exception {
         // The parse feeds only the in-process test path; the hosted engine re-parses entryDir
         // itself (the build request serializes entryDir, not the model — thin client).
-        JkBuild scratchBuild = null;
         var request = new WorkspaceRequest(
-                        scratch,
-                        scratchBuild,
-                        cache,
-                        null, // jdksDir: default install root
+                        scratch, cache, null, // jdksDir: default install root
                         1, // workers
                         null, // profile
                         true, // skipTests

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
@@ -90,6 +91,18 @@ final class HttpHistoryApi {
      * verbatim. Re-redact against each record's own dir; {@code cache} amortises the env lookup
      * per distinct dir across one response (rows overwhelmingly share a dir).
      */
+    /**
+     * Redact a batch of raw journal records with one per-dir redactor cache. The MCP journal
+     * suppliers ride this so {@code jk_history view=full} / {@code jk_diagnostics} never serve
+     * pre-redaction secrets — same defense-in-depth as the REST history stream.
+     */
+    static List<String> redactRecords(List<String> raw) {
+        Map<String, cc.jumpkick.config.SecretRedactor> cache = new HashMap<>();
+        List<String> out = new ArrayList<>(raw.size());
+        for (String r : raw) out.add(redactRecordJson(r, cache));
+        return out;
+    }
+
     static String redactRecordJson(String raw, Map<String, cc.jumpkick.config.SecretRedactor> cache) {
         try {
             String dir = scanStringField(raw, "dir");
@@ -169,7 +182,7 @@ final class HttpHistoryApi {
     private String enrichHistoryJson(String raw) {
         if (raw == null || raw.isBlank()) return raw;
         try {
-            Object parsed = cc.jumpkick.plugin.protocol.MiniJson.parse(raw);
+            Object parsed = cc.jumpkick.jsonl.MiniJson.parse(raw);
             if (!(parsed instanceof Map<?, ?> m0)) return raw;
             @SuppressWarnings("unchecked")
             Map<String, Object> m = (Map<String, Object>) m0;
@@ -186,11 +199,10 @@ final class HttpHistoryApi {
                 }
             }
             if (!Boolean.TRUE.equals(m.get("running"))) {
-                return cc.jumpkick.plugin.protocol.MiniJson.write(m);
+                return cc.jumpkick.jsonl.MiniJson.write(m);
             }
             HttpLive.Run match = matchLiveRun(m);
-            if (match == null) return cc.jumpkick.plugin.protocol.MiniJson.write(m);
-            m.put("requestId", match.requestId());
+            if (match == null) return cc.jumpkick.jsonl.MiniJson.write(m);
             m.put("jid", match.requestId());
             if (match.startedAt() > 0) {
                 m.put("startedAt", match.startedAt());
@@ -211,7 +223,7 @@ final class HttpHistoryApi {
             } else if (!match.tasks().isEmpty()) {
                 m.put("tasks", liveTasksJson(match.tasks()));
             }
-            return cc.jumpkick.plugin.protocol.MiniJson.write(m);
+            return cc.jumpkick.jsonl.MiniJson.write(m);
         } catch (RuntimeException e) {
             return raw; // best-effort — never break the list for a bad row
         }

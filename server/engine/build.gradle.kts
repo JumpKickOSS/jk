@@ -42,6 +42,13 @@ dependencies {
     implementation(libs.tukaani.xz)
 }
 
+// First-party jk-plugin.toml + scaffold templates (JK-2149). Kept off :core so
+// the native CLI compile/runtime set cannot see them.
+tasks.processResources {
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    pluginManifestResources(rootProject)
+}
+
 application {
     mainClass.set("cc.jumpkick.engine.EngineMain")
     applicationName = "jk-engine"
