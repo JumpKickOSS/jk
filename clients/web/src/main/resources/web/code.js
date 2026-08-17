@@ -997,6 +997,7 @@ export const CodeView = {
     _fileAbort: null,
     _baseline: '',
     _etag: null,
+    saveConfirmOpen: false,
     // The editor/model/decorations handles stay OFF data() on purpose: data is deeply reactive,
     // and wrapping Monaco's instances in a Proxy breaks them. They live on the raw instance
     // (this._editor, set in mount()).
@@ -1166,6 +1167,7 @@ export const CodeView = {
         this._api.unregisterDirtyGuard(this._dirtyProbe);
         this._dirtyProbe = null;
       }
+      this.settleSaveConfirm(false, { restoreFocus: false });
       if (this._listAbort) this._listAbort.abort();
       if (this._fileAbort) this._fileAbort.abort();
       if (this._copiedTimer) clearTimeout(this._copiedTimer);
@@ -1317,16 +1319,81 @@ export const CodeView = {
       if (typeof window === 'undefined' || !window.confirm) return true;
       return window.confirm('Discard unsaved changes?');
     },
+    /** In-page Save confirm. Resolves true only on Save. */
     confirmSave() {
-      if (typeof window === 'undefined' || !window.confirm) return true;
-      return window.confirm('Are you sure you want to save?');
+      if (this.saveConfirmOpen) return this._saveConfirmPromise || Promise.resolve(false);
+      this.saveConfirmOpen = true;
+      this.bindSaveConfirmKeys();
+      this._saveConfirmPromise = new Promise((resolve) => {
+        this._saveConfirmResolve = resolve;
+      });
+      this.$nextTick(() => {
+        const btn = this.$refs.saveConfirmOk;
+        if (btn && typeof btn.focus === 'function') btn.focus();
+      });
+      return this._saveConfirmPromise;
+    },
+    settleSaveConfirm(ok, opts) {
+      if (!this.saveConfirmOpen && !this._saveConfirmResolve) return;
+      this.saveConfirmOpen = false;
+      this.unbindSaveConfirmKeys();
+      const resolve = this._saveConfirmResolve;
+      this._saveConfirmResolve = null;
+      this._saveConfirmPromise = null;
+      if (!opts || opts.restoreFocus !== false) {
+        this.$nextTick(() => {
+          if (this._editor && typeof this._editor.focus === 'function') this._editor.focus();
+        });
+      }
+      if (resolve) resolve(!!ok);
+    },
+    bindSaveConfirmKeys() {
+      if (this._onSaveConfirmKey) return;
+      this._onSaveConfirmKey = (e) => this.onSaveConfirmKey(e);
+      window.addEventListener('keydown', this._onSaveConfirmKey, true);
+    },
+    unbindSaveConfirmKeys() {
+      if (!this._onSaveConfirmKey) return;
+      window.removeEventListener('keydown', this._onSaveConfirmKey, true);
+      this._onSaveConfirmKey = null;
+    },
+    onSaveConfirmKey(e) {
+      if (!this.saveConfirmOpen) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.settleSaveConfirm(false);
+        return;
+      }
+      if (e.key === 'Tab') {
+        const root = this.$refs.saveConfirmDialog;
+        if (!root) return;
+        const list = root.querySelectorAll('button');
+        if (!list.length) return;
+        const first = list[0];
+        const last = list[list.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+        return;
+      }
+      if (e.key === 'Enter' && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        if (e.target && e.target.closest && e.target.closest('.confirm-modal button')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        this.settleSaveConfirm(true);
+      }
     },
     /** Save button + Ctrl/Cmd+S: confirm, then PUT when the buffer is dirty and writable. */
     async requestSave() {
       if (!this.canSave || this._savePromptOpen) return;
       this._savePromptOpen = true;
       try {
-        if (!this.confirmSave()) return;
+        if (!(await this.confirmSave())) return;
         await this.save();
       } finally {
         this._savePromptOpen = false;
@@ -1861,5 +1928,29 @@ export const CodeView = {
           <div v-show="editorVisible" class="code-editor" ref="editor"></div>
         </section>
       </div>
+      <teleport to="body">
+        <div v-if="saveConfirmOpen" class="modal-bg confirm-modal-bg" role="presentation"
+             @click.self="settleSaveConfirm(false)">
+          <div class="modal confirm-modal" role="alertdialog" aria-modal="true"
+               aria-labelledby="save-confirm-title" aria-describedby="save-confirm-desc"
+               tabindex="-1" ref="saveConfirmDialog">
+            <div class="modal-head">
+              <jk-icon name="save"></jk-icon>
+              <span id="save-confirm-title" class="lbl">Save file</span>
+            </div>
+            <p id="save-confirm-desc" class="confirm-body">
+              Are you sure you want to save
+              <span class="confirm-file" :data-tip="path || undefined">{{ fileName(path) }}</span>?
+            </p>
+            <div class="modal-foot confirm-actions">
+              <button type="button" class="ghost" @click="settleSaveConfirm(false)">Cancel</button>
+              <button type="button" class="primary" ref="saveConfirmOk" @click="settleSaveConfirm(true)">
+                <jk-icon name="save"></jk-icon>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      </teleport>
     </div>`,
 };

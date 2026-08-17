@@ -28,6 +28,10 @@ const {
   testFailureReport,
   stackFrameLines,
   isTestFailureDiag,
+  isCompilerDiag,
+  parseCompilerBlock,
+  compilerFailureReports,
+  snippetWindow,
   parseAssertJMessage,
   shortTestLabel,
   shortDisplayLabel,
@@ -1587,4 +1591,95 @@ test('history seed keeps test-failure snippet for Activity backfill', () => {
   const rep = testFailureReport(mod.diagnostics[0], { count: 1 });
   assert.equal(rep.label, 'T.m()');
   assert.equal(rep.exceptionClass, 'AssertionFailedError');
+});
+
+// ---- compiler-failure rich report (CLI CompilerDiagnostic parity) ----
+
+test('isCompilerDiag matches javac kotlinc groovyc', () => {
+  assert.equal(isCompilerDiag({ code: 'javac' }), true);
+  assert.equal(isCompilerDiag({ code: 'kotlinc' }), true);
+  assert.equal(isCompilerDiag({ code: 'groovyc' }), true);
+  assert.equal(isCompilerDiag({ code: 'test-failure' }), false);
+  assert.equal(isCompilerDiag({ code: 'error' }), false);
+  assert.equal(isCompilerDiag(null), false);
+});
+
+test('parseCompilerBlock extracts error kv, caret column, and snippet line', () => {
+  const units = parseCompilerBlock(
+    '/ws/server/engine/src/main/java/cc/jumpkick/compile/AssemblyPackager.java:35: error: class, interface, enum, or record expected\n' +
+      'public final classaa AssemblyPackager {\n' +
+      '             ^\n',
+  );
+  assert.equal(units.length, 1);
+  assert.equal(units[0].file, '/ws/server/engine/src/main/java/cc/jumpkick/compile/AssemblyPackager.java');
+  assert.equal(units[0].line, 35);
+  assert.equal(units[0].col, 14);
+  assert.equal(units[0].kvs.length, 1);
+  assert.equal(units[0].kvs[0].key, 'error');
+  assert.equal(units[0].kvs[0].value, 'class, interface, enum, or record expected');
+  assert.equal(units[0].snippet, 'public final classaa AssemblyPackager {');
+});
+
+test('compilerFailureReports builds CLI-shaped compile model', () => {
+  const d = normalizeDiagnostic({
+    task: 'compile-java',
+    code: 'javac',
+    message:
+      '/home/bsant/src/oss/jk/server/engine/src/main/java/cc/jumpkick/compile/AssemblyPackager.java:35: error: class, interface, enum, or record expected\n' +
+      'public final classaa AssemblyPackager {\n' +
+      '             ^\n',
+    file: '/home/bsant/src/oss/jk/server/engine/src/main/java/cc/jumpkick/compile/AssemblyPackager.java',
+    line: 35,
+    col: 14,
+  });
+  assert.equal(d.col, 14);
+  const reps = compilerFailureReports(d, { showHeader: true, module: 'cc.jumpkick:jk-engine' });
+  assert.equal(reps.length, 1);
+  const rep = reps[0];
+  assert.equal(rep.kind, 'compile');
+  assert.equal(rep.showHeader, true);
+  assert.equal(rep.headerLabel, 'Compile failure');
+  assert.equal(rep.module, 'cc.jumpkick:jk-engine');
+  assert.equal(rep.kvs[0].key, 'error');
+  assert.equal(rep.kvs[0].value, 'class, interface, enum, or record expected');
+  assert.equal(rep.line, 35);
+  assert.equal(rep.col, 14);
+  assert.equal(rep.rows.length, 1);
+  assert.equal(rep.rows[0].num, 35);
+  assert.equal(rep.rows[0].error, true);
+  assert.equal(rep.rows[0].code, 'public final classaa AssemblyPackager {');
+});
+
+test('snippetWindow paints two lines of context around the error', () => {
+  const lines = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+  const rows = snippetWindow(lines, 4);
+  assert.deepEqual(
+    rows.map((r) => r.num),
+    [2, 3, 4, 5, 6],
+  );
+  assert.equal(rows[2].error, true);
+  assert.equal(rows[2].code, 'd');
+  assert.equal(rows.filter((r) => r.error).length, 1);
+});
+
+test('snippetWindow numbers a lone compiler line with the real error line', () => {
+  const rows = snippetWindow(['public final classaa AssemblyPackager {'], 35);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].num, 35);
+  assert.equal(rows[0].error, true);
+});
+
+test('compilerFailureReports subsequent unit suppresses the shared header', () => {
+  const d = normalizeDiagnostic({
+    code: 'javac',
+    message:
+      '/w/Foo.java:2: error: compact source file should not have package declaration\n' +
+      'package x;\n' +
+      '^\n',
+    file: '/w/Foo.java',
+    line: 2,
+    col: 1,
+  });
+  const hidden = compilerFailureReports(d, { showHeader: false, module: 'g:a' });
+  assert.equal(hidden[0].showHeader, false);
 });

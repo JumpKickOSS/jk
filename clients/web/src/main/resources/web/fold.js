@@ -726,6 +726,7 @@ export function normalizeDiagnostic(d) {
     stack: d.stack || (d.throwable && d.throwable.stack) || '',
     file: d.file || '',
     line: typeof d.line === 'number' ? d.line : 0,
+    col: typeof d.col === 'number' ? d.col : typeof d.column === 'number' ? d.column : 0,
     snippetStart: typeof d.snippetStart === 'number' ? d.snippetStart : 0,
     snippet,
     worker: typeof d.worker === 'number' ? d.worker : 0,
@@ -1527,4 +1528,187 @@ export function stackFrameLines(stack) {
 /** True when the diagnostic should use the rich test-failure report. */
 export function isTestFailureDiag(d) {
   return !!(d && d.code === 'test-failure');
+}
+
+/** javac / kotlinc / groovyc — same set as CLI {@code ConsoleSpec.isCompilerCode}. */
+export function isCompilerDiag(d) {
+  const c = d && d.code;
+  return c === 'javac' || c === 'kotlinc' || c === 'groovyc';
+}
+
+/** {@code path.ext:line[:col]:rest} — same shape as {@code CompilerLocus.HEADER}. */
+const COMPILER_HEADER =
+  /^(?<file>.+?\.(?:java|kt|kts|groovy|gvy|gy)):(?<line>\d+)(?::(?<col>\d+))?:(?<rest>.*)$/;
+const COMPILER_CARET = /^\s*\^\s*$/;
+const COMPILER_KV = /^\s*([^:]+):(.*)$/;
+
+/**
+ * Split a compiler block into units (one per header). Empty when the message has no locus header.
+ *
+ * @param {string} raw
+ * @param {string} [severity]
+ * @returns {Array<{file:string,line:number,col:number,kvs:Array<{key:string,value:string}>,extras:string[],snippet:string|null}>}
+ */
+export function parseCompilerBlock(raw, severity = 'error') {
+  if (!raw) return [];
+  const lines = String(raw).split('\n');
+  const headers = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (COMPILER_HEADER.test(lines[i])) headers.push(i);
+  }
+  if (!headers.length) return [];
+  const units = [];
+  for (let h = 0; h < headers.length; h++) {
+    const start = headers[h];
+    const end = h + 1 < headers.length ? headers[h + 1] : lines.length;
+    units.push(parseCompilerUnit(lines, start, end, severity));
+  }
+  return units;
+}
+
+function parseCompilerUnit(lines, start, end, severity) {
+  const m = COMPILER_HEADER.exec(lines[start]);
+  if (!m) {
+    return { file: '', line: 0, col: 0, kvs: [], extras: [], snippet: null };
+  }
+  const file = m.groups.file;
+  const line = parsePositiveInt(m.groups.line);
+  let col = parsePositiveInt(m.groups.col);
+  const rest = (m.groups.rest || '').trim();
+  const kvs = [];
+  if (rest) kvs.push(splitCompilerKv(rest, severity));
+  let snippet = null;
+  const extras = [];
+  for (let i = start + 1; i < end; i++) {
+    const row = lines[i];
+    if (COMPILER_CARET.test(row)) {
+      const at = row.indexOf('^');
+      if (at >= 0 && col <= 0) col = at + 1;
+      continue;
+    }
+    if (i + 1 < end && COMPILER_CARET.test(lines[i + 1])) {
+      snippet = row;
+      continue;
+    }
+    const kv = COMPILER_KV.exec(row);
+    if (kv && looksLikeCompilerTrailer(kv[1])) {
+      kvs.push({ key: kv[1].trim(), value: (kv[2] || '').trim() });
+      continue;
+    }
+    if (row != null && row.trim()) extras.push(row);
+  }
+  return { file, line, col, kvs, extras, snippet };
+}
+
+function splitCompilerKv(rest, severity) {
+  const s = String(rest).trim();
+  const colon = s.indexOf(':');
+  if (colon <= 0) return { key: severity || 'error', value: s };
+  return { key: s.slice(0, colon).trim(), value: s.slice(colon + 1).trim() };
+}
+
+function looksLikeCompilerTrailer(rawKey) {
+  if (!rawKey) return false;
+  const k = rawKey.trim();
+  if (!k || k.length > 24) return false;
+  return /^[A-Za-z][A-Za-z0-9_-]*$/.test(k);
+}
+
+function parsePositiveInt(raw) {
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/**
+ * Editor-style window around {@code errorLine} (1-based): two lines of context each side, or a
+ * single numbered row when only the compiler's one-line snippet is available.
+ *
+ * @param {string[]} fileLines
+ * @param {number} errorLine
+ */
+export function snippetWindow(fileLines, errorLine) {
+  const n = fileLines == null ? 0 : fileLines.length;
+  if (n === 0) return [];
+  const err = Math.max(1, errorLine || 1);
+  const snippetOnly = n === 1 && err > 1;
+  const lo = snippetOnly ? 1 : Math.max(1, err - 2);
+  const hi = snippetOnly ? 1 : Math.min(n, err + 2);
+  const slice = [];
+  let maxCode = 0;
+  for (let line = lo; line <= hi; line++) {
+    const raw = fileLines[line - 1] == null ? '' : String(fileLines[line - 1]);
+    slice.push(raw);
+    maxCode = Math.max(maxCode, raw.length);
+  }
+  const gutter = Math.max(4, String(snippetOnly ? err : hi).length);
+  return slice.map((text, i) => {
+    const num = snippetOnly ? err : lo + i;
+    return {
+      num,
+      gutter: String(num).padStart(gutter, ' '),
+      error: snippetOnly || num === err,
+      code: text,
+      pad: Math.max(0, maxCode - text.length),
+    };
+  });
+}
+
+/**
+ * Structured compile-failure report (CLI CompilerDiagnostic body, web test-failure chrome).
+ * Returns one report per header in the message. Non-compiler diags return [].
+ *
+ * @param {object} d normalized diagnostic
+ * @param {{ showHeader?: boolean, module?: string }} [opts]
+ */
+export function compilerFailureReports(d, opts) {
+  if (!isCompilerDiag(d)) return [];
+  const showHeader = !opts || opts.showHeader !== false;
+  const module = (opts && opts.module) || d.module || '';
+  const units = parseCompilerBlock(d.message || '', 'error');
+  if (!units.length) {
+    const rest = String(d.message || '').trim();
+    return [
+      makeCompilerReport({
+        showHeader,
+        module,
+        file: d.file || '',
+        line: d.line || 0,
+        col: d.col || 0,
+        kvs: rest ? [{ key: 'error', value: rest }] : [],
+        extras: [],
+        snippet: null,
+      }),
+    ];
+  }
+  return units.map((unit, i) =>
+    makeCompilerReport({
+      showHeader: showHeader && i === 0,
+      module,
+      file: d.file || unit.file || '',
+      line: d.line > 0 && i === 0 ? d.line : unit.line,
+      col: d.col > 0 && i === 0 ? d.col : unit.col,
+      kvs: unit.kvs,
+      extras: unit.extras,
+      snippet: unit.snippet,
+    }),
+  );
+}
+
+function makeCompilerReport({ showHeader, module, file, line, col, kvs, extras, snippet }) {
+  let rows = [];
+  if (snippet != null && snippet !== '') {
+    rows = snippetWindow([snippet], line > 0 ? line : 1);
+  }
+  return {
+    kind: 'compile',
+    showHeader,
+    headerLabel: 'Compile failure',
+    module,
+    kvs: kvs || [],
+    extras: extras || [],
+    file: file || '',
+    line: line || 0,
+    col: col || 0,
+    rows,
+  };
 }

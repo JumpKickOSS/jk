@@ -91,9 +91,11 @@ Monaco lands on the diagnostic column. Fail-report and CLI OSC-8 jumps
 add `&err=true` so the target line uses the error-red wash (plain `?line=` stays a soft cyan
 rail). Compiler (and fail-report) jumps also pass `&msg=` — a short, URL-encoded note (capped at
 800 characters) shown as a Monaco hover on the highlighted line and column.
-The underlined path above a test-failure snippet is a real hash deep link into that route (so
-middle-click / copy-link work). Visible text is `path:line` (and `:col` for compiler
-jumps) so a copied snippet still names the locus after colour / OSC-8 is stripped. Module-relative paths join `rel(checkout, module.dir)` +
+The underlined path above a test-failure or compile-failure snippet is a real hash deep link
+into that route (so middle-click / copy-link work). Visible text is `path:line` (and `:col`
+for compiler jumps) so a copied snippet still names the locus after colour / OSC-8 is stripped.
+Compiler errors use the same report chrome as test failures (`✘ Compile failure in coord`,
+`error:` body, then a 5-line source window) instead of a mashed one-liner. Module-relative paths join `rel(checkout, module.dir)` +
 `rep.file`; an empty live single-plan module dir leaves `rep.file` as already checkout-relative.
 Basename-only paths stay plain text.
 
@@ -133,8 +135,9 @@ tab bar: [ file-name-pill ]   [ Copy ] [ Preview ] [ Save ]
   (same geometry as Build: `inline-flex`, `gap: 6px`, shimmer on hover, shared `min-width`).
 - **Build** stays in the project header (green primary).
 - **Save** is disabled until the Monaco buffer differs from the last load/save; oversized plain-text
-  fallback and image-only opens are not editable. **Ctrl+S / ⌘S** (and the Save button) prompt with
-  a simple “Are you sure?” confirm before writing. On success the label flips to **Saved** briefly
+  fallback and image-only opens are not editable. **Ctrl+S / ⌘S** (and the Save button) open an
+  in-page themed confirm (Cancel / Save; Escape cancels) before writing. On success the label flips
+  to **Saved** briefly
   (same pattern as Copy → Copied). Failures use plain-language messages (engine down, unauthorized,
   too large, concurrency). Saves send the load-time `etag`; a **409 file changed on disk** means
   another tab or process rewrote the file — reload to continue.
