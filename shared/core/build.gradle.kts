@@ -15,51 +15,28 @@ dependencies {
     api(libs.tomlj)
 }
 
-// Built-in plugin manifests also live under src/main/resources (self-host — jk
-// has no Gradle processResources step). Keep baking from plugins/* so Gradle overwrites the
-// resource tree with the plugin module's current blueprint (no silent drift).
-tasks.processResources {
+// Built-in plugin manifests + scaffolds are engine-only (JK-2149). :core tests still
+// parse PluginTableRegistry, so bake the same tree onto the test classpath only.
+tasks.processTestResources {
     duplicatesStrategy = DuplicatesStrategy.INCLUDE
-    from(rootProject.file("plugins/spring-boot/jk-plugin.toml")) {
-        into("cc/jumpkick/plugin/manifest")
-        rename { "spring-boot.jk-plugin.toml" }
-    }
-    // Scaffold templates ride next to the manifest (registry resource dir <id>/scaffold/...).
-    from(rootProject.file("plugins/spring-boot/scaffold")) {
-        into("cc/jumpkick/plugin/manifest/spring-boot/scaffold")
-    }
-    from(rootProject.file("plugins/grails/jk-plugin.toml")) {
-        into("cc/jumpkick/plugin/manifest")
-        rename { "grails.jk-plugin.toml" }
-    }
-    from(rootProject.file("plugins/grails/scaffold")) {
-        into("cc/jumpkick/plugin/manifest/grails/scaffold")
-    }
-    from(rootProject.file("plugins/quarkus/jk-plugin.toml")) {
-        into("cc/jumpkick/plugin/manifest")
-        rename { "quarkus.jk-plugin.toml" }
-    }
-    from(rootProject.file("plugins/quarkus/scaffold")) {
-        into("cc/jumpkick/plugin/manifest/quarkus/scaffold")
-    }
-    from(rootProject.file("plugins/micronaut/jk-plugin.toml")) {
-        into("cc/jumpkick/plugin/manifest")
-        rename { "micronaut.jk-plugin.toml" }
-    }
-    from(rootProject.file("plugins/micronaut/scaffold")) {
-        into("cc/jumpkick/plugin/manifest/micronaut/scaffold")
-    }
-    from(rootProject.file("plugins/android/jk-plugin.toml")) {
-        into("cc/jumpkick/plugin/manifest")
-        rename { "android.jk-plugin.toml" }
-    }
-    from(rootProject.file("plugins/protobuf/jk-plugin.toml")) {
-        into("cc/jumpkick/plugin/manifest")
-        rename { "protobuf.jk-plugin.toml" }
-    }
-    from(rootProject.file("plugins/minified/jk-plugin.toml")) {
-        into("cc/jumpkick/plugin/manifest")
-        rename { "minified.jk-plugin.toml" }
+    pluginManifestResources(rootProject)
+}
+
+tasks.named<Jar>("jar") {
+    doLast {
+        val jarFile = archiveFile.get().asFile
+        val baked =
+            zipTree(jarFile)
+                .matching {
+                    include("cc/jumpkick/plugin/manifest/**")
+                    exclude("**/*.class")
+                }
+                .files
+        if (baked.isNotEmpty()) {
+            throw GradleException(
+                ":core jar must not contain plugin manifests (JK-2149): " +
+                    baked.map { it.name }.sorted())
+        }
     }
 }
 

@@ -256,7 +256,9 @@ public final class PluginTableRegistry {
         for (String resource : BUILT_IN) {
             try (InputStream in = PluginTableRegistry.class.getResourceAsStream(resource)) {
                 if (in == null) {
-                    throw new IllegalStateException("missing built-in plugin manifest resource: " + resource);
+                    throw new IllegalStateException("missing built-in plugin manifest resource: "
+                            + resource
+                            + " (first-party manifests live on the engine classpath, not :core)");
                 }
                 PluginDescriptor manifest =
                         PluginDescriptors.parse(new String(in.readAllBytes(), StandardCharsets.UTF_8), resource);
