@@ -210,7 +210,11 @@ public final class JkManager implements AutoCloseable, LiveRegion {
      */
     final OutputWindow outputWindow = new OutputWindow();
 
-    // Ctrl-O key listener (plan mode, interactive TTY only)
+    // Ctrl-O key listener (plan mode, interactive TTY only). Written by the plan-starting
+    // thread, read by whichever thread settles — often the SIGINT handler (renderCanceled →
+    // stopAnimator → stopKeyListener). keyLock serializes start/stop so the take-restore-null
+    // sequence is atomic and a stale-null read can never skip the attribute restore.
+    private final Object keyLock = new Object();
     private Terminal keyTerminal;
     private Attributes keyAttrsSaved;
     private Thread keyThread;
@@ -1090,6 +1094,12 @@ public final class JkManager implements AutoCloseable, LiveRegion {
      */
     private void startKeyListener() {
         if (!planMode || !animate || !Interactivity.canPrompt()) return;
+        synchronized (keyLock) {
+            startKeyListenerLocked();
+        }
+    }
+
+    private void startKeyListenerLocked() {
         Terminal t = null;
         Attributes saved = null;
         try {
@@ -1134,9 +1144,18 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     }
 
     private void stopKeyListener() {
-        keysStopped = true;
-        Thread kt = keyThread;
-        keyThread = null;
+        keysStopped = true; // volatile: unblocks readKeys before we take keyLock
+        Thread kt;
+        Terminal t;
+        Attributes saved;
+        synchronized (keyLock) {
+            kt = keyThread;
+            keyThread = null;
+            t = keyTerminal;
+            saved = keyAttrsSaved;
+            keyTerminal = null;
+            keyAttrsSaved = null;
+        }
         if (kt != null) {
             kt.interrupt();
             try {
@@ -1145,10 +1164,6 @@ public final class JkManager implements AutoCloseable, LiveRegion {
                 Thread.currentThread().interrupt();
             }
         }
-        Terminal t = keyTerminal;
-        Attributes saved = keyAttrsSaved;
-        keyTerminal = null;
-        keyAttrsSaved = null;
         if (t != null && saved != null) {
             try {
                 Wizard.restoreCooked(t, saved);
@@ -1163,7 +1178,10 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     }
 
     private void readKeys() {
-        Terminal t = keyTerminal;
+        Terminal t;
+        synchronized (keyLock) {
+            t = keyTerminal;
+        }
         if (t == null) return;
         NonBlockingReader reader = t.reader();
         while (!keysStopped && !stopped && !done) {
