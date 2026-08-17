@@ -137,27 +137,22 @@ public final class ExplainCommand implements CliCommand {
         // Client-side module filter listing (before engine forecast) when selectors are set.
         if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
             try {
-                var entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
-                var selected =
-                        cc.jumpkick.config.ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affectedSince);
-                if (selected != null && !selected.ok()) {
-                    CommandWedge.printFail("Explain", selected.errorMessage());
+                var selected = BuildCommand.projectInfoOrError(startDir, modulesSpec, affectedSince);
+                if (selected.error() != null && !selected.error().isBlank()) {
+                    CommandWedge.printFail("Explain", selected.error());
                     return Exit.CONFIG;
                 }
-                if (selected != null) {
-                    CliOutput.out("Selected modules (" + selected.moduleDirs().size() + "):");
-                    for (Path m : selected.moduleDirs()) {
-                        Path rel;
-                        try {
-                            rel = startDir.toAbsolutePath().normalize().relativize(m);
-                        } catch (IllegalArgumentException e) {
-                            rel = m;
-                        }
-                        CliOutput.out("  " + (rel.toString().isEmpty() ? "." : rel));
+                if (selected.moduleDirs().isEmpty()) return 0;
+                CliOutput.out("Selected modules (" + selected.moduleDirs().size() + "):");
+                for (String raw : selected.moduleDirs()) {
+                    Path m = Path.of(raw);
+                    Path rel;
+                    try {
+                        rel = startDir.toAbsolutePath().normalize().relativize(m);
+                    } catch (IllegalArgumentException e) {
+                        rel = m;
                     }
-                    if (selected.moduleDirs().isEmpty()) {
-                        return 0;
-                    }
+                    CliOutput.out("  " + (rel.toString().isEmpty() ? "." : rel));
                 }
             } catch (Exception e) {
                 CommandWedge.printFail("Explain", "module selection failed: " + e.getMessage());
