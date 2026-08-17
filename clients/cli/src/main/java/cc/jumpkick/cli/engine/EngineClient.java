@@ -657,6 +657,13 @@ public final class EngineClient {
         return true;
     }
 
+    /** Module DAG for {@code jk explain --graph}. */
+    public static cc.jumpkick.engine.protocol.ModuleGraphAck moduleGraph(
+            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, String format, String modules, String affectedSince)
+            throws IOException {
+        return EngineBuildListenerAdapter.moduleGraph(paths, dir, format, modules, affectedSince);
+    }
+
     /** Layered library catalog (list / search / wizard picker). */
     public static cc.jumpkick.engine.protocol.CatalogReadAck catalogRead(
             cc.jumpkick.engine.EnginePaths.Paths paths,
@@ -673,7 +680,7 @@ public final class EngineClient {
     }
 
     /**
-     * Project summary (PROJECT_INFO) — replaces client-side {@code JkBuildParser.parse} peeks.
+     * Project summary (PROJECT_INFO) — replaces client-side project-file peeks.
      * In-process twin under test/no-engine.
      */
     public static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(

@@ -126,6 +126,10 @@ public final class ToolRunCommand implements CliCommand {
             if (Files.isRegularFile(start.resolve("jk.toml"))) {
                 var peek = BuildCommand.projectInfoOrNull(start);
                 if (peek != null && peek.workspaceRoot()) wsRoot = start;
+                else if (peek == null
+                        && !workspaceModules(start.resolve("jk.toml")).isEmpty()) {
+                    wsRoot = start;
+                }
             }
             if (wsRoot == null) {
                 var peek = BuildCommand.projectInfoOrNull(start);
@@ -140,7 +144,10 @@ public final class ToolRunCommand implements CliCommand {
                 return null;
             }
             var rootBuild = BuildCommand.projectInfoOrNull(wsRoot);
-            if (rootBuild == null || !rootBuild.workspaceRoot()) return null;
+            List<String> moduleDirs = rootBuild != null && rootBuild.workspaceRoot()
+                    ? rootBuild.moduleDirs()
+                    : workspaceModules(wsRoot.resolve("jk.toml"));
+            if (moduleDirs.isEmpty()) return null;
             String want = name.replace('\\', '/');
             while (want.startsWith("./")) want = want.substring(2);
             if (want.endsWith("/")) want = want.substring(0, want.length() - 1);
@@ -148,7 +155,7 @@ public final class ToolRunCommand implements CliCommand {
             // declared-path match may claim it — a leaf shortcut must not shadow `./web`.
             boolean localExists = Files.exists(start.resolve(want));
             List<Path> suffixHits = new ArrayList<>();
-            for (String mod : rootBuild.moduleDirs()) {
+            for (String mod : moduleDirs) {
                 Path dir = Path.of(mod).isAbsolute()
                         ? Path.of(mod).normalize()
                         : wsRoot.resolve(mod).normalize();
@@ -176,6 +183,10 @@ public final class ToolRunCommand implements CliCommand {
             return null;
         }
         return null;
+    }
+
+    private static List<String> workspaceModules(Path jkToml) {
+        return cc.jumpkick.config.TomlScan.scan(jkToml, "workspace.modules").stringArray("workspace.modules");
     }
 
     /** Render a module dir relative to its workspace for an error message. */

@@ -67,7 +67,7 @@ public final class JkEnv {
             projectJdk = scan.get("jdk");
             javaRelease = scan.getInt("java", 0);
             // [native] present without an explicit graal spec defaults to "graalvm" —
-            // mirror JkBuildParser.parseNativeConfig.
+            // same native.graal probe the engine uses for project-info native flags.
             projectGraal = scan.get("native.graal");
             if (projectGraal == null && scan.hasSection("native")) projectGraal = "graalvm";
         }

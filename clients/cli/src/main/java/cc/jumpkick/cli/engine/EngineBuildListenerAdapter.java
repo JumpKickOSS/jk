@@ -615,6 +615,16 @@ final class EngineBuildListenerAdapter {
      * case) — this method itself just sends the request. Best-effort: swallows the engine's error
      * rather than throwing, since the caller falls back to whatever the local cache already holds.
      */
+    static cc.jumpkick.engine.protocol.ModuleGraphAck moduleGraph(
+            EnginePaths.Paths paths, Path dir, String format, String modules, String affectedSince) throws IOException {
+        return request(
+                paths,
+                ProtoReads.moduleGraphRequest(dir.toString(), format, modules, affectedSince),
+                EngineProtocol.MODULE_GRAPH_ACK,
+                "module-graph request",
+                cc.jumpkick.engine.protocol.ModuleGraphAck::decode);
+    }
+
     static cc.jumpkick.engine.protocol.CacheInventoryAck cacheInventory(
             EnginePaths.Paths paths,
             String query,

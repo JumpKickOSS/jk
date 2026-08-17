@@ -70,6 +70,7 @@ public final class VerbRegistry {
                 new ExecPlanVerb(host),
                 new ForecastVerb(host),
                 new ExplainVerb(host),
+                new ModuleGraphVerb(host),
                 new OptimizeVerb(host),
                 new CalibrateVerb(host),
                 new MetricsVerb(host),

@@ -16,6 +16,18 @@ public final class ProtoReads {
      * {@code profile} may be {@code null}); the computed estimate rides back as an {@link EngineProtocol#ETA}
      * event inside the explain burst.
      */
+    public static String moduleGraphRequest(String dir, String format, String modules, String affectedSince) {
+        String extra = "";
+        if (modules != null && !modules.isBlank()) extra += ",\"modules\":" + Jsonl.quote(modules);
+        if (affectedSince != null && !affectedSince.isBlank()) {
+            extra += ",\"affectedSince\":" + Jsonl.quote(affectedSince);
+        }
+        return "{\"type\":\"" + EngineProtocol.MODULE_GRAPH_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
+                + ",\"format\":" + Jsonl.quote(format)
+                + extra
+                + "}";
+    }
+
     public static String explainRequest(
             String dir,
             String cache,

@@ -16,12 +16,7 @@ import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.cli.tui.Tree;
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.ModuleDotGraph;
-import cc.jumpkick.config.ModuleSelection;
-import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.lock.LockFreshness;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -37,9 +32,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * {@code jk explain} — forecast of what a build would run (cache hit/miss per module/stage). Prefer
@@ -106,12 +99,11 @@ public final class ExplainCommand implements CliCommand {
             return new BuildCommand().run(in); // forwards --cache-dir; build options default
         }
 
-        // Module DAG export is offline (no engine / lock). Honor --modules / --affected-since.
+        // Module DAG export is engine-hosted. Honor --modules / --affected-since.
         // On single-project layouts, selectors only validate; the graph is one node.
         if (hasGraph) {
             return emitModuleGraph(
                     startDir,
-                    buildFile,
                     graphFmt,
                     in.value("modules").orElse(null),
                     in.value("affected-since").orElse(null),
@@ -667,52 +659,25 @@ public final class ExplainCommand implements CliCommand {
     }
 
     /**
-     * {@code jk explain --graph dot|mermaid} — module dependency DAG (no engine).
+     * {@code jk explain --graph dot|mermaid} — module dependency DAG (engine-hosted).
      */
     private static int emitModuleGraph(
-            Path startDir, Path buildFile, String format, String modulesSpec, String affectedSince, String outputPath)
+            Path startDir, String format, String modulesSpec, String affectedSince, String outputPath)
             throws Exception {
-        String fmt = format.trim().toLowerCase(Locale.ROOT);
-        if (!ModuleDotGraph.isSupportedFormat(fmt)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "Explain",
-                    "unsupported --graph format '" + format + "' (supported: "
-                            + String.join(" | ", ModuleDotGraph.FORMATS) + ")");
+        cc.jumpkick.engine.protocol.ModuleGraphAck ack;
+        try {
+            ack = cc.jumpkick.cli.engine.EngineClient.moduleGraph(
+                    cc.jumpkick.engine.EnginePaths.current(), startDir, format, modulesSpec, affectedSince);
+        } catch (Exception e) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Explain", String.valueOf(e.getMessage()));
             return Exit.CONFIG;
         }
-        JkBuild entry = JkBuildParser.parse(buildFile);
-        Path root = startDir.toAbsolutePath().normalize();
-        String graph;
-        if (entry.isWorkspaceRoot()) {
-            Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(root, entry);
-            ModuleSelection.Result selected =
-                    ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affectedSince);
-            if (selected != null && !selected.ok()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Explain", selected.errorMessage());
-                return Exit.CONFIG;
-            }
-            Set<Path> only = selected != null ? selected.moduleDirs() : null;
-            if (only != null && only.isEmpty()) {
-                // Nothing selected — still valid empty digraph
-                graph = ModuleDotGraph.render(fmt, root, Map.of(), null);
-            } else {
-                // Workspace root may not be in modules map; graph is modules only (Mill-like module DAG).
-                Map<Path, JkBuild> forGraph = new LinkedHashMap<>(modules);
-                graph = ModuleDotGraph.render(fmt, root, forGraph, only);
-            }
-        } else {
-            // Single project: trivial one-node graph (selectors ignored / no-op).
-            if ((modulesSpec != null && !modulesSpec.isBlank())
-                    || (affectedSince != null && !affectedSince.isBlank())) {
-                ModuleSelection.Result selected =
-                        ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affectedSince);
-                if (selected != null && !selected.ok()) {
-                    cc.jumpkick.cli.tui.CommandWedge.printFail("Explain", selected.errorMessage());
-                    return Exit.CONFIG;
-                }
-            }
-            graph = ModuleDotGraph.singleModule(entry, root, fmt);
+        if (ack.error() != null) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Explain", ack.error());
+            return Exit.CONFIG;
         }
+        String graph = ack.graph();
+        Path root = startDir.toAbsolutePath().normalize();
         if (outputPath != null && !outputPath.isBlank()) {
             Path out = Path.of(outputPath);
             if (!out.isAbsolute()) out = root.resolve(out);

@@ -329,6 +329,15 @@ public final class EngineProtocol {
     /** Server → client, terminal: the explain burst is complete. */
     public static final String EXPLAIN_DONE = "explain-done";
 
+    /**
+     * Client → server: module DAG for {@code jk explain --graph} ({@code dot}/{@code mermaid}); one
+     * {@link #MODULE_GRAPH_ACK}.
+     */
+    public static final String MODULE_GRAPH_REQUEST = "module-graph-request";
+
+    /** Server → client, terminal for {@link #MODULE_GRAPH_REQUEST}. */
+    public static final String MODULE_GRAPH_ACK = "module-graph-ack";
+
     /** Client → server: write {@code jk-lock.toml} ({@code jk lock}). Terminal: {@link #LOCK_FINISH}. */
     public static final String LOCK_REQUEST = "lock-request";
 

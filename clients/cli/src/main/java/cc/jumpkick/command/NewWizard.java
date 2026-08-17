@@ -277,7 +277,7 @@ public final class NewWizard {
         for (CatalogReadAck.Entry e : ack.entries()) byName.put(e.name(), e);
         // Prefer curated scaffold ids first (stable defaults for new projects).
         for (String id : NewCommand.CURATED_IDS) {
-            if (cc.jumpkick.scaffold.NewScaffolder.CURATED_DEPS.containsKey(id) || byName.containsKey(id)) {
+            if (byName.containsKey(id) || NewCommand.CURATED_IDS.contains(id)) {
                 out.add(new cc.jumpkick.cli.tui.Choice(id, id, "curated"));
             }
         }
