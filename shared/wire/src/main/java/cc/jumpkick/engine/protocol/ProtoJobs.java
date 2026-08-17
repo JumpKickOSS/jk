@@ -745,6 +745,22 @@ public final class ProtoJobs {
      */
     public static String compileRequest(
             String dir, String cache, String profile, boolean offline, boolean force, boolean verbose) {
+        return compileRequest(dir, cache, profile, offline, force, verbose, java.util.List.of());
+    }
+
+    /**
+     * As above with {@code moduleDirs}: the {@code -m}/{@code --affected-since} selection for the
+     * workspace COMPILE path (JK-2103). Empty = the entry dir itself (member) or the whole graph
+     * (workspace root).
+     */
+    public static String compileRequest(
+            String dir,
+            String cache,
+            String profile,
+            boolean offline,
+            boolean force,
+            boolean verbose,
+            List<String> moduleDirs) {
         return "{\"type\":\""
                 + EngineProtocol.COMPILE_REQUEST
                 + "\",\"dir\":"
@@ -759,6 +775,8 @@ public final class ProtoJobs {
                 + force
                 + ",\"verbose\":"
                 + verbose
+                + ",\"moduleDirs\":"
+                + EngineProtocol.quoteArray(moduleDirs == null ? List.of() : moduleDirs)
                 + "}";
     }
 

@@ -362,7 +362,20 @@ public final class EngineRequests {
 
     /** Everything an engine-hosted {@code jk compile} needs — mirrors {@code CompileCommand}'s local fields. */
     public record CompileRequest(
-            Path entryDir, Path cache, String profile, boolean offline, boolean force, boolean verbose) {}
+            Path entryDir,
+            Path cache,
+            String profile,
+            boolean offline,
+            boolean force,
+            boolean verbose,
+            java.util.List<Path> moduleDirs) {
+
+        /** Back-compat: no module selection (entry dir / whole graph). */
+        public CompileRequest(
+                Path entryDir, Path cache, String profile, boolean offline, boolean force, boolean verbose) {
+            this(entryDir, cache, profile, offline, force, verbose, java.util.List.of());
+        }
+    }
 
     /** Everything an engine-hosted {@code jk train} needs. */
     public record TrainRequest(

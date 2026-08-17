@@ -536,6 +536,13 @@ public final class EngineClient {
         return EngineBuildListenerAdapter.runImageWorkspace(paths, req, listener);
     }
 
+    /** Workspace {@code jk compile} — workspace events, compile-only terminal on the selection. */
+    public static WorkspaceResult runCompileWorkspace(
+            EnginePaths.Paths paths, EngineRequests.CompileRequest req, WorkspaceBuildListener listener)
+            throws IOException {
+        return EngineBuildListenerAdapter.runCompileWorkspace(paths, req, listener);
+    }
+
     /**
      * Run a single project's test plan against the engine (Task 3) — see {@link
      * EngineBuildListenerAdapter#runTest} for the exact contract.

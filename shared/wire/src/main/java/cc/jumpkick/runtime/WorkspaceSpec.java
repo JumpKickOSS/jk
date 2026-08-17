@@ -50,6 +50,12 @@ public record WorkspaceSpec(
                 WorkspaceTarget.IMAGE, selected, Map.of(), null, List.of(), main, registry, tag, tarball, docker);
     }
 
+    /** {@code jk compile}: compile-only terminal on the selection; prereqs package (JK-2103). */
+    public static WorkspaceSpec compile(Set<Path> selected) {
+        return new WorkspaceSpec(
+                WorkspaceTarget.COMPILE, selected, Map.of(), null, List.of(), null, null, null, null, null);
+    }
+
     public boolean hasSelection() {
         return !selectedModules.isEmpty();
     }

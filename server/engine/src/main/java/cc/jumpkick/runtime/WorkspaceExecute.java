@@ -627,7 +627,9 @@ public final class WorkspaceExecute {
                     spec.imageDocker(),
                     decorate);
         }
-        if (target == WorkspaceTarget.COMPILE) {
+        if (target == WorkspaceTarget.COMPILE && selected) {
+            // Unselected cone prereqs fall through to PACKAGE below: the selected module's
+            // compile classpath consumes sibling JARS, so prereqs must package, not just compile.
             return CompilePlans.compileBuildPlan(dir, req.cache(), req.profile(), req.verbose(), decorate);
         }
         boolean testOnly = target.testOnly() || req.testOnly();

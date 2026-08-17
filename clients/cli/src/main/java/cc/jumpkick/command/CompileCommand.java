@@ -80,6 +80,21 @@ public final class CompileCommand implements CliCommand {
             }
         }
 
+        // Workspace (root or member): the one-orchestrator COMPILE path — same condition the
+        // engine's CompileVerb branches on, so client and server agree on the event vocabulary
+        // (JK-2103). Prereqs package first; the selection compiles-only.
+        var wsRoot = cc.jumpkick.config.WorkspaceLocator.findRoot(dir);
+        if (wsRoot.isPresent()) {
+            cc.jumpkick.model.JkBuild rootBuild =
+                    cc.jumpkick.config.JkBuildParser.parse(wsRoot.get().resolve("jk.toml"));
+            if (rootBuild.isWorkspaceRoot()) {
+                boolean explicitSelection = (modulesSpec != null && !modulesSpec.isBlank())
+                        || (affectedSince != null && !affectedSince.isBlank());
+                List<Path> moduleDirs = explicitSelection ? dirs : List.of();
+                return runWorkspaceCompile(cache, profileName, global, dir, moduleDirs);
+            }
+        }
+
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         // Engine-hosted: same plan as CompilePlans; listener chosen when the step list
         // arrives over the socket.
@@ -101,6 +116,60 @@ public final class CompileCommand implements CliCommand {
             }
             if (!result.success()) return 1;
         }
+        return 0;
+    }
+
+    /** Workspace compile via {@code buildWorkspace}: aggregate TUI matches build/native/image. */
+    private int runWorkspaceCompile(
+            Path cache, String profileName, GlobalOptions global, Path entryDir, List<Path> moduleDirs)
+            throws IOException {
+        var session = cc.jumpkick.config.SessionContext.current();
+        var req = new cc.jumpkick.cli.engine.EngineRequests.CompileRequest(
+                entryDir, cache, profileName, session.offline(), session.force(), global.verbose, moduleDirs);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
+        cc.jumpkick.cli.tui.JkManager view =
+                cc.jumpkick.cli.tui.JkManager.plan(cc.jumpkick.cli.CliOutput.stdout(), "Compile", animate);
+        cc.jumpkick.cli.run.AggregateContext agg = new cc.jumpkick.cli.run.AggregateContext(view);
+        int[] finished = {0};
+        long start = System.nanoTime();
+        cc.jumpkick.runtime.WorkspaceResult result;
+        try {
+            result = cc.jumpkick.cli.engine.EngineClient.runCompileWorkspace(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    req,
+                    new cc.jumpkick.runtime.WorkspaceBuildListener() {
+                        @Override
+                        public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
+                            agg.applySnapshot(snap);
+                        }
+
+                        @Override
+                        public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
+                            return new cc.jumpkick.cli.run.AggregateModuleListener(
+                                    agg, m.coord(), m.plan().steps(), m.weight());
+                        }
+
+                        @Override
+                        public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
+                            int n = ++finished[0];
+                            String completion =
+                                    BuildCommand.completionLine(o.success(), n, Math.max(n, 1), o.coord(), o.millis());
+                            if (view.animating()) {
+                                view.addCompletion(completion);
+                            }
+                        }
+                    });
+        } catch (IOException e) {
+            view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
+            return Exit.SOFTWARE;
+        }
+        if (!result.success()) {
+            view.finishBuildPlanFailure("compilation failed " + BuildCommand.elapsedSince(start));
+            return result.exitCode() == 0 ? 1 : result.exitCode();
+        }
+        view.finishBuildPlanSuccess(
+                Theme.colorize("Compiled", Theme.active().focused()) + " " + BuildCommand.elapsedSince(start));
         return 0;
     }
 }

@@ -324,6 +324,41 @@ final class EngineBuildListenerAdapter {
     }
 
     /**
+     * Workspace {@code jk compile} (root or member): {@code COMPILE_REQUEST} on the entry dir;
+     * the engine expands the cone (prereqs package, selection compiles-only) and streams
+     * workspace events — the one-orchestrator COMPILE path (JK-2103).
+     */
+    static WorkspaceResult runCompileWorkspace(
+            EnginePaths.Paths paths, EngineRequests.CompileRequest req, WorkspaceBuildListener listener)
+            throws IOException {
+        EngineClient.ensureRunning(paths, Jk.VERSION);
+        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+            BufferedWriter writer =
+                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
+            BufferedReader reader = EngineClient.protocolReader(ch);
+            writer.write(ProtoSession.withSession(
+                    ProtoJobs.compileRequest(
+                            req.entryDir().toString(),
+                            req.cache().toString(),
+                            req.profile(),
+                            req.offline(),
+                            req.force(),
+                            req.verbose(),
+                            req.moduleDirs().stream()
+                                    .map(java.nio.file.Path::toString)
+                                    .toList()),
+                    SessionContext.current().variant(),
+                    SessionContext.current().clientEnv(),
+                    SessionContext.current().jvm(),
+                    SessionContext.current().config().rebuildOr(false),
+                    cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
+            writer.write('\n');
+            writer.flush();
+            return streamEvents(reader, listener, req.cache());
+        }
+    }
+
+    /**
      * Run {@code jk install}'s hosted build + cache-install plan against the engine — {@link
      * #runTest}'s exact shape ({@code testResultOut} settles before the terminal {@code
      * plan-finish} reaches the listener); the launcher-writing "make install" half runs in the
