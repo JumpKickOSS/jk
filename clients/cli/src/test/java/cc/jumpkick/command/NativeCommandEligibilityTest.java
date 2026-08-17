@@ -42,6 +42,29 @@ class NativeCommandEligibilityTest {
     }
 
     @Test
+    void enabled_false_module_never_enters_through_the_fallback() throws Exception {
+        // JK-2089: [native] enabled = false keeps the table but opts out. With no enabled table
+        // anywhere, the fallback must skip the disabled module even though it has a unique main.
+        Path off = moduleDisabledNative("off");
+        Path app = module("app", true, false);
+        Path graal = Files.createDirectories(tmp.resolve("graal"));
+
+        Map<Path, Path> homes = NativeCommand.graalHomesForModules(List.of(off, app), graal, null);
+        assertThat(homes).containsOnlyKeys(app);
+
+        // A lone disabled module yields nothing (jk native then fails preflight, by design).
+        assertThat(NativeCommand.graalHomesForModules(List.of(off), graal, null)).isEmpty();
+    }
+
+    private Path moduleDisabledNative(String name) throws Exception {
+        Path dir = module(name, true, false);
+        Files.writeString(
+                dir.resolve("jk.toml"),
+                Files.readString(dir.resolve("jk.toml")) + "\n[native]\nenabled = false\n");
+        return dir;
+    }
+
+    @Test
     void empty_when_no_mains() throws Exception {
         Path lib = module("lib", false, false);
         Path graal = Files.createDirectories(tmp.resolve("graal"));

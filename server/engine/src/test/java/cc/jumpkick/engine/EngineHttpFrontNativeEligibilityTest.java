@@ -74,6 +74,18 @@ class EngineHttpFrontNativeEligibilityTest {
     }
 
     @Test
+    void enabled_false_module_is_excluded_from_the_fallback(@TempDir Path tmp) throws Exception {
+        // JK-2089: an explicit [native] enabled = false must not re-enter via unique-main.
+        Path off = module(tmp, "off", false, true);
+        Files.writeString(
+                off.resolve("jk.toml"),
+                Files.readString(off.resolve("jk.toml")) + "\n[native]\nenabled = false\n");
+        Path app = module(tmp, "app", false, true);
+        Map<Path, JkBuild> all = load(off, app);
+        assertThat(EngineHttpFront.nativeEligibleTargets(all, null)).containsExactly(app);
+    }
+
+    @Test
     void no_table_anywhere_falls_back_to_unique_main_modules(@TempDir Path tmp) throws Exception {
         Path lib = module(tmp, "lib", false, false); // no main — ineligible
         Path app = module(tmp, "app", false, true); // unique main — eligible via fallback

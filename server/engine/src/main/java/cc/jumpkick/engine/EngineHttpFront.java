@@ -512,6 +512,8 @@ public final class EngineHttpFront {
             Path dir = e.getKey();
             boolean inSelection = selected == null || selected.contains(BuildGraph.canonicalPath(dir));
             if (!inSelection) continue;
+            // enabled = false is an explicit opt-out — never re-enters via the fallback (JK-2089).
+            if (e.getValue().nativeExplicitlyDisabled()) continue;
             boolean eligible = e.getValue().nativeImage();
             if (!eligible && !anyNativeTable) {
                 eligible = cc.jumpkick.layout.NativePreflight.resolveMain(dir, null)

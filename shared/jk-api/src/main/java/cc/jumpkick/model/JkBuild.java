@@ -265,6 +265,15 @@ public record JkBuild(
         return nativeMode() != NativeMode.DISABLED;
     }
 
+    /**
+     * True when a {@code [native]} table is present with {@code enabled = false} — an explicit
+     * opt-out. Distinct from an absent table: the unique-main fallback may pick up table-less
+     * modules, but must never pick up an explicitly disabled one (JK-2089).
+     */
+    public boolean nativeExplicitlyDisabled() {
+        return nativeConfig.isPresent() && nativeMode() == NativeMode.DISABLED;
+    }
+
     public static JkBuild of(Project project) {
         return builder(project).build();
     }

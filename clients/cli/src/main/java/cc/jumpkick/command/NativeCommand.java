@@ -251,12 +251,17 @@ public final class NativeCommand implements CliCommand {
         Map<Path, Path> withMain = new HashMap<>();
         for (Path moduleDir : moduleDirs) {
             boolean hasNativeTable = false;
+            boolean explicitlyDisabled = false;
             try {
                 var build = cc.jumpkick.config.JkBuildParser.parse(moduleDir.resolve("jk.toml"));
                 hasNativeTable = build.nativeImage();
+                explicitlyDisabled = build.nativeExplicitlyDisabled();
             } catch (Exception ignored) {
                 // Unreadable module toml — still try main discovery below.
             }
+            // enabled = false keeps the table but opts the module out of native builds — it must
+            // not re-enter through the unique-main fallback (JK-2089).
+            if (explicitlyDisabled) continue;
             var main = cc.jumpkick.layout.NativePreflight.resolveMain(moduleDir, mainOverride);
             if (main instanceof cc.jumpkick.layout.NativePreflight.Main.None) continue;
             if (main instanceof cc.jumpkick.layout.NativePreflight.Main.Ambiguous) {
