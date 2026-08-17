@@ -83,10 +83,12 @@ class SelfHostingTomlTest {
         assertThat(root.project().group()).isEqualTo("cc.jumpkick");
         assertThat(root.project().name()).isEqualTo("jk");
         assertThat(root.isWorkspaceRoot()).isTrue();
-        // plugin-sdk is listed before jk-api: model depends on the SPI leaf (Gradle:jk-api →:plugin-sdk).
+        // jsonl is the S1/S7 codec leaf; plugin-sdk sits above it. jk-api still depends on
+        // plugin-sdk (PluginConfig) until that edge is cut.
         // Phase 2 adds thin workers (test-runner, java-compiler) as workspace modules.
         assertThat(root.workspace().modules())
                 .containsExactly(
+                        "shared/jsonl",
                         "shared/plugin-sdk",
                         "shared/jk-api",
                         "shared/core",
@@ -274,6 +276,8 @@ class SelfHostingTomlTest {
         assertThat(runner.project().javaRelease()).isEqualTo(17);
         JkBuild sdk = JkBuildParser.parse(REPO.resolve("shared/plugin-sdk/jk.toml"));
         assertThat(sdk.project().javaRelease()).isEqualTo(17);
+        JkBuild jsonl = JkBuildParser.parse(REPO.resolve("shared/jsonl/jk.toml"));
+        assertThat(jsonl.project().javaRelease()).isEqualTo(17);
     }
 
     @Test
@@ -301,14 +305,16 @@ class SelfHostingTomlTest {
         // to apply WorkspaceMerge.
         List<String> mainModules =
                 cli.dependencies().of(Scope.MAIN).stream().map(d -> d.module()).toList();
-        // The slim client (Stage 5): the wire contract, never the engine itself.
-        assertThat(mainModules).contains("cc.jumpkick:jk-core", "cc.jumpkick:jk-engine-api");
+        // The slim client (Stage 5): the wire contract + jsonl codec, never the engine itself
+        // and never the plugin SPI (JK-2138).
+        assertThat(mainModules).contains("cc.jumpkick:jk-core", "cc.jumpkick:jk-engine-api", "cc.jumpkick:jk-jsonl");
         assertThat(mainModules)
                 .doesNotContain(
                         "cc.jumpkick:jk-engine",
                         "cc.jumpkick:jk-io",
                         "cc.jumpkick:jk-resolver",
-                        "cc.jumpkick:jk-toolchain");
+                        "cc.jumpkick:jk-toolchain",
+                        "cc.jumpkick:jk-plugin-sdk");
 
         // Engine module hosts EngineMain / shadow jar — never links :cli.
         JkBuild engine = JkBuildParser.parse(REPO.resolve("server/engine/jk.toml"));

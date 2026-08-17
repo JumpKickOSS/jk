@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.plugin.protocol;
+package cc.jumpkick.jsonl;
 
 import java.io.BufferedReader;
 import java.io.Closeable;

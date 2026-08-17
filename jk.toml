@@ -7,6 +7,7 @@ java = 25
 [workspace]
 modules = [
   # Shared Libraries
+  "shared/jsonl",
   "shared/plugin-sdk",
   "shared/jk-api",
   "shared/core",

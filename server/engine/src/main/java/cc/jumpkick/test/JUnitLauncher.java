@@ -4,7 +4,7 @@ package cc.jumpkick.test;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.jdk.HostPlatform;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.TestSummary;
 import java.io.File;
 import java.io.IOException;

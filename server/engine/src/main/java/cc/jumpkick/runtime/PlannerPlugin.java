@@ -520,8 +520,8 @@ public final class PlannerPlugin {
         // are a packager bug.
         Path outBase = jarPath.getParent().toAbsolutePath().normalize();
         for (String line : workerLines) {
-            if (!"produced".equals(cc.jumpkick.plugin.protocol.Jsonl.str(line, "t"))) continue;
-            Path p = Path.of(String.valueOf(cc.jumpkick.plugin.protocol.Jsonl.str(line, "path")))
+            if (!"produced".equals(cc.jumpkick.jsonl.Jsonl.str(line, "t"))) continue;
+            Path p = Path.of(String.valueOf(cc.jumpkick.jsonl.Jsonl.str(line, "path")))
                     .toAbsolutePath()
                     .normalize();
             if (!p.startsWith(outBase)) {

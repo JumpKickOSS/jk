@@ -70,8 +70,7 @@ public final class McpMachine {
         if (!Files.isRegularFile(envJson)) return null;
         try {
             // env.json is pretty-printed — parse properly, never compact-form key scans.
-            Object parsed =
-                    cc.jumpkick.plugin.protocol.MiniJson.parse(Files.readString(envJson, StandardCharsets.UTF_8));
+            Object parsed = cc.jumpkick.jsonl.MiniJson.parse(Files.readString(envJson, StandardCharsets.UTF_8));
             if (parsed instanceof Map<?, ?> map && map.get(field) instanceof String s) return s;
             return null;
         } catch (IOException | RuntimeException e) {

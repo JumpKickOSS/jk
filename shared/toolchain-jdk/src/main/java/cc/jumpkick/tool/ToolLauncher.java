@@ -2,7 +2,7 @@
 package cc.jumpkick.tool;
 
 import cc.jumpkick.jdk.HostPlatform;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

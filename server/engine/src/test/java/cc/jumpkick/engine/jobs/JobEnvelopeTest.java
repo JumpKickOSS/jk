@@ -117,8 +117,7 @@ class JobEnvelopeTest {
         JobEnvelope env = new JobEnvelope(host);
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        String line =
-                "{\"type\":\"build-request\",\"dir\":" + cc.jumpkick.plugin.protocol.Jsonl.quote(dir.toString()) + "}";
+        String line = "{\"type\":\"build-request\",\"dir\":" + cc.jumpkick.jsonl.Jsonl.quote(dir.toString()) + "}";
         env.submit(
                 line,
                 JobRequest.workspace("build", "jk-test-", (l, tok, w) -> {

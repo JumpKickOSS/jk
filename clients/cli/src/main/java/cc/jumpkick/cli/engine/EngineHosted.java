@@ -4,7 +4,7 @@ package cc.jumpkick.cli.engine;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
 import cc.jumpkick.runtime.WorkspaceResult;
 import java.io.IOException;

@@ -2,7 +2,7 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.jdk.HostPlatform;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.IOException;

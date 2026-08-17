@@ -2,7 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.http.Http;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;

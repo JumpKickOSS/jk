@@ -26,8 +26,8 @@ public final class EngineWireException extends IOException {
     }
 
     public static EngineWireException fromJsonLine(String line) {
-        String code = cc.jumpkick.plugin.protocol.Jsonl.str(line, "code");
-        String msg = cc.jumpkick.plugin.protocol.Jsonl.str(line, "message");
+        String code = cc.jumpkick.jsonl.Jsonl.str(line, "code");
+        String msg = cc.jumpkick.jsonl.Jsonl.str(line, "message");
         return new EngineWireException(code, msg);
     }
 

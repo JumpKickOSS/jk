@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.plugin.protocol;
+package cc.jumpkick.jsonl;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Dependency-free JSONL field codec for plugin wire lines: readers return defaults on missing/bad
+ * Dependency-free JSONL field codec for engine and plugin wire lines: readers return defaults on missing/bad
  * fields; {@link #quote} is the writer half. Tree documents use sibling {@link MiniJson}.
  */
 public final class Jsonl {

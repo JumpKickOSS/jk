@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.protocol;
 
-import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.jsonl.Jsonl;
 
 /** Lifecycle + job-admit JSONL: hello, status, shutdown, cancel, errors. */
 public final class ProtoLifecycle {
