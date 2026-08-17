@@ -92,16 +92,19 @@ public final class AggregateModuleListener implements BuildPlanListener {
             return;
         }
 
-        // Tool/process chatter (native-image, compilers, …): always feed the live peek ring so
-        // Ctrl-O works mid-step. When animating a workspace build, do NOT also park lines in
-        // outBuffer — that list is settled as a bulk dump and would re-print the whole Graal log
-        // after a successful native-image.
+        // Tool/process chatter (native-image, compilers, …). Animating: feed the live peek ring
+        // so Ctrl-O works mid-step — and do NOT also park lines in outBuffer (that list is
+        // settled as a bulk dump and would re-print the whole Graal log after a successful
+        // native-image). Non-animating with a buffer: buffer ONLY — writeAbove prints
+        // immediately in that mode, and the module-finish block prints the buffer again, so
+        // doing both showed every line twice (JK-2090).
         String painted = StackTraceHighlight.line(line);
-        cm.writeAbove(painted);
         if (outBuffer != null && !cm.animating()) {
             synchronized (outBuffer) {
                 outBuffer.add(line);
             }
+        } else {
+            cm.writeAbove(painted);
         }
     }
 
@@ -135,12 +138,14 @@ public final class AggregateModuleListener implements BuildPlanListener {
         if ("test-failure".equals(code)) return;
         String report = ConsoleSpec.renderError(step, code, message, module, compilerHeaders.show(step, code, module));
         if (report != null && !report.isEmpty()) {
-            // Peek ring always; settle dump only when not animating (same as process output).
-            cm.writeAbove(report);
+            // Same buffer-XOR-print rule as output(): the settled block is the single printing
+            // path when not animating (JK-2090).
             if (outBuffer != null && !cm.animating()) {
                 synchronized (outBuffer) {
                     outBuffer.add(report);
                 }
+            } else {
+                cm.writeAbove(report);
             }
         }
         if (JkManager.forceShowOnStepFailure(step, null)) {
