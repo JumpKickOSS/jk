@@ -233,6 +233,7 @@ public final class ImageCommand implements CliCommand {
                 cc.jumpkick.cli.tui.JkManager.plan(cc.jumpkick.cli.CliOutput.stdout(), "Image", animate);
         cc.jumpkick.cli.run.AggregateContext agg = new cc.jumpkick.cli.run.AggregateContext(view);
         int[] finished = {0};
+        cc.jumpkick.runtime.ModuleOutcome.Image[] imageOut = {null};
         long start = System.nanoTime();
         cc.jumpkick.runtime.WorkspaceResult result;
         try {
@@ -254,6 +255,7 @@ public final class ImageCommand implements CliCommand {
                         @Override
                         public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
                             int n = ++finished[0];
+                            if (o.success() && o.image() != null) imageOut[0] = o.image();
                             String completion =
                                     BuildCommand.completionLine(o.success(), n, Math.max(n, 1), o.coord(), o.millis());
                             if (view.animating()) {
@@ -269,7 +271,12 @@ public final class ImageCommand implements CliCommand {
             view.finishBuildPlanFailure("image failed " + BuildCommand.elapsedSince(start));
             return result.exitCode() == 0 ? 1 : result.exitCode();
         }
-        view.finishBuildPlanSuccess("image built " + BuildCommand.elapsedSince(start));
+        // Same Pushed/Wrote/Loaded tail as the single-project chip (JK-2100).
+        var img = imageOut[0];
+        String tail = img != null
+                ? imageSuccessTail(img.tarball(), img.name(), img.version(), img.daemonExe(), img.ref())
+                : "image built";
+        view.finishBuildPlanSuccess(tail + " " + BuildCommand.elapsedSince(start));
         return 0;
     }
 }

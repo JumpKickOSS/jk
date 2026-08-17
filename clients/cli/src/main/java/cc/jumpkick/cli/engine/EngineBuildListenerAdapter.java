@@ -989,6 +989,14 @@ final class EngineBuildListenerAdapter {
                                 Jsonl.longValue(line, "millis", 0),
                                 Jsonl.bool(line, "didWork", true),
                                 Jsonl.bool(line, "cancelled", false));
+                        if (Jsonl.bool(line, "hasImage", false)) {
+                            outcome = outcome.withImage(new ModuleOutcome.Image(
+                                    Jsonl.str(line, "imageRef"),
+                                    Jsonl.str(line, "imageTarball"),
+                                    Jsonl.str(line, "imageName"),
+                                    Jsonl.str(line, "imageVersion"),
+                                    Jsonl.str(line, "imageDaemonExe")));
+                        }
                         outcomes.add(outcome);
                         listener.onModuleFinish(outcome);
                     }

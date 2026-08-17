@@ -624,6 +624,29 @@ public final class WorkspaceExecute {
         return b.build();
     }
 
+    /**
+     * Image-terminal outcome from the plan's structured keys ({@code null} for non-image plans) —
+     * the same fields the single-plan path reads for {@code planFinishImage}, so the workspace
+     * {@code jk image} chip can show the identical Pushed/Wrote/Loaded tail (JK-2100).
+     */
+    private static ModuleOutcome.Image imageOutcomeOf(BuildPlan plan) {
+        var cfg = plan.get(ImagePlans.CONFIG).orElse(null);
+        Path tarball = plan.get(ImagePlans.TARBALL_PATH).orElse(null);
+        String ref = plan.get(ImagePlans.IMAGE_REF).orElse(null);
+        if (cfg == null && tarball == null && ref == null) return null;
+        var project = plan.get(BuildPlanner.PROJECT).orElse(null);
+        boolean daemonMode = tarball == null && (cfg == null || cfg.registry() == null || cfg.registry().isBlank());
+        String daemonExe = !daemonMode
+                ? null
+                : cfg != null && cfg.dockerExecutable() != null ? cfg.dockerExecutable() : "docker";
+        return new ModuleOutcome.Image(
+                ref,
+                tarball != null ? tarball.toString() : null,
+                project != null ? project.project().name() : null,
+                project != null ? project.project().version() : null,
+                daemonExe);
+    }
+
     /**learn run-tests rates from actual TestSummary counts when present. */
     private static StepTimingsRecorder timingsRecorder(
             ModulePlan p, List<StepTimings.Sample> timingSamples, List<HostLearnedRates.HostSample> hostSamples) {
@@ -655,6 +678,8 @@ public final class WorkspaceExecute {
             boolean didWork = !r.success() || cancelled || BuildService.moduleDidWork(r);
             ModuleOutcome o = new ModuleOutcome(
                     module.coord(), module.dir(), r.success() && !cancelled, exit, ms, didWork, cancelled);
+            ModuleOutcome.Image img = imageOutcomeOf(module.plan());
+            if (img != null) o = o.withImage(img);
             listener.onModuleFinish(o);
             return o;
         } catch (RuntimeException e) {

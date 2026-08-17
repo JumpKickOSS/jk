@@ -962,23 +962,51 @@ public final class ProtoEvents {
      */
     public static String moduleFinish(
             String dir, String coord, boolean success, int exitCode, long millis, boolean didWork, boolean cancelled) {
-        return "{\"type\":\""
-                + EngineProtocol.MODULE_FINISH
-                + "\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"coord\":"
-                + Jsonl.quote(coord)
-                + ",\"success\":"
-                + success
-                + ",\"exitCode\":"
-                + exitCode
-                + ",\"millis\":"
-                + millis
-                + ",\"didWork\":"
-                + didWork
-                + ",\"cancelled\":"
-                + cancelled
-                + "}";
+        return moduleFinish(dir, coord, success, exitCode, millis, didWork, cancelled, null);
+    }
+
+    /**
+     * @param image image-terminal outcome (workspace {@code jk image}); additive nullable fields —
+     * older clients ignore them, non-image modules omit them entirely (JK-2100).
+     */
+    public static String moduleFinish(
+            String dir,
+            String coord,
+            boolean success,
+            int exitCode,
+            long millis,
+            boolean didWork,
+            boolean cancelled,
+            cc.jumpkick.runtime.ModuleOutcome.Image image) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\"type\":\"")
+                .append(EngineProtocol.MODULE_FINISH)
+                .append("\",\"dir\":")
+                .append(Jsonl.quote(dir))
+                .append(",\"coord\":")
+                .append(Jsonl.quote(coord))
+                .append(",\"success\":")
+                .append(success)
+                .append(",\"exitCode\":")
+                .append(exitCode)
+                .append(",\"millis\":")
+                .append(millis)
+                .append(",\"didWork\":")
+                .append(didWork)
+                .append(",\"cancelled\":")
+                .append(cancelled);
+        if (image != null) {
+            if (image.ref() != null) sb.append(",\"imageRef\":").append(Jsonl.quote(image.ref()));
+            if (image.tarball() != null)
+                sb.append(",\"imageTarball\":").append(Jsonl.quote(image.tarball()));
+            if (image.name() != null) sb.append(",\"imageName\":").append(Jsonl.quote(image.name()));
+            if (image.version() != null)
+                sb.append(",\"imageVersion\":").append(Jsonl.quote(image.version()));
+            if (image.daemonExe() != null)
+                sb.append(",\"imageDaemonExe\":").append(Jsonl.quote(image.daemonExe()));
+            sb.append(",\"hasImage\":true");
+        }
+        return sb.append('}').toString();
     }
 
     public static String workspaceFinish(boolean success, int exitCode, List<String> errors) {

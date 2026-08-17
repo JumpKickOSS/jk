@@ -116,12 +116,17 @@ public final class NativePlans {
     }
 
     /**
-     * {@code jk native}'s exit-code mapping for a failed module plan: a native-step "main class"
-     * misconfiguration exits {@link Exit#USAGE}, a test failure exits 4, anything else 1.
+     * Build-family exit-code mapping for a failed module plan: a native-step "main class"
+     * misconfiguration or an image "no-main" diagnostic exits {@link Exit#USAGE}, a test failure
+     * exits 4, anything else 1. Shared by the workspace path for native AND image terminals
+     * (JK-2099/JK-2100).
      */
     public static int failureExitCode(BuildPlan plan, BuildPlanResult result) {
         for (BuildPlanResult.Diagnostic d : result.errors()) {
             if ("native".equals(d.code()) && d.message() != null && d.message().contains("main class")) {
+                return Exit.USAGE;
+            }
+            if ("no-main".equals(d.code())) {
                 return Exit.USAGE;
             }
         }

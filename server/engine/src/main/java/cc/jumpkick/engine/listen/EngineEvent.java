@@ -89,7 +89,14 @@ public sealed interface EngineEvent {
     record ModuleStart(String dir) implements EngineEvent {}
 
     record ModuleFinish(
-            String dir, String coord, boolean success, int exitCode, long millis, boolean didWork, boolean cancelled)
+            String dir,
+            String coord,
+            boolean success,
+            int exitCode,
+            long millis,
+            boolean didWork,
+            boolean cancelled,
+            cc.jumpkick.runtime.ModuleOutcome.Image image)
             implements EngineEvent {}
 
     record Eta(long remainingMs) implements EngineEvent {}

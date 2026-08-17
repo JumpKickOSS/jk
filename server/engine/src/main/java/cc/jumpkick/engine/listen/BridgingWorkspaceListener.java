@@ -163,7 +163,7 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
         String dir = o.dir().toString();
         hooks.trackModuleComplete(dir, lastDenByDir.getOrDefault(dir, 0L));
         sink.emit(new EngineEvent.ModuleFinish(
-                dir, o.coord(), o.success(), o.exitCode(), o.millis(), o.didWork(), o.cancelled()));
+                dir, o.coord(), o.success(), o.exitCode(), o.millis(), o.didWork(), o.cancelled(), o.image()));
         hooks.moduleFinished(o);
         BuildPlan g = moduleBuildPlans.remove(dir);
         if (g != null) hooks.testsFrom(g);

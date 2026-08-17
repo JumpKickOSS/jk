@@ -125,4 +125,18 @@ class NativePlansTest {
         org.assertj.core.api.Assertions.assertThat(NativePlans.failureExitCode(plan, plain))
                 .isEqualTo(1);
     }
+
+    @org.junit.jupiter.api.Test
+    void failure_exit_code_maps_image_no_main_to_usage() {
+        // JK-2100: workspace jk image lost the single path's no-main USAGE exit.
+        var plan = cc.jumpkick.run.BuildPlan.builder("image").build();
+        var noMain = new cc.jumpkick.run.BuildPlanResult(
+                "image", false, java.time.Duration.ZERO,
+                java.util.List.of(), java.util.List.of(),
+                java.util.List.of(new cc.jumpkick.run.BuildPlanResult.Diagnostic(
+                        "image-plan", "no-main", "no main class - pass --main")),
+                false);
+        org.assertj.core.api.Assertions.assertThat(NativePlans.failureExitCode(plan, noMain))
+                .isEqualTo(cc.jumpkick.model.command.Exit.USAGE);
+    }
 }
