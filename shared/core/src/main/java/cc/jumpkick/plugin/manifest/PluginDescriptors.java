@@ -31,6 +31,7 @@ public final class PluginDescriptors {
         String table = requireString(plugin, "table", displayPath);
         String version = plugin.getString("version");
         String jkCompat = plugin.getString("jk-compat");
+        requireJkCompat(id, jkCompat);
 
         Map<String, PluginDescriptor.SchemaKey> schema =
                 parseSchemaKeys(result.getTable("schema"), displayPath + ".schema");
@@ -558,5 +559,43 @@ public final class PluginDescriptors {
             throw new JkBuildParseException(displayPath + ".plugin." + key + " is required");
         }
         return v;
+    }
+    /**
+     * Enforce the plugin's jk floor ({@code jk-compat = ">=x.y"}): a jk below the floor refuses
+     * the manifest at load with the upgrade error. Only the {@code >=} form exists; anything else
+     * is a manifest error. Pre-release suffixes compare by their numeric core.
+     */
+    static void requireJkCompat(String id, String jkCompat) {
+        if (jkCompat == null || jkCompat.isBlank()) return;
+        String spec = jkCompat.trim();
+        if (!spec.startsWith(">=")) {
+            throw new IllegalArgumentException(
+                    "plugin " + id + ": unsupported jk-compat \"" + spec + "\" (only \">=x.y\" is supported)");
+        }
+        String floor = spec.substring(2).trim();
+        String running = cc.jumpkick.model.JkVersion.VERSION;
+        if (compareNumericCore(running, floor) < 0) {
+            throw new IllegalArgumentException("plugin " + id + " requires jk " + floor + " or newer but this jk is "
+                    + running + " — upgrade with `jk self update`");
+        }
+    }
+
+    private static int compareNumericCore(String a, String b) {
+        String[] as = a.split("-", 2)[0].split("\\.");
+        String[] bs = b.split("-", 2)[0].split("\\.");
+        for (int i = 0; i < Math.max(as.length, bs.length); i++) {
+            int ai = i < as.length ? parseIntSafe(as[i]) : 0;
+            int bi = i < bs.length ? parseIntSafe(bs[i]) : 0;
+            if (ai != bi) return Integer.compare(ai, bi);
+        }
+        return 0;
+    }
+
+    private static int parseIntSafe(String s) {
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 }

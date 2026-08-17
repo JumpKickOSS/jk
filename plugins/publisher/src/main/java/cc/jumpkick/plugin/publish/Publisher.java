@@ -80,7 +80,6 @@ public final class Publisher implements Plugin, PublishExtension {
             if (result.bytes() > 0) fields.put("bytes", result.bytes());
             if (result.dryRun()) fields.put("dry_run", true);
             out.emit(PluginReply.result(fields));
-            out.emit(PluginReply.done(0));
             return 0;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

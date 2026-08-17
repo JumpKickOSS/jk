@@ -29,7 +29,5 @@ final class GcProtocol {
     }
 
     /** The terminal marker carrying the exit code. */
-    void done(int exit) {
-        out.emit(PluginReply.done(exit));
-    }
+    void done(int exit) {}
 }

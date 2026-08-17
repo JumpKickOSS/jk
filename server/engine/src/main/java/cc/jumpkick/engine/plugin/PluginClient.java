@@ -11,8 +11,7 @@ import java.util.function.Consumer;
 
 /**
  * Host-side driver for a forked plugin's JSONL protocol ({@code ##PREFIX:{"t":…}}). Registers
- * handlers by type and runs via {@link PluginProcess}. Use a custom discriminator + {@link
- * #converse} for the test runner's pull protocol.
+ * handlers by type and runs via {@link PluginProcess}.
  */
 public final class PluginClient {
 
@@ -20,20 +19,13 @@ public final class PluginClient {
     public static final String TYPE = "t";
 
     private final String prefix;
-    private final String typeKey;
     private final Map<String, Consumer<String>> handlers = new HashMap<>();
     private Consumer<String> onOther;
     private Consumer<String> passthrough;
 
     /** A client for a plugin using the canonical {@code "t"} discriminator and the given prefix. */
     public PluginClient(String prefix) {
-        this(prefix, TYPE);
-    }
-
-    /** A client keying messages on {@code typeKey} (e.g. the test runner's {@code "e"}). */
-    public PluginClient(String prefix, String typeKey) {
         this.prefix = prefix;
-        this.typeKey = typeKey;
     }
 
     /** Register the handler for protocol messages whose type equals {@code type}. */
@@ -75,7 +67,7 @@ public final class PluginClient {
     }
 
     private void dispatch(String json) {
-        String t = Jsonl.str(json, typeKey);
+        String t = Jsonl.str(json, TYPE);
         Consumer<String> handler = t != null ? handlers.get(t) : null;
         if (handler != null) {
             handler.accept(json);

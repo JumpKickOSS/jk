@@ -177,7 +177,6 @@ public final class CodeFormatter implements Plugin {
         // In --check mode, an unformatted (changed) file is a failure; errors always are. The engine
         // recomputes the changed/clean/error tallies from the per-file events, so `done` carries only exit.
         int exit = errors > 0 || (!spec.apply && changed > 0) ? 1 : 0;
-        out.emit(PluginReply.done(exit));
         return exit;
     }
 

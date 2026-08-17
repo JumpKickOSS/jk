@@ -137,7 +137,6 @@ public final class CompatBridge implements Plugin {
             }
 
             out.emit(PluginReply.result(Map.of("warnings", importReport.issues().size())));
-            out.emit(PluginReply.done(0));
             return 0;
         } catch (IOException e) {
             out.emit(PluginReply.error("import", e.getMessage()));
@@ -163,7 +162,6 @@ public final class CompatBridge implements Plugin {
                     "bin", tool.binary().toString(),
                     "version", dist.version(),
                     "source", result.source().name())));
-            out.emit(PluginReply.done(0));
             return 0;
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();

@@ -182,14 +182,15 @@ public final class PluginBuild {
         if (Files.isRegularFile(cacheFile)) {
             lines = Files.readAllLines(cacheFile, StandardCharsets.UTF_8);
         } else {
-            Path spec = Files.createTempFile("jk-plugin-describe-", ".spec");
+            Path spec = new cc.jumpkick.plugin.protocol.SpecWriter()
+                    .op(
+                            cc.jumpkick.plugin.protocol.PluginProtocol.OP_DESCRIBE,
+                            null,
+                            active.manifest().id())
+                    .config(active.config())
+                    .project(facts(project, project.mainClass()))
+                    .writeTempSpec();
             try {
-                List<String> specLines = new ArrayList<>();
-                specLines.add("{\"t\":\"op\",\"op\":\"describe\",\"plugin\":"
-                        + Jsonl.quote(active.manifest().id()) + "}");
-                appendConfig(specLines, active.config());
-                appendProject(specLines, project, project.mainClass());
-                Files.write(spec, specLines, StandardCharsets.UTF_8);
                 lines = runWorker(active, cache, spec, null);
             } finally {
                 Files.deleteIfExists(spec);
@@ -685,128 +686,17 @@ public final class PluginBuild {
         return jarPath;
     }
 
-    /** The spec for one step/package execution — mirror of {@code BuildPluginHarness.Spec}. */
-    public static final class SpecWriter {
-        private final List<String> lines = new ArrayList<>();
-
-        public SpecWriter op(String op, String step, String pluginId) {
-            StringBuilder b = new StringBuilder("{\"t\":\"op\",\"op\":").append(Jsonl.quote(op));
-            if (step != null) b.append(",\"task\":").append(Jsonl.quote(step));
-            b.append(",\"plugin\":").append(Jsonl.quote(pluginId)).append('}');
-            lines.add(b.toString());
-            return this;
-        }
-
-        public SpecWriter config(PluginConfig config) {
-            appendConfig(lines, config);
-            return this;
-        }
-
-        public SpecWriter project(JkBuild project, String resolvedMain) {
-            appendProject(lines, project, resolvedMain);
-            return this;
-        }
-
-        public SpecWriter layout(Path classesDir, Path moduleDir, Path scratch) {
-            lines.add("{\"t\":\"layout\",\"classesDir\":" + Jsonl.quote(String.valueOf(classesDir))
-                    + ",\"moduleDir\":" + Jsonl.quote(String.valueOf(moduleDir))
-                    + ",\"scratch\":" + Jsonl.quote(String.valueOf(scratch)) + "}");
-            return this;
-        }
-
-        public SpecWriter javaHome(Path javaHome) {
-            lines.add("{\"t\":\"java-home\",\"path\":" + Jsonl.quote(javaHome.toString()) + "}");
-            return this;
-        }
-
-        public SpecWriter artifact(Path path) {
-            lines.add("{\"t\":\"artifact\",\"path\":"
-                    + Jsonl.quote(path.toAbsolutePath().toString()) + "}");
-            return this;
-        }
-
-        public SpecWriter classpath(List<Path> entries) {
-            for (Path p : entries) {
-                lines.add("{\"t\":\"cp\",\"path\":"
-                        + Jsonl.quote(p.toAbsolutePath().toString()) + "}");
-            }
-            return this;
-        }
-
-        public SpecWriter entry(String fileName, Path jar, boolean snapshot) {
-            return entry(fileName, jar, snapshot, null);
-        }
-
-        public SpecWriter entry(String fileName, Path jar, boolean snapshot, Path container) {
-            return entry(fileName, jar, snapshot, container, "", "", "");
-        }
-
-        public SpecWriter entry(
-                String fileName,
-                Path jar,
-                boolean snapshot,
-                Path container,
-                String group,
-                String artifact,
-                String version) {
-            StringBuilder b = new StringBuilder("{\"t\":\"entry\",\"file\":").append(Jsonl.quote(fileName));
-            if (group != null && !group.isEmpty()) {
-                b.append(",\"group\":")
-                        .append(Jsonl.quote(group))
-                        .append(",\"artifact\":")
-                        .append(Jsonl.quote(artifact))
-                        .append(",\"version\":")
-                        .append(Jsonl.quote(version));
-            }
-            if (jar != null)
-                b.append(",\"path\":").append(Jsonl.quote(jar.toAbsolutePath().toString()));
-            b.append(",\"snapshot\":").append(snapshot);
-            if (container != null) {
-                b.append(",\"container\":")
-                        .append(Jsonl.quote(container.toAbsolutePath().toString()));
-            }
-            b.append('}');
-            lines.add(b.toString());
-            return this;
-        }
-
-        public SpecWriter stepOutput(String name, Path dir) {
-            lines.add("{\"t\":\"step-output\",\"name\":" + Jsonl.quote(name) + ",\"dir\":"
-                    + Jsonl.quote(dir.toAbsolutePath().toString()) + "}");
-            return this;
-        }
-
-        public SpecWriter commandArgs(List<String> args) {
-            StringBuilder arr = new StringBuilder("[");
-            for (int i = 0; i < args.size(); i++) {
-                if (i > 0) arr.append(',');
-                arr.append(Jsonl.quote(args.get(i)));
-            }
-            arr.append(']');
-            lines.add("{\"t\":\"command-args\",\"values\":" + arr + "}");
-            return this;
-        }
-
-        /**
-         * A resolved secret (signing credentials): package specs only — never describe or step
-         * specs, never action-key plaintext (the key carries a digest), never echoed by plugins.
-         */
-        public SpecWriter secret(String key, String value) {
-            lines.add("{\"t\":\"secret\",\"key\":" + Jsonl.quote(key) + ",\"value\":" + Jsonl.quote(value) + "}");
-            return this;
-        }
-
-        public SpecWriter extra(String name, Path path) {
-            lines.add("{\"t\":\"extra\",\"name\":" + Jsonl.quote(name) + ",\"path\":"
-                    + Jsonl.quote(path.toAbsolutePath().toString()) + "}");
-            return this;
-        }
-
-        public Path write() throws IOException {
-            Path spec = Files.createTempFile("jk-plugin-", ".spec");
-            Files.write(spec, lines, StandardCharsets.UTF_8);
-            return spec;
-        }
+    /** {@link cc.jumpkick.plugin.build.ProjectFacts} for the shared {@link cc.jumpkick.plugin.protocol.SpecWriter}. */
+    public static cc.jumpkick.plugin.build.ProjectFacts facts(JkBuild project, String resolvedMain) {
+        return new cc.jumpkick.plugin.build.ProjectFacts(
+                project.project().group(),
+                project.project().name(),
+                project.project().version(),
+                project.project().javaRelease(),
+                resolvedMain,
+                project.nativeConfig().isPresent(),
+                project.project().isKotlin(),
+                project.manifest());
     }
 
     /**
@@ -851,53 +741,6 @@ public final class PluginBuild {
 
     private static String blankToNull(String s) {
         return (s == null || s.isBlank()) ? null : s;
-    }
-
-    private static void appendConfig(List<String> lines, PluginConfig config) {
-        for (Map.Entry<String, Object> e : config.values().entrySet()) {
-            Object v = e.getValue();
-            String key = Jsonl.quote(e.getKey());
-            if (v instanceof String s) {
-                lines.add(
-                        "{\"t\":\"config\",\"key\":" + key + ",\"kind\":\"string\",\"value\":" + Jsonl.quote(s) + "}");
-            } else if (v instanceof Boolean b) {
-                lines.add("{\"t\":\"config\",\"key\":" + key + ",\"kind\":\"bool\",\"value\":" + b + "}");
-            } else if (v instanceof Long l) {
-                lines.add("{\"t\":\"config\",\"key\":" + key + ",\"kind\":\"int\",\"value\":" + l + "}");
-            } else if (v instanceof List<?> list) {
-                StringBuilder arr = new StringBuilder("[");
-                for (int i = 0; i < list.size(); i++) {
-                    if (i > 0) arr.append(',');
-                    arr.append(Jsonl.quote(String.valueOf(list.get(i))));
-                }
-                arr.append(']');
-                lines.add("{\"t\":\"config\",\"key\":" + key + ",\"kind\":\"list\",\"values\":" + arr + "}");
-            }
-        }
-    }
-
-    private static void appendProject(List<String> lines, JkBuild project, String resolvedMain) {
-        StringBuilder b = new StringBuilder("{\"t\":\"project\",\"group\":")
-                .append(Jsonl.quote(project.project().group()))
-                .append(",\"name\":")
-                .append(Jsonl.quote(project.project().name()))
-                .append(",\"version\":")
-                .append(Jsonl.quote(project.project().version()))
-                .append(",\"javaRelease\":")
-                .append(project.project().javaRelease())
-                .append(",\"nativeDeclared\":")
-                .append(project.nativeConfig().isPresent())
-                .append(",\"kotlin\":")
-                .append(project.project().isKotlin());
-        if (resolvedMain != null && !resolvedMain.isBlank()) {
-            b.append(",\"mainClass\":").append(Jsonl.quote(resolvedMain));
-        }
-        b.append('}');
-        lines.add(b.toString());
-        for (Map.Entry<String, String> e : project.manifest().entrySet()) {
-            lines.add("{\"t\":\"manifest-attr\",\"key\":" + Jsonl.quote(e.getKey()) + ",\"value\":"
-                    + Jsonl.quote(e.getValue()) + "}");
-        }
     }
 
     /**

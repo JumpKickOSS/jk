@@ -86,7 +86,6 @@ public final class Auditor implements Plugin {
             out.emit(PluginReply.finding(
                     f.module(), f.version(), f.vulnId(), f.severity().name(), f.summary()));
         }
-        out.emit(PluginReply.done(0));
         return 0;
     }
 }

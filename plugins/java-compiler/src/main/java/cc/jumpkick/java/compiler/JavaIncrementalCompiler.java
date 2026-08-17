@@ -62,7 +62,6 @@ public final class JavaIncrementalCompiler implements Plugin {
                     e.getValue().stream().map(Path::toString).toList()));
         }
         out.emit(PluginReply.result(Map.of("status", r.success() ? "OK" : "ERROR")));
-        out.emit(PluginReply.done(r.success() ? 0 : 1));
         return r.success() ? 0 : 1;
     }
 

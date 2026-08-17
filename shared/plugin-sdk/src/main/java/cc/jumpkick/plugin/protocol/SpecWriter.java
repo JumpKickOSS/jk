@@ -3,6 +3,9 @@ package cc.jumpkick.plugin.protocol;
 
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.ProjectFacts;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -126,8 +129,42 @@ public final class SpecWriter {
         return this;
     }
 
+    /** Every entry with one role — build-plugin workers see the compile classpath this way. */
+    public SpecWriter classpath(List<Path> entries, String role) {
+        for (Path p : entries) cp(p, role);
+        return this;
+    }
+
+    /** The build-plugin worker layout: classes tree, module dir, and the step scratch dir. */
+    public SpecWriter layout(Path classesDir, Path moduleDir, Path scratch) {
+        lines.add("{\"t\":\"layout\",\"classesDir\":" + Jsonl.quote(String.valueOf(classesDir))
+                + ",\"moduleDir\":" + Jsonl.quote(String.valueOf(moduleDir))
+                + ",\"scratch\":" + Jsonl.quote(String.valueOf(scratch)) + "}");
+        return this;
+    }
+
     public SpecWriter entry(String fileName, Path jar, boolean snapshot, Path container) {
+        return entry(fileName, jar, snapshot, container, "", "", "");
+    }
+
+    /** As above with the entry's Maven identity (runtime-closure provenance for packagers). */
+    public SpecWriter entry(
+            String fileName,
+            Path jar,
+            boolean snapshot,
+            Path container,
+            String group,
+            String artifact,
+            String version) {
         StringBuilder b = new StringBuilder("{\"t\":\"entry\",\"file\":").append(Jsonl.quote(fileName));
+        if (group != null && !group.isEmpty()) {
+            b.append(",\"group\":")
+                    .append(Jsonl.quote(group))
+                    .append(",\"artifact\":")
+                    .append(Jsonl.quote(artifact))
+                    .append(",\"version\":")
+                    .append(Jsonl.quote(version));
+        }
         if (jar != null)
             b.append(",\"path\":").append(Jsonl.quote(jar.toAbsolutePath().toString()));
         b.append(",\"snapshot\":").append(snapshot);
@@ -181,6 +218,13 @@ public final class SpecWriter {
 
     public List<String> lines() {
         return lines;
+    }
+
+    /** Write the spec to a temp file (the path the worker is forked with). Caller deletes. */
+    public Path writeTempSpec() throws IOException {
+        Path spec = Files.createTempFile("jk-plugin-", ".spec");
+        Files.write(spec, lines, StandardCharsets.UTF_8);
+        return spec;
     }
 
     private static String array(List<String> values) {

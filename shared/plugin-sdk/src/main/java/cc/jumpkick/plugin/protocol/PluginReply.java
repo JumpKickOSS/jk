@@ -19,14 +19,9 @@ public final class PluginReply {
         return "{\"t\":\"label\",\"text\":" + Jsonl.quote(text) + "}";
     }
 
-    /** Numeric progress. */
-    public static String progress(int done, int total) {
-        return "{\"t\":\"progress\",\"done\":" + done + ",\"total\":" + total + "}";
-    }
-
     /** One user-facing output line (command ops). */
-    public static String out(String line) {
-        return "{\"t\":\"out\",\"line\":" + Jsonl.quote(line) + "}";
+    public static String commandOut(String line) {
+        return "{\"t\":\"command-out\",\"line\":" + Jsonl.quote(line) + "}";
     }
 
     /** A structured compiler/format diagnostic; {@code file} may be null, {@code line}/{@code col} 0 when unknown. */
@@ -80,11 +75,6 @@ public final class PluginReply {
     /** A structured error. */
     public static String error(String code, String message) {
         return "{\"t\":\"error\",\"code\":" + Jsonl.quote(code) + ",\"message\":" + Jsonl.quote(message) + "}";
-    }
-
-    /** The terminal marker carrying the plugin's exit code. */
-    public static String done(int exit) {
-        return "{\"t\":\"done\",\"exit\":" + exit + "}";
     }
 
     private static String value(Object v) {
