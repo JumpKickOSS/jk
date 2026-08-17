@@ -253,6 +253,15 @@ final class HttpReadApi {
                             .put("jid", e.jid())
                             .toString());
             return;
+        } catch (cc.jumpkick.engine.PinnedProjectRefused e) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    409,
+                    JsonOut.object()
+                            .put("error", e.getMessage())
+                            .put("pinnedVersion", e.pinnedVersion())
+                            .toString());
+            return;
         } catch (IllegalStateException e) {
             String msg = e.getMessage() == null ? "" : e.getMessage();
             exchange.getResponseHeaders().set("Retry-After", "1");

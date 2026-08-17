@@ -60,13 +60,18 @@ public final class WorkspaceBuildVerb implements HostedVerb {
     @Override
     public String decodeJob(cc.jumpkick.engine.jobs.JobSpec spec) {
         Path entryDir = Path.of(spec.dir());
-        JkBuild entry;
-        try {
-            entry = JkBuildParser.parse(entryDir.resolve("jk.toml"));
-        } catch (Exception e) {
-            throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
+        Set<Path> dirty = null;
+        if (!spec.modules().isEmpty()) {
+            // Module selection needs the manifest; without a filter an unparseable jk.toml is
+            // accepted here and fails as a job (202 + request-finish), never a bare 400.
+            JkBuild entry;
+            try {
+                entry = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+            } catch (Exception e) {
+                throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
+            }
+            dirty = cc.jumpkick.engine.jobs.JobSelect.dirtyHint(entryDir, entry, spec.modules());
         }
-        Set<Path> dirty = cc.jumpkick.engine.jobs.JobSelect.dirtyHint(entryDir, entry, spec.modules());
         boolean testOnly = "test".equals(spec.kind());
         boolean skipTests = spec.skipTests() || "assemble".equals(spec.kind());
         return ProtoSession.withTrigger(

@@ -19,7 +19,11 @@ class McpHandlerTest {
     private final EngineHttpJobs jobs = new EngineHttpJobs() {
         @Override
         public long trigger(JobSpec spec) {
-            return 42L;
+            return switch (spec.kind()) {
+                case "test" -> 43L;
+                case "lock" -> 44L;
+                default -> 42L;
+            };
         }
 
         @Override

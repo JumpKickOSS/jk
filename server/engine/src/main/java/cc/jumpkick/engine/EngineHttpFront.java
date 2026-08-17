@@ -135,8 +135,20 @@ public final class EngineHttpFront {
         Path entryDir = requireProject(spec.dir());
         HostedVerb verb = verbs.forJobKind(spec.kind());
         if (verb == null) throw new IllegalArgumentException("kind not hosted: " + spec.kind());
+        refuseIfPinned(entryDir, verb.wireType(), version);
         String line = verb.decodeJob(spec.withDir(entryDir.toString()));
         return jobs.submit(line, verb.toJobRequest(line), new JobTransport.FireAndForget());
+    }
+
+    /**
+     * The wire path delegates artifact-producing requests for version-pinned projects to the
+     * pinned engine; this surface has no delegation channel, so the same requests are refused —
+     * never silently built with the resident engine's version.
+     */
+    static void refuseIfPinned(Path entryDir, String wireType, String engineVersion) {
+        if (!EngineDelegate.DELEGATABLE.contains(wireType)) return;
+        String pin = EngineDelegate.pinnedVersionDiffering(entryDir, engineVersion);
+        if (pin != null) throw new PinnedProjectRefused(pin, engineVersion);
     }
 
     private static Path requireProject(String dirStr) {
