@@ -57,7 +57,7 @@ public final class SyncCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws Exception {
-        this.cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
+        this.cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.offlinePrepare = in.isSet("offline-prepare");

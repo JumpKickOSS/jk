@@ -66,7 +66,7 @@ public final class OutdatedCommand implements CliCommand {
         this.showTip = in.isSet("show-tip");
         this.excludeUpToDate = in.isSet("exclude-up-to-date");
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
-        this.cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
+        this.cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         this.global = GlobalOptions.from(in);
 
         Path dir = global.workingDir();

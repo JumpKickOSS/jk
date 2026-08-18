@@ -57,7 +57,7 @@ public final class LibrarySearchCommand implements CliCommand {
         Integer limit = in.value("limit").map(Integer::parseInt).orElse(null);
         this.showLayer = in.isSet("show-layer");
         this.groupByLayer = in.isSet("group-by-layer");
-        Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
+        Path cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         GlobalOptions global = GlobalOptions.from(in);
 
         CatalogReadAck ack;

@@ -133,7 +133,7 @@ public final class JdkListCommand implements CliCommand {
         this.all = in.isSet("all");
         this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         this.feedUrl = in.value("feed-url").map(URI::create).orElse(null);
-        this.cacheFile = in.value("cache-file").map(Path::of).orElse(null);
+        this.cacheFile = in.value("cache-file").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
         Path jdksRoot = registry.jdksRoot();
         List<JdkHit> installed = registry.listHits();

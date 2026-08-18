@@ -84,7 +84,7 @@ public final class VerifyBuildCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException {
-        this.cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
+        this.cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         this.global = GlobalOptions.from(in);
         Path dir = global.workingDir();
         Path buildFile = dir.resolve("jk.toml");

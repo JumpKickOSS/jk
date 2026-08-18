@@ -103,7 +103,7 @@ public final class BuildCommand implements CliCommand {
     public int run(Invocation in) throws Exception {
         this.profileName = in.value("profile").orElse(null);
         this.workers = in.value("workers").map(Integer::parseInt).orElse(null);
-        this.cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
+        this.cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         this.buildOpts = new cc.jumpkick.cli.BuildOptions();
         this.buildOpts.skipTests = in.isSet("skip-tests");

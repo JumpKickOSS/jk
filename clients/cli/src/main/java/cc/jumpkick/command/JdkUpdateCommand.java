@@ -101,7 +101,7 @@ public final class JdkUpdateCommand implements CliCommand {
         this.assumeYes = in.isSet("yes");
         this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         this.feedUrl = in.value("feed-url").map(URI::create).orElse(null);
-        this.cacheFile = in.value("cache-file").map(Path::of).orElse(null);
+        this.cacheFile = in.value("cache-file").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
 
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
         // Reclaim any partial archive left by a previously canceled download.

@@ -67,7 +67,7 @@ public final class WatchCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
-        Path cacheOverride = in.value("cache-dir").map(Path::of).orElse(null);
+        Path cacheOverride = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         VariantSelection.install(in, global.workingDir());
 

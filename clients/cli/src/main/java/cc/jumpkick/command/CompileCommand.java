@@ -52,7 +52,7 @@ public final class CompileCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         String profileName = in.value("profile").orElse(null);
-        Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
+        Path cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         GlobalOptions global = GlobalOptions.from(in);
         Path dir = global.workingDir();
         VariantSelection.install(in, dir);

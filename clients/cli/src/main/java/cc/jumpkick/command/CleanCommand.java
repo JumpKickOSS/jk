@@ -52,7 +52,7 @@ public final class CleanCommand implements CliCommand {
     public int run(Invocation in) throws IOException {
         boolean keepArtifacts = in.isSet("keep-artifacts");
         boolean force = GlobalOptions.from(in).force;
-        Path cacheDirOverride = in.value("cache-dir").map(Path::of).orElse(null);
+        Path cacheDirOverride = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         Path dir = GlobalOptions.from(in).workingDir();
         Path workspaceRoot = resolveWorkspaceRoot(dir);
         List<String> warnings = new ArrayList<>();

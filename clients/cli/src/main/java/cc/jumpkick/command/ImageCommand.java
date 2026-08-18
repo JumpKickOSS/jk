@@ -73,7 +73,7 @@ public final class ImageCommand implements CliCommand {
         this.tag = in.value("tag").orElse(null);
         this.tarballArg = in.value("tarball").orElse(null);
         this.dockerExecutableArg = in.value("docker-executable").orElse(null);
-        this.cacheDirOverride = in.value("cache-dir").map(Path::of).orElse(null);
+        this.cacheDirOverride = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         this.buildOpts = new cc.jumpkick.cli.BuildOptions();
         this.buildOpts.skipTests = in.isSet("skip-tests");

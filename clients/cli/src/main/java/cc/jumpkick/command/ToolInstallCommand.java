@@ -101,7 +101,7 @@ public final class ToolInstallCommand implements CliCommand {
         this.coord = in.positionals().isEmpty() ? "." : in.positionals().get(0);
         this.binName = in.value("bin").orElse(null);
         this.mainClass = in.value("main").orElse(null);
-        this.cacheDirOverride = in.value("cache-dir").map(Path::of).orElse(null);
+        this.cacheDirOverride = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         this.stateDirOverride = in.value("state-dir").map(Path::of).orElse(null);
         this.binDirOverride = in.value("bin-dir").map(Path::of).orElse(null);
         this.groupFlag = in.value("group").orElse(null);

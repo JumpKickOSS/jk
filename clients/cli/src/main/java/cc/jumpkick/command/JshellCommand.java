@@ -77,7 +77,7 @@ public final class JshellCommand implements CliCommand {
         }
 
         boolean noBuild = in.isSet("no-build");
-        Path cacheDir = in.value("cache-dir").map(Path::of).orElse(JkDirs.cache());
+        Path cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(JkDirs.cache());
 
         if (!noBuild) {
             // Quiet preparatory build so classes exist.

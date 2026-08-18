@@ -81,7 +81,7 @@ public final class ExplainCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
-        Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
+        Path cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         Path startDir = global.workingDir();
         var proj = ProjectContext.require(startDir, "explain").orElse(null);
         if (proj == null) return Exit.CONFIG;

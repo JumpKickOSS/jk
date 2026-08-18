@@ -81,7 +81,7 @@ public final class ReleaseCommand implements CliCommand {
         Path out = in.value("out").map(Path::of).orElse(dir.resolve("target").resolve("dist"));
         if (!out.isAbsolute()) out = dir.resolve(out).normalize();
         String modulesSpec = in.value("modules").orElse(null);
-        Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
+        Path cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
 
         ProjectInfo root = BuildCommand.projectInfoOrNull(dir);
         if (root == null) {

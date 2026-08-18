@@ -56,7 +56,7 @@ public final class LibraryUpdateCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         this.source = in.value("source").map(URI::create).orElse(DEFAULT_SOURCE);
-        this.cacheFileOverride = in.value("cache-file").map(Path::of).orElse(null);
+        this.cacheFileOverride = in.value("cache-file").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
 
         long startNanos = System.nanoTime();
         Path cacheFile = cacheFileOverride != null ? cacheFileOverride : LibraryCatalog.downloadedFile();
