@@ -221,30 +221,21 @@ final class JkManagerView {
     // --- plain multi-line chrome ---------------------------------
 
     /**
-     * Emit plain progress lines for every newly crossed 20% step up to (and not past) 80%.
-     * Must hold the manager lock. First call prints {@code initializing...} then the 0% prepare
-     * line.
+     * Ensure the first plain prepare/progress line exists once aggregate progress is known. Must
+     * hold the manager lock. Later mid-run lines come from stage changes, {@code built}, and
+     * {@code done} — not from percent ticks.
      */
-    void emitPlainProgressDecades(long num, long den) {
-        if (m.done || den <= 0) return;
+    void ensurePlainProgressStarted(long num, long den) {
+        if (m.done || den <= 0 || m.plainProgressStarted) return;
         m.plainProgressMode = true;
         maybePrintPlainInitializing();
-        int decade = new Progress(num, den).plainDecade();
-        if (m.plainLastDecade < 0) {
-            String status = currentPlainStatus();
-            String subject = currentPlainSubject();
-            if (PlainPhase.PREPARE.equals(status) || firstActiveRow() == null) {
-                status = PlainPhase.PREPARE;
-                if (subject.isEmpty()) subject = m.planCoord == null ? "" : m.planCoord;
-            }
-            printPlainSnapshot(0, status, false, subject, "");
-            m.plainLastDecade = 0;
-            return;
+        String status = currentPlainStatus();
+        String subject = currentPlainSubject();
+        if (PlainPhase.PREPARE.equals(status) || firstActiveRow() == null) {
+            status = PlainPhase.PREPARE;
+            if (subject.isEmpty()) subject = m.planCoord == null ? "" : m.planCoord;
         }
-        while (m.plainLastDecade < decade) {
-            m.plainLastDecade += Progress.PLAIN_STEP_PERCENT;
-            printPlainSnapshot(m.plainLastDecade, currentPlainStatus(), false);
-        }
+        printPlainSnapshot(0, status, false, subject, "");
     }
 
     /** First ETA seed: print immediately as {@code start} on the workspace coordinate. */
@@ -274,7 +265,7 @@ final class JkManagerView {
         printPlainSnapshot(currentPlainPercent(), status, false);
     }
 
-    /** Module finished: print immediately with {@code built} (do not wait for a 20% boundary). */
+    /** Module finished: print immediately with {@code built}. */
     void emitPlainModuleBuilt(String module) {
         if (m.done || !m.animate) return;
         m.plainProgressMode = true;
@@ -320,9 +311,8 @@ final class JkManagerView {
     void printPlainDone() {
         if (!m.animate) return;
         if (m.plainProgressMode) {
-            if (m.plainLastDecade < 0) {
+            if (!m.plainProgressStarted) {
                 maybePrintPlainInitializing();
-                m.plainLastDecade = 0;
             }
             printPlainSnapshot(100, PlainPhase.DONE, true, planCoordOrEmpty(), "");
             return;
@@ -366,29 +356,24 @@ final class JkManagerView {
                         Glyphs.PULSE_PLAIN,
                         planName(),
                         formatPlainTail(subject, percent, plainEtaClock(), status, detail));
-        if (!doneLine && !shouldPrintPlain(percent, status, subject, detail)) return;
+        if (!doneLine && !shouldPrintPlain(status, subject, detail)) return;
         m.plainLastSubject = subject == null ? "" : subject;
         m.plainLastStatus = status == null ? "" : status;
         m.out.println(line);
         m.plainChromeStarted = true;
-        if (!doneLine && percent >= 0) {
-            int decade = Math.min(80, (percent / Progress.PLAIN_STEP_PERCENT) * Progress.PLAIN_STEP_PERCENT);
-            if (decade > m.plainLastDecade) m.plainLastDecade = decade;
-        }
+        m.plainProgressStarted = true;
         m.out.flush();
     }
 
     /**
-     * Print on a new module/phase, a 20% boundary, {@code start}/{@code built}/{@code prepare}, or a
-     * verbose detail. Same module+phase with only an ETA/percent tick is suppressed.
+     * Print on a new module/phase ({@code start}/{@code built}/{@code prepare}/…), or a verbose
+     * detail. Same module+phase with only an ETA/percent tick is suppressed.
      */
-    private boolean shouldPrintPlain(int percent, String status, String subject, String detail) {
+    private boolean shouldPrintPlain(String status, String subject, String detail) {
         if (detail != null && !detail.isBlank()) return true;
         String sub = subject == null ? "" : subject;
         String st = status == null ? "" : status;
-        boolean same = sub.equals(m.plainLastSubject) && PlainPhase.sameFamily(st, m.plainLastStatus);
-        if (!same) return true;
-        return percent > 0 && percent < 100 && percent % Progress.PLAIN_STEP_PERCENT == 0;
+        return !sub.equals(m.plainLastSubject) || !PlainPhase.sameFamily(st, m.plainLastStatus);
     }
 
     private static String formatPlainTail(String subject, int percent, String eta, String status, String detail) {
@@ -474,7 +459,7 @@ final class JkManagerView {
 
     private int currentPlainPercent() {
         long[] bd = m.displayBar(m.elapsedMillis());
-        if (bd[1] <= 0) return Math.max(0, m.plainLastDecade);
+        if (bd[1] <= 0) return 0;
         return new Progress(bd[0], bd[1]).percent();
     }
 
@@ -638,7 +623,7 @@ final class JkManagerView {
         m.out.print(Ansi.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
         if (m.animate && !Theme.active().isAnsi() && bd[1] > 0) {
             synchronized (m.lock) {
-                m.emitPlainProgressDecades(bd[0], bd[1]);
+                m.ensurePlainProgressStarted(bd[0], bd[1]);
             }
         }
         m.lastLines = lines;

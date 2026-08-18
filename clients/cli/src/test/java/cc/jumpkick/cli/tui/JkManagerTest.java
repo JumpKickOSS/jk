@@ -542,7 +542,7 @@ class JkManagerTest {
     }
 
     @Test
-    void plain_progress_emits_decades_then_100_done() {
+    void plain_progress_emits_stage_changes_not_percent_ticks() {
         var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
         cc.jumpkick.config.SessionContext.runWhere(
                 cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
@@ -551,9 +551,9 @@ class JkManagerTest {
                     cm.addTaskLabeled("", "fmt", "Examining source files");
                     cm.stepRunning("", "fmt");
                     cm.progress(0, 100);
-                    cm.progress(15, 100); // still in the 0% step
-                    cm.progress(25, 100); // crosses 20%
-                    cm.progress(100, 100); // still working chrome max 80% mid-run
+                    cm.progress(15, 100);
+                    cm.progress(25, 100); // percent ticks must not reprint the same stage
+                    cm.progress(100, 100);
                     cm.finishBuildPlanSuccess("Already formatted - took 547ms", List.of());
                     String out = buf.toString(StandardCharsets.UTF_8);
                     assertThat(out).doesNotContain("\u001B[");
@@ -561,11 +561,14 @@ class JkManagerTest {
                     assertThat(out).contains("jk: * Format > initializing...");
                     assertThat(out).contains("jk: * Format > Examining source files :: 0% - prepare");
                     assertThat(out).doesNotContain("jk: * Format > Examining source files :: 10% - prepare");
-                    assertThat(out).contains("jk: * Format > Examining source files :: 20% - prepare");
+                    assertThat(out).doesNotContain("jk: * Format > Examining source files :: 20% - prepare");
+                    assertThat(out).doesNotContain("jk: * Format > Examining source files :: 40% - prepare");
                     assertThat(out).contains("jk: * Format > 100% - done");
                     assertThat(out).contains("jk: + Format > Already formatted - took 547ms");
                     // No mid-run 100% working line — 100% is only the done line.
                     assertThat(out).doesNotContain("100% - prepare");
+                    assertThat(out.split("Examining source files :: ", -1).length - 1)
+                            .isEqualTo(1);
                 });
     }
 
@@ -621,8 +624,10 @@ class JkManagerTest {
                     assertThat(out).contains("jk: * Build > cc.jumpkick:jk :: 0% - prepare");
                     assertThat(out).contains("- compiling 12 sources");
                     assertThat(out).contains("- running 80 tests");
-                    assertThat(out).contains("cc.jumpkick:jk-engine :: 20% - running 50 tests");
-                    assertThat(out).doesNotContain("- running 50 tests\njk: * Build > cc.jumpkick:jk-engine :: 9%");
+                    // Mid-stage test countdown ticks must not reprint.
+                    assertThat(out).doesNotContain("running 50 tests");
+                    assertThat(out).doesNotContain(" :: 20% - ");
+                    assertThat(out).doesNotContain(" :: 40% - ");
                     assertThat(out).contains("cc.jumpkick:jk-engine :: 23% - built");
                     assertThat(out).contains("jk: * Build > cc.jumpkick:jk :: 100% - done");
                     assertThat(out).contains("jk: + Build > Build successful, built 1 module - took 1s");
@@ -688,8 +693,7 @@ class JkManagerTest {
                     var buf = new ByteArrayOutputStream();
                     var cm = JkManager.plan(stream(buf), "Build", true);
                     cm.writeProcessOutput("native-image: Error: Classes that should be initialized");
-                    assertThat(buf.toString(StandardCharsets.UTF_8))
-                            .doesNotContain("native-image: Error");
+                    assertThat(buf.toString(StandardCharsets.UTF_8)).doesNotContain("native-image: Error");
                     cm.showProcessFailureOutput();
                     String out = buf.toString(StandardCharsets.UTF_8);
                     assertThat(out).contains("native-image: Error: Classes that should be initialized");

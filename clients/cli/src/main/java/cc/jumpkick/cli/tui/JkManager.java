@@ -98,10 +98,11 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     boolean leadingBlankPrinted;
 
     /**
-     * Plain ({@code --no-ansi}) multi-line progress: last printed 20% step (0, 20, …, 80), or -1
-     * before the first percent line. 100% is only emitted as a done line on settle.
+     * Plain ({@code --no-ansi}) multi-line progress: false until the first prepare/progress line.
+     * Mid-run lines print on stage changes, module {@code built}, and settle {@code done} — not on
+     * percent ticks.
      */
-    int plainLastDecade = -1;
+    boolean plainProgressStarted;
 
     /** True after any plain working/progress line has been printed for this region. */
     boolean plainChromeStarted;
@@ -112,7 +113,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /** True after the first plain line that included a known ETA. */
     boolean plainEtaAnnounced;
 
-    /** Last printed plain subject + status — skip same-phase reprints except 20% boundaries. */
+    /** Last printed plain subject + status — suppress same-phase reprints. */
     String plainLastSubject = "";
 
     String plainLastStatus = "";
@@ -506,8 +507,8 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * A static test finished. Decrements the plain remaining-test count without printing — the next
-     * 20% line shows the updated {@code running N tests}.
+     * A static test finished. Decrements the plain remaining-test count without printing — plain
+     * mode only reprints on a stage change, so mid-stage countdown ticks stay silent.
      */
     public void notePlainTestTick(String module, String stepKey, int delta) {
         if (!animate || Theme.active().isAnsi()) return;
@@ -777,7 +778,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
                 this.solveLabel = "";
             }
             if (animate && !Theme.active().isAnsi() && d[1] > 0) {
-                emitPlainProgressDecades(d[0], d[1]);
+                ensurePlainProgressStarted(d[0], d[1]);
             }
         }
     }
@@ -903,8 +904,8 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         view.settle(line, above);
     }
 
-    void emitPlainProgressDecades(long num, long den) {
-        view.emitPlainProgressDecades(num, den);
+    void ensurePlainProgressStarted(long num, long den) {
+        view.ensurePlainProgressStarted(num, den);
     }
 
     static String plainProgressLine(String command, String message, int percent, boolean done) {

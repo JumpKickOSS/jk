@@ -4,8 +4,8 @@ package cc.jumpkick.cli.tui;
 import cc.jumpkick.cli.theme.Theme;
 
 /**
- * Bounded progress: bar + derived percent + optional suffix. Snapshot renderer; live cadence
- * (plain 20% steps) is {@link #plainDecade} / {@link #shouldEmitPlain}.
+ * Bounded progress: bar + derived percent + optional suffix. Snapshot renderer only — plain
+ * ({@code --no-ansi}) live lines are driven by stage changes in {@link JkManagerView}.
  */
 public record Progress(long numerator, long denominator, RichText suffix, Look look, int segments) {
 
@@ -17,9 +17,6 @@ public record Progress(long numerator, long denominator, RichText suffix, Look l
     }
 
     public static final int DEFAULT_SEGMENTS = ProgressBar.SEGMENTS;
-
-    /** Plain live updates fire at these percents (0 is the start line; 100 is settle-only). */
-    public static final int PLAIN_STEP_PERCENT = 20;
 
     /**
      * The canonical constructor is public by record rule — it can be no narrower than the class,
@@ -55,26 +52,6 @@ public record Progress(long numerator, long denominator, RichText suffix, Look l
 
     public int percent() {
         return ProgressBar.percent(numerator, denominator);
-    }
-
-    /**
-     * Last 20% step reached at or below {@link #percent()}, clamped to 80. 100% is settle-only and
-     * is not a live decade.
-     */
-    public int plainDecade() {
-        int pct = percent();
-        if (pct >= 100) return 80;
-        return (pct / PLAIN_STEP_PERCENT) * PLAIN_STEP_PERCENT;
-    }
-
-    /**
-     * Whether a plain-mode live printer should emit a new line. {@code lastEmittedDecade} is
-     * {@code -1} before the mandatory 0% start.
-     */
-    public static boolean shouldEmitPlain(int lastEmittedDecade, int newPercent) {
-        if (newPercent >= 100) return false;
-        int decade = (Math.max(0, newPercent) / PLAIN_STEP_PERCENT) * PLAIN_STEP_PERCENT;
-        return decade > lastEmittedDecade;
     }
 
     /** Bar + {@code NN%} + optional suffix. */

@@ -98,17 +98,14 @@ jk: * Build > cc.jumpkick:jk-cli :: 4% (ETA ~1m 14s) - resolving
 jk: * Build > cc.jumpkick:jk-cli :: 4% (ETA ~1m 14s) - generating
 jk: * Build > cc.jumpkick:jk-cli :: 4% (ETA ~1m 14s) - compiling 12 sources
 jk: * Build > cc.jumpkick:jk-cli :: 4% (ETA ~1m 12s) - running 80 tests
-jk: * Build > cc.jumpkick:jk-cli :: 20% (ETA ~53s) - running 50 tests
-jk: * Build > cc.jumpkick:jk-cli :: 40% (ETA ~40s) - running 10 tests
 jk: * Build > cc.jumpkick:jk-cli :: 47% (ETA ~47s) - packaging
 jk: * Build > cc.jumpkick:jk-cli :: 52% (ETA ~42s) - native compiling
-jk: * Build > cc.jumpkick:jk-cli :: 60% (ETA ~27s) - native compiling
-jk: * Build > cc.jumpkick:jk-cli :: 80% (ETA ~14s) - native compiling
+jk: * Build > cc.jumpkick:jk-cli :: 90% (ETA ~8s) - built
 jk: * Build > cc.jumpkick:jk :: 100% - done
 jk: + Build > Build successful for 1 module - took 1m 16s
 ```
 
-`subject :: percent% (ETA ~…) - status`. The workspace coordinate is on `prepare`, `start`, and `done`. Compile shows a source count (`compiling 12 sources`); tests show a remaining count (`running 80 tests`) that counts down only on 20/40/60/80 lines. Other phases stay as lowercase gerunds. Lines print on 20/40/60/80, on a major phase change, when a module finishes (`built`), and as soon as an ETA is known (`start`). Same module+phase reprints are suppressed unless they land on a 20% boundary. Sub-step detail (e.g. native classpath size) is appended only with `-v`.
+`subject :: percent% (ETA ~…) - status`. The workspace coordinate is on `prepare`, `start`, and `done`. Compile shows a source count (`compiling 12 sources`); tests show a remaining count on the stage-entry line (`running 80 tests`). Other phases stay as lowercase gerunds. Lines print on stage/phase changes, when a module finishes (`built`), as soon as an ETA is known (`start`), and on settle (`done`) — not on percent ticks. Same module+phase reprints are suppressed. Sub-step detail (e.g. native classpath size) is appended only with `-v`.
 
 ### Completed-module tail
 
@@ -280,7 +277,7 @@ Under `--output json` / `jsonl`, suppress human chrome (no envelope, no wedge). 
 | Code | `SourceCode.java` / `JavaCode` / `KotlinCode` / `GroovyCode` |
 | Prompt | `Prompt.java`, `Confirmation.java` (`Confirm` façade) |
 | Wizard parts | `WizardSection`, `TextInput`, `Checkbox`, `RadioButton`, `RadioButtonGroup` |
-| Progress | `cli/tui/Progress.java` + `ProgressBar.java` + `PlainPhase.java` (plain live cadence: 20% steps, phase changes, `jk: ` prefix) |
+| Progress | `cli/tui/Progress.java` + `ProgressBar.java` + `PlainPhase.java` (plain live cadence: stage changes, `built`/`done`, `jk: ` prefix) |
 | Tables | `cli/tui/Table.java`. Append snaps child rails to parent edges |
 | Trees | `cli/tui/Tree.java` — optional title/root, {@code Gap} / {@code BodyFit}, pills, hanging rich text |
 | Glyphs | `cli/tui/Glyphs.java` |
