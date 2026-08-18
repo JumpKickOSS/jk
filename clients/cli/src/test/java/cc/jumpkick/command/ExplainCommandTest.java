@@ -82,7 +82,7 @@ class ExplainCommandTest {
         assertThat(out).contains("Plan Item");
         assertThat(out).contains("Modules");
         assertThat(out).contains("2 in workspace");
-        // Root keeps group:artifact; dirty module rows are bold bright-cyan names (no index/pill).
+        // Root keeps group:artifact; dirty module rows are coord-name text (no index/pill).
         assertThat(out).contains("com.example").contains("app").contains("lib");
         assertThat(out).contains("modules are dirty");
         assertThat(out).doesNotContain("[01]").doesNotContain("01");

@@ -228,8 +228,8 @@ public final class ExplainCommand implements CliCommand {
 
     /**
      * Build Graph: wedge title, {@code ● group:artifact} root, Fully Cached / Rebuild section
-     * pills, Rebuild modules as bold bright-cyan names (verbose Fully Cached still uses branded
-     * pills), hanging stage-chain (or {@code --verbose} step children).
+     * pills, Rebuild modules as coord-name (bold bright-cyan) text (verbose Fully Cached still uses
+     * branded pills), hanging stage-chain (or {@code --verbose} step children).
      */
     static Tree buildGraph(
             String rootCoord, List<TaskForecast.Module> modules, boolean verbose, Theme t, boolean ansi) {
@@ -274,13 +274,14 @@ public final class ExplainCommand implements CliCommand {
     }
 
     /**
-     * One rebuild (or verbose cached) module: Rebuild rows use bold bright-cyan names; verbose
-     * Fully Cached rows keep the branded name pill. Stage chain or step children hang below.
+     * One rebuild (or verbose cached) module: Rebuild rows use {@code coord-name} (bold
+     * bright-cyan); verbose Fully Cached rows keep the branded name pill. Stage chain or step
+     * children hang below.
      */
     private static Tree.Node moduleNode(TaskForecast.Module m, boolean verbose, Theme t, boolean ansi) {
         String name = shortName(m.coord());
         Tree.Node node = m.dirty()
-                ? Tree.node(RichText.parse("[bold bright-cyan]" + RichText.escape(name) + "[/]"))
+                ? Tree.node(RichText.parse("[coord-name]" + RichText.escape(name) + "[/]"))
                 : Tree.node(Pill.branded(name));
         if (verbose) {
             List<TaskForecast.Task> ph = m.steps();

@@ -64,7 +64,7 @@ class ExplainCommandEstimateTest {
         assertThat(joined).contains("* com.example:root");
         assertThat(joined).contains("[Fully Cached]").contains("1 module is fresh");
         assertThat(joined).contains("[Rebuild]").contains("1 module is dirty");
-        // Rebuild modules are bold bright-cyan text, not branded [name] pills.
+        // Rebuild modules are coord-name (bold bright-cyan) text, not branded [name] pills.
         assertThat(joined).contains("app");
         assertThat(joined).doesNotContain("[app]");
         assertThat(joined).doesNotContain("[01]").doesNotContain("01");
