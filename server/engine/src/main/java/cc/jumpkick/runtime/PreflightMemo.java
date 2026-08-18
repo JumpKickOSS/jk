@@ -565,7 +565,11 @@ public final class PreflightMemo {
             feedFile(md, moduleDir.resolve("jk.toml"));
             feedFile(md, cc.jumpkick.lock.LockPaths.lockFile(moduleDir));
             boolean mtimeMode = useMtimeMode();
-            List<Path> roots = cc.jumpkick.layout.ModuleLayout.fingerprintDirs(moduleDir, skipTests);
+            List<Path> roots = new ArrayList<>(cc.jumpkick.layout.ModuleLayout.fingerprintDirs(moduleDir, skipTests));
+            for (var root : cc.jumpkick.layout.ModuleLayoutPlugins.pluginContributedRoots(moduleDir)) {
+                Path p = moduleDir.resolve(root.relative());
+                if (Files.isDirectory(p)) roots.add(p.toAbsolutePath().normalize());
+            }
             for (Path r : roots) {
                 if (!Files.isDirectory(r)) continue;
                 Files.walkFileTree(r, new SimpleFileVisitor<>() {

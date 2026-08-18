@@ -117,4 +117,25 @@ class ProjectIdentityTest {
         assertThat(id.source()).isEqualTo(ProjectIdentity.Source.EXPLICIT);
         assertThat(id.id()).isEqualTo("explicit-project-id-00112233");
     }
+
+    @Test
+    void coord_inherits_group_from_workspace_root(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "com.example"
+                name = "root"
+                version = "0.1.0"
+
+                [workspace]
+                modules = ["api"]
+                """);
+        Path api = dir.resolve("api");
+        Files.createDirectories(api);
+        Files.writeString(api.resolve("jk.toml"), """
+                name = "api"
+                version = "0.1.0"
+                group.workspace = true
+                """);
+        assertThat(ProjectIdentity.coordOf(api)).isEqualTo("com.example:api");
+        assertThat(ProjectIdentity.coordOf(dir)).isEqualTo("com.example:root");
+    }
 }

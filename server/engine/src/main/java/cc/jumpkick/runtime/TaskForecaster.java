@@ -815,7 +815,7 @@ public final class TaskForecaster {
         List<Path> resDirs = new ArrayList<>();
         Path resMain = cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact);
         if (Files.isDirectory(resMain)) resDirs.add(resMain);
-        for (var root : cc.jumpkick.layout.ModuleLayout.pluginContributedRoots(dir)) {
+        for (var root : cc.jumpkick.layout.ModuleLayoutPlugins.pluginContributedRoots(dir)) {
             if (!root.resource()) continue;
             Path r = dir.resolve(root.relative());
             if (Files.isDirectory(r)) resDirs.add(r);

@@ -713,7 +713,13 @@ public final class BuildLogicSupport {
     private static List<String> projectInputTokens(Path projectDir) throws IOException {
         PROJECT_INPUT_TOKENS_CALLS_FOR_TESTS.incrementAndGet();
         List<String> tokens = new ArrayList<>();
-        for (Path dir : cc.jumpkick.layout.ModuleLayout.fingerprintDirs(projectDir, /* skipTests */ false)) {
+        java.util.LinkedHashSet<Path> dirs = new java.util.LinkedHashSet<>(
+                cc.jumpkick.layout.ModuleLayout.fingerprintDirs(projectDir, /* skipTests */ false));
+        for (var root : cc.jumpkick.layout.ModuleLayoutPlugins.pluginContributedRoots(projectDir)) {
+            Path p = projectDir.resolve(root.relative());
+            if (java.nio.file.Files.isDirectory(p)) dirs.add(p.toAbsolutePath().normalize());
+        }
+        for (Path dir : dirs) {
             hashTree(projectDir, dir, "in", tokens);
         }
         for (String file : new String[] {"jk.toml", "jk-lock.toml"}) {

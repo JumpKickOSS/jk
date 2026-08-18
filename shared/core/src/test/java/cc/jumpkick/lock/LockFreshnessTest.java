@@ -19,6 +19,9 @@ class LockFreshnessTest {
                 version = "1"
                 """);
         assertThat(LockFreshness.needsRefresh(dir)).isTrue();
+        // Digest-only: no lock file is not "stale". Invisible freshen must use needsRefresh
+        // (LockCascade) or it will no-op and never write the first lock.
+        assertThat(LockFreshness.isStale(dir, dir.resolve("jk-lock.toml"))).isFalse();
     }
 
     @Test

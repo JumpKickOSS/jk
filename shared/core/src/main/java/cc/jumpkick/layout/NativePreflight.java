@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.layout;
 
-import cc.jumpkick.config.ImageConfigParser;
-import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceLocator;
-import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -77,22 +75,13 @@ public final class NativePreflight {
         if (notBlank(cliOverride)) return cliOverride;
         Path toml = moduleDir.resolve("jk.toml");
         if (!Files.isRegularFile(toml)) return null;
-        JkBuild build = null;
-        try {
-            build = JkBuildParser.parse(toml);
-            String fromNative =
-                    build.nativeConfig().map(JkBuild.NativeConfig::mainClass).orElse(null);
-            if (notBlank(fromNative)) return fromNative;
-        } catch (RuntimeException | IOException ignored) {
-            // unreadable manifest — try [image] / [application]
-        }
-        try {
-            String fromImage = ImageConfigParser.parse(toml).main();
-            if (notBlank(fromImage)) return fromImage;
-        } catch (RuntimeException | IOException ignored) {
-        }
-        if (build != null && notBlank(build.mainClass())) return build.mainClass();
-        return null;
+        var scan = TomlScan.scan(toml, "native.main-class", "image.main", "application.main");
+        String fromNative = scan.get("native.main-class");
+        if (notBlank(fromNative)) return fromNative;
+        String fromImage = scan.get("image.main");
+        if (notBlank(fromImage)) return fromImage;
+        String fromApp = scan.get("application.main");
+        return notBlank(fromApp) ? fromApp : null;
     }
 
     static Path nativeImageBinary(Path graalHome) {
@@ -135,7 +124,7 @@ public final class NativePreflight {
 
     static List<String> scanSourceMains(Path moduleDir) {
         List<String> found = new ArrayList<>();
-        for (ModuleLayout.Root root : ModuleLayout.roots(moduleDir)) {
+        for (ModuleLayout.Root root : ModuleLayout.diskRoots(moduleDir)) {
             if (root.kind() != ModuleLayout.Kind.SOURCE) continue;
             Path dir = moduleDir.resolve(root.relative());
             if (!Files.isDirectory(dir)) continue;

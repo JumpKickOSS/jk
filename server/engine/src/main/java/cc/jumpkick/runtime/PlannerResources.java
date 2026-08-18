@@ -54,7 +54,7 @@ public final class PlannerResources {
                     List<Path> resDirs = new ArrayList<>();
                     Path resMain = cc.jumpkick.layout.ModuleLayout.mainResourcesDir(in.dir(), compact);
                     if (Files.isDirectory(resMain)) resDirs.add(resMain);
-                    for (var root : cc.jumpkick.layout.ModuleLayout.pluginContributedRoots(in.dir())) {
+                    for (var root : cc.jumpkick.layout.ModuleLayoutPlugins.pluginContributedRoots(in.dir())) {
                         if (!root.resource()) continue;
                         Path dir = in.dir().resolve(root.relative());
                         if (Files.isDirectory(dir)) resDirs.add(dir);
