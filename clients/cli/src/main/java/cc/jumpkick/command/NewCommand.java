@@ -1158,18 +1158,8 @@ public final class NewCommand implements CliCommand {
 
     /** Official Giter8 short names (engine catalog). Used only to decide whether to freshen templates. */
     private static boolean officialTemplateShortName(String id) {
-        if (id == null || id.isBlank()) return false;
-        return Set.of(
-                        "java-cli",
-                        "kotlin-cli",
-                        "java-cli-native",
-                        "spring-boot-webmvc",
-                        "spring-boot-webmvc-kotlin",
-                        "spring-boot-mcp",
-                        "quarkus",
-                        "ktor-3",
-                        "micronaut",
-                        "grails-8")
-                .contains(id);
+        // Giter8ShortNames is the single canonical table — a hand-copied set here silently
+        // missed newly added templates (JK-2172).
+        return id != null && cc.jumpkick.scaffold.Giter8ShortNames.find(id).isPresent();
     }
 }

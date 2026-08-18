@@ -967,7 +967,7 @@ public final class BuildCommand implements CliCommand {
      */
     static String successTail(
             List<cc.jumpkick.runtime.ModuleOutcome> modules, int planned, List<String> selected, long start) {
-        if (planned == 0 || (selected != null && selected.isEmpty() && planned == 0)) {
+        if (planned == 0) {
             return upToDateTail("all modules", start);
         }
         int built = 0;
