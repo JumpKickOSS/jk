@@ -31,6 +31,13 @@ assertj-core = "latest"
 junit-jupiter = "latest"
 
 [build]
+# Bake built-in plugin manifests (and optional scaffolds) into the engine jar — never
+# jk-core, which the native CLI compiles against (JK-2149/JK-2157). Mirrors
+# pluginManifestResources in the Gradle build.
+extra-resources = [
+  { from = "../../plugins/*/jk-plugin.toml", into = "cc/jumpkick/plugin/manifest", rename = "{1}.jk-plugin.toml" },
+  { from = "../../plugins/*/scaffold/**", into = "cc/jumpkick/plugin/manifest", optional = true },
+]
 test-plugin-jars = [
   "test-runner",
   "java-compiler",
