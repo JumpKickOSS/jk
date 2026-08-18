@@ -46,6 +46,12 @@ public final class WorkerClasspath {
      * Classpath entries: prefer {@link WorkerLib} when installed; else worker jar first, then
      * sidecar entries that still exist, then a best-effort {@code plugin-sdk} jar when {@link
      * #PLUGIN_MAIN} is not inside the worker.
+     *
+     * <p>When the sidecar lists lib-dir basenames that no longer exist (Gradle {@code installLocal}
+     * and pure-jk {@code jk plugin install-local} rematerialize {@code store/lib/&lt;id&gt;/} under
+     * different filenames), recover the live deps from that lib dir's order file — without taking
+     * the lib's worker jar, so a {@code -Djk.*.plugin.jar} override still launches the override
+     * bytes.
      */
     public static List<Path> paths(Path workerJar) {
         Path worker = workerJar.toAbsolutePath().normalize();
@@ -56,6 +62,7 @@ public final class WorkerClasspath {
         }
         List<Path> entries = new ArrayList<>();
         entries.add(worker);
+        boolean missingSidecarEntry = false;
         Path side = sidecarPath(workerJar);
         if (Files.isRegularFile(side)) {
             try {
@@ -63,17 +70,47 @@ public final class WorkerClasspath {
                     String t = line.trim();
                     if (t.isEmpty() || t.startsWith("#")) continue;
                     Path p = Path.of(t).toAbsolutePath().normalize();
-                    if (Files.isRegularFile(p) && !entries.contains(p)) entries.add(p);
+                    if (!Files.isRegularFile(p)) {
+                        missingSidecarEntry = true;
+                        continue;
+                    }
+                    if (!entries.contains(p)) entries.add(p);
                 }
             } catch (IOException e) {
                 // Fall back; may still find plugin-sdk below.
             }
+        }
+        if (missingSidecarEntry) {
+            recoverLibDeps(worker, entries);
         }
         if (!jarContains(worker, PLUGIN_MAIN)) {
             Path sdk = findPluginSdk(worker);
             if (sdk != null && !entries.contains(sdk)) entries.add(sdk);
         }
         return entries;
+    }
+
+    /**
+     * Append deps from {@code store/lib/&lt;id&gt;/} when a sidecar entry vanished after a
+     * rematerialize. Skips the lib's own worker jar so overrides keep their bytes.
+     */
+    private static void recoverLibDeps(Path worker, List<Path> entries) {
+        List<Path> lib = WorkerLib.pathsIfPresent(WorkerLib.idFromWorkerJar(worker));
+        if (lib == null) return;
+        for (Path p : lib) {
+            if (p == null || !Files.isRegularFile(p)) continue;
+            try {
+                if (Files.isSameFile(worker, p)) continue;
+            } catch (IOException ignored) {
+                // vanished mid-check
+            }
+            // Lib worker jar (different inode / bytes) must not replace the override on -cp.
+            String name = p.getFileName() != null ? p.getFileName().toString() : "";
+            String workerName =
+                    worker.getFileName() != null ? worker.getFileName().toString() : "";
+            if (!name.isEmpty() && name.equals(workerName)) continue;
+            if (!entries.contains(p)) entries.add(p);
+        }
     }
 
     /**

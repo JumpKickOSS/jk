@@ -11,20 +11,16 @@ class LibraryCatalogTest {
     @Test
     void pipe_in_name_or_coord_is_rejected_at_parse_time() {
         // `|` is CatalogReadAck's packed-field separator (JK-2169).
-        assertThatThrownBy(() -> LibraryCatalog.parseTable(
-                        """
+        assertThatThrownBy(() -> LibraryCatalog.parseTable("""
                         [libraries]
                         "weird|name" = "g:a"
-                        """,
-                        "project"))
+                        """, "project"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("reserved separator");
-        assertThatThrownBy(() -> LibraryCatalog.parseTable(
-                        """
+        assertThatThrownBy(() -> LibraryCatalog.parseTable("""
                         [libraries]
                         ok = "g|roup:a"
-                        """,
-                        "project"))
+                        """, "project"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("reserved separator");
     }

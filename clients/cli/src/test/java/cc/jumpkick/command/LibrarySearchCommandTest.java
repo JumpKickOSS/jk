@@ -124,9 +124,10 @@ class LibrarySearchCommandTest {
             assertThat(stdout).contains("junit-jupiter").contains("6.1.0");
         } finally {
             // A fake blob for a REAL coordinate poisons later offline locks that pin it (JK-2179).
-            Path seeded = cc.jumpkick.cache.JkStores.store().resolve("repos/central").resolve(seededRel);
-            java.nio.file.Files.deleteIfExists(Path.of(seeded + ".sha256"));
-            java.nio.file.Files.deleteIfExists(seeded);
+            Path seeded =
+                    cc.jumpkick.cache.JkStores.store().resolve("repos/central").resolve(seededRel);
+            Files.deleteIfExists(Path.of(seeded + ".sha256"));
+            Files.deleteIfExists(seeded);
         }
     }
 
@@ -136,8 +137,8 @@ class LibrarySearchCommandTest {
         // The store is suite-shared (JK-2176): scrub the searched family so this test is
         // order-independent — nothing else in the suite syncs commons-io.
         Path repos = cc.jumpkick.cache.JkStores.store().resolve("repos");
-        if (java.nio.file.Files.isDirectory(repos)) {
-            try (var names = java.nio.file.Files.list(repos)) {
+        if (Files.isDirectory(repos)) {
+            try (var names = Files.list(repos)) {
                 for (Path repo : names.toList()) {
                     cc.jumpkick.util.PathUtil.deleteRecursively(repo.resolve("commons-io"));
                 }

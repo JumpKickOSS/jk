@@ -2,7 +2,9 @@
 package cc.jumpkick.engine.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * One-shot parsed-project summary ({@link EngineProtocol#PROJECT_INFO_REQUEST}): flat scalars and
@@ -250,8 +252,8 @@ public record ProjectInfo(
      * {@code moduleDirs}/{@code moduleNames} arrays forced every consumer to defend with
      * size-min clamps (JK-2168).
      */
-    private java.util.Map<String, String> zipModules() {
-        var out = new java.util.LinkedHashMap<String, String>();
+    private Map<String, String> zipModules() {
+        var out = new LinkedHashMap<String, String>();
         for (int i = 0; i < moduleDirs.size(); i++) {
             String name = i < moduleNames.size() ? moduleNames.get(i) : "";
             out.put(moduleDirs.get(i), name);

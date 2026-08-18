@@ -94,13 +94,17 @@ class CacheInventoryOpsTest {
         Path b = m2Artifact(store, "mirror", "org/example/foo/1.0/foo-1.0.jar");
 
         CacheInventoryAck ack = CacheInventoryOps.run(new CacheInventoryOps.Request(
-                "repo-refresh", cache, store, List.of(), List.of("org.example:foo:1.0", "org.example:gone:9.9"), false));
+                "repo-refresh",
+                cache,
+                store,
+                List.of(),
+                List.of("org.example:foo:1.0", "org.example:gone:9.9"),
+                false));
 
         assertThat(ack.error()).isNull();
         assertThat(ack.evicted()).isEqualTo(1);
         assertThat(ack.missed()).isEqualTo(1);
-        assertThat(ack.lines())
-                .containsExactly("org.example|foo|1.0|central,mirror", "org.example|gone|9.9|");
+        assertThat(ack.lines()).containsExactly("org.example|foo|1.0|central,mirror", "org.example|gone|9.9|");
         assertThat(a).doesNotExist();
         assertThat(b).doesNotExist();
     }

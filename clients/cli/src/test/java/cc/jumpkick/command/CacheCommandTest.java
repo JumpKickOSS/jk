@@ -14,6 +14,8 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -338,7 +340,7 @@ class CacheCommandTest {
         Files.writeString(ptr, key);
     }
 
-    private static final java.util.List<String> SEEDED_PATHS = new java.util.ArrayList<>();
+    private static final List<String> SEEDED_PATHS = new ArrayList<>();
 
     /** Delete this class's store seeds — fake blobs for REAL coordinates poison later locks (JK-2179). */
     @org.junit.jupiter.api.AfterEach

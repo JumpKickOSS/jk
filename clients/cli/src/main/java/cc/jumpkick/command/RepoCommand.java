@@ -142,7 +142,8 @@ public final class RepoCommand extends GroupCommand {
         public int run(Invocation in) {
             List<String> terms = in.positionals();
             Integer limit = in.value("limit").map(Integer::parseInt).orElse(null);
-            Path cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+            Path cacheDir =
+                    in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
             Path cacheRoot = CacheCommand.resolveCacheRoot(cacheDir);
             CacheInventoryAck ack;
             try {

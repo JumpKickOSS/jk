@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.engine.protocol.ModuleGraphAck;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -45,10 +47,13 @@ class ModuleGraphOpsTest {
     }
 
     private static void git(Path dir, String... args) throws Exception {
-        var cmd = new java.util.ArrayList<String>();
+        var cmd = new ArrayList<String>();
         cmd.add("git");
-        cmd.addAll(java.util.List.of(args));
-        Process p = new ProcessBuilder(cmd).directory(dir.toFile()).redirectErrorStream(true).start();
+        cmd.addAll(List.of(args));
+        Process p = new ProcessBuilder(cmd)
+                .directory(dir.toFile())
+                .redirectErrorStream(true)
+                .start();
         String out = new String(p.getInputStream().readAllBytes());
         if (p.waitFor() != 0) throw new IllegalStateException("git failed: " + out);
     }

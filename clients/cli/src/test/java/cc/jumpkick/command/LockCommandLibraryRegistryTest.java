@@ -7,7 +7,9 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.LockfileReader;
 import com.sun.net.httpserver.HttpServer;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -182,10 +184,10 @@ class LockCommandLibraryRegistryTest {
         makeStale(libraryCache);
         mavenServer.stop(0);
         registryServer.stop(0); // any network attempt would now fail
-        java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
-        java.io.PrintStream originalOut = System.out;
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
         int exit;
-        System.setOut(new java.io.PrintStream(captured, true, StandardCharsets.UTF_8));
+        System.setOut(new PrintStream(captured, true, StandardCharsets.UTF_8));
         try {
             exit = Jk.execute(
                     "lock",

@@ -14,7 +14,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
@@ -233,7 +235,7 @@ public final class PlannerResources {
     static boolean hasOrphanedExtraResources(Path moduleDir, List<ExtraResources.Copy> declared) {
         Path manifest = extraResourceManifest(moduleDir);
         if (!Files.isRegularFile(manifest)) return false;
-        java.util.Set<String> current = new java.util.LinkedHashSet<>();
+        Set<String> current = new LinkedHashSet<>();
         for (ExtraResources.Copy c : declared) current.add(c.destination());
         try {
             for (String prior : Files.readAllLines(manifest)) {
@@ -247,7 +249,7 @@ public final class PlannerResources {
 
     static void syncExtraResourceManifest(Path moduleDir, Path classes, List<ExtraResources.Copy> extra) {
         Path manifest = extraResourceManifest(moduleDir);
-        java.util.Set<String> current = new java.util.LinkedHashSet<>();
+        Set<String> current = new LinkedHashSet<>();
         for (ExtraResources.Copy c : extra) current.add(c.destination());
         try {
             if (Files.isRegularFile(manifest)) {

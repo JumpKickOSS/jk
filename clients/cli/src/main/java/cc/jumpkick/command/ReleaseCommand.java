@@ -5,6 +5,10 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.theme.Coords;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Coord;
+import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.CliCommand;
@@ -71,7 +75,7 @@ public final class ReleaseCommand implements CliCommand {
         Path dir = global.workingDir();
         Path rootToml = dir.resolve("jk.toml");
         if (!Files.isRegularFile(rootToml)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Release", "no jk.toml in " + PathDisplay.styledRaw(dir));
+            CommandWedge.printFail("Release", "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Exit.CONFIG;
         }
 
@@ -85,7 +89,7 @@ public final class ReleaseCommand implements CliCommand {
 
         ProjectInfo root = BuildCommand.projectInfoOrNull(dir);
         if (root == null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Release", "could not read project summary at " + dir);
+            CommandWedge.printFail("Release", "could not read project summary at " + dir);
             return Exit.CONFIG;
         }
         Path engineDir = findEngineModule(dir, root);
@@ -121,8 +125,7 @@ public final class ReleaseCommand implements CliCommand {
             List<String> keep = modulesWithoutNativeAlways(dir, root);
             if (keep.size() < root.moduleDirs().size()) {
                 if (keep.isEmpty()) {
-                    cc.jumpkick.cli.tui.CommandWedge.printOk(
-                            "Release", "every module is [native] always — skipping the JVM build step");
+                    CommandWedge.printOk("Release", "every module is [native] always — skipping the JVM build step");
                     skipBuildStep = true;
                 } else {
                     buildModules = String.join(",", keep);
@@ -137,10 +140,10 @@ public final class ReleaseCommand implements CliCommand {
 
         // 2) Ensure a native CLI when the module is native-eligible and none is staged yet
         if (!skipNative && cliDir != null && findNativeClient(cliDir) == null && isNativeEligible(cliDir)) {
-            cc.jumpkick.cli.tui.CommandWedge.printOk("Release", "no native CLI yet — running `jk native --skip-tests`");
+            CommandWedge.printOk("Release", "no native CLI yet — running `jk native --skip-tests`");
             code = runNative(dir, cacheDir);
             if (code != 0) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
+                CommandWedge.printFail(
                         "Release",
                         "`jk native` failed — re-run with --skip-native to stage the running client, "
                                 + "or fix GraalVM / native-image and retry");
@@ -158,18 +161,17 @@ public final class ReleaseCommand implements CliCommand {
 
         Path engineJar = findEngineAssembly(engineDir);
         if (engineJar == null) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "Release",
                     "no engine assembly jar found — need server/engine with assembly = true and a successful build");
             return Exit.FAILURE;
         }
         Path stagedEngine = out.resolve("lib").resolve("jk-engine-" + version + ".jar");
         Files.copy(engineJar, stagedEngine, StandardCopyOption.REPLACE_EXISTING);
-        cc.jumpkick.cli.tui.CommandWedge.printOk("Release", "engine (JVM) → " + PathDisplay.styledRaw(stagedEngine));
 
         Path clientBin = resolveClientBinary(cliDir);
         if (clientBin == null || !Files.isRegularFile(clientBin)) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            CommandWedge.printFail(
                     "Release",
                     "no client binary — run `jk native` (clients/cli has [native] enabled = \"always\"), "
                             + "or ensure `jk` is on PATH for a bootstrap client");
@@ -183,27 +185,56 @@ public final class ReleaseCommand implements CliCommand {
             // Windows / non-POSIX: install.sh / materialize may still work
         }
         boolean nativeClient = isNativeClientPath(cliDir, clientBin);
-        cc.jumpkick.cli.tui.CommandWedge.printOk(
-                "Release",
-                (nativeClient ? "client (native)" : "client (bootstrap)")
-                        + " → "
-                        + PathDisplay.styledRaw(stagedClient)
-                        + " (from "
-                        + clientBin
-                        + ")");
-        if (!nativeClient) {
-            CliOutput.out("  tip: run `jk native --skip-tests` then `jk release` again for a production native CLI");
-        }
+
+        // Blank between the Plugin settle (nested command) and this Release settle.
+        CliOutput.out("");
+        List<RichText> artifacts = new ArrayList<>();
+        artifacts.add(artifactDetail(engineGa(engineDir), "JVM", PathDisplay.of(stagedEngine, dir)));
+        artifacts.add(artifactDetail(
+                cliGa(cliDir), nativeClient ? "native" : "bootstrap", PathDisplay.of(stagedClient, dir)));
+        CommandWedge.printOkTree("Release", releaseReadyMessage(root, version), artifacts);
 
         // Promote Class-C ship artifacts (native CLI, engine fat jar) into the long-lived store CAS
         // so aggressive action-cache eviction does not drop a just-released binary.
         promoteReleasedArtifacts(cacheDir, clientBin, engineJar, nativeClient);
-
-        CliOutput.out("");
-        cc.jumpkick.cli.tui.CommandWedge.printOk("Release", "distribution ready at " + PathDisplay.styledRaw(out));
-        CliOutput.out("  next: ./install.sh " + out.resolve("jk"));
-        CliOutput.out("    or: jk self materialize " + out.resolve("jk") + " " + stagedEngine);
         return 0;
+    }
+
+    /** {@code Distribution ready for group:name:version} with a themed GAV. */
+    private static RichText releaseReadyMessage(ProjectInfo root, String fallbackVersion) {
+        String group = blankTo(root.group(), "cc.jumpkick");
+        String name = blankTo(root.name(), "jk");
+        String ver = blankTo(root.version(), fallbackVersion);
+        return RichText.plain("Distribution ready for ").plus(Coords.richGav(group, name, ver));
+    }
+
+    private static String engineGa(Path engineDir) {
+        ProjectInfo info = engineDir != null ? BuildCommand.projectInfoOrNull(engineDir) : null;
+        if (info != null && !info.group().isBlank() && !info.name().isBlank()) {
+            return info.group() + ":" + info.name();
+        }
+        return "cc.jumpkick:jk-engine";
+    }
+
+    private static String cliGa(Path cliDir) {
+        ProjectInfo info = cliDir != null ? BuildCommand.projectInfoOrNull(cliDir) : null;
+        if (info != null && !info.group().isBlank() && !info.name().isBlank()) {
+            return info.group() + ":" + info.name();
+        }
+        return "cc.jumpkick:jk-cli";
+    }
+
+    /** {@code group:artifact (kind) → path} with themed coordinate + path. */
+    private static RichText artifactDetail(String ga, String kind, String relPath) {
+        int colon = ga.indexOf(':');
+        RichText coord = colon > 0
+                ? Coords.richGa(ga.substring(0, colon), ga.substring(colon + 1))
+                : Coord.module(ga).text();
+        return coord.plus(RichText.plain(" (" + kind + ") → ")).plus(RichText.styled(relPath, "path"));
+    }
+
+    private static String blankTo(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 
     /**
@@ -219,17 +250,9 @@ public final class ReleaseCommand implements CliCommand {
             if (engineJar != null && Files.isRegularFile(engineJar)) files.add(engineJar);
             if (nativeClient && clientBin != null && Files.isRegularFile(clientBin)) files.add(clientBin);
             if (files.isEmpty()) return;
-            var report = cc.jumpkick.cache.ActionPromote.promoteFiles(cacheCas, storeCas, files);
-            if (report.promoted() > 0 || report.alreadyInStore() > 0) {
-                CliOutput.out("  cache→store: promoted "
-                        + report.promoted()
-                        + " Class-C blob(s) ("
-                        + report.alreadyInStore()
-                        + " already durable)");
-            }
-        } catch (Exception e) {
-            // Advisory — release already staged dist files.
-            CliOutput.out("  cache→store: skipped (" + e.getMessage() + ")");
+            cc.jumpkick.cache.ActionPromote.promoteFiles(cacheCas, storeCas, files);
+        } catch (Exception ignored) {
+            // Best-effort — release already staged dist files.
         }
     }
 
@@ -276,7 +299,7 @@ public final class ReleaseCommand implements CliCommand {
         int code = Jk.execute(args.toArray(String[]::new));
         // No plugin workers in the workspace is OK for non-jk projects (exit CONFIG).
         if (code == Exit.CONFIG) {
-            CliOutput.out("jk release: no PluginMain workers to install-local (skipped)");
+            // Non-jk workspaces often have no PluginMain workers — skip quietly.
             return 0;
         }
         return code;

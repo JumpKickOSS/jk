@@ -202,7 +202,6 @@ public final class CacheCommand extends GroupCommand {
         }
     }
 
-
     /** Rows for {@code jk storage usage} (store-tier only). */
     record StoreUsageStats(Stats jars, Stats executables, Stats oci, Stats workers) {
         long totalFiles() {
@@ -383,8 +382,8 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public int run(Invocation in) {
-            CliOutput.out(String.valueOf(
-                    resolveCacheRoot(in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null))));
+            CliOutput.out(String.valueOf(resolveCacheRoot(
+                    in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null))));
             return 0;
         }
     }
@@ -420,7 +419,8 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public int run(Invocation in) throws IOException {
-            Path root = resolveCacheRoot(in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null));
+            Path root = resolveCacheRoot(
+                    in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null));
             Path actions = root.resolve("actions");
             Path cacheCas = root.resolve("sha256");
             if (!Files.isDirectory(root) && !Files.isDirectory(actions) && !Files.isDirectory(cacheCas)) {
@@ -504,7 +504,8 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public int run(Invocation in) throws IOException {
-            Path cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+            Path cacheDir =
+                    in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
             int olderThanDays = in.value("older-than").map(Integer::parseInt).orElse(30);
             boolean dryRun = in.isSet("dry-run");
             boolean sweep = in.isSet("sweep");
@@ -620,7 +621,8 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public int run(Invocation in) throws IOException {
-            Path cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+            Path cacheDir =
+                    in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
             boolean dryRun = in.isSet("dry-run");
             GlobalOptions global = GlobalOptions.from(in);
             return CacheCommand.runNuke(resolveCacheRoot(cacheDir), dryRun, global, false);

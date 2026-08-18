@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 /** Layered library catalog + optional cached-version walk for {@code jk library list}/{@code search}. */
 public final class CatalogReadOps {
@@ -30,7 +31,7 @@ public final class CatalogReadOps {
 
     public static CatalogReadAck read(Request req) {
         List<String> warnings = new ArrayList<>();
-        Path dir = java.util.Objects.requireNonNull(req.dir(), "catalog-read request names no dir");
+        Path dir = Objects.requireNonNull(req.dir(), "catalog-read request names no dir");
         LibraryCatalog catalog =
                 req.bundledOnly() ? LibraryCatalog.bundled() : LibraryCatalog.forProject(dir, warnings::add);
         Path cache = req.cache() != null ? req.cache() : JkDirs.cache();
@@ -55,8 +56,8 @@ public final class CatalogReadOps {
                 // repos/ lives under the STORE root — the same tree MavenRepo writes through
                 // cas.root() (JK-2176); the cache root never holds repo artifacts.
                 Path store = req.store() != null ? req.store() : cc.jumpkick.cache.JkStores.storeRootFor(cache);
-                List<String> versions = new ArrayList<>(
-                        RepoArtifactStore.allVersions(store, src.module().group(), src.module().artifact()));
+                List<String> versions = new ArrayList<>(RepoArtifactStore.allVersions(
+                        store, src.module().group(), src.module().artifact()));
                 versions.sort((a, b) -> Versions.compare(b, a));
                 cached = List.copyOf(versions);
                 if (req.offline() && cached.isEmpty()) continue;

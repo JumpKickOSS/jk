@@ -57,9 +57,8 @@ public final class EngineTestSupport {
                 // kept serving a STALE engine across rebuilds (every
                 // :cli:integrationTest run tonight resolved with last week's resolver).
                 String wantSha = cc.jumpkick.util.Hashing.sha256Hex(engineJar);
-                boolean bitsChanged = !store.engineSha(JkVersion.VERSION)
-                        .map(wantSha::equals)
-                        .orElse(false);
+                boolean bitsChanged =
+                        !store.engineSha(JkVersion.VERSION).map(wantSha::equals).orElse(false);
                 Path cacheRoot = JkDirs.cache();
                 Files.createDirectories(cacheRoot);
                 Cas cas = new Cas(cacheRoot);

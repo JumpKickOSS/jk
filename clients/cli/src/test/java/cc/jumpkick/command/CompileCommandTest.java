@@ -10,6 +10,8 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -131,10 +133,13 @@ class CompileCommandTest {
     }
 
     private static void git(Path dir, String... args) throws IOException, InterruptedException {
-        var cmd = new java.util.ArrayList<String>();
+        var cmd = new ArrayList<String>();
         cmd.add("git");
-        cmd.addAll(java.util.List.of(args));
-        Process p = new ProcessBuilder(cmd).directory(dir.toFile()).redirectErrorStream(true).start();
+        cmd.addAll(List.of(args));
+        Process p = new ProcessBuilder(cmd)
+                .directory(dir.toFile())
+                .redirectErrorStream(true)
+                .start();
         String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         if (p.waitFor() != 0) throw new IOException("git " + String.join(" ", args) + " failed: " + output);
     }

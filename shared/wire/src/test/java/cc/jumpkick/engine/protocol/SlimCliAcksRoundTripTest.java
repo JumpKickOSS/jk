@@ -20,7 +20,8 @@ class SlimCliAcksRoundTripTest {
         assertThat(out.graph()).isEqualTo(dot);
         assertThat(out.error()).isNull();
 
-        ModuleGraphAck err = ModuleGraphAck.decode(ModuleGraphAck.error("no \"jk.toml\"\nhere").encode());
+        ModuleGraphAck err = ModuleGraphAck.decode(
+                ModuleGraphAck.error("no \"jk.toml\"\nhere").encode());
         assertThat(err.error()).isEqualTo("no \"jk.toml\"\nhere");
     }
 
@@ -31,7 +32,8 @@ class SlimCliAcksRoundTripTest {
         assertThat(out).isEqualTo(in);
         assertThat(out.error()).isNull();
 
-        NewProjectAck err = NewProjectAck.decode(NewProjectAck.error("target directory is not empty").encode());
+        NewProjectAck err = NewProjectAck.decode(
+                NewProjectAck.error("target directory is not empty").encode());
         assertThat(err.error()).isEqualTo("target directory is not empty");
         assertThat(err.filesWritten()).isZero();
     }

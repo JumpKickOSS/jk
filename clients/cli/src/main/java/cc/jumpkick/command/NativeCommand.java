@@ -84,7 +84,8 @@ public final class NativeCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws Exception {
         this.mainClass = in.value("main").orElse(null);
-        this.cacheDirOverride = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
+        this.cacheDirOverride =
+                in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         this.extra = in.positionals();
         this.buildOpts = new cc.jumpkick.cli.BuildOptions();

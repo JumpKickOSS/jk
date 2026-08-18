@@ -365,10 +365,7 @@ public final class CacheInventoryOps {
             return ArtifactKind.EXECUTABLE;
         }
         if (head.length >= 4) {
-            int be = ((head[0] & 0xff) << 24)
-                    | ((head[1] & 0xff) << 16)
-                    | ((head[2] & 0xff) << 8)
-                    | (head[3] & 0xff);
+            int be = ((head[0] & 0xff) << 24) | ((head[1] & 0xff) << 16) | ((head[2] & 0xff) << 8) | (head[3] & 0xff);
             if (be == 0xFEEDFACE || be == 0xFEEDFACF || be == 0xCAFEBABE || be == 0xCFFAEDFE || be == 0xCEFAEDFE) {
                 return ArtifactKind.EXECUTABLE;
             }

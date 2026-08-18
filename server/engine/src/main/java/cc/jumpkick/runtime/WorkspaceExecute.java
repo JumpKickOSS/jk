@@ -315,7 +315,8 @@ public final class WorkspaceExecute {
                 "plan", 0, Math.max(nPrepare, 1), nPrepare == 0 ? "Nothing to prepare" : "Preparing modules…");
         Map<Path, ModulePlan> plans;
         try {
-            plans = prepareModules(dirtyUnits, req, moduleDirs, jarConsumed, listener, nPrepare, timingSamples, hostSamples);
+            plans = prepareModules(
+                    dirtyUnits, req, moduleDirs, jarConsumed, listener, nPrepare, timingSamples, hostSamples);
         } catch (PrepareFailed e) {
             ModuleOutcome o = new ModuleOutcome(e.coord(), e.dir(), false, 2, 0);
             listener.onModuleFinish(o);

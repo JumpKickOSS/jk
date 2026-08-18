@@ -7,6 +7,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -63,10 +65,10 @@ class NewProjectOpsTest {
                 false,
                 false,
                 null,
-                java.util.List.of(),
+                List.of(),
                 true,
                 true,
-                java.util.Map.of(),
+                Map.of(),
                 true,
                 custom.toString()));
         assertThat(created.path()).isEqualTo(custom.toAbsolutePath().normalize());
@@ -93,10 +95,10 @@ class NewProjectOpsTest {
                         false,
                         false,
                         null,
-                        java.util.List.of(),
+                        List.of(),
                         true,
                         true,
-                        java.util.Map.of(),
+                        Map.of(),
                         false,
                         "/etc/pwned")))
                 .isInstanceOf(IllegalArgumentException.class)

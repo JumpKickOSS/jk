@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.model.JkVersion;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -178,12 +179,15 @@ class ReleaseCommandTest {
             System.setErr(origErr);
         }
 
-        String combined = out.toString(StandardCharsets.UTF_8) + err.toString(StandardCharsets.UTF_8);
+        String combined =
+                RenderContext.stripAnsi(out.toString(StandardCharsets.UTF_8) + err.toString(StandardCharsets.UTF_8));
         assertThat(exit).as(combined).isZero();
         Path engineOut = outDir.resolve("lib/jk-engine-" + JkVersion.VERSION + ".jar");
         assertThat(engineOut).exists();
         assertThat(outDir.resolve("jk")).exists();
-        assertThat(combined).contains("distribution ready");
+        assertThat(combined).containsIgnoringCase("Distribution ready");
+        assertThat(combined).contains("jk-engine");
+        assertThat(combined).contains("(JVM)");
         // Must not ship the fat-jar (*-all.jar) filename in lib/
         assertThat(Files.list(outDir.resolve("lib"))
                         .map(p -> p.getFileName().toString())

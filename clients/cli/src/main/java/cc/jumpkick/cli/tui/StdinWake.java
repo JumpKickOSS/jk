@@ -115,10 +115,7 @@ final class StdinWake {
                 fcntlSet = linker.downcallHandle(
                         lookup.findOrThrow("fcntl"),
                         FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.JAVA_INT),
+                                ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT),
                         Linker.Option.firstVariadicArg(2));
                 available = true;
             } catch (Throwable ignored) {

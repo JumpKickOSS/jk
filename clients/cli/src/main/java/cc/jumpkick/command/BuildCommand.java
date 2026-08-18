@@ -1186,8 +1186,7 @@ public final class BuildCommand implements CliCommand {
      * The CLI process is one-shot, so only in-run staleness matters — {@link #forgetProjectInfo}
      * is called after anything that mutates lock/manifest state mid-run.
      */
-    private static final java.util.concurrent.ConcurrentHashMap<String, ProjectInfo> PROJECT_INFO_MEMO =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, ProjectInfo> PROJECT_INFO_MEMO = new ConcurrentHashMap<>();
 
     private static String projectInfoKey(Path dir, String modules, String affectedSince, boolean counts) {
         return dir.toAbsolutePath().normalize() + " " + (modules == null ? "" : modules) + " "

@@ -24,8 +24,8 @@ class PluginSdkScaffoldVersionTest {
         Path repo = findRepoRoot();
         assumeTrue(repo != null, "not running inside the jk repo");
 
-        String sdkSource =
-                Files.readString(repo.resolve("shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/PluginSdkVersion.java"));
+        String sdkSource = Files.readString(
+                repo.resolve("shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/PluginSdkVersion.java"));
         Matcher m = Pattern.compile("VERSION = \"([^\"]+)\"").matcher(sdkSource);
         assertThat(m.find()).as("PluginSdkVersion.VERSION literal").isTrue();
         String sdk = m.group(1);

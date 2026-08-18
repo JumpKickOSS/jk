@@ -5,6 +5,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import java.io.PrintStream;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -187,6 +188,29 @@ public final class CommandWedge {
     public static void printChipErr(String glyph, String command, String message) {
         envelopeStartErr();
         CliOutput.err(chip(glyph, command, message));
+    }
+
+    /**
+     * Settled ok wedge with IdeChrome-style check children under a {@link Tree} (no live animation).
+     * Empty {@code details} prints only the wedge line.
+     */
+    public static void printOkTree(String command, String message, List<RichText> details) {
+        printOkTree(command, RichText.plain(message == null ? "" : message), details);
+    }
+
+    /** Like {@link #printOkTree(String, String, java.util.List)} with a rich message tail. */
+    public static void printOkTree(String command, RichText message, List<RichText> details) {
+        JkWedge title = JkWedge.ok(command, message == null ? RichText.empty() : message);
+        Tree tree = new Tree(title).gap(Tree.Gap.NONE);
+        if (details != null && !details.isEmpty()) {
+            RichText check = RichText.parse("[success]" + Glyphs.check() + "[/] ");
+            for (RichText detail : details) {
+                if (detail != null && !detail.isEmpty()) {
+                    tree.child(Tree.node(check.plus(detail)));
+                }
+            }
+        }
+        tree.print();
     }
 
     /**

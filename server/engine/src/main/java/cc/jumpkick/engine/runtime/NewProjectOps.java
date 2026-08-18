@@ -9,6 +9,7 @@ import cc.jumpkick.scaffold.NewScaffolder;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -405,8 +407,7 @@ public final class NewProjectOps {
     }
 
     /** Per-template-key clone serialization: the resident engine serves concurrent jk new. */
-    private static final java.util.concurrent.ConcurrentHashMap<String, Object> CLONE_LOCKS =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Object> CLONE_LOCKS = new ConcurrentHashMap<>();
 
     private static Path cloneRemoteTemplate(String ref) throws IOException {
         Path cache = Path.of(System.getProperty("user.home"), ".jk", "cache", "templates");
@@ -480,7 +481,7 @@ public final class NewProjectOps {
             throw new IOException("git clone failed: " + (out.isBlank() ? "(no output)" : out.strip()));
         }
         try {
-            Files.move(staging, dest, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            Files.move(staging, dest, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException raced) {
             // Another process renamed first — its clone is equivalent; keep it.
             if (Files.isDirectory(dest) && !isEmptyDir(dest)) {

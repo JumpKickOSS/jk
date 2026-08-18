@@ -4,6 +4,9 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Coord;
+import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.compile.WorkerLib;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -13,6 +16,7 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
@@ -72,7 +76,9 @@ public final class PluginCommand extends GroupCommand {
         public int run(Invocation in) throws Exception {
             String artifactId = in.positionals().get(0);
             boolean isolated = in.value("cache-dir").isPresent();
-            Path installRoot = isolated ? in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElseThrow() : JkDirs.store();
+            Path installRoot = isolated
+                    ? in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElseThrow()
+                    : JkDirs.store();
             boolean removed = false;
             // The shared lib dir belongs to the global store; leave it alone under --cache-dir.
             if (!isolated && Files.isDirectory(WorkerLib.dir(artifactId))) {
@@ -89,10 +95,10 @@ public final class PluginCommand extends GroupCommand {
                 removed = true;
             }
             if (!removed) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Plugin", "nothing installed for " + artifactId);
+                CommandWedge.printFail("Plugin", "nothing installed for " + artifactId);
                 return Exit.CONFIG;
             }
-            cc.jumpkick.cli.tui.CommandWedge.printOk("Plugin", "Uninstalled " + artifactId);
+            CommandWedge.printOk("Plugin", "Uninstalled " + artifactId);
             return Exit.SUCCESS;
         }
     }
@@ -127,12 +133,13 @@ public final class PluginCommand extends GroupCommand {
             Path dir = global.workingDir();
             Path rootToml = dir.resolve("jk.toml");
             if (!Files.isRegularFile(rootToml)) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Plugin", "no jk.toml in " + PathDisplay.styledRaw(dir));
+                CommandWedge.printFail("Plugin", "no jk.toml in " + PathDisplay.styledRaw(dir));
                 return Exit.CONFIG;
             }
 
             String modulesSpec = in.value("modules").orElse(null);
-            Path cache = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(JkDirs.cache());
+            Path cache =
+                    in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(JkDirs.cache());
             boolean ambient = !in.value("cache-dir").isPresent();
             Path installRoot = ambient ? JkDirs.store() : cache;
             boolean dryRun = in.isSet("dry-run");
@@ -151,22 +158,43 @@ public final class PluginCommand extends GroupCommand {
                         dryRun,
                         ambient);
             } catch (Exception e) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Plugin", e.getMessage());
+                CommandWedge.printFail("Plugin", e.getMessage());
                 return Exit.SOFTWARE;
             }
             if (ack.error() != null && !ack.error().isBlank()) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail("Plugin", ack.error());
+                CommandWedge.printFail("Plugin", ack.error());
                 return Exit.CONFIG;
             }
+            int n = ack.installed();
+            String header = dryRun
+                    ? "Would install " + n + " plugin" + (n == 1 ? "" : "s")
+                    : "Installed " + n + " plugin" + (n == 1 ? "" : "s");
+            List<RichText> children = new ArrayList<>();
             for (String line : ack.lines()) {
-                if (dryRun) CliOutput.out(line);
-                else cc.jumpkick.cli.tui.CommandWedge.printOk("Plugin", line);
+                children.add(gavDetail(line));
+            }
+            if (n > 0 || !children.isEmpty()) {
+                CommandWedge.printOkTree("Plugin", header, children);
             }
             for (String m : ack.missing()) {
                 CliOutput.err("  missing jar: " + m + " — run `jk build` first");
             }
             if (ack.skipped() > 0 && ack.installed() == 0) return Exit.FAILURE;
             return 0;
+        }
+
+        /** Prefer themed {@code group:artifact:version}; fall back to plain text. */
+        private static RichText gavDetail(String line) {
+            if (line == null || line.isBlank()) return RichText.empty();
+            String[] parts = line.split(":", 3);
+            if (parts.length == 3
+                    && !parts[0].isBlank()
+                    && !parts[1].isBlank()
+                    && !parts[2].isBlank()
+                    && !parts[0].contains(" ")) {
+                return Coord.gav(parts[0], parts[1], parts[2]).text();
+            }
+            return RichText.plain(line);
         }
     }
 }

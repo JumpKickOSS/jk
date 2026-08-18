@@ -22,8 +22,8 @@ class ProjectInfoModulesTest {
 
     @Test
     void pipe_and_quote_in_paths_survive() {
-        ProjectInfo in = ProjectInfo.decode(
-                "{\"type\":\"project-info\",\"modules\":{\"/ws/we|ird \\\"dir\\\"\":\"na|me\"}}");
+        ProjectInfo in =
+                ProjectInfo.decode("{\"type\":\"project-info\",\"modules\":{\"/ws/we|ird \\\"dir\\\"\":\"na|me\"}}");
         assertThat(in.moduleDirs()).containsExactly("/ws/we|ird \"dir\"");
         assertThat(in.moduleNames()).containsExactly("na|me");
         ProjectInfo out = ProjectInfo.decode(in.encode());
