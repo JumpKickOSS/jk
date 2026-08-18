@@ -44,6 +44,35 @@ class NewProjectOpsTest {
     }
 
     @Test
+    void target_dir_outside_the_allowlist_is_refused_without_relax(@TempDir Path temp) {
+        // JK-2166: the old check compared target against its own parent (a tautology), so a
+        // relaxParent=false wire caller could scaffold anywhere via targetDir.
+        assertThatThrownBy(() -> NewProjectOps.create(new NewProjectOps.Request(
+                        "x",
+                        temp.toString(),
+                        "com.example",
+                        "java",
+                        "simple",
+                        null,
+                        true,
+                        null,
+                        null,
+                        0,
+                        false,
+                        false,
+                        false,
+                        null,
+                        java.util.List.of(),
+                        true,
+                        true,
+                        java.util.Map.of(),
+                        false,
+                        "/etc/pwned")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("HOME");
+    }
+
+    @Test
     void rejects_path_outside_home_and_tmp() {
         assertThatThrownBy(() -> NewProjectOps.create(
                         new NewProjectOps.Request("x", "/etc", "com.example", "java", "simple", null, true, null)))

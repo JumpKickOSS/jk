@@ -27,7 +27,7 @@ public final class CatalogReadOps {
 
     public static CatalogReadAck read(Request req) {
         List<String> warnings = new ArrayList<>();
-        Path dir = req.dir() != null ? req.dir() : Path.of(".");
+        Path dir = java.util.Objects.requireNonNull(req.dir(), "catalog-read request names no dir");
         LibraryCatalog catalog =
                 req.bundledOnly() ? LibraryCatalog.bundled() : LibraryCatalog.forProject(dir, warnings::add);
         Path cache = req.cache() != null ? req.cache() : JkDirs.cache();
