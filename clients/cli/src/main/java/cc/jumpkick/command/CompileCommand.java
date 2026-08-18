@@ -72,6 +72,12 @@ public final class CompileCommand implements CliCommand {
             cc.jumpkick.cli.tui.CommandWedge.printFail("Compile", info.error());
             return Exit.CONFIG;
         }
+        // Explicit selectors that match nothing are a no-op, not the whole graph — the wire
+        // treats empty selectedModules as "everything" (WorkspaceSpec), so short-circuit here.
+        if (!selectors.isEmpty() && info.moduleDirs().isEmpty()) {
+            cc.jumpkick.cli.tui.CommandWedge.printOk("Compile", "nothing selected to compile");
+            return 0;
+        }
         if (info.workspaceRoot()
                 || cwdScope.workspaceMember()
                 || !info.workspaceRootDir().isBlank()) {
