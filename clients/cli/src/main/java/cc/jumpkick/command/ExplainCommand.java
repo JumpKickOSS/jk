@@ -8,6 +8,7 @@ import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Coord;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Icon;
 import cc.jumpkick.cli.tui.Pill;
@@ -232,7 +233,7 @@ public final class ExplainCommand implements CliCommand {
      */
     static Tree buildGraph(
             String rootCoord, List<TaskForecast.Module> modules, boolean verbose, Theme t, boolean ansi) {
-        Tree.Node root = Tree.node(Icon.pulse(), boldGa(rootCoord));
+        Tree.Node root = Tree.node(Icon.pulse(), Coord.module(rootCoord).text());
 
         List<TaskForecast.Module> cached = new ArrayList<>();
         List<TaskForecast.Module> dirty = new ArrayList<>();
@@ -564,20 +565,6 @@ public final class ExplainCommand implements CliCommand {
     private static int commandWidth(String text) {
         int sep = text.indexOf(" · ");
         return (sep < 0 ? text : text.substring(0, sep)).length();
-    }
-
-    /** The entry project's {@code group:artifact} in bold, each segment in its coord color. */
-    private static RichText boldGa(String coord) {
-        if (coord == null || coord.isEmpty()) return RichText.empty();
-        int colon = coord.indexOf(':');
-        if (colon < 0) {
-            return RichText.parse("[bold coord-name]" + RichText.escape(coord) + "[/]");
-        }
-        return RichText.parse("[bold coord-group]"
-                + RichText.escape(coord.substring(0, colon))
-                + "[/]:[bold coord-name]"
-                + RichText.escape(coord.substring(colon + 1))
-                + "[/]");
     }
 
     /** The artifact half of a {@code group:artifact} coordinate. */
