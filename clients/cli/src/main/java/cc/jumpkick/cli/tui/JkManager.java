@@ -329,6 +329,11 @@ public final class JkManager implements AutoCloseable, LiveRegion {
                 view.requestFullRepaint();
                 paintBuildPlan();
                 out.flush();
+            } else if (!Theme.active().isAnsi()
+                    && !cc.jumpkick.config.SessionContext.current().config().verboseOr(false)) {
+                // Plain mode buffers tool stdout (suppressed unless -v); a crash is the one
+                // moment it must surface — verbose already printed it live (JK-2163).
+                view.dumpPlainProcessOutput();
             }
         }
     }

@@ -542,6 +542,21 @@ final class JkManagerView {
         writeAbove(text);
     }
 
+    /**
+     * Plain {@code --no-ansi} TTY: there is no Ctrl-O listener and no settle dump, so a
+     * tool/worker crash would leave its only evidence (the buffered stdout ring) invisible.
+     * Print the uncommitted ring lines sequentially — they land directly above the failure
+     * wedge the settle is about to emit (JK-2163).
+     */
+    void dumpPlainProcessOutput() {
+        synchronized (m.lock) {
+            var pending = m.outputWindow.uncommittedForDisplay(OutputWindow.MAX_LINES);
+            for (String line : pending) m.out.println(line);
+            m.outputWindow.markAllCommitted();
+            if (!pending.isEmpty()) m.out.flush();
+        }
+    }
+
     public void writeAbove(String text) {
         if (text != null && text.indexOf('\n') >= 0) {
             // DiagnosticReport and other multi-line blobs must be one scrollback row each.

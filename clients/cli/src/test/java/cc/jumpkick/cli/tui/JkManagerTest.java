@@ -679,6 +679,29 @@ class JkManagerTest {
     }
 
     @Test
+    void plain_process_output_surfaces_on_step_failure() {
+        // JK-2163: plain mode has no Ctrl-O and no settle dump — a tool crash must dump the
+        // buffered ring, or its only evidence stays invisible.
+        var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
+        cc.jumpkick.config.SessionContext.runWhere(
+                cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
+                    var buf = new ByteArrayOutputStream();
+                    var cm = JkManager.plan(stream(buf), "Build", true);
+                    cm.writeProcessOutput("native-image: Error: Classes that should be initialized");
+                    assertThat(buf.toString(StandardCharsets.UTF_8))
+                            .doesNotContain("native-image: Error");
+                    cm.showProcessFailureOutput();
+                    String out = buf.toString(StandardCharsets.UTF_8);
+                    assertThat(out).contains("native-image: Error: Classes that should be initialized");
+                    // A second failure in the same plan must not duplicate the dump.
+                    cm.showProcessFailureOutput();
+                    String again = buf.toString(StandardCharsets.UTF_8);
+                    assertThat(again.indexOf("native-image: Error"))
+                            .isEqualTo(again.lastIndexOf("native-image: Error"));
+                });
+    }
+
+    @Test
     void window_title_updates_only_when_fill_glyph_changes() {
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(stream(buf), true, true, 80);
