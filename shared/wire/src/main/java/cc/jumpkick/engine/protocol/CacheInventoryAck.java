@@ -6,7 +6,8 @@ import java.util.List;
 
 /**
  * Cache/store inventory ({@link EngineProtocol#CACHE_INVENTORY_REQUEST}). {@code stats} rows are
- * {@code name|files|bytes}. Repo search rows are {@code group|artifact|v1,v2}.
+ * {@code name|files|bytes}. Repo search {@code entries} rows are {@code group|artifact|v1,v2}.
+ * Repo refresh {@code lines} rows are {@code group|artifact|version|repo1,repo2} (evicting repos).
  */
 public record CacheInventoryAck(
         String error,

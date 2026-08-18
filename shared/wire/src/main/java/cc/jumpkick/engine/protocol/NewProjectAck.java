@@ -10,6 +10,10 @@ public record NewProjectAck(String error, String path, String projectId, int fil
         return new NewProjectAck(message, "", "", 0);
     }
 
+    public static NewProjectAck of(String path, String projectId, int filesWritten) {
+        return new NewProjectAck(null, path, projectId, filesWritten);
+    }
+
     public String encode() {
         return "{\"type\":\"" + EngineProtocol.NEW_PROJECT_ACK + "\""
                 + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))

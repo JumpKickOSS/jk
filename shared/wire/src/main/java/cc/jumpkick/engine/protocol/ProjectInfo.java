@@ -136,7 +136,7 @@ public record ProjectInfo(
                 + ",\"layoutSimple\":" + layoutSimple
                 + ",\"workspaceRoot\":" + workspaceRoot
                 + ",\"workspaceRootDir\":" + Jsonl.quote(workspaceRootDir)
-                + ",\"moduleDirs\":" + EngineProtocol.quoteArray(moduleDirs)
+                + ",\"modules\":" + Jsonl.map(zipModules())
                 + ",\"application\":" + application
                 + ",\"mainClass\":" + Jsonl.quote(mainClass)
                 + ",\"assembly\":" + assembly
@@ -160,7 +160,6 @@ public record ProjectInfo(
                 + ",\"sourcesJarPath\":" + Jsonl.quote(sourcesJarPath)
                 + ",\"javadocJarPath\":" + Jsonl.quote(javadocJarPath)
                 + ",\"envRefs\":" + EngineProtocol.quoteArray(envRefs)
-                + ",\"moduleNames\":" + EngineProtocol.quoteArray(moduleNames)
                 + ",\"sourceCount\":" + sourceCount
                 + ",\"testCount\":" + testCount
                 + ",\"nativeExplicitlyDisabled\":" + nativeExplicitlyDisabled
@@ -191,7 +190,7 @@ public record ProjectInfo(
                 Jsonl.bool(line, "layoutSimple", true),
                 Jsonl.bool(line, "workspaceRoot", false),
                 orEmpty(Jsonl.str(line, "workspaceRootDir")),
-                Jsonl.strArray(line, "moduleDirs"),
+                List.copyOf(Jsonl.strMap(line, "modules").keySet()),
                 Jsonl.bool(line, "application", false),
                 orEmpty(Jsonl.str(line, "mainClass")),
                 Jsonl.bool(line, "assembly", false),
@@ -215,7 +214,7 @@ public record ProjectInfo(
                 orEmpty(Jsonl.str(line, "sourcesJarPath")),
                 orEmpty(Jsonl.str(line, "javadocJarPath")),
                 Jsonl.strArray(line, "envRefs"),
-                Jsonl.strArray(line, "moduleNames"),
+                List.copyOf(Jsonl.strMap(line, "modules").values()),
                 Jsonl.intValue(line, "sourceCount", 0),
                 Jsonl.intValue(line, "testCount", 0),
                 Jsonl.bool(line, "nativeExplicitlyDisabled", false),
@@ -243,6 +242,21 @@ public record ProjectInfo(
 
     private static String quoteOrNull(String s) {
         return s == null ? "null" : Jsonl.quote(s);
+    }
+
+    /**
+     * The ONE wire encoding for the module set: an ordered {@code dir → name} object
+     * ({@code Jsonl.strMap}), so dirs and names cannot misalign on decode — the old parallel
+     * {@code moduleDirs}/{@code moduleNames} arrays forced every consumer to defend with
+     * size-min clamps (JK-2168).
+     */
+    private java.util.Map<String, String> zipModules() {
+        var out = new java.util.LinkedHashMap<String, String>();
+        for (int i = 0; i < moduleDirs.size(); i++) {
+            String name = i < moduleNames.size() ? moduleNames.get(i) : "";
+            out.put(moduleDirs.get(i), name);
+        }
+        return out;
     }
 
     private static String orEmpty(String s) {

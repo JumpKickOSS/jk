@@ -366,13 +366,7 @@ public final class ProtoJobs {
     }
 
     private static String jsonStringArray(List<String> values) {
-        if (values == null || values.isEmpty()) return "[]";
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < values.size(); i++) {
-            if (i > 0) sb.append(',');
-            sb.append(Jsonl.quote(values.get(i)));
-        }
-        return sb.append(']').toString();
+        return values == null ? "[]" : Jsonl.array(values);
     }
 
     /** Best-effort parse of a JSON string array field (flat list of quoted strings). */

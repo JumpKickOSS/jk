@@ -71,7 +71,7 @@ public final class NewProjectVerb implements HostedVerb {
                         Jsonl.bool(requestLine, "relaxParent", false),
                         Jsonl.str(requestLine, "targetDir"));
                 NewProjectOps.Created created = NewProjectOps.createWithIdentity(req);
-                ack = new NewProjectAck(null, created.path().toString(), created.projectId(), created.filesWritten());
+                ack = NewProjectAck.of(created.path().toString(), created.projectId(), created.filesWritten());
             } catch (Exception e) {
                 ack = NewProjectAck.error(String.valueOf(e.getMessage()));
             }

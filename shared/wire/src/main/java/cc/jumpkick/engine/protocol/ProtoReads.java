@@ -11,10 +11,8 @@ public final class ProtoReads {
     private ProtoReads() {}
 
     /**
-     * Forecast a build (see {@link EngineProtocol#EXPLAIN_REQUEST}). Beyond the plan itself, the fields carry the
-     * plan-affecting {@code jk build} options the engine-side EngineProtocol.ETA estimate needs ({@code jdksDir}/
-     * {@code profile} may be {@code null}); the computed estimate rides back as an {@link EngineProtocol#ETA}
-     * event inside the explain burst.
+     * Module dependency DAG export ({@code jk explain --graph dot|mermaid}); {@code modules}/
+     * {@code affectedSince} filter the workspace graph the same way build selectors do.
      */
     public static String moduleGraphRequest(String dir, String format, String modules, String affectedSince) {
         String extra = "";
@@ -28,6 +26,12 @@ public final class ProtoReads {
                 + "}";
     }
 
+    /**
+     * Forecast a build (see {@link EngineProtocol#EXPLAIN_REQUEST}). Beyond the plan itself, the fields carry the
+     * plan-affecting {@code jk build} options the engine-side EngineProtocol.ETA estimate needs ({@code jdksDir}/
+     * {@code profile} may be {@code null}); the computed estimate rides back as an {@link EngineProtocol#ETA}
+     * event inside the explain burst.
+     */
     public static String explainRequest(
             String dir,
             String cache,
@@ -329,8 +333,9 @@ public final class ProtoReads {
     }
 
     /**
-     * Catalog list/search. {@code query} is {@code list} or {@code search}; {@code terms} apply to
-     * search only. {@code bundledOnly} skips project/global layers (wizard picker).
+     * Cache/store inventory. {@code query} is one of {@code usage}, {@code store-usage},
+     * {@code repo-search} ({@code terms}), {@code repo-refresh} ({@code coords}), or
+     * {@code wipe-store} ({@code dryRun} counts without deleting).
      */
     public static String cacheInventoryRequest(
             String query, String cache, String store, List<String> terms, List<String> coords, boolean dryRun) {
