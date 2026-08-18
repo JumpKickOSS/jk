@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "ea6be9b1c4d647e0d3ef535ce3caf12336e7c300e2bf01b15ed3de827e1ae5a0"
+manifests-sha256 = "b2b5be5df349f036aeef079dd2f2ea51f907559939a21cfc1157d8bfe7e99066"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [[artifact]]
@@ -1195,7 +1195,7 @@ name     = "org.apache.maven:maven-artifact:jar:"
 version  = "3.9.16"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:54cc1c1ef932e3d4a903352111b42b4d3c3ed8e7a1d0de73b625309d9c3ad3e8"
-scopes   = ["main", "provided"]
+scopes   = ["provided"]
 deps = [
   "org.codehaus.plexus:plexus-utils:jar:@4.0.3",
 ]
@@ -1491,7 +1491,7 @@ name     = "org.codehaus.plexus:plexus-utils:jar:"
 version  = "4.0.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:421ff6ed146c53a9d4eaade8f629b52b12af7187101f1bd06c2c64e904019f3c"
-scopes   = ["main", "provided"]
+scopes   = ["provided"]
 
 [[artifact]]
 name     = "org.codehaus.plexus:plexus-xml:jar:"
