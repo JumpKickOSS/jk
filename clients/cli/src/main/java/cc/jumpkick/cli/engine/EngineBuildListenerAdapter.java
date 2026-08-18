@@ -548,7 +548,14 @@ final class EngineBuildListenerAdapter {
             writer.flush();
             String line;
             while ((line = reader.readLine()) != null) {
-                if (!ackType.equals(EngineProtocol.typeOf(line))) continue;
+                String type = EngineProtocol.typeOf(line);
+                if (EngineProtocol.ERROR.equals(type)) {
+                    // A verb that failed before producing its ack answers with an error line;
+                    // surface the engine's message instead of reading to EOF and reporting a
+                    // generic disconnect (JK-2158).
+                    throw cc.jumpkick.engine.protocol.EngineWireException.fromJsonLine(line);
+                }
+                if (!ackType.equals(type)) continue;
                 return decoder.decode(line);
             }
             throw new IOException("jk engine: disconnected before answering the " + what);

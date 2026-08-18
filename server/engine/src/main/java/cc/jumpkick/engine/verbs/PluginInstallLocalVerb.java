@@ -42,17 +42,29 @@ public final class PluginInstallLocalVerb implements HostedVerb {
     public cc.jumpkick.engine.jobs.@org.jspecify.annotations.Nullable JobOutcome run(
             String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
-            String cacheStr = Jsonl.str(requestLine, "cache");
-            Path cache = cacheStr == null || cacheStr.isBlank() ? cc.jumpkick.util.JkDirs.cache() : Path.of(cacheStr);
-            String installStr = Jsonl.str(requestLine, "installRoot");
-            Path installRoot = installStr == null || installStr.isBlank() ? null : Path.of(installStr);
-            PluginInstallLocalAck ack = PluginInstallLocalOps.run(
-                    Path.of(Jsonl.str(requestLine, "dir")),
-                    cache,
-                    installRoot,
-                    Jsonl.str(requestLine, "modules"),
-                    Jsonl.bool(requestLine, "dryRun", false),
-                    Jsonl.bool(requestLine, "ambientStore", true));
+            PluginInstallLocalAck ack;
+            try {
+                String cacheStr = Jsonl.str(requestLine, "cache");
+                Path cache =
+                        cacheStr == null || cacheStr.isBlank() ? cc.jumpkick.util.JkDirs.cache() : Path.of(cacheStr);
+                String installStr = Jsonl.str(requestLine, "installRoot");
+                Path installRoot = installStr == null || installStr.isBlank() ? null : Path.of(installStr);
+                String dir = Jsonl.str(requestLine, "dir");
+                if (dir == null || dir.isBlank()) {
+                    throw new IllegalArgumentException("plugin install-local request names no dir");
+                }
+                ack = PluginInstallLocalOps.run(
+                        Path.of(dir),
+                        cache,
+                        installRoot,
+                        Jsonl.str(requestLine, "modules"),
+                        Jsonl.bool(requestLine, "dryRun", false),
+                        Jsonl.bool(requestLine, "ambientStore", true));
+            } catch (Exception e) {
+                // Same convention as every sibling read verb: ops/decode failures ride the ack's
+                // error channel so the client prints the real message, not a disconnect.
+                ack = PluginInstallLocalAck.error(String.valueOf(e.getMessage()));
+            }
             host.sendQuiet(writer, ack.encode());
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
