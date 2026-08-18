@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.CliOutput;
@@ -20,18 +19,13 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
-import java.util.Set;
 
 /**
  * {@code jk cache} — manage the <strong>cache tier</strong> under {@code $JK_CACHE_DIR}: action
@@ -115,7 +109,7 @@ public final class CacheCommand extends GroupCommand {
 
     /**
      * Cache-tier stats only (action index + cache CAS, format stamps) — no artifact-store walk.
-     * Used by status / dashboard parity; {@code jk cache usage} uses {@link #cacheUsageStats}.
+     * Used by status / dashboard parity; {@code jk cache usage} reads the engine inventory ack.
      */
     static CacheTierStats cacheTierStats(Path cacheRoot) throws IOException {
         DiskUsage.Stats actions = DiskUsage.of(cacheRoot.resolve("actions"));
@@ -127,143 +121,6 @@ public final class CacheCommand extends GroupCommand {
 
     /** Legacy combined cache-tier totals (action index + CAS + stamps). */
     record CacheTierStats(Stats actions, Stats stamps) {}
-
-    /**
-     * Detailed cache-tier breakdown for {@code jk cache usage}. Action-output CAS blobs are
-     * attributed by task type from {@code actions/keys/} (exclusive by digest). Event logs and
-     * format stamps are trees under the cache root. {@link CacheUsageStats#totalFiles()} /
-     * {@link CacheUsageStats#totalBytes()} cover the <em>entire</em> cache root (hash-memo, Graal
-     * catalog, action index, access ledger, …).
-     */
-    static CacheUsageStats cacheUsageStats(Path cacheRoot) throws IOException {
-        long[] classFiles = {0, 0};
-        long[] testResults = {0, 0};
-        long[] normalJars = {0, 0};
-        long[] shadowJars = {0, 0};
-        long[] minifiedJars = {0, 0};
-        long[] nativeBins = {0, 0};
-        long[] ociImages = {0, 0};
-
-        Cas cas = new Cas(cacheRoot);
-        Set<String> seenShas = new HashSet<>();
-        Path keysDir = cacheRoot.resolve("actions").resolve("keys");
-        if (Files.isDirectory(keysDir)) {
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(keysDir)) {
-                for (Path keyFile : stream) {
-                    if (!Files.isRegularFile(keyFile)) continue;
-                    String body;
-                    try {
-                        body = Files.readString(keyFile, StandardCharsets.UTF_8);
-                    } catch (IOException unreadable) {
-                        continue;
-                    }
-                    String taskName = taskNameFromKeyBody(body);
-                    long[] bucket = bucketCounters(
-                            taskName,
-                            classFiles,
-                            testResults,
-                            normalJars,
-                            shadowJars,
-                            minifiedJars,
-                            nativeBins,
-                            ociImages);
-                    // run-tests mostly stores scalar markers on the key itself (no CAS digests).
-                    if (bucket == testResults) {
-                        testResults[0]++;
-                        try {
-                            testResults[1] += Files.size(keyFile);
-                        } catch (IOException ignored) {
-                        }
-                    }
-                    for (String sha : outputShasFromKeyBody(body)) {
-                        if (!seenShas.add(sha)) continue; // exclusive: first claim wins
-                        Path blob = cas.pathFor(sha);
-                        if (!Files.isRegularFile(blob)) continue;
-                        if (bucket == null) continue; // uncategorized task — still in total via full walk
-                        bucket[0]++;
-                        try {
-                            bucket[1] += Files.size(blob);
-                        } catch (IOException ignored) {
-                        }
-                    }
-                }
-            }
-        }
-
-        Stats eventLogs = statsOf(cacheRoot.resolve("runs"));
-        Stats stamps = statsOf(cacheRoot.resolve("format-stamps"));
-        // Whole-tree total (every file under the cache root).
-        Stats total = statsOf(cacheRoot);
-        return new CacheUsageStats(
-                new Stats(classFiles[0], classFiles[1]),
-                new Stats(testResults[0], testResults[1]),
-                eventLogs,
-                new Stats(normalJars[0], normalJars[1]),
-                new Stats(shadowJars[0], shadowJars[1]),
-                new Stats(minifiedJars[0], minifiedJars[1]),
-                new Stats(nativeBins[0], nativeBins[1]),
-                new Stats(ociImages[0], ociImages[1]),
-                stamps,
-                total);
-    }
-
-    /** Task name before {@code @} in a key body's {@code TASK} line, lowercased. */
-    private static String taskNameFromKeyBody(String body) {
-        for (String line : body.split("\n")) {
-            if (!line.startsWith("TASK ")) continue;
-            String id = line.substring("TASK ".length()).trim();
-            int at = id.indexOf('@');
-            String name = at < 0 ? id : id.substring(0, at);
-            return name.toLowerCase(Locale.ROOT);
-        }
-        return "";
-    }
-
-    /** CAS digests on {@code OUTPUT <sha> <rel>} lines (64-char hex only). */
-    private static List<String> outputShasFromKeyBody(String body) {
-        List<String> shas = new ArrayList<>();
-        for (String line : body.split("\n")) {
-            if (!line.startsWith("OUTPUT ")) continue;
-            String rest = line.substring("OUTPUT ".length()).trim();
-            int sp = rest.indexOf(' ');
-            String maybe = sp < 0 ? rest : rest.substring(0, sp);
-            if (maybe.length() == 64 && isHex(maybe)) shas.add(maybe.toLowerCase(Locale.ROOT));
-        }
-        return shas;
-    }
-
-    private static boolean isHex(String s) {
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return false;
-        }
-        return true;
-    }
-
-    /**
-     * Map a task name to the mutable {@code [files, bytes]} counters for its usage row, or
-     * {@code null} when the task is not one of the displayed categories.
-     */
-    private static long[] bucketCounters(
-            String taskName,
-            long[] classFiles,
-            long[] testResults,
-            long[] normalJars,
-            long[] shadowJars,
-            long[] minifiedJars,
-            long[] nativeBins,
-            long[] ociImages) {
-        if (taskName.isEmpty()) return null;
-        if (TaskNames.RUN_TESTS.equals(taskName)) return testResults;
-        if (TaskNames.PACKAGE_JAR.equals(taskName)) return normalJars;
-        if (TaskNames.PACKAGE_ASSEMBLY.equals(taskName)) return shadowJars;
-        if (TaskNames.PACKAGE_MINIFIED.equals(taskName)) return minifiedJars;
-        if (TaskNames.NATIVE_IMAGE.equals(taskName)) return nativeBins;
-        if (TaskNames.WRITE_IMAGE.equals(taskName)) return ociImages;
-        // compile-main / compile-test / compile-java / compile-kotlin / …
-        if (taskName.startsWith("compile-") || TaskNames.ASSEMBLE_CLASSES.equals(taskName)) return classFiles;
-        return null;
-    }
 
     /**
      * Rows for {@code jk cache usage}. {@code total} is the whole cache-root walk; category rows
@@ -345,155 +202,6 @@ public final class CacheCommand extends GroupCommand {
         }
     }
 
-    /**
-     * Artifact-store usage breakdown for {@code jk storage usage}: packaging-class jars / natives /
-     * OCI from the store CAS (content sniff), worker jars under {@code store/lib/}. Format stamps
-     * belong to {@code jk cache usage} (cache tier). Run logs are state and are omitted.
-     *
-     * <p>Byte sizes are exclusive (store CAS first, then {@code lib/}, then {@code repos/}) so
-     * hard-linked materializations do not double-count.
-     */
-    static StoreUsageStats storeUsageStats(Path cacheRoot) throws IOException {
-        Path storeRoot = JkStores.storeRootFor(cacheRoot);
-        Path storeCas = storeRoot.resolve("sha256");
-        Path lib = storeRoot.resolve("lib");
-        Path repos = JkStores.resolve(cacheRoot, "repos");
-
-        java.util.Set<Object> seen = new java.util.HashSet<>();
-        long jarFiles = 0, jarBytes = 0;
-        long execFiles = 0, execBytes = 0;
-        long ociFiles = 0, ociBytes = 0;
-
-        if (Files.isDirectory(storeCas)) {
-            try (var walk = Files.walk(storeCas)) {
-                for (Path p : (Iterable<Path>) walk::iterator) {
-                    java.nio.file.attribute.BasicFileAttributes attrs;
-                    try {
-                        attrs = Files.readAttributes(p, java.nio.file.attribute.BasicFileAttributes.class);
-                    } catch (IOException unreadable) {
-                        continue;
-                    }
-                    if (!attrs.isRegularFile()) continue;
-                    Object key = attrs.fileKey();
-                    if (key == null) key = p.toAbsolutePath().normalize();
-                    long size = seen.add(key) ? attrs.size() : 0L;
-                    // File count always counts directory entries; bytes are exclusive.
-                    switch (sniffArtifactKind(p)) {
-                        case EXECUTABLE -> {
-                            execFiles++;
-                            execBytes += size;
-                        }
-                        case OCI -> {
-                            ociFiles++;
-                            ociBytes += size;
-                        }
-                        case JAR, OTHER -> {
-                            jarFiles++;
-                            jarBytes += size;
-                        }
-                    }
-                }
-            }
-        }
-
-        // repos/ materializations that are not hard-linked into CAS (poms, checksums, …) count as
-        // jar-adjacent artifact store content — exclusive of CAS + lib inodes already seen.
-        Stats reposExtra = walkExclusiveAdding(repos, seen);
-        jarFiles += reposExtra.files;
-        jarBytes += reposExtra.bytes;
-
-        Stats workers = walkExclusiveAdding(lib, seen);
-        return new StoreUsageStats(
-                new Stats(jarFiles, jarBytes), new Stats(execFiles, execBytes), new Stats(ociFiles, ociBytes), workers);
-    }
-
-    /** Content-class for a store CAS blob (or any regular file under the store). */
-    private enum ArtifactKind {
-        JAR,
-        EXECUTABLE,
-        OCI,
-        OTHER
-    }
-
-    /**
-     * Sniff the first bytes of {@code file} to classify jar / native binary / OCI tarball. Falls
-     * back to path hints ({@code .jar}, {@code .tar}, …) when the head is unreadable.
-     */
-    private static ArtifactKind sniffArtifactKind(Path file) {
-        String name = file.getFileName() != null ? file.getFileName().toString().toLowerCase() : "";
-        if (name.endsWith(".jar") || name.endsWith(".zip") || name.endsWith(".war") || name.endsWith(".ear")) {
-            return ArtifactKind.JAR;
-        }
-        if (name.endsWith(".tar") || name.endsWith(".tar.gz") || name.endsWith(".tgz") || name.endsWith(".oci")) {
-            return ArtifactKind.OCI;
-        }
-        try (var in = Files.newInputStream(file)) {
-            byte[] head = in.readNBytes(8);
-            if (head.length >= 4
-                    && head[0] == 'P'
-                    && head[1] == 'K'
-                    && (head[2] == 3 || head[2] == 5 || head[2] == 7)
-                    && (head[3] == 4 || head[3] == 6 || head[3] == 8)) {
-                return ArtifactKind.JAR; // ZIP local/central/empty header
-            }
-            if (head.length >= 4 && head[0] == 0x7f && head[1] == 'E' && head[2] == 'L' && head[3] == 'F') {
-                return ArtifactKind.EXECUTABLE; // ELF
-            }
-            // Mach-O 32/64 (incl. fat/universal)
-            if (head.length >= 4) {
-                int be = ((head[0] & 0xff) << 24)
-                        | ((head[1] & 0xff) << 16)
-                        | ((head[2] & 0xff) << 8)
-                        | (head[3] & 0xff);
-                if (be == 0xFEEDFACE || be == 0xFEEDFACF || be == 0xCAFEBABE || be == 0xCFFAEDFE || be == 0xCEFAEDFE) {
-                    return ArtifactKind.EXECUTABLE;
-                }
-            }
-        } catch (IOException ignored) {
-            return ArtifactKind.OTHER;
-        }
-        // POSIX ustar magic sits at offset 257 — second open for the seek-less path.
-        try (var in = Files.newInputStream(file)) {
-            byte[] skip = in.readNBytes(257);
-            if (skip.length == 257) {
-                byte[] magic = in.readNBytes(5);
-                if (magic.length == 5
-                        && magic[0] == 'u'
-                        && magic[1] == 's'
-                        && magic[2] == 't'
-                        && magic[3] == 'a'
-                        && magic[4] == 'r') {
-                    return ArtifactKind.OCI;
-                }
-            }
-        } catch (IOException ignored) {
-            // fall through
-        }
-        return ArtifactKind.OTHER;
-    }
-
-    /** Walk {@code dir} counting every regular file; bytes only for unseen {@code fileKey}s. */
-    private static Stats walkExclusiveAdding(Path dir, java.util.Set<Object> seenKeys) throws IOException {
-        if (dir == null || !Files.isDirectory(dir)) return new Stats(0, 0);
-        long files = 0;
-        long bytes = 0;
-        try (var walk = Files.walk(dir)) {
-            for (Path p : (Iterable<Path>) walk::iterator) {
-                java.nio.file.attribute.BasicFileAttributes attrs;
-                try {
-                    attrs = Files.readAttributes(p, java.nio.file.attribute.BasicFileAttributes.class);
-                } catch (IOException unreadable) {
-                    continue;
-                }
-                if (!attrs.isRegularFile()) continue;
-                files++;
-                Object key = attrs.fileKey();
-                if (key == null) key = p.toAbsolutePath().normalize();
-                if (seenKeys.add(key)) bytes += attrs.size();
-            }
-        }
-        return new Stats(files, bytes);
-    }
 
     /** Rows for {@code jk storage usage} (store-tier only). */
     record StoreUsageStats(Stats jars, Stats executables, Stats oci, Stats workers) {
