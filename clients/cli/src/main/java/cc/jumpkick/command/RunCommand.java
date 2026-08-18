@@ -217,6 +217,7 @@ public final class RunCommand {
             }
         }
         command.addAll(appArgs);
+        cc.jumpkick.cli.tui.Interactivity.restoreForChildProcess();
         return new ProcessBuilder(command).inheritIO().start().waitFor();
     }
 

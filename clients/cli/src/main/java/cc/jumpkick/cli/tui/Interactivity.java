@@ -24,6 +24,25 @@ public final class Interactivity {
     // back to a dumb terminal whose reader throws "Stream Closed". Guarded by Interactivity.class;
     // cleared by takeSharedTerminal() once a caller assumes ownership (and the duty to close it).
     private static Terminal sharedTerminal;
+    private static Attributes sharedSaved;
+
+    /** {@code saved} with only ECHO suppressed — canonical mode and VMIN/VTIME are preserved. */
+    static Attributes quietAttributes(Attributes saved) {
+        Attributes quiet = new Attributes(saved);
+        quiet.setLocalFlag(Attributes.LocalFlag.ECHO, false);
+        return quiet;
+    }
+
+    /**
+     * Full attribute restore (cooked, ECHO back on) for the still-owned shared terminal, before
+     * handing FD 0 to an {@code inheritIO()} child — the probe leaves ECHO off, which would make
+     * the child's interactive input invisible (JK-2164). No-op when nothing is owned; later jk
+     * prompts re-raw the terminal themselves.
+     */
+    public static synchronized void restoreForChildProcess() {
+        if (sharedTerminal == null || sharedSaved == null) return;
+        restoreOwnedAttributes(sharedTerminal, sharedSaved);
+    }
 
     /** {@code true} when {@code CI} or {@code JK_NONINTERACTIVE} is set, or {@code TERM=dumb}. */
     private static boolean forcedNonInteractive() {
@@ -100,11 +119,12 @@ public final class Interactivity {
             // Timed drain leaves JLine's NonBlocking I/O thread blocked on stdin; wake it so a
             // later System.exit (JLine closer) does not hang on macOS when no key listener runs.
             Wizard.unblockBlockingInput(probe);
-            // Keep ECHO off for later consumers; unblock flips ICANON/VMIN only.
-            Attributes stillQuiet = new Attributes(probe.getAttributes());
-            stillQuiet.setLocalFlag(Attributes.LocalFlag.ECHO, false);
-            probe.setAttributes(stillQuiet);
+            // Back to the SAVED (cooked) attrs with only ECHO off — copying the post-unblock
+            // attrs kept ICANON off/VMIN=0 for the rest of the process, breaking stdin for
+            // probe-without-prompt paths and inheritIO children (JK-2164).
+            probe.setAttributes(quietAttributes(saved));
             sharedTerminal = probe;
+            sharedSaved = saved;
             installRestoreHook(probe, saved);
             return true;
         } catch (IOException | RuntimeException e) {
