@@ -39,7 +39,7 @@ public final class CacheInventoryOps {
         Path store = req.store() != null ? req.store() : JkStores.store();
         return switch (query) {
             case "usage" -> cacheUsage(cache);
-            case "store-usage" -> storeUsage(cache);
+            case "store-usage" -> storeUsage(cache, req.store());
             case "repo-search" -> repoSearch(cache, req.terms() == null ? List.of() : req.terms());
             case "repo-refresh" -> repoRefresh(cache, req.coords() == null ? List.of() : req.coords());
             case "wipe-store" -> wipeStore(store, req.dryRun());
@@ -79,6 +79,9 @@ public final class CacheInventoryOps {
                             minifiedJars,
                             nativeBins,
                             ociImages);
+                    // Unbucketed keys must not consume seenShas: a blob shared with a bucketed
+                    // key would then count (or not) by directory-stream order (JK-2161).
+                    if (bucket == null) continue;
                     if (bucket == testResults) {
                         testResults[0]++;
                         try {
@@ -89,7 +92,7 @@ public final class CacheInventoryOps {
                     for (String sha : outputShasFromKeyBody(body)) {
                         if (!seenShas.add(sha)) continue;
                         Path blob = cas.pathFor(sha);
-                        if (!Files.isRegularFile(blob) || bucket == null) continue;
+                        if (!Files.isRegularFile(blob)) continue;
                         bucket[0]++;
                         try {
                             bucket[1] += Files.size(blob);
@@ -116,11 +119,14 @@ public final class CacheInventoryOps {
         return CacheInventoryAck.usage("usage", stats, total.files(), total.bytes());
     }
 
-    private static CacheInventoryAck storeUsage(Path cacheRoot) throws IOException {
-        Path storeRoot = JkStores.storeRootFor(cacheRoot);
+    private static CacheInventoryAck storeUsage(Path cacheRoot, Path requestedStore) throws IOException {
+        // Honor the client's store root exactly like wipe-store does — the client resolves
+        // JK_STORE_DIR from ITS environment, and usage must count the same tree nuke would
+        // wipe (JK-2161).
+        Path storeRoot = requestedStore != null ? requestedStore : JkStores.storeRootFor(cacheRoot);
         Path storeCas = storeRoot.resolve("sha256");
         Path lib = storeRoot.resolve("lib");
-        Path repos = JkStores.resolve(cacheRoot, "repos");
+        Path repos = storeRoot.resolve("repos");
 
         Set<Object> seen = new HashSet<>();
         long jarFiles = 0, jarBytes = 0;
@@ -340,44 +346,40 @@ public final class CacheInventoryOps {
         if (name.endsWith(".tar") || name.endsWith(".tar.gz") || name.endsWith(".tgz") || name.endsWith(".oci")) {
             return ArtifactKind.OCI;
         }
+        // One read covers both probes: bytes 0-7 for the magic, 257-261 for the ustar tag —
+        // the store walk opens every extensionless file, so one syscall per file, not two.
+        byte[] head;
         try (var in = Files.newInputStream(file)) {
-            byte[] head = in.readNBytes(8);
-            if (head.length >= 4
-                    && head[0] == 'P'
-                    && head[1] == 'K'
-                    && (head[2] == 3 || head[2] == 5 || head[2] == 7)
-                    && (head[3] == 4 || head[3] == 6 || head[3] == 8)) {
-                return ArtifactKind.JAR;
-            }
-            if (head.length >= 4 && head[0] == 0x7f && head[1] == 'E' && head[2] == 'L' && head[3] == 'F') {
-                return ArtifactKind.EXECUTABLE;
-            }
-            if (head.length >= 4) {
-                int be = ((head[0] & 0xff) << 24)
-                        | ((head[1] & 0xff) << 16)
-                        | ((head[2] & 0xff) << 8)
-                        | (head[3] & 0xff);
-                if (be == 0xFEEDFACE || be == 0xFEEDFACF || be == 0xCAFEBABE || be == 0xCFFAEDFE || be == 0xCEFAEDFE) {
-                    return ArtifactKind.EXECUTABLE;
-                }
-            }
+            head = in.readNBytes(262);
         } catch (IOException ignored) {
             return ArtifactKind.OTHER;
         }
-        try (var in = Files.newInputStream(file)) {
-            byte[] skip = in.readNBytes(257);
-            if (skip.length == 257) {
-                byte[] magic = in.readNBytes(5);
-                if (magic.length == 5
-                        && magic[0] == 'u'
-                        && magic[1] == 's'
-                        && magic[2] == 't'
-                        && magic[3] == 'a'
-                        && magic[4] == 'r') {
-                    return ArtifactKind.OCI;
-                }
+        if (head.length >= 4
+                && head[0] == 'P'
+                && head[1] == 'K'
+                && (head[2] == 3 || head[2] == 5 || head[2] == 7)
+                && (head[3] == 4 || head[3] == 6 || head[3] == 8)) {
+            return ArtifactKind.JAR;
+        }
+        if (head.length >= 4 && head[0] == 0x7f && head[1] == 'E' && head[2] == 'L' && head[3] == 'F') {
+            return ArtifactKind.EXECUTABLE;
+        }
+        if (head.length >= 4) {
+            int be = ((head[0] & 0xff) << 24)
+                    | ((head[1] & 0xff) << 16)
+                    | ((head[2] & 0xff) << 8)
+                    | (head[3] & 0xff);
+            if (be == 0xFEEDFACE || be == 0xFEEDFACF || be == 0xCAFEBABE || be == 0xCFFAEDFE || be == 0xCEFAEDFE) {
+                return ArtifactKind.EXECUTABLE;
             }
-        } catch (IOException ignored) {
+        }
+        if (head.length == 262
+                && head[257] == 'u'
+                && head[258] == 's'
+                && head[259] == 't'
+                && head[260] == 'a'
+                && head[261] == 'r') {
+            return ArtifactKind.OCI;
         }
         return ArtifactKind.OTHER;
     }

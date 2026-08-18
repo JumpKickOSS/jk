@@ -38,6 +38,41 @@ class CacheInventoryOpsTest {
     }
 
     @Test
+    void store_usage_counts_the_requested_store_not_the_ambient_one(@TempDir Path tmp) throws Exception {
+        // JK-2161: usage must count the same tree wipe-store would remove — the client
+        // resolves JK_STORE_DIR from ITS environment and sends it in the request.
+        Path cache = Files.createDirectories(tmp.resolve("cache"));
+        Path store = Files.createDirectories(tmp.resolve("client-store"));
+        Path blob = Files.createDirectories(store.resolve("sha256/ab")).resolve("cd");
+        Files.write(blob, new byte[] {'P', 'K', 3, 4, 0, 0, 0, 0});
+
+        CacheInventoryAck ack = CacheInventoryOps.run(
+                new CacheInventoryOps.Request("store-usage", cache, store, List.of(), List.of(), false));
+
+        assertThat(ack.error()).isNull();
+        assertThat(ack.totalFiles()).isEqualTo(1);
+        assertThat(ack.stats()).anyMatch(s -> s.startsWith("jars|1|"));
+    }
+
+    @Test
+    void blob_shared_with_an_unbucketed_key_still_counts(@TempDir Path cache) throws Exception {
+        // JK-2161: an unbucketed key must not consume the shared-sha dedup set, or the
+        // count would depend on directory-stream order.
+        String sha = "a".repeat(64);
+        Path blob = Files.createDirectories(cache.resolve("sha256/aa/aa")).resolve("a".repeat(60));
+        Files.writeString(blob, "jar-bytes");
+        Path keys = Files.createDirectories(cache.resolve("actions/keys"));
+        Files.writeString(keys.resolve("0-unbucketed"), "TASK custom-step@abc\nOUTPUT " + sha + "\n");
+        Files.writeString(keys.resolve("1-jar"), "TASK package-jar@abc\nOUTPUT " + sha + "\n");
+
+        CacheInventoryAck ack =
+                CacheInventoryOps.run(new CacheInventoryOps.Request("usage", cache, null, List.of(), List.of(), false));
+
+        assertThat(ack.error()).isNull();
+        assertThat(ack.stats()).anyMatch(s -> s.startsWith("normalJars|1|"));
+    }
+
+    @Test
     void unknown_query_is_an_error() throws Exception {
         CacheInventoryAck ack =
                 CacheInventoryOps.run(new CacheInventoryOps.Request("nope", null, null, List.of(), List.of(), false));
