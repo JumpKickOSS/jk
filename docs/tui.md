@@ -47,7 +47,9 @@ stay clean. Long tools (e.g. `native-image`) stream into this channel live — n
 | **Failed tool/worker** (non-zero sub-process exit, e.g. `native-image`) | Force-opens the pane while the plan is still live. |
 | **Test failures** | Do **not** force-open — curated test-failure chrome owns that path. |
 | Plan settle | Does **not** dump the buffer. If process lines were committed (pane open or force-show), they stay in scrollback; the live region is wiped; **one blank** is printed between that output and the settle chip. |
-| `-v` / non-TTY / `--no-progress` / JSONL | Unchanged; no key listener. |
+| `-v` / `--verbose` | Per-step cargo-style lines (and tool stdout). |
+| non-TTY / `--no-progress` / JSONL | Unchanged; no key listener. |
+| **plain** (`--no-ansi`) | Tool stdout (compiler, tests, native-image) is **suppressed** unless `-v`. Diagnostics and test-failure chrome still print. Progress is append-only `jk: * Build > …` lines. |
 
 Document only — no on-screen “press Ctrl-O” hint. InheritIO handoffs (`jk run`, `jshell`, …) are out of scope.
 
@@ -85,6 +87,28 @@ come from each member's `jk.toml` `name`, not the workspace path:
 ```
 
 `module` vs `modules` follows the count. The whole line is dark-gray. JSON output omits it.
+
+Under `--no-ansi` the caption and every other jk chrome line is prefixed with `jk: ` so tool output (when `-v` is on) is distinguishable:
+
+```
+jk: * Build > initializing...
+jk: * Build > cc.jumpkick:jk :: 0% - prepare
+jk: * Build > cc.jumpkick:jk :: 4% (ETA ~1m 14s) - start
+jk: * Build > cc.jumpkick:jk-cli :: 4% (ETA ~1m 14s) - resolving
+jk: * Build > cc.jumpkick:jk-cli :: 4% (ETA ~1m 14s) - generating
+jk: * Build > cc.jumpkick:jk-cli :: 4% (ETA ~1m 14s) - compiling 12 sources
+jk: * Build > cc.jumpkick:jk-cli :: 4% (ETA ~1m 12s) - running 80 tests
+jk: * Build > cc.jumpkick:jk-cli :: 20% (ETA ~53s) - running 50 tests
+jk: * Build > cc.jumpkick:jk-cli :: 40% (ETA ~40s) - running 10 tests
+jk: * Build > cc.jumpkick:jk-cli :: 47% (ETA ~47s) - packaging
+jk: * Build > cc.jumpkick:jk-cli :: 52% (ETA ~42s) - native compiling
+jk: * Build > cc.jumpkick:jk-cli :: 60% (ETA ~27s) - native compiling
+jk: * Build > cc.jumpkick:jk-cli :: 80% (ETA ~14s) - native compiling
+jk: * Build > cc.jumpkick:jk :: 100% - done
+jk: + Build > Build successful for 1 module - took 1m 16s
+```
+
+`subject :: percent% (ETA ~…) - status`. The workspace coordinate is on `prepare`, `start`, and `done`. Compile shows a source count (`compiling 12 sources`); tests show a remaining count (`running 80 tests`) that counts down only on 20/40/60/80 lines. Other phases stay as lowercase gerunds. Lines print on 20/40/60/80, on a major phase change, when a module finishes (`built`), and as soon as an ETA is known (`start`). Same module+phase reprints are suppressed unless they land on a 20% boundary. Sub-step detail (e.g. native classpath size) is appended only with `-v`.
 
 ### Completed-module tail
 
@@ -196,7 +220,7 @@ Use `new Table(title).columns(...).row(...)` (or the `Table.render` static for s
 |------|---------|--------|
 | **nerd** | ANSI + a PUA axis granted | Powerline PUA caps + Unicode glyphs |
 | **ansi** | ANSI, no PUA axis granted | Colored chips, Unicode glyphs, **no** PUA (bg-colored space cap) |
-| **plain** | `--no-ansi` / `NO_COLOR` / `TERM=dumb` / `CI` | ASCII `+` / `!` / `*` prefixes; progress `#`/`-`; **no animations** |
+| **plain** | `--no-ansi` / `NO_COLOR` / `TERM=dumb` / `CI` | `jk: ` prefix on chrome; ASCII `+` / `!` / `*` prefixes; progress `#`/`-`; **no animations** |
 
 ### The two PUA axes
 
@@ -256,7 +280,7 @@ Under `--output json` / `jsonl`, suppress human chrome (no envelope, no wedge). 
 | Code | `SourceCode.java` / `JavaCode` / `KotlinCode` / `GroovyCode` |
 | Prompt | `Prompt.java`, `Confirmation.java` (`Confirm` façade) |
 | Wizard parts | `WizardSection`, `TextInput`, `Checkbox`, `RadioButton`, `RadioButtonGroup` |
-| Progress | `cli/tui/Progress.java` + `ProgressBar.java` (plain live cadence: 20% steps) |
+| Progress | `cli/tui/Progress.java` + `ProgressBar.java` + `PlainPhase.java` (plain live cadence: 20% steps, phase changes, `jk: ` prefix) |
 | Tables | `cli/tui/Table.java`. Append snaps child rails to parent edges |
 | Trees | `cli/tui/Tree.java` — optional title/root, {@code Gap} / {@code BodyFit}, pills, hanging rich text |
 | Glyphs | `cli/tui/Glyphs.java` |

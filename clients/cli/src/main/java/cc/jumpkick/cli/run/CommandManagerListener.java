@@ -123,7 +123,7 @@ public final class CommandManagerListener implements BuildPlanListener {
             testFailStream.line(line);
             return;
         }
-        cm.writeAbove(StackTraceHighlight.line(line));
+        cm.writeProcessOutput(StackTraceHighlight.line(line));
     }
 
     /** Paint any buffered failure block now — already-received lines must not be dropped. */
@@ -152,12 +152,14 @@ public final class CommandManagerListener implements BuildPlanListener {
 
     @Override
     public void progress(String step, int delta, BuildPlanView view) {
+        cm.notePlainTestTick(module, step, delta);
         cm.progress(view.numerator(), view.denominator());
         if (aggregateRider) LiveProgress.get().update(view.numerator(), view.denominator());
     }
 
     @Override
     public void tickUpdate(String step, int delta, BuildPlanView view) {
+        cm.notePlainTestTick(module, step, delta);
         cm.progress(view.numerator(), view.denominator());
         if (aggregateRider) LiveProgress.get().update(view.numerator(), view.denominator());
     }

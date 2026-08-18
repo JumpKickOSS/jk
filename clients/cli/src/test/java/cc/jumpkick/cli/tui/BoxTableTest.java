@@ -17,7 +17,7 @@ class BoxTableTest {
         // Ends with box top-right (ANSI) or ASCII +
         assertThat(plain.endsWith("╮") || plain.endsWith("+")).isTrue();
         if (!Theme.active().isAnsi()) {
-            assertThat(plain).startsWith(" = Installed OpenJDKs > ");
+            assertThat(plain).startsWith("jk: = Installed OpenJDKs > ");
             assertThat(plain.length()).isEqualTo(50);
         } else {
             assertThat(plain).contains(Glyphs.MENU);
@@ -33,7 +33,7 @@ class BoxTableTest {
         if (Theme.active().isAnsi()) {
             assertThat(plain).contains(Glyphs.MENU);
         } else {
-            assertThat(plain).isEqualTo(" = Installed OpenJDKs >");
+            assertThat(plain).isEqualTo("jk: = Installed OpenJDKs >");
         }
     }
 

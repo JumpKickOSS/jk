@@ -266,18 +266,18 @@ public final class Spinner implements AutoCloseable {
         }
     }
 
-    /** {@code " * Status > Message - working..."} (open spinner omits command when null). */
+    /** {@code "jk: * Status > Message - working..."} (open spinner omits command when null). */
     static String plainWorkingLine(String command, String message) {
         String msg = (message == null || message.isBlank()) ? "working" : message;
         String tail = msg + " - working...";
-        if (command == null) return " " + Glyphs.PULSE_PLAIN + " " + tail;
+        if (command == null) return JkWedge.PLAIN_LINE_PREFIX + Glyphs.PULSE_PLAIN + " " + tail;
         return JkWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
     }
 
     static String plainDoneLine(String command, String message) {
         String msg = (message == null || message.isBlank()) ? "working" : message;
         String tail = msg + " - done.";
-        if (command == null) return " " + Glyphs.PULSE_PLAIN + " " + tail;
+        if (command == null) return JkWedge.PLAIN_LINE_PREFIX + Glyphs.PULSE_PLAIN + " " + tail;
         return JkWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
     }
 

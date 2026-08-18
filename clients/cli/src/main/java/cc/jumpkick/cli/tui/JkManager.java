@@ -99,7 +99,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
 
     /**
      * Plain ({@code --no-ansi}) multi-line progress: last printed 20% step (0, 20, …, 80), or -1
-     * before the mandatory 0% start line. 100% is only emitted as a done line on settle.
+     * before the first percent line. 100% is only emitted as a done line on settle.
      */
     int plainLastDecade = -1;
 
@@ -109,12 +109,25 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /** True when aggregate progress (den &gt; 0) drove plain chrome — settle uses 100% done. */
     boolean plainProgressMode;
 
+    /** True after the first plain line that included a known ETA. */
+    boolean plainEtaAnnounced;
+
+    /** Last printed plain subject + status — skip same-phase reprints except 20% boundaries. */
+    String plainLastSubject = "";
+
+    String plainLastStatus = "";
+
     // simple mode
     String label = "";
 
     // plan mode
     String name = "";
     String target = "";
+    /**
+     * Workspace / root {@code group:name} shown on the first plain prepare line. Sticky — not
+     * overwritten when a member step starts.
+     */
+    String planCoord = "";
     /**
      * Gerund for the module-selection caption ({@code building}, {@code testing}, …). Empty when
      * the plan is the whole workspace.
@@ -291,7 +304,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             cm.startAnimator();
             cm.startKeyListener();
         }
-        // Plain plan: no start line until progress() or settle (message may not exist yet).
+        // Plain plan: Initializing / percent lines emit from progress, phase, ETA, and settle.
         return cm;
     }
 
@@ -354,6 +367,13 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     public void target(String module) {
         synchronized (lock) {
             this.target = module == null ? "" : module;
+        }
+    }
+
+    /** Set the workspace/root coordinate used by plain {@code prepare} lines. */
+    public void setPlanCoord(String coord) {
+        synchronized (lock) {
+            this.planCoord = coord == null ? "" : coord;
         }
     }
 
@@ -448,6 +468,9 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             // provisional eta rewrites cannot thrash the total. Residual still
             // re-anchors the painted countdown.
             if (remainingWorkMs >= 0) openLoopLocked = true;
+            if (animate && !Theme.active().isAnsi()) {
+                view.emitPlainPhaseChange();
+            }
         }
     }
 
@@ -455,7 +478,43 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     public void stepMessage(String module, String stepKey, String message) {
         synchronized (lock) {
             Row r = rows.get(key(module, stepKey));
-            if (r != null) r.message = message == null ? "" : message;
+            if (r == null) return;
+            r.message = message == null ? "" : message;
+            if (animate && !Theme.active().isAnsi() && r.message.contains("classpath input size")) {
+                view.emitPlainStepDetail(r.message);
+            }
+            if (animate && !Theme.active().isAnsi()) {
+                var tests = PlainPhase.runningTestsCount(r.message);
+                if (tests.isPresent()) {
+                    r.plainRemainingTests = tests.get();
+                    r.plainStatusOverride = PlainPhase.runningTests(r.plainRemainingTests);
+                    view.emitPlainPhaseChange();
+                    return;
+                }
+                var compile = PlainPhase.compileSourcesStatus(r.message);
+                if (compile.isPresent()) {
+                    r.plainStatusOverride = compile.get();
+                    view.emitPlainPhaseChange();
+                }
+            }
+        }
+    }
+
+    /**
+     * A static test finished. Decrements the plain remaining-test count without printing — the next
+     * 20% line shows the updated {@code running N tests}.
+     */
+    public void notePlainTestTick(String module, String stepKey, int delta) {
+        if (!animate || Theme.active().isAnsi()) return;
+        if (stepKey == null
+                || !(stepKey.equals(cc.jumpkick.run.TaskNames.RUN_TESTS) || stepKey.startsWith("run-tests"))) {
+            return;
+        }
+        synchronized (lock) {
+            Row r = rows.get(key(module, stepKey));
+            if (r == null || r.plainRemainingTests < 0) return;
+            r.plainRemainingTests = Math.max(0, r.plainRemainingTests - Math.max(0, delta));
+            r.plainStatusOverride = PlainPhase.runningTests(r.plainRemainingTests);
         }
     }
 
@@ -494,6 +553,9 @@ public final class JkManager implements AutoCloseable, LiveRegion {
                 if (r.phase != null && !r.phase.isEmpty()) {
                     touchPhaseFinish(r.phase, ok);
                 }
+            }
+            if (animate && !Theme.active().isAnsi() && ok) {
+                view.emitPlainModuleBuilt(module);
             }
         }
     }
@@ -535,6 +597,9 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             countdownDisplayElapsedSec = -1;
             // R0 is enough to drive the adaptive bar (drop preflight solve label).
             if (rem > 0) this.solveLabel = "";
+            if (animate && !Theme.active().isAnsi() && rem > 0) {
+                view.emitPlainEtaKnown();
+            }
         }
     }
 
@@ -571,6 +636,9 @@ public final class JkManager implements AutoCloseable, LiveRegion {
                 etaEstimateMs = elapsed + rem;
             }
             if (rem > 0) this.solveLabel = "";
+            if (animate && !Theme.active().isAnsi() && rem > 0) {
+                view.emitPlainEtaKnown();
+            }
         }
     }
 
@@ -844,6 +912,14 @@ public final class JkManager implements AutoCloseable, LiveRegion {
 
     public void writeAbove(String text) {
         view.writeAbove(text);
+    }
+
+    /**
+     * Tool/process stdout (compiler, tests, native-image). In plain {@code --no-ansi} this is
+     * suppressed unless {@code -v}/{@code --verbose}; diagnostics still use {@link #writeAbove}.
+     */
+    public void writeProcessOutput(String text) {
+        view.writeProcessOutput(text);
     }
 
     /**
@@ -1376,7 +1452,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             buf.reset();
             if (s.endsWith("\r")) s = s.substring(0, s.length() - 1);
             if (s.isBlank()) return; // do not inject empty lines into the peek / settle layout
-            cm.writeAbove(s);
+            cm.writeProcessOutput(s);
         }
     }
 
@@ -1419,6 +1495,10 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         String message = "";
         /** One-line failure summary under a failed row (full diagnostics stay above / in files). */
         String briefError = "";
+        /** Plain status override ({@code compiling 12 sources} / {@code running 80 tests}). */
+        String plainStatusOverride = "";
+        /** Remaining static tests for plain countdown; {@code -1} = unknown. */
+        int plainRemainingTests = -1;
 
         long seq;
 

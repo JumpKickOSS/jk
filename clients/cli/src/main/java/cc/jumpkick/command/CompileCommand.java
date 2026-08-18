@@ -128,6 +128,7 @@ public final class CompileCommand implements CliCommand {
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         cc.jumpkick.cli.tui.JkManager view =
                 cc.jumpkick.cli.tui.JkManager.plan(cc.jumpkick.cli.CliOutput.stdout(), "Compile", animate);
+        view.setPlanCoord(BuildCommand.projectGaLabel(entryDir));
         ModuleScopeHint.show("compiling", scopeNames, global != null && global.outputIsJson(), view);
         cc.jumpkick.cli.run.AggregateContext agg = new cc.jumpkick.cli.run.AggregateContext(view);
         int[] finished = {0};

@@ -266,6 +266,7 @@ public final class BuildCommand implements CliCommand {
 
         long buildStart = System.nanoTime();
         JkManager view = JkManager.plan(CliOutput.stdout(), "Build", animate);
+        view.setPlanCoord(projectGaLabel(entryDir));
         // OSC 0 tab/window title while the live build region is open.
         view.setWindowTitle("JumpKick - Building " + projectGavLabel(entryDir) + "...");
         if (sel != null && sel.error() == null && !sel.empty()) {

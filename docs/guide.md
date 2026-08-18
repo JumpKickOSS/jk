@@ -743,7 +743,8 @@ export JK_OUTPUT=json        # same for any command that uses BuildPlanConsole
 ### CLI UX (human-first)
 
 The terminal is for people. Prefer settled **CommandWedge** chips (success green / work blue /
-error red), not `jk <command>: …` log prefixes. Agents should use **`--output json`/`jsonl`**,
+error red), not `jk <command>: …` log prefixes. Under `--no-ansi`, chrome lines start with
+`jk: ` so they stay distinct from compiler/test output. Agents should use **`--output json`/`jsonl`**,
 BSP, the engine wire, or (later) MCP — not scrape prose. Opt out of rich chrome with `NO_COLOR`,
 `--no-ansi`, or `JK_NERD_FONT=false`. Full charter: kanartist **JK-1076**–**JK-1081**; machine
 surface: [machine-output.md](machine-output.md).

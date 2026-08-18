@@ -12,10 +12,10 @@ class JkWedgeTest {
     @Test
     void plain_ok_and_fail_match_legacy_chip_line() {
         RenderContext plain = RenderContext.current().withAnsi(false);
-        assertThat(JkWedge.ok("Build", "done").renderLine(plain)).isEqualTo(" + Build > done");
-        assertThat(JkWedge.fail("Build", "boom").renderLine(plain)).isEqualTo(" ! Build > boom");
+        assertThat(JkWedge.ok("Build", "done").renderLine(plain)).isEqualTo("jk: + Build > done");
+        assertThat(JkWedge.fail("Build", "boom").renderLine(plain)).isEqualTo("jk: ! Build > boom");
         assertThat(JkWedge.cancelled("Build", false, "took 1s").renderLine(plain))
-                .isEqualTo(" o Build > job was cancelled took 1s");
+                .isEqualTo("jk: o Build > job was cancelled took 1s");
     }
 
     @Test

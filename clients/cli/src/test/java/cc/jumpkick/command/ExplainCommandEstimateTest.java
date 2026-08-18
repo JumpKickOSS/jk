@@ -60,7 +60,7 @@ class ExplainCommandEstimateTest {
                         "com.example:root", List.of(clean, dirty), false, Theme.active(), false)
                 .render(RenderContext.current().withAnsi(false));
         String joined = String.join("\n", lines);
-        assertThat(joined).contains(" = Build Graph >");
+        assertThat(joined).contains("jk: = Build Graph >");
         assertThat(joined).contains("* com.example:root");
         assertThat(joined).contains("[Fully Cached]").contains("1 module is fresh");
         assertThat(joined).contains("[Rebuild]").contains("1 module is dirty");

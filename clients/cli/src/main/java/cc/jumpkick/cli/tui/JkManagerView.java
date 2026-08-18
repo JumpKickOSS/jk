@@ -222,23 +222,86 @@ final class JkManagerView {
 
     /**
      * Emit plain progress lines for every newly crossed 20% step up to (and not past) 80%.
-     * Must hold the manager lock. First call always prints the mandatory 0% start line.
+     * Must hold the manager lock. First call prints {@code initializing...} then the 0% prepare
+     * line.
      */
     void emitPlainProgressDecades(long num, long den) {
         if (m.done || den <= 0) return;
         m.plainProgressMode = true;
+        maybePrintPlainInitializing();
         int decade = new Progress(num, den).plainDecade();
         if (m.plainLastDecade < 0) {
-            m.out.println(plainProgressLine(0, false));
+            String status = currentPlainStatus();
+            String subject = currentPlainSubject();
+            if (PlainPhase.PREPARE.equals(status) || firstActiveRow() == null) {
+                status = PlainPhase.PREPARE;
+                if (subject.isEmpty()) subject = m.planCoord == null ? "" : m.planCoord;
+            }
+            printPlainSnapshot(0, status, false, subject, "");
             m.plainLastDecade = 0;
-            m.plainChromeStarted = true;
-            m.out.flush();
+            return;
         }
         while (m.plainLastDecade < decade) {
             m.plainLastDecade += Progress.PLAIN_STEP_PERCENT;
-            m.out.println(plainProgressLine(m.plainLastDecade, false));
-            m.out.flush();
+            printPlainSnapshot(m.plainLastDecade, currentPlainStatus(), false);
         }
+    }
+
+    /** First ETA seed: print immediately as {@code start} on the workspace coordinate. */
+    void emitPlainEtaKnown() {
+        if (m.done || !m.animate) return;
+        if (m.plainEtaAnnounced) return;
+        m.plainProgressMode = true;
+        maybePrintPlainInitializing();
+        String root = planCoordOrEmpty();
+        if (!PlainPhase.PREPARE.equals(m.plainLastStatus) && firstActiveRow() == null && !root.isEmpty()) {
+            printPlainSnapshot(0, PlainPhase.PREPARE, false, root, "");
+        }
+        m.plainEtaAnnounced = true;
+        printPlainSnapshot(currentPlainPercent(), PlainPhase.START, false, root, "");
+    }
+
+    /** Major step/phase change: print immediately at the current percent. */
+    void emitPlainPhaseChange() {
+        if (m.done || !m.animate) return;
+        m.plainProgressMode = true;
+        maybePrintPlainInitializing();
+        if (m.remainingWorkMs >= 0) m.plainEtaAnnounced = true;
+        String status = currentPlainStatus();
+        if (PlainPhase.PREPARE.equals(status)) return;
+        // Wait for "compiling N sources" / "running N tests" before the first line of those phases.
+        if ("compiling".equals(status) || PlainPhase.RUNNING_TESTS.equals(status)) return;
+        printPlainSnapshot(currentPlainPercent(), status, false);
+    }
+
+    /** Module finished: print immediately with {@code built} (do not wait for a 20% boundary). */
+    void emitPlainModuleBuilt(String module) {
+        if (m.done || !m.animate) return;
+        m.plainProgressMode = true;
+        maybePrintPlainInitializing();
+        String subject = module == null ? "" : module;
+        printPlainSnapshot(currentPlainPercent(), PlainPhase.BUILT, false, subject, "");
+    }
+
+    /**
+     * Verbose-only sub-step detail (e.g. native classpath size). Same module/phase as the last
+     * line is allowed because the detail is the point.
+     */
+    void emitPlainStepDetail(String detail) {
+        if (m.done || !m.animate) return;
+        if (!cc.jumpkick.config.SessionContext.current().config().verboseOr(false)) return;
+        String extra = detail == null ? "" : PlainAscii.transform(detail);
+        if (extra.isBlank()) return;
+        m.plainProgressMode = true;
+        maybePrintPlainInitializing();
+        printPlainSnapshot(currentPlainPercent(), currentPlainStatus(), false, currentPlainSubject(), extra);
+    }
+
+    private void maybePrintPlainInitializing() {
+        if (m.plainChromeStarted || m.done) return;
+        m.out.println(JkWedge.plainWedge(Glyphs.PULSE_PLAIN, planName(), PlainPhase.INITIALIZING));
+        m.plainChromeStarted = true;
+        m.out.flush();
     }
 
     /** Indeterminate plain start/heartbeat (simple mode open, or plan without progress). */
@@ -253,25 +316,18 @@ final class JkManagerView {
         }
     }
 
-    /** Mandatory plain done line — progress ends at 100%, spinner at {@code done.}. */
+    /** Mandatory plain done line — progress ends at {@code 100% - done}. */
     void printPlainDone() {
         if (!m.animate) return;
         if (m.plainProgressMode) {
-            // Catch up so a fast finish still shows 0% then 100% done.
             if (m.plainLastDecade < 0) {
-                m.out.println(plainProgressLine(0, false));
+                maybePrintPlainInitializing();
                 m.plainLastDecade = 0;
-                m.plainChromeStarted = true;
             }
-            // Do not invent intermediate decades on settle if we never crossed them mid-run —
-            // only ensure 0% was printed, then 100% done.
-            m.out.println(plainProgressLine(100, true));
-            m.plainChromeStarted = true;
-            m.out.flush();
+            printPlainSnapshot(100, PlainPhase.DONE, true, planCoordOrEmpty(), "");
             return;
         }
         if (m.plainChromeStarted || !m.planMode) {
-            // Simple mode always had a start; plan without progress prints done only if started.
             if (!m.plainChromeStarted) {
                 m.out.println(plainIndeterminateLine(false));
             }
@@ -282,56 +338,161 @@ final class JkManagerView {
     }
 
     /**
-     * {@code " * Format > Examining source files - 10% - working..."} or {@code … - 100% - done.}.
+     * {@code "jk: * Format > Examining source files :: 10% - prepare"} or {@code coord :: 100% - done}.
      */
     static String plainProgressLine(String command, String message, int percent, boolean done) {
-        String msg = (message == null || message.isBlank()) ? "working" : message;
-        String tail = msg + " - " + percent + "% - " + (done ? "done." : "working...");
-        return JkWedge.plainWedge(Glyphs.PULSE_PLAIN, command == null ? "" : command, tail);
-    }
-
-    private String plainProgressLine(int percent, boolean doneLine) {
-        String msg = plainWorkMessage();
-        if (!doneLine && m.remainingWorkMs >= 0) {
-            long rem = Math.max(0L, m.remainingWorkMs - Math.max(0L, m.elapsedMillis() - m.remainingSetAtElapsedMs));
-            msg = msg + " - ETA ~" + JkManagerColor.fmtClock(rem);
+        String subject = (message == null || message.isBlank()) ? "" : message;
+        if (done) {
+            return JkWedge.plainWedge(
+                    Glyphs.PULSE_PLAIN,
+                    command == null ? "" : command,
+                    formatPlainTail(subject, 100, null, PlainPhase.DONE, ""));
         }
-        return plainProgressLine(planName(), msg, percent, doneLine);
+        return JkWedge.plainWedge(
+                Glyphs.PULSE_PLAIN,
+                command == null ? "" : command,
+                formatPlainTail(subject, percent, null, PlainPhase.PREPARE, ""));
     }
 
-    /** {@code " * Format > Examining source files - working..."} / {@code … - done.}. */
+    private void printPlainSnapshot(int percent, String status, boolean doneLine) {
+        printPlainSnapshot(percent, status, doneLine, currentPlainSubject(), "");
+    }
+
+    private void printPlainSnapshot(int percent, String status, boolean doneLine, String subject, String detail) {
+        String line = doneLine
+                ? JkWedge.plainWedge(
+                        Glyphs.PULSE_PLAIN, planName(), formatPlainTail(subject, 100, null, PlainPhase.DONE, ""))
+                : JkWedge.plainWedge(
+                        Glyphs.PULSE_PLAIN,
+                        planName(),
+                        formatPlainTail(subject, percent, plainEtaClock(), status, detail));
+        if (!doneLine && !shouldPrintPlain(percent, status, subject, detail)) return;
+        m.plainLastSubject = subject == null ? "" : subject;
+        m.plainLastStatus = status == null ? "" : status;
+        m.out.println(line);
+        m.plainChromeStarted = true;
+        if (!doneLine && percent >= 0) {
+            int decade = Math.min(80, (percent / Progress.PLAIN_STEP_PERCENT) * Progress.PLAIN_STEP_PERCENT);
+            if (decade > m.plainLastDecade) m.plainLastDecade = decade;
+        }
+        m.out.flush();
+    }
+
+    /**
+     * Print on a new module/phase, a 20% boundary, {@code start}/{@code built}/{@code prepare}, or a
+     * verbose detail. Same module+phase with only an ETA/percent tick is suppressed.
+     */
+    private boolean shouldPrintPlain(int percent, String status, String subject, String detail) {
+        if (detail != null && !detail.isBlank()) return true;
+        String sub = subject == null ? "" : subject;
+        String st = status == null ? "" : status;
+        boolean same = sub.equals(m.plainLastSubject) && PlainPhase.sameFamily(st, m.plainLastStatus);
+        if (!same) return true;
+        return percent > 0 && percent < 100 && percent % Progress.PLAIN_STEP_PERCENT == 0;
+    }
+
+    private static String formatPlainTail(String subject, int percent, String eta, String status, String detail) {
+        String st = status == null || status.isBlank() ? PlainPhase.PREPARE : status;
+        StringBuilder tail = new StringBuilder();
+        if (subject != null && !subject.isBlank()) {
+            tail.append(subject).append(" :: ");
+        }
+        tail.append(percent).append('%');
+        boolean showEta =
+                eta != null && !eta.isBlank() && !PlainPhase.PREPARE.equals(st) && !PlainPhase.DONE.equals(st);
+        if (showEta) {
+            tail.append(" (ETA ~").append(eta).append(')');
+        }
+        tail.append(" - ").append(st);
+        if (detail != null && !detail.isBlank()) {
+            tail.append(" = ").append(detail);
+        }
+        return tail.toString();
+    }
+
+    private String planCoordOrEmpty() {
+        return m.planCoord == null ? "" : m.planCoord;
+    }
+
+    /** {@code "jk: * Format > Examining source files - working..."} / {@code … - done.}. */
     static String plainIndeterminateLine(String command, String message, boolean done) {
-        String msg = (message == null || message.isBlank()) ? "working" : message;
-        String tail = msg + " - " + (done ? "done." : "working...");
         if (command == null || command.isEmpty()) {
-            return " " + Glyphs.PULSE_PLAIN + " " + tail;
+            String msg = (message == null || message.isBlank()) ? "working" : message;
+            String tail = msg + " - " + (done ? "done." : "working...");
+            return JkWedge.PLAIN_LINE_PREFIX + Glyphs.PULSE_PLAIN + " " + tail;
         }
-        return JkWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
+        if (done) {
+            return JkWedge.plainWedge(Glyphs.PULSE_PLAIN, command, "100% - done");
+        }
+        String msg = (message == null || message.isBlank()) ? PlainPhase.INITIALIZING : message;
+        return JkWedge.plainWedge(Glyphs.PULSE_PLAIN, command, msg);
     }
 
     private String plainIndeterminateLine(boolean doneLine) {
         if (m.planMode) {
-            return plainIndeterminateLine(planName(), plainWorkMessage(), doneLine);
+            return plainIndeterminateLine(planName(), doneLine ? null : PlainPhase.INITIALIZING, doneLine);
         }
-        // Simple mode: the label is the whole message (no command chip name beyond the label).
         return plainIndeterminateLine(null, m.label, doneLine);
     }
 
-    /** Best-effort work description for plain lines: solve label, active step, or plan name. */
-    private String plainWorkMessage() {
-        String sl = m.solveLabel;
-        if (sl != null && !sl.isEmpty()) return sl;
-        for (JkManager.Row r : m.rows.values()) {
-            if (r.state == JkManager.RowState.ACTIVE) {
-                if (r.message != null && !r.message.isEmpty()) return r.message;
-                if (r.step != null && !r.step.isEmpty()) return r.step;
+    private String currentPlainStatus() {
+        JkManager.Row active = firstActiveRow();
+        if (active != null) {
+            if (active.plainStatusOverride != null && !active.plainStatusOverride.isEmpty()) {
+                return active.plainStatusOverride;
             }
+            if (active.plainRemainingTests >= 0) {
+                return PlainPhase.runningTests(active.plainRemainingTests);
+            }
+            return PlainPhase.status(active.phase != null ? active.phase : active.step);
         }
+        String sl = m.solveLabel;
+        if (sl != null && !sl.isEmpty()) return PlainPhase.status(sl);
+        return PlainPhase.PREPARE;
+    }
+
+    private String currentPlainSubject() {
+        JkManager.Row active = firstActiveRow();
+        if (active != null) {
+            if (active.module != null && !active.module.isEmpty()) return active.module;
+            if (active.message != null && !active.message.isEmpty()) return active.message;
+            if (active.step != null && !active.step.isEmpty()) return active.step;
+        }
+        if (m.planCoord != null && !m.planCoord.isEmpty()) return m.planCoord;
+        if (m.target != null && !m.target.isEmpty()) return m.target;
+        return "";
+    }
+
+    /** Newest active row (insertion order) — the step that just started owns the status. */
+    private JkManager.Row firstActiveRow() {
+        JkManager.Row last = null;
         for (JkManager.Row r : m.rows.values()) {
-            if (r.step != null && !r.step.isEmpty()) return r.step;
+            if (r.state == JkManager.RowState.ACTIVE) last = r;
         }
-        String n = m.planName();
-        return n == null || n.isEmpty() ? "working" : n;
+        return last;
+    }
+
+    private int currentPlainPercent() {
+        long[] bd = m.displayBar(m.elapsedMillis());
+        if (bd[1] <= 0) return Math.max(0, m.plainLastDecade);
+        return new Progress(bd[0], bd[1]).percent();
+    }
+
+    private String plainEtaClock() {
+        long remMs = plainRemainingMs();
+        if (remMs < 0) return null;
+        return JkManagerColor.fmtClock(remMs);
+    }
+
+    private long plainRemainingMs() {
+        long elapsed = m.elapsedMillis();
+        if (m.residualRemainingMs >= 0 && (m.remainingWorkMs >= 0 || m.residualRemainingMs > 0)) {
+            return Math.max(0L, m.residualRemainingMs - Math.max(0L, elapsed - m.residualSetAtElapsedMs));
+        }
+        if (m.remainingWorkMs >= 0) {
+            return Math.max(0L, m.remainingWorkMs - Math.max(0L, elapsed - m.remainingSetAtElapsedMs));
+        }
+        return -1L;
     }
 
     /**
@@ -365,6 +526,22 @@ final class JkManagerView {
      * lines stay in the ring until Ctrl-O reveals them. Simple mode keeps the old permanent-above
      * spinner behavior.
      */
+    /**
+     * Compiler / test / native-image stdout. Always buffered for the peek ring. Printed in plain
+     * mode only when {@code -v}/{@code --verbose} is set.
+     */
+    public void writeProcessOutput(String text) {
+        if (text == null) return;
+        boolean verbose = cc.jumpkick.config.SessionContext.current().config().verboseOr(false);
+        if (!Theme.active().isAnsi() && !verbose) {
+            synchronized (m.lock) {
+                if (m.planMode && !m.done) m.outputWindow.append(text);
+            }
+            return;
+        }
+        writeAbove(text);
+    }
+
     public void writeAbove(String text) {
         if (text != null && text.indexOf('\n') >= 0) {
             // DiagnosticReport and other multi-line blobs must be one scrollback row each.
@@ -387,14 +564,8 @@ final class JkManagerView {
                 // eviction (size unchanged on every accepted append) as a strip.
                 boolean accepted = m.outputWindow.append(text);
                 if (!m.animate || !Theme.active().isAnsi()) {
-                    // Non-TTY fidelity (JK-2108): the peek ring strips blanks (they only make
-                    // gaps under the rule), but piped/CI output prints tool lines VERBATIM —
-                    // docs/tui.md promises the non-TTY path is unchanged.
-                    // Piped mode — and --no-ansi TTY plain-animate mode: there is no live region
-                    // to lift (open/close/tick paints are all isAnsi-gated), so the ANSI path
-                    // would leak raw escapes when peek was visible and swallow tool output
-                    // entirely when hidden (no Ctrl-O repaint can ever reveal it). Print plainly
-                    // and sequentially, like the pre-peek writeAbove always did (JK-2091).
+                    // No live region to lift: print diagnostics sequentially. Tool stdout uses
+                    // writeProcessOutput (silent in plain mode unless --verbose).
                     m.out.println(text);
                     m.out.flush();
                     return;

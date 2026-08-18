@@ -355,6 +355,7 @@ public final class NativeCommand implements CliCommand {
         // (the plan burst carries every module plan's estimated weight).
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         JkManager view = JkManager.plan(CliOutput.stdout(), "Build", animate);
+        view.setPlanCoord(BuildCommand.projectGaLabel(wsRoot));
         cc.jumpkick.cli.tui.ModuleScopeHint.apply(view, "building", scopeHintNames);
         cc.jumpkick.cli.run.AggregateContext agg = new cc.jumpkick.cli.run.AggregateContext(view);
         int[] built = {0};

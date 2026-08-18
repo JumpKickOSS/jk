@@ -227,6 +227,7 @@ public final class ImageCommand implements CliCommand {
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         cc.jumpkick.cli.tui.JkManager view =
                 cc.jumpkick.cli.tui.JkManager.plan(cc.jumpkick.cli.CliOutput.stdout(), "Image", animate);
+        view.setPlanCoord(BuildCommand.projectGaLabel(moduleDir));
         var moduleInfo = BuildCommand.projectInfoOrNull(moduleDir);
         cc.jumpkick.cli.tui.ModuleScopeHint.show(
                 "building",

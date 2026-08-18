@@ -69,7 +69,12 @@ public final class ModuleScopeHint {
         if (json) return;
         if (names == null || names.isEmpty()) return;
         CommandWedge.envelopeStart();
-        cc.jumpkick.cli.CliOutput.out(line(verb, names));
+        String text = line(verb, names);
+        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+            String body = text.startsWith(" ") ? text.substring(1) : text;
+            text = JkWedge.PLAIN_LINE_PREFIX + body;
+        }
+        cc.jumpkick.cli.CliOutput.out(text);
     }
 
     /** Print the scrollback caption and, when {@code view} is open, pin it above the wedge. */

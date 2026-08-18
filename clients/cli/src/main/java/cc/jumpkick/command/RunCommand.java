@@ -354,6 +354,7 @@ public final class RunCommand {
     private cc.jumpkick.runtime.WorkspaceResult runWorkspaceLive(
             cc.jumpkick.runtime.WorkspaceRequest request, List<String> scopeNames) {
         var view = cc.jumpkick.cli.tui.JkManager.plan(CliOutput.stdout(), "Run", true);
+        view.setPlanCoord(BuildCommand.projectGaLabel(request.entryDir()));
         cc.jumpkick.cli.tui.ModuleScopeHint.apply(view, "building", scopeNames);
         var agg = new cc.jumpkick.cli.run.AggregateContext(view);
         Map<Path, List<String>> buffers = new ConcurrentHashMap<>();

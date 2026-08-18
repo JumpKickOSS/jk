@@ -307,6 +307,7 @@ public final class TestCommand implements CliCommand {
         cc.jumpkick.cli.engine.EnginePrewarm.ensure();
         long start = System.nanoTime();
         JkManager view = JkManager.plan(CliOutput.stdout(), "Test", animate);
+        view.setPlanCoord(BuildCommand.projectGaLabel(entryDir));
         view.setWindowTitle("JumpKick - Testing " + BuildCommand.projectGavLabel(entryDir) + "...");
         ModuleScopeHint.show("testing", scopeNames, global != null && global.outputIsJson(), view);
         AggregateContext agg = new AggregateContext(view);

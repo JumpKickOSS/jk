@@ -8,6 +8,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class ModuleScopeHintTest {
@@ -38,6 +39,25 @@ class ModuleScopeHintTest {
         var lines = cm.renderBuildPlanLines(120, 0);
         assertThat(TestAnsi.strip(lines.get(0))).isEqualTo(" …building module jk-cli…");
         assertThat(TestAnsi.strip(lines.get(1))).contains("Build");
+    }
+
+    @Test
+    void print_prefixes_plain_caption_with_jk() {
+        var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
+        cc.jumpkick.config.SessionContext.runWhere(
+                cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
+                    CommandWedge.resetEnvelope();
+                    var buf = new ByteArrayOutputStream();
+                    var prev = System.out;
+                    try {
+                        System.setOut(new PrintStream(buf, true, StandardCharsets.UTF_8));
+                        ModuleScopeHint.print("building", List.of("jk-engine", "jk-cli"), false);
+                    } finally {
+                        System.setOut(prev);
+                    }
+                    assertThat(buf.toString(StandardCharsets.UTF_8))
+                            .contains("jk: ...building modules jk-engine, jk-cli...");
+                });
     }
 
     @Test

@@ -87,7 +87,7 @@ class ActivityCommandTest {
                 .child(cc.jumpkick.cli.tui.Tree.node(cc.jumpkick.cli.tui.Pill.of("A")))
                 .child(cc.jumpkick.cli.tui.Tree.node(cc.jumpkick.cli.tui.Pill.of("B")))
                 .render(cc.jumpkick.cli.tui.RenderContext.current().withAnsi(false));
-        assertThat(lines).containsExactly(" = Build Jobs >", " |", " +-[A]", " |", " `-[B]");
+        assertThat(lines).containsExactly("jk: = Build Jobs >", " |", " +-[A]", " |", " `-[B]");
     }
 
     @Test
