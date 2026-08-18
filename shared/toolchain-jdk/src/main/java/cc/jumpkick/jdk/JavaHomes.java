@@ -46,13 +46,25 @@ public final class JavaHomes {
         }
     }
 
-    private static JkBuild readBuildSoft(Path projectDir) {
+    /** Bootstrap jdk/java pins for {@code projectDir}, workspace-inherited. Test-visible. */
+    static JkBuild readBuildSoft(Path projectDir) {
         try {
             Path toml = projectDir.resolve("jk.toml");
             if (!Files.isRegularFile(toml)) return null;
             var scan = cc.jumpkick.config.TomlScan.scan(toml, "jdk", "java");
             String jdk = scan.get("jdk");
             String java = scan.get("java");
+            if (isBlank(jdk) || isBlank(java)) {
+                // A workspace member auto-inherits jdk/java from its root; the parser this scan
+                // replaced applied that via WorkspaceResolve (JK-2156). Mirror it per key —
+                // same bootstrap pattern as ProjectIdentity.coordOf's group inheritance.
+                var root = cc.jumpkick.config.WorkspaceScan.findRoot(projectDir);
+                if (root.isPresent()) {
+                    var rootScan = cc.jumpkick.config.TomlScan.scan(root.get().resolve("jk.toml"), "jdk", "java");
+                    if (isBlank(jdk)) jdk = rootScan.get("jdk");
+                    if (isBlank(java)) java = rootScan.get("java");
+                }
+            }
             int release = 0;
             if (java != null && !java.isBlank()) {
                 try {
@@ -68,6 +80,10 @@ public final class JavaHomes {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
     }
 
     /**
