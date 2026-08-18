@@ -338,6 +338,24 @@ class CacheCommandTest {
         Files.writeString(ptr, key);
     }
 
+    private static final java.util.List<String> SEEDED_PATHS = new java.util.ArrayList<>();
+
+    /** Delete this class's store seeds — fake blobs for REAL coordinates poison later locks (JK-2179). */
+    @org.junit.jupiter.api.AfterEach
+    void scrubSeededRepoArtifacts() {
+        Path repos = cc.jumpkick.cache.JkStores.store().resolve("repos");
+        for (String rel : SEEDED_PATHS) {
+            Path f = repos.resolve("central").resolve(rel);
+            try {
+                Files.deleteIfExists(Path.of(f + ".sha256"));
+                Files.deleteIfExists(f);
+            } catch (Exception ignored) {
+                // best-effort
+            }
+        }
+        SEEDED_PATHS.clear();
+    }
+
     /** Materialise a jar for {@code group:artifact:version} into the "central" named-repo store. */
     private static void seedRepo(Path cache, String group, String artifact, String version) {
         try {
@@ -345,6 +363,7 @@ class CacheCommandTest {
             cc.jumpkick.cache.Cas cas = new cc.jumpkick.cache.Cas(cache);
             Path blob = cas.put(bytes);
             var coord = cc.jumpkick.model.Coordinate.of(group, artifact, version);
+            SEEDED_PATHS.add(cc.jumpkick.repo.MavenLayout.artifactPath(coord));
             // repos/ lives under the STORE root — where MavenRepo writes (JK-2176); the old
             // cache-rooted seed only matched the pre-fix search's wrong walk root.
             cc.jumpkick.repo.RepoArtifactStore.forRepoName(cc.jumpkick.cache.JkStores.store(), "central")

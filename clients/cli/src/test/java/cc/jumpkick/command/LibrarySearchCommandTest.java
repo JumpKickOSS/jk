@@ -110,16 +110,24 @@ class LibrarySearchCommandTest {
         Coordinate coord = Coordinate.of("org.junit.jupiter", "junit-jupiter", "6.1.0");
         byte[] bytes = "junit-jar".getBytes(StandardCharsets.UTF_8);
         Path blob = new Cas(cache).put(bytes);
+        String seededRel = MavenLayout.artifactPath(coord);
         RepoArtifactStore.forRepoName(cc.jumpkick.cache.JkStores.store(), "central")
-                .materialize(MavenLayout.artifactPath(coord), blob, Hashing.sha256Hex(bytes));
+                .materialize(seededRel, blob, Hashing.sha256Hex(bytes));
 
-        int exit = Jk.execute("library", "search", "junit", "--offline", "--cache-dir", cache.toString());
-        assertThat(exit).isZero();
-        String stdout = out.toString(StandardCharsets.UTF_8);
-        // The seeded coord is shown with its local version in the Cached column. The store is
-        // the suite-shared JK_HOME store (repos live there, JK-2176), so other tests' real
-        // syncs may legitimately add rows — assert on the seed, never on absence.
-        assertThat(stdout).contains("junit-jupiter").contains("6.1.0");
+        try {
+            int exit = Jk.execute("library", "search", "junit", "--offline", "--cache-dir", cache.toString());
+            assertThat(exit).isZero();
+            String stdout = out.toString(StandardCharsets.UTF_8);
+            // The seeded coord is shown with its local version in the Cached column. The store is
+            // the suite-shared JK_HOME store (repos live there, JK-2176), so other tests' real
+            // syncs may legitimately add rows — assert on the seed, never on absence.
+            assertThat(stdout).contains("junit-jupiter").contains("6.1.0");
+        } finally {
+            // A fake blob for a REAL coordinate poisons later offline locks that pin it (JK-2179).
+            Path seeded = cc.jumpkick.cache.JkStores.store().resolve("repos/central").resolve(seededRel);
+            java.nio.file.Files.deleteIfExists(Path.of(seeded + ".sha256"));
+            java.nio.file.Files.deleteIfExists(seeded);
+        }
     }
 
     @Test
