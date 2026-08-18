@@ -44,6 +44,37 @@ class NewProjectOpsTest {
     }
 
     @Test
+    void target_dir_scaffolds_into_the_requested_directory(@TempDir Path temp) throws Exception {
+        // JK-2142 follow-up fix 9d1fc1f5 landed without a test: targetDir wins over
+        // parentDir/name for the write location.
+        Path custom = temp.resolve("elsewhere/custom-home");
+        var created = NewProjectOps.create(new NewProjectOps.Request(
+                "x",
+                temp.toString(),
+                "com.example",
+                "java",
+                "simple",
+                null,
+                true,
+                null,
+                null,
+                0,
+                false,
+                false,
+                false,
+                null,
+                java.util.List.of(),
+                true,
+                true,
+                java.util.Map.of(),
+                true,
+                custom.toString()));
+        assertThat(created.path()).isEqualTo(custom.toAbsolutePath().normalize());
+        assertThat(custom.resolve("jk.toml")).exists();
+        assertThat(temp.resolve("x")).doesNotExist();
+    }
+
+    @Test
     void target_dir_outside_the_allowlist_is_refused_without_relax(@TempDir Path temp) {
         // JK-2166: the old check compared target against its own parent (a tautology), so a
         // relaxParent=false wire caller could scaffold anywhere via targetDir.

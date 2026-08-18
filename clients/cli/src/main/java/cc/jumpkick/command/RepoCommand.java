@@ -79,7 +79,7 @@ public final class RepoCommand extends GroupCommand {
                         cc.jumpkick.engine.EnginePaths.current(),
                         "repo-refresh",
                         cacheRoot,
-                        null,
+                        cc.jumpkick.cache.JkStores.store(),
                         List.of(),
                         in.positionals(),
                         false);
@@ -150,7 +150,7 @@ public final class RepoCommand extends GroupCommand {
                         cc.jumpkick.engine.EnginePaths.current(),
                         "repo-search",
                         cacheRoot,
-                        null,
+                        cc.jumpkick.cache.JkStores.store(),
                         terms,
                         List.of(),
                         false);

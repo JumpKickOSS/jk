@@ -36,12 +36,16 @@ public final class CacheInventoryOps {
     public static CacheInventoryAck run(Request req) throws IOException {
         String query = req.query() == null ? "" : req.query();
         Path cache = req.cache() != null ? req.cache() : JkDirs.cache();
-        Path store = req.store() != null ? req.store() : JkStores.store();
+        // Every store-tier query honors the client's store root; repos/ lives under the
+        // STORE (production passes cas.root() — the store — to RepoArtifactStore), so the
+        // repo queries must too: pointing them at <cache>/repos made jk repo search return
+        // nothing and jk repo refresh never evict (JK-2176).
+        Path store = req.store() != null ? req.store() : JkStores.storeRootFor(cache);
         return switch (query) {
             case "usage" -> cacheUsage(cache);
-            case "store-usage" -> storeUsage(cache, req.store());
-            case "repo-search" -> repoSearch(cache, req.terms() == null ? List.of() : req.terms());
-            case "repo-refresh" -> repoRefresh(cache, req.coords() == null ? List.of() : req.coords());
+            case "store-usage" -> storeUsage(store);
+            case "repo-search" -> repoSearch(store, req.terms() == null ? List.of() : req.terms());
+            case "repo-refresh" -> repoRefresh(store, req.coords() == null ? List.of() : req.coords());
             case "wipe-store" -> wipeStore(store, req.dryRun());
             default -> CacheInventoryAck.error("unknown cache inventory query: " + query);
         };
@@ -119,11 +123,7 @@ public final class CacheInventoryOps {
         return CacheInventoryAck.usage("usage", stats, total.files(), total.bytes());
     }
 
-    private static CacheInventoryAck storeUsage(Path cacheRoot, Path requestedStore) throws IOException {
-        // Honor the client's store root exactly like wipe-store does — the client resolves
-        // JK_STORE_DIR from ITS environment, and usage must count the same tree nuke would
-        // wipe (JK-2161).
-        Path storeRoot = requestedStore != null ? requestedStore : JkStores.storeRootFor(cacheRoot);
+    private static CacheInventoryAck storeUsage(Path storeRoot) throws IOException {
         Path storeCas = storeRoot.resolve("sha256");
         Path lib = storeRoot.resolve("lib");
         Path repos = storeRoot.resolve("repos");
@@ -178,9 +178,9 @@ public final class CacheInventoryOps {
         return CacheInventoryAck.usage("store-usage", stats, totalFiles, totalBytes);
     }
 
-    private static CacheInventoryAck repoSearch(Path cacheRoot, List<String> terms) {
+    private static CacheInventoryAck repoSearch(Path storeRoot, List<String> terms) {
         List<String> lower = terms.stream().map(t -> t.toLowerCase(Locale.ROOT)).toList();
-        List<RepoArtifactStore.Module> hits = RepoArtifactStore.allModules(cacheRoot).stream()
+        List<RepoArtifactStore.Module> hits = RepoArtifactStore.allModules(storeRoot).stream()
                 .filter(m -> allMatch(
                         lower, m.group().toLowerCase(Locale.ROOT), m.artifact().toLowerCase(Locale.ROOT)))
                 .sorted(Comparator.comparing(RepoArtifactStore.Module::moduleKey))
@@ -194,8 +194,8 @@ public final class CacheInventoryOps {
         return CacheInventoryAck.repoSearch(entries);
     }
 
-    private static CacheInventoryAck repoRefresh(Path cacheRoot, List<String> coords) {
-        Path reposRoot = JkStores.storeRootFor(cacheRoot).resolve("repos");
+    private static CacheInventoryAck repoRefresh(Path storeRoot, List<String> coords) {
+        Path reposRoot = storeRoot.resolve("repos");
         List<String> repoNames = repoNames(reposRoot);
         List<String> lines = new ArrayList<>();
         int evicted = 0;
@@ -210,7 +210,7 @@ public final class CacheInventoryOps {
             String relPath = MavenLayout.artifactPath(coord);
             List<String> hitRepos = new ArrayList<>();
             for (String repo : repoNames) {
-                if (RepoArtifactStore.forRepoName(cacheRoot, repo).evict(relPath)) hitRepos.add(repo);
+                if (RepoArtifactStore.forRepoName(storeRoot, repo).evict(relPath)) hitRepos.add(repo);
             }
             String packed =
                     coord.group() + "|" + coord.artifact() + "|" + coord.version() + "|" + String.join(",", hitRepos);

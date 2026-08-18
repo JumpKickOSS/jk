@@ -73,6 +73,65 @@ class CacheInventoryOpsTest {
     }
 
     @Test
+    void repo_search_matches_terms_case_insensitively(@TempDir Path tmp) throws Exception {
+        Path cache = Files.createDirectories(tmp.resolve("cache"));
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        m2Artifact(store, "central", "org/example/foo/1.0/foo-1.0.jar");
+        m2Artifact(store, "central", "org/example/bar/2.0/bar-2.0.jar");
+
+        CacheInventoryAck ack = CacheInventoryOps.run(
+                new CacheInventoryOps.Request("repo-search", cache, store, List.of("FOO"), List.of(), false));
+
+        assertThat(ack.error()).isNull();
+        assertThat(ack.entries()).containsExactly("org.example|foo|1.0");
+    }
+
+    @Test
+    void repo_refresh_evicts_across_repos_and_reports_misses(@TempDir Path tmp) throws Exception {
+        Path cache = Files.createDirectories(tmp.resolve("cache"));
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        Path a = m2Artifact(store, "central", "org/example/foo/1.0/foo-1.0.jar");
+        Path b = m2Artifact(store, "mirror", "org/example/foo/1.0/foo-1.0.jar");
+
+        CacheInventoryAck ack = CacheInventoryOps.run(new CacheInventoryOps.Request(
+                "repo-refresh", cache, store, List.of(), List.of("org.example:foo:1.0", "org.example:gone:9.9"), false));
+
+        assertThat(ack.error()).isNull();
+        assertThat(ack.evicted()).isEqualTo(1);
+        assertThat(ack.missed()).isEqualTo(1);
+        assertThat(ack.lines())
+                .containsExactly("org.example|foo|1.0|central,mirror", "org.example|gone|9.9|");
+        assertThat(a).doesNotExist();
+        assertThat(b).doesNotExist();
+    }
+
+    @Test
+    void store_usage_counts_hardlinked_blobs_once(@TempDir Path tmp) throws Exception {
+        Path cache = Files.createDirectories(tmp.resolve("cache"));
+        Path store = tmp.resolve("store");
+        Path original = Files.createDirectories(store.resolve("sha256/ab")).resolve("cd");
+        Files.write(original, new byte[] {'P', 'K', 3, 4, 1, 2, 3, 4, 5, 6});
+        Files.createLink(store.resolve("sha256/ab/alias"), original);
+
+        CacheInventoryAck ack = CacheInventoryOps.run(
+                new CacheInventoryOps.Request("store-usage", cache, store, List.of(), List.of(), false));
+
+        assertThat(ack.error()).isNull();
+        assertThat(ack.totalFiles()).isEqualTo(2);
+        assertThat(ack.totalBytes()).as("bytes are exclusive by file key").isEqualTo(10);
+    }
+
+    private static Path m2Artifact(Path storeRoot, String repo, String rel) throws Exception {
+        // repos/ lives under the STORE root (JK-2176) — the same tree production reaches
+        // via RepoArtifactStore.forRepoName(cas.root(), name).
+        Path f = storeRoot.resolve("repos").resolve(repo).resolve(rel);
+        Files.createDirectories(f.getParent());
+        Files.writeString(f, "jar-bytes");
+        Files.writeString(f.resolveSibling(f.getFileName() + ".sha256"), "abc");
+        return f;
+    }
+
+    @Test
     void unknown_query_is_an_error() throws Exception {
         CacheInventoryAck ack =
                 CacheInventoryOps.run(new CacheInventoryOps.Request("nope", null, null, List.of(), List.of(), false));
