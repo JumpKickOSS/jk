@@ -33,7 +33,7 @@ public final class IdeSourceRoots {
 
     public static List<Root> of(Path moduleDir) {
         List<Root> out = new ArrayList<>();
-        for (ModuleLayout.Root r : ModuleLayout.roots(moduleDir)) {
+        for (ModuleLayout.Root r : ModuleLayout.diskRoots(moduleDir)) {
             out.add(new Root(r.relative(), map(r.kind())));
         }
         return List.copyOf(out);

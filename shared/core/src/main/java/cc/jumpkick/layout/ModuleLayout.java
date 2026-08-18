@@ -51,15 +51,14 @@ public final class ModuleLayout {
 
     private ModuleLayout() {}
 
-    /** Compact/SIMPLE layout for this module (parses {@code jk.toml} when present). */
+    /** Compact/SIMPLE layout for this module (bootstrap {@code layout =} when present). */
     public static boolean isCompact(Path moduleDir) {
         Path toml = moduleDir.resolve("jk.toml");
         if (Files.isRegularFile(toml)) {
-            try {
-                JkBuild build = JkBuildParser.parse(toml);
-                return SourceLayout.isSimpleLayout(build.project(), moduleDir);
-            } catch (Exception ignored) {
-                // fall through
+            String layout = cc.jumpkick.config.TomlScan.scan(toml, "layout").get("layout");
+            if (layout != null) {
+                if ("traditional".equalsIgnoreCase(layout)) return false;
+                if ("simple".equalsIgnoreCase(layout)) return true;
             }
         }
         return !SourceLayout.looksTraditional(moduleDir);
@@ -146,6 +145,28 @@ public final class ModuleLayout {
      * every discovered test suite + suite resource dirs. Prefer this over hand-rolled path
      * literals.
      */
+    /**
+     * On-disk roots only — no plugin-schema parse. CLI IDE generators use this so
+     * {@code PluginDescriptor} stays off the native reachability set (JK-2151).
+     */
+    public static List<Root> diskRoots(Path moduleDir) {
+        boolean compact = isCompact(moduleDir);
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        List<Root> out = new ArrayList<>();
+
+        if (compact) {
+            addIfDir(out, seen, moduleDir, "src", Kind.SOURCE);
+            addIfDir(out, seen, moduleDir, "resources", Kind.RESOURCE);
+        } else {
+            addIfDir(out, seen, moduleDir, "src/main/java", Kind.SOURCE);
+            addIfDir(out, seen, moduleDir, "src/main/kotlin", Kind.SOURCE);
+            addIfDir(out, seen, moduleDir, "src/main/groovy", Kind.SOURCE);
+            addIfDir(out, seen, moduleDir, "src/main/resources", Kind.RESOURCE);
+        }
+        appendSuiteRoots(moduleDir, compact, seen, out);
+        return List.copyOf(out);
+    }
+
     public static List<Root> roots(Path moduleDir) {
         boolean compact = isCompact(moduleDir);
         LinkedHashSet<String> seen = new LinkedHashSet<>();
@@ -163,7 +184,11 @@ public final class ModuleLayout {
         for (Root root : pluginContributedRoots(moduleDir)) {
             addIfDir(out, seen, moduleDir, root.relative(), root.kind());
         }
+        appendSuiteRoots(moduleDir, compact, seen, out);
+        return List.copyOf(out);
+    }
 
+    private static void appendSuiteRoots(Path moduleDir, boolean compact, LinkedHashSet<String> seen, List<Root> out) {
         List<String> suites = TestSuites.discover(moduleDir, compact);
         if (!suites.contains(TestSuites.DEFAULT) && hasDefaultSuiteDir(moduleDir, compact)) {
             List<String> withDefault = new ArrayList<>();
@@ -185,7 +210,6 @@ public final class ModuleLayout {
             }
             addAbs(out, seen, moduleDir, suiteResourcesDir(moduleDir, compact, suite), Kind.TEST_RESOURCE);
         }
-        return List.copyOf(out);
     }
 
     /**

@@ -30,7 +30,7 @@ public final class SourceLayout {
      * of {@code src/} (including tests) without the test classpath, and resources are expected at
      * top-level {@code resources/} instead of {@code src/main/resources}.
      */
-    static boolean looksTraditional(Path projectDir) {
+    public static boolean looksTraditional(Path projectDir) {
         if (anySourceUnder(projectDir.resolve("src/main/kotlin"), ".kt", ".java", ".groovy")
                 || anySourceUnder(projectDir.resolve("src/main/java"), ".kt", ".java", ".groovy")
                 || anySourceUnder(projectDir.resolve("src/main/groovy"), ".kt", ".java", ".groovy")) {

@@ -7,7 +7,6 @@ import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanListener;
@@ -22,8 +21,9 @@ import java.util.List;
  * <p>Users should never have to think about the lock: clones arrive with matching
  * {@code jk.toml}/{@code jk-lock.toml}, and any local manifest edit (or rare out-of-sync pair)
  * is repaired automatically the next time a lock-dependent command runs. When the lock is
- * missing or stale ({@link LockFreshness}), this runs the engine lock plan under a live
- * CommandWedge spinner ({@code Locking g:n…}). Fresh locks are a no-op.
+ * missing or stale ({@code projectInfo.lockStale}), this runs the engine lock plan under a live
+ * CommandWedge spinner ({@code Locking g:n…}). Fresh locks are a no-op. The client does not
+ * parse {@code jk.toml} to decide staleness (JK-2151).
  *
  * <p>Call sites: explain, tree, why, audit, deny, outdated, jshell, status, export, ide, sync,
  * plugin install-local, and anything else that reads the lock. Build already freshes engine-side.
@@ -70,7 +70,7 @@ public final class EnsureFreshLock {
         if (!Files.isRegularFile(dir.resolve("jk.toml"))) {
             return Exit.SUCCESS; // caller already validated project
         }
-        if (!LockFreshness.needsRefresh(dir)) {
+        if (!needsRefresh(dir)) {
             return Exit.SUCCESS;
         }
 
@@ -116,6 +116,17 @@ public final class EnsureFreshLock {
         } catch (Exception e) {
             return failSoftOrHard(dir, chip, "could not refresh jk-lock.toml: " + e.getMessage(), Exit.CONFIG, spinner);
         }
+    }
+
+    /**
+     * Engine-side staleness: {@link cc.jumpkick.engine.protocol.ProjectInfo#lockStale()} plus a
+     * missing lock file. A down/errored info is treated as stale so we still try to freshen.
+     */
+    public static boolean needsRefresh(Path projectDir) {
+        Path owner = lockOwnerOrSelf(projectDir);
+        if (!Files.isRegularFile(LockPaths.lockFile(owner))) return true;
+        var info = cc.jumpkick.command.BuildCommand.projectInfoOrNull(owner);
+        return info == null || info.lockStale();
     }
 
     /**

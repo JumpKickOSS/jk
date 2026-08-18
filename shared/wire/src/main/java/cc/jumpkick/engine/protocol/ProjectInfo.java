@@ -60,7 +60,8 @@ public record ProjectInfo(
         String groovyClassesDir,
         String testResultsDir,
         List<String> testIncludeTags,
-        List<String> testExcludeTags) {
+        List<String> testExcludeTags,
+        boolean lockStale) {
 
     /** The {@code group:name} display coordinate. */
     public String coord() {
@@ -116,7 +117,8 @@ public record ProjectInfo(
                 "",
                 "",
                 List.of(),
-                List.of());
+                List.of(),
+                false);
     }
 
     public String encode() {
@@ -169,6 +171,7 @@ public record ProjectInfo(
                 + ",\"testResultsDir\":" + Jsonl.quote(testResultsDir)
                 + ",\"testIncludeTags\":" + EngineProtocol.quoteArray(testIncludeTags)
                 + ",\"testExcludeTags\":" + EngineProtocol.quoteArray(testExcludeTags)
+                + ",\"lockStale\":" + lockStale
                 + "}";
     }
 
@@ -222,7 +225,8 @@ public record ProjectInfo(
                 orEmpty(Jsonl.str(line, "groovyClassesDir")),
                 orEmpty(Jsonl.str(line, "testResultsDir")),
                 Jsonl.strArray(line, "testIncludeTags"),
-                Jsonl.strArray(line, "testExcludeTags"));
+                Jsonl.strArray(line, "testExcludeTags"),
+                Jsonl.bool(line, "lockStale", false));
     }
 
     /** {@code ,"key":true|false} when set; empty string when unset (tri-state). */

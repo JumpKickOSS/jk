@@ -214,7 +214,8 @@ public final class ExecPlans {
                     layoutOf(build, dir, BuildLayout::groovyClassesDir),
                     layoutOf(build, dir, BuildLayout::testResultsDir),
                     testTags.includeTags(),
-                    testTags.excludeTags());
+                    testTags.excludeTags(),
+                    hasLock && cc.jumpkick.lock.LockFreshness.isStale(dir, lockFile));
         } catch (RuntimeException | IOException e) {
             return ProjectInfo.error(String.valueOf(e.getMessage()));
         }

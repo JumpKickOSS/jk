@@ -59,8 +59,30 @@ val checkCliRuntimeClasspath by tasks.registering {
         }
     }
 }
-tasks.named("check") { dependsOn(checkCliRuntimeClasspath) }
-tasks.named("jar") { dependsOn(checkCliRuntimeClasspath) }
+
+// JK-2151: native reachability — CLI main must not name parser / plugin-schema types.
+val checkCliNoParseTypes by tasks.registering {
+    val main = layout.projectDirectory.dir("src/main/java")
+    inputs.dir(main)
+    doLast {
+        val banned = listOf(
+            "JkBuildParser",
+            "PluginDescriptor",
+            "PluginTableRegistry",
+            "LockFreshness",
+            "LockManifestDigest",
+            "PluginContributions")
+        val hits = fileTree(main) { include("**/*.java") }.files.flatMap { f ->
+            val text = f.readText()
+            banned.filter { text.contains(it) }.map { "${f.name}: $it" }
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("CLI main must not reference parser/plugin-schema types (JK-2151): $hits")
+        }
+    }
+}
+tasks.named("check") { dependsOn(checkCliRuntimeClasspath); dependsOn(checkCliNoParseTypes) }
+tasks.named("jar") { dependsOn(checkCliRuntimeClasspath); dependsOn(checkCliNoParseTypes) }
 
 // Thin JVM client (installDist) — no engine on the classpath. Spawns jk-engine.jar via VersionStore
 // / JK_ENGINE_EXE. Prefer the native image for production dist; this path is for Temurin-only CI.

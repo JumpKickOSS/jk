@@ -16,7 +16,6 @@ import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.cli.tui.Tree;
-import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -155,7 +154,7 @@ public final class ExplainCommand implements CliCommand {
         // Live prep wedge: Locking versions… → Calculating build plan… (or Calibrating host…),
         // then clear and print the settled Build Plan tree.
         boolean livePrep = EnsureFreshLock.isInteractiveAuto(global) && !global.outputIsJson();
-        boolean needsLock = LockFreshness.needsRefresh(startDir);
+        boolean needsLock = EnsureFreshLock.needsRefresh(startDir);
         boolean needsCalibrate = HostCalibrationStatus.needsBootstrapProbe();
         String prepMsg =
                 needsLock ? "Locking versions…" : needsCalibrate ? "Calibrating host…" : "Calculating build plan…";

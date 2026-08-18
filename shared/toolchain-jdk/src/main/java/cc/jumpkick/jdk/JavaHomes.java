@@ -49,7 +49,22 @@ public final class JavaHomes {
     private static JkBuild readBuildSoft(Path projectDir) {
         try {
             Path toml = projectDir.resolve("jk.toml");
-            return Files.isRegularFile(toml) ? cc.jumpkick.config.JkBuildParser.parse(toml) : null;
+            if (!Files.isRegularFile(toml)) return null;
+            var scan = cc.jumpkick.config.TomlScan.scan(toml, "jdk", "java");
+            String jdk = scan.get("jdk");
+            String java = scan.get("java");
+            int release = 0;
+            if (java != null && !java.isBlank()) {
+                try {
+                    release = Integer.parseInt(java.strip());
+                } catch (NumberFormatException ignored) {
+                    // leave 0 — resolver falls back
+                }
+            }
+            return JkBuild.of(JkBuild.Project.builder("local", "local", "0")
+                    .jdk(jdk)
+                    .java(release)
+                    .build());
         } catch (Exception e) {
             return null;
         }
