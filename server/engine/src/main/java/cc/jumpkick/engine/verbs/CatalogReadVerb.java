@@ -53,6 +53,7 @@ public final class CatalogReadVerb implements HostedVerb {
                 ack = CatalogReadOps.read(new CatalogReadOps.Request(
                         Path.of(dir),
                         cache == null || cache.isBlank() ? null : Path.of(cache),
+                        null,
                         Jsonl.str(requestLine, "query"),
                         Jsonl.strArray(requestLine, "terms"),
                         Jsonl.bool(requestLine, "offline", false),
