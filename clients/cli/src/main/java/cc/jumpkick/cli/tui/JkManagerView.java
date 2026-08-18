@@ -222,8 +222,8 @@ final class JkManagerView {
 
     /**
      * Ensure the first plain prepare/progress line exists once aggregate progress is known. Must
-     * hold the manager lock. Later mid-run lines come from stage changes, {@code built}, and
-     * {@code done} — not from percent ticks.
+     * hold the manager lock. Later mid-run lines come from stage changes, a 30s heartbeat while a
+     * stage is active, {@code built}, and {@code done} — not from percent ticks.
      */
     void ensurePlainProgressStarted(long num, long den) {
         if (m.done || den <= 0 || m.plainProgressStarted) return;
@@ -236,6 +236,29 @@ final class JkManagerView {
             if (subject.isEmpty()) subject = m.planCoord == null ? "" : m.planCoord;
         }
         printPlainSnapshot(0, status, false, subject, "");
+    }
+
+    /**
+     * Reprint the current stage when it has been silent for {@link JkManager#PLAIN_HEARTBEAT_MS}.
+     * Must hold the manager lock. Refreshes percent, ETA, and live status details (e.g. remaining
+     * tests).
+     */
+    void maybeEmitPlainHeartbeat() {
+        if (m.done || !m.animate || !m.plainProgressMode || !m.plainProgressStarted) return;
+        if (m.plainLastPrintedNanos == 0) return;
+        long elapsedNs = System.nanoTime() - m.plainLastPrintedNanos;
+        if (elapsedNs < JkManager.PLAIN_HEARTBEAT_MS * 1_000_000L) return;
+        if (firstActiveRow() == null) return;
+        String status = currentPlainStatus();
+        if (PlainPhase.PREPARE.equals(status)
+                || PlainPhase.DONE.equals(status)
+                || PlainPhase.BUILT.equals(status)
+                || PlainPhase.INITIALIZING.equals(status)) {
+            return;
+        }
+        // Same gate as phase-change: wait for "compiling N sources" / "running N tests".
+        if ("compiling".equals(status) || PlainPhase.RUNNING_TESTS.equals(status)) return;
+        printPlainSnapshot(currentPlainPercent(), status, false, currentPlainSubject(), "", true);
     }
 
     /** First ETA seed: print immediately as {@code start} on the workspace coordinate. */
@@ -345,10 +368,15 @@ final class JkManagerView {
     }
 
     private void printPlainSnapshot(int percent, String status, boolean doneLine) {
-        printPlainSnapshot(percent, status, doneLine, currentPlainSubject(), "");
+        printPlainSnapshot(percent, status, doneLine, currentPlainSubject(), "", false);
     }
 
     private void printPlainSnapshot(int percent, String status, boolean doneLine, String subject, String detail) {
+        printPlainSnapshot(percent, status, doneLine, subject, detail, false);
+    }
+
+    private void printPlainSnapshot(
+            int percent, String status, boolean doneLine, String subject, String detail, boolean force) {
         String line = doneLine
                 ? JkWedge.plainWedge(
                         Glyphs.PULSE_PLAIN, planName(), formatPlainTail(subject, 100, null, PlainPhase.DONE, ""))
@@ -356,18 +384,20 @@ final class JkManagerView {
                         Glyphs.PULSE_PLAIN,
                         planName(),
                         formatPlainTail(subject, percent, plainEtaClock(), status, detail));
-        if (!doneLine && !shouldPrintPlain(status, subject, detail)) return;
+        if (!doneLine && !force && !shouldPrintPlain(status, subject, detail)) return;
         m.plainLastSubject = subject == null ? "" : subject;
         m.plainLastStatus = status == null ? "" : status;
         m.out.println(line);
         m.plainChromeStarted = true;
         m.plainProgressStarted = true;
+        m.plainLastPrintedNanos = System.nanoTime();
         m.out.flush();
     }
 
     /**
      * Print on a new module/phase ({@code start}/{@code built}/{@code prepare}/…), or a verbose
-     * detail. Same module+phase with only an ETA/percent tick is suppressed.
+     * detail. Same module+phase with only an ETA/percent tick is suppressed; the 30s heartbeat
+     * bypasses this via {@code force}.
      */
     private boolean shouldPrintPlain(String status, String subject, String detail) {
         if (detail != null && !detail.isBlank()) return true;

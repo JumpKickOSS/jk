@@ -38,6 +38,9 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     static final int PULSE_FRAMES = Spinner.PULSE_FRAMES;
     static final long FRAME_MS = Spinner.FRAME_MS;
 
+    /** Plain ({@code --no-ansi}) long-stage heartbeat: reprint status at this interval. */
+    static final long PLAIN_HEARTBEAT_MS = 30_000L;
+
     /** Flush a captured partial line (no newline yet) after this much quiet. */
     private static final long STALE_FLUSH_MS = 360;
 
@@ -99,8 +102,8 @@ public final class JkManager implements AutoCloseable, LiveRegion {
 
     /**
      * Plain ({@code --no-ansi}) multi-line progress: false until the first prepare/progress line.
-     * Mid-run lines print on stage changes, module {@code built}, and settle {@code done} — not on
-     * percent ticks.
+     * Mid-run lines print on stage changes, a 30s heartbeat while a stage is active, module
+     * {@code built}, and settle {@code done} — not on percent ticks.
      */
     boolean plainProgressStarted;
 
@@ -113,10 +116,13 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /** True after the first plain line that included a known ETA. */
     boolean plainEtaAnnounced;
 
-    /** Last printed plain subject + status — suppress same-phase reprints. */
+    /** Last printed plain subject + status — suppress same-phase reprints (heartbeat forces). */
     String plainLastSubject = "";
 
     String plainLastStatus = "";
+
+    /** {@link System#nanoTime()} of the last plain progress line; 0 before any line. */
+    long plainLastPrintedNanos;
 
     // simple mode
     String label = "";
@@ -304,8 +310,10 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             out.flush();
             cm.startAnimator();
             cm.startKeyListener();
+        } else if (animate) {
+            // Plain plan: stage/ETA/settle lines are event-driven; heartbeat covers long stages.
+            cm.startPlainHeartbeat();
         }
-        // Plain plan: Initializing / percent lines emit from progress, phase, ETA, and settle.
         return cm;
     }
 
@@ -507,8 +515,8 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * A static test finished. Decrements the plain remaining-test count without printing — plain
-     * mode only reprints on a stage change, so mid-stage countdown ticks stay silent.
+     * A static test finished. Decrements the plain remaining-test count without printing — the next
+     * stage-change or 30s heartbeat line shows the updated {@code running N tests}.
      */
     public void notePlainTestTick(String module, String stepKey, int delta) {
         if (!animate || Theme.active().isAnsi()) return;
@@ -908,6 +916,13 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         view.ensurePlainProgressStarted(num, den);
     }
 
+    /** Package-private for tests — force a plain heartbeat check under the manager lock. */
+    void maybeEmitPlainHeartbeat() {
+        synchronized (lock) {
+            view.maybeEmitPlainHeartbeat();
+        }
+    }
+
     static String plainProgressLine(String command, String message, int percent, boolean done) {
         return JkManagerView.plainProgressLine(command, message, percent, done);
     }
@@ -1153,6 +1168,13 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         animator.start();
     }
 
+    /** Plain-mode background thread: wake about once a second and emit a 30s stage heartbeat. */
+    private void startPlainHeartbeat() {
+        animator = new Thread(this::plainHeartbeatLoop, "jk-plain-heartbeat");
+        animator.setDaemon(true);
+        animator.start();
+    }
+
     private void loop() {
         try {
             while (!stopped) {
@@ -1163,6 +1185,20 @@ public final class JkManager implements AutoCloseable, LiveRegion {
                 if (s != null) s.maybeFlushStale(STALE_FLUSH_MS);
                 tick();
                 Thread.sleep(FRAME_MS);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private void plainHeartbeatLoop() {
+        try {
+            while (!stopped) {
+                Thread.sleep(1_000L);
+                synchronized (lock) {
+                    if (done || stopped) return;
+                    view.maybeEmitPlainHeartbeat();
+                }
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

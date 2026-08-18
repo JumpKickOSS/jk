@@ -640,6 +640,46 @@ class JkManagerTest {
     }
 
     @Test
+    void plain_progress_heartbeats_long_running_stages_every_30s() {
+        var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
+        cc.jumpkick.config.SessionContext.runWhere(
+                cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
+                    var buf = new ByteArrayOutputStream();
+                    var cm = JkManager.plan(stream(buf), "Build", true);
+                    try {
+                        cm.setPlanCoord("cc.jumpkick:jk");
+                        cm.setRemainingWorkEstimate(90_000);
+                        cm.progress(0, 100);
+                        cm.addTask("cc.jumpkick:jk-cli", "run-tests");
+                        cm.stepRunning("cc.jumpkick:jk-cli", "run-tests", "test");
+                        cm.stepMessage("cc.jumpkick:jk-cli", "run-tests", "running 860 tests");
+                        cm.progress(9, 100);
+                        String before = buf.toString(StandardCharsets.UTF_8);
+                        assertThat(before).contains("- running 860 tests");
+                        assertThat(before).doesNotContain("running 759 tests");
+
+                        // Under 30s: still silent even with a fresher remaining count.
+                        cm.notePlainTestTick("cc.jumpkick:jk-cli", "run-tests", 101);
+                        cm.maybeEmitPlainHeartbeat();
+                        assertThat(buf.toString(StandardCharsets.UTF_8)).doesNotContain("running 759 tests");
+
+                        // At/after 30s: reprint with live details (percent may be clock-based).
+                        cm.plainLastPrintedNanos = System.nanoTime() - JkManager.PLAIN_HEARTBEAT_MS * 1_000_000L - 1;
+                        cm.maybeEmitPlainHeartbeat();
+                        String out = buf.toString(StandardCharsets.UTF_8);
+                        assertThat(out).contains("cc.jumpkick:jk-cli ::");
+                        assertThat(out).contains("- running 759 tests");
+                        assertThat(out.split("- running 860 tests", -1).length - 1)
+                                .isEqualTo(1);
+                        assertThat(out.split("- running 759 tests", -1).length - 1)
+                                .isEqualTo(1);
+                    } finally {
+                        cm.finishBuildPlanSuccess("Build successful, built 1 module - took 1s", List.of());
+                    }
+                });
+    }
+
+    @Test
     void plain_native_detail_is_verbose_only() {
         var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
         cc.jumpkick.config.SessionContext.runWhere(

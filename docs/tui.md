@@ -98,6 +98,7 @@ jk: * Build > cc.jumpkick:jk-cli :: 4% (ETA ~1m 14s) - resolving
 jk: * Build > cc.jumpkick:jk-cli :: 4% (ETA ~1m 14s) - generating
 jk: * Build > cc.jumpkick:jk-cli :: 4% (ETA ~1m 14s) - compiling 12 sources
 jk: * Build > cc.jumpkick:jk-cli :: 4% (ETA ~1m 12s) - running 80 tests
+jk: * Build > cc.jumpkick:jk-cli :: 9% (ETA ~45s) - running 50 tests
 jk: * Build > cc.jumpkick:jk-cli :: 47% (ETA ~47s) - packaging
 jk: * Build > cc.jumpkick:jk-cli :: 52% (ETA ~42s) - native compiling
 jk: * Build > cc.jumpkick:jk-cli :: 90% (ETA ~8s) - built
@@ -105,7 +106,7 @@ jk: * Build > cc.jumpkick:jk :: 100% - done
 jk: + Build > Build successful for 1 module - took 1m 16s
 ```
 
-`subject :: percent% (ETA ~…) - status`. The workspace coordinate is on `prepare`, `start`, and `done`. Compile shows a source count (`compiling 12 sources`); tests show a remaining count on the stage-entry line (`running 80 tests`). Other phases stay as lowercase gerunds. Lines print on stage/phase changes, when a module finishes (`built`), as soon as an ETA is known (`start`), and on settle (`done`) — not on percent ticks. Same module+phase reprints are suppressed. Sub-step detail (e.g. native classpath size) is appended only with `-v`.
+`subject :: percent% (ETA ~…) - status`. The workspace coordinate is on `prepare`, `start`, and `done`. Compile shows a source count (`compiling 12 sources`); tests show a remaining count (`running 80 tests`) that refreshes on the stage-entry line and on the 30s heartbeat. Other phases stay as lowercase gerunds. Lines print on stage/phase changes, every **30 seconds** while a stage stays active (fresher percent/ETA/status details), when a module finishes (`built`), as soon as an ETA is known (`start`), and on settle (`done`) — not on percent ticks. Same module+phase reprints are otherwise suppressed. Sub-step detail (e.g. native classpath size) is appended only with `-v`.
 
 ### Completed-module tail
 
@@ -277,7 +278,7 @@ Under `--output json` / `jsonl`, suppress human chrome (no envelope, no wedge). 
 | Code | `SourceCode.java` / `JavaCode` / `KotlinCode` / `GroovyCode` |
 | Prompt | `Prompt.java`, `Confirmation.java` (`Confirm` façade) |
 | Wizard parts | `WizardSection`, `TextInput`, `Checkbox`, `RadioButton`, `RadioButtonGroup` |
-| Progress | `cli/tui/Progress.java` + `ProgressBar.java` + `PlainPhase.java` (plain live cadence: stage changes, `built`/`done`, `jk: ` prefix) |
+| Progress | `cli/tui/Progress.java` + `ProgressBar.java` + `PlainPhase.java` (plain live cadence: stage changes, 30s heartbeat, `built`/`done`, `jk: ` prefix) |
 | Tables | `cli/tui/Table.java`. Append snaps child rails to parent edges |
 | Trees | `cli/tui/Tree.java` — optional title/root, {@code Gap} / {@code BodyFit}, pills, hanging rich text |
 | Glyphs | `cli/tui/Glyphs.java` |
