@@ -36,7 +36,7 @@ class ExplainCommandEstimateTest {
     }
 
     @Test
-    void buildGraph_uses_name_pills_and_skips_index() {
+    void buildGraph_uses_bright_cyan_rebuild_names_and_skips_index() {
         var dirty = TaskForecast.Module.fromWire(
                 Path.of("/tmp/a"),
                 "com.example:app",
@@ -64,13 +64,15 @@ class ExplainCommandEstimateTest {
         assertThat(joined).contains("* com.example:root");
         assertThat(joined).contains("[Fully Cached]").contains("1 module is fresh");
         assertThat(joined).contains("[Rebuild]").contains("1 module is dirty");
-        assertThat(joined).contains("[app]");
+        // Rebuild modules are bold bright-cyan text, not branded [name] pills.
+        assertThat(joined).contains("app");
+        assertThat(joined).doesNotContain("[app]");
         assertThat(joined).doesNotContain("[01]").doesNotContain("01");
         assertThat(joined).contains("[ ] Compile");
         // Cached names hang off Fully Cached with no extra spine; Rebuild has a spacer.
         assertThat(joined).contains(" +-[Fully Cached]");
         assertThat(joined).contains("    |");
-        assertThat(joined).contains("    `-[app]");
+        assertThat(joined).contains("    `- app");
     }
 
     @Test
