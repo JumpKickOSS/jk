@@ -17,6 +17,8 @@ import cc.jumpkick.cli.run.SessionMirrorListener;
 import cc.jumpkick.cli.run.TestFailureHighlight;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.JkManager;
+import cc.jumpkick.cli.tui.ModuleScopeHint;
+import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -131,29 +133,16 @@ public final class TestCommand implements CliCommand {
         int workerCount = workers != null ? Math.max(0, workers) : 0;
 
         var info = BuildCommand.projectInfoOrNull(dir);
+        CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(dir, modulesSpec, info);
+        if (cwdScope.inferredFromCwd()) this.modulesSpec = cwdScope.modulesSpec();
 
         // Workspace root: fan out to members so a bare `jk test` is not just the root
-        // module's (usually empty) suite.
+        // module's (usually empty) suite. Member dir: same as `jk test -m <this-module>`.
         if (info != null && info.workspaceRoot()) {
-            List<String> tokens = ModuleSelectors.tokens(modulesSpec, affectedSince);
-            if (!tokens.isEmpty()) {
-                var sel = BuildCommand.projectInfoOrError(dir, modulesSpec, affectedSince);
-                if (sel.error() != null && !sel.error().isBlank()) {
-                    cc.jumpkick.cli.tui.CommandWedge.printFail("Test", sel.error());
-                    if (session != null) session.error(sel.error());
-                    return finishSession(Exit.CONFIG);
-                }
-                if (sel.moduleDirs().isEmpty()) {
-                    cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "nothing selected for tests");
-                    if (session != null) session.wedge("nothing selected for tests");
-                    return finishSession(0);
-                }
-            } else if (info.moduleDirs().isEmpty()) {
-                cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "workspace declares no modules");
-                if (session != null) session.wedge("workspace declares no modules");
-                return finishSession(0);
-            }
-            return finishSession(runWorkspaceTests(dir, cache, workerCount, tokens));
+            return finishSession(runSelectedWorkspaceTests(dir, info, cache, workerCount));
+        }
+        if (cwdScope.workspaceMember()) {
+            return finishSession(runSelectedWorkspaceTests(cwdScope.workspaceRoot(), null, cache, workerCount));
         }
 
         // Single-module selective: --modules / --affected-since may exclude this dir.
@@ -260,6 +249,34 @@ public final class TestCommand implements CliCommand {
     }
 
     /**
+     * Validate {@code -m}/{@code --affected-since} (including cwd inference) and run workspace
+     * tests from {@code entryDir}. {@code rootInfo} is the unfiltered workspace peek when already
+     * loaded (root invocation); null when the caller is a member dir.
+     */
+    private int runSelectedWorkspaceTests(Path entryDir, ProjectInfo rootInfo, Path cache, int workerCount)
+            throws IOException, InterruptedException {
+        List<String> tokens = ModuleSelectors.tokens(modulesSpec, affectedSince);
+        if (!tokens.isEmpty()) {
+            var sel = BuildCommand.projectInfoOrError(entryDir, modulesSpec, affectedSince);
+            if (sel.error() != null && !sel.error().isBlank()) {
+                cc.jumpkick.cli.tui.CommandWedge.printFail("Test", sel.error());
+                if (session != null) session.error(sel.error());
+                return Exit.CONFIG;
+            }
+            if (sel.moduleDirs().isEmpty()) {
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "nothing selected for tests");
+                if (session != null) session.wedge("nothing selected for tests");
+                return 0;
+            }
+        } else if (rootInfo != null && rootInfo.moduleDirs().isEmpty()) {
+            cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "workspace declares no modules");
+            if (session != null) session.wedge("workspace declares no modules");
+            return 0;
+        }
+        return runWorkspaceTests(entryDir, cache, workerCount, tokens);
+    }
+
+    /**
      * Workspace tests: one engine {@code buildWorkspace} RPC with {@code testOnly=true} — same
      * live aggregate TUI as {@code jk build} (single {@link JkManager} header + bar + module
      * tree), terminal target {@code run-tests} per module instead of package.
@@ -268,20 +285,30 @@ public final class TestCommand implements CliCommand {
             throws IOException, InterruptedException {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
+        List<String> scopeNames = List.of();
+        if (modules != null && !modules.isEmpty()) {
+            scopeNames =
+                    ModuleScopeHint.namesFrom(BuildCommand.projectInfoOrError(entryDir, modulesSpec, affectedSince));
+            if (!live) {
+                ModuleScopeHint.print("testing", scopeNames, global != null && global.outputIsJson());
+            }
+        }
         if (!live) {
             return runWorkspaceTestsHeadless(entryDir, cache, workerCount, modules);
         }
-        return runWorkspaceTestsLive(entryDir, cache, workerCount, modules);
+        return runWorkspaceTestsLive(entryDir, cache, workerCount, modules, scopeNames);
     }
 
     /** Live TTY: one JkManager "Test" region — mirrors {@link BuildCommand} workspace live path. */
-    private int runWorkspaceTestsLive(Path entryDir, Path cache, int workerCount, List<String> modules) {
+    private int runWorkspaceTestsLive(
+            Path entryDir, Path cache, int workerCount, List<String> modules, List<String> scopeNames) {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         cc.jumpkick.cli.engine.EnginePrewarm.ensure();
         long start = System.nanoTime();
         JkManager view = JkManager.plan(CliOutput.stdout(), "Test", animate);
         view.setWindowTitle("JumpKick - Testing " + BuildCommand.projectGavLabel(entryDir) + "...");
+        ModuleScopeHint.show("testing", scopeNames, global != null && global.outputIsJson(), view);
         AggregateContext agg = new AggregateContext(view);
         Map<Path, List<String>> buffers = new ConcurrentHashMap<>();
         List<String> deferredOutput = Collections.synchronizedList(new ArrayList<>());

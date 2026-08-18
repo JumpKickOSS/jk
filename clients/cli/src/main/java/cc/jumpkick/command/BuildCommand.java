@@ -13,6 +13,7 @@ import cc.jumpkick.cli.tui.Coord;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.JkWedge;
+import cc.jumpkick.cli.tui.ModuleScopeHint;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.engine.protocol.ProjectInfo;
@@ -130,8 +131,10 @@ public final class BuildCommand implements CliCommand {
         this.session = CliSessionTranscript.open(startDir, "build", buildArgv(in));
         if (session != null) session.announceIf(global != null && global.verbose);
 
-        // Workspace root or module → full workspace build in topological order.
+        // Workspace root: whole graph. Workspace member: same as `-m <this-module>`.
         cc.jumpkick.engine.protocol.ProjectInfo peek = projectInfoOrNull(startDir);
+        CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(startDir, modulesSpec, peek);
+        if (cwdScope.inferredFromCwd()) this.modulesSpec = cwdScope.modulesSpec();
 
         if (peek != null && peek.workspaceRoot()) {
             if (aotCache) {
@@ -142,17 +145,8 @@ public final class BuildCommand implements CliCommand {
             }
             return finishSession(buildWorkspace(startDir));
         }
-        if (peek != null
-                && !peek.workspaceRootDir().isEmpty()
-                && !peek.workspaceRootDir().equals(startDir.toString())) {
-            Path root = Path.of(peek.workspaceRootDir());
-            if (!global.outputIsJson()) {
-                // Informational handoff when invoked from a module dir — not a failure.
-                cc.jumpkick.cli.tui.CommandWedge.printWorking(
-                        "Build",
-                        "building workspace from " + root.getFileName() + " (module: " + startDir.getFileName() + ")");
-            }
-            return finishSession(buildWorkspace(root));
+        if (cwdScope.workspaceMember()) {
+            return finishSession(buildWorkspace(cwdScope.workspaceRoot()));
         }
         // Single project: -m/--affected-since still validate — `-m bogus` must not
         // silently build; a matching selector is just this project.
@@ -256,6 +250,9 @@ public final class BuildCommand implements CliCommand {
                 cc.jumpkick.cli.tui.CommandWedge.printOk("Build", selectionEmptyMessage());
                 return 0;
             }
+            if (sel != null) {
+                ModuleScopeHint.print("building", sel.names(), global != null && global.outputIsJson());
+            }
             return runWorkspaceHeadless(entryDir, cache, sel != null ? sel.tokens() : List.of());
         }
 
@@ -271,6 +268,9 @@ public final class BuildCommand implements CliCommand {
         JkManager view = JkManager.plan(CliOutput.stdout(), "Build", animate);
         // OSC 0 tab/window title while the live build region is open.
         view.setWindowTitle("JumpKick - Building " + projectGavLabel(entryDir) + "...");
+        if (sel != null && sel.error() == null && !sel.empty()) {
+            ModuleScopeHint.show("building", sel.names(), global != null && global.outputIsJson(), view);
+        }
         AggregateContext earlyAgg = new AggregateContext(view);
         // Do not client-seed a "checking" phase row — the engine owns Checking /
         // Lock / Graph preflight events on the single build RPC. A seed left a
@@ -302,7 +302,11 @@ public final class BuildCommand implements CliCommand {
     }
 
     /** Resolved {@code -m/--affected-since} selection: at most one of the fields is meaningful. */
-    private record Selection(String error, boolean empty, List<String> tokens) {}
+    private record Selection(String error, boolean empty, List<String> tokens, List<String> names) {
+        Selection(String error, boolean empty, List<String> tokens) {
+            this(error, empty, tokens, List.of());
+        }
+    }
 
     private Selection resolveSelection(Path entryDir) {
         List<String> tokens = ModuleSelectors.tokens(modulesSpec, affectedSince);
@@ -314,8 +318,9 @@ public final class BuildCommand implements CliCommand {
         if (info.error() != null && !info.error().isBlank()) {
             return new Selection(info.error(), false, List.of());
         }
-        if (info.moduleDirs().isEmpty()) return new Selection(null, true, tokens);
-        return new Selection(null, false, tokens);
+        List<String> names = ModuleScopeHint.namesFrom(info);
+        if (info.moduleDirs().isEmpty()) return new Selection(null, true, tokens, names);
+        return new Selection(null, false, tokens, names);
     }
 
     private String selectionEmptyMessage() {

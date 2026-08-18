@@ -115,6 +115,13 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     // plan mode
     String name = "";
     String target = "";
+    /**
+     * Gerund for the module-selection caption ({@code building}, {@code testing}, …). Empty when
+     * the plan is the whole workspace.
+     */
+    String scopeHintVerb = "";
+    /** Project {@code name}s shown in the caption. Empty when unset. */
+    List<String> scopeHintNames = List.of();
     // Package-private: JkManagerTest rewinds the wall anchor to simulate elapsed time.
     long startNanos;
     long numerator;
@@ -347,6 +354,17 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     public void target(String module) {
         synchronized (lock) {
             this.target = module == null ? "" : module;
+        }
+    }
+
+    /**
+     * Caption above the wedge: {@code  …building module jk-cli…}. Empty {@code verb} or {@code
+     * names} clears it.
+     */
+    public void setModuleScopeHint(String verb, List<String> names) {
+        synchronized (lock) {
+            scopeHintVerb = verb == null ? "" : verb;
+            scopeHintNames = names == null || names.isEmpty() ? List.of() : List.copyOf(names);
         }
     }
 

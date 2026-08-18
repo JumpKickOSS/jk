@@ -22,8 +22,7 @@ public final class ModuleHints {
      */
     public static Set<Path> withPrereqs(Path entryDir, JkBuild entry, Set<Path> selected) {
         if (selected == null || selected.isEmpty()) return Set.of();
-        Set<Path> want = new LinkedHashSet<>();
-        for (Path p : selected) want.add(BuildGraph.canonicalPath(p));
+        Set<Path> want = copyCanonical(selected);
         if (entry == null || !entry.isWorkspaceRoot()) return Set.copyOf(want);
         BuildGraph.Result graph;
         try {
@@ -34,6 +33,14 @@ public final class ModuleHints {
         if (graph.hasErrors()) {
             throw new IllegalArgumentException(String.join("; ", graph.errors()));
         }
+        return withPrereqs(graph, selected);
+    }
+
+    /** Same as {@link #withPrereqs(Path, JkBuild, Set)} against an already-resolved graph. */
+    public static Set<Path> withPrereqs(BuildGraph.Result graph, Set<Path> selected) {
+        if (selected == null || selected.isEmpty()) return Set.of();
+        Set<Path> want = copyCanonical(selected);
+        if (graph == null) return Set.copyOf(want);
         var edges = graph.edges();
         ArrayDeque<Path> q = new ArrayDeque<>(want);
         while (!q.isEmpty()) {
@@ -44,5 +51,11 @@ public final class ModuleHints {
             }
         }
         return Set.copyOf(want);
+    }
+
+    private static Set<Path> copyCanonical(Set<Path> selected) {
+        Set<Path> want = new LinkedHashSet<>();
+        for (Path p : selected) want.add(BuildGraph.canonicalPath(p));
+        return want;
     }
 }

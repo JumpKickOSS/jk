@@ -88,8 +88,12 @@ public final class ImageCommand implements CliCommand {
         // -m/--modules: an image is built for exactly one module — redirect to it.
         String modulesSpec = in.value("modules").orElse(null);
         String affectedSince = in.value("affected-since").orElse(null);
+        var peekEarly = BuildCommand.projectInfoOrNull(projectDir);
+        CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(projectDir, modulesSpec, peekEarly);
+        if (cwdScope.inferredFromCwd()) modulesSpec = cwdScope.modulesSpec();
         if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {
-            var selected = BuildCommand.projectInfoOrError(projectDir, modulesSpec, affectedSince);
+            Path selectRoot = cwdScope.workspaceMember() ? cwdScope.workspaceRoot() : projectDir;
+            var selected = BuildCommand.projectInfoOrError(selectRoot, modulesSpec, affectedSince);
             if (selected.error() != null && !selected.error().isBlank()) {
                 cc.jumpkick.cli.tui.CommandWedge.printFail("Image", selected.error());
                 return Exit.CONFIG;
@@ -223,6 +227,12 @@ public final class ImageCommand implements CliCommand {
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         cc.jumpkick.cli.tui.JkManager view =
                 cc.jumpkick.cli.tui.JkManager.plan(cc.jumpkick.cli.CliOutput.stdout(), "Image", animate);
+        var moduleInfo = BuildCommand.projectInfoOrNull(moduleDir);
+        cc.jumpkick.cli.tui.ModuleScopeHint.show(
+                "building",
+                cc.jumpkick.cli.tui.ModuleScopeHint.namesFrom(moduleInfo),
+                global != null && global.outputIsJson(),
+                view);
         cc.jumpkick.cli.run.AggregateContext agg = new cc.jumpkick.cli.run.AggregateContext(view);
         int[] finished = {0};
         cc.jumpkick.runtime.ModuleOutcome.Image[] imageOut = {null};

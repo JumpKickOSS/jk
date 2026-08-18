@@ -180,7 +180,7 @@ public final class WorkspaceExecute {
         units = graph.topoOrder();
         if (units.isEmpty()) {
             // A NON-EMPTY selection that matches nothing is an error, not a clean no-op —
-            // success(0) here silently "built" a mistyped -m selection (JK-2101).
+            // success(0) here silently "built" a mistyped -m selection.
             WorkspaceSpec spec = req.spec();
             if (spec != null && spec.hasSelection()) {
                 String sel = spec.selectedModules().stream()
@@ -219,7 +219,9 @@ public final class WorkspaceExecute {
         BuildForecasting.Preflight preflight = null;
         if (req.dirtyHint() != null) {
             listener.onPreflight("checking", 0, 0, "Using dirty set…");
-            dirty = req.dirtyHint();
+            // Client -m / cwd selection is the seed; expand to build prereqs so a selected
+            // member is not scheduled without the siblings it compiles against.
+            dirty = ModuleHints.withPrereqs(graph, req.dirtyHint());
             listener.onPreflight(
                     "checking", 1, 1, dirty.isEmpty() ? "Nothing dirty" : dirty.size() + " module(s) dirty");
         } else if (req.testOnly()) {
@@ -600,8 +602,7 @@ public final class WorkspaceExecute {
                 || spec.selectedModules().stream()
                         .anyMatch(p -> BuildGraph.canonicalPath(p).equals(BuildGraph.canonicalPath(dir)));
         // One request-knob decoration for every terminal branch — the PACKAGE branch applies the
-        // same set via inputsFor below. Divergence here was exactly the drift JK-2078 names:
-        // jk native --variant/profile/workers silently ignored the knobs (JK-2102).
+        // same set via inputsFor below. Native/image must honor --variant/profile/workers too.
         UnaryOperator<BuildPlanner.Inputs> decorate = in -> in.withWorkerCount(req.workers() > 0 ? req.workers() : 1)
                 .withProfileName(req.profile())
                 .withProjectModules(moduleDirs)
@@ -663,7 +664,7 @@ public final class WorkspaceExecute {
     /**
      * Image-terminal outcome from the plan's structured keys ({@code null} for non-image plans) —
      * the same fields the single-plan path reads for {@code planFinishImage}, so the workspace
-     * {@code jk image} chip can show the identical Pushed/Wrote/Loaded tail (JK-2100).
+     * {@code jk image} chip can show the identical Pushed/Wrote/Loaded tail.
      */
     private static ModuleOutcome.Image imageOutcomeOf(BuildPlan plan) {
         var cfg = plan.get(ImagePlans.CONFIG).orElse(null);

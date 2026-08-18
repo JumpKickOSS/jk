@@ -90,6 +90,12 @@ public final class ExplainCommand implements CliCommand {
 
         String graphFmt = in.value("graph").orElse(null);
         boolean hasGraph = graphFmt != null && !graphFmt.isBlank();
+        String modulesSpec = in.value("modules").orElse(null);
+        String affectedSinceEarly = in.value("affected-since").orElse(null);
+        var peek = BuildCommand.projectInfoOrNull(startDir);
+        CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(startDir, modulesSpec, peek);
+        if (cwdScope.inferredFromCwd()) modulesSpec = cwdScope.modulesSpec();
+        Path graphDir = cwdScope.workspaceMember() ? cwdScope.workspaceRoot() : startDir;
         if (in.isSet("run") && hasGraph) {
             cc.jumpkick.cli.tui.CommandWedge.printFail("Explain", "cannot combine --run with --graph (pick one)");
             return Exit.USAGE;
@@ -102,10 +108,10 @@ public final class ExplainCommand implements CliCommand {
         // On single-project layouts, selectors only validate; the graph is one node.
         if (hasGraph) {
             return emitModuleGraph(
-                    startDir,
+                    graphDir,
                     graphFmt,
-                    in.value("modules").orElse(null),
-                    in.value("affected-since").orElse(null),
+                    modulesSpec,
+                    affectedSinceEarly,
                     in.value("graph-out").orElse(null));
         }
 
@@ -122,13 +128,12 @@ public final class ExplainCommand implements CliCommand {
         boolean rebuild = global.rebuild || global.force;
         String profile = in.value("profile").orElse(null);
         Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
-        String affectedSince = in.value("affected-since").orElse(null);
-        String modulesSpec = in.value("modules").orElse(null);
+        String affectedSince = affectedSinceEarly;
 
         // Client-side module filter listing (before engine forecast) when selectors are set.
         if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
             try {
-                var selected = BuildCommand.projectInfoOrError(startDir, modulesSpec, affectedSince);
+                var selected = BuildCommand.projectInfoOrError(graphDir, modulesSpec, affectedSince);
                 if (selected.error() != null && !selected.error().isBlank()) {
                     CommandWedge.printFail("Explain", selected.error());
                     return Exit.CONFIG;
@@ -139,7 +144,7 @@ public final class ExplainCommand implements CliCommand {
                     Path m = Path.of(raw);
                     Path rel;
                     try {
-                        rel = startDir.toAbsolutePath().normalize().relativize(m);
+                        rel = graphDir.toAbsolutePath().normalize().relativize(m);
                     } catch (IllegalArgumentException e) {
                         rel = m;
                     }

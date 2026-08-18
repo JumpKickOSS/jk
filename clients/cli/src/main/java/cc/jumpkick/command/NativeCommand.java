@@ -79,6 +79,7 @@ public final class NativeCommand implements CliCommand {
     String modulesSpec;
 
     String affectedSince;
+    List<String> scopeHintNames = List.of();
 
     @Override
     public int run(Invocation in) throws Exception {
@@ -110,26 +111,17 @@ public final class NativeCommand implements CliCommand {
         this.graalHome = ((cc.jumpkick.layout.NativePreflight.Graal.Ok) graal).home();
 
         cc.jumpkick.engine.protocol.ProjectInfo peek = BuildCommand.projectInfoOrNull(startDir);
+        CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(startDir, modulesSpec, peek);
+        if (cwdScope.inferredFromCwd()) this.modulesSpec = cwdScope.modulesSpec();
 
         // Workspace root: cascade to all eligible modules.
         if (peek != null && peek.workspaceRoot()) {
             return runWorkspaceNative(startDir, cache);
         }
 
-        // Module redirect: if we're inside a workspace, build from the root.
-        if (peek != null
-                && !peek.workspaceRootDir().isEmpty()
-                && !peek.workspaceRootDir().equals(startDir.toString())) {
-            Path wsRoot = Path.of(peek.workspaceRootDir());
-            {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
-                        "Native",
-                        "building from workspace root " + wsRoot.getFileName()
-                                + " (module: "
-                                + startDir.getFileName()
-                                + ")");
-                return runWorkspaceNative(wsRoot, cache);
-            }
+        // Workspace member: same as `jk native -m <this-module>` from the root.
+        if (cwdScope.workspaceMember()) {
+            return runWorkspaceNative(cwdScope.workspaceRoot(), cache);
         }
 
         // Single project: -m/--affected-since still validate.
@@ -230,6 +222,11 @@ public final class NativeCommand implements CliCommand {
         // Always pass native targets as the engine selection: expands transitive build prereqs only.
         // Never cascade the whole workspace (sibling modules outside the native dependency cone).
         List<Path> cascadeRoots = List.copyOf(graalHomes.keySet());
+        if (selectedDirs != null) {
+            var sel = BuildCommand.projectInfoOrError(wsRoot, modulesSpec, affectedSince);
+            this.scopeHintNames = cc.jumpkick.cli.tui.ModuleScopeHint.namesFrom(sel);
+            cc.jumpkick.cli.tui.ModuleScopeHint.print("building", scopeHintNames, mode == BuildPlanConsole.Mode.JSON);
+        }
         return runWorkspaceHosted(
                 wsRoot, cache, graalHomes, cascadeRoots, mode, buildStart, cascadeRoots.size(), graalHomes.size());
     }
@@ -358,6 +355,7 @@ public final class NativeCommand implements CliCommand {
         // (the plan burst carries every module plan's estimated weight).
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         JkManager view = JkManager.plan(CliOutput.stdout(), "Build", animate);
+        cc.jumpkick.cli.tui.ModuleScopeHint.apply(view, "building", scopeHintNames);
         cc.jumpkick.cli.run.AggregateContext agg = new cc.jumpkick.cli.run.AggregateContext(view);
         int[] built = {0};
         int[] finished = {0};

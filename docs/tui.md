@@ -68,6 +68,24 @@ requires **Enter** specifically (other keys buffer until newline). `Wizard.resto
 *before* restoring cooked mode; `Interactivity.prepareProcessExit` wakes, restores, and closes the
 shared terminal before `System.exit` so JLine's shutdown closer is already deregistered.
 
+### Module-selection caption
+
+When a module selection is in effect (working directory is a workspace member, or `-m` / `--modules`
+was passed), a caption is printed once above the wedge (scrollback — it stays after settle). Names
+come from each member's `jk.toml` `name`, not the workspace path:
+
+```
+ …building module jk-cli…
+ ● Build  █▋                                       4% · ETA ~2m 56s · 5s
+```
+
+```
+ …building modules jk-engine, jk-cli…
+ ● Build  █▋                                       4% · ETA ~2m 56s · 5s
+```
+
+`module` vs `modules` follows the count. The whole line is dark-gray. JSON output omits it.
+
 ### Completed-module tail
 
 Workspace plans (`jk build`, `jk test`, `jk run`, `jk native`, `jk image`) keep the last few

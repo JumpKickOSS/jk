@@ -86,14 +86,18 @@ public final class RunCommand {
             boolean workspace = false;
             var peek = BuildCommand.projectInfoOrNull(projectDir);
             if (peek != null) workspace = peek.workspaceRoot();
-            if (workspace) {
-                // Build every module (path deps, sibling jars), then execPlan picks the app module.
+            CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(projectDir, null, peek);
+            if (workspace || cwdScope.workspaceMember()) {
+                // Workspace root: whole graph. Member dir: same as `jk build -m <this-module>`.
+                Path wsRoot = workspace ? projectDir : cwdScope.workspaceRoot();
                 int jobs = global.jobsEffective();
+                List<String> tokens =
+                        cwdScope.workspaceMember() ? ModuleSelectors.tokens(cwdScope.modulesSpec(), null) : List.of();
                 // Session variant/clientEnv ride the request like `jk build` at a root does
                 // `jk run --release` used to build debug and then exec release artifacts that
                 // were never produced.
                 var request = new cc.jumpkick.runtime.WorkspaceRequest(
-                                projectDir,
+                                wsRoot,
                                 cache,
                                 jdksDir,
                                 1,
@@ -104,15 +108,21 @@ public final class RunCommand {
                                 null,
                                 true,
                                 true)
-                        .withVariant(session.variant(), session.clientEnv());
+                        .withVariant(session.variant(), session.clientEnv())
+                        .withModules(tokens);
                 boolean liveWorkspace = mode == BuildPlanConsole.Mode.AUTO
                         && BuildPlanConsole.isInteractiveTerminal()
                         && !global.outputIsJson();
+                List<String> scopeNames = cwdScope.workspaceMember()
+                        ? (cwdScope.focusLabel() == null ? List.of() : List.of(cwdScope.focusLabel()))
+                        : List.of();
+                cc.jumpkick.cli.tui.ModuleScopeHint.print(
+                        "building", scopeNames, global != null && global.outputIsJson());
                 cc.jumpkick.runtime.WorkspaceResult wr;
                 if (liveWorkspace) {
                     // Same live chrome as `jk build` at a root: aggregate bar + module
                     // chips from the engine tracker, completions collapse into the region.
-                    wr = runWorkspaceLive(request);
+                    wr = runWorkspaceLive(request, scopeNames);
                     if (wr == null) return 1; // failure already settled on the view
                 } else {
                     // Quiet / JSON / non-tty: append-only per-module completions (unchanged).
@@ -341,8 +351,10 @@ public final class RunCommand {
      * lines. Settles the region itself on failure/cancel and returns {@code null}; on success the
      * region settles to an exec-style chip so the run banner follows cleanly.
      */
-    private cc.jumpkick.runtime.WorkspaceResult runWorkspaceLive(cc.jumpkick.runtime.WorkspaceRequest request) {
+    private cc.jumpkick.runtime.WorkspaceResult runWorkspaceLive(
+            cc.jumpkick.runtime.WorkspaceRequest request, List<String> scopeNames) {
         var view = cc.jumpkick.cli.tui.JkManager.plan(CliOutput.stdout(), "Run", true);
+        cc.jumpkick.cli.tui.ModuleScopeHint.apply(view, "building", scopeNames);
         var agg = new cc.jumpkick.cli.run.AggregateContext(view);
         Map<Path, List<String>> buffers = new ConcurrentHashMap<>();
         List<String> deferredOutput = Collections.synchronizedList(new ArrayList<>());

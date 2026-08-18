@@ -1166,6 +1166,10 @@ project identity.
 Monorepo tip: rebuild or retest only what you need:
 
 ```bash
+# From a module directory — same as `jk build -m <that-module>` (plus upstream prereqs)
+cd services/api && jk build
+cd services/api && jk test
+
 # Git-changed modules (+ reverse dependents)
 jk build --affected-since=origin/main
 jk test --affected-since=origin/main

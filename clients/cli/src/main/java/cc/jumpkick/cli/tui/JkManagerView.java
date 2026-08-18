@@ -672,9 +672,13 @@ final class JkManagerView {
         AttributedStyle dim = Theme.active().darkGray();
         List<String> chrome = new ArrayList<>();
         RenderContext frameCtx = RenderContext.current().withWidth(cols);
+        boolean hasScopeHint = !m.scopeHintVerb.isEmpty() && !m.scopeHintNames.isEmpty();
+        if (hasScopeHint) {
+            chrome.add(ModuleScopeHint.line(m.scopeHintVerb, m.scopeHintNames, frameCtx));
+        }
         chrome.add(planHeader(frameCtx, elapsedMillis));
 
-        int rowsAfterHeader = Math.max(1, m.height - 2);
+        int rowsAfterHeader = Math.max(1, m.height - 2 - (hasScopeHint ? 1 : 0));
         // Shrink the work tree so ✓ [N of M] still fits under the wedge (live region only).
         int completionSlots = 0;
         if (m.completedCount > 0 && rowsAfterHeader > 1) {

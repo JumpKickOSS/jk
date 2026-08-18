@@ -32,11 +32,12 @@ public final class CommonOpts {
 
     /**
      * Workspace module selection shared by every build-family command ({@code -m}/{@code
-     * --modules}, {@code --affected-since}). Resolved via {@code ModuleSelection.resolveOptional}.
+     * --modules}, {@code --affected-since}). Resolved engine-side via {@code projectInfo}.
      *
      * <p>Semantics: {@code build}/{@code test} treat the selection as the work list (siblings are
      * not rebuilt — pair with {@code --affected-since} to catch dependents); {@code native} builds
-     * the selection's prereq closure but native-compiles only the selection.
+     * the selection's prereq closure but native-compiles only the selection. A working directory
+     * that is a workspace member with no {@code -m} is the same as {@code -m <that-module>}.
      */
     public static List<Opt> moduleSelection() {
         return List.of(

@@ -6,6 +6,7 @@ import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.ModuleScopeHint;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -61,22 +62,21 @@ public final class CompileCommand implements CliCommand {
 
         String modulesSpec = in.value("modules").orElse(null);
         String affectedSince = in.value("affected-since").orElse(null);
-        List<String> selectors = new ArrayList<>();
-        if (modulesSpec != null && !modulesSpec.isBlank()) {
-            for (String t : modulesSpec.split(",")) {
-                if (!t.isBlank()) selectors.add(t.trim());
-            }
-        }
-        if (affectedSince != null && !affectedSince.isBlank()) {
-            selectors.add("affected:" + affectedSince);
-        }
-        var info = BuildCommand.projectInfoOrError(dir, modulesSpec, affectedSince);
+        var peek = BuildCommand.projectInfoOrNull(dir);
+        CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(dir, modulesSpec, peek);
+        if (cwdScope.inferredFromCwd()) modulesSpec = cwdScope.modulesSpec();
+        List<String> selectors = ModuleSelectors.tokens(modulesSpec, affectedSince);
+        Path infoDir = cwdScope.workspaceMember() ? cwdScope.workspaceRoot() : dir;
+        var info = BuildCommand.projectInfoOrError(infoDir, modulesSpec, affectedSince);
         if (info.error() != null) {
             cc.jumpkick.cli.tui.CommandWedge.printFail("Compile", info.error());
             return Exit.CONFIG;
         }
-        if (info.workspaceRoot() || !info.workspaceRootDir().isBlank()) {
-            return runWorkspaceCompile(cache, profileName, global, dir, selectors);
+        if (info.workspaceRoot()
+                || cwdScope.workspaceMember()
+                || !info.workspaceRootDir().isBlank()) {
+            List<String> scopeNames = selectors.isEmpty() ? List.of() : ModuleScopeHint.namesFrom(info);
+            return runWorkspaceCompile(cache, profileName, global, infoDir, selectors, scopeNames);
         }
 
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
@@ -114,7 +114,12 @@ public final class CompileCommand implements CliCommand {
 
     /** Workspace compile via {@code buildWorkspace}: aggregate TUI matches build/native/image. */
     private int runWorkspaceCompile(
-            Path cache, String profileName, GlobalOptions global, Path entryDir, List<String> modules)
+            Path cache,
+            String profileName,
+            GlobalOptions global,
+            Path entryDir,
+            List<String> modules,
+            List<String> scopeNames)
             throws IOException {
         var session = cc.jumpkick.config.SessionContext.current();
         var req = new cc.jumpkick.cli.engine.EngineRequests.CompileRequest(
@@ -123,6 +128,7 @@ public final class CompileCommand implements CliCommand {
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         cc.jumpkick.cli.tui.JkManager view =
                 cc.jumpkick.cli.tui.JkManager.plan(cc.jumpkick.cli.CliOutput.stdout(), "Compile", animate);
+        ModuleScopeHint.show("compiling", scopeNames, global != null && global.outputIsJson(), view);
         cc.jumpkick.cli.run.AggregateContext agg = new cc.jumpkick.cli.run.AggregateContext(view);
         int[] finished = {0};
         long start = System.nanoTime();
