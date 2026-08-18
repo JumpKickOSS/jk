@@ -379,6 +379,38 @@ public final class EffectivePomBuilder {
         }
         Map<String, EffectivePom> out = new LinkedHashMap<>();
         Thread self = Thread.currentThread();
+        try {
+            joinExpansions(unique, futures, out, self);
+        } finally {
+            // Quiesce before returning OR throwing: an expansion future this thread broke away
+            // from (deadlock detected, bound elapsed, sibling threw) keeps running on the pool
+            // and writes into the repo cache after the caller has moved on — test @TempDir
+            // cleanup raced exactly that (JK-2153). Workers on a real cycle fail fast via
+            // joinWouldDeadlock, so this drain is short; the bound is a backstop.
+            long drainDeadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(JOIN_FALLBACK_MS);
+            for (CompletableFuture<EffectivePom> f : futures.values()) {
+                if (f.isDone()) continue;
+                long leftMs = TimeUnit.NANOSECONDS.toMillis(drainDeadline - System.nanoTime());
+                if (leftMs <= 0) break;
+                try {
+                    f.get(leftMs, TimeUnit.MILLISECONDS);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                } catch (ExecutionException | TimeoutException ignored) {
+                    // outcome irrelevant — only quiescence matters here
+                }
+            }
+        }
+        return out;
+    }
+
+    private void joinExpansions(
+            LinkedHashMap<String, Coordinate> unique,
+            Map<String, CompletableFuture<EffectivePom>> futures,
+            Map<String, EffectivePom> out,
+            Thread self)
+            throws IOException, InterruptedException {
         for (var e : futures.entrySet()) {
             // Register the join in the waits-for graph: a worker whose own await chain
             // reaches this thread could not see joins through these futures, so neither side
@@ -416,7 +448,6 @@ public final class EffectivePomBuilder {
                 WAITING_ON.remove(self);
             }
         }
-        return out;
     }
 
     private static boolean isBomImport(Pom.Dep dep) {
