@@ -23,6 +23,12 @@ class KeyReaderTest {
     }
 
     @Test
+    void ctrl_o_maps_to_ctrlo() {
+        var key = KeyReader.read(reader(new byte[] {0x0F}));
+        assertThat(key).isInstanceOf(KeyReader.Key.CtrlO.class);
+    }
+
+    @Test
     void lf_maps_to_enter() {
         var key = KeyReader.read(reader(new byte[] {0x0A}));
         assertThat(key).isInstanceOf(KeyReader.Key.Enter.class);

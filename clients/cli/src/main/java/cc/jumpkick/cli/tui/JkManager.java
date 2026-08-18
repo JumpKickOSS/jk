@@ -1202,17 +1202,10 @@ public final class JkManager implements AutoCloseable, LiveRegion {
                 t = Wizard.openTerminal();
             }
             saved = t.getAttributes();
-            Attributes raw = new Attributes(saved);
-            raw.setLocalFlag(Attributes.LocalFlag.ICANON, false);
-            raw.setLocalFlag(Attributes.LocalFlag.ECHO, false);
-            // VMIN=1/VTIME=0: one byte per read (same as JLine enterRawMode). VMIN=0 would make
-            // FileInputStream.read() return EOF on idle and thrash the NonBlocking I/O thread.
-            raw.setControlChar(Attributes.ControlChar.VMIN, 1);
-            raw.setControlChar(Attributes.ControlChar.VTIME, 0);
             // ISIG remains: Ctrl-C → SIGINT → GlobalCancel. Do not call
             // {@code terminal.handle(INT, …)} — that would steal the signal from GlobalCancel
             // the same way JLine's default native SIG_DFL handlers did.
-            t.setAttributes(raw);
+            t.setAttributes(outputKeyListenerAttributes(saved));
             GlobalCancel.install();
             Wizard.drainInput(t.reader(), 40L);
             keyTerminal = t;
@@ -1310,6 +1303,21 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     }
 
     // --- helpers ----------------------------------------------------------
+
+    /**
+     * TTY attributes for the Ctrl-O peek listener. Byte-at-a-time, no echo, IEXTEN off so macOS
+     * VDISCARD (Ctrl-O) reaches {@link KeyReader}; ISIG left alone for GlobalCancel. VMIN=1 /
+     * VTIME=0 matches JLine {@code enterRawMode} — VMIN=0 makes idle reads look like EOF.
+     */
+    static Attributes outputKeyListenerAttributes(Attributes saved) {
+        Attributes raw = new Attributes(saved);
+        raw.setLocalFlag(Attributes.LocalFlag.ICANON, false);
+        raw.setLocalFlag(Attributes.LocalFlag.ECHO, false);
+        raw.setLocalFlag(Attributes.LocalFlag.IEXTEN, false);
+        raw.setControlChar(Attributes.ControlChar.VMIN, 1);
+        raw.setControlChar(Attributes.ControlChar.VTIME, 0);
+        return raw;
+    }
 
     private static String key(String module, String stepKey) {
         return module + '\0' + stepKey;
