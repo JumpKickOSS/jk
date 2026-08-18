@@ -731,7 +731,7 @@ public final class McpHandler {
         } catch (IllegalStateException e) {
             throw new McpError(-32000, e.getMessage());
         } catch (IOException e) {
-            throw new McpError(-32000, String.valueOf(e.getMessage()));
+            throw new McpError(-32000, cc.jumpkick.util.Errors.text(e));
         }
     }
 

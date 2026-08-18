@@ -79,7 +79,8 @@ public final class JdkEnsureCommand implements CliCommand {
         this.spec = in.positionals().isEmpty() ? null : in.positionals().get(0);
         this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         this.feedUrl = in.value("feed-url").map(URI::create).orElse(null);
-        this.cacheFile = in.value("cache-file").map(Path::of).orElse(null);
+        this.cacheFile =
+                in.value("cache-file").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
 
         if (spec == null || spec.isBlank()) {
             cc.jumpkick.cli.tui.CommandWedge.printFail(

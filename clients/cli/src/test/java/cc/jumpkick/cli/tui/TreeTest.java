@@ -25,7 +25,7 @@ class TreeTest {
     @Test
     void plain_build_graph_has_wedge_root_spacer_pills_and_hanging_body() {
         List<String> lines = sampleGraph().render(RenderContext.current().withAnsi(false));
-        assertThat(lines.get(0)).isEqualTo(" = Build Graph >");
+        assertThat(lines.get(0)).isEqualTo("jk: = Build Graph >");
         assertThat(lines.get(1)).isEqualTo(" * cc.jumpkick:jk");
         assertThat(lines.get(2)).isEqualTo(" |");
         assertThat(lines.get(3)).isEqualTo(" +-[Fully Cached] 2 modules are fresh");
@@ -45,13 +45,13 @@ class TreeTest {
                 .root(Tree.node(Icon.pulse(), "root")
                         .child(Tree.node(Pill.of("Leaf"), "note").body(RichText.plain("names"))));
         List<String> bodyLines = onlyBody.render(RenderContext.current().withAnsi(false));
-        assertThat(bodyLines).containsExactly(" = T >", " * root", " |", " `-[Leaf] note", "    `- names");
+        assertThat(bodyLines).containsExactly("jk: = T >", " * root", " |", " `-[Leaf] note", "    `- names");
 
         Tree branched = new Tree("T")
                 .root(Tree.node(Icon.pulse(), "root")
                         .child(Tree.node(Pill.branded("mod")).child(Tree.node("step"))));
         List<String> branchLines = branched.render(RenderContext.current().withAnsi(false));
-        assertThat(branchLines).containsExactly(" = T >", " * root", " |", " `-[mod]", "    |", "    `- step");
+        assertThat(branchLines).containsExactly("jk: = T >", " * root", " |", " `-[mod]", "    |", "    `- step");
     }
 
     @Test
@@ -61,7 +61,7 @@ class TreeTest {
                 .child(Tree.node(Pill.of("A"), "one"))
                 .child(Tree.node(Pill.of("B"), "two"))
                 .render(RenderContext.current().withAnsi(false));
-        assertThat(lines).containsExactly(" = Build Jobs >", " |", " +-[A] one", " |", " `-[B] two");
+        assertThat(lines).containsExactly("jk: = Build Jobs >", " |", " +-[A] one", " |", " `-[B] two");
     }
 
     @Test
@@ -85,7 +85,7 @@ class TreeTest {
                 .render(RenderContext.current().withAnsi(false));
         assertThat(lines)
                 .containsExactly(
-                        " = Dependencies Tree >",
+                        "jk: = Dependencies Tree >",
                         " * g:a:1",
                         " | - Scopes: main",
                         " `-[main]",

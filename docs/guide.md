@@ -743,7 +743,8 @@ export JK_OUTPUT=json        # same for any command that uses BuildPlanConsole
 ### CLI UX (human-first)
 
 The terminal is for people. Prefer settled **CommandWedge** chips (success green / work blue /
-error red), not `jk <command>: …` log prefixes. Agents should use **`--output json`/`jsonl`**,
+error red), not `jk <command>: …` log prefixes. Under `--no-ansi`, chrome lines start with
+`jk: ` so they stay distinct from compiler/test output. Agents should use **`--output json`/`jsonl`**,
 BSP, the engine wire, or (later) MCP — not scrape prose. Opt out of rich chrome with `NO_COLOR`,
 `--no-ansi`, or `JK_NERD_FONT=false`. Full charter: kanartist **JK-1076**–**JK-1081**; machine
 surface: [machine-output.md](machine-output.md).
@@ -1166,6 +1167,10 @@ project identity.
 Monorepo tip: rebuild or retest only what you need:
 
 ```bash
+# From a module directory — same as `jk build -m <that-module>` (plus upstream prereqs)
+cd services/api && jk build
+cd services/api && jk test
+
 # Git-changed modules (+ reverse dependents)
 jk build --affected-since=origin/main
 jk test --affected-since=origin/main

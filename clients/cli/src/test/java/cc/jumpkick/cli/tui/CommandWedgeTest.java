@@ -19,9 +19,9 @@ class CommandWedgeTest {
         String ok = JkWedge.chipLine(Glyphs.CHECK, "Build", NerdFontCaps.NONE, "done");
         String fail = JkWedge.failureLineCustom("Build", NerdFontCaps.NONE, "boom");
         // Under CI (this suite), isAnsi is typically false → plain
-        if (ok.startsWith(" +") || ok.startsWith("+")) {
-            assertThat(ok).isEqualTo(" + Build > done");
-            assertThat(fail).isEqualTo(" ! Build > boom");
+        if (ok.startsWith("jk: +") || ok.startsWith(" +") || ok.startsWith("+")) {
+            assertThat(ok).isEqualTo("jk: + Build > done");
+            assertThat(fail).isEqualTo("jk: ! Build > boom");
         } else {
             // ANSI-enabled developer machine: still must carry command + message
             assertThat(ok).contains("Build").contains("done");

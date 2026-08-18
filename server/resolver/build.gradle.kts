@@ -9,7 +9,12 @@ description = "jk resolver: PubGrub solver and conflict diagnostics"
 dependencies {
     implementation(project(":core"))
     implementation(project(":io"))
-    // ComparableVersion is the Maven-canonical version comparator (e.g.
-    // `1.0-alpha < 1.0-rc < 1.0 < 1.0-sp1`). Used by Versions.compare.
-    implementation(libs.maven.artifact)
+}
+
+// Built-in plugin manifests are engine-only (JK-2149). :resolver tests exercise the
+// built-in registry (QuarkusPlatformContribTest), so bake the same tree onto the test
+// classpath only — mirroring :core.
+tasks.processTestResources {
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    pluginManifestResources(rootProject)
 }

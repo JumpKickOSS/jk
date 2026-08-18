@@ -51,7 +51,7 @@ public final class PluginCommandVerb implements HostedVerb {
                         ProtoSession.variantOf(requestLine),
                         ProtoSession.clientEnvOf(requestLine));
             } catch (RuntimeException e) {
-                report = cc.jumpkick.engine.protocol.PluginCommandReport.error(String.valueOf(e.getMessage()));
+                report = cc.jumpkick.engine.protocol.PluginCommandReport.error(cc.jumpkick.util.Errors.text(e));
             }
             host.sendQuiet(writer, report.encode());
 

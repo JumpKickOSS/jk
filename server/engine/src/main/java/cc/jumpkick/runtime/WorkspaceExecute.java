@@ -114,7 +114,7 @@ public final class WorkspaceExecute {
         try {
             entryBuild = JkBuildParser.parse(req.entryDir().resolve("jk.toml"));
         } catch (Exception e) {
-            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(String.valueOf(e.getMessage())));
+            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.util.Errors.text(e)));
             listener.onWorkspaceFinish(r);
             return r;
         }
@@ -153,7 +153,7 @@ public final class WorkspaceExecute {
         try {
             graph = BuildGraph.resolve(req.entryDir(), entryBuild);
         } catch (IOException e) {
-            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(String.valueOf(e.getMessage())));
+            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.util.Errors.text(e)));
             listener.onWorkspaceFinish(r);
             return r;
         }
@@ -180,7 +180,7 @@ public final class WorkspaceExecute {
         units = graph.topoOrder();
         if (units.isEmpty()) {
             // A NON-EMPTY selection that matches nothing is an error, not a clean no-op —
-            // success(0) here silently "built" a mistyped -m selection (JK-2101).
+            // success(0) here silently "built" a mistyped -m selection.
             WorkspaceSpec spec = req.spec();
             if (spec != null && spec.hasSelection()) {
                 String sel = spec.selectedModules().stream()
@@ -210,6 +210,14 @@ public final class WorkspaceExecute {
 
         Set<Path> moduleDirs = new LinkedHashSet<>();
         for (BuildGraph.BuildUnit u : units) moduleDirs.add(u.dir());
+        // Modules some entered module depends on: dependents' compile classpath consumes their
+        // JAR (WorkspaceClasspath), so even test-only plans must package them — a testOnly plan
+        // for a consumed prereq recompiled classes but left the jar stale, and dependents
+        // compiled (and green-tested) against old code (JK-2177).
+        Set<Path> jarConsumed = new LinkedHashSet<>();
+        for (Set<Path> prereqs : graph.edges().values()) {
+            for (Path p : prereqs) jarConsumed.add(BuildGraph.canonicalPath(p));
+        }
         long tf = Perf.start();
         // Checking runs inside this build request (no separate client forecast RPC).
         // Client dirty hint (selection / force path) still avoids a second walk when provided.
@@ -219,7 +227,9 @@ public final class WorkspaceExecute {
         BuildForecasting.Preflight preflight = null;
         if (req.dirtyHint() != null) {
             listener.onPreflight("checking", 0, 0, "Using dirty set…");
-            dirty = req.dirtyHint();
+            // Client -m / cwd selection is the seed; expand to build prereqs so a selected
+            // member is not scheduled without the siblings it compiles against.
+            dirty = ModuleHints.withPrereqs(graph, req.dirtyHint());
             listener.onPreflight(
                     "checking", 1, 1, dirty.isEmpty() ? "Nothing dirty" : dirty.size() + " module(s) dirty");
         } else if (req.testOnly()) {
@@ -305,7 +315,8 @@ public final class WorkspaceExecute {
                 "plan", 0, Math.max(nPrepare, 1), nPrepare == 0 ? "Nothing to prepare" : "Preparing modules…");
         Map<Path, ModulePlan> plans;
         try {
-            plans = prepareModules(dirtyUnits, req, moduleDirs, listener, nPrepare, timingSamples, hostSamples);
+            plans = prepareModules(
+                    dirtyUnits, req, moduleDirs, jarConsumed, listener, nPrepare, timingSamples, hostSamples);
         } catch (PrepareFailed e) {
             ModuleOutcome o = new ModuleOutcome(e.coord(), e.dir(), false, 2, 0);
             listener.onModuleFinish(o);
@@ -413,6 +424,7 @@ public final class WorkspaceExecute {
             List<BuildGraph.BuildUnit> dirtyUnits,
             WorkspaceRequest req,
             Set<Path> moduleDirs,
+            Set<Path> jarConsumed,
             WorkspaceBuildListener listener,
             int nPrepare,
             List<StepTimings.Sample> timingSamples,
@@ -424,7 +436,7 @@ public final class WorkspaceExecute {
             int prepared = 0;
             for (BuildGraph.BuildUnit u : dirtyUnits) {
                 if (cc.jumpkick.run.SessionCancel.cancelled()) break;
-                ModulePlan p = prepareModule(u, req, moduleDirs, true);
+                ModulePlan p = prepareModule(u, req, moduleDirs, jarConsumed, true);
                 prepared++;
                 listener.onPreflight(
                         "plan", prepared, nPrepare, "Preparing " + u.coord() + " (" + prepared + "/" + nPrepare + ")");
@@ -443,7 +455,7 @@ public final class WorkspaceExecute {
             futures.add(CompletableFuture.runAsync(
                     () -> {
                         if (cc.jumpkick.run.SessionCancel.cancelled()) return;
-                        ModulePlan p = prepareModule(u, req, moduleDirs, true);
+                        ModulePlan p = prepareModule(u, req, moduleDirs, jarConsumed, true);
                         if (p == null) throw new PrepareFailed(u.coord(), u.dir());
                         p.plan().addListener(timingsRecorder(p, timingSamples, hostSamples));
                         plans.put(u.dir(), p);
@@ -518,11 +530,15 @@ public final class WorkspaceExecute {
      * force/rebuild, reuse memoized {@code estimatedTotalWeight} (skip the parallel step estimate).
      */
     private static ModulePlan prepareModule(
-            BuildGraph.BuildUnit u, WorkspaceRequest req, Set<Path> moduleDirs, boolean forceRebuild) {
+            BuildGraph.BuildUnit u,
+            WorkspaceRequest req,
+            Set<Path> moduleDirs,
+            Set<Path> jarConsumed,
+            boolean forceRebuild) {
         Path dir = u.dir();
         Path buildFile = dir.resolve("jk.toml");
         if (!Files.exists(buildFile)) return null;
-        BuildPlan plan = assemblePlan(u, req, moduleDirs, forceRebuild);
+        BuildPlan plan = assemblePlan(u, req, moduleDirs, forceRebuild, jarConsumed);
         // Bar weight must be live estimatedTotalWeight for dirty prepares: shape-memo weights ignore
         // source/upstream freshness and under-counted native-image (SKIP while Graal still runs).
         // Over-reserve tails so native/assembly/OCI reserve full learned walls up front when this
@@ -593,6 +609,15 @@ public final class WorkspaceExecute {
 
     static BuildPlan assemblePlan(
             BuildGraph.BuildUnit u, WorkspaceRequest req, Set<Path> moduleDirs, boolean forceRebuild) {
+        return assemblePlan(u, req, moduleDirs, forceRebuild, Set.of());
+    }
+
+    static BuildPlan assemblePlan(
+            BuildGraph.BuildUnit u,
+            WorkspaceRequest req,
+            Set<Path> moduleDirs,
+            boolean forceRebuild,
+            Set<Path> jarConsumed) {
         Path dir = u.dir();
         WorkspaceTarget target = req.target();
         WorkspaceSpec spec = req.spec() == null ? WorkspaceSpec.DEFAULT : req.spec();
@@ -600,8 +625,7 @@ public final class WorkspaceExecute {
                 || spec.selectedModules().stream()
                         .anyMatch(p -> BuildGraph.canonicalPath(p).equals(BuildGraph.canonicalPath(dir)));
         // One request-knob decoration for every terminal branch — the PACKAGE branch applies the
-        // same set via inputsFor below. Divergence here was exactly the drift JK-2078 names:
-        // jk native --variant/profile/workers silently ignored the knobs (JK-2102).
+        // same set via inputsFor below. Native/image must honor --variant/profile/workers too.
         UnaryOperator<BuildPlanner.Inputs> decorate = in -> in.withWorkerCount(req.workers() > 0 ? req.workers() : 1)
                 .withProfileName(req.profile())
                 .withProjectModules(moduleDirs)
@@ -642,7 +666,10 @@ public final class WorkspaceExecute {
             // compile classpath consumes sibling JARS, so prereqs must package, not just compile.
             return CompilePlans.compileBuildPlan(dir, req.cache(), req.profile(), req.verbose(), decorate);
         }
-        boolean testOnly = target.testOnly() || req.testOnly();
+        // A consumed prereq must package even on the test path: dependents compile against
+        // its sibling JAR, not its classes dir (JK-2177).
+        boolean consumed = jarConsumed.contains(BuildGraph.canonicalPath(dir));
+        boolean testOnly = (target.testOnly() || req.testOnly()) && !consumed;
         BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
                         dir,
                         req.cache(),
@@ -663,7 +690,7 @@ public final class WorkspaceExecute {
     /**
      * Image-terminal outcome from the plan's structured keys ({@code null} for non-image plans) —
      * the same fields the single-plan path reads for {@code planFinishImage}, so the workspace
-     * {@code jk image} chip can show the identical Pushed/Wrote/Loaded tail (JK-2100).
+     * {@code jk image} chip can show the identical Pushed/Wrote/Loaded tail.
      */
     private static ModuleOutcome.Image imageOutcomeOf(BuildPlan plan) {
         var cfg = plan.get(ImagePlans.CONFIG).orElse(null);

@@ -7,7 +7,6 @@ import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanListener;
@@ -22,8 +21,9 @@ import java.util.List;
  * <p>Users should never have to think about the lock: clones arrive with matching
  * {@code jk.toml}/{@code jk-lock.toml}, and any local manifest edit (or rare out-of-sync pair)
  * is repaired automatically the next time a lock-dependent command runs. When the lock is
- * missing or stale ({@link LockFreshness}), this runs the engine lock plan under a live
- * CommandWedge spinner ({@code Locking g:n…}). Fresh locks are a no-op.
+ * missing or stale ({@code projectInfo.lockStale}), this runs the engine lock plan under a live
+ * CommandWedge spinner ({@code Locking g:n…}). Fresh locks are a no-op. The client does not
+ * parse {@code jk.toml} to decide staleness (JK-2151).
  *
  * <p>Call sites: explain, tree, why, audit, deny, outdated, jshell, status, export, ide, sync,
  * plugin install-local, and anything else that reads the lock. Build already freshes engine-side.
@@ -66,11 +66,48 @@ public final class EnsureFreshLock {
             String wedgeCommand,
             Spinner spinner,
             boolean ownSpinner) {
+        return ensure(projectDir, cacheDir, global, wedgeCommand, spinner, ownSpinner, null);
+    }
+
+    /**
+     * As {@link #ensure(Path, Path, GlobalOptions, String)} honoring the command's
+     * {@code --repo-url} override: the invisible freshen resolves against the SAME repo the
+     * command will use — dropping it made `jk outdated --repo-url …` on a lockless project
+     * fail its freshen against the declared repos (JK-2178).
+     */
+    public static int ensure(
+            Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand, java.net.URI repoUrl) {
+        return ensure(projectDir, cacheDir, global, wedgeCommand, null, true, repoUrl);
+    }
+
+    /**
+     * Best-effort freshen for read verbs that RESOLVE INDEPENDENTLY of the lock ({@code jk
+     * outdated}): attempt the invisible freshen, but a failure — even with no lock at all — is a
+     * warning, never an exit. Pre-JK-2151 the engine skipped missing-lock freshens entirely, so
+     * these verbs always worked lockless; the write-a-missing-lock upgrade (aa655a0f) must not
+     * turn their unresolvable-repo situations into hard failures (JK-2178).
+     */
+    public static void ensureBestEffort(
+            Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand, java.net.URI repoUrl) {
+        int code = ensure(projectDir, cacheDir, global, wedgeCommand, null, true, repoUrl);
+        if (code != Exit.SUCCESS) {
+            CliOutput.err("‼ jk: lock freshen failed — continuing without jk-lock.toml");
+        }
+    }
+
+    private static int ensure(
+            Path projectDir,
+            Path cacheDir,
+            GlobalOptions global,
+            String wedgeCommand,
+            Spinner spinner,
+            boolean ownSpinner,
+            java.net.URI repoUrl) {
         Path dir = projectDir.toAbsolutePath().normalize();
         if (!Files.isRegularFile(dir.resolve("jk.toml"))) {
             return Exit.SUCCESS; // caller already validated project
         }
-        if (!LockFreshness.needsRefresh(dir)) {
+        if (!needsRefresh(dir)) {
             return Exit.SUCCESS;
         }
 
@@ -84,7 +121,7 @@ public final class EnsureFreshLock {
         try {
             // Conservative: a freshen must never float pinned versions — that is `jk lock`'s job.
             EngineRequests.LockRequest req = new EngineRequests.LockRequest(
-                    dir, cache, List.of(), false, false, null, global.offline, global.force, global.verbose, true);
+                    dir, cache, List.of(), false, false, repoUrl, global.offline, global.force, global.verbose, true);
 
             EngineRequests.LockHandler quiet = new EngineRequests.LockHandler() {
                 @Override
@@ -112,10 +149,24 @@ public final class EnsureFreshLock {
                         : outcome.errors().getFirst();
                 return failSoftOrHard(dir, chip, err, outcome.exitCode(), spinner);
             }
+            // The lock just changed on disk — memoized summaries (hasLock/lockJdk/lockStale)
+            // are stale for the rest of this invocation (JK-2162).
+            cc.jumpkick.command.BuildCommand.forgetProjectInfo();
             return Exit.SUCCESS;
         } catch (Exception e) {
             return failSoftOrHard(dir, chip, "could not refresh jk-lock.toml: " + e.getMessage(), Exit.CONFIG, spinner);
         }
+    }
+
+    /**
+     * Engine-side staleness: {@link cc.jumpkick.engine.protocol.ProjectInfo#lockStale()} plus a
+     * missing lock file. A down/errored info is treated as stale so we still try to freshen.
+     */
+    public static boolean needsRefresh(Path projectDir) {
+        Path owner = lockOwnerOrSelf(projectDir);
+        if (!Files.isRegularFile(LockPaths.lockFile(owner))) return true;
+        var info = cc.jumpkick.command.BuildCommand.projectInfoOrNull(owner);
+        return info == null || info.lockStale();
     }
 
     /**

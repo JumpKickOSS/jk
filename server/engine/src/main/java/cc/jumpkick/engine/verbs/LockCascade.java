@@ -5,7 +5,6 @@ import cc.jumpkick.engine.CoalescingLockPackages;
 import cc.jumpkick.engine.listen.BridgingPlanListener;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.lock.LockFreshness;
-import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
@@ -69,12 +68,14 @@ final class LockCascade {
             coord = scope.coord();
         } catch (RuntimeException e) {
             host.sendQuiet(
-                    writer, ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(String.valueOf(e.getMessage())), -1));
+                    writer, ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(cc.jumpkick.util.Errors.text(e)), -1));
             return;
         }
 
         synchronized (LockGate.monitorFor(lockDir)) {
-            if (conservative && !LockFreshness.isStale(lockDir, LockPaths.lockFile(lockDir))) {
+            // needsRefresh, not isStale: a missing lock is not "stale" (isStale is digest-only)
+            // but an invisible freshen must still write one (jk tree / explain / status).
+            if (conservative && !LockFreshness.needsRefresh(lockDir)) {
                 host.sendQuiet(writer, ProtoEvents.lockFinish(true, 0, List.of(), -1));
                 return;
             }

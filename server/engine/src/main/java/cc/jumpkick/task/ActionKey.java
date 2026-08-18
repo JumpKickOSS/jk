@@ -243,7 +243,19 @@ public final class ActionKey {
      * belongs to it, regardless of the base task name.
      */
     public static String taskTag(Path moduleDir) {
-        return Hashing.sha256Hex(moduleDir.toAbsolutePath().normalize().toString())
-                .substring(0, 12);
+        Path p = moduleDir.toAbsolutePath().normalize();
+        Path probe = p;
+        while (probe != null && !Files.exists(probe)) {
+            probe = probe.getParent();
+        }
+        if (probe != null) {
+            try {
+                Path real = probe.toRealPath();
+                p = real.resolve(probe.relativize(p));
+            } catch (IOException ignored) {
+                // output dir may not exist yet — keep the absolute path
+            }
+        }
+        return Hashing.sha256Hex(p.toString()).substring(0, 12);
     }
 }

@@ -13,6 +13,7 @@ import cc.jumpkick.cli.tui.Coord;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.JkWedge;
+import cc.jumpkick.cli.tui.ModuleScopeHint;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.engine.protocol.ProjectInfo;
@@ -102,7 +103,7 @@ public final class BuildCommand implements CliCommand {
     public int run(Invocation in) throws Exception {
         this.profileName = in.value("profile").orElse(null);
         this.workers = in.value("workers").map(Integer::parseInt).orElse(null);
-        this.cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
+        this.cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         this.buildOpts = new cc.jumpkick.cli.BuildOptions();
         this.buildOpts.skipTests = in.isSet("skip-tests");
@@ -130,8 +131,10 @@ public final class BuildCommand implements CliCommand {
         this.session = CliSessionTranscript.open(startDir, "build", buildArgv(in));
         if (session != null) session.announceIf(global != null && global.verbose);
 
-        // Workspace root or module → full workspace build in topological order.
+        // Workspace root: whole graph. Workspace member: same as `-m <this-module>`.
         cc.jumpkick.engine.protocol.ProjectInfo peek = projectInfoOrNull(startDir);
+        CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(startDir, modulesSpec, peek);
+        if (cwdScope.inferredFromCwd()) this.modulesSpec = cwdScope.modulesSpec();
 
         if (peek != null && peek.workspaceRoot()) {
             if (aotCache) {
@@ -142,17 +145,8 @@ public final class BuildCommand implements CliCommand {
             }
             return finishSession(buildWorkspace(startDir));
         }
-        if (peek != null
-                && !peek.workspaceRootDir().isEmpty()
-                && !peek.workspaceRootDir().equals(startDir.toString())) {
-            Path root = Path.of(peek.workspaceRootDir());
-            if (!global.outputIsJson()) {
-                // Informational handoff when invoked from a module dir — not a failure.
-                cc.jumpkick.cli.tui.CommandWedge.printWorking(
-                        "Build",
-                        "building workspace from " + root.getFileName() + " (module: " + startDir.getFileName() + ")");
-            }
-            return finishSession(buildWorkspace(root));
+        if (cwdScope.workspaceMember()) {
+            return finishSession(buildWorkspace(cwdScope.workspaceRoot()));
         }
         // Single project: -m/--affected-since still validate — `-m bogus` must not
         // silently build; a matching selector is just this project.
@@ -256,6 +250,9 @@ public final class BuildCommand implements CliCommand {
                 cc.jumpkick.cli.tui.CommandWedge.printOk("Build", selectionEmptyMessage());
                 return 0;
             }
+            if (sel != null) {
+                ModuleScopeHint.print("building", sel.names(), global != null && global.outputIsJson());
+            }
             return runWorkspaceHeadless(entryDir, cache, sel != null ? sel.tokens() : List.of());
         }
 
@@ -269,8 +266,12 @@ public final class BuildCommand implements CliCommand {
 
         long buildStart = System.nanoTime();
         JkManager view = JkManager.plan(CliOutput.stdout(), "Build", animate);
+        view.setPlanCoord(projectGaLabel(entryDir));
         // OSC 0 tab/window title while the live build region is open.
         view.setWindowTitle("JumpKick - Building " + projectGavLabel(entryDir) + "...");
+        if (sel != null && sel.error() == null && !sel.empty()) {
+            ModuleScopeHint.show("building", sel.names(), global != null && global.outputIsJson(), view);
+        }
         AggregateContext earlyAgg = new AggregateContext(view);
         // Do not client-seed a "checking" phase row — the engine owns Checking /
         // Lock / Graph preflight events on the single build RPC. A seed left a
@@ -302,7 +303,11 @@ public final class BuildCommand implements CliCommand {
     }
 
     /** Resolved {@code -m/--affected-since} selection: at most one of the fields is meaningful. */
-    private record Selection(String error, boolean empty, List<String> tokens) {}
+    private record Selection(String error, boolean empty, List<String> tokens, List<String> names) {
+        Selection(String error, boolean empty, List<String> tokens) {
+            this(error, empty, tokens, List.of());
+        }
+    }
 
     private Selection resolveSelection(Path entryDir) {
         List<String> tokens = ModuleSelectors.tokens(modulesSpec, affectedSince);
@@ -314,8 +319,9 @@ public final class BuildCommand implements CliCommand {
         if (info.error() != null && !info.error().isBlank()) {
             return new Selection(info.error(), false, List.of());
         }
-        if (info.moduleDirs().isEmpty()) return new Selection(null, true, tokens);
-        return new Selection(null, false, tokens);
+        List<String> names = ModuleScopeHint.namesFrom(info);
+        if (info.moduleDirs().isEmpty()) return new Selection(null, true, tokens, names);
+        return new Selection(null, false, tokens, names);
     }
 
     private String selectionEmptyMessage() {
@@ -914,10 +920,20 @@ public final class BuildCommand implements CliCommand {
 
     /** Engine project summary, or null when unavailable / errored. */
     public static cc.jumpkick.engine.protocol.ProjectInfo projectInfoOrNull(Path dir) {
+        return projectInfoOrNull(dir, false);
+    }
+
+    /** As {@link #projectInfoOrNull(Path)}; {@code counts=true} adds source/test tree counts. */
+    public static cc.jumpkick.engine.protocol.ProjectInfo projectInfoOrNull(Path dir, boolean counts) {
+        String key = projectInfoKey(dir, null, null, counts);
+        ProjectInfo cached = PROJECT_INFO_MEMO.get(key);
+        if (cached != null) return cached;
         try {
-            cc.jumpkick.engine.protocol.ProjectInfo info =
-                    cc.jumpkick.cli.engine.EngineClient.projectInfo(cc.jumpkick.engine.EnginePaths.current(), dir);
-            return info.error() != null ? null : info;
+            cc.jumpkick.engine.protocol.ProjectInfo info = cc.jumpkick.cli.engine.EngineClient.projectInfo(
+                    cc.jumpkick.engine.EnginePaths.current(), dir, null, null, counts);
+            if (info.error() != null) return null;
+            PROJECT_INFO_MEMO.put(key, info);
+            return info;
         } catch (Exception e) {
             return null;
         }
@@ -951,7 +967,7 @@ public final class BuildCommand implements CliCommand {
      */
     static String successTail(
             List<cc.jumpkick.runtime.ModuleOutcome> modules, int planned, List<String> selected, long start) {
-        if (planned == 0 || (selected != null && selected.isEmpty() && planned == 0)) {
+        if (planned == 0) {
             return upToDateTail("all modules", start);
         }
         int built = 0;
@@ -1150,11 +1166,35 @@ public final class BuildCommand implements CliCommand {
     }
 
     static ProjectInfo projectInfoOrError(Path dir, String modules, String affectedSince) {
+        String key = projectInfoKey(dir, modules, affectedSince, false);
+        ProjectInfo cached = PROJECT_INFO_MEMO.get(key);
+        if (cached != null) return cached;
+        ProjectInfo info;
         try {
-            return cc.jumpkick.cli.engine.EngineClient.projectInfo(
+            info = cc.jumpkick.cli.engine.EngineClient.projectInfo(
                     cc.jumpkick.engine.EnginePaths.current(), dir, modules, affectedSince);
         } catch (Exception e) {
             return ProjectInfo.error(String.valueOf(e.getMessage()));
         }
+        if (info.error() == null || info.error().isBlank()) PROJECT_INFO_MEMO.put(key, info);
+        return info;
+    }
+
+    /**
+     * Per-invocation memo: one CLI run issues the same projectInfo up to N times (peek, selection,
+     * labels, per-module release probes) and each engine call re-parses the workspace (JK-2162).
+     * The CLI process is one-shot, so only in-run staleness matters — {@link #forgetProjectInfo}
+     * is called after anything that mutates lock/manifest state mid-run.
+     */
+    private static final ConcurrentHashMap<String, ProjectInfo> PROJECT_INFO_MEMO = new ConcurrentHashMap<>();
+
+    private static String projectInfoKey(Path dir, String modules, String affectedSince, boolean counts) {
+        return dir.toAbsolutePath().normalize() + " " + (modules == null ? "" : modules) + " "
+                + (affectedSince == null ? "" : affectedSince) + " " + counts;
+    }
+
+    /** Drop memoized summaries — call after a lock refresh or any manifest edit mid-run. */
+    public static void forgetProjectInfo() {
+        PROJECT_INFO_MEMO.clear();
     }
 }

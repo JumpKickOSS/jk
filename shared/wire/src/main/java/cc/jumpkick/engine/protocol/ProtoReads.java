@@ -11,10 +11,8 @@ public final class ProtoReads {
     private ProtoReads() {}
 
     /**
-     * Forecast a build (see {@link EngineProtocol#EXPLAIN_REQUEST}). Beyond the plan itself, the fields carry the
-     * plan-affecting {@code jk build} options the engine-side EngineProtocol.ETA estimate needs ({@code jdksDir}/
-     * {@code profile} may be {@code null}); the computed estimate rides back as an {@link EngineProtocol#ETA}
-     * event inside the explain burst.
+     * Module dependency DAG export ({@code jk explain --graph dot|mermaid}); {@code modules}/
+     * {@code affectedSince} filter the workspace graph the same way build selectors do.
      */
     public static String moduleGraphRequest(String dir, String format, String modules, String affectedSince) {
         String extra = "";
@@ -28,6 +26,12 @@ public final class ProtoReads {
                 + "}";
     }
 
+    /**
+     * Forecast a build (see {@link EngineProtocol#EXPLAIN_REQUEST}). Beyond the plan itself, the fields carry the
+     * plan-affecting {@code jk build} options the engine-side EngineProtocol.ETA estimate needs ({@code jdksDir}/
+     * {@code profile} may be {@code null}); the computed estimate rides back as an {@link EngineProtocol#ETA}
+     * event inside the explain burst.
+     */
     public static String explainRequest(
             String dir,
             String cache,
@@ -329,8 +333,9 @@ public final class ProtoReads {
     }
 
     /**
-     * Catalog list/search. {@code query} is {@code list} or {@code search}; {@code terms} apply to
-     * search only. {@code bundledOnly} skips project/global layers (wizard picker).
+     * Cache/store inventory. {@code query} is one of {@code usage}, {@code store-usage},
+     * {@code repo-search} ({@code terms}), {@code repo-refresh} ({@code coords}), or
+     * {@code wipe-store} ({@code dryRun} counts without deleting).
      */
     public static String cacheInventoryRequest(
             String query, String cache, String store, List<String> terms, List<String> coords, boolean dryRun) {
@@ -361,24 +366,21 @@ public final class ProtoReads {
                 + "}";
     }
 
-    public static String projectInfoRequest(String dir, String cache) {
-        return projectInfoRequest(dir, cache, null, null);
-    }
-
     /**
-     * As {@link #projectInfoRequest(String, String)} with optional {@code -m}/{@code
+     * Project summary request, with optional {@code -m}/{@code
      * --affected-since} filters (omitted when blank).
      */
-    public static String projectInfoRequest(String dir, String cache, String modules, String affectedSince) {
+    public static String projectInfoRequest(String dir, String modules, String affectedSince, boolean counts) {
         String extra = "";
         if (modules != null && !modules.isBlank()) extra += ",\"modules\":" + Jsonl.quote(modules);
         if (affectedSince != null && !affectedSince.isBlank()) {
             extra += ",\"affectedSince\":" + Jsonl.quote(affectedSince);
         }
-        return "{\"type\":\"" + EngineProtocol.PROJECT_INFO_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + ",\"cache\":"
-                + Jsonl.quote(cache)
-                + extra
-                + "}";
+        // Source/test counting walks every module's src trees — opt-in (jk status), never the
+        // default for the identity-only callers on hot paths (JK-2162). The dead `cache` field
+        // the verb never read is gone (JK-2168).
+        if (counts) extra += ",\"counts\":true";
+        return "{\"type\":\"" + EngineProtocol.PROJECT_INFO_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + extra + "}";
     }
 
     public static String outdatedRequest(String dir, String cache, String repoUrl, boolean offline, boolean force) {

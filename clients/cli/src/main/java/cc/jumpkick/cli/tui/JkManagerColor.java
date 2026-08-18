@@ -515,10 +515,10 @@ public final class JkManagerColor {
     public static String coloredModule(String module) {
         int colon = module.indexOf(':');
         if (colon < 0) return Theme.colorize(module, Theme.active().settled());
-        return Theme.colorize(module.substring(0, colon), Theme.active().cyan())
+        Theme t = Theme.active();
+        return Theme.colorize(module.substring(0, colon), t.coordGroup())
                 + ":"
-                + Theme.colorize(
-                        module.substring(colon + 1), Theme.active().brightCyan().bold());
+                + Theme.colorize(module.substring(colon + 1), t.coordName());
     }
 
     static String humanize(String stepKey) {

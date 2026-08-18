@@ -90,6 +90,7 @@ class TestCommandUserOutputTest {
         listener.onDiscoveryTotal(/* classes */ 3, /* tests */ 42);
 
         assertThat(ctx.scopeAdded).isZero();
+        assertThat(ctx.labels).containsExactly("running 42 tests");
     }
 
     @Test

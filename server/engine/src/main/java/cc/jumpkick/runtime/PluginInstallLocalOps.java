@@ -51,9 +51,12 @@ public final class PluginInstallLocalOps {
                 Path modDir = e.getKey();
                 JkBuild build = e.getValue();
                 if (!isPluginWorker(build)) continue;
+                String group = build.project().group();
                 String artifactId = build.project().name();
                 String version = build.project().version();
                 if (version == null || version.isBlank()) version = JkVersion.VERSION;
+                if (group == null || group.isBlank()) group = "cc.jumpkick";
+                String gav = group + ":" + artifactId + ":" + version;
                 BuildLayout layout = BuildLayout.of(modDir, build);
                 Path source = preferredWorkerJar(layout);
                 String label = dir.relativize(modDir).toString();
@@ -84,32 +87,33 @@ public final class PluginInstallLocalOps {
                 }
                 sideDeps = installSidecarDeps(store, sideDeps);
                 if (dryRun) {
-                    lines.add("would install " + artifactId + " " + version + " ← " + source + " (+ " + sideDeps.size()
-                            + " classpath jars)");
+                    lines.add(gav);
                     installed++;
                     continue;
                 }
                 RepoArtifactStore.writeToLocalStore(store, rel, source);
+                // Workspace / source sidecar keeps absolute sideDeps (durable across lib
+                // rematerialize basename churn from Gradle vs pure-jk installLocal). The store
+                // copy may prefer compact lib/ paths below when materialize succeeds.
                 WorkerClasspath.writeSidecar(dest, sideDeps);
                 WorkerClasspath.writeSidecar(source, sideDeps);
-                Path libDir = null;
                 if (ambientStore) {
                     try {
                         Path workerForLib = Files.isRegularFile(dest) ? dest : source;
-                        libDir = WorkerLib.materialize(artifactId, workerForLib, sideDeps);
+                        WorkerLib.materialize(artifactId, workerForLib, sideDeps);
                         List<Path> libPaths = WorkerLib.pathsIfPresent(artifactId);
                         if (libPaths != null && libPaths.size() > 1) {
                             List<Path> libDeps = new ArrayList<>(libPaths.subList(1, libPaths.size()));
+                            // Only the store-local jar — not the workspace target jar. Engine
+                            // tests launch via -Djk.*.plugin.jar → target/plugins/… and need
+                            // sideDeps that still exist after a later Gradle installLocal.
                             WorkerClasspath.writeSidecar(dest, libDeps);
-                            WorkerClasspath.writeSidecar(source, libDeps);
                         }
                     } catch (Exception ignored) {
                         // sidecar absolute paths still launch
                     }
                 }
-                String libNote = libDir != null ? "; lib " + libDir : "";
-                lines.add("Installed " + artifactId + " " + version + " → " + dest + " (" + sideDeps.size() + " deps"
-                        + libNote + ")");
+                lines.add(gav);
                 installed++;
             }
             int skipped = missing.size();
@@ -119,7 +123,7 @@ public final class PluginInstallLocalOps {
             }
             return new PluginInstallLocalAck(null, installed, skipped, missing, lines);
         } catch (Exception e) {
-            return PluginInstallLocalAck.error(String.valueOf(e.getMessage()));
+            return PluginInstallLocalAck.error(cc.jumpkick.util.Errors.text(e));
         }
     }
 

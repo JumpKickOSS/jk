@@ -44,7 +44,7 @@ public final class DenyCheckVerb implements HostedVerb {
             try {
                 report = cc.jumpkick.runtime.PolicyOps.denyCheck(Path.of(Jsonl.str(requestLine, "dir")));
             } catch (RuntimeException e) {
-                report = cc.jumpkick.engine.protocol.DenyReport.error(String.valueOf(e.getMessage()));
+                report = cc.jumpkick.engine.protocol.DenyReport.error(cc.jumpkick.util.Errors.text(e));
             }
             host.sendQuiet(writer, report.encode());
 

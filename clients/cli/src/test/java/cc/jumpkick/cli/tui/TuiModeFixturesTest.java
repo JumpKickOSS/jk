@@ -30,9 +30,9 @@ class TuiModeFixturesTest {
             String ok = CommandWedge.ok("Build", "done", NerdFontCaps.NONE);
             String fail = CommandWedge.fail("Build", "boom", NerdFontCaps.NONE);
             String table = JkWedge.menu("Installed JDKs").renderTitleBar(RenderContext.current(), 40);
-            assertThat(ok).isEqualTo(" + Build > done");
-            assertThat(fail).isEqualTo(" ! Build > boom");
-            assertThat(table).startsWith(" = Installed JDKs > ").endsWith("+");
+            assertThat(ok).isEqualTo("jk: + Build > done");
+            assertThat(fail).isEqualTo("jk: ! Build > boom");
+            assertThat(table).startsWith("jk: = Installed JDKs > ").endsWith("+");
             assertThat(ok + fail + table).doesNotContain(CSI).doesNotContain(PUA);
             assertThat(ok + fail + table).doesNotContain(Glyphs.CHECK).doesNotContain(Glyphs.CROSS);
             return null;
@@ -60,7 +60,7 @@ class TuiModeFixturesTest {
         String joined = String.join("\n", lines);
         assertThat(lines)
                 .containsExactly(
-                        " = Build Graph >",
+                        "jk: = Build Graph >",
                         " * g:a",
                         " |",
                         " `-[Rebuild] 1 module is dirty",
@@ -93,7 +93,7 @@ class TuiModeFixturesTest {
         // Force plain path inside renderWedgeFrame via Theme — under CI isAnsi is often false already.
         String frame = Spinner.renderWedgeFrame(0, "Status", "working", NerdFontCaps.NONE, colors);
         if (frame.contains("Status") && !frame.contains(CSI)) {
-            assertThat(frame).isEqualTo(" * Status > working");
+            assertThat(frame).isEqualTo("jk: * Status > working");
             assertThat(frame).doesNotContain(Glyphs.PULSE).doesNotContain(PUA).doesNotContain(CSI);
         }
     }
@@ -120,7 +120,7 @@ class TuiModeFixturesTest {
         withConfig(noAnsiConfig(), () -> {
             String took = cc.jumpkick.cli.run.ConsoleSpec.took(Duration.ofMillis(547));
             String settle = CommandWedge.ok("Format", "Already formatted " + took, NerdFontCaps.NONE);
-            assertThat(settle).isEqualTo(" + Format > Already formatted - took 547ms");
+            assertThat(settle).isEqualTo("jk: + Format > Already formatted - took 547ms");
             assertThat(settle).doesNotContain(CSI).doesNotContain(Glyphs.CHECK);
             return null;
         });

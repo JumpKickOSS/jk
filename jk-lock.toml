@@ -1,8 +1,8 @@
 version = 1
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
-jk = { version = "0.12.0", sha256 = "ce2933be6ff5b481265ab26d0ed0aa0f0fbde5bc0065d6329c183171cc8aaf19" }
-manifests-sha256 = "d37fd137b3f160d45bc0e09ba45c1f01693828a2fd4acfefb146da22caf81df9"
+jk-min = "0.12.0"
+manifests-sha256 = "b2b5be5df349f036aeef079dd2f2ea51f907559939a21cfc1157d8bfe7e99066"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [[artifact]]
@@ -21,9 +21,9 @@ scopes   = ["main"]
 
 [[artifact]]
 name     = "com.diffplug.spotless:spotless-lib:jar:"
-version  = "4.9.0"
+version  = "4.10.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:909061cb503eed012c92190c1d90176bba27eb98d5a29006ead1681a5906f26f"
+checksum = "sha256:bf3351bfeb6e13da2402ba3280077b268fb569bbeff69ef2e0aa82f241a71fe3"
 scopes   = ["main"]
 
 [[artifact]]
@@ -35,54 +35,54 @@ scopes   = ["main"]
 
 [[artifact]]
 name     = "com.fasterxml.jackson.core:jackson-core:jar:"
-version  = "2.22.1"
+version  = "2.22.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:941ff029bcdb93e83d209ce516c1a7fb8bbac07d0a2fa122f5bf194b2cd7b4f4"
+checksum = "sha256:ff167a6317be15895706c26668f45b898efe40ab8780970658210fe1393d52a6"
 scopes   = ["main"]
 
 [[artifact]]
 name     = "com.fasterxml.jackson.core:jackson-databind:jar:"
-version  = "2.22.1"
+version  = "2.22.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:7dcd7e53bec1f56c7ad278bd1ca0840bebcc595d61ce44d6a8439abb75b965b2"
+checksum = "sha256:d0da14c12b16b5d54719aa172d83b542ff4abeb8b0fb7db476fde8ceece760ca"
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
-  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.1",
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.2",
 ]
 
 [[artifact]]
 name     = "com.fasterxml.jackson.dataformat:jackson-dataformat-smile:jar:"
-version  = "2.22.1"
+version  = "2.22.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:9fa440834571b5645bb0a0a0462226232a209ac28809e6225fcb16a7f62c7df8"
+checksum = "sha256:de84384341c6113fd8832d5cb472373df074371e4a7215c600dfa1de95e8f7ea"
 scopes   = ["main"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.1",
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.1",
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.2",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.2",
 ]
 
 [[artifact]]
 name     = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:"
-version  = "2.22.1"
+version  = "2.22.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:85da45b7e5e565418963ff8f0dcb184365b0557c15468933f4318dde5c3ce845"
+checksum = "sha256:9df71cc7fb3781fd0bed6c05eebbfa8b39292a49f5619e76fdd0d889f64c8f33"
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
-  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.1",
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.1",
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.2",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.2",
 ]
 
 [[artifact]]
 name     = "com.fasterxml.jackson.module:jackson-module-parameter-names:jar:"
-version  = "2.22.1"
+version  = "2.22.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:dc344110fed9779bee54291044d1d209bac31ce9844f5b1a217ce46bd74891f9"
+checksum = "sha256:d9a09a3a3ea34ec16e730207d04230cf144bd98bf8c6f366f363b40f6b61cc01"
 scopes   = ["main"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.1",
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.1",
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.2",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.2",
 ]
 
 [[artifact]]
@@ -133,7 +133,7 @@ deps = [
   "com.google.auto.value:auto-value-annotations:jar:@1.11.1",
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.guava:guava:jar:@33.7.1-jre",
   "javax.annotation:javax.annotation-api:jar:@1.3.2",
 ]
 
@@ -159,7 +159,7 @@ deps = [
   "com.google.auto.value:auto-value-annotations:jar:@1.11.1",
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.guava:guava:jar:@33.7.1-jre",
   "com.google.http-client:google-http-client-gson:jar:@2.2.0",
   "com.google.http-client:google-http-client:jar:@2.2.0",
   "org.jspecify:jspecify:jar:@1.0.1",
@@ -186,11 +186,11 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:575adde5886ea9b5e741b855c2f029485a4f0ca29b9ce12fa4850208622ebc87"
 scopes   = ["main"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.1",
-  "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:@2.22.1",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.2",
+  "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:@2.22.2",
   "com.google.auth:google-auth-library-oauth2-http:jar:@1.50.0",
   "com.google.cloud.tools:jib-build-plan:jar:@0.4.0",
-  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.guava:guava:jar:@33.7.1-jre",
   "com.google.http-client:google-http-client-apache-v2:jar:@2.2.0",
   "com.google.http-client:google-http-client:jar:@2.2.0",
   "org.apache.commons:commons-compress:jar:@1.28.0",
@@ -230,9 +230,9 @@ scopes   = ["main", "provided"]
 
 [[artifact]]
 name     = "com.google.guava:guava:jar:"
-version  = "33.6.0-jre"
+version  = "33.7.1-jre"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:dc573e1fca4fd5454f4a5fd3d7da2df03002876a4175bafc14a95980dd7713b3"
+checksum = "sha256:796d8e28ac64e83a47c4c5935a8fecc4682650a04bbdead738ef0f5a3a0e6c46"
 scopes   = ["main", "provided"]
 deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
@@ -281,7 +281,7 @@ scopes   = ["main"]
 deps = [
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.guava:guava:jar:@33.7.1-jre",
   "com.google.j2objc:j2objc-annotations:jar:@3.1",
   "io.grpc:grpc-context:jar:@1.83.1",
   "io.opencensus:opencensus-api:jar:@0.31.1",
@@ -298,7 +298,7 @@ checksum = "sha256:142ad4475e19524d2fe3ac995b3f7cbc962fc726f2edb9dbdccc61feab9b2
 scopes   = ["provided"]
 deps = [
   "aopalliance:aopalliance:jar:@1.0",
-  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.guava:guava:jar:@33.7.1-jre",
   "javax.inject:javax.inject:jar:@1",
 ]
 
@@ -338,7 +338,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:27fc61ee2d526e33d31350b5ea383091c0879345e261f9b2e6fcc97a20c86f88"
 scopes   = ["main"]
 deps = [
-  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.guava:guava:jar:@33.7.1-jre",
   "com.google.http-client:google-http-client-gson:jar:@2.2.0",
   "com.google.http-client:google-http-client:jar:@2.2.0",
 ]
@@ -451,7 +451,7 @@ scopes   = ["main"]
 deps = [
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.guava:guava:jar:@33.7.1-jre",
 ]
 
 [[artifact]]
@@ -474,7 +474,7 @@ deps = [
   "com.google.android:annotations:jar:@4.1.1.4",
   "com.google.code.gson:gson:jar:@2.14.0",
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.guava:guava:jar:@33.7.1-jre",
   "io.grpc:grpc-api:jar:@1.83.1",
   "io.grpc:grpc-context:jar:@1.83.1",
   "io.perfmark:perfmark-api:jar:@0.27.0",
@@ -489,7 +489,7 @@ checksum = "sha256:fc7a54cca004df57d8d416f335e851d53b188926b598151c5714498ff60dc
 scopes   = ["main"]
 deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.guava:guava:jar:@33.7.1-jre",
   "io.grpc:grpc-api:jar:@1.83.1",
   "io.grpc:grpc-core:jar:@1.83.1",
   "io.grpc:grpc-util:jar:@1.83.1",
@@ -505,7 +505,7 @@ checksum = "sha256:70fd274685f8f8b94aeecfd082168ce9518d04da9add5192aeffd46f582de
 scopes   = ["main"]
 deps = [
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
-  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.guava:guava:jar:@33.7.1-jre",
   "io.grpc:grpc-api:jar:@1.83.1",
 ]
 
@@ -518,7 +518,7 @@ scopes   = ["main"]
 deps = [
   "com.google.api.grpc:proto-google-common-protos:jar:@2.74.0",
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
-  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.guava:guava:jar:@33.7.1-jre",
   "com.google.protobuf:protobuf-java:jar:@4.35.1",
   "io.grpc:grpc-api:jar:@1.83.1",
   "io.grpc:grpc-protobuf-lite:jar:@1.83.1",
@@ -532,7 +532,7 @@ checksum = "sha256:431c1280d85dd34c93f2ede7cc192c591b660a1becb6053da1423b0a6526c
 scopes   = ["main"]
 deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.guava:guava:jar:@33.7.1-jre",
   "io.grpc:grpc-api:jar:@1.83.1",
   "org.codehaus.mojo:animal-sniffer-annotations:jar:@1.27",
 ]
@@ -544,7 +544,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:4e722bf41a8d305e0436f16e69f7787ce5a227dc0dac45be06e8c197f08275e4"
 scopes   = ["main"]
 deps = [
-  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.guava:guava:jar:@33.7.1-jre",
   "io.grpc:grpc-api:jar:@1.83.1",
   "io.grpc:grpc-core:jar:@1.83.1",
   "org.codehaus.mojo:animal-sniffer-annotations:jar:@1.27",
@@ -591,8 +591,8 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:20225ec918f60137496b0596993b04d21ae35db464d67e02f8b93aa4543c4b66"
 scopes   = ["main"]
 deps = [
-  "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:@2.22.1",
-  "com.fasterxml.jackson.module:jackson-module-parameter-names:jar:@2.22.1",
+  "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:@2.22.2",
+  "com.fasterxml.jackson.module:jackson-module-parameter-names:jar:@2.22.2",
   "org.jetbrains:annotations:jar:@26.1.0",
   "org.jspecify:jspecify:jar:@1.0.1",
 ]
@@ -614,7 +614,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:3ea995b55a4068be22989b70cc29a4d788c2d328d1d50613a7a9afd13fdd2d0a"
 scopes   = ["main"]
 deps = [
-  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.guava:guava:jar:@33.7.1-jre",
   "io.opencensus:opencensus-api:jar:@0.31.1",
 ]
 
@@ -933,9 +933,9 @@ scopes   = ["provided"]
 
 [[artifact]]
 name     = "net.bytebuddy:byte-buddy:jar:"
-version  = "1.18.11-jdk5"
+version  = "1.18.12-jdk5"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:a178d5a44788a8461bc0b1cfb484aa69657077ba24d36438a1098e2e02efd2f0"
+checksum = "sha256:f826c965b073989c553fcc71c64667132d69bc1e59540fedbb84ad5bdf559842"
 scopes   = ["test"]
 
 [[artifact]]
@@ -1195,7 +1195,7 @@ name     = "org.apache.maven:maven-artifact:jar:"
 version  = "3.9.16"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:54cc1c1ef932e3d4a903352111b42b4d3c3ed8e7a1d0de73b625309d9c3ad3e8"
-scopes   = ["main", "provided"]
+scopes   = ["provided"]
 deps = [
   "org.codehaus.plexus:plexus-utils:jar:@4.0.3",
 ]
@@ -1215,7 +1215,7 @@ checksum = "sha256:5d45c72e3dbfab8b68d15ad4f12777b7d9b5fe4d4adc99c3bd51fb9641fab
 scopes   = ["provided"]
 deps = [
   "com.google.guava:failureaccess:jar:@1.0.3",
-  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.guava:guava:jar:@33.7.1-jre",
   "com.google.inject:guice:jar:classes@5.1.0",
   "javax.inject:javax.inject:jar:@1",
   "org.apache.maven.resolver:maven-resolver-api:jar:@2.0.21",
@@ -1250,7 +1250,7 @@ checksum = "sha256:a99aaac6ecb1b98d0f3b3ba18c16a122fc503412222055639a3eb4cbe4583
 scopes   = ["provided"]
 deps = [
   "com.google.guava:failureaccess:jar:@1.0.3",
-  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.guava:guava:jar:@33.7.1-jre",
   "com.google.inject:guice:jar:classes@5.1.0",
   "commons-cli:commons-cli:jar:@1.11.0",
   "javax.annotation:javax.annotation-api:jar:@1.3.2",
@@ -1393,7 +1393,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:c4a445426c3c2861666863b842cc4ec7bbb1c4226fefd370b6d2fe83d6c4ff0f"
 scopes   = ["test"]
 deps = [
-  "net.bytebuddy:byte-buddy:jar:@1.18.11-jdk5",
+  "net.bytebuddy:byte-buddy:jar:@1.18.12-jdk5",
 ]
 
 [[artifact]]
@@ -1491,7 +1491,7 @@ name     = "org.codehaus.plexus:plexus-utils:jar:"
 version  = "4.0.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:421ff6ed146c53a9d4eaade8f629b52b12af7187101f1bd06c2c64e904019f3c"
-scopes   = ["main", "provided"]
+scopes   = ["provided"]
 
 [[artifact]]
 name     = "org.codehaus.plexus:plexus-xml:jar:"
@@ -1774,9 +1774,9 @@ scopes   = ["main"]
 
 [[artifact]]
 name     = "org.openrewrite.tools:java-object-diff:jar:"
-version  = "1.0.1"
+version  = "1.0.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:8dcf0381d306c5223cea4c0acb84afd5691ec6eb41e0b6a36dda288a0c7ec4dc"
+checksum = "sha256:86c5e72942bb12143f2c283bb2d44c9f022e52d44361751ead8c11f3ebde2596"
 scopes   = ["main"]
 deps = [
   "org.jetbrains:annotations:jar:@26.1.0",
@@ -1800,11 +1800,11 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:8657772b62cf3830b2fe473f1f53a41b07730e41fb401b80b1ca4a34e690f5be"
 scopes   = ["main"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.1",
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.1",
-  "com.fasterxml.jackson.dataformat:jackson-dataformat-smile:jar:@2.22.1",
-  "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:@2.22.1",
-  "com.fasterxml.jackson.module:jackson-module-parameter-names:jar:@2.22.1",
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.2",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.2",
+  "com.fasterxml.jackson.dataformat:jackson-dataformat-smile:jar:@2.22.2",
+  "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:@2.22.2",
+  "com.fasterxml.jackson.module:jackson-module-parameter-names:jar:@2.22.2",
   "com.github.ben-manes.caffeine:caffeine:jar:@3.2.4",
   "com.univocity:univocity-parsers:jar:@2.9.1",
   "io.micrometer:micrometer-core:jar:@1.17.0",
@@ -1815,7 +1815,7 @@ deps = [
   "org.jetbrains:annotations:jar:@26.1.0",
   "org.jspecify:jspecify:jar:@1.0.1",
   "org.objenesis:objenesis:jar:@3.6",
-  "org.openrewrite.tools:java-object-diff:jar:@1.0.1",
+  "org.openrewrite.tools:java-object-diff:jar:@1.0.2",
   "org.openrewrite.tools:jgit:jar:@1.5.0",
   "org.ow2.asm:asm-analysis:jar:@9.10.1",
   "org.ow2.asm:asm-tree:jar:@9.10.1",

@@ -49,7 +49,7 @@ public final class IdeModelVerb implements HostedVerb {
                         jdksDir == null ? null : Path.of(jdksDir),
                         false);
             } catch (RuntimeException e) {
-                model = cc.jumpkick.engine.protocol.IdeWireModel.error(String.valueOf(e.getMessage()));
+                model = cc.jumpkick.engine.protocol.IdeWireModel.error(cc.jumpkick.util.Errors.text(e));
             }
             host.sendQuiet(writer, model.encode());
 

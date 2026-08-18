@@ -4,7 +4,6 @@ description = "PubGrub dependency resolver"
 [dependencies]
 jk-core.workspace = true
 jk-io.workspace = true
-maven-artifact = "latest"
 
 [test-dependencies]
 assertj-core = "latest"

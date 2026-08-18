@@ -542,7 +542,7 @@ class JkManagerTest {
     }
 
     @Test
-    void plain_progress_emits_decades_then_100_done() {
+    void plain_progress_emits_stage_changes_not_percent_ticks() {
         var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
         cc.jumpkick.config.SessionContext.runWhere(
                 cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
@@ -551,31 +551,198 @@ class JkManagerTest {
                     cm.addTaskLabeled("", "fmt", "Examining source files");
                     cm.stepRunning("", "fmt");
                     cm.progress(0, 100);
-                    cm.progress(15, 100); // still in the 0% step
-                    cm.progress(25, 100); // crosses 20%
-                    cm.progress(100, 100); // still working chrome max 80% mid-run
+                    cm.progress(15, 100);
+                    cm.progress(25, 100); // percent ticks must not reprint the same stage
+                    cm.progress(100, 100);
                     cm.finishBuildPlanSuccess("Already formatted - took 547ms", List.of());
                     String out = buf.toString(StandardCharsets.UTF_8);
                     assertThat(out).doesNotContain("\u001B[");
                     assertThat(out).doesNotContain(Spinner.PULSE_GLYPH);
-                    assertThat(out).contains(" * Format > Examining source files - 0% - working...");
-                    assertThat(out).doesNotContain(" * Format > Examining source files - 10% - working...");
-                    assertThat(out).contains(" * Format > Examining source files - 20% - working...");
-                    assertThat(out).contains(" * Format > Examining source files - 100% - done.");
-                    assertThat(out).contains(" + Format > Already formatted - took 547ms");
+                    assertThat(out).contains("jk: * Format > initializing...");
+                    assertThat(out).contains("jk: * Format > Examining source files :: 0% - prepare");
+                    assertThat(out).doesNotContain("jk: * Format > Examining source files :: 10% - prepare");
+                    assertThat(out).doesNotContain("jk: * Format > Examining source files :: 20% - prepare");
+                    assertThat(out).doesNotContain("jk: * Format > Examining source files :: 40% - prepare");
+                    assertThat(out).contains("jk: * Format > 100% - done");
+                    assertThat(out).contains("jk: + Format > Already formatted - took 547ms");
                     // No mid-run 100% working line — 100% is only the done line.
-                    assertThat(out).doesNotContain("100% - working...");
+                    assertThat(out).doesNotContain("100% - prepare");
+                    assertThat(out.split("Examining source files :: ", -1).length - 1)
+                            .isEqualTo(1);
                 });
     }
 
     @Test
     void plain_progress_line_helper_shape() {
         assertThat(JkManager.plainProgressLine("Format", "Examining source files", 0, false))
-                .isEqualTo(" * Format > Examining source files - 0% - working...");
+                .isEqualTo("jk: * Format > Examining source files :: 0% - prepare");
         assertThat(JkManager.plainProgressLine("Format", "Examining source files", 100, true))
-                .isEqualTo(" * Format > Examining source files - 100% - done.");
+                .isEqualTo("jk: * Format > Examining source files :: 100% - done");
         assertThat(JkManager.plainIndeterminateLine("Format", "Examining source files", false))
-                .isEqualTo(" * Format > Examining source files - working...");
+                .isEqualTo("jk: * Format > Examining source files");
+    }
+
+    @Test
+    void plain_progress_announces_eta_as_soon_as_it_is_known() {
+        var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
+        cc.jumpkick.config.SessionContext.runWhere(
+                cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
+                    var buf = new ByteArrayOutputStream();
+                    var cm = JkManager.plan(stream(buf), "Build", true);
+                    cm.setPlanCoord("cc.jumpkick:jk");
+                    cm.setRemainingWorkEstimate(91_000);
+                    String out = buf.toString(StandardCharsets.UTF_8);
+                    assertThat(out).contains("jk: * Build > initializing...");
+                    assertThat(out).contains("jk: * Build > cc.jumpkick:jk :: 0% - prepare");
+                    assertThat(out).contains("jk: * Build > cc.jumpkick:jk :: 0% (ETA ~1m 31s) - start");
+                });
+    }
+
+    @Test
+    void plain_progress_emits_phase_and_built_immediately() {
+        var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
+        cc.jumpkick.config.SessionContext.runWhere(
+                cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
+                    var buf = new ByteArrayOutputStream();
+                    var cm = JkManager.plan(stream(buf), "Build", true);
+                    cm.setPlanCoord("cc.jumpkick:jk");
+                    cm.progress(0, 100);
+                    cm.addTask("cc.jumpkick:jk-engine", "compile-java");
+                    cm.stepRunning("cc.jumpkick:jk-engine", "compile-java", "compile");
+                    cm.stepMessage("cc.jumpkick:jk-engine", "compile-java", "compiling 12 sources");
+                    cm.progress(5, 100);
+                    cm.addTask("cc.jumpkick:jk-engine", "run-tests");
+                    cm.stepRunning("cc.jumpkick:jk-engine", "run-tests", "test");
+                    cm.stepMessage("cc.jumpkick:jk-engine", "run-tests", "running 80 tests");
+                    cm.notePlainTestTick("cc.jumpkick:jk-engine", "run-tests", 30);
+                    cm.progress(9, 100);
+                    cm.progress(23, 100);
+                    cm.finishModule("cc.jumpkick:jk-engine", true);
+                    cm.finishBuildPlanSuccess("Build successful, built 1 module - took 1s", List.of());
+                    String out = buf.toString(StandardCharsets.UTF_8);
+                    assertThat(out).contains("jk: * Build > initializing...");
+                    assertThat(out).contains("jk: * Build > cc.jumpkick:jk :: 0% - prepare");
+                    assertThat(out).contains("- compiling 12 sources");
+                    assertThat(out).contains("- running 80 tests");
+                    // Mid-stage test countdown ticks must not reprint.
+                    assertThat(out).doesNotContain("running 50 tests");
+                    assertThat(out).doesNotContain(" :: 20% - ");
+                    assertThat(out).doesNotContain(" :: 40% - ");
+                    assertThat(out).contains("cc.jumpkick:jk-engine :: 23% - built");
+                    assertThat(out).contains("jk: * Build > cc.jumpkick:jk :: 100% - done");
+                    assertThat(out).contains("jk: + Build > Build successful, built 1 module - took 1s");
+                    assertThat(out).doesNotContain("Parsing");
+                    assertThat(out).doesNotContain("- work");
+                    assertThat(out.split("- compiling 12 sources", -1).length - 1)
+                            .isEqualTo(1);
+                    assertThat(out.split("- running 80 tests", -1).length - 1).isEqualTo(1);
+                });
+    }
+
+    @Test
+    void plain_progress_heartbeats_long_running_stages_every_30s() {
+        var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
+        cc.jumpkick.config.SessionContext.runWhere(
+                cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
+                    var buf = new ByteArrayOutputStream();
+                    var cm = JkManager.plan(stream(buf), "Build", true);
+                    try {
+                        cm.setPlanCoord("cc.jumpkick:jk");
+                        cm.setRemainingWorkEstimate(90_000);
+                        cm.progress(0, 100);
+                        cm.addTask("cc.jumpkick:jk-cli", "run-tests");
+                        cm.stepRunning("cc.jumpkick:jk-cli", "run-tests", "test");
+                        cm.stepMessage("cc.jumpkick:jk-cli", "run-tests", "running 860 tests");
+                        cm.progress(9, 100);
+                        String before = buf.toString(StandardCharsets.UTF_8);
+                        assertThat(before).contains("- running 860 tests");
+                        assertThat(before).doesNotContain("running 759 tests");
+
+                        // Under 30s: still silent even with a fresher remaining count.
+                        cm.notePlainTestTick("cc.jumpkick:jk-cli", "run-tests", 101);
+                        cm.maybeEmitPlainHeartbeat();
+                        assertThat(buf.toString(StandardCharsets.UTF_8)).doesNotContain("running 759 tests");
+
+                        // At/after 30s: reprint with live details (percent may be clock-based).
+                        cm.plainLastPrintedNanos = System.nanoTime() - JkManager.PLAIN_HEARTBEAT_MS * 1_000_000L - 1;
+                        cm.maybeEmitPlainHeartbeat();
+                        String out = buf.toString(StandardCharsets.UTF_8);
+                        assertThat(out).contains("cc.jumpkick:jk-cli ::");
+                        assertThat(out).contains("- running 759 tests");
+                        assertThat(out.split("- running 860 tests", -1).length - 1)
+                                .isEqualTo(1);
+                        assertThat(out.split("- running 759 tests", -1).length - 1)
+                                .isEqualTo(1);
+                    } finally {
+                        cm.finishBuildPlanSuccess("Build successful, built 1 module - took 1s", List.of());
+                    }
+                });
+    }
+
+    @Test
+    void plain_native_detail_is_verbose_only() {
+        var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
+        cc.jumpkick.config.SessionContext.runWhere(
+                cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
+                    var buf = new ByteArrayOutputStream();
+                    var cm = JkManager.plan(stream(buf), "Build", true);
+                    cm.stepRunning("cc.jumpkick:jk-cli", "native-image", "native");
+                    cm.progress(60, 100);
+                    cm.stepMessage("cc.jumpkick:jk-cli", "native-image", "jk · classpath input size: ~3.8 MiB");
+                    String quiet = buf.toString(StandardCharsets.UTF_8);
+                    assertThat(quiet).contains("- native compiling");
+                    assertThat(quiet).doesNotContain("classpath input size");
+                });
+        var verbose = cc.jumpkick.config.JkConfig.empty()
+                .withNoAnsi(Optional.of(true))
+                .withVerbose(Optional.of(true));
+        cc.jumpkick.config.SessionContext.runWhere(
+                cc.jumpkick.config.Session.defaults().withConfig(verbose), () -> {
+                    var buf = new ByteArrayOutputStream();
+                    var cm = JkManager.plan(stream(buf), "Build", true);
+                    cm.stepRunning("cc.jumpkick:jk-cli", "native-image", "native");
+                    cm.progress(61, 100);
+                    cm.stepMessage("cc.jumpkick:jk-cli", "native-image", "jk · classpath input size: ~3.8 MiB");
+                    String out = buf.toString(StandardCharsets.UTF_8);
+                    assertThat(out).contains("- native compiling = jk - classpath input size: ~3.8 MiB");
+                });
+    }
+
+    @Test
+    void plain_process_output_is_suppressed_unless_verbose() {
+        var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
+        cc.jumpkick.config.SessionContext.runWhere(
+                cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
+                    var buf = new ByteArrayOutputStream();
+                    var cm = JkManager.plan(stream(buf), "Build", true);
+                    cm.writeProcessOutput("javac: compiling Foo.java");
+                    cm.writeAbove("compiler error: Foo.java:1: error");
+                    String out = buf.toString(StandardCharsets.UTF_8);
+                    assertThat(out).doesNotContain("javac: compiling Foo.java");
+                    assertThat(out).contains("compiler error: Foo.java:1: error");
+                });
+    }
+
+    @Test
+    void plain_process_output_surfaces_on_step_failure() {
+        // JK-2163: plain mode has no Ctrl-O and no settle dump — a tool crash must dump the
+        // buffered ring, or its only evidence stays invisible.
+        var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
+        cc.jumpkick.config.SessionContext.runWhere(
+                cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
+                    var buf = new ByteArrayOutputStream();
+                    var cm = JkManager.plan(stream(buf), "Build", true);
+                    cm.writeProcessOutput("native-image: Error: Classes that should be initialized");
+                    assertThat(buf.toString(StandardCharsets.UTF_8)).doesNotContain("native-image: Error");
+                    cm.showProcessFailureOutput();
+                    String out = buf.toString(StandardCharsets.UTF_8);
+                    assertThat(out).contains("native-image: Error: Classes that should be initialized");
+                    // A second failure in the same plan must not duplicate the dump.
+                    cm.showProcessFailureOutput();
+                    String again = buf.toString(StandardCharsets.UTF_8);
+                    assertThat(again.indexOf("native-image: Error"))
+                            .isEqualTo(again.lastIndexOf("native-image: Error"));
+                });
     }
 
     @Test

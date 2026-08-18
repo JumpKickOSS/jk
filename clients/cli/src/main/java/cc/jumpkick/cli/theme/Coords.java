@@ -17,7 +17,7 @@ public final class Coords {
         return Theme.active().coordGroup();
     }
 
-    /** artifact/name segment — the theme's coordinate-name color. */
+    /** artifact/name segment — bold bright-cyan ({@link Theme#coordName()}). */
     public static AttributedStyle artifactStyle() {
         return Theme.active().coordName();
     }
@@ -37,6 +37,7 @@ public final class Coords {
         return richGa(group, artifact).plus(RichText.plain(":")).plus(RichText.styled(version, "coord-version"));
     }
 
+    /** Cyan group + bold bright-cyan artifact ({@code coord-group} / {@code coord-name}). */
     public static RichText richGa(String group, String artifact) {
         return RichText.styled(group, "coord-group")
                 .plus(RichText.plain(":"))

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cache.Linking;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.model.command.Arity;
@@ -17,7 +16,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
@@ -79,7 +77,7 @@ public final class JshellCommand implements CliCommand {
         }
 
         boolean noBuild = in.isSet("no-build");
-        Path cacheDir = in.value("cache-dir").map(Path::of).orElse(JkDirs.cache());
+        Path cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(JkDirs.cache());
 
         if (!noBuild) {
             // Quiet preparatory build so classes exist.
@@ -145,6 +143,7 @@ public final class JshellCommand implements CliCommand {
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.directory(dir.toFile());
+        cc.jumpkick.cli.tui.Interactivity.restoreForChildProcess();
         pb.inheritIO();
         Process p = pb.start();
         int exit = p.waitFor();
@@ -185,39 +184,5 @@ public final class JshellCommand implements CliCommand {
             if (c != null && Files.isRegularFile(c)) return c;
         }
         return null;
-    }
-
-    /**
-     * jshell only accepts directories and {@code .jar}/{@code .zip} files on {@code --class-path}.
-     * JumpKick's CAS store paths are extensionless content hashes — hard-link (or copy) them to a
-     * {@code .jar}-suffixed alias under a temp dir so jshell accepts them.
-     */
-    static List<Path> withJarExtension(List<Path> jars) throws IOException {
-        List<Path> out = new ArrayList<>(jars.size());
-        Path dir = null;
-        int i = 0;
-        for (Path jar : jars) {
-            if (jar == null) continue;
-            if (Files.isDirectory(jar) || hasJarOrZipExtension(jar)) {
-                out.add(jar);
-                continue;
-            }
-            if (dir == null) {
-                dir = Files.createTempDirectory("jk-jshell-cp-");
-                dir.toFile().deleteOnExit();
-            }
-            // Keep the CAS hex in the name so aliases stay unique across modules.
-            Path alias = dir.resolve(i + "-" + jar.getFileName() + ".jar");
-            Linking.linkOrCopy(jar, alias);
-            alias.toFile().deleteOnExit();
-            out.add(alias);
-            i++;
-        }
-        return out;
-    }
-
-    private static boolean hasJarOrZipExtension(Path path) {
-        String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
-        return name.endsWith(".jar") || name.endsWith(".zip");
     }
 }

@@ -45,13 +45,17 @@ public final class ModuleGraphVerb implements HostedVerb {
             ModuleGraphAck ack;
             try {
                 String dir = Jsonl.str(requestLine, "dir");
+                if (dir == null || dir.isBlank()) {
+                    // A resident server has no meaningful cwd to fall back to (JK-2166).
+                    throw new IllegalArgumentException("module-graph request names no dir");
+                }
                 ack = ModuleGraphOps.render(
-                        dir == null || dir.isBlank() ? Path.of(".") : Path.of(dir),
+                        Path.of(dir),
                         Jsonl.str(requestLine, "format"),
                         Jsonl.str(requestLine, "modules"),
                         Jsonl.str(requestLine, "affectedSince"));
             } catch (Exception e) {
-                ack = ModuleGraphAck.error(String.valueOf(e.getMessage()));
+                ack = ModuleGraphAck.error(cc.jumpkick.util.Errors.text(e));
             }
             host.sendQuiet(writer, ack.encode());
         } catch (Exception e) {

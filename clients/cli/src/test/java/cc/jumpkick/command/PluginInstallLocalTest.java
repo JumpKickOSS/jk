@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.tui.RenderContext;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -62,7 +63,9 @@ class PluginInstallLocalTest {
         assertThat(Path.of(dest + ".sha256")).exists();
         assertThat(Files.readString(Path.of(dest + ".sha256"))).matches("[0-9a-f]{64}");
         assertThat(Path.of(dest + ".classpath")).exists();
-        assertThat(out.toString(StandardCharsets.UTF_8)).contains("Installed");
+        String text = RenderContext.stripAnsi(out.toString(StandardCharsets.UTF_8));
+        assertThat(text).contains("Installed");
+        assertThat(text).contains("cc.jumpkick:jk-test-runner:0.12.0");
     }
 
     @Test
@@ -171,7 +174,9 @@ class PluginInstallLocalTest {
             System.setOut(orig);
         }
         assertThat(exit).isZero();
-        assertThat(out.toString(StandardCharsets.UTF_8)).contains("would install");
+        String text = RenderContext.stripAnsi(out.toString(StandardCharsets.UTF_8));
+        assertThat(text).contains("Would install");
+        assertThat(text).contains("cc.jumpkick:jk-test-runner:0.12.0");
         assertThat(Files.exists(cache.resolve("repos/local"))).isFalse();
     }
 

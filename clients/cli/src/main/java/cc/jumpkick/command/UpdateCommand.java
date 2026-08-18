@@ -66,7 +66,7 @@ public final class UpdateCommand implements CliCommand {
         this.features = in.values("features");
         this.noDefaultFeatures = in.isSet("no-default-features");
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
-        this.cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
+        this.cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         this.platform = in.value("platform").orElse(null);
         this.global = GlobalOptions.from(in);
 

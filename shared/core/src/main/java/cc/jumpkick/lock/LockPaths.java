@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.lock;
 
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.config.WorkspaceScan;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,17 +37,8 @@ public final class LockPaths {
         Objects.requireNonNull(projectDir, "projectDir");
         Path dir = projectDir.toAbsolutePath().normalize();
         Path toml = dir.resolve("jk.toml");
-        if (Files.isRegularFile(toml)) {
-            try {
-                // Raw probe, NOT a full parse: this runs inside JkBuildParser.parse itself
-                // (plugin-manifest resolution → lockEntry → here), so parsing the same file
-                // again would recurse without end.
-                if (JkBuildParser.declaresWorkspaceModules(toml)) {
-                    return dir;
-                }
-            } catch (IOException | RuntimeException ignored) {
-                // fall through to locator / standalone
-            }
+        if (Files.isRegularFile(toml) && WorkspaceScan.isWorkspaceRoot(dir)) {
+            return dir;
         }
         try {
             Optional<Path> root = WorkspaceLocator.findRoot(dir);
@@ -79,10 +70,6 @@ public final class LockPaths {
         if (!Files.isRegularFile(toml)) {
             return false;
         }
-        try {
-            return JkBuildParser.parse(toml).isWorkspaceRoot();
-        } catch (IOException | RuntimeException e) {
-            return false;
-        }
+        return WorkspaceScan.isWorkspaceRoot(owner);
     }
 }

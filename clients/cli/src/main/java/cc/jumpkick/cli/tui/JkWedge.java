@@ -240,11 +240,14 @@ public final class JkWedge implements Widget {
         return Theme.colorize(Glyphs.SEGMENT_END_NERD, Theme.active().bright(chipColor));
     }
 
-    /** {@code " {ascii-icon} {command} >"} optionally followed by {@code " " + message}. */
+    /** Prefix on every plain ({@code --no-ansi}) chrome line so users can tell jk from tool output. */
+    public static final String PLAIN_LINE_PREFIX = "jk: ";
+
+    /** {@code "jk: {ascii-icon} {command} >"} optionally followed by {@code " " + message}. */
     public static String plainWedge(String asciiIcon, String command, String message) {
         String cmd = PlainAscii.transform(command == null ? "" : command);
         String icon = asciiIcon == null || asciiIcon.isEmpty() ? Glyphs.BULLET_PLAIN : asciiIcon;
-        String head = " " + icon + " " + cmd + " >";
+        String head = PLAIN_LINE_PREFIX + icon + " " + cmd + " >";
         if (message == null || message.isEmpty()) return head;
         return head + " " + PlainAscii.transform(message);
     }

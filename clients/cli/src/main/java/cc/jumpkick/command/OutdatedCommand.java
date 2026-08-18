@@ -66,7 +66,7 @@ public final class OutdatedCommand implements CliCommand {
         this.showTip = in.isSet("show-tip");
         this.excludeUpToDate = in.isSet("exclude-up-to-date");
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
-        this.cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
+        this.cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         this.global = GlobalOptions.from(in);
 
         Path dir = global.workingDir();
@@ -76,8 +76,9 @@ public final class OutdatedCommand implements CliCommand {
         }
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
         Files.createDirectories(cache);
-        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cache, global, "Outdated");
-        if (lockCode != 0) return lockCode;
+        // Best-effort: outdated resolves against its repos independently — a lockless project
+        // whose freshen cannot resolve (e.g. --repo-url world) still reports (JK-2178).
+        cc.jumpkick.cli.EnsureFreshLock.ensureBestEffort(dir, cache, global, "Outdated", repoUrl);
 
         OutdatedReport report;
         report = cc.jumpkick.cli.engine.EngineClient.runOutdated(

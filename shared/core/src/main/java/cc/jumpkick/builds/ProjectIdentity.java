@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.builds;
 
-import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -226,16 +227,30 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
                 .map(f -> Path.of(f.path()).toAbsolutePath().normalize());
     }
 
+    /**
+     * Display {@code group:name} from bootstrap TOML — no {@code JkBuildParser}. Missing group
+     * inherits from the workspace root when this dir is a listed member (JK-2151).
+     */
     public static String coordOf(Path projectDir) {
-        try {
-            var project = JkBuildParser.parse(projectDir.resolve("jk.toml")).project();
-            String g = project.group() == null ? "" : project.group();
-            String n = project.name() == null ? "" : project.name();
-            if (g.isBlank() && n.isBlank()) return "unknown:unknown";
-            return g + ":" + n;
-        } catch (Exception e) {
-            return "unknown:unknown";
+        Path dir = projectDir.toAbsolutePath().normalize();
+        Path toml = dir.resolve("jk.toml");
+        var local = TomlScan.scan(toml, "group", "name");
+        String g = blankToEmpty(local.get("group"));
+        String n = blankToEmpty(local.get("name"));
+        if (g.isEmpty()) {
+            Optional<Path> root = WorkspaceScan.findRoot(dir);
+            if (root.isPresent()) {
+                String inherited =
+                        TomlScan.scan(root.get().resolve("jk.toml"), "group").get("group");
+                g = blankToEmpty(inherited);
+            }
         }
+        if (g.isEmpty() && n.isEmpty()) return "unknown:unknown";
+        return g + ":" + n;
+    }
+
+    private static String blankToEmpty(String s) {
+        return s == null || s.isBlank() ? "" : s.strip();
     }
 
     private static Optional<String> explicitId(Path projectDir) {

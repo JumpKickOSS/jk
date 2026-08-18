@@ -166,27 +166,13 @@ public final class SecretRedactor {
     private volatile SecretRedactor escapedJsonView;
 
     /**
-     * JSON string-body escaping — MUST stay in lock-step with {@code Jsonl.quote} (shared/jsonl;
-     * that module is not visible from here, hence the copy): quote and backslash get a backslash,
-     * {@code \n \r \t} use the short forms, other control chars become lowercase backslash-u00xx.
+     * JSON string-body escaping, delegated to {@code Jsonl.quote} (the writer this redaction
+     * must stay in lock-step with) minus its surrounding quotes — the module is a direct
+     * dependency now, so the old hand-copied twin is gone (JK-2172).
      */
     private static String jsonEscape(String s) {
-        StringBuilder b = new StringBuilder(s.length());
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '"' -> b.append("\\\"");
-                case '\\' -> b.append("\\\\");
-                case '\n' -> b.append("\\n");
-                case '\r' -> b.append("\\r");
-                case '\t' -> b.append("\\t");
-                default -> {
-                    if (c < 0x20) b.append(String.format("\\u%04x", (int) c));
-                    else b.append(c);
-                }
-            }
-        }
-        return b.toString();
+        String quoted = cc.jumpkick.jsonl.Jsonl.quote(s);
+        return quoted.substring(1, quoted.length() - 1);
     }
 
     /**

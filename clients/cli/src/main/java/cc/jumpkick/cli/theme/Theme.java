@@ -110,7 +110,7 @@ public interface Theme {
     /** Coordinate group segment — cyan (Jk Dark cyan {@code #00D4E0}). */
     AttributedStyle coordGroup();
 
-    /** Coordinate artifact/name segment — bright cyan (Jk Dark bright cyan {@code #00F0FF}). */
+    /** Coordinate artifact/name segment — bold bright-cyan (Jk Dark bright cyan {@code #00F0FF}). */
     AttributedStyle coordName();
 
     /** Coordinate version segment — midpoint between bright-cyan and white ({@code #82F7F8}). */

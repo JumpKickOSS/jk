@@ -59,11 +59,16 @@ public final class Jk {
             return;
         }
         cc.jumpkick.cli.tui.GlobalCancel.install();
-        int code = execute(args);
-        // Wake any JLine NonBlocking stdin reader before the JVM shutdown hooks run. On macOS,
-        // JLine's terminal closer otherwise blocks until a key arrives after interactive plans
-        // (Ctrl-O key listener / canPrompt probe).
-        cc.jumpkick.cli.tui.Interactivity.prepareProcessExit();
+        int code;
+        try {
+            code = execute(args);
+        } finally {
+            // Wake any JLine NonBlocking stdin reader before the JVM shutdown hooks run — also
+            // on the exception path, where the JVM's default handler still runs those hooks. On
+            // macOS, JLine's terminal closer otherwise blocks until a key arrives after
+            // interactive plans (Ctrl-O key listener / canPrompt probe).
+            cc.jumpkick.cli.tui.Interactivity.prepareProcessExit();
+        }
         System.exit(code);
     }
 

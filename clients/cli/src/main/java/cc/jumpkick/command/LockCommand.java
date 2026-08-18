@@ -86,7 +86,7 @@ public final class LockCommand implements CliCommand {
         this.noDefaultFeatures = in.isSet("no-default-features");
         this.sources = in.isSet("sources");
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
-        this.cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
+        this.cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         this.libraryRegistryUrl =
                 in.value("library-registry-url").map(URI::create).orElse(null);
         this.libraryCacheFile = in.value("library-cache-file").map(Path::of).orElse(null);

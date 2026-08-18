@@ -88,6 +88,39 @@ class WorkspaceExecuteSelectionTest {
     }
 
     @Test
+    void test_only_plans_still_package_consumed_prereqs() throws Exception {
+        // JK-2177: dependents compile against the prereq's sibling JAR; a testOnly plan that
+        // recompiled classes but never repackaged left dependents building — and green-running
+        // tests — against stale code.
+        Path lib = module("lib", "lib", "");
+        Path app = module("app", "app", """
+                [dependencies]
+                lib = { workspace = true }
+                """);
+        JkBuild libB = JkBuildParser.parse(lib.resolve("jk.toml"));
+        JkBuild appB = JkBuildParser.parse(app.resolve("jk.toml"));
+        var libUnit = new BuildGraph.BuildUnit(lib, libB, "ex:lib", BuildGraph.Origin.MODULE);
+        var appUnit = new BuildGraph.BuildUnit(app, appB, "ex:app", BuildGraph.Origin.MODULE);
+        WorkspaceRequest req = new WorkspaceRequest(
+                        tmp, tmp.resolve("cache"), null, 0, null, false, false, 0, null, true, true)
+                .withTestOnly(true);
+
+        Set<Path> jarConsumed = Set.of(BuildGraph.canonicalPath(lib));
+        var libPlan = WorkspaceExecute.assemblePlan(libUnit, req, Set.of(lib, app), false, jarConsumed);
+        var appPlan = WorkspaceExecute.assemblePlan(appUnit, req, Set.of(lib, app), false, jarConsumed);
+        Set<String> libNames = libPlan.steps().stream().map(s -> s.name()).collect(Collectors.toSet());
+        Set<String> appNames = appPlan.steps().stream().map(s -> s.name()).collect(Collectors.toSet());
+        assertThat(libNames)
+                .as("consumed prereq must package on the test path")
+                .contains(TaskNames.PACKAGE_JAR)
+                .contains(TaskNames.RUN_TESTS);
+        assertThat(appNames)
+                .as("leaf keeps the jk test shape (no packaging)")
+                .contains(TaskNames.RUN_TESTS)
+                .doesNotContain(TaskNames.PACKAGE_JAR);
+    }
+
+    @Test
     void symlinked_seed_still_expands_prereqs() throws Exception {
         // JK-2101: cone identity is the canonical path — a seed reached through a symlink must
         // still match its graph module and pull dirty prereqs into the cone.

@@ -9,6 +9,23 @@ import org.junit.jupiter.api.Test;
 class LibraryCatalogTest {
 
     @Test
+    void pipe_in_name_or_coord_is_rejected_at_parse_time() {
+        // `|` is CatalogReadAck's packed-field separator (JK-2169).
+        assertThatThrownBy(() -> LibraryCatalog.parseTable("""
+                        [libraries]
+                        "weird|name" = "g:a"
+                        """, "project"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("reserved separator");
+        assertThatThrownBy(() -> LibraryCatalog.parseTable("""
+                        [libraries]
+                        ok = "g|roup:a"
+                        """, "project"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("reserved separator");
+    }
+
+    @Test
     void bundled_catalog_loads_and_contains_spot_check_entries() {
         LibraryCatalog r = LibraryCatalog.bundled();
         // Jackson is split by major-version because the Maven coordinate

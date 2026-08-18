@@ -372,7 +372,8 @@ public final class ToolRunCommand implements CliCommand {
         this.target = positionals.isEmpty() ? "." : positionals.get(0);
         this.toolArgs = positionals.size() > 1 ? positionals.subList(1, positionals.size()) : List.of();
         this.mainClass = in.value("main").orElse(null);
-        this.cacheDirOverride = in.value("cache-dir").map(Path::of).orElse(null);
+        this.cacheDirOverride =
+                in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         this.stateDirOverride = in.value("state-dir").map(Path::of).orElse(null);
         this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);

@@ -82,12 +82,14 @@ class ExplainCommandTest {
         assertThat(out).contains("Plan Item");
         assertThat(out).contains("Modules");
         assertThat(out).contains("2 in workspace");
-        // Root keeps group:artifact; dirty module rows are name-only pills (no index).
+        // Root keeps group:artifact; dirty module rows are coord-name text (no index/pill).
         assertThat(out).contains("com.example").contains("app").contains("lib");
         assertThat(out).contains("modules are dirty");
         assertThat(out).doesNotContain("[01]").doesNotContain("01");
-        // Phase rollup (empty fixtures typically only forecast Compile).
-        assertThat(out).contains("Compile");
+        assertThat(out).doesNotContain("[app]").doesNotContain("[lib]");
+        // Phase rollup: with the invisible freshen writing the lock first (aa655a0f), an
+        // empty two-module fixture forecasts only Package work (nothing to compile).
+        assertThat(out).contains("Package");
         // Both modules rebuild (fresh), listed dependency-first: lib before app.
         assertThat(out.indexOf("lib")).isLessThan(out.lastIndexOf("app"));
         // ETA footer still present (value depends on host calibration / history).

@@ -47,7 +47,9 @@ stay clean. Long tools (e.g. `native-image`) stream into this channel live — n
 | **Failed tool/worker** (non-zero sub-process exit, e.g. `native-image`) | Force-opens the pane while the plan is still live. |
 | **Test failures** | Do **not** force-open — curated test-failure chrome owns that path. |
 | Plan settle | Does **not** dump the buffer. If process lines were committed (pane open or force-show), they stay in scrollback; the live region is wiped; **one blank** is printed between that output and the settle chip. |
-| `-v` / non-TTY / `--no-progress` / JSONL | Unchanged; no key listener. |
+| `-v` / `--verbose` | Per-step cargo-style lines (and tool stdout). |
+| non-TTY / `--no-progress` / JSONL | Unchanged; no key listener. |
+| **plain** (`--no-ansi`) | Tool stdout (compiler, tests, native-image) is **suppressed** unless `-v`. Diagnostics and test-failure chrome still print. Progress is append-only `jk: * Build > …` lines. |
 
 Document only — no on-screen “press Ctrl-O” hint. InheritIO handoffs (`jk run`, `jshell`, …) are out of scope.
 
@@ -67,6 +69,44 @@ requires **Enter** specifically (other keys buffer until newline). `Wizard.resto
 `unblockBlockingInput` force non-canonical `VMIN=0`/`VTIME=0` and pulse `O_NONBLOCK` on FD 0
 *before* restoring cooked mode; `Interactivity.prepareProcessExit` wakes, restores, and closes the
 shared terminal before `System.exit` so JLine's shutdown closer is already deregistered.
+
+### Module-selection caption
+
+When a module selection is in effect (working directory is a workspace member, or `-m` / `--modules`
+was passed), a caption is printed once above the wedge (scrollback — it stays after settle). Names
+come from each member's `jk.toml` `name`, not the workspace path:
+
+```
+ …building module jk-cli…
+ ● Build  █▋                                       4% · ETA ~2m 56s · 5s
+```
+
+```
+ …building modules jk-engine, jk-cli…
+ ● Build  █▋                                       4% · ETA ~2m 56s · 5s
+```
+
+`module` vs `modules` follows the count. The whole line is dark-gray. JSON output omits it.
+
+Under `--no-ansi` the caption and every other jk chrome line is prefixed with `jk: ` so tool output (when `-v` is on) is distinguishable:
+
+```
+jk: * Build > initializing...
+jk: * Build > cc.jumpkick:jk :: 0% - prepare
+jk: * Build > cc.jumpkick:jk :: 4% (ETA ~1m 14s) - start
+jk: * Build > cc.jumpkick:jk-cli :: 4% (ETA ~1m 14s) - resolving
+jk: * Build > cc.jumpkick:jk-cli :: 4% (ETA ~1m 14s) - generating
+jk: * Build > cc.jumpkick:jk-cli :: 4% (ETA ~1m 14s) - compiling 12 sources
+jk: * Build > cc.jumpkick:jk-cli :: 4% (ETA ~1m 12s) - running 80 tests
+jk: * Build > cc.jumpkick:jk-cli :: 9% (ETA ~45s) - running 50 tests
+jk: * Build > cc.jumpkick:jk-cli :: 47% (ETA ~47s) - packaging
+jk: * Build > cc.jumpkick:jk-cli :: 52% (ETA ~42s) - native compiling
+jk: * Build > cc.jumpkick:jk-cli :: 90% (ETA ~8s) - built
+jk: * Build > cc.jumpkick:jk :: 100% - done
+jk: + Build > Build successful for 1 module - took 1m 16s
+```
+
+`subject :: percent% (ETA ~…) - status`. The workspace coordinate is on `prepare`, `start`, and `done`. Compile shows a source count (`compiling 12 sources`); tests show a remaining count (`running 80 tests`) that refreshes on the stage-entry line and on the 30s heartbeat. Other phases stay as lowercase gerunds. Lines print on stage/phase changes, every **30 seconds** while a stage stays active (fresher percent/ETA/status details), when a module finishes (`built`), as soon as an ETA is known (`start`), and on settle (`done`) — not on percent ticks. Same module+phase reprints are otherwise suppressed. Sub-step detail (e.g. native classpath size) is appended only with `-v`.
 
 ### Completed-module tail
 
@@ -161,6 +201,8 @@ Use `new Table(title).columns(...).row(...)` (or the `Table.render` static for s
 | `jk selective prepare` | already wedge-settled |
 | `jk jdk ensure` / `graal` | settles via `JdkRender.available` under the envelope |
 | `jk storage clean` | plan console (`Repo` chip); settles with the sweep summary (`Finished sweeping store …`), like `jk cache clean` |
+| `jk plugin install-local` | `✓ Plugin  Installed N plugins` + Tree of `✓ group:artifact:version` children |
+| `jk release` / `jk dist` | after nested Build/Plugin settles: `✓ Release  Distribution ready for group:name:version` + Tree of engine/CLI artifact children |
 
 ### Documented exceptions (deliberately plain)
 
@@ -178,7 +220,7 @@ Use `new Table(title).columns(...).row(...)` (or the `Table.render` static for s
 |------|---------|--------|
 | **nerd** | ANSI + a PUA axis granted | Powerline PUA caps + Unicode glyphs |
 | **ansi** | ANSI, no PUA axis granted | Colored chips, Unicode glyphs, **no** PUA (bg-colored space cap) |
-| **plain** | `--no-ansi` / `NO_COLOR` / `TERM=dumb` / `CI` | ASCII `+` / `!` / `*` prefixes; progress `#`/`-`; **no animations** |
+| **plain** | `--no-ansi` / `NO_COLOR` / `TERM=dumb` / `CI` | `jk: ` prefix on chrome; ASCII `+` / `!` / `*` prefixes; progress `#`/`-`; **no animations** |
 
 ### The two PUA axes
 
@@ -238,7 +280,7 @@ Under `--output json` / `jsonl`, suppress human chrome (no envelope, no wedge). 
 | Code | `SourceCode.java` / `JavaCode` / `KotlinCode` / `GroovyCode` |
 | Prompt | `Prompt.java`, `Confirmation.java` (`Confirm` façade) |
 | Wizard parts | `WizardSection`, `TextInput`, `Checkbox`, `RadioButton`, `RadioButtonGroup` |
-| Progress | `cli/tui/Progress.java` + `ProgressBar.java` (plain live cadence: 20% steps) |
+| Progress | `cli/tui/Progress.java` + `ProgressBar.java` + `PlainPhase.java` (plain live cadence: stage changes, 30s heartbeat, `built`/`done`, `jk: ` prefix) |
 | Tables | `cli/tui/Table.java`. Append snaps child rails to parent edges |
 | Trees | `cli/tui/Tree.java` — optional title/root, {@code Gap} / {@code BodyFit}, pills, hanging rich text |
 | Glyphs | `cli/tui/Glyphs.java` |

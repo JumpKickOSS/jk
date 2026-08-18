@@ -62,3 +62,42 @@ Manifests now live on `:engine` + worker jars only (`:core` jar rejects them). N
 CLI `PluginTableRegistry` loads an empty built-in map so leftover lock-freshness
 parses do not crash. Splitting `:core` so `PluginDescriptor` leaves the image is
 follow-up, not this epic.
+
+## After JK-2151 (2026-08-17 20:45)
+
+Reachability, not a new Gradle module: `ProjectIdentity.coordOf`, `ModuleLayout`,
+`NativePreflight`, and `jk tree` styling no longer call `JkBuildParser`. The CLI
+asks the engine for lock staleness (`projectInfo.lockStale`) and conservative
+freshen uses `LockFreshness.needsRefresh` so a missing lock still writes one.
+
+| Field | Value |
+|---|---|
+| Path | `build/dist/jk` |
+| Size | **32 MiB** (`-rwxr-xr-x`, 33141552 bytes) |
+| Built | 2026-08-17 20:45 |
+| SHA-256 | `83040bace26cfc419d3133d28ce4701cde08e87e294da6fe8d0e9051a1133532` |
+| Tree SHA | `JK-2151-core-split` |
+| Delta vs JK-2149 | **−380 624 bytes** (−0.36 MiB) |
+| `core.jar` in image | 293.50 kB (was 451 kB at JK-2149) |
+
+`strings build/dist/jk | grep -c <pattern>`:
+
+| Pattern | JK-2149 | JK-2151 | Notes |
+|---|---:|---:|---|
+| `PluginDescriptor` | 58 | **0** | parser types no longer reachable from CLI |
+| `spring-boot.jk-plugin.toml` | 1 | **0** | `PluginTableRegistry.BUILT_IN` left the image |
+| `JkBuildParser` | 6 | **0** | |
+| `cc/jumpkick/plugin/manifest` | 2 | **0** | |
+| `org/tomlj` | 14 | 14 | still the approved CLI TOML job |
+
+## Post-epic measurement (2026-08-18, JK-2165)
+
+After JK-2138–JK-2151 landed plus the dead cache/store walkers were deleted (JK-2165):
+
+| Field | Value |
+|---|---|
+| Size | **29.8 MiB** (31263816 bytes) — **−3.2 MiB vs baseline** |
+| `PluginDescriptor` strings | 0 (was 613) |
+| `cc/jumpkick/plugin/manifest` strings | 0 (was 640) |
+| `ComparableVersion` strings | 0 (was 16) |
+| `cacheUsageStats`/`storeUsageStats` strings | 0 |

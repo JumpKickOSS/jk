@@ -112,7 +112,8 @@ public final class JdkInstallCommand implements CliCommand {
         this.showAll = in.isSet("show-all");
         this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         this.feedUrl = in.value("feed-url").map(URI::create).orElse(null);
-        this.cacheFile = in.value("cache-file").map(Path::of).orElse(null);
+        this.cacheFile =
+                in.value("cache-file").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
 
         if (!HostPlatform.supported()) {
             cc.jumpkick.cli.tui.CommandWedge.printFail(

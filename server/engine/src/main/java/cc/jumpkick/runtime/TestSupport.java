@@ -405,6 +405,13 @@ public final class TestSupport {
         TestFailureSource.Cache snippets = cache != null ? cache : new TestFailureSource.Cache();
         return new TestProgressListener() {
             @Override
+            public void onDiscoveryTotal(int classes, int tests) {
+                if (tests > 0) {
+                    ctx.label(progressLabel(module, "running " + tests + " tests", 0, 1));
+                }
+            }
+
+            @Override
             public void onTestStarted(String id, String display, boolean isTest, int workerId) {
                 // Label at start so long-running tests/classes show as "current work" in the TUI
                 // tree (finish-only labels lag one event behind). Prefer Class > method when the

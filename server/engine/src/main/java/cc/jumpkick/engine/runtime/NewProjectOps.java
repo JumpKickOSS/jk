@@ -9,6 +9,7 @@ import cc.jumpkick.scaffold.NewScaffolder;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -311,10 +313,10 @@ public final class NewProjectOps {
         String targetRaw = req.targetDir() == null ? "" : req.targetDir().strip();
         if (!targetRaw.isEmpty()) {
             target = cc.jumpkick.util.PathUtil.resolveUserPath(targetRaw).normalize();
-            Path destParent = target.getParent();
-            if (destParent != null && !target.startsWith(destParent)) {
-                throw new IllegalArgumentException("name escapes parentDir");
-            }
+            // targetDir gets the same allowlist gate as parentDir — the old
+            // target.startsWith(target.getParent()) check was a tautology, so a
+            // relaxParent=false wire caller could scaffold anywhere (JK-2166).
+            if (!req.relaxParent()) assertAllowedParent(target.getParent() != null ? target.getParent() : target);
         } else {
             target = parent.resolve(name).normalize();
             if (!target.startsWith(parent)) {
@@ -404,53 +406,18 @@ public final class NewProjectOps {
         return r.matches("[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*(?:\\.g8)?(?:#.+)?");
     }
 
+    /** Per-template-key clone serialization: the resident engine serves concurrent jk new. */
+    private static final ConcurrentHashMap<String, Object> CLONE_LOCKS = new ConcurrentHashMap<>();
+
     private static Path cloneRemoteTemplate(String ref) throws IOException {
         Path cache = Path.of(System.getProperty("user.home"), ".jk", "cache", "templates");
         Files.createDirectories(cache);
         String key = ref.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]+", "_");
         Path dest = cache.resolve(key);
-        if (!Files.isDirectory(dest) || isEmptyDir(dest)) {
-            if (Files.exists(dest)) deleteRecursively(dest);
-            String url = ref;
-            String rev = null;
-            if (ref.matches("[A-Za-z0-9].*/[A-Za-z0-9].*") && !ref.contains("://") && !ref.startsWith("git@")) {
-                String body = ref;
-                int hash = body.lastIndexOf('#');
-                if (hash > 0) {
-                    rev = body.substring(hash + 1);
-                    body = body.substring(0, hash);
-                }
-                if (body.endsWith(".g8")) body = body.substring(0, body.length() - 3);
-                url = "https://github.com/" + body + ".git";
-            }
-            List<String> args = new ArrayList<>();
-            args.add("git");
-            args.add("clone");
-            args.add("--depth");
-            args.add("1");
-            if (rev != null && !rev.isBlank()) {
-                args.add("--branch");
-                args.add(rev);
-            }
-            args.add(url);
-            args.add(dest.toString());
-            Process p = new ProcessBuilder(args).redirectErrorStream(true).start();
-            String out;
-            try (var in = p.getInputStream()) {
-                out = new String(in.readAllBytes());
-            }
-            try {
-                if (!p.waitFor(120, TimeUnit.SECONDS)) {
-                    p.destroyForcibly();
-                    throw new IOException("git clone timed out after 120s");
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                p.destroyForcibly();
-                throw new IOException("git clone interrupted", e);
-            }
-            if (p.exitValue() != 0) {
-                throw new IOException("git clone failed: " + (out.isBlank() ? "(no output)" : out.strip()));
+        synchronized (CLONE_LOCKS.computeIfAbsent(key, k -> new Object())) {
+            if (!Files.isDirectory(dest) || isEmptyDir(dest)) {
+                if (Files.exists(dest)) deleteRecursively(dest);
+                cloneInto(ref, cache, key, dest);
             }
         }
         if (isTemplateRoot(dest)) return dest.toAbsolutePath().normalize();
@@ -461,6 +428,68 @@ public final class NewProjectOps {
             if (nested.isPresent()) return nested.get().toAbsolutePath().normalize();
         }
         throw new IOException("git clone succeeded but no Giter8 layout under " + dest);
+    }
+
+    /**
+     * Clone {@code ref} into a per-process staging dir, then rename into place — a concurrent
+     * clone from ANOTHER engine process loses the rename instead of failing "destination
+     * exists" mid-clone (JK-2166).
+     */
+    private static void cloneInto(String ref, Path cache, String key, Path dest) throws IOException {
+        String url = ref;
+        String rev = null;
+        if (ref.matches("[A-Za-z0-9].*/[A-Za-z0-9].*") && !ref.contains("://") && !ref.startsWith("git@")) {
+            String body = ref;
+            int hash = body.lastIndexOf('#');
+            if (hash > 0) {
+                rev = body.substring(hash + 1);
+                body = body.substring(0, hash);
+            }
+            if (body.endsWith(".g8")) body = body.substring(0, body.length() - 3);
+            url = "https://github.com/" + body + ".git";
+        }
+        Path staging = cache.resolve(key + ".tmp-" + ProcessHandle.current().pid());
+        if (Files.exists(staging)) deleteRecursively(staging);
+        List<String> args = new ArrayList<>();
+        args.add("git");
+        args.add("clone");
+        args.add("--depth");
+        args.add("1");
+        if (rev != null && !rev.isBlank()) {
+            args.add("--branch");
+            args.add(rev);
+        }
+        args.add(url);
+        args.add(staging.toString());
+        Process p = new ProcessBuilder(args).redirectErrorStream(true).start();
+        String out;
+        try (var in = p.getInputStream()) {
+            out = new String(in.readAllBytes());
+        }
+        try {
+            if (!p.waitFor(120, TimeUnit.SECONDS)) {
+                p.destroyForcibly();
+                throw new IOException("git clone timed out after 120s");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            p.destroyForcibly();
+            throw new IOException("git clone interrupted", e);
+        }
+        if (p.exitValue() != 0) {
+            deleteRecursively(staging);
+            throw new IOException("git clone failed: " + (out.isBlank() ? "(no output)" : out.strip()));
+        }
+        try {
+            Files.move(staging, dest, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException raced) {
+            // Another process renamed first — its clone is equivalent; keep it.
+            if (Files.isDirectory(dest) && !isEmptyDir(dest)) {
+                deleteRecursively(staging);
+            } else {
+                throw raced;
+            }
+        }
     }
 
     private static boolean isEmptyDir(Path dir) throws IOException {

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.layout;
 
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -51,15 +49,14 @@ public final class ModuleLayout {
 
     private ModuleLayout() {}
 
-    /** Compact/SIMPLE layout for this module (parses {@code jk.toml} when present). */
+    /** Compact/SIMPLE layout for this module (bootstrap {@code layout =} when present). */
     public static boolean isCompact(Path moduleDir) {
         Path toml = moduleDir.resolve("jk.toml");
         if (Files.isRegularFile(toml)) {
-            try {
-                JkBuild build = JkBuildParser.parse(toml);
-                return SourceLayout.isSimpleLayout(build.project(), moduleDir);
-            } catch (Exception ignored) {
-                // fall through
+            String layout = cc.jumpkick.config.TomlScan.scan(toml, "layout").get("layout");
+            if (layout != null) {
+                if ("traditional".equalsIgnoreCase(layout)) return false;
+                if ("simple".equalsIgnoreCase(layout)) return true;
             }
         }
         return !SourceLayout.looksTraditional(moduleDir);
@@ -121,32 +118,10 @@ public final class ModuleLayout {
     }
 
     /**
-     * Plugin-contributed module rootsthe active manifests' {@code
-     * [[contribute.source-roots]]} entries (Grails' {@code grails-app} tree), relative dirs
-     * regardless of on-disk presence. Empty when {@code jk.toml} is absent or unparseable.
+     * On-disk roots only — no plugin-schema parse. CLI IDE generators use this so
+     * {@code PluginDescriptor} stays off the native reachability set (JK-2151).
      */
-    public static List<Root> pluginContributedRoots(Path moduleDir) {
-        Path toml = moduleDir.resolve("jk.toml");
-        if (!Files.isRegularFile(toml)) return List.of();
-        try {
-            JkBuild build = JkBuildParser.parse(toml);
-            List<Root> out = new ArrayList<>();
-            for (cc.jumpkick.plugin.manifest.PluginContributions.SourceRoot root :
-                    cc.jumpkick.plugin.manifest.PluginContributions.sourceRoots(build, moduleDir)) {
-                out.add(new Root(root.dir(), root.resource() ? Kind.RESOURCE : Kind.SOURCE));
-            }
-            return List.copyOf(out);
-        } catch (Exception ignored) {
-            return List.of();
-        }
-    }
-
-    /**
-     * All input roots that exist on disk: main source/resource + plugin-contributed roots +
-     * every discovered test suite + suite resource dirs. Prefer this over hand-rolled path
-     * literals.
-     */
-    public static List<Root> roots(Path moduleDir) {
+    public static List<Root> diskRoots(Path moduleDir) {
         boolean compact = isCompact(moduleDir);
         LinkedHashSet<String> seen = new LinkedHashSet<>();
         List<Root> out = new ArrayList<>();
@@ -160,10 +135,16 @@ public final class ModuleLayout {
             addIfDir(out, seen, moduleDir, "src/main/groovy", Kind.SOURCE);
             addIfDir(out, seen, moduleDir, "src/main/resources", Kind.RESOURCE);
         }
-        for (Root root : pluginContributedRoots(moduleDir)) {
-            addIfDir(out, seen, moduleDir, root.relative(), root.kind());
-        }
+        appendSuiteRoots(moduleDir, compact, seen, out);
+        return List.copyOf(out);
+    }
 
+    /** On-disk roots including suites. Plugin-contributed roots: {@link ModuleLayoutPlugins}. */
+    public static List<Root> roots(Path moduleDir) {
+        return diskRoots(moduleDir);
+    }
+
+    private static void appendSuiteRoots(Path moduleDir, boolean compact, LinkedHashSet<String> seen, List<Root> out) {
         List<String> suites = TestSuites.discover(moduleDir, compact);
         if (!suites.contains(TestSuites.DEFAULT) && hasDefaultSuiteDir(moduleDir, compact)) {
             List<String> withDefault = new ArrayList<>();
@@ -185,7 +166,6 @@ public final class ModuleLayout {
             }
             addAbs(out, seen, moduleDir, suiteResourcesDir(moduleDir, compact, suite), Kind.TEST_RESOURCE);
         }
-        return List.copyOf(out);
     }
 
     /**
@@ -200,9 +180,6 @@ public final class ModuleLayout {
             addDir(dirs, mainResourcesDir(moduleDir, true));
         } else {
             addDir(dirs, moduleDir.resolve("src"));
-        }
-        for (Root root : pluginContributedRoots(moduleDir)) {
-            addDir(dirs, moduleDir.resolve(root.relative()));
         }
         if (!skipTests) {
             if (compact) {

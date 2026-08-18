@@ -274,9 +274,11 @@ public final class NewWizard {
         CatalogReadAck ack = bundledCatalogOrEmpty();
         var byName = new LinkedHashMap<String, CatalogReadAck.Entry>();
         for (CatalogReadAck.Entry e : ack.entries()) byName.put(e.name(), e);
-        // Prefer curated scaffold ids first (stable defaults for new projects).
+        // Prefer curated scaffold ids first (stable defaults for new projects) — but only ones
+        // the bundled catalog actually resolves. The old second clause re-tested membership in
+        // the very list being iterated, silently offering unresolvable ids (JK-2172).
         for (String id : NewCommand.CURATED_IDS) {
-            if (byName.containsKey(id) || NewCommand.CURATED_IDS.contains(id)) {
+            if (byName.containsKey(id)) {
                 out.add(new cc.jumpkick.cli.tui.Choice(id, id, "curated"));
             }
         }

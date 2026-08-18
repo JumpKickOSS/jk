@@ -95,7 +95,7 @@ public final class PluginCommands {
                 Files.deleteIfExists(spec);
             }
         } catch (IOException | InterruptedException | RuntimeException e) {
-            return PluginCommandReport.error(String.valueOf(e.getMessage()));
+            return PluginCommandReport.error(cc.jumpkick.util.Errors.text(e));
         }
     }
 }

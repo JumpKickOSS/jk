@@ -16,8 +16,8 @@ group = "cc.jumpkick"
 version = "0.1.0"
 
 // The plugin SPI leaf (plus :jsonl for the shared codec). Classes ride the user's
-// test JVM on the project's pinned JDK — JDK 17 floor. model depends on THIS
-// module (for PluginConfig), never the reverse.
+// test JVM on the project's pinned JDK — JDK 17 floor. Since JK-2139, :jk-api carries
+// its own same-shape PluginConfig fork; neither module depends on the other.
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(25))

@@ -1063,7 +1063,7 @@ public final class LockOrchestrator {
     private static boolean hasLangSources(Path projectDir, String ext) {
         if (projectDir == null) return true; // no dir context — keep the inject (fail-safe)
         if (cc.jumpkick.layout.Languages.anySourceUnder(projectDir.resolve("src"), ext)) return true;
-        for (var root : cc.jumpkick.layout.ModuleLayout.pluginContributedRoots(projectDir)) {
+        for (var root : cc.jumpkick.layout.ModuleLayoutPlugins.pluginContributedRoots(projectDir)) {
             if (cc.jumpkick.layout.Languages.anySourceUnder(projectDir.resolve(root.relative()), ext)) {
                 return true;
             }

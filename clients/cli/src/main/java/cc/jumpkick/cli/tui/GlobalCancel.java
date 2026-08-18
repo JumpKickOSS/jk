@@ -79,7 +79,20 @@ public final class GlobalCancel {
             err.print(Ansi.RESET);
             err.flush();
 
-            // 3) Give the cancel RPCs a short, bounded window (they also self-limit), then hard
+            // 3) Restore the tty (cooked attrs + stdin wake) on a bounded daemon thread —
+            // halt(2) skips shutdown hooks, so nothing else puts the terminal back. Bounded so
+            // a wedged JLine close can never break the Ctrl-C-never-hangs guarantee.
+            Thread tty = Thread.ofPlatform()
+                    .daemon(true)
+                    .name("jk-sigint-tty-restore")
+                    .start(Interactivity::prepareProcessExit);
+            try {
+                tty.join(500L);
+            } catch (InterruptedException ignored) {
+                // halt follows regardless
+            }
+
+            // 4) Give the cancel RPCs a short, bounded window (they also self-limit), then hard
             // kill this CLI process — guaranteed death even if everything above is wedged.
             try {
                 rpc.join(3_000L);

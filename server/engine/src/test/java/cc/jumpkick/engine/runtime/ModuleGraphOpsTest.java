@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.engine.protocol.ModuleGraphAck;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -22,6 +24,38 @@ class ModuleGraphOpsTest {
         assertThat(ack.error()).isNull();
         assertThat(ack.graph()).contains("digraph modules");
         assertThat(ack.graph()).contains("com.example:app");
+    }
+
+    @Test
+    void empty_affected_match_renders_the_empty_graph_not_the_module(@TempDir Path dir) throws Exception {
+        // JK-2167: a selector that validates but matches nothing used to fall through to the
+        // unconditional single-module render.
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "com.example"
+                name = "app"
+                version = "0.1.0"
+                """);
+        git(dir, "init", "-q");
+        git(dir, "add", ".");
+        git(dir, "-c", "user.email=jk@test", "-c", "user.name=jk", "commit", "-qm", "init");
+
+        ModuleGraphAck ack = ModuleGraphOps.render(dir, "dot", null, "HEAD");
+
+        assertThat(ack.error()).isNull();
+        assertThat(ack.graph()).contains("digraph modules");
+        assertThat(ack.graph()).doesNotContain("com.example:app");
+    }
+
+    private static void git(Path dir, String... args) throws Exception {
+        var cmd = new ArrayList<String>();
+        cmd.add("git");
+        cmd.addAll(List.of(args));
+        Process p = new ProcessBuilder(cmd)
+                .directory(dir.toFile())
+                .redirectErrorStream(true)
+                .start();
+        String out = new String(p.getInputStream().readAllBytes());
+        if (p.waitFor() != 0) throw new IllegalStateException("git failed: " + out);
     }
 
     @Test

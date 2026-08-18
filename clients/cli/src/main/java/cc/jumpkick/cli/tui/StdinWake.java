@@ -45,8 +45,11 @@ final class StdinWake {
             if (flags < 0) return;
             int withNb = flags | oNonblock;
             if (withNb == flags) {
-                // Already non-blocking — still touch SETFL so a blocked read can observe a change.
-                fcntlSet.invokeExact(STDIN_FD, F_SETFL, flags);
+                // Already non-blocking — still touch SETFL so a blocked read can observe a
+                // change. invokeExact needs the exact int-returning call-site signature even
+                // when the result is unused — a bare statement call throws
+                // WrongMethodTypeException (which the outer catch would swallow).
+                int ignored = (int) fcntlSet.invokeExact(STDIN_FD, F_SETFL, flags);
                 return;
             }
             if ((int) fcntlSet.invokeExact(STDIN_FD, F_SETFL, withNb) != 0) return;
@@ -57,9 +60,32 @@ final class StdinWake {
                 Thread.currentThread().interrupt();
             }
             // Best-effort restore; leave non-blocking if SETFL fails (exiting / tty gone).
-            fcntlSet.invokeExact(STDIN_FD, F_SETFL, flags);
+            int restored = (int) fcntlSet.invokeExact(STDIN_FD, F_SETFL, flags);
         } catch (Throwable ignored) {
             // best-effort only
+        }
+    }
+
+    /** Test hook: the platform O_NONBLOCK constant the pulse toggles. */
+    static int oNonblockForTest() {
+        ensureInit();
+        return oNonblock;
+    }
+
+    /** Test hook: is the fcntl downcall linked on this platform? */
+    static boolean availableForTest() {
+        ensureInit();
+        return available;
+    }
+
+    /** Test hook: raw {@code F_GETFL} on FD 0, or {@link Integer#MIN_VALUE} when unavailable. */
+    static int currentFlagsForTest() {
+        ensureInit();
+        if (!available) return Integer.MIN_VALUE;
+        try {
+            return (int) fcntlGet.invokeExact(STDIN_FD, F_GETFL);
+        } catch (Throwable t) {
+            return Integer.MIN_VALUE;
         }
     }
 
@@ -78,18 +104,19 @@ final class StdinWake {
                 oNonblock = os.contains("mac") || os.contains("darwin") || os.contains("bsd") ? 0x0004 : 0x800;
                 Linker linker = Linker.nativeLinker();
                 SymbolLookup lookup = linker.defaultLookup();
-                // fcntl(int fd, int cmd) and fcntl(int fd, int cmd, int arg) — two overloads via
-                // separate downcalls (variadic third arg would need firstVariadicArg).
+                // fcntl(int fd, int cmd, ...) is variadic; both downcalls must say so via
+                // firstVariadicArg — Darwin/AArch64 passes variadic args on the stack, so a
+                // plain int descriptor makes the callee read garbage for the F_SETFL arg
+                // (fixed-register and variadic conventions only coincide on Linux).
                 fcntlGet = linker.downcallHandle(
                         lookup.findOrThrow("fcntl"),
-                        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+                        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT),
+                        Linker.Option.firstVariadicArg(2));
                 fcntlSet = linker.downcallHandle(
                         lookup.findOrThrow("fcntl"),
                         FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.JAVA_INT));
+                                ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT),
+                        Linker.Option.firstVariadicArg(2));
                 available = true;
             } catch (Throwable ignored) {
                 available = false;

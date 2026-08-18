@@ -14,7 +14,7 @@ class CatalogReadOpsTest {
     @Test
     void bundled_list_includes_junit_jupiter() {
         CatalogReadAck ack = CatalogReadOps.read(
-                new CatalogReadOps.Request(Path.of("."), null, "list", List.of(), false, false, true));
+                new CatalogReadOps.Request(Path.of("."), null, null, "list", List.of(), false, false, true));
         assertThat(ack.error()).isNull();
         assertThat(ack.entries().stream().map(CatalogReadAck.Entry::name)).contains("junit-jupiter");
         assertThat(ack.layerNames()).contains("bundled");
@@ -23,7 +23,7 @@ class CatalogReadOpsTest {
     @Test
     void search_matches_name_substring(@TempDir Path cache) {
         CatalogReadAck ack = CatalogReadOps.read(
-                new CatalogReadOps.Request(Path.of("."), cache, "search", List.of("junit"), false, true, true));
+                new CatalogReadOps.Request(Path.of("."), cache, cache, "search", List.of("junit"), false, true, true));
         assertThat(ack.entries().stream().map(CatalogReadAck.Entry::name))
                 .contains("junit-jupiter", "junit-platform-launcher");
     }
@@ -31,14 +31,14 @@ class CatalogReadOpsTest {
     @Test
     void search_and_semantics(@TempDir Path cache) {
         CatalogReadAck ack = CatalogReadOps.read(new CatalogReadOps.Request(
-                Path.of("."), cache, "search", List.of("spring", "starter"), false, false, true));
+                Path.of("."), cache, cache, "search", List.of("spring", "starter"), false, false, true));
         assertThat(ack.entries().stream().map(CatalogReadAck.Entry::name)).contains("spring-boot-starter");
     }
 
     @Test
     void offline_without_cached_versions_is_empty(@TempDir Path cache) {
         CatalogReadAck ack = CatalogReadOps.read(
-                new CatalogReadOps.Request(Path.of("."), cache, "search", List.of("junit"), true, true, true));
+                new CatalogReadOps.Request(Path.of("."), cache, cache, "search", List.of("junit"), true, true, true));
         assertThat(ack.entries()).isEmpty();
     }
 }

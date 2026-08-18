@@ -223,7 +223,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                 host.sendQuiet(writer, ProtoEvents.workspaceFinish(false, 1, List.of(), true));
                 return null;
             }
-            String msg = host.redactEnv(dir, String.valueOf(e.getMessage()));
+            String msg = host.redactEnv(dir, cc.jumpkick.util.Errors.text(e));
             host.sendQuiet(writer, host.requestFailedLine(dir, e));
             host.publishRequestError(rid, dir, msg);
             return cc.jumpkick.engine.jobs.JobOutcome.failed(1);

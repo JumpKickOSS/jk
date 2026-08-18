@@ -4,7 +4,9 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -191,6 +193,48 @@ class BuildCommandTest {
                 "--cache-dir",
                 tempDir.resolve("cache").toString());
         assertThat(serial).isEqualTo(0);
+    }
+
+    @Test
+    void build_from_a_module_dir_is_the_module_closure(@TempDir Path tempDir) throws Exception {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group = "com.example"
+                name  = "ws"
+                version = "1.0.0"
+                java = 25
+
+                [workspace]
+                modules = ["liba", "libb", "app"]
+                """, StandardCharsets.UTF_8);
+        module(tempDir.resolve("liba"), "liba", "a", "A", "");
+        module(tempDir.resolve("libb"), "libb", "b", "B", "");
+        module(tempDir.resolve("app"), "app", "app", "Main", """
+
+                [dependencies]
+                liba = { workspace = true }
+                """);
+
+        ByteArrayOutputStream stdout = new ByteArrayOutputStream();
+        PrintStream orig = System.out;
+        System.setOut(new PrintStream(stdout, true, StandardCharsets.UTF_8));
+        int exit;
+        try {
+            exit = run(
+                    "build",
+                    "-C",
+                    tempDir.resolve("app").toString(),
+                    "--skip-tests",
+                    "--cache-dir",
+                    tempDir.resolve("cache").toString());
+        } finally {
+            System.setOut(orig);
+        }
+        assertThat(exit).isEqualTo(0);
+        assertThat(tempDir.resolve("target/app/lib/app-1.0.0.jar")).exists();
+        assertThat(tempDir.resolve("target/liba/lib/liba-1.0.0.jar")).exists();
+        assertThat(tempDir.resolve("target/libb/lib/libb-1.0.0.jar")).doesNotExist();
+        assertThat(cc.jumpkick.cli.TestAnsi.strip(stdout.toString(StandardCharsets.UTF_8)))
+                .contains("building module app");
     }
 
     private static void module(Path dir, String name, String pkg, String cls, String extra) throws IOException {

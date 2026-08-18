@@ -104,7 +104,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
                 outBuffer.add(line);
             }
         } else {
-            cm.writeAbove(painted);
+            cm.writeProcessOutput(painted);
         }
     }
 
@@ -174,11 +174,13 @@ public final class AggregateModuleListener implements BuildPlanListener {
     @Override
     public void progress(String step, int delta, BuildPlanView view) {
         // Aggregate % comes from engine workspace-progress only.
+        cm.notePlainTestTick(module, step, delta);
     }
 
     @Override
     public void tickUpdate(String step, int delta, BuildPlanView view) {
         // Aggregate % comes from engine workspace-progress only.
+        cm.notePlainTestTick(module, step, delta);
     }
 
     @Override

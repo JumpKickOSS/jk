@@ -21,7 +21,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.resolver.DependencyTree;
+import cc.jumpkick.resolver.DependencyTreeStyle;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -70,7 +70,7 @@ public final class TreeCommand implements CliCommand {
         boolean transitive = in.isSet("transitive");
 
         // -s/--scopes: an explicit, ordered subset; default = export, main, runtime.
-        List<Scope> scopes = new ArrayList<>(DependencyTree.defaultScopeOrder());
+        List<Scope> scopes = new ArrayList<>(DependencyTreeStyle.defaultScopeOrder());
         var scopesArg = in.value("scopes");
         if (scopesArg.isPresent()) {
             List<String> tokens = Arrays.stream(scopesArg.get().split(","))
@@ -133,9 +133,9 @@ public final class TreeCommand implements CliCommand {
             cc.jumpkick.cli.tui.CommandWedge.printFail("Tree", e.getMessage());
             return Exit.CONFIG;
         }
-        String rendered = DependencyTree.applyStyling(tagged, styling(nerdFont.pill(), ansi));
+        String rendered = DependencyTreeStyle.applyStyling(tagged, styling(nerdFont.pill(), ansi));
         buildTree(rendered, scopeNames).print();
-        if (rendered.contains(DependencyTree.MISSING_SUFFIX)) {
+        if (rendered.contains(DependencyTreeStyle.MISSING_SUFFIX)) {
             CliOutput.out();
             CliOutput.out(
                     ansi
@@ -344,7 +344,7 @@ public final class TreeCommand implements CliCommand {
      */
     private static List<Scope> resolveScopeToken(String token) {
         String t = token.toLowerCase(Locale.ROOT);
-        if (t.equals("all")) return DependencyTree.allScopeOrder();
+        if (t.equals("all")) return DependencyTreeStyle.allScopeOrder();
         if (t.equals("exec") || t.equals("run")) return EXEC_SCOPES;
         Scope scope = coerceScope(t);
         return scope == null ? null : List.of(scope);
@@ -385,7 +385,7 @@ public final class TreeCommand implements CliCommand {
      * {@code --color} / {@code NO_COLOR} / dumb terminals, so escapes are dropped cleanly when color
      * is off.
      */
-    private static DependencyTree.Styling styling(boolean pillCaps, boolean ansi) {
+    private static DependencyTreeStyle.Styling styling(boolean pillCaps, boolean ansi) {
         if (!ansi) {
             // No-ANSI: replace all Unicode connectors with ASCII equivalents,
             // use [scope] bracket badges, * root bullet, plain uncolored coords.
@@ -406,14 +406,14 @@ public final class TreeCommand implements CliCommand {
                     s -> s.replace("╰─ ", "`- ").replace("├─ ", "+- ").replace(" ⎋", "");
             UnaryOperator<String> asciiBadge = s -> "[" + s + "]";
             UnaryOperator<String> asciiRoot = gav -> " * " + gav;
-            return new DependencyTree.Styling(
+            return new DependencyTreeStyle.Styling(
                     asciiRail, plain, plain, plain, asciiReference, asciiBadge, plain, asciiRoot);
         }
         // Scope section badge: a rounded pill (pill axis) or space-padded chip.
         UnaryOperator<String> scopeBadge = s -> cc.jumpkick.cli.tui.Badge.pill(s, pillCaps);
         Theme t = Theme.active();
         // Root-line: ● bullet (dark-gray) + bold coord colors — no pill or background.
-        return new DependencyTree.Styling(
+        return new DependencyTreeStyle.Styling(
                 s -> Theme.colorize(s, t.darkGray()),
                 s -> Theme.colorize(s, Coords.groupStyle()),
                 s -> Theme.colorize(s, Coords.artifactStyle()),

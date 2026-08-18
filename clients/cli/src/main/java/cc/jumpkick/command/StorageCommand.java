@@ -47,10 +47,11 @@ public final class StorageCommand extends GroupCommand {
     }
 
     /**
-     * Wipe every child of the artifact store root. Shared by {@code jk storage nuke} and {@code jk
-     * self nuke --store}. Returns {@code [files, bytes]} removed (best-effort sizes).
+     * Wipe every child of the artifact store root — or, with {@code dryRun}, count what a wipe
+     * would remove without deleting. Shared by {@code jk storage nuke} and {@code jk self nuke
+     * --store}. Returns {@code [files, bytes]} (best-effort sizes).
      */
-    public static long[] wipeStore(Path storeRoot) throws IOException {
+    public static long[] wipeStore(Path storeRoot, boolean dryRun) throws IOException {
         var ack = cc.jumpkick.cli.engine.EngineClient.cacheInventory(
                 cc.jumpkick.engine.EnginePaths.current(),
                 "wipe-store",
@@ -58,7 +59,7 @@ public final class StorageCommand extends GroupCommand {
                 storeRoot,
                 List.of(),
                 List.of(),
-                false);
+                dryRun);
         if (ack.error() != null) throw new IOException(ack.error());
         return new long[] {ack.files(), ack.bytes()};
     }
@@ -75,7 +76,9 @@ public final class StorageCommand extends GroupCommand {
             CommandWedge.printOk("Storage", "Nothing to nuke — store directory does not exist.");
             return 0;
         }
-        CacheCommand.Stats pre = CacheCommand.statsOf(storeRoot);
+        // Engine-side dry-run walk: the exact tree + counts the real wipe would remove.
+        long[] preCount = wipeStore(storeRoot, true);
+        CacheCommand.Stats pre = new CacheCommand.Stats(preCount[0], preCount[1]);
         if (pre.files() == 0) {
             CommandWedge.printOk("Storage", "Nothing to nuke — the artifact store is empty.");
             return 0;
@@ -96,8 +99,11 @@ public final class StorageCommand extends GroupCommand {
                     Glyphs.CROSS, "Storage", cc.jumpkick.config.GlobalConfig.nerdFont(), "Nuke aborted."));
             return 1;
         }
-        // Stop engines first — they read/write the store mid-build.
-        long[] wiped = wipeStore(storeRoot);
+        // Stop the fleet first — engines from other checkouts keep writing into the store
+        // mid-wipe. The wipe request itself restarts one engine, which performs the delete
+        // under the cache-maintenance exclusive lock.
+        cc.jumpkick.cli.engine.EngineFleet.stopAll(true);
+        long[] wiped = wipeStore(storeRoot, false);
         CommandWedge.printOk(
                 "Storage",
                 "Nuked " + CacheCommand.fmtCount(wiped[0]) + " files, " + CacheCommand.fmtBytes(wiped[1]) + " freed.");

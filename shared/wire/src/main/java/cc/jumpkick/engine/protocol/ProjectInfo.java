@@ -2,7 +2,9 @@
 package cc.jumpkick.engine.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * One-shot parsed-project summary ({@link EngineProtocol#PROJECT_INFO_REQUEST}): flat scalars and
@@ -60,7 +62,8 @@ public record ProjectInfo(
         String groovyClassesDir,
         String testResultsDir,
         List<String> testIncludeTags,
-        List<String> testExcludeTags) {
+        List<String> testExcludeTags,
+        boolean lockStale) {
 
     /** The {@code group:name} display coordinate. */
     public String coord() {
@@ -116,7 +119,8 @@ public record ProjectInfo(
                 "",
                 "",
                 List.of(),
-                List.of());
+                List.of(),
+                false);
     }
 
     public String encode() {
@@ -134,7 +138,7 @@ public record ProjectInfo(
                 + ",\"layoutSimple\":" + layoutSimple
                 + ",\"workspaceRoot\":" + workspaceRoot
                 + ",\"workspaceRootDir\":" + Jsonl.quote(workspaceRootDir)
-                + ",\"moduleDirs\":" + EngineProtocol.quoteArray(moduleDirs)
+                + ",\"modules\":" + Jsonl.map(zipModules())
                 + ",\"application\":" + application
                 + ",\"mainClass\":" + Jsonl.quote(mainClass)
                 + ",\"assembly\":" + assembly
@@ -158,7 +162,6 @@ public record ProjectInfo(
                 + ",\"sourcesJarPath\":" + Jsonl.quote(sourcesJarPath)
                 + ",\"javadocJarPath\":" + Jsonl.quote(javadocJarPath)
                 + ",\"envRefs\":" + EngineProtocol.quoteArray(envRefs)
-                + ",\"moduleNames\":" + EngineProtocol.quoteArray(moduleNames)
                 + ",\"sourceCount\":" + sourceCount
                 + ",\"testCount\":" + testCount
                 + ",\"nativeExplicitlyDisabled\":" + nativeExplicitlyDisabled
@@ -169,6 +172,7 @@ public record ProjectInfo(
                 + ",\"testResultsDir\":" + Jsonl.quote(testResultsDir)
                 + ",\"testIncludeTags\":" + EngineProtocol.quoteArray(testIncludeTags)
                 + ",\"testExcludeTags\":" + EngineProtocol.quoteArray(testExcludeTags)
+                + ",\"lockStale\":" + lockStale
                 + "}";
     }
 
@@ -188,7 +192,7 @@ public record ProjectInfo(
                 Jsonl.bool(line, "layoutSimple", true),
                 Jsonl.bool(line, "workspaceRoot", false),
                 orEmpty(Jsonl.str(line, "workspaceRootDir")),
-                Jsonl.strArray(line, "moduleDirs"),
+                List.copyOf(Jsonl.strMap(line, "modules").keySet()),
                 Jsonl.bool(line, "application", false),
                 orEmpty(Jsonl.str(line, "mainClass")),
                 Jsonl.bool(line, "assembly", false),
@@ -212,7 +216,7 @@ public record ProjectInfo(
                 orEmpty(Jsonl.str(line, "sourcesJarPath")),
                 orEmpty(Jsonl.str(line, "javadocJarPath")),
                 Jsonl.strArray(line, "envRefs"),
-                Jsonl.strArray(line, "moduleNames"),
+                List.copyOf(Jsonl.strMap(line, "modules").values()),
                 Jsonl.intValue(line, "sourceCount", 0),
                 Jsonl.intValue(line, "testCount", 0),
                 Jsonl.bool(line, "nativeExplicitlyDisabled", false),
@@ -222,7 +226,8 @@ public record ProjectInfo(
                 orEmpty(Jsonl.str(line, "groovyClassesDir")),
                 orEmpty(Jsonl.str(line, "testResultsDir")),
                 Jsonl.strArray(line, "testIncludeTags"),
-                Jsonl.strArray(line, "testExcludeTags"));
+                Jsonl.strArray(line, "testExcludeTags"),
+                Jsonl.bool(line, "lockStale", false));
     }
 
     /** {@code ,"key":true|false} when set; empty string when unset (tri-state). */
@@ -239,6 +244,21 @@ public record ProjectInfo(
 
     private static String quoteOrNull(String s) {
         return s == null ? "null" : Jsonl.quote(s);
+    }
+
+    /**
+     * The ONE wire encoding for the module set: an ordered {@code dir → name} object
+     * ({@code Jsonl.strMap}), so dirs and names cannot misalign on decode — the old parallel
+     * {@code moduleDirs}/{@code moduleNames} arrays forced every consumer to defend with
+     * size-min clamps (JK-2168).
+     */
+    private Map<String, String> zipModules() {
+        var out = new LinkedHashMap<String, String>();
+        for (int i = 0; i < moduleDirs.size(); i++) {
+            String name = i < moduleNames.size() ? moduleNames.get(i) : "";
+            out.put(moduleDirs.get(i), name);
+        }
+        return out;
     }
 
     private static String orEmpty(String s) {

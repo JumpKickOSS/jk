@@ -52,14 +52,24 @@ public final class EngineTestSupport {
                 }
                 VersionStore store = VersionStore.current();
                 // ALWAYS materialize — VersionStore is content-aware (same bytes return
-                // immediately; same version + different bytes replaces the tree,.
+                // immediately; same version + different bytes replaces the tree).
                 // The old presence-check skipped the refresh, so a persistent test JK_HOME
-                // kept serving a STALE engine across rebuildsevery
+                // kept serving a STALE engine across rebuilds (every
                 // :cli:integrationTest run tonight resolved with last week's resolver).
+                String wantSha = cc.jumpkick.util.Hashing.sha256Hex(engineJar);
+                boolean bitsChanged =
+                        !store.engineSha(JkVersion.VERSION).map(wantSha::equals).orElse(false);
                 Path cacheRoot = JkDirs.cache();
                 Files.createDirectories(cacheRoot);
                 Cas cas = new Cas(cacheRoot);
                 store.materializeFromFiles(JkVersion.VERSION, cas, engineJar, null);
+                if (bitsChanged) {
+                    // Same version string, different bits: a resident engine surviving from a
+                    // previous test invocation still serves the OLD jar off its socket — the
+                    // version handshake cannot catch it, so stop the fleet (scoped to this
+                    // test JK_HOME) and let the next connect spawn fresh (JK-2175).
+                    EngineFleet.stopAll(true);
+                }
             } catch (IOException e) {
                 throw new IllegalStateException("failed to materialize engine jar into JK_HOME", e);
             }

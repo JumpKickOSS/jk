@@ -8,6 +8,7 @@ import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Coord;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Icon;
 import cc.jumpkick.cli.tui.Pill;
@@ -16,7 +17,6 @@ import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.cli.tui.Tree;
-import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -82,7 +82,7 @@ public final class ExplainCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
-        Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
+        Path cacheDir = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         Path startDir = global.workingDir();
         var proj = ProjectContext.require(startDir, "explain").orElse(null);
         if (proj == null) return Exit.CONFIG;
@@ -91,6 +91,12 @@ public final class ExplainCommand implements CliCommand {
 
         String graphFmt = in.value("graph").orElse(null);
         boolean hasGraph = graphFmt != null && !graphFmt.isBlank();
+        String modulesSpec = in.value("modules").orElse(null);
+        String affectedSinceEarly = in.value("affected-since").orElse(null);
+        var peek = BuildCommand.projectInfoOrNull(startDir);
+        CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(startDir, modulesSpec, peek);
+        if (cwdScope.inferredFromCwd()) modulesSpec = cwdScope.modulesSpec();
+        Path graphDir = cwdScope.workspaceMember() ? cwdScope.workspaceRoot() : startDir;
         if (in.isSet("run") && hasGraph) {
             cc.jumpkick.cli.tui.CommandWedge.printFail("Explain", "cannot combine --run with --graph (pick one)");
             return Exit.USAGE;
@@ -102,12 +108,12 @@ public final class ExplainCommand implements CliCommand {
         // Module DAG export is engine-hosted. Honor --modules / --affected-since.
         // On single-project layouts, selectors only validate; the graph is one node.
         if (hasGraph) {
-            return emitModuleGraph(
-                    startDir,
-                    graphFmt,
-                    in.value("modules").orElse(null),
-                    in.value("affected-since").orElse(null),
-                    in.value("graph-out").orElse(null));
+            // Resolve a relative --graph-out against the INVOCATION dir before graphDir is
+            // rehomed to the workspace root for member cwds (JK-2167).
+            String graphOut = in.value("graph-out")
+                    .map(o -> startDir.resolve(o).toAbsolutePath().normalize().toString())
+                    .orElse(null);
+            return emitModuleGraph(graphDir, graphFmt, modulesSpec, affectedSinceEarly, graphOut);
         }
 
         // HARD INVARIANT: bare `jk explain` uses the exact same defaults as bare `jk build`
@@ -123,13 +129,12 @@ public final class ExplainCommand implements CliCommand {
         boolean rebuild = global.rebuild || global.force;
         String profile = in.value("profile").orElse(null);
         Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
-        String affectedSince = in.value("affected-since").orElse(null);
-        String modulesSpec = in.value("modules").orElse(null);
+        String affectedSince = affectedSinceEarly;
 
         // Client-side module filter listing (before engine forecast) when selectors are set.
         if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
             try {
-                var selected = BuildCommand.projectInfoOrError(startDir, modulesSpec, affectedSince);
+                var selected = BuildCommand.projectInfoOrError(graphDir, modulesSpec, affectedSince);
                 if (selected.error() != null && !selected.error().isBlank()) {
                     CommandWedge.printFail("Explain", selected.error());
                     return Exit.CONFIG;
@@ -140,7 +145,7 @@ public final class ExplainCommand implements CliCommand {
                     Path m = Path.of(raw);
                     Path rel;
                     try {
-                        rel = startDir.toAbsolutePath().normalize().relativize(m);
+                        rel = graphDir.toAbsolutePath().normalize().relativize(m);
                     } catch (IllegalArgumentException e) {
                         rel = m;
                     }
@@ -155,7 +160,7 @@ public final class ExplainCommand implements CliCommand {
         // Live prep wedge: Locking versions… → Calculating build plan… (or Calibrating host…),
         // then clear and print the settled Build Plan tree.
         boolean livePrep = EnsureFreshLock.isInteractiveAuto(global) && !global.outputIsJson();
-        boolean needsLock = LockFreshness.needsRefresh(startDir);
+        boolean needsLock = EnsureFreshLock.needsRefresh(startDir);
         boolean needsCalibrate = HostCalibrationStatus.needsBootstrapProbe();
         String prepMsg =
                 needsLock ? "Locking versions…" : needsCalibrate ? "Calibrating host…" : "Calculating build plan…";
@@ -223,12 +228,12 @@ public final class ExplainCommand implements CliCommand {
 
     /**
      * Build Graph: wedge title, {@code ● group:artifact} root, Fully Cached / Rebuild section
-     * pills, name-only branded module pills, hanging stage-chain (or {@code --verbose} step
-     * children).
+     * pills, Rebuild modules as coord-name (bold bright-cyan) text (verbose Fully Cached still uses
+     * branded pills), hanging stage-chain (or {@code --verbose} step children).
      */
     static Tree buildGraph(
             String rootCoord, List<TaskForecast.Module> modules, boolean verbose, Theme t, boolean ansi) {
-        Tree.Node root = Tree.node(Icon.pulse(), boldGa(rootCoord));
+        Tree.Node root = Tree.node(Icon.pulse(), Coord.module(rootCoord).text());
 
         List<TaskForecast.Module> cached = new ArrayList<>();
         List<TaskForecast.Module> dirty = new ArrayList<>();
@@ -268,9 +273,16 @@ public final class ExplainCommand implements CliCommand {
         return new Tree("Build Graph").gap(Tree.Gap.CHILDREN).root(root);
     }
 
-    /** One rebuild (or verbose cached) module: branded name pill + stage chain or step children. */
+    /**
+     * One rebuild (or verbose cached) module: Rebuild rows use {@code coord-name} (bold
+     * bright-cyan); verbose Fully Cached rows keep the branded name pill. Stage chain or step
+     * children hang below.
+     */
     private static Tree.Node moduleNode(TaskForecast.Module m, boolean verbose, Theme t, boolean ansi) {
-        Tree.Node node = Tree.node(Pill.branded(shortName(m.coord())));
+        String name = shortName(m.coord());
+        Tree.Node node = m.dirty()
+                ? Tree.node(RichText.parse("[coord-name]" + RichText.escape(name) + "[/]"))
+                : Tree.node(Pill.branded(name));
         if (verbose) {
             List<TaskForecast.Task> ph = m.steps();
             int nameCol = 0;
@@ -554,20 +566,6 @@ public final class ExplainCommand implements CliCommand {
     private static int commandWidth(String text) {
         int sep = text.indexOf(" · ");
         return (sep < 0 ? text : text.substring(0, sep)).length();
-    }
-
-    /** The entry project's {@code group:artifact} in bold, each segment in its coord color. */
-    private static RichText boldGa(String coord) {
-        if (coord == null || coord.isEmpty()) return RichText.empty();
-        int colon = coord.indexOf(':');
-        if (colon < 0) {
-            return RichText.parse("[bold coord-name]" + RichText.escape(coord) + "[/]");
-        }
-        return RichText.parse("[bold coord-group]"
-                + RichText.escape(coord.substring(0, colon))
-                + "[/]:[bold coord-name]"
-                + RichText.escape(coord.substring(colon + 1))
-                + "[/]");
     }
 
     /** The artifact half of a {@code group:artifact} coordinate. */

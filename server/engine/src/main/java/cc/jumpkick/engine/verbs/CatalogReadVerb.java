@@ -46,16 +46,21 @@ public final class CatalogReadVerb implements HostedVerb {
             try {
                 String dir = Jsonl.str(requestLine, "dir");
                 String cache = Jsonl.str(requestLine, "cache");
+                if (dir == null || dir.isBlank()) {
+                    // A resident server has no meaningful cwd to fall back to (JK-2166).
+                    throw new IllegalArgumentException("catalog-read request names no dir");
+                }
                 ack = CatalogReadOps.read(new CatalogReadOps.Request(
-                        dir == null || dir.isBlank() ? Path.of(".") : Path.of(dir),
+                        Path.of(dir),
                         cache == null || cache.isBlank() ? null : Path.of(cache),
+                        null,
                         Jsonl.str(requestLine, "query"),
                         Jsonl.strArray(requestLine, "terms"),
                         Jsonl.bool(requestLine, "offline", false),
                         Jsonl.bool(requestLine, "includeCached", false),
                         Jsonl.bool(requestLine, "bundledOnly", false)));
             } catch (Exception e) {
-                ack = CatalogReadAck.error(String.valueOf(e.getMessage()));
+                ack = CatalogReadAck.error(cc.jumpkick.util.Errors.text(e));
             }
             host.sendQuiet(writer, ack.encode());
         } catch (Exception e) {

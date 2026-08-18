@@ -260,7 +260,8 @@ public final class JkDarkTheme implements Theme {
 
     @Override
     public AttributedStyle coordName() {
-        return withColor(AttributedStyle.DEFAULT, BRIGHT_CYAN); // bright-cyan
+        // Bold bright-cyan — matches Coords.richGa artifact / plan-tree module names.
+        return withColor(AttributedStyle.DEFAULT.bold(), BRIGHT_CYAN);
     }
 
     @Override

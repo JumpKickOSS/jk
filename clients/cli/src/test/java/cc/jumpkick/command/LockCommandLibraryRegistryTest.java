@@ -7,7 +7,9 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.LockfileReader;
 import com.sun.net.httpserver.HttpServer;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -182,19 +184,30 @@ class LockCommandLibraryRegistryTest {
         makeStale(libraryCache);
         mavenServer.stop(0);
         registryServer.stop(0); // any network attempt would now fail
-        int exit = Jk.execute(
-                "lock",
-                "--offline",
-                "-C",
-                tempDir.toString(),
-                "--cache-dir",
-                tempDir.resolve("cache").toString(),
-                "--library-registry-url",
-                registryUrl.toString(),
-                "--library-cache-file",
-                libraryCache.toString());
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        int exit;
+        System.setOut(new PrintStream(captured, true, StandardCharsets.UTF_8));
+        try {
+            exit = Jk.execute(
+                    "lock",
+                    "--offline",
+                    "-C",
+                    tempDir.toString(),
+                    "--cache-dir",
+                    tempDir.resolve("cache").toString(),
+                    "--library-registry-url",
+                    registryUrl.toString(),
+                    "--library-cache-file",
+                    libraryCache.toString());
+        } finally {
+            System.setOut(originalOut);
+        }
 
-        assertThat(exit).isEqualTo(0);
+        // On failure the lock's own error text is the diagnosis — surface it (JK-2179).
+        assertThat(exit)
+                .as("offline lock output:\n%s", captured.toString(StandardCharsets.UTF_8))
+                .isEqualTo(0);
         assertThat(registryHits.get()).isEqualTo(1); // unchanged — offline never asked
     }
 

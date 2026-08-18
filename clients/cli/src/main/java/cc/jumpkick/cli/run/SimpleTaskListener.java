@@ -39,7 +39,7 @@ public final class SimpleTaskListener implements BuildPlanListener {
     public void output(String step, String line) {
         // Above the pinned spinner when one exists; otherwise straight to stdout.
         String painted = StackTraceHighlight.line(line);
-        if (cm != null) cm.writeAbove(painted);
+        if (cm != null) cm.writeProcessOutput(painted);
         else out.println(painted);
     }
 

@@ -159,7 +159,7 @@ public final class TasksCommand implements CliCommand {
         }
         boolean inspect = "inspect".equals(action);
         GlobalOptions global = GlobalOptions.from(in);
-        Path cache = in.value("cache-dir").map(Path::of).orElse(null);
+        Path cache = in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
         if (cache == null) cache = JkDirs.cache();
         // One explain forecast for the entry project — maps tasks to hit/miss.
         ExplainPlan forecast = inspect ? explainBestEffort(startDir, cache, global) : null;

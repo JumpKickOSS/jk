@@ -14,6 +14,8 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -338,6 +340,24 @@ class CacheCommandTest {
         Files.writeString(ptr, key);
     }
 
+    private static final List<String> SEEDED_PATHS = new ArrayList<>();
+
+    /** Delete this class's store seeds — fake blobs for REAL coordinates poison later locks (JK-2179). */
+    @org.junit.jupiter.api.AfterEach
+    void scrubSeededRepoArtifacts() {
+        Path repos = cc.jumpkick.cache.JkStores.store().resolve("repos");
+        for (String rel : SEEDED_PATHS) {
+            Path f = repos.resolve("central").resolve(rel);
+            try {
+                Files.deleteIfExists(Path.of(f + ".sha256"));
+                Files.deleteIfExists(f);
+            } catch (Exception ignored) {
+                // best-effort
+            }
+        }
+        SEEDED_PATHS.clear();
+    }
+
     /** Materialise a jar for {@code group:artifact:version} into the "central" named-repo store. */
     private static void seedRepo(Path cache, String group, String artifact, String version) {
         try {
@@ -345,7 +365,10 @@ class CacheCommandTest {
             cc.jumpkick.cache.Cas cas = new cc.jumpkick.cache.Cas(cache);
             Path blob = cas.put(bytes);
             var coord = cc.jumpkick.model.Coordinate.of(group, artifact, version);
-            cc.jumpkick.repo.RepoArtifactStore.forRepoName(cache, "central")
+            SEEDED_PATHS.add(cc.jumpkick.repo.MavenLayout.artifactPath(coord));
+            // repos/ lives under the STORE root — where MavenRepo writes (JK-2176); the old
+            // cache-rooted seed only matched the pre-fix search's wrong walk root.
+            cc.jumpkick.repo.RepoArtifactStore.forRepoName(cc.jumpkick.cache.JkStores.store(), "central")
                     .materialize(
                             cc.jumpkick.repo.MavenLayout.artifactPath(coord),
                             blob,

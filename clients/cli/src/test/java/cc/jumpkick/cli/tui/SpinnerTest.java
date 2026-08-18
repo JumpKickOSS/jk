@@ -219,13 +219,13 @@ class SpinnerTest {
             assertThat(painted).contains(Spinner.PULSE_GLYPH);
         } else {
             // Plain multi-line working frame.
-            assertThat(painted.trim()).isEqualTo("* Status > Analyzing status... - working...");
+            assertThat(painted.trim()).isEqualTo("jk: * Status > Analyzing status... - working...");
         }
         buf.reset();
         s.close();
         String closed = buf.toString(StandardCharsets.UTF_8);
         if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
-            assertThat(TestAnsi.strip(closed).trim()).isEqualTo("* Status > Analyzing status... - done.");
+            assertThat(TestAnsi.strip(closed).trim()).isEqualTo("jk: * Status > Analyzing status... - done.");
             return;
         }
         assertThat(closed).contains("\r\033[K"); // clear current line on close
@@ -235,10 +235,10 @@ class SpinnerTest {
     @Test
     void plain_working_and_done_line_shapes() {
         assertThat(Spinner.plainWorkingLine("Format", "Examining source files"))
-                .isEqualTo(" * Format > Examining source files - working...");
+                .isEqualTo("jk: * Format > Examining source files - working...");
         assertThat(Spinner.plainDoneLine("Format", "Examining source files"))
-                .isEqualTo(" * Format > Examining source files - done.");
-        assertThat(Spinner.plainWorkingLine(null, "Cleaning")).isEqualTo(" * Cleaning - working...");
+                .isEqualTo("jk: * Format > Examining source files - done.");
+        assertThat(Spinner.plainWorkingLine(null, "Cleaning")).isEqualTo("jk: * Cleaning - working...");
     }
 
     @Test

@@ -208,11 +208,11 @@ public final class ActivityCommand implements CliCommand {
         if (!t.isAnsi()) return raw;
         int i = raw.indexOf(':');
         if (i <= 0 || i >= raw.length() - 1) {
-            return Theme.colorize(raw, t.coordName().bold());
+            return Theme.colorize(raw, t.coordName());
         }
         return Theme.colorize(raw.substring(0, i), t.coordGroup())
                 + Theme.colorize(":", t.darkGray())
-                + Theme.colorize(raw.substring(i + 1), t.coordName().bold());
+                + Theme.colorize(raw.substring(i + 1), t.coordName());
     }
 
     private static String muted(String s, Theme t) {

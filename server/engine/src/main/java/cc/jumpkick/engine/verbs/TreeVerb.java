@@ -52,7 +52,7 @@ public final class TreeVerb implements HostedVerb {
                         Jsonl.bool(requestLine, "stack", false),
                         Jsonl.strArray(requestLine, "scopes"));
             } catch (IOException | RuntimeException e) {
-                error = String.valueOf(e.getMessage());
+                error = cc.jumpkick.util.Errors.text(e);
             }
             host.sendQuiet(writer, ProtoReads.treeAck(error, rendered));
 

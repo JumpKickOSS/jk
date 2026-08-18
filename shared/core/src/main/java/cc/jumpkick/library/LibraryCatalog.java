@@ -392,12 +392,25 @@ public final class LibraryCatalog {
                         + " carries a version — strip it; the catalog is name→coord only: "
                         + coord);
             }
+            rejectReservedSeparator(displayPath, name, coord);
             out.put(name, new Module(coord.substring(0, sep), coord.substring(sep + 1)));
         }
         if (!seenTable) {
             throw new IllegalStateException(displayPath + " is missing the required [libraries] table");
         }
         return out;
+    }
+
+    /**
+     * {@code |} is the {@code CatalogReadAck} packed-field separator; a name or coordinate
+     * carrying it would silently shift every subsequent column on decode (JK-2169), so it is
+     * rejected at parse time in both parsers.
+     */
+    private static void rejectReservedSeparator(String displayPath, String name, String coord) {
+        if (name.indexOf('|') >= 0 || coord.indexOf('|') >= 0) {
+            throw new IllegalStateException(
+                    displayPath + ".libraries." + name + " must not contain `|` (reserved separator)");
+        }
     }
 
     /** Strip optional quotes from a TOML key ({@code "a.b" = …}). */
@@ -433,6 +446,7 @@ public final class LibraryCatalog {
                         + " carries a version — strip it; the catalog is name→coord only: "
                         + coord);
             }
+            rejectReservedSeparator(displayPath, name, coord);
             out.put(name, new Module(coord.substring(0, sep), coord.substring(sep + 1)));
         }
         return out;
