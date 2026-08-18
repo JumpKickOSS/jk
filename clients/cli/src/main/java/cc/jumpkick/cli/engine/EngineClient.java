@@ -702,7 +702,14 @@ public final class EngineClient {
     public static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(
             cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, String modules, String affectedSince)
             throws IOException {
-        return EngineBuildListenerAdapter.projectInfo(paths, dir, modules, affectedSince);
+        return projectInfo(paths, dir, modules, affectedSince, false);
+    }
+
+    /** {@code counts=true} adds the source/test tree-walk counts — jk status only (JK-2162). */
+    public static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(
+            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, String modules, String affectedSince, boolean counts)
+            throws IOException {
+        return EngineBuildListenerAdapter.projectInfo(paths, dir, modules, affectedSince, counts);
     }
 
     /**

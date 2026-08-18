@@ -287,12 +287,6 @@ public final class ReleaseCommand implements CliCommand {
             if (isEngine(root)) return workspaceRoot;
             return null;
         }
-        int n = Math.min(root.moduleDirs().size(), root.moduleNames().size());
-        for (int i = 0; i < n; i++) {
-            Path mod = resolveModuleDir(workspaceRoot, root.moduleDirs().get(i));
-            var info = BuildCommand.projectInfoOrNull(mod);
-            if (info != null && isEngine(info)) return mod;
-        }
         for (String d : root.moduleDirs()) {
             Path mod = resolveModuleDir(workspaceRoot, d);
             var info = BuildCommand.projectInfoOrNull(mod);

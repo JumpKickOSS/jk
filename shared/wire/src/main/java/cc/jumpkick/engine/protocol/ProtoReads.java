@@ -361,24 +361,21 @@ public final class ProtoReads {
                 + "}";
     }
 
-    public static String projectInfoRequest(String dir, String cache) {
-        return projectInfoRequest(dir, cache, null, null);
-    }
-
     /**
-     * As {@link #projectInfoRequest(String, String)} with optional {@code -m}/{@code
+     * Project summary request, with optional {@code -m}/{@code
      * --affected-since} filters (omitted when blank).
      */
-    public static String projectInfoRequest(String dir, String cache, String modules, String affectedSince) {
+    public static String projectInfoRequest(String dir, String modules, String affectedSince, boolean counts) {
         String extra = "";
         if (modules != null && !modules.isBlank()) extra += ",\"modules\":" + Jsonl.quote(modules);
         if (affectedSince != null && !affectedSince.isBlank()) {
             extra += ",\"affectedSince\":" + Jsonl.quote(affectedSince);
         }
-        return "{\"type\":\"" + EngineProtocol.PROJECT_INFO_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + ",\"cache\":"
-                + Jsonl.quote(cache)
-                + extra
-                + "}";
+        // Source/test counting walks every module's src trees — opt-in (jk status), never the
+        // default for the identity-only callers on hot paths (JK-2162). The dead `cache` field
+        // the verb never read is gone (JK-2168).
+        if (counts) extra += ",\"counts\":true";
+        return "{\"type\":\"" + EngineProtocol.PROJECT_INFO_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + extra + "}";
     }
 
     public static String outdatedRequest(String dir, String cache, String repoUrl, boolean offline, boolean force) {

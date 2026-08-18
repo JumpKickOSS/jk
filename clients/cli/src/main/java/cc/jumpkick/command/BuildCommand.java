@@ -920,10 +920,20 @@ public final class BuildCommand implements CliCommand {
 
     /** Engine project summary, or null when unavailable / errored. */
     public static cc.jumpkick.engine.protocol.ProjectInfo projectInfoOrNull(Path dir) {
+        return projectInfoOrNull(dir, false);
+    }
+
+    /** As {@link #projectInfoOrNull(Path)}; {@code counts=true} adds source/test tree counts. */
+    public static cc.jumpkick.engine.protocol.ProjectInfo projectInfoOrNull(Path dir, boolean counts) {
+        String key = projectInfoKey(dir, null, null, counts);
+        ProjectInfo cached = PROJECT_INFO_MEMO.get(key);
+        if (cached != null) return cached;
         try {
-            cc.jumpkick.engine.protocol.ProjectInfo info =
-                    cc.jumpkick.cli.engine.EngineClient.projectInfo(cc.jumpkick.engine.EnginePaths.current(), dir);
-            return info.error() != null ? null : info;
+            cc.jumpkick.engine.protocol.ProjectInfo info = cc.jumpkick.cli.engine.EngineClient.projectInfo(
+                    cc.jumpkick.engine.EnginePaths.current(), dir, null, null, counts);
+            if (info.error() != null) return null;
+            PROJECT_INFO_MEMO.put(key, info);
+            return info;
         } catch (Exception e) {
             return null;
         }
@@ -1156,11 +1166,36 @@ public final class BuildCommand implements CliCommand {
     }
 
     static ProjectInfo projectInfoOrError(Path dir, String modules, String affectedSince) {
+        String key = projectInfoKey(dir, modules, affectedSince, false);
+        ProjectInfo cached = PROJECT_INFO_MEMO.get(key);
+        if (cached != null) return cached;
+        ProjectInfo info;
         try {
-            return cc.jumpkick.cli.engine.EngineClient.projectInfo(
+            info = cc.jumpkick.cli.engine.EngineClient.projectInfo(
                     cc.jumpkick.engine.EnginePaths.current(), dir, modules, affectedSince);
         } catch (Exception e) {
             return ProjectInfo.error(String.valueOf(e.getMessage()));
         }
+        if (info.error() == null || info.error().isBlank()) PROJECT_INFO_MEMO.put(key, info);
+        return info;
+    }
+
+    /**
+     * Per-invocation memo: one CLI run issues the same projectInfo up to N times (peek, selection,
+     * labels, per-module release probes) and each engine call re-parses the workspace (JK-2162).
+     * The CLI process is one-shot, so only in-run staleness matters — {@link #forgetProjectInfo}
+     * is called after anything that mutates lock/manifest state mid-run.
+     */
+    private static final java.util.concurrent.ConcurrentHashMap<String, ProjectInfo> PROJECT_INFO_MEMO =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static String projectInfoKey(Path dir, String modules, String affectedSince, boolean counts) {
+        return dir.toAbsolutePath().normalize() + " " + (modules == null ? "" : modules) + " "
+                + (affectedSince == null ? "" : affectedSince) + " " + counts;
+    }
+
+    /** Drop memoized summaries — call after a lock refresh or any manifest edit mid-run. */
+    public static void forgetProjectInfo() {
+        PROJECT_INFO_MEMO.clear();
     }
 }

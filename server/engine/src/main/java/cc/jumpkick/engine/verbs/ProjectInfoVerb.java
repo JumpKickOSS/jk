@@ -45,7 +45,8 @@ public final class ProjectInfoVerb implements HostedVerb {
                 info = cc.jumpkick.runtime.ExecPlans.projectInfo(
                         Path.of(Jsonl.str(requestLine, "dir")),
                         Jsonl.str(requestLine, "modules"),
-                        Jsonl.str(requestLine, "affectedSince"));
+                        Jsonl.str(requestLine, "affectedSince"),
+                        Jsonl.bool(requestLine, "counts", false));
             } catch (RuntimeException e) {
                 info = cc.jumpkick.engine.protocol.ProjectInfo.error(String.valueOf(e.getMessage()));
             }

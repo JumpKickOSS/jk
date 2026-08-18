@@ -112,6 +112,9 @@ public final class EnsureFreshLock {
                         : outcome.errors().getFirst();
                 return failSoftOrHard(dir, chip, err, outcome.exitCode(), spinner);
             }
+            // The lock just changed on disk — memoized summaries (hasLock/lockJdk/lockStale)
+            // are stale for the rest of this invocation (JK-2162).
+            cc.jumpkick.command.BuildCommand.forgetProjectInfo();
             return Exit.SUCCESS;
         } catch (Exception e) {
             return failSoftOrHard(dir, chip, "could not refresh jk-lock.toml: " + e.getMessage(), Exit.CONFIG, spinner);

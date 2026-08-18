@@ -434,7 +434,7 @@ public final class StatusCommand implements CliCommand {
         Path buildFile = cwd.resolve("jk.toml");
         if (!Files.isRegularFile(buildFile)) return null;
         try {
-            var info = BuildCommand.projectInfoOrNull(cwd);
+            var info = BuildCommand.projectInfoOrNull(cwd, true);
             if (info == null) {
                 return new ProjectSnapshot(cwd.getFileName().toString(), "—", "—", 0, 0, 0);
             }

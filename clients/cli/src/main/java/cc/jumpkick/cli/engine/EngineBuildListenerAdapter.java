@@ -564,7 +564,7 @@ final class EngineBuildListenerAdapter {
 
     /** One engine-hosted jk.toml edit: returns changed; throws with the engine's message. */
     static boolean edit(EnginePaths.Paths paths, Path file, String op, List<String> args) throws IOException {
-        return request(
+        boolean changed = request(
                 paths,
                 ProtoReads.editRequest(file.toString(), op, args),
                 EngineProtocol.EDIT_ACK,
@@ -574,6 +574,9 @@ final class EngineBuildListenerAdapter {
                     if (error != null) throw new IOException(error);
                     return Jsonl.bool(line, "changed", false);
                 });
+        // Manifest just changed — drop memoized project summaries for this invocation (JK-2162).
+        if (changed) cc.jumpkick.command.BuildCommand.forgetProjectInfo();
+        return changed;
     }
 
     static cc.jumpkick.engine.protocol.PluginInstallLocalAck pluginInstallLocal(
@@ -822,14 +825,15 @@ final class EngineBuildListenerAdapter {
     }
 
     static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(EnginePaths.Paths paths, Path dir) throws IOException {
-        return projectInfo(paths, dir, null, null);
+        return projectInfo(paths, dir, null, null, false);
     }
 
     static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(
-            EnginePaths.Paths paths, Path dir, String modules, String affectedSince) throws IOException {
+            EnginePaths.Paths paths, Path dir, String modules, String affectedSince, boolean counts)
+            throws IOException {
         return request(
                 paths,
-                ProtoReads.projectInfoRequest(dir.toString(), "", modules, affectedSince),
+                ProtoReads.projectInfoRequest(dir.toString(), modules, affectedSince, counts),
                 EngineProtocol.PROJECT_INFO_ACK,
                 "project-info request",
                 cc.jumpkick.engine.protocol.ProjectInfo::decode);

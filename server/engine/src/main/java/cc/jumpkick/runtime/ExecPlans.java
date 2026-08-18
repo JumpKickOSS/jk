@@ -61,6 +61,14 @@ public final class ExecPlans {
      * (empty match is success, not an error). Invalid selectors ride {@code error}.
      */
     public static ProjectInfo projectInfo(Path dir, String modulesSpec, String affectedSince) {
+        return projectInfo(dir, modulesSpec, affectedSince, true);
+    }
+
+    /**
+     * {@code counts=false} skips the source/test tree walks — identity/selection callers on hot
+     * paths (build/compile/release loops) never need them; only {@code jk status} does (JK-2162).
+     */
+    public static ProjectInfo projectInfo(Path dir, String modulesSpec, String affectedSince, boolean counts) {
         try {
             Path buildFile = dir.resolve("jk.toml");
             if (!Files.exists(buildFile)) {
@@ -136,15 +144,17 @@ public final class ExecPlans {
 
             int sourceCount = 0;
             int testCount = 0;
-            List<Path> countDirs = new ArrayList<>();
-            if (!moduleDirs.isEmpty()) {
-                for (String d : moduleDirs) countDirs.add(Path.of(d));
-            } else {
-                countDirs.add(dir);
-            }
-            for (Path mod : countDirs) {
-                sourceCount += countSources(mod, true);
-                testCount += countSources(mod, false);
+            if (counts) {
+                List<Path> countDirs = new ArrayList<>();
+                if (!moduleDirs.isEmpty()) {
+                    for (String d : moduleDirs) countDirs.add(Path.of(d));
+                } else {
+                    countDirs.add(dir);
+                }
+                for (Path mod : countDirs) {
+                    sourceCount += countSources(mod, true);
+                    testCount += countSources(mod, false);
+                }
             }
 
             Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
