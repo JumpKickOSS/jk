@@ -59,7 +59,7 @@ public final class CatalogReadVerb implements HostedVerb {
                         Jsonl.bool(requestLine, "includeCached", false),
                         Jsonl.bool(requestLine, "bundledOnly", false)));
             } catch (Exception e) {
-                ack = CatalogReadAck.error(String.valueOf(e.getMessage()));
+                ack = CatalogReadAck.error(cc.jumpkick.util.Errors.text(e));
             }
             host.sendQuiet(writer, ack.encode());
         } catch (Exception e) {

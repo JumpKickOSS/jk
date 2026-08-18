@@ -63,7 +63,7 @@ public final class PluginInstallLocalVerb implements HostedVerb {
             } catch (Exception e) {
                 // Same convention as every sibling read verb: ops/decode failures ride the ack's
                 // error channel so the client prints the real message, not a disconnect.
-                ack = PluginInstallLocalAck.error(String.valueOf(e.getMessage()));
+                ack = PluginInstallLocalAck.error(cc.jumpkick.util.Errors.text(e));
             }
             host.sendQuiet(writer, ack.encode());
         } catch (Exception e) {

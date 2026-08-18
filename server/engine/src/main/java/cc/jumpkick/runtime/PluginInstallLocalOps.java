@@ -119,7 +119,7 @@ public final class PluginInstallLocalOps {
             }
             return new PluginInstallLocalAck(null, installed, skipped, missing, lines);
         } catch (Exception e) {
-            return PluginInstallLocalAck.error(String.valueOf(e.getMessage()));
+            return PluginInstallLocalAck.error(cc.jumpkick.util.Errors.text(e));
         }
     }
 

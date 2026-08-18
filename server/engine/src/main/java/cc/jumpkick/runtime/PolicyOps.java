@@ -36,7 +36,7 @@ public final class PolicyOps {
             }
             return new DenyReport(null, lock.artifacts().size(), modules, versions, reasons);
         } catch (IOException | RuntimeException e) {
-            return DenyReport.error(String.valueOf(e.getMessage()));
+            return DenyReport.error(cc.jumpkick.util.Errors.text(e));
         }
     }
 }

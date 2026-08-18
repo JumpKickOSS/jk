@@ -81,7 +81,7 @@ public final class FreshenCatalogVerb implements HostedVerb {
                     default -> error = "unknown catalog: " + catalog;
                 }
             } catch (Exception e) {
-                error = String.valueOf(e.getMessage());
+                error = cc.jumpkick.util.Errors.text(e);
             }
             host.sendQuiet(writer, ProtoReads.freshenCatalogAck(error == null, error));
 

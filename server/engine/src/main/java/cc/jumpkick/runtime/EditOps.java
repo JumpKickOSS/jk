@@ -58,7 +58,7 @@ public final class EditOps {
             Files.writeString(file, updated, StandardCharsets.UTF_8);
             return new Result(true, null, detail);
         } catch (IOException | RuntimeException e) {
-            return new Result(false, String.valueOf(e.getMessage()));
+            return new Result(false, cc.jumpkick.util.Errors.text(e));
         }
     }
 

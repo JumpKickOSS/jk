@@ -61,7 +61,7 @@ public final class McpManifest {
                 out.put("applied", false);
             }
         } catch (Exception e) {
-            out.put("error", String.valueOf(e.getMessage()));
+            out.put("error", cc.jumpkick.util.Errors.text(e));
         }
         return out;
     }
@@ -83,7 +83,7 @@ public final class McpManifest {
                 out.put("applied", false);
             }
         } catch (Exception e) {
-            out.put("error", String.valueOf(e.getMessage()));
+            out.put("error", cc.jumpkick.util.Errors.text(e));
         }
         return out;
     }
@@ -116,7 +116,7 @@ public final class McpManifest {
                 out.put("applied", false);
             }
         } catch (Exception e) {
-            out.put("error", String.valueOf(e.getMessage()));
+            out.put("error", cc.jumpkick.util.Errors.text(e));
         }
         return out;
     }

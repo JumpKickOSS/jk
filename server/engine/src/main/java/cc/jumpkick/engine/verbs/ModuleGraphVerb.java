@@ -55,7 +55,7 @@ public final class ModuleGraphVerb implements HostedVerb {
                         Jsonl.str(requestLine, "modules"),
                         Jsonl.str(requestLine, "affectedSince"));
             } catch (Exception e) {
-                ack = ModuleGraphAck.error(String.valueOf(e.getMessage()));
+                ack = ModuleGraphAck.error(cc.jumpkick.util.Errors.text(e));
             }
             host.sendQuiet(writer, ack.encode());
         } catch (Exception e) {

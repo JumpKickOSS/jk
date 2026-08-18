@@ -66,7 +66,7 @@ public final class GraphOps {
             }
             return new WhyReport(null, names, versions, owners, paths);
         } catch (IOException | RuntimeException e) {
-            return WhyReport.error(String.valueOf(e.getMessage()));
+            return WhyReport.error(cc.jumpkick.util.Errors.text(e));
         }
     }
 

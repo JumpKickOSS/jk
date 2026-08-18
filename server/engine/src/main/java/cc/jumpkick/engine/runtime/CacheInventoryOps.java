@@ -205,7 +205,7 @@ public final class CacheInventoryOps {
             try {
                 coord = Coordinate.parse(spec);
             } catch (IllegalArgumentException e) {
-                return CacheInventoryAck.error(String.valueOf(e.getMessage()));
+                return CacheInventoryAck.error(cc.jumpkick.util.Errors.text(e));
             }
             String relPath = MavenLayout.artifactPath(coord);
             List<String> hitRepos = new ArrayList<>();

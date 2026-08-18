@@ -68,7 +68,7 @@ final class LockCascade {
             coord = scope.coord();
         } catch (RuntimeException e) {
             host.sendQuiet(
-                    writer, ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(String.valueOf(e.getMessage())), -1));
+                    writer, ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(cc.jumpkick.util.Errors.text(e)), -1));
             return;
         }
 

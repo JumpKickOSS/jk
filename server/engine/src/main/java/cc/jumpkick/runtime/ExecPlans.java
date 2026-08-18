@@ -227,7 +227,7 @@ public final class ExecPlans {
                     testTags.excludeTags(),
                     hasLock && cc.jumpkick.lock.LockFreshness.isStale(dir, lockFile));
         } catch (RuntimeException | IOException e) {
-            return ProjectInfo.error(String.valueOf(e.getMessage()));
+            return ProjectInfo.error(cc.jumpkick.util.Errors.text(e));
         }
     }
 
@@ -392,7 +392,7 @@ public final class ExecPlans {
                 default -> ExecPlan.error(kind, "unknown exec-plan kind: " + kind);
             };
         } catch (RuntimeException | IOException e) {
-            return ExecPlan.error(kind, String.valueOf(e.getMessage()));
+            return ExecPlan.error(kind, cc.jumpkick.util.Errors.text(e));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return ExecPlan.error(kind, "interrupted");

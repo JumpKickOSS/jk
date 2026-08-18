@@ -62,7 +62,7 @@ public final class ModuleGraphOps {
             }
             return ModuleGraphAck.of(graph);
         } catch (Exception e) {
-            return ModuleGraphAck.error(String.valueOf(e.getMessage()));
+            return ModuleGraphAck.error(cc.jumpkick.util.Errors.text(e));
         }
     }
 }

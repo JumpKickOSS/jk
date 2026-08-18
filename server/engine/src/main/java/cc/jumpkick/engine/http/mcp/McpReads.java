@@ -81,7 +81,7 @@ public final class McpReads {
             }
             m.put("edges", edges);
         } catch (Exception e) {
-            m.put("error", String.valueOf(e.getMessage()));
+            m.put("error", cc.jumpkick.util.Errors.text(e));
         }
         return m;
     }
@@ -100,7 +100,7 @@ public final class McpReads {
             List<cc.jumpkick.model.Scope> scopes = cc.jumpkick.resolver.DependencyGraphModel.parseScopes(scopesCsv);
             g = cc.jumpkick.resolver.DependencyGraphModel.forProjectDir(root, scopes, transitive);
         } catch (Exception e) {
-            m.put("error", String.valueOf(e.getMessage()));
+            m.put("error", cc.jumpkick.util.Errors.text(e));
             return m;
         }
         m.put("workspace", g.workspace());
@@ -167,7 +167,7 @@ public final class McpReads {
         try {
             files = cc.jumpkick.runtime.GenerateOps.generate(root, kind, Map.of());
         } catch (RuntimeException e) {
-            m.put("error", String.valueOf(e.getMessage()));
+            m.put("error", cc.jumpkick.util.Errors.text(e));
             return m;
         }
         if (files.error() != null && !files.error().isBlank()) {
@@ -189,7 +189,7 @@ public final class McpReads {
             return r.toStructured();
         } catch (Exception e) {
             Map<String, Object> m = new LinkedHashMap<>();
-            m.put("error", String.valueOf(e.getMessage()));
+            m.put("error", cc.jumpkick.util.Errors.text(e));
             return m;
         }
     }

@@ -48,7 +48,7 @@ public final class EditVerb implements HostedVerb {
                         Jsonl.str(requestLine, "op"),
                         Jsonl.strArray(requestLine, "args"));
             } catch (RuntimeException e) {
-                result = new cc.jumpkick.runtime.EditOps.Result(false, String.valueOf(e.getMessage()));
+                result = new cc.jumpkick.runtime.EditOps.Result(false, cc.jumpkick.util.Errors.text(e));
             }
             host.sendQuiet(writer, ProtoReads.editAck(result.changed(), result.error(), result.detail()));
 

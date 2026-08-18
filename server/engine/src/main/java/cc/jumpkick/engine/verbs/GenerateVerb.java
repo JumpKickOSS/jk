@@ -48,7 +48,7 @@ public final class GenerateVerb implements HostedVerb {
                         Jsonl.str(requestLine, "kind"),
                         ProtoReads.generateParams(requestLine));
             } catch (RuntimeException e) {
-                files = cc.jumpkick.engine.protocol.GeneratedFiles.error(String.valueOf(e.getMessage()));
+                files = cc.jumpkick.engine.protocol.GeneratedFiles.error(cc.jumpkick.util.Errors.text(e));
             }
             host.sendQuiet(writer, files.encode());
 

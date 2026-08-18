@@ -114,7 +114,7 @@ public final class WorkspaceExecute {
         try {
             entryBuild = JkBuildParser.parse(req.entryDir().resolve("jk.toml"));
         } catch (Exception e) {
-            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(String.valueOf(e.getMessage())));
+            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.util.Errors.text(e)));
             listener.onWorkspaceFinish(r);
             return r;
         }
@@ -153,7 +153,7 @@ public final class WorkspaceExecute {
         try {
             graph = BuildGraph.resolve(req.entryDir(), entryBuild);
         } catch (IOException e) {
-            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(String.valueOf(e.getMessage())));
+            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.util.Errors.text(e)));
             listener.onWorkspaceFinish(r);
             return r;
         }
