@@ -89,3 +89,15 @@ freshen uses `LockFreshness.needsRefresh` so a missing lock still writes one.
 | `JkBuildParser` | 6 | **0** | |
 | `cc/jumpkick/plugin/manifest` | 2 | **0** | |
 | `org/tomlj` | 14 | 14 | still the approved CLI TOML job |
+
+## Post-epic measurement (2026-08-18, JK-2165)
+
+After JK-2138–JK-2151 landed plus the dead cache/store walkers were deleted (JK-2165):
+
+| Field | Value |
+|---|---|
+| Size | **29.8 MiB** (31263816 bytes) — **−3.2 MiB vs baseline** |
+| `PluginDescriptor` strings | 0 (was 613) |
+| `cc/jumpkick/plugin/manifest` strings | 0 (was 640) |
+| `ComparableVersion` strings | 0 (was 16) |
+| `cacheUsageStats`/`storeUsageStats` strings | 0 |
