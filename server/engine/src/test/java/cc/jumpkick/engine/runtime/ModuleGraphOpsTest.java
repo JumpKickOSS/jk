@@ -25,6 +25,35 @@ class ModuleGraphOpsTest {
     }
 
     @Test
+    void empty_affected_match_renders_the_empty_graph_not_the_module(@TempDir Path dir) throws Exception {
+        // JK-2167: a selector that validates but matches nothing used to fall through to the
+        // unconditional single-module render.
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "com.example"
+                name = "app"
+                version = "0.1.0"
+                """);
+        git(dir, "init", "-q");
+        git(dir, "add", ".");
+        git(dir, "-c", "user.email=jk@test", "-c", "user.name=jk", "commit", "-qm", "init");
+
+        ModuleGraphAck ack = ModuleGraphOps.render(dir, "dot", null, "HEAD");
+
+        assertThat(ack.error()).isNull();
+        assertThat(ack.graph()).contains("digraph modules");
+        assertThat(ack.graph()).doesNotContain("com.example:app");
+    }
+
+    private static void git(Path dir, String... args) throws Exception {
+        var cmd = new java.util.ArrayList<String>();
+        cmd.add("git");
+        cmd.addAll(java.util.List.of(args));
+        Process p = new ProcessBuilder(cmd).directory(dir.toFile()).redirectErrorStream(true).start();
+        String out = new String(p.getInputStream().readAllBytes());
+        if (p.waitFor() != 0) throw new IllegalStateException("git failed: " + out);
+    }
+
+    @Test
     void workspace_dot_includes_path_dep_edge(@TempDir Path ws) throws Exception {
         Files.writeString(ws.resolve("jk.toml"), """
                 group = "com.example"

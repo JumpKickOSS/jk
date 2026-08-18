@@ -44,6 +44,7 @@ public final class ModuleGraphOps {
                     graph = ModuleDotGraph.render(fmt, root, forGraph, only);
                 }
             } else {
+                boolean emptyMatch = false;
                 if ((modulesSpec != null && !modulesSpec.isBlank())
                         || (affectedSince != null && !affectedSince.isBlank())) {
                     ModuleSelection.Result selected =
@@ -51,8 +52,13 @@ public final class ModuleGraphOps {
                     if (selected != null && !selected.ok()) {
                         return ModuleGraphAck.error(selected.errorMessage());
                     }
+                    // A selector that validates but matches nothing must render the empty
+                    // graph, not silently the full single-module one (JK-2167).
+                    emptyMatch = selected != null && selected.moduleDirs().isEmpty();
                 }
-                graph = ModuleDotGraph.singleModule(entry, root, fmt);
+                graph = emptyMatch
+                        ? ModuleDotGraph.render(fmt, root, Map.of(), null)
+                        : ModuleDotGraph.singleModule(entry, root, fmt);
             }
             return ModuleGraphAck.of(graph);
         } catch (Exception e) {

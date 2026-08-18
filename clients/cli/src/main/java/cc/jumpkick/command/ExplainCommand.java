@@ -107,12 +107,12 @@ public final class ExplainCommand implements CliCommand {
         // Module DAG export is engine-hosted. Honor --modules / --affected-since.
         // On single-project layouts, selectors only validate; the graph is one node.
         if (hasGraph) {
-            return emitModuleGraph(
-                    graphDir,
-                    graphFmt,
-                    modulesSpec,
-                    affectedSinceEarly,
-                    in.value("graph-out").orElse(null));
+            // Resolve a relative --graph-out against the INVOCATION dir before graphDir is
+            // rehomed to the workspace root for member cwds (JK-2167).
+            String graphOut = in.value("graph-out")
+                    .map(o -> startDir.resolve(o).toAbsolutePath().normalize().toString())
+                    .orElse(null);
+            return emitModuleGraph(graphDir, graphFmt, modulesSpec, affectedSinceEarly, graphOut);
         }
 
         // HARD INVARIANT: bare `jk explain` uses the exact same defaults as bare `jk build`
