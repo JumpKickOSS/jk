@@ -416,7 +416,7 @@ public final class ExecPlans {
             if (Files.exists(p)) present.add(p);
             else missing++;
         }
-        for (Path p : jarAliased(present)) paths.add(p.toString());
+        for (Path p : jarAliased(cache, present)) paths.add(p.toString());
         String display = missing > 0 ? missing + " lock classpath entry(ies) missing on disk — run `jk sync`" : "";
         return new ExecPlan(
                 null,
@@ -443,10 +443,16 @@ public final class ExecPlans {
                 "");
     }
 
-    private static List<Path> jarAliased(List<Path> jars) throws IOException {
+    /**
+     * jshell only loads {@code *.jar}/{@code *.zip}, but CAS classpath entries are extensionless
+     * content hashes — alias them under a stable {@code <cache>/jshell-cp/} dir instead of a
+     * fresh temp dir per request: this runs in the resident engine, where per-request
+     * {@code deleteOnExit} temp dirs accumulate until engine exit (JK-2159). Aliases are hard
+     * links keyed by source path, so repeat requests are idempotent and cost nothing.
+     */
+    static List<Path> jarAliased(Path cache, List<Path> jars) throws IOException {
         List<Path> out = new ArrayList<>(jars.size());
-        Path tmp = null;
-        int i = 0;
+        Path aliasDir = cache.resolve("jshell-cp");
         for (Path jar : jars) {
             if (jar == null) continue;
             String name = jar.getFileName().toString().toLowerCase();
@@ -454,15 +460,12 @@ public final class ExecPlans {
                 out.add(jar);
                 continue;
             }
-            if (tmp == null) {
-                tmp = Files.createTempDirectory("jk-jshell-cp-");
-                tmp.toFile().deleteOnExit();
-            }
-            Path alias = tmp.resolve(i + "-" + jar.getFileName() + ".jar");
-            Linking.linkOrCopy(jar, alias);
-            alias.toFile().deleteOnExit();
+            // Path-keyed prefix so equal-named blobs from different roots cannot collide; CAS
+            // blob content is immutable, so an existing alias (a hard link) is always current.
+            String key = Integer.toHexString(jar.toAbsolutePath().toString().hashCode());
+            Path alias = aliasDir.resolve(key + "-" + jar.getFileName() + ".jar");
+            if (!Files.exists(alias)) Linking.linkOrCopy(jar, alias);
             out.add(alias);
-            i++;
         }
         return out;
     }
