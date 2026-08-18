@@ -345,7 +345,9 @@ class CacheCommandTest {
             cc.jumpkick.cache.Cas cas = new cc.jumpkick.cache.Cas(cache);
             Path blob = cas.put(bytes);
             var coord = cc.jumpkick.model.Coordinate.of(group, artifact, version);
-            cc.jumpkick.repo.RepoArtifactStore.forRepoName(cache, "central")
+            // repos/ lives under the STORE root — where MavenRepo writes (JK-2176); the old
+            // cache-rooted seed only matched the pre-fix search's wrong walk root.
+            cc.jumpkick.repo.RepoArtifactStore.forRepoName(cc.jumpkick.cache.JkStores.store(), "central")
                     .materialize(
                             cc.jumpkick.repo.MavenLayout.artifactPath(coord),
                             blob,

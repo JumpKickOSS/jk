@@ -66,6 +66,43 @@ public final class EnsureFreshLock {
             String wedgeCommand,
             Spinner spinner,
             boolean ownSpinner) {
+        return ensure(projectDir, cacheDir, global, wedgeCommand, spinner, ownSpinner, null);
+    }
+
+    /**
+     * As {@link #ensure(Path, Path, GlobalOptions, String)} honoring the command's
+     * {@code --repo-url} override: the invisible freshen resolves against the SAME repo the
+     * command will use — dropping it made `jk outdated --repo-url …` on a lockless project
+     * fail its freshen against the declared repos (JK-2178).
+     */
+    public static int ensure(
+            Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand, java.net.URI repoUrl) {
+        return ensure(projectDir, cacheDir, global, wedgeCommand, null, true, repoUrl);
+    }
+
+    /**
+     * Best-effort freshen for read verbs that RESOLVE INDEPENDENTLY of the lock ({@code jk
+     * outdated}): attempt the invisible freshen, but a failure — even with no lock at all — is a
+     * warning, never an exit. Pre-JK-2151 the engine skipped missing-lock freshens entirely, so
+     * these verbs always worked lockless; the write-a-missing-lock upgrade (aa655a0f) must not
+     * turn their unresolvable-repo situations into hard failures (JK-2178).
+     */
+    public static void ensureBestEffort(
+            Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand, java.net.URI repoUrl) {
+        int code = ensure(projectDir, cacheDir, global, wedgeCommand, null, true, repoUrl);
+        if (code != Exit.SUCCESS) {
+            CliOutput.err("‼ jk: lock freshen failed — continuing without jk-lock.toml");
+        }
+    }
+
+    private static int ensure(
+            Path projectDir,
+            Path cacheDir,
+            GlobalOptions global,
+            String wedgeCommand,
+            Spinner spinner,
+            boolean ownSpinner,
+            java.net.URI repoUrl) {
         Path dir = projectDir.toAbsolutePath().normalize();
         if (!Files.isRegularFile(dir.resolve("jk.toml"))) {
             return Exit.SUCCESS; // caller already validated project
@@ -84,7 +121,7 @@ public final class EnsureFreshLock {
         try {
             // Conservative: a freshen must never float pinned versions — that is `jk lock`'s job.
             EngineRequests.LockRequest req = new EngineRequests.LockRequest(
-                    dir, cache, List.of(), false, false, null, global.offline, global.force, global.verbose, true);
+                    dir, cache, List.of(), false, false, repoUrl, global.offline, global.force, global.verbose, true);
 
             EngineRequests.LockHandler quiet = new EngineRequests.LockHandler() {
                 @Override

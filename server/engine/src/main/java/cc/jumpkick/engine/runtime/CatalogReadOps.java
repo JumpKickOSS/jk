@@ -49,8 +49,10 @@ public final class CatalogReadOps {
             }
             List<String> cached = List.of();
             if (req.includeCached()) {
+                // repos/ lives under the STORE root — the same tree MavenRepo writes through
+                // cas.root() (JK-2176); the cache root never holds repo artifacts.
                 List<String> versions = new ArrayList<>(RepoArtifactStore.allVersions(
-                        cache, src.module().group(), src.module().artifact()));
+                        cc.jumpkick.cache.JkStores.storeRootFor(cache), src.module().group(), src.module().artifact()));
                 versions.sort((a, b) -> Versions.compare(b, a));
                 cached = List.copyOf(versions);
                 if (req.offline() && cached.isEmpty()) continue;

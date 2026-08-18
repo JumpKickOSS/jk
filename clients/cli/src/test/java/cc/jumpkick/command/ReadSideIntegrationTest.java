@@ -128,11 +128,14 @@ class ReadSideIntegrationTest {
     }
 
     @Test
-    void tree_without_lockfile_errors(@TempDir Path tempDir) throws IOException {
-        // Write a jk.toml by hand so no jk-lock.toml is created.
+    void tree_without_lockfile_freshens_one_invisibly(@TempDir Path tempDir) throws IOException {
+        // Write a jk.toml by hand so no jk-lock.toml exists. Since aa655a0f (JK-2151) the
+        // invisible freshen WRITES a missing lock instead of erroring — tree succeeds and
+        // the lock exists afterwards.
         Files.writeString(tempDir.resolve("jk.toml"), "group = \"com.example\"\nname = \"a\"\nversion = \"0.1.0\"\n");
         int exit = run("tree", "-C", tempDir.toString());
-        assertThat(exit).isEqualTo(2);
+        assertThat(exit).isZero();
+        assertThat(tempDir.resolve("jk-lock.toml")).exists();
     }
 
     @Test

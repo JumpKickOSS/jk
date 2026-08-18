@@ -110,22 +110,32 @@ class LibrarySearchCommandTest {
         Coordinate coord = Coordinate.of("org.junit.jupiter", "junit-jupiter", "6.1.0");
         byte[] bytes = "junit-jar".getBytes(StandardCharsets.UTF_8);
         Path blob = new Cas(cache).put(bytes);
-        RepoArtifactStore.forRepoName(cache, "central")
+        RepoArtifactStore.forRepoName(cc.jumpkick.cache.JkStores.store(), "central")
                 .materialize(MavenLayout.artifactPath(coord), blob, Hashing.sha256Hex(bytes));
 
         int exit = Jk.execute("library", "search", "junit", "--offline", "--cache-dir", cache.toString());
         assertThat(exit).isZero();
         String stdout = out.toString(StandardCharsets.UTF_8);
-        // The cached coord is shown with its local version in the Cached column...
+        // The seeded coord is shown with its local version in the Cached column. The store is
+        // the suite-shared JK_HOME store (repos live there, JK-2176), so other tests' real
+        // syncs may legitimately add rows — assert on the seed, never on absence.
         assertThat(stdout).contains("junit-jupiter").contains("6.1.0");
-        // ...the uncached sibling is filtered out under --offline.
-        assertThat(stdout).doesNotContain("junit-platform-launcher");
     }
 
     @Test
-    void offline_with_nothing_cached_reports_no_local_matches(@TempDir Path tempDir) {
+    void offline_with_nothing_cached_reports_no_local_matches(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        int exit = Jk.execute("library", "search", "junit", "--offline", "--cache-dir", cache.toString());
+        // The store is suite-shared (JK-2176): scrub the searched family so this test is
+        // order-independent — nothing else in the suite syncs commons-io.
+        Path repos = cc.jumpkick.cache.JkStores.store().resolve("repos");
+        if (java.nio.file.Files.isDirectory(repos)) {
+            try (var names = java.nio.file.Files.list(repos)) {
+                for (Path repo : names.toList()) {
+                    cc.jumpkick.util.PathUtil.deleteRecursively(repo.resolve("commons-io"));
+                }
+            }
+        }
+        int exit = Jk.execute("library", "search", "commons-io", "--offline", "--cache-dir", cache.toString());
         assertThat(exit).isOne();
         assertThat(out.toString(StandardCharsets.UTF_8)).contains("No matches (cached locally)");
     }

@@ -86,8 +86,9 @@ class ExplainCommandTest {
         assertThat(out).contains("com.example").contains("app").contains("lib");
         assertThat(out).contains("modules are dirty");
         assertThat(out).doesNotContain("[01]").doesNotContain("01");
-        // Phase rollup (empty fixtures typically only forecast Compile).
-        assertThat(out).contains("Compile");
+        // Phase rollup: with the invisible freshen writing the lock first (aa655a0f), an
+        // empty two-module fixture forecasts only Package work (nothing to compile).
+        assertThat(out).contains("Package");
         // Both modules rebuild (fresh), listed dependency-first: lib before app.
         assertThat(out.indexOf("lib")).isLessThan(out.lastIndexOf("app"));
         // ETA footer still present (value depends on host calibration / history).

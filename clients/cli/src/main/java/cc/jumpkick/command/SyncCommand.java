@@ -72,7 +72,7 @@ public final class SyncCommand implements CliCommand {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
         // Sync materializes the lock — freshen first so users never hand-run `jk lock`.
-        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cache, global, "Sync");
+        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cache, global, "Sync", repoUrl);
         if (lockCode != 0) return lockCode;
 
         // Pre-flight the JDK ensure client-side: a missing pinned JDK is downloaded HERE, before
