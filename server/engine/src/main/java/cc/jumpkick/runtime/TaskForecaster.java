@@ -927,11 +927,11 @@ public final class TaskForecaster {
         return ClasspathFingerprint.entry(jar); // missing:…
     }
 
-    /** True when any file under {@code resDir} is missing from or differs from its copy in {@code outDir}. */
     /** True when any {@code [build] extra-resources} file differs from its copy under {@code outDir}. */
     static boolean extraResourcesOutOfSync(cc.jumpkick.model.JkBuild project, Path dir, Path outDir) {
         try {
-            for (ExtraResources.Copy c : ExtraResources.resolve(project, dir)) {
+            List<ExtraResources.Copy> declared = ExtraResources.resolve(project, dir);
+            for (ExtraResources.Copy c : declared) {
                 Path copy = outDir.resolve(c.destination());
                 if (!Files.isRegularFile(copy)) return true;
                 if (Files.size(copy) != Files.size(c.source())) return true;
@@ -940,7 +940,10 @@ public final class TaskForecaster {
                     return true;
                 }
             }
-            return false;
+            // A destination copied by a previous run but no longer declared is an orphan the
+            // copy step must run to delete — a shrunk config otherwise forecasts "cached" and
+            // ships stale files forever (JK-2174).
+            return PlannerResources.hasOrphanedExtraResources(dir, declared);
         } catch (IOException | RuntimeException e) {
             return true; // unreadable or unresolvable ⇒ treat as dirty
         }

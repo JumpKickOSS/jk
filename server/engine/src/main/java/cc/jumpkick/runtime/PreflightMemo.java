@@ -564,6 +564,17 @@ public final class PreflightMemo {
             feed(md, "mode=" + fingerprintMode());
             feedFile(md, moduleDir.resolve("jk.toml"));
             feedFile(md, cc.jumpkick.lock.LockPaths.lockFile(moduleDir));
+            // [build] extra-resources sources live OUTSIDE the module tree the walk below
+            // covers — editing one must dirty the module like any other input (JK-2174).
+            try {
+                JkBuild project = JkBuildParser.parse(moduleDir.resolve("jk.toml"));
+                for (ExtraResources.Copy c : ExtraResources.resolve(project, moduleDir)) {
+                    feed(md, "extra:" + c.destination());
+                    feedFile(md, c.source());
+                }
+            } catch (Exception ignored) {
+                // unparseable manifest — the raw jk.toml bytes fed above already changed
+            }
             boolean mtimeMode = useMtimeMode();
             List<Path> roots = new ArrayList<>(cc.jumpkick.layout.ModuleLayout.fingerprintDirs(moduleDir, skipTests));
             for (var root : cc.jumpkick.layout.ModuleLayoutPlugins.pluginContributedRoots(moduleDir)) {

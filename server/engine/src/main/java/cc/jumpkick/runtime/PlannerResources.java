@@ -75,6 +75,11 @@ public final class PlannerResources {
                     } else {
                         ctx.label("no static resources");
                     }
+                    // Sync: destinations copied by a PREVIOUS run but no longer declared must
+                    // leave the classes dir, or a shrunk/renamed extra-resources config ships
+                    // stale files in every later jar (JK-2174). Deleting them also changes the
+                    // classes tree, so the package step's action key re-runs.
+                    syncExtraResourceManifest(in.dir(), classes, extra);
                     // Project build logic: AFTER_RESOURCES anchor.
                     boolean logicRan = false;
                     try {
@@ -212,5 +217,66 @@ public final class PlannerResources {
         requires.add(TaskNames.COPY_RESOURCES);
         if (!in.skipTests()) requires.add(TaskNames.RUN_TESTS);
         return requires.toArray(new String[0]);
+    }
+
+    /**
+     * Reconcile the classes dir against the previous run's extra-resources manifest
+     * ({@code target/.jk/extra-resources.txt}): delete destinations that are no longer
+     * declared, then record the current set. Best-effort — a missing/corrupt manifest just
+     * means nothing to clean (JK-2174).
+     */
+    static Path extraResourceManifest(Path moduleDir) {
+        return moduleDir.resolve("target").resolve(".jk").resolve("extra-resources.txt");
+    }
+
+    /** True when the recorded manifest names a destination the current declaration lacks. */
+    static boolean hasOrphanedExtraResources(Path moduleDir, List<ExtraResources.Copy> declared) {
+        Path manifest = extraResourceManifest(moduleDir);
+        if (!Files.isRegularFile(manifest)) return false;
+        java.util.Set<String> current = new java.util.LinkedHashSet<>();
+        for (ExtraResources.Copy c : declared) current.add(c.destination());
+        try {
+            for (String prior : Files.readAllLines(manifest)) {
+                if (!prior.isBlank() && !current.contains(prior)) return true;
+            }
+            return false;
+        } catch (IOException e) {
+            return true; // unreadable manifest — run the copy step and let it reconcile
+        }
+    }
+
+    static void syncExtraResourceManifest(Path moduleDir, Path classes, List<ExtraResources.Copy> extra) {
+        Path manifest = extraResourceManifest(moduleDir);
+        java.util.Set<String> current = new java.util.LinkedHashSet<>();
+        for (ExtraResources.Copy c : extra) current.add(c.destination());
+        try {
+            if (Files.isRegularFile(manifest)) {
+                Path classesRoot = classes.toAbsolutePath().normalize();
+                for (String prior : Files.readAllLines(manifest)) {
+                    if (prior.isBlank() || current.contains(prior)) continue;
+                    Path stale = classesRoot.resolve(prior).normalize();
+                    // Clamp: a manifest edited by hand must never delete outside classes/.
+                    if (!stale.startsWith(classesRoot)) continue;
+                    Files.deleteIfExists(stale);
+                    // Prune now-empty parents up to the classes root.
+                    Path parent = stale.getParent();
+                    while (parent != null && !parent.equals(classesRoot)) {
+                        try (var s = Files.list(parent)) {
+                            if (s.findAny().isPresent()) break;
+                        }
+                        Files.deleteIfExists(parent);
+                        parent = parent.getParent();
+                    }
+                }
+            }
+            if (current.isEmpty()) {
+                Files.deleteIfExists(manifest);
+            } else {
+                Files.createDirectories(manifest.getParent());
+                cc.jumpkick.util.AtomicWrites.replace(manifest, String.join("\n", current) + "\n");
+            }
+        } catch (IOException | RuntimeException ignored) {
+            // best-effort — the next full clean rebuild converges anyway
+        }
     }
 }
