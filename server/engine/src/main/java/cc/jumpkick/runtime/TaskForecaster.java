@@ -398,7 +398,7 @@ public final class TaskForecaster {
                 }
             }
 
-            // ---- compile-kotlin (best-effort: freshness stamp; no content key yet) ----
+            // ---- compile-kotlin (freshness stamp; post-clean uses last action record) ----
             if (!ktSrc.isEmpty()) {
                 // The stamp lives with the MERGED classes (BuildPlanner writes it to
                 // MAIN_CLASSES), not in kotlinc's incremental workspace under target/kotlin/main.
@@ -407,33 +407,52 @@ public final class TaskForecaster {
                 boolean fresh = !compileDepDirty
                         && !force
                         && FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, ktSrc);
-                steps.add(
-                        fresh
-                                ? new TaskForecast.Task("compile-kotlin", TaskForecast.Status.CACHED, "", null)
-                                : new TaskForecast.Task(
-                                        "compile-kotlin",
-                                        TaskForecast.Status.FULL,
-                                        "full compile · " + count(ktSrc.size(), "source"),
-                                        null));
-                if (!fresh) compileDirty = true;
+                // After jk clean the stamp is gone with target/, but the action-cache pointer
+                // under tasks/ survives. lastFor+present ⇒ live kotlinc will restore — do not
+                // price FULL (never-built modules have no pointer and stay FULL).
+                boolean restoreHit = !compileDepDirty
+                        && !force
+                        && !classesDirHasContent(layout.classesDir())
+                        && stampLangActionPresent(
+                                actionCache,
+                                ActionKey.qualifiedTaskId(
+                                        cc.jumpkick.run.TaskNames.COMPILE_KOTLIN, layout.classesDir()));
+                if (fresh || restoreHit) {
+                    steps.add(new TaskForecast.Task("compile-kotlin", TaskForecast.Status.CACHED, "", null));
+                } else {
+                    steps.add(new TaskForecast.Task(
+                            "compile-kotlin",
+                            TaskForecast.Status.FULL,
+                            "full compile · " + count(ktSrc.size(), "source"),
+                            null));
+                    compileDirty = true;
+                }
             }
 
-            // ---- compile-groovy (stamp-only, like Kotlin's — no content key yet) ----
+            // ---- compile-groovy (stamp + post-clean restore, same as Kotlin) ----
             // The groovy stamp lives in the merged classes dir (where write-stamp-groovy
             // writes it), unlike Kotlin's forecast probe of kotlinClassesDir.
             if (!gvSrc.isEmpty()) {
                 boolean fresh = !compileDepDirty
                         && !force
                         && FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.GROOVY_STAMP, gvSrc);
-                steps.add(
-                        fresh
-                                ? new TaskForecast.Task("compile-groovy", TaskForecast.Status.CACHED, "", null)
-                                : new TaskForecast.Task(
-                                        "compile-groovy",
-                                        TaskForecast.Status.FULL,
-                                        "full compile · " + count(gvSrc.size(), "source"),
-                                        null));
-                if (!fresh) compileDirty = true;
+                boolean restoreHit = !compileDepDirty
+                        && !force
+                        && !classesDirHasContent(layout.classesDir())
+                        && stampLangActionPresent(
+                                actionCache,
+                                ActionKey.qualifiedTaskId(
+                                        cc.jumpkick.run.TaskNames.COMPILE_GROOVY, layout.classesDir()));
+                if (fresh || restoreHit) {
+                    steps.add(new TaskForecast.Task("compile-groovy", TaskForecast.Status.CACHED, "", null));
+                } else {
+                    steps.add(new TaskForecast.Task(
+                            "compile-groovy",
+                            TaskForecast.Status.FULL,
+                            "full compile · " + count(gvSrc.size(), "source"),
+                            null));
+                    compileDirty = true;
+                }
             }
 
             producesJar = !mainSrc.isEmpty() || !ktSrc.isEmpty() || !gvSrc.isEmpty();
@@ -509,13 +528,23 @@ public final class TaskForecaster {
                     steps.add(
                             new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · " + tests, null));
                 } else {
-                    // Same factory as live run-testsdefault selection sources +
+                    // Same factory as live run-tests default selection sources +
                     // worker/engine jar extras (nested-engine CLI included) so the key matches the
-                    // stored green marker.
+                    // stored green marker. After jk clean, project the main: fingerprint from the
+                    // compile action record — ClasspathFingerprint.entry(empty classes) is
+                    // missing:… and would falsely forecast a full suite.
                     List<Path> testRt = testRuntimeClasspath(dir, project, lock, resolver);
                     long ts = Perf.start();
-                    String stampKey =
-                            BuildPlanner.runTestsStampKey(dir, project, compact, layout.classesDir(), lockFile, testRt);
+                    String mainFp = null;
+                    if (!classesDirHasContent(layout.classesDir())) {
+                        // Resource-drift flag is computed later; empty classes uses compile
+                        // outputs + resource roots (same merge as package post-clean).
+                        mainFp = classesTokenForPackage(
+                                dir, compact, layout, project, actionCache, compileMainKey, null);
+                        if (mainFp != null && mainFp.startsWith("missing:")) mainFp = null;
+                    }
+                    String stampKey = BuildPlanner.runTestsStampKey(
+                            dir, project, compact, layout.classesDir(), mainFp, lockFile, testRt);
                     Perf.end("  test-stamp-key", ts);
                     boolean hit = stampKey != null && present(actionCache, stampKey);
                     steps.add(
@@ -1032,6 +1061,20 @@ public final class TaskForecaster {
             }
         }
         return cp;
+    }
+
+    /**
+     * True when the stamp-language compile ({@code compile-kotlin} / {@code compile-groovy}) has a
+     * surviving action-cache pointer whose payloads are still present — the post-{@code jk clean}
+     * restore path. Never-built modules have no {@code tasks/} pointer.
+     */
+    static boolean stampLangActionPresent(ActionCache ac, String taskId) {
+        try {
+            var rec = ac.lastFor(taskId);
+            return rec.isPresent() && present(ac, rec.get().actionKey());
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**

@@ -36,6 +36,23 @@ public final class TestStamp {
             Path lockFile,
             List<Path> runtimeCp,
             List<String> extraInputs) {
+        return computeKey(testSources, mainClasses, null, resourceRoots, lockFile, runtimeCp, extraInputs);
+    }
+
+    /**
+     * Like {@link #computeKey(List, Path, List, Path, List, List)} but with an optional projected
+     * {@code main:} fingerprint. After {@code jk clean} the classes tree is gone; callers pass the
+     * same {@code dir:…} token the live restore will produce (from the compile action record) so the
+     * green marker still matches instead of forecasting a full suite against {@code missing:…}.
+     */
+    public static String computeKey(
+            List<Path> testSources,
+            Path mainClasses,
+            String mainClassesFingerprint,
+            List<Path> resourceRoots,
+            Path lockFile,
+            List<Path> runtimeCp,
+            List<String> extraInputs) {
         try {
             MessageDigest md = Hashing.newSha256();
             feed(md, FORMAT_VERSION);
@@ -50,7 +67,9 @@ public final class TestStamp {
 
             // The module's own compiled main output — a main-only change busts the
             // stamp even when no test source changed (the tests exercise this code).
-            if (mainClasses != null) {
+            if (mainClassesFingerprint != null && !mainClassesFingerprint.isBlank()) {
+                feed(md, "main:" + mainClassesFingerprint);
+            } else if (mainClasses != null) {
                 feed(md, "main:" + ClasspathFingerprint.entry(mainClasses));
             }
 

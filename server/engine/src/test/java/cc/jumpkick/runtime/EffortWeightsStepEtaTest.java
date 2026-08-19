@@ -138,6 +138,17 @@ class EffortWeightsStepEtaTest {
     }
 
     @Test
+    void restore_outputs_prices_as_restore_not_zero_or_compile() {
+        BuildMetrics metrics = BuildMetrics.load(Path.of("/nonexistent-" + System.nanoTime()));
+        var cost = EffortWeights.costFromRunningSteps(
+                Path.of("/ws/lib"), Set.of(), List.of("restore-outputs"), metrics, null, List.of(), Map.of());
+        assertThat(cost.weight()).isEqualTo(EffortWeights.RESTORE);
+        assertThat(cost.testWeight()).isZero();
+        // Far below a cold compile wall for a non-trivial source count.
+        assertThat(cost.weight()).isLessThan(EffortWeights.coldWorkWeight("compile-java", 50));
+    }
+
+    @Test
     void metrics_step_name_maps_compile_main() {
         assertThat(EffortWeights.metricsStepName("compile-main")).isEqualTo("compile-java");
         assertThat(EffortWeights.metricsStepName("run-tests")).isEqualTo("run-tests");
