@@ -252,7 +252,7 @@ public final class NewWizard {
                 .step(WizardStep.RadioStep.horizontal("kind", "Project type:")
                         .choice("library", "Library")
                         .choice("executable", "Executable")
-                        .defaultChoice("executable")
+                        .defaultChoice("library")
                         .build())
                 .step(buildTargets)
                 // Language first, then (for Java) the language version, then the
