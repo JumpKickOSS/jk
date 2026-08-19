@@ -224,12 +224,23 @@ public final class PreflightMemo {
             Path durable = durableMemoFile(entryDir);
             Files.createDirectories(durable.getParent());
             AtomicWrites.replace(durable, body);
-            Path local = memoFile(entryDir);
-            Files.createDirectories(local.getParent());
-            AtomicWrites.replace(local, body);
+            writeInTree(memoFile(entryDir), entryDir, body);
         } catch (Exception ignored) {
             // fail-open
         }
+    }
+
+    /**
+     * In-tree copy, written only while {@code target/} is alive. Memo stores run after the
+     * plan's terminal event reaches the client, so a fast follow-up {@code jk clean [--force]}
+     * can wipe target in the gap — recreating {@code target/.jk} here resurrected the dir the
+     * clean just removed AND left a memo claiming outputs that no longer exist (JK-2205). The
+     * durable copy is authoritative; the in-tree copy is inspection-only.
+     */
+    private static void writeInTree(Path file, Path entryDir, String body) throws IOException {
+        if (!Files.isDirectory(entryDir.resolve("target"))) return;
+        Files.createDirectories(file.getParent());
+        AtomicWrites.replace(file, body);
     }
 
     // Graph structure (layer A) + rebuild without WorkspaceLoader
@@ -243,6 +254,8 @@ public final class PreflightMemo {
         try {
             Path root = entryDir.toAbsolutePath().normalize();
             Path file = graphMemoFile(entryDir);
+            // Same clean-race guard as the dirty memo (JK-2205): never resurrect target/.
+            if (!Files.isDirectory(entryDir.resolve("target"))) return;
             Files.createDirectories(file.getParent());
             List<Path> unitDirs = new ArrayList<>();
             for (BuildGraph.BuildUnit u : graph.topoOrder()) {

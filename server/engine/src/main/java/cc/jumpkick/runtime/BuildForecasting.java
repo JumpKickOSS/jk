@@ -54,6 +54,17 @@ public final class BuildForecasting {
     }
 
     /**
+     * Read-only variant for pure estimates (ForecastVerb, post-clean ETA): consults the memo but
+     * NEVER stores one. A query that writes {@code target/.jk/preflight} resurrects the target
+     * dir right after {@code jk clean --force} wiped it (JK-2205).
+     */
+    public static Set<Path> forecastDirtyDirsReadOnly(
+            BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
+        return forecastWithFingerprints(graph, cache, skipTests, entryDir, WorkspaceTarget.PACKAGE, Set.of(), false)
+                .dirty();
+    }
+
+    /**
      * A preflight verdict: input-dirty modules, modules needing output restore (inputs clean),
      * fingerprints for the dirty memo, and optional {@link TaskForecast.Module} list when a full
      * forecast walk ran (reuse for ETA — do not walk twice).
@@ -105,6 +116,18 @@ public final class BuildForecasting {
             Path entryDir,
             WorkspaceTarget target,
             Set<Path> terminalDirs) {
+        return forecastWithFingerprints(graph, cache, skipTests, entryDir, target, terminalDirs, true);
+    }
+
+    /** {@code persistMemo=false}: consult but never store — read-only estimates (JK-2205). */
+    static Preflight forecastWithFingerprints(
+            BuildGraph.Result graph,
+            Path cache,
+            boolean skipTests,
+            Path entryDir,
+            WorkspaceTarget target,
+            Set<Path> terminalDirs,
+            boolean persistMemo) {
         WorkspaceTarget t = target == null ? WorkspaceTarget.PACKAGE : target;
         // The dirty memo's clean claim covers package outputs only (it checks the module target
         // dir, not terminal artifacts). NATIVE/IMAGE/COMPILE must always run the target-aware
@@ -170,7 +193,7 @@ public final class BuildForecasting {
                     }
                 }
             }
-            if (entryDir != null && memoSafe) {
+            if (entryDir != null && memoSafe && persistMemo) {
                 // Store input-dirty only — restoreNeeded is re-derived from missing outputs on load.
                 PreflightMemo.storeDirty(entryDir, graph, skipTests, dirty, fps);
             }
