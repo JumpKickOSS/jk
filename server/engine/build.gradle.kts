@@ -163,34 +163,28 @@ tasks.withType<Test>().configureEach {
     }
 }
 
-// Pass the spring-boot worker jar to tests (the plugin build runtime forks it for Boot projects).
-val testSpringBootWorkerJar by configurations.creating {
-    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
-}
-dependencies { testSpringBootWorkerJar(project(":spring-boot")) }
-tasks.withType<Test>().configureEach {
-    dependsOn(testSpringBootWorkerJar)
-    doFirst { systemProperty("jk.spring-boot.plugin.jar", testSpringBootWorkerJar.singleFile.absolutePath) }
-}
-
-// Pass the grails worker jar to tests (the Grails e2e integration test forks it).
-val testGrailsWorkerJar by configurations.creating {
-    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
-}
-dependencies { testGrailsWorkerJar(project(":grails")) }
-tasks.withType<Test>().configureEach {
-    dependsOn(testGrailsWorkerJar)
-    doFirst { systemProperty("jk.grails.plugin.jar", testGrailsWorkerJar.singleFile.absolutePath) }
-}
-
-// Pass the android worker jar to tests (the Android-spike integration test forks it).
-val testAndroidWorkerJar by configurations.creating {
-    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
-}
-dependencies { testAndroidWorkerJar(project(":android")) }
-tasks.withType<Test>().configureEach {
-    dependsOn(testAndroidWorkerJar)
-    doFirst { systemProperty("jk.android.plugin.jar", testAndroidWorkerJar.singleFile.absolutePath) }
+// Worker jars only integration/slow tests fork (Boot/Grails/Android/protobuf/R8/Kotlin/
+// Groovy e2e, EngineServerTest's audit round-trip). Scoped to integrationTest so the unit
+// `test` task — the PR gate — stops building eight plugin projects and downloading apksig
+// it never uses (JK-2195). java-compiler/test-runner above stay on every Test task: they
+// are direct engine collaborators and PluginLoaderTest assume-skips without them.
+val integrationWorkerJars = listOf(
+    "jk.spring-boot.plugin.jar" to ":spring-boot",
+    "jk.grails.plugin.jar" to ":grails",
+    "jk.android.plugin.jar" to ":android",
+    "jk.protobuf.plugin.jar" to ":protobuf",
+    "jk.minified.plugin.jar" to ":minified",
+    "jk.kotlin.plugin.jar" to ":kotlin-compiler",
+    "jk.groovy.plugin.jar" to ":groovy-compiler",
+    "jk.auditor.plugin.jar" to ":auditor",
+).map { (prop, projPath) ->
+    val cfg = configurations.create("integrationWorkerJar" + projPath.removePrefix(":").replace("-", "")) {
+        isCanBeConsumed = false
+        isCanBeResolved = true
+        isTransitive = false
+    }
+    dependencies.add(cfg.name, project(projPath))
+    prop to cfg
 }
 
 // apksig for the spike test's APK verification. The worker jar is deliberately non-transitive
@@ -200,57 +194,12 @@ val testApksig by configurations.creating {
     isCanBeConsumed = false; isCanBeResolved = true
 }
 dependencies { testApksig("com.android.tools.build:apksig:8.7.3") }
-tasks.withType<Test>().configureEach {
+
+tasks.named<Test>("integrationTest") {
+    integrationWorkerJars.forEach { (prop, cfg) ->
+        dependsOn(cfg)
+        doFirst { systemProperty(prop, cfg.singleFile.absolutePath) }
+    }
     dependsOn(testApksig)
     doFirst { systemProperty("jk.android.apksig.classpath", testApksig.asPath) }
-}
-
-// Pass the protobuf worker jar to tests (the protoc codegen integration test forks it).
-val testProtobufWorkerJar by configurations.creating {
-    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
-}
-dependencies { testProtobufWorkerJar(project(":protobuf")) }
-tasks.withType<Test>().configureEach {
-    dependsOn(testProtobufWorkerJar)
-    doFirst { systemProperty("jk.protobuf.plugin.jar", testProtobufWorkerJar.singleFile.absolutePath) }
-}
-
-// Pass the minified worker jar to tests (the R8 minified-jar integration test forks it).
-val testMinifiedWorkerJar by configurations.creating {
-    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
-}
-dependencies { testMinifiedWorkerJar(project(":minified")) }
-tasks.withType<Test>().configureEach {
-    dependsOn(testMinifiedWorkerJar)
-    doFirst { systemProperty("jk.minified.plugin.jar", testMinifiedWorkerJar.singleFile.absolutePath) }
-}
-
-// Pass the kotlin-compiler worker jar to tests (the KSP/Room/Hilt gate compiles Kotlin).
-val testKotlinWorkerJar by configurations.creating {
-    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
-}
-dependencies { testKotlinWorkerJar(project(":kotlin-compiler")) }
-tasks.withType<Test>().configureEach {
-    dependsOn(testKotlinWorkerJar)
-    doFirst { systemProperty("jk.kotlin.plugin.jar", testKotlinWorkerJar.singleFile.absolutePath) }
-}
-
-// Pass the groovy-compiler worker jar to tests (the Groovy compile integration test forks it).
-val testGroovyWorkerJar by configurations.creating {
-    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
-}
-dependencies { testGroovyWorkerJar(project(":groovy-compiler")) }
-tasks.withType<Test>().configureEach {
-    dependsOn(testGroovyWorkerJar)
-    doFirst { systemProperty("jk.groovy.plugin.jar", testGroovyWorkerJar.singleFile.absolutePath) }
-}
-
-// Pass the auditor jar path to tests (EngineServerTest's hosted jk audit round-trip forks it).
-val testAuditorWorkerJar by configurations.creating {
-    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
-}
-dependencies { testAuditorWorkerJar(project(":auditor")) }
-tasks.withType<Test>().configureEach {
-    dependsOn(testAuditorWorkerJar)
-    doFirst { systemProperty("jk.auditor.plugin.jar", testAuditorWorkerJar.singleFile.absolutePath) }
 }
