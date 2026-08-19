@@ -701,6 +701,14 @@ public final class TestCommand implements CliCommand {
             exclude = new ArrayList<>(in.values("exclude-tags"));
             spoke = true;
         }
+        // --all means EVERYTHING (docs' "Everything | jk test --all"): every suite AND no
+        // baseline/profile tag excludes. Explicit CLI tag flags still compose on top, so
+        // `--all --exclude-tags slow` widens but keeps slow out.
+        if (all) {
+            if (!cliInclude) include = new ArrayList<>();
+            if (!cliExclude) exclude = new ArrayList<>();
+            spoke = true;
+        }
         return cc.jumpkick.config.TestSelection.of(suites, all, include, exclude, spoke);
     }
 }

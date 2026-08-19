@@ -59,7 +59,7 @@ Gradle tiers remain how **this monorepo** is bootstrapped. Once dogfooding with 
 |--------|---------|
 | Fast / default | `jk test` (suite `test` only; optional `[test] exclude-tags`) |
 | Extra suite | `jk test --suite integration` or put e2e under `integration/` |
-| Everything | `jk test --all` |
+| Everything | `jk test --all` / `jk build --all` (all suites, config tag excludes cleared) |
 | Tag filter | `jk test --exclude-tags slow` / `--include-tags smoke` |
 | CI profile | `[profiles.ci] exclude-tags = []` (overrides `[test]`) + `--profile ci` (auto on CI) |
 

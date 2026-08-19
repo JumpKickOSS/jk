@@ -418,6 +418,24 @@ public final class ProtoJobs {
             boolean verbose,
             boolean offline,
             boolean force) {
+        return singleBuildRequest(dir, cache, jdksDir, workers, profile, skipTests, verbose, offline, force, null);
+    }
+
+    /**
+     * As above with suite/tag selection ({@code jk build --all} / tag flags). Selection fields are
+     * omitted when default so older engines see an unchanged body.
+     */
+    public static String singleBuildRequest(
+            String dir,
+            String cache,
+            String jdksDir,
+            int workers,
+            String profile,
+            boolean skipTests,
+            boolean verbose,
+            boolean offline,
+            boolean force,
+            cc.jumpkick.config.TestSelection selection) {
         // noTimeline: session envelope only (see {@link #withSession}).
         return "{\"type\":\""
                 + EngineProtocol.SINGLE_BUILD_REQUEST
@@ -439,6 +457,9 @@ public final class ProtoJobs {
                 + offline
                 + ",\"force\":"
                 + force
+                + (selection != null && !selection.equals(cc.jumpkick.config.TestSelection.DEFAULT)
+                        ? testSelectionFields(selection)
+                        : "")
                 + "}";
     }
 

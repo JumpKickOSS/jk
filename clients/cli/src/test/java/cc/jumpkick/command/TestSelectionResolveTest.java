@@ -91,6 +91,31 @@ class TestSelectionResolveTest {
     }
 
     @Test
+    void all_clears_baseline_tags_and_is_final(@TempDir Path dir) throws Exception {
+        writeToml(dir, """
+                [test]
+                exclude-tags = ["slow", "integration"]
+                """);
+        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--all"));
+        assertThat(sel.allSuites()).isTrue();
+        assertThat(sel.includeTags()).isEmpty();
+        assertThat(sel.excludeTags()).isEmpty();
+        assertThat(sel.tagsResolved()).isTrue();
+    }
+
+    @Test
+    void all_composes_with_explicit_cli_tags(@TempDir Path dir) throws Exception {
+        writeToml(dir, """
+                [test]
+                exclude-tags = ["slow", "integration"]
+                """);
+        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--all", "--exclude-tags", "bench"));
+        assertThat(sel.allSuites()).isTrue();
+        assertThat(sel.excludeTags()).containsExactly("bench");
+        assertThat(sel.tagsResolved()).isTrue();
+    }
+
+    @Test
     void silent_run_stays_unresolved(@TempDir Path dir) throws Exception {
         writeToml(dir, "");
         var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString()));

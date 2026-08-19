@@ -879,13 +879,17 @@ exist — for example `integration/src/` or `src/integration/java`.
 jk test                              # default suite ("test") only
 jk test --suite integration          # only that suite (-s is the short form)
 jk test -s test -s integration
-jk test --all                        # every discovered suite
+jk test --all                        # EVERYTHING: every suite, config tag excludes cleared
 jk test --exclude-tags slow,bench    # JUnit Platform tags (comma-separated)
 jk test --include-tags smoke
-jk test --all --exclude-tags bench
+jk test --all --exclude-tags bench   # widen, but keep bench out
+jk build --all                       # build + package with the full suite green
 ```
 
 `--all` and `--suite`/`-s` cannot be combined. Unknown suite names error with the available list.
+`--all` also clears `[test]`/profile tag excludes — it means "everything", not just "every suite
+directory"; explicit `--include-tags`/`--exclude-tags` still compose on top. `jk build` accepts
+the same selection flags as `jk test`.
 
 Declarative tag filters (same key names as CLI and profiles):
 

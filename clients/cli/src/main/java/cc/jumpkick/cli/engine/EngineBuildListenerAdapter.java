@@ -259,7 +259,9 @@ final class EngineBuildListenerAdapter {
                             req.skipTests(),
                             req.verbose(),
                             req.offline(),
-                            req.force()),
+                            req.force(),
+                            // jk build --all / tag flags on a single project (JK-2182).
+                            SessionContext.current().testSelection()),
                     req.variant(),
                     req.clientEnv(),
                     SessionContext.current().jvm(),

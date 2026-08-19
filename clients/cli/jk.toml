@@ -48,5 +48,5 @@ args = [
 workers = 1
 # Exclude the long-running tests for our day-to-day usage.
 # Normal `jk test` should finish in 5 min or less.
-# Run the excluded tags too with `jk test --exclude-tags ""` (--all only widens suites).
+# Run everything (all suites, tags included) with `jk build --all` / `jk test --all`.
 exclude-tags = ["integration", "slow", "bench", "network"]

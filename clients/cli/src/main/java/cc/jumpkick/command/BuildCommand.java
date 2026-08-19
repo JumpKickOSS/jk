@@ -62,6 +62,16 @@ public final class BuildCommand implements CliCommand {
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                 .hide());
         opts.add(cc.jumpkick.cli.CommonOpts.skipTests());
+        // Suite/tag widening, same vocabulary as `jk test` (JK-2182): --all = every suite
+        // AND no config tag excludes — the "build + run everything" gate.
+        opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
+                .repeat());
+        opts.add(Opt.flag("Run every test suite (tags included)", "--all"));
+        opts.add(Opt.value("<tags>", "JUnit tags to include (CSV)", "--include-tags")
+                .splitOn(","));
+        opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "--exclude-tags")
+                .splitOn(","));
+        opts.add(Opt.flag("Skip profile tag filters", "--no-profile"));
         opts.add(Opt.flag("Package with JVM startup AOT cache", "--aot-cache"));
         // Module concurrency is global -j/--jobs. Cross-module tests default on (C2).
         opts.addAll(cc.jumpkick.cli.ParallelTestsOpts.options());
@@ -114,8 +124,18 @@ public final class BuildCommand implements CliCommand {
         this.parallelTests = cc.jumpkick.cli.ParallelTestsOpts.enabled(in);
         this.affectedSince = in.value("affected-since").orElse(null);
         this.modulesSpec = in.value("modules").orElse(null);
-        cc.jumpkick.config.SessionContext.install(
-                cc.jumpkick.config.SessionContext.current().withParallelTests(parallelTests));
+        // Suite/tag widening rides the session exactly as `jk test` (JK-2182); the wire
+        // adapters read it for both workspace and single-project requests.
+        cc.jumpkick.config.TestSelection testSelection;
+        try {
+            testSelection = TestCommand.resolveTestSelection(in);
+        } catch (IllegalArgumentException e) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Build", e.getMessage());
+            return Exit.CONFIG;
+        }
+        cc.jumpkick.config.SessionContext.install(cc.jumpkick.config.SessionContext.current()
+                .withParallelTests(parallelTests)
+                .withTestSelection(testSelection));
         Path startDir = global.workingDir();
         Path buildFile = startDir.resolve("jk.toml");
         if (!Files.exists(buildFile)) {

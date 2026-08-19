@@ -35,6 +35,18 @@ class EngineBuildListenerAdapterEncodeTest {
     }
 
     @Test
+    void the_single_build_request_carries_a_selection_too() {
+        TestSelection widened = TestSelection.of(List.of(), true, List.of(), List.of(), true);
+
+        String json = ProtoJobs.singleBuildRequest(
+                "/proj", "/cache", null, 0, null, false, false, false, false, widened);
+
+        assertThat(ProtoJobs.testSelectionOf(json)).isEqualTo(widened);
+        assertThat(ProtoJobs.singleBuildRequest("/proj", "/cache", null, 0, null, false, false, false, false))
+                .doesNotContain("allSuites");
+    }
+
+    @Test
     void a_default_selection_is_omitted_so_older_engines_see_an_unchanged_body() {
         String json = EngineBuildListenerAdapter.encodeWorkspaceRequest(request(), Session.defaults());
 
