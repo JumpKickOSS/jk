@@ -14,3 +14,14 @@ junit-platform-launcher = "latest"
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"
+
+[build]
+# Gradle's jk.plugin-conventions bakes the first-party manifests (+ scaffolds) into every
+# worker jar; mirror that here for the one worker that rides EVERY module's forked test
+# classpath. Without this, jk-built runner jars broke PluginTableRegistry discovery in
+# non-engine suites (shared/core parses [spring-boot]/[android]/... tables) the moment
+# `jk install` replaced the Gradle-built store copy (JK-2198).
+extra-resources = [
+  { from = "../*/jk-plugin.toml", into = "cc/jumpkick/plugin/manifest", rename = "{1}.jk-plugin.toml" },
+  { from = "../*/scaffold/**", into = "cc/jumpkick/plugin/manifest", optional = true },
+]
