@@ -694,7 +694,15 @@ public final class TaskForecaster {
                 boolean jarDirty = steps.stream().anyMatch(s -> "package-jar".equals(s.name()) && !s.cached());
                 Path nativeOut = layout.nativeBinary();
                 boolean binaryPresent = Files.isRegularFile(nativeOut) || Files.isRegularFile(layout.nativeLibrary());
-                if (jarDirty || compileDirty || !binaryPresent) {
+                // Missing binary after wipe: action-cache hit ⇒ restore (CACHED), not a FULL
+                // native wall. lastFor tags the binary path (see PlannerNative).
+                boolean nativeRestoreHit = !binaryPresent
+                        && !jarDirty
+                        && !compileDirty
+                        && stampLangActionPresent(
+                                actionCache,
+                                ActionKey.qualifiedTaskId(cc.jumpkick.run.TaskNames.NATIVE_IMAGE, nativeOut));
+                if (jarDirty || compileDirty || (!binaryPresent && !nativeRestoreHit)) {
                     String why = jarDirty || compileDirty ? "rebuild · compile changed" : "native-image";
                     steps.add(new TaskForecast.Task("native-image", TaskForecast.Status.RUN, why, null));
                 } else {

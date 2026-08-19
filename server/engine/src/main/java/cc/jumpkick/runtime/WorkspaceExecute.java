@@ -128,10 +128,9 @@ public final class WorkspaceExecute {
                 // does not pure count-up for the whole re-lock window. Remaining-work semantics —
                 // the CLI converts via elapsed + remaining after each onEtaEstimate.
                 long lockEta = WorkspaceLock.estimateLockMillis(req.entryDir(), req.cache());
-                long provisionalBuild = BuildEta.applyHistoryPrior(0, BuildEta.okHistory(req.entryDir()));
-                if (provisionalBuild <= 0) {
-                    provisionalBuild = EffortWeights.MS_PER_WEIGHT * 8L; // ~1.2s floor
-                }
+                // Do not seed from full-build history here — that flashes multi-minute ETAs on
+                // restore-shaped runs (clean → build). Use a small lock+floor provisional only.
+                long provisionalBuild = EffortWeights.MS_PER_WEIGHT * 8L; // ~1.2s floor
                 listener.onEtaEstimate(lockEta + provisionalBuild);
             }
             listener.onPreflight("lock", 0, 0, lockStale ? "Refreshing workspace lock…" : "Workspace lock ready");
@@ -224,6 +223,7 @@ public final class WorkspaceExecute {
         // --force/--redo short-circuits forecastDirtyDirs to "all" without per-step hashing.
         // when forecasting here, consult/store the local dirty memo under target/.jk/preflight/.
         Set<Path> dirty;
+        Set<Path> restoreNeeded = Set.of();
         BuildForecasting.Preflight preflight = null;
         if (req.dirtyHint() != null) {
             listener.onPreflight("checking", 0, 0, "Using dirty set…");
@@ -243,10 +243,65 @@ public final class WorkspaceExecute {
             preflight = BuildForecasting.forecastWithFingerprints(
                     graph, req.cache(), req.skipTests(), req.entryDir(), req.target(), terminalTargetDirs(units, req));
             dirty = preflight.dirty();
-            listener.onPreflight(
-                    "checking", 1, 1, dirty.isEmpty() ? "All modules up to date" : dirty.size() + " module(s) dirty");
+            restoreNeeded = preflight.restoreNeeded();
+            String msg;
+            if (dirty.isEmpty() && restoreNeeded.isEmpty()) msg = "All modules up to date";
+            else if (dirty.isEmpty()) msg = restoreNeeded.size() + " module(s) restore";
+            else if (restoreNeeded.isEmpty()) msg = dirty.size() + " module(s) dirty";
+            else msg = dirty.size() + " dirty, " + restoreNeeded.size() + " restore";
+            listener.onPreflight("checking", 1, 1, msg);
         }
-        Perf.end("ws-forecast(hint=" + (req.dirtyHint() != null) + ",dirty=" + dirty.size() + ")", tf);
+        Perf.end(
+                "ws-forecast(hint="
+                        + (req.dirtyHint() != null)
+                        + ",dirty="
+                        + dirty.size()
+                        + ",restore="
+                        + restoreNeeded.size()
+                        + ")",
+                tf);
+
+        // Inputs clean + outputs missing: restore from action cache, then treat as fully cached.
+        if (dirty.isEmpty()
+                && !restoreNeeded.isEmpty()
+                && req.target() == WorkspaceTarget.PACKAGE
+                && !SessionContext.current().config().rebuildOr(false)
+                && !SessionContext.current().config().forceOr(false)) {
+            listener.onPreflight("restore", 0, restoreNeeded.size(), "Restoring outputs…");
+            long restoreEta = (long) EffortWeights.RESTORE * EffortWeights.MS_PER_WEIGHT * restoreNeeded.size();
+            listener.onEtaEstimate(restoreEta);
+            List<Path> failed;
+            try {
+                failed = ModuleOutputRestore.restoreAll(req.entryDir(), List.copyOf(restoreNeeded), req.cache());
+            } catch (IOException e) {
+                WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.util.Errors.text(e)));
+                listener.onWorkspaceFinish(r);
+                return r;
+            }
+            listener.onPreflight("restore", restoreNeeded.size(), restoreNeeded.size(), "Restoring outputs…");
+            if (!failed.isEmpty()) {
+                // Action-cache miss: fall through to normal RUN for those modules only.
+                dirty = new LinkedHashSet<>(failed);
+            } else {
+                Map<Path, Path> wsLinks = computeWorkspaceLinks(moduleDirs, req.entryDir());
+                for (BuildGraph.BuildUnit u : units) {
+                    linkModuleArtifacts(u.dir(), wsLinks);
+                }
+                if (req.dirtyHint() == null && !req.testOnly()) {
+                    Map<Path, String> fps =
+                            preflight != null && !preflight.fingerprints().isEmpty()
+                                    ? preflight.fingerprints()
+                                    : PreflightMemo.snapshotFingerprints(graph, req.skipTests());
+                    if (!fps.isEmpty()) {
+                        PreflightMemo.storeDirty(req.entryDir(), graph, req.skipTests(), Set.of(), fps);
+                    }
+                }
+                listener.onEtaEstimate(0);
+                WorkspaceResult r = new WorkspaceResult(true, 0, List.of(), List.of());
+                listener.onWorkspaceFinish(r);
+                return r;
+            }
+        }
 
         // Each module's step durations feed one shared sink, folded into the learned ledger on success.
         List<StepTimings.Sample> timingSamples = Collections.synchronizedList(new ArrayList<>());

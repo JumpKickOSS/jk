@@ -54,17 +54,28 @@ public final class BuildForecasting {
     }
 
     /**
-     * A preflight verdict: dirty set, fingerprints for the dirty memo, and optional
-     * {@link TaskForecast.Module} list when a full forecast walk ran (reuse for ETA — do not walk
-     * twice).
+     * A preflight verdict: input-dirty modules, modules needing output restore (inputs clean),
+     * fingerprints for the dirty memo, and optional {@link TaskForecast.Module} list when a full
+     * forecast walk ran (reuse for ETA — do not walk twice).
      */
-    record Preflight(Set<Path> dirty, Map<Path, String> fingerprints, List<TaskForecast.Module> modules) {
+    record Preflight(
+            Set<Path> dirty,
+            Set<Path> restoreNeeded,
+            Map<Path, String> fingerprints,
+            List<TaskForecast.Module> modules) {
         Preflight {
+            dirty = dirty == null ? Set.of() : Set.copyOf(dirty);
+            restoreNeeded = restoreNeeded == null ? Set.of() : Set.copyOf(restoreNeeded);
+            fingerprints = fingerprints == null ? Map.of() : Map.copyOf(fingerprints);
             modules = modules == null ? List.of() : List.copyOf(modules);
         }
 
+        Preflight(Set<Path> dirty, Map<Path, String> fingerprints, List<TaskForecast.Module> modules) {
+            this(dirty, Set.of(), fingerprints, modules);
+        }
+
         Preflight(Set<Path> dirty, Map<Path, String> fingerprints) {
-            this(dirty, fingerprints, List.of());
+            this(dirty, Set.of(), fingerprints, List.of());
         }
     }
 
@@ -115,11 +126,18 @@ public final class BuildForecasting {
             if (memo.isPresent()) {
                 if (Perf.ENABLED) {
                     System.err.println("[jk-perf] preflight-memo hit dirty="
-                            + memo.get().dirty().size());
+                            + memo.get().dirty().size()
+                            + " restore="
+                            + memo.get().restoreNeeded().size());
                 }
-                // Memo hit with empty dirty: fully cached — no TaskForecaster walk (fast path).
+                // Memo hit: inputs validated. Empty dirty+restore → skip TaskForecaster.
+                // restoreNeeded alone → restore path (no full rebuild forecast).
                 // Non-empty dirty still needs a forecast for ETA step lists; caller walks once.
-                return new Preflight(memo.get().dirty(), memo.get().fingerprints(), List.of());
+                return new Preflight(
+                        memo.get().dirty(),
+                        memo.get().restoreNeeded(),
+                        memo.get().fingerprints(),
+                        List.of());
             }
             fps = PreflightMemo.snapshotFingerprints(graph, skipTests);
         } else {
@@ -131,9 +149,15 @@ public final class BuildForecasting {
             List<TaskForecast.Module> modules = TaskForecaster.of(
                     graph, cas, ac, cache, skipTests, t, terminalDirs == null ? Set.of() : terminalDirs);
             Set<Path> dirty = new HashSet<>();
+            Set<Path> restoreNeeded = new HashSet<>();
             for (TaskForecast.Module m : modules) {
-                if (m.dirty()) dirty.add(m.dir());
-                if (Perf.ENABLED && m.dirty()) {
+                if (!m.dirty()) continue;
+                if (isRestoreOnly(m)) {
+                    restoreNeeded.add(m.dir());
+                } else {
+                    dirty.add(m.dir());
+                }
+                if (Perf.ENABLED) {
                     for (TaskForecast.Task p : m.steps()) {
                         if (!p.cached())
                             System.err.println("[jk-perf] dirty " + m.coord() + " " + p.name() + " (" + p.text() + ")");
@@ -141,12 +165,28 @@ public final class BuildForecasting {
                 }
             }
             if (entryDir != null && memoSafe) {
+                // Store input-dirty only — restoreNeeded is re-derived from missing outputs on load.
                 PreflightMemo.storeDirty(entryDir, graph, skipTests, dirty, fps);
             }
-            return new Preflight(dirty, fps, modules);
+            return new Preflight(dirty, restoreNeeded, fps, modules);
         } catch (RuntimeException e) {
-            return new Preflight(all, fps, List.of());
+            return new Preflight(all, Set.of(), fps, List.of());
         }
+    }
+
+    /** True when the only material non-cached step is the synthetic restore gate. */
+    static boolean isRestoreOnly(TaskForecast.Module m) {
+        boolean sawRestore = false;
+        for (TaskForecast.Task s : m.steps()) {
+            if (s.cached() || TaskForecast.Module.isBookkeepingStep(s.name())) continue;
+            if (!TaskForecast.Module.isMaterialWork(s.name())) continue;
+            if ("restore-outputs".equals(s.name())) {
+                sawRestore = true;
+                continue;
+            }
+            return false;
+        }
+        return sawRestore;
     }
 
     /**
