@@ -153,7 +153,9 @@ public final class LocalProjectBuilder {
         // 3. Package the jar (epoch 0 → deterministic; identity isn't lock-pinned).
         Path jarOut = layout.mainJar();
         Files.createDirectories(jarOut.getParent());
-        new JarPackager().packageJar(new JarPackager.JarRequest(classes, jarOut, project.mainClass(), 0L, Map.of()));
+        new JarPackager()
+                .packageJar(new JarPackager.JarRequest(
+                        classes, jarOut, cc.jumpkick.plugin.PluginModule.mainClass(projectDir, project), 0L, Map.of()));
 
         // 4. Render the POM, stamped with the published coordinate + version.
         String pomXml = PublishablePom.render(

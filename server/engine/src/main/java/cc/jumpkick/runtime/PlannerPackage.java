@@ -79,7 +79,7 @@ public final class PlannerPackage {
                     // cache check below.
                     List<Path> contributed = existingContributedDirs(pluginDecls, layout);
                     Files.createDirectories(jarPath.getParent());
-                    String mainClass = project.mainClass();
+                    String mainClass = cc.jumpkick.plugin.PluginModule.mainClass(in.dir(), project);
                     // Application jars embed the lockfile-derived SBOM (libraries don't:
                     // their consumers' lockfiles are the truth for the final classpath).
                     byte[] sbom = null;
@@ -144,8 +144,7 @@ public final class PlannerPackage {
      * WorkerClasspath#paths} discovery so pure-jk thin jars still get {@code plugin-sdk}.
      */
     static void writeWorkerClasspathSidecar(Path moduleDir, JkBuild project, Path jarPath, Path cache) {
-        String main = project.mainClass();
-        if (main == null || !"cc.jumpkick.plugin.process.PluginMain".equals(main)) return;
+        if (!cc.jumpkick.plugin.PluginModule.isWorker(moduleDir)) return;
         try {
             Path jarAbs = jarPath.toAbsolutePath().normalize();
             List<Path> side = new ArrayList<>();

@@ -38,7 +38,8 @@ public record JkBuild(
         Objects.requireNonNull(profiles, "profiles");
         Objects.requireNonNull(features, "features");
         repositories = List.copyOf(repositories);
-        // [manifest] custom attributes; Main-Class comes from [application].main, not here.
+        // [manifest] custom attributes; Main-Class comes from [application].main (or PluginMain
+        // for a plugin worker), not here.
         manifest = manifest == null || manifest.isEmpty()
                 ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(manifest));

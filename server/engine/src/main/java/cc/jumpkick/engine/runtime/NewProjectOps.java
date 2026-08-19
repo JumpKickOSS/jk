@@ -236,7 +236,7 @@ public final class NewProjectOps {
         boolean quarkus = "quarkus".equalsIgnoreCase(nullToEmpty(req.framework()));
         boolean micronaut = "micronaut".equalsIgnoreCase(nullToEmpty(req.framework()));
         Optional<String> main = Optional.empty();
-        if (prep.executable()) {
+        if (prep.executable() && !req.plugin()) {
             boolean compact = "simple".equalsIgnoreCase(prep.layout());
             main = Optional.of(
                     switch (prep.lang()) {

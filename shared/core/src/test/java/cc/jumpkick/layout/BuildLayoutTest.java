@@ -196,6 +196,17 @@ class BuildLayoutTest {
     }
 
     @Test
+    void plugin_worker_jars_land_at_target_root_not_lib(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("jk-plugin.toml"), "[plugin]\nid = \"x\"\ntable = \"x\"\n");
+        BuildLayout layout = BuildLayout.of(dir, project("jk-x", "1.0.0"));
+        assertThat(layout.hasMain()).isFalse();
+        assertThat(layout.pluginWorker()).isTrue();
+        assertThat(layout.packagedAtRoot()).isTrue();
+        assertThat(layout.artifactDir()).isEqualTo(dir.resolve("target"));
+        assertThat(layout.mainJar()).isEqualTo(dir.resolve("target/jk-x-1.0.0.jar"));
+    }
+
+    @Test
     void artifact_and_version_are_exposed(@TempDir Path dir) {
         BuildLayout layout = BuildLayout.of(dir, project("alpha", "9.9.9-SNAPSHOT"));
 

@@ -1,9 +1,6 @@
 name = "jk-kotlin-compiler"
 description = "JumpKick's Kotlin compiler plugin"
 
-[application]
-main = "cc.jumpkick.plugin.process.PluginMain"
-
 [dependencies]
 jk-plugin-sdk.workspace = true
 

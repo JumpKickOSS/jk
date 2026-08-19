@@ -1,9 +1,6 @@
 name = "jk-publisher"
 description = "JumpKick's Maven publish plugin"
 
-[application]
-main = "cc.jumpkick.plugin.process.PluginMain"
-
 [dependencies]
 jk-core.workspace = true
 jk-io.workspace = true

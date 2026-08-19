@@ -47,7 +47,7 @@ jk release --skip-tests
 ```
 
 Workspace members: libraries, `clients/cli`, `clients/web`, `server/engine` (assembly fat
-jar), and all first-party `plugins/*` workers (`assembly` + `PluginMain`).
+jar), and all first-party `plugins/*` workers (thin jars; `PluginMain` implied by `jk-plugin.toml`).
 
 ### `jk test` coverage
 

@@ -575,7 +575,7 @@ public final class TaskForecaster {
                         "package-jar", TaskForecast.Status.RUN, "repackage · compile changed", null));
             } else {
                 Path jar = layout.mainJar();
-                String mainClass = project.mainClass();
+                String mainClass = cc.jumpkick.plugin.PluginModule.mainClass(dir, project);
                 long tp = Perf.start();
                 byte[] sbom = null;
                 if (project.isApplication()) {
@@ -877,11 +877,12 @@ public final class TaskForecaster {
         }
         List<Path> contributed = BuildPlanner.existingContributedDirs(pkgDecls, layout);
         String contribTok = BuildPlanner.contributionsToken(contributed);
+        String mainClass = cc.jumpkick.plugin.PluginModule.mainClass(dir, project);
         List<String> tokens = List.of(
                 "classes:" + classesTok,
                 "contrib:" + contribTok,
                 "deps:" + depsTok,
-                "main:" + (project.mainClass() == null ? "" : project.mainClass()),
+                "main:" + (mainClass == null ? "" : mainClass),
                 "manifest:" + project.manifest(),
                 "packaging:fat");
         String shTask = ActionKey.qualifiedTaskId("package-assembly", assemblyJar);

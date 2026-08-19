@@ -1,9 +1,6 @@
 name = "jk-grails"
 description = "JumpKick's Grails packaging plugin"
 
-[application]
-main = "cc.jumpkick.plugin.process.PluginMain"
-
 [dependencies]
 jk-plugin-sdk.workspace = true
 jk-spring-boot.workspace = true

@@ -1685,6 +1685,18 @@ class JkBuildParserTest {
     }
 
     @Test
+    void application_table_is_rejected_on_a_plugin_module(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk-plugin.toml"), "[plugin]\nid = \"x\"\ntable = \"x\"\n");
+        Files.writeString(
+                dir.resolve("jk.toml"),
+                PROJECT + "\n[application]\nmain = \"cc.jumpkick.plugin.process.PluginMain\"\n");
+        assertThatThrownBy(() -> JkBuildParser.parse(dir.resolve("jk.toml")))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[application]")
+                .hasMessageContaining("plugin worker");
+    }
+
+    @Test
     void application_present_with_main() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"com.example.Main\"\n");
         assertThat(parsed.isApplication()).isTrue();

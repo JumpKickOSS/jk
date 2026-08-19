@@ -170,6 +170,13 @@ public final class JkBuildParser {
         Map<String, String> manifest = ManifestTables.parseManifest(result);
         List<PluginDeclaration> plugins = ManifestBuild.parsePlugins(result);
         Optional<JkBuild.Application> application = ManifestTables.parseApplication(result);
+        if (application.isPresent() && cc.jumpkick.plugin.PluginModule.isWorker(moduleDir)) {
+            throw new JkBuildParseException(
+                    "[application] is for apps — a plugin worker (jk-plugin.toml or Plugin service)"
+                            + " already implies main "
+                            + cc.jumpkick.plugin.PluginModule.WORKER_MAIN
+                            + "; drop the [application] table");
+        }
         Optional<JkBuild.NativeConfig> nativeConfig = ManifestBuild.parseNativeConfig(result);
         List<PluginDescriptor> installedManifests = PluginTableRegistry.manifestsFor(moduleDir, plugins);
         Map<String, PluginConfig> pluginConfigs = ManifestTables.parsePluginTables(result, installedManifests);

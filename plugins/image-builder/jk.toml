@@ -1,9 +1,6 @@
 name = "jk-image-builder"
 description = "JumpKick's OCI image builder plugin"
 
-[application]
-main = "cc.jumpkick.plugin.process.PluginMain"
-
 [dependencies]
 jk-core.workspace = true
 jk-io.workspace = true

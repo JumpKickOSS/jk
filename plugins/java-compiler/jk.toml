@@ -1,9 +1,6 @@
 name = "jk-java-compiler"
 description = "JumpKick's Java compiler plugin"
 
-[application]
-main = "cc.jumpkick.plugin.process.PluginMain"
-
 [dependencies]
 jk-plugin-sdk.workspace = true
 

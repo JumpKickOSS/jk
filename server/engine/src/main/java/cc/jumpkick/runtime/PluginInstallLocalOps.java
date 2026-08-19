@@ -50,7 +50,7 @@ public final class PluginInstallLocalOps {
             for (var e : modules.entrySet()) {
                 Path modDir = e.getKey();
                 JkBuild build = e.getValue();
-                if (!isPluginWorker(build)) continue;
+                if (!isPluginWorker(modDir)) continue;
                 String group = build.project().group();
                 String artifactId = build.project().name();
                 String version = build.project().version();
@@ -119,7 +119,7 @@ public final class PluginInstallLocalOps {
             int skipped = missing.size();
             if (installed == 0 && skipped == 0) {
                 return PluginInstallLocalAck.error(
-                        "no PluginMain modules found (need [application] main = PluginMain)");
+                        "no plugin worker modules found (need jk-plugin.toml or a Plugin service file)");
             }
             return new PluginInstallLocalAck(null, installed, skipped, missing, lines);
         } catch (Exception e) {
@@ -127,9 +127,8 @@ public final class PluginInstallLocalOps {
         }
     }
 
-    private static boolean isPluginWorker(JkBuild build) {
-        String main = build.mainClass();
-        return main != null && "cc.jumpkick.plugin.process.PluginMain".equals(main);
+    private static boolean isPluginWorker(Path moduleDir) {
+        return cc.jumpkick.plugin.PluginModule.isWorker(moduleDir);
     }
 
     private static Path preferredWorkerJar(BuildLayout layout) {

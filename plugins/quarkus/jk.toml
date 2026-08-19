@@ -1,9 +1,6 @@
 name = "jk-quarkus"
 description = "JumpKick's Quarkus packaging plugin"
 
-[application]
-main = "cc.jumpkick.plugin.process.PluginMain"
-
 [dependencies]
 jk-plugin-sdk.workspace = true
 

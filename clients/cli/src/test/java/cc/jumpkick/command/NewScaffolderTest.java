@@ -438,10 +438,10 @@ class NewScaffolderTest {
     void plugin_java_writes_manifest_service_and_sample(@TempDir Path tempDir) throws IOException {
         NewScaffolder.write(plugin(tempDir, NewInputs.Language.JAVA), true);
 
-        // jk.toml: fat jar whose main is PluginMain, with the SDK as a normal (shaded) dep.
+        // jk.toml: no [application] — PluginMain is implied by jk-plugin.toml.
         var toml = Files.readString(tempDir.resolve("jk.toml"));
-        assertThat(toml).contains("main       = \"cc.jumpkick.plugin.process.PluginMain\"");
-        assertThat(toml).contains("assembly   = true");
+        assertThat(toml).doesNotContain("[application]");
+        assertThat(toml).doesNotContain("PluginMain");
         assertThat(toml).contains("jk-plugin-sdk = { group = \"cc.jumpkick\", version = \"");
 
         // The manifest lands under src/main/resources so it's packaged at the jar root.
@@ -487,8 +487,8 @@ class NewScaffolderTest {
                 25,
                 25,
                 Optional.empty(),
-                Optional.of("cc.jumpkick.plugin.process.PluginMain"),
-                true, // assembly jar
+                Optional.empty(),
+                false,
                 false, // native
                 false, // spring
                 true, // plugin

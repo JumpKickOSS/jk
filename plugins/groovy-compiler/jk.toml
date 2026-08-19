@@ -1,9 +1,6 @@
 name = "jk-groovy-compiler"
 description = "JumpKick's Groovy compiler plugin"
 
-[application]
-main = "cc.jumpkick.plugin.process.PluginMain"
-
 [dependencies]
 jk-plugin-sdk.workspace = true
 

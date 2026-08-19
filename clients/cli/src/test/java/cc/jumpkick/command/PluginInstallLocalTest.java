@@ -18,16 +18,26 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class PluginInstallLocalTest {
 
-    /** Thin PluginMain worker — no assembly. */
+    /** Thin plugin worker — PluginMain is implied by jk-plugin.toml. */
     private static final String WORKER_TOML = """
             group = "cc.jumpkick"
             name = "jk-test-runner"
             version = "0.12.0"
             jdk = 25
             java = 25
-            [application]
-            main = "cc.jumpkick.plugin.process.PluginMain"
             """;
+
+    private static final String PLUGIN_MANIFEST = """
+            [plugin]
+            id = "worker"
+            table = "worker"
+            version = "1.0.0"
+            """;
+
+    private static void writeWorkerModule(Path mod, String jkToml) throws Exception {
+        Files.writeString(mod.resolve("jk.toml"), jkToml);
+        Files.writeString(mod.resolve("jk-plugin.toml"), PLUGIN_MANIFEST);
+    }
 
     @Test
     void install_local_side_loads_thin_jar_and_classpath(@TempDir Path dir) throws Exception {
@@ -42,7 +52,7 @@ class PluginInstallLocalTest {
                 [workspace]
                 modules = ["plugins/worker"]
                 """);
-        Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
+        writeWorkerModule(mod, WORKER_TOML);
         Path jar = dir.resolve("target/plugins/worker/jk-test-runner-0.12.0.jar");
         Files.createDirectories(jar.getParent());
         Files.writeString(jar, "fake-worker-jar");
@@ -83,14 +93,12 @@ class PluginInstallLocalTest {
                 [workspace]
                 modules = ["plugins/worker"]
                 """);
-        Files.writeString(mod.resolve("jk.toml"), """
+        writeWorkerModule(mod, """
                 group = "cc.jumpkick"
                 name = "jk-test-runner"
                 version = "0.12.0"
                 jdk = 25
                 java = 25
-                [application]
-                main = "cc.jumpkick.plugin.process.PluginMain"
                 [dependencies]
                 gson = { group = "com.google.code.gson", name = "gson", version = "2.11.0" }
                 """);
@@ -159,7 +167,7 @@ class PluginInstallLocalTest {
                 [workspace]
                 modules = ["plugins/worker"]
                 """);
-        Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
+        writeWorkerModule(mod, WORKER_TOML);
         Files.createDirectories(dir.resolve("target/plugins/worker"));
         Files.writeString(dir.resolve("target/plugins/worker/jk-test-runner-0.12.0.jar"), "x");
 
@@ -195,23 +203,19 @@ class PluginInstallLocalTest {
                 [workspace]
                 modules = ["plugins/alpha", "plugins/beta"]
                 """);
-        Files.writeString(a.resolve("jk.toml"), """
+        writeWorkerModule(a, """
                 group = "cc.jumpkick"
                 name = "jk-alpha"
                 version = "0.12.0"
                 jdk = 25
                 java = 25
-                [application]
-                main = "cc.jumpkick.plugin.process.PluginMain"
                 """);
-        Files.writeString(b.resolve("jk.toml"), """
+        writeWorkerModule(b, """
                 group = "cc.jumpkick"
                 name = "jk-beta"
                 version = "0.12.0"
                 jdk = 25
                 java = 25
-                [application]
-                main = "cc.jumpkick.plugin.process.PluginMain"
                 """);
         Files.createDirectories(dir.resolve("target/plugins/alpha"));
         Files.createDirectories(dir.resolve("target/plugins/beta"));
@@ -249,14 +253,12 @@ class PluginInstallLocalTest {
                 [workspace]
                 modules = ["plugins/worker"]
                 """);
-        Files.writeString(mod.resolve("jk.toml"), """
+        writeWorkerModule(mod, """
                 group = "cc.jumpkick"
                 name = "jk-iso-worker"
                 version = "0.12.0"
                 jdk = 25
                 java = 25
-                [application]
-                main = "cc.jumpkick.plugin.process.PluginMain"
                 """);
         Path jar = dir.resolve("target/plugins/worker/jk-iso-worker-0.12.0.jar");
         Files.createDirectories(jar.getParent());
@@ -284,7 +286,7 @@ class PluginInstallLocalTest {
                 [workspace]
                 modules = ["plugins/worker"]
                 """);
-        Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
+        writeWorkerModule(mod, WORKER_TOML);
         Path jar = dir.resolve("target/plugins/worker/jk-test-runner-0.12.0.jar");
         Files.createDirectories(jar.getParent());
         Files.writeString(jar, "fake-worker-jar");
@@ -321,7 +323,7 @@ class PluginInstallLocalTest {
         } finally {
             System.setErr(orig);
         }
-        assertThat(exit).isEqualTo(2); // CONFIG — no PluginMain modules
-        assertThat(err.toString(StandardCharsets.UTF_8)).contains("PluginMain");
+        assertThat(exit).isEqualTo(2); // CONFIG — no plugin worker modules
+        assertThat(err.toString(StandardCharsets.UTF_8)).contains("jk-plugin.toml");
     }
 }

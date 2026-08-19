@@ -50,7 +50,7 @@ public final class NewJkBuildRenderer {
         inputs.kotlinModuleName()
                 .ifPresent(m -> sb.append("module   = \"").append(m).append("\"\n"));
 
-        if (inputs.main().isPresent() || inputs.assembly()) {
+        if (!inputs.plugin() && (inputs.main().isPresent() || inputs.assembly())) {
             sb.append("\n[application]\n");
             if (inputs.main().isPresent()) {
                 sb.append("main       = \"").append(inputs.main().get()).append("\"\n");

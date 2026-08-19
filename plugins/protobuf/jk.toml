@@ -1,9 +1,6 @@
 name = "jk-protobuf"
 description = "JumpKick's Protobuf plugin"
 
-[application]
-main = "cc.jumpkick.plugin.process.PluginMain"
-
 [dependencies]
 jk-plugin-sdk.workspace = true
 

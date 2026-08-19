@@ -725,22 +725,16 @@ public final class NewCommand implements CliCommand {
                                 : (parent != null && parent.groovy())
                                         ? NewInputs.Language.GROOVY
                                         : NewInputs.Language.JAVA;
-        var isExecutable = Boolean.TRUE.equals(executable)
-                || assembly
-                || nativeImage
-                || spring
-                || grails
-                || quarkus
-                || micronaut
-                || plugin;
-        // A plugin project is a fat jar whose "main" is the SDK's PluginMain; it uses the Maven
-        // layout so its jk-plugin.toml resource lands at the jar root (src/main/resources). Boot /
-        // Quarkus / Grails users also expect the Maven layout. An explicit --layout still wins.
+        var isExecutable =
+                Boolean.TRUE.equals(executable) || assembly || nativeImage || spring || grails || quarkus || micronaut;
+        // A plugin project uses the Maven layout so jk-plugin.toml lands at the jar root
+        // (src/main/resources). PluginMain is implied by that file — no [application] table.
+        // Boot / Quarkus / Grails users also expect the Maven layout. An explicit --layout still wins.
         var resolvedLayout = (layoutFlag != null && !layoutFlag.isBlank())
                 ? layoutFlag.toLowerCase()
                 : (spring || grails || quarkus || micronaut || plugin) ? "traditional" : "simple";
         var resolvedMain = plugin
-                ? Optional.of("cc.jumpkick.plugin.process.PluginMain")
+                ? Optional.<String>empty()
                 : (spring || grails || quarkus || micronaut)
                         // Kotlin's top-level main lives on the ApplicationKt facade class.
                         // Quarkus scaffold uses an object Application with @JvmStatic main → Application.

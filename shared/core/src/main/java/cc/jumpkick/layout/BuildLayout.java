@@ -31,13 +31,22 @@ public final class BuildLayout {
     private final String version;
     /** True when the project declares a {@code main} class (i.e. it is an application). */
     private final boolean hasMain;
+    /** True when on-disk plugin authoring files mark this module as a worker. */
+    private final boolean pluginWorker;
 
-    private BuildLayout(Path workspaceRoot, Path moduleRoot, String artifact, String version, boolean hasMain) {
+    private BuildLayout(
+            Path workspaceRoot,
+            Path moduleRoot,
+            String artifact,
+            String version,
+            boolean hasMain,
+            boolean pluginWorker) {
         this.workspaceRoot = Objects.requireNonNull(workspaceRoot, "workspaceRoot");
         this.moduleRoot = Objects.requireNonNull(moduleRoot, "moduleRoot");
         this.artifact = Objects.requireNonNull(artifact, "artifact");
         this.version = Objects.requireNonNull(version, "version");
         this.hasMain = hasMain;
+        this.pluginWorker = pluginWorker;
     }
 
     public static BuildLayout of(Path projectDir, JkBuild project) {
@@ -55,7 +64,8 @@ public final class BuildLayout {
                 projectDir,
                 project.project().name(),
                 project.project().version(),
-                hasMain(project));
+                hasMain(project),
+                cc.jumpkick.plugin.PluginModule.isWorker(projectDir));
     }
 
     public static BuildLayout of(Path workspaceRoot, Path moduleRoot, JkBuild project) {
@@ -65,7 +75,8 @@ public final class BuildLayout {
                 moduleRoot,
                 project.project().name(),
                 project.project().version(),
-                hasMain(project));
+                hasMain(project),
+                cc.jumpkick.plugin.PluginModule.isWorker(moduleRoot));
     }
 
     private static boolean hasMain(JkBuild project) {
@@ -93,6 +104,19 @@ public final class BuildLayout {
     /** True when this project declares {@code main} — i.e. it is an application. */
     public boolean hasMain() {
         return hasMain;
+    }
+
+    /** True when this module is a plugin worker (see {@link cc.jumpkick.plugin.PluginModule}). */
+    public boolean pluginWorker() {
+        return pluginWorker;
+    }
+
+    /**
+     * True when deliverables go at {@code target/} (application or plugin worker), not {@code
+     * target/lib/}.
+     */
+    public boolean packagedAtRoot() {
+        return hasMain || pluginWorker;
     }
 
     // ---- Per-module output -------------------------------------------------
@@ -328,17 +352,17 @@ public final class BuildLayout {
      * Destination directory for deliverable artifacts (jars, binaries, OCI images).
      *
      * <ul>
-     * <li>{@code target/} when the project declares {@code main} — it is an application
-     * and its packaged output is a directly-runnable artifact.
-     * <li>{@code target/lib/} when no {@code main} is declared — it is a library whose
-     * packaged output is consumed by other projects, not run directly.
+     * <li>{@code target/} when the project declares {@code main} or is a plugin worker —
+     * the packaged output is a process entry (app or {@code PluginMain} worker).
+     * <li>{@code target/lib/} when neither applies — a library whose packaged output is
+     * consumed by other projects, not run directly.
      * </ul>
      *
      * <p>This rule also applies to native shared-library outputs ({@code.so}, {@code.dylib},
      * {@code.dll}) produced by GraalVM {@code native-image --shared}.
      */
     public Path artifactDir() {
-        return hasMain ? targetDir() : targetDir().resolve("lib");
+        return packagedAtRoot() ? targetDir() : targetDir().resolve("lib");
     }
 
     /** {@code <artifactDir>/<artifact>-<version>.jar} — the main jar. */

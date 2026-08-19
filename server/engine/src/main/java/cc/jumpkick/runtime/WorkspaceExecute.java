@@ -62,7 +62,7 @@ public final class WorkspaceExecute {
                 continue;
             }
             BuildLayout layout = BuildLayout.of(wsRoot, moduleDir, build);
-            if (!layout.hasMain()) continue;
+            if (!layout.packagedAtRoot()) continue;
             List<Path> candidates = new ArrayList<>();
             candidates.add(layout.mainJar());
             candidates.add(layout.assemblyJar());

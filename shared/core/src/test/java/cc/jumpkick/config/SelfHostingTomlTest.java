@@ -263,7 +263,13 @@ class SelfHostingTomlTest {
             JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
             assertThat(p.assembly()).as(module + " must not fat-assemble").isFalse();
             assertThat(p.minified()).as(module).isFalse();
-            assertThat(p.mainClass()).as(module).isEqualTo("cc.jumpkick.plugin.process.PluginMain");
+            assertThat(p.isApplication())
+                    .as(module + " must not declare [application]")
+                    .isFalse();
+            assertThat(p.mainClass()).as(module).isNull();
+            assertThat(cc.jumpkick.plugin.PluginModule.isWorker(REPO.resolve(module)))
+                    .as(module + " is a plugin worker")
+                    .isTrue();
             assertThat(p.dependencies().of(Scope.MAIN).stream()
                             .map(d -> d.module())
                             .toList())
@@ -286,7 +292,13 @@ class SelfHostingTomlTest {
         for (String module : root.workspace().modules()) {
             if (!module.startsWith("plugins/")) continue;
             JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
-            assertThat(p.mainClass()).as(module).isEqualTo("cc.jumpkick.plugin.process.PluginMain");
+            assertThat(p.isApplication())
+                    .as(module + " must not declare [application]")
+                    .isFalse();
+            assertThat(p.mainClass()).as(module).isNull();
+            assertThat(cc.jumpkick.plugin.PluginModule.isWorker(REPO.resolve(module)))
+                    .as(module + " is a plugin worker")
+                    .isTrue();
             assertThat(p.assembly())
                     .as(module + " must not set assembly (thin workers)")
                     .isFalse();
