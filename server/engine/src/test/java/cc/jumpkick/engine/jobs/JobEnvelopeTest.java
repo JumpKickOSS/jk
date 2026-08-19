@@ -103,10 +103,16 @@ class JobEnvelopeTest {
                 new JobTransport.FireAndForget());
         assertThat(jid).isPositive();
         assertThat(ran.await(5, TimeUnit.SECONDS)).isTrue();
+        // Await the WHOLE teardown, not just the finish flag: the detached worker appends
+        // teardownOrder entries after finished++ lands, and containsExactly iterating the live
+        // synchronizedList mid-append flaked under parallel suite load (the "expected X to
+        // contain exactly X" failure). Snapshot before asserting.
         long deadline = System.currentTimeMillis() + 5_000;
-        while (host.finished == 0 && System.currentTimeMillis() < deadline) Thread.sleep(10);
+        while ((host.finished == 0 || host.teardownOrder.size() < 2) && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
         assertThat(host.finished).isEqualTo(1);
-        assertThat(host.teardownOrder).containsExactly("writeJournal", "clearProgress");
+        assertThat(List.copyOf(host.teardownOrder)).containsExactly("writeJournal", "clearProgress");
         assertThat(host.events.stream().anyMatch(e -> e.contains("request-finish")))
                 .isTrue();
     }
