@@ -98,16 +98,26 @@ class PreflightMemoTest {
     }
 
     @Test
-    void clean_row_requires_module_target_dir(@TempDir Path tmp) throws Exception {
-        // Entry memo survives a hand-deleted module target; its "clean" promise must not.
+    void clean_row_with_missing_outputs_reports_restore_not_memo_miss(@TempDir Path tmp) throws Exception {
+        // Inputs still match after a wiped module target — memo hits with restoreNeeded.
         writeWorkspace(tmp);
         BuildGraph.Result graph =
                 BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        // Create the layout target so the initial store sees outputs present for clean rows.
+        Path aDir = graph.topoOrder().stream()
+                .filter(u -> u.dir().endsWith("a"))
+                .findFirst()
+                .orElseThrow()
+                .dir();
+        Files.createDirectories(cc.jumpkick.layout.BuildLayout.moduleTargetDir(tmp, aDir));
         storeDirty(tmp, graph, Set.of());
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isPresent();
 
         deleteRecursively(tmp.resolve("target").resolve("a"));
-        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
+        var hit = PreflightMemo.tryLoadDirty(tmp, graph, false);
+        assertThat(hit).isPresent();
+        assertThat(hit.get().dirty()).isEmpty();
+        assertThat(hit.get().restoreNeeded()).isNotEmpty();
     }
 
     @Test

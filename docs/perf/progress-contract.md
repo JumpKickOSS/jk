@@ -72,7 +72,7 @@ jar. Runtime may **shrink** on cache hit (`RESTORE`); never reweight *up* mid-ru
 | **Mild over-estimate** | After schedule + history clamp, non-zero `R0` gets `×1.01` (`preferSlightOverEstimate`) so a hair high is preferred over a hair low — not a multi-minute floor. |
 | **Seed quality KPI** | `|R0 − execute_wall| / execute_wall` on success (`jk: eta-seed quality …` when serious or `JK_ETA_SEED_LOG=1`) — residual display does not rewrite R0 for this KPI. |
 | **Fully-cached fast path** | Empty dirty → `R0 = 0`, skip forecast walk. |
-| **Post-`jk clean` restore** | Action keys survive the wipe; outputs under `target/` do not. Forecast keeps compile/package/test steps **CACHED** when keys hit (projecting fingerprints from action records when classes are gone) and adds material `restore-outputs` priced at `EffortWeights.RESTORE` — not full compile/suite walls. |
+| **Missing outputs (incl. post-`jk clean`)** | Input fingerprints can still match while jars/classes/binaries are gone. Preflight splits **input-dirty** vs **restore-needed**. Restore-needed modules restore from the action cache (no full compile/test/package plans); priced at `EffortWeights.RESTORE`. Dirty-memo dual-writes under `~/.cache/jk/projects/…` so clean does not erase fingerprints. |
 
 ### Schedule admission (ETA ≡ live)
 

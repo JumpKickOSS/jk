@@ -149,7 +149,7 @@ cache, a normal `jk build` should hit action cache for unchanged modules.
 | **`jk storage dir`** | Print the artifact store path (`JK_STORE_DIR`) |
 | **`jk storage clean`** | Hygiene: unreferenced store CAS blobs + expired run logs (garbage only) |
 | **`jk storage nuke`** | Wipe the **entire artifact store**. Confirms first |
-| **`jk clean`** | Delete project `target/` (classes, jars, preflight memos). Next build **restores** from the action cache when keys still hit (seconds of IO, not a cold recompile). **`--force`** also invalidates this project's action-cache entries |
+| **`jk clean`** | Delete project `target/` outputs. Next build: if inputs are unchanged, **restore** jars/classes/binaries from the action cache (discovery + I/O only). Input fingerprints also live under `~/.cache/jk/projects/…` so clean does not force a full rebuild forecast. **`--force`** also invalidates this project's action-cache entries |
 | **`jk repo search` / `refresh` / `login` / `logout`** | Mirror search, coord re-fetch, credentials |
 | **`jk self nuke`** | Wipe **jk-owned** data only. Never touches the PATH bin dir or JDKs. `--cache` / `--store` share code with `jk cache nuke` / `jk storage nuke` |
 
