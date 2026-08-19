@@ -1424,8 +1424,20 @@ class JkManagerTest {
     void looksLikeCoord_detects_gav() {
         assertThat(JkManager.looksLikeCoord("com.foo:bar:1.0")).isTrue();
         assertThat(JkManager.looksLikeCoord("com.foo:bar")).isTrue();
+        assertThat(JkManager.looksLikeCoord("com.foo:bar:1.0!aar")).isTrue(); // packaging type after GAV
+        assertThat(JkManager.looksLikeCoord("com.foo:bar@1.2")).isTrue(); // version selector
+        assertThat(JkManager.looksLikeCoord("com.foo:bar:jar:")).isFalse(); // empty classifier segment
         assertThat(JkManager.looksLikeCoord("lib.jar")).isFalse();
         assertThat(JkManager.looksLikeCoord("compiling")).isFalse();
+    }
+
+    @Test
+    void resolve_detail_colors_display_coord_not_package_key() {
+        String painted = JkManager.colorDetail(
+                "Resolve", "fetched org.jetbrains.kotlin:kotlin-build-tools-api:2.1.10", Theme.active());
+        assertThat(TestAnsi.strip(painted)).isEqualTo("fetched org.jetbrains.kotlin:kotlin-build-tools-api:2.1.10");
+        assertThat(painted)
+                .contains(cc.jumpkick.cli.theme.Coords.gav("org.jetbrains.kotlin", "kotlin-build-tools-api", "2.1.10"));
     }
 
     @Test

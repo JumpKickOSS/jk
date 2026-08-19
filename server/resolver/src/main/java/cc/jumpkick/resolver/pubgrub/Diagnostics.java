@@ -346,7 +346,7 @@ public final class Diagnostics {
         if (!ansi) return shown;
         int colon = shown.indexOf(':');
         if (colon < 0) return palette.name() + shown + palette.reset();
-        // group:artifact — color first segment only (classifier/@type stay with name color)
+        // group:artifact — color first segment only (classifier/!type stay with name color)
         return palette.group()
                 + shown.substring(0, colon)
                 + palette.reset()

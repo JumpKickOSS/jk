@@ -62,7 +62,9 @@ public final class SyncPlans {
             BiFunction<String, String, String> coordLabel,
             boolean allowJdkInstall) {
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
-        BiFunction<String, String, String> label = coordLabel != null ? coordLabel : (n, v) -> n + ":" + v;
+        // Plain engine path uses Artifact.displayCoord() (g:a:v, or g:a:v!aar / :classifier when
+        // non-default). An explicit coordLabel overrides for themed in-process clients.
+        BiFunction<String, String, String> label = coordLabel;
 
         // Pre-scan: count artifacts in the canonical lock (workspace root or standalone) so
         // sync-cas has an accurate denominator from the first bar frame. Falls back to 0
@@ -161,7 +163,7 @@ public final class SyncPlans {
                     var observer = new CacheSync.ProgressObserver() {
                         @Override
                         public void fetched(Lockfile.Artifact pkg) {
-                            ctx.label("fetched " + label.apply(pkg.name(), pkg.version()));
+                            ctx.label("fetched " + formatCoord(label, pkg));
                             totalFetched.incrementAndGet();
                             ctx.progress(1);
                         }
@@ -179,7 +181,7 @@ public final class SyncPlans {
 
                         @Override
                         public void failed(Lockfile.Artifact pkg, String error) {
-                            ctx.error("dep", label.apply(pkg.name(), pkg.version()) + " — " + error);
+                            ctx.error("dep", formatCoord(label, pkg) + " — " + error);
                             ctx.progress(1);
                         }
                     };
@@ -304,7 +306,7 @@ public final class SyncPlans {
                     var observer = new CacheSync.ProgressObserver() {
                         @Override
                         public void fetched(Lockfile.Artifact pkg) {
-                            ctx.label("fetched sources " + pkg.name() + ":" + pkg.version());
+                            ctx.label("fetched sources " + pkg.displayCoord());
                             ctx.progress(1);
                         }
 
@@ -315,7 +317,7 @@ public final class SyncPlans {
 
                         @Override
                         public void failed(Lockfile.Artifact pkg, String error) {
-                            ctx.warn("sources", pkg.name() + ":" + pkg.version() + " — " + error);
+                            ctx.warn("sources", pkg.displayCoord() + " — " + error);
                             ctx.progress(1);
                         }
                     };
@@ -348,6 +350,11 @@ public final class SyncPlans {
                 .addTask(writeManifest)
                 .addTask(syncModules)
                 .build();
+    }
+
+    /** Progress/diagnostic coordinate: themed label when provided, else {@link Lockfile.Artifact#displayCoord()}. */
+    private static String formatCoord(BiFunction<String, String, String> coordLabel, Lockfile.Artifact pkg) {
+        return coordLabel != null ? coordLabel.apply(pkg.displayIdentity(), pkg.version()) : pkg.displayCoord();
     }
 
     /** Parse {@code dir/jk.toml} if it exists and is valid; {@code null} otherwise. */

@@ -439,6 +439,30 @@ public record Lockfile(
         }
 
         /**
+         * Human-facing package identity without version: {@code g:a} for a default jar, or
+         * {@link PackageId#display()} when a classifier / non-jar type is present ({@code g:a!aar}).
+         * Progress labels prefer {@link #displayCoord()}; this is the version-less half for themed
+         * formatters.
+         */
+        public String displayIdentity() {
+            if (!PackageId.isMavenPackageKey(name)) return name;
+            try {
+                return PackageId.parse(name).display();
+            } catch (RuntimeException e) {
+                return name;
+            }
+        }
+
+        /**
+         * Human-facing coordinate for fetch progress and short diagnostics — same shape as
+         * {@link Coordinate#toString()}: {@code g:a:v} for a default jar; classifier and {@code !type}
+         * only when non-default ({@code g:a:v:linux-x86_64}, {@code g:a:v!aar}).
+         */
+        public String displayCoord() {
+            return coordinate().toString();
+        }
+
+        /**
          * Canonical package key for this row. Bare legacy {@code g:a} names normalize to
          * {@code g:a:jar:}.
          */
