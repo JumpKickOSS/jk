@@ -132,7 +132,14 @@ public final class WorkspaceScheduler {
             }
             return null;
         }
+        // Critical-path-first admission (JK-2196): the ready scan below takes the FIRST ready
+        // unit, so order the backlog by longest remaining dependent chain, descending. With 13
+        // units ready at the widest level, declaration order used to start leaf plugins ahead of
+        // the client-io → io → resolver → toolchain → engine → cli spine that dominates the wall.
+        // Stable sort keeps declaration order among equals.
         List<U> notStarted = new ArrayList<>(units);
+        Map<Path, Integer> height = dependentChainHeight(units, dirOf, edges, unitDirs);
+        notStarted.sort(java.util.Comparator.comparingInt((U u) -> -height.getOrDefault(dirOf.apply(u), 0)));
         BlockingQueue<Done<U, R>> completed = new LinkedBlockingQueue<>();
         Set<CompletableFuture<?>> inflight = ConcurrentHashMap.newKeySet();
         int inFlight = 0;
@@ -193,6 +200,40 @@ public final class WorkspaceScheduler {
                 return sinkStop;
             }
         }
+    }
+
+    /**
+     * Longest chain of dependents above each unit (a unit nothing depends on scores 0). Drives
+     * critical-path-first admission; memoized DFS over the reversed edge map, cycle-tolerant
+     * (a cycle scores 0 here — {@link #unsatisfiable} reports it when admission stalls).
+     */
+    static <U> Map<Path, Integer> dependentChainHeight(
+            List<U> units, Function<U, Path> dirOf, Map<Path, Set<Path>> edges, Set<Path> unitDirs) {
+        Map<Path, List<Path>> dependents = new java.util.HashMap<>();
+        for (U u : units) {
+            Path dir = dirOf.apply(u);
+            for (Path dep : edges.getOrDefault(dir, Set.of())) {
+                if (unitDirs.contains(dep)) {
+                    dependents.computeIfAbsent(dep, k -> new ArrayList<>()).add(dir);
+                }
+            }
+        }
+        Map<Path, Integer> memo = new java.util.HashMap<>();
+        for (U u : units) heightOf(dirOf.apply(u), dependents, memo, new HashSet<>());
+        return memo;
+    }
+
+    private static int heightOf(Path dir, Map<Path, List<Path>> dependents, Map<Path, Integer> memo, Set<Path> onPath) {
+        Integer cached = memo.get(dir);
+        if (cached != null) return cached;
+        if (!onPath.add(dir)) return 0; // cycle: scored elsewhere as unsatisfiable
+        int max = 0;
+        for (Path d : dependents.getOrDefault(dir, List.of())) {
+            max = Math.max(max, 1 + heightOf(d, dependents, memo, onPath));
+        }
+        onPath.remove(dir);
+        memo.put(dir, max);
+        return max;
     }
 
     /**
