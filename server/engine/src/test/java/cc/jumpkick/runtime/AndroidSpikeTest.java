@@ -233,11 +233,24 @@ class AndroidSpikeTest {
      * run time), so it does not carry apksig's classes.
      */
     private static boolean verifiedByApksig(Path apk) throws Exception {
-        String cp = System.getProperty("jk.android.apksig.classpath", "");
-        assertThat(cp).as("jk.android.apksig.classpath system property").isNotBlank();
         List<URL> urls = new ArrayList<>();
-        for (String part : cp.split(File.pathSeparator)) {
-            if (!part.isBlank()) urls.add(Path.of(part).toUri().toURL());
+        String cp = System.getProperty("jk.android.apksig.classpath", "");
+        if (!cp.isBlank()) {
+            // Gradle wires apksig via the testApksig configuration.
+            for (String part : cp.split(File.pathSeparator)) {
+                if (!part.isBlank()) urls.add(Path.of(part).toUri().toURL());
+            }
+        } else {
+            // Pure-jk fork: no Gradle configuration — apksig is a dependency of the android
+            // worker itself, so expand the worker's sidecar classpath (jk.android.plugin.jar
+            // is set by [build] test-plugin-jars) and load the verifier from there.
+            String workerJar = System.getProperty("jk.android.plugin.jar", "");
+            assertThat(workerJar)
+                    .as("jk.android.apksig.classpath or jk.android.plugin.jar system property")
+                    .isNotBlank();
+            for (Path p : cc.jumpkick.compile.WorkerClasspath.paths(Path.of(workerJar))) {
+                urls.add(p.toUri().toURL());
+            }
         }
         try (var loader = new URLClassLoader(urls.toArray(new URL[0]))) {
             Class<?> builderClass = loader.loadClass("com.android.apksig.ApkVerifier$Builder");

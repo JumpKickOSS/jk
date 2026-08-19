@@ -13,25 +13,13 @@ class HostWarmupTest {
 
     @Test
     void enabled_defaults_true_without_config(@TempDir Path dir) throws Exception {
-        // pure-jk test forks set -Djk.aot.train=off; property wins over that ambient kill-switch
-        // so this asserts config/env defaults, not the host engine's CI AOT policy.
-        String prevTrain = System.getProperty("jk.aot.train");
-        String prevWorker = System.getProperty("jk.worker.aot");
-        try {
-            System.setProperty("jk.aot.train", "on");
-            System.setProperty("jk.worker.aot", "on");
-            Path cfg = dir.resolve("config.toml");
-            Files.writeString(cfg, "# empty\n");
-            assertThat(HostWarmup.enabled(cfg, k -> null)).isTrue();
-        } finally {
-            restoreProp("jk.aot.train", prevTrain);
-            restoreProp("jk.worker.aot", prevWorker);
-        }
-    }
-
-    private static void restoreProp(String key, String prev) {
-        if (prev == null) System.clearProperty(key);
-        else System.setProperty(key, prev);
+        // Inject the AOT baseline: the real one folds in AotSettings.suppressTraining(), a
+        // permanent JVM-global flag any EngineServer shutdown in this worker may have set —
+        // this test asserts the config/env layer only.
+        Path cfg = dir.resolve("config.toml");
+        Files.writeString(cfg, "# empty\n");
+        assertThat(HostWarmup.enabled(cfg, k -> null, () -> true)).isTrue();
+        assertThat(HostWarmup.enabled(cfg, k -> null, () -> false)).isFalse();
     }
 
     @Test

@@ -45,9 +45,19 @@ class NiaWarmLockTimingTest {
         boolean quietMachine =
                 startLoad >= 0 && startLoad < Runtime.getRuntime().availableProcessors() * 0.5;
 
-        JkBuild root = JkBuildParser.parse(nia.resolve("jk.toml"));
-        var modules = WorkspaceLoader.loadModules(nia, root);
-        JkBuild project = WorkspaceMerge.merge(root, modules.values());
+        // The overlay lives in jk-examples, not this repo — when its jk.toml lags a manifest
+        // format change, that is fixture bit-rot, not a resolver regression: skip, don't fail.
+        JkBuild root;
+        java.util.Map<Path, JkBuild> modules;
+        JkBuild project;
+        try {
+            root = JkBuildParser.parse(nia.resolve("jk.toml"));
+            modules = WorkspaceLoader.loadModules(nia, root);
+            project = WorkspaceMerge.merge(root, modules.values());
+        } catch (cc.jumpkick.config.JkBuildParseException e) {
+            assumeTrue(false, "stale local NIA overlay: " + e.getMessage());
+            return;
+        }
         String jvmEnv = PluginContributions.jvmEnvironment(project, nia);
         System.out.println("JVM_ENV=" + jvmEnv + " modules=" + modules.size());
 

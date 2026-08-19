@@ -35,6 +35,14 @@ public final class HostWarmup {
     }
 
     static boolean enabled(Path userConfig, Function<String, String> env) {
+        // Baseline: the process-wide AOT switches, including the permanent lame-duck
+        // suppression a displaced engine sets. Tests inject their own baseline — the
+        // suppression is JVM-global and another suite's EngineServer shutdown must not
+        // flip this config/env decision order-dependently.
+        return enabled(userConfig, env, () -> AotSettings.workerAotEnabled() && AotSettings.trainingEnabled());
+    }
+
+    static boolean enabled(Path userConfig, Function<String, String> env, java.util.function.BooleanSupplier aot) {
         String e = env != null ? env.apply("JK_AUTO_WARMUP") : null;
         if (e != null && !e.isBlank()) {
             String t = e.trim();
@@ -49,7 +57,7 @@ public final class HostWarmup {
         } catch (RuntimeException ignored) {
         }
         // Kill-switch also covers worker train (mapping of existing caches still OK elsewhere).
-        return AotSettings.workerAotEnabled() && AotSettings.trainingEnabled();
+        return aot.getAsBoolean();
     }
 
     /**
