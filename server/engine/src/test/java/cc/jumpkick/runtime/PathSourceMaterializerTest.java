@@ -13,6 +13,7 @@ import cc.jumpkick.repo.RepoGroup;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -20,6 +21,8 @@ import org.junit.jupiter.api.io.TempDir;
  * End-to-end (offline) materialization of a local-path jk dependency: build a jk.toml library on
  * disk, then resolve → build → local-publish, keyed by a content fingerprint (no git, no network).
  */
+// Out of the unit tier: three full materialize -> build -> publish cycles, like its already-tagged siblings.
+@Tag("integration")
 class PathSourceMaterializerTest {
 
     /** Write a trivial no-dependency jk.toml library at {@code libDir}. */

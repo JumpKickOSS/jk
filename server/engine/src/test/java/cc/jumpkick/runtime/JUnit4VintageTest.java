@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -24,6 +25,8 @@ import org.junit.jupiter.api.io.TempDir;
  * This proves that contract on a plain JVM module (the Android flavor differs only in classpath
  * additions — platform stubs + Robolectric config — wired by the android plugin).
  */
+// Out of the unit tier: network resolve of junit4/vintage + a forked test JVM.
+@Tag("integration")
 class JUnit4VintageTest {
 
     @Test

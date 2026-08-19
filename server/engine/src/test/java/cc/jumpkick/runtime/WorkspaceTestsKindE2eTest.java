@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -25,6 +26,8 @@ import org.junit.jupiter.api.io.TempDir;
  * kind. After building lib (with tests), app's test classpath must include lib's test classes,
  * and app's test that references the helper must pass.
  */
+// Out of the unit tier: network resolve + a real forked test JVM.
+@Tag("integration")
 class WorkspaceTestsKindE2eTest {
 
     @Test
