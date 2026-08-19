@@ -4,9 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
+import cc.jumpkick.cli.testing.Capture;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
@@ -20,12 +18,12 @@ class TrustCommandTest {
     void add_list_remove_flow(@TempDir Path state) {
         assertThat(Jk.execute("trust", "add", "--state-dir", state.toString(), "https://github.com/acme/"))
                 .isEqualTo(0);
-        String listed = capture(() -> Jk.execute("trust", "list", "--state-dir", state.toString()));
+        String listed = Capture.stdout(() -> Jk.execute("trust", "list", "--state-dir", state.toString()));
         assertThat(listed).contains("https://github.com/acme/");
 
         assertThat(Jk.execute("trust", "remove", "--state-dir", state.toString(), "https://github.com/acme/"))
                 .isEqualTo(0);
-        String empty = capture(() -> Jk.execute("trust", "list", "--state-dir", state.toString()));
+        String empty = Capture.stdout(() -> Jk.execute("trust", "list", "--state-dir", state.toString()));
         assertThat(empty).contains("No trusted sources");
     }
 
@@ -54,7 +52,7 @@ class TrustCommandTest {
         Path state = tmp.resolve("state");
         int exit = Jk.execute("trust", "import", "--jbang", "--file", json.toString(), "--state-dir", state.toString());
         assertThat(exit).isEqualTo(0);
-        String listed = capture(() -> Jk.execute("trust", "list", "--state-dir", state.toString()));
+        String listed = Capture.stdout(() -> Jk.execute("trust", "list", "--state-dir", state.toString()));
         assertThat(listed).contains("https://github.com/jbangdev/").contains("https://gist.github.com/max/");
     }
 
@@ -62,17 +60,5 @@ class TrustCommandTest {
     void import_without_jbang_flag_is_a_usage_error(@TempDir Path state) {
         assertThat(Jk.execute("trust", "import", "--state-dir", state.toString()))
                 .isEqualTo(64);
-    }
-
-    private static String capture(Runnable body) {
-        PrintStream original = System.out;
-        ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(buf));
-        try {
-            body.run();
-        } finally {
-            System.setOut(original);
-        }
-        return buf.toString(StandardCharsets.UTF_8);
     }
 }

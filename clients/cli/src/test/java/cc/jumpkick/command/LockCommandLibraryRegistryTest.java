@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.LockfileReader;
 import com.sun.net.httpserver.HttpServer;
@@ -17,14 +19,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -46,9 +47,8 @@ class LockCommandLibraryRegistryTest {
     private static final String ETAG = "\"v1\"";
     private static final byte[] FRESH_BODY = "[libraries]\nfoo = \"com.acme:foo\"\n".getBytes(StandardCharsets.UTF_8);
 
-    private HttpServer mavenServer;
-    private URI mavenBase;
-    private final Map<String, byte[]> served = new HashMap<>();
+    @RegisterExtension
+    final MockMavenServer maven = new MockMavenServer();
 
     private HttpServer registryServer;
     private URI registryUrl;
@@ -58,20 +58,7 @@ class LockCommandLibraryRegistryTest {
 
     @BeforeEach
     void start() throws IOException {
-        mavenServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        mavenServer.createContext("/", exchange -> {
-            byte[] body = served.get(exchange.getRequestURI().getPath());
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        mavenServer.start();
-        mavenBase = URI.create("http://127.0.0.1:" + mavenServer.getAddress().getPort());
-        DefaultTestDepsFixture.seed(served);
+        DefaultTestDepsFixture.seed(maven.served());
 
         registryHits.set(0);
         lastIfNoneMatch = null;
@@ -98,7 +85,6 @@ class LockCommandLibraryRegistryTest {
 
     @AfterEach
     void stop() {
-        mavenServer.stop(0);
         registryServer.stop(0);
         cc.jumpkick.config.SessionContext.reset();
         LockfileReader.clearCache();
@@ -182,7 +168,7 @@ class LockCommandLibraryRegistryTest {
 
         // Stale again — only --offline (not freshness) may skip the fetch below.
         makeStale(libraryCache);
-        mavenServer.stop(0);
+        maven.stop();
         registryServer.stop(0); // any network attempt would now fail
         ByteArrayOutputStream captured = new ByteArrayOutputStream();
         PrintStream originalOut = System.out;
@@ -244,16 +230,12 @@ class LockCommandLibraryRegistryTest {
                 "-C",
                 tempDir.toString(),
                 "--repo-url",
-                mavenBase.toString(),
+                maven.base().toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString(),
                 "--library-registry-url",
                 registryUrl.toString(),
                 "--library-cache-file",
                 libraryCache.toString());
-    }
-
-    private static int run(String... args) {
-        return Jk.execute(args);
     }
 }

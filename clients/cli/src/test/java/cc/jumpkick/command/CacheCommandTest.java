@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.Capture;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,13 +26,13 @@ class CacheCommandTest {
     @Test
     void dir_prints_cache_root(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        String stdout = capture(() -> run("cache", "dir", "--cache-dir", cache.toString()));
+        String stdout = Capture.stdout(() -> run("cache", "dir", "--cache-dir", cache.toString()));
         assertThat(stdout.trim()).isEqualTo(cache.toString());
     }
 
     @Test
     void dir_prints_store_root() {
-        String stdout = capture(() -> run("storage", "dir"));
+        String stdout = Capture.stdout(() -> run("storage", "dir"));
         assertThat(stdout.trim()).isEqualTo(cc.jumpkick.cache.JkStores.store().toString());
     }
 
@@ -47,7 +46,7 @@ class CacheCommandTest {
     void storage_usage_reports_an_absent_store() throws Exception {
         Path store = cc.jumpkick.cache.JkStores.store();
         if (Files.isDirectory(store)) return; // the shared harness store already has content
-        String plain = TestAnsi.strip(capture(() -> run("storage", "usage")));
+        String plain = TestAnsi.strip(Capture.stdout(() -> run("storage", "usage")));
         assertThat(plain).contains("not yet created");
     }
 
@@ -61,7 +60,7 @@ class CacheCommandTest {
     @Test
     void usage_summarizes_an_empty_action_cache_without_creating_it(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        String stdout = capture(() -> run("cache", "usage", "--cache-dir", cache.toString()));
+        String stdout = Capture.stdout(() -> run("cache", "usage", "--cache-dir", cache.toString()));
         assertThat(stdout).contains("not yet created");
         assertThat(Files.exists(cache)).isFalse();
     }
@@ -69,7 +68,7 @@ class CacheCommandTest {
     @Test
     void cache_storage_alias_still_reaches_usage(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        String stdout = capture(() -> run("cache", "storage", "--cache-dir", cache.toString()));
+        String stdout = Capture.stdout(() -> run("cache", "storage", "--cache-dir", cache.toString()));
         assertThat(stdout).contains("not yet created");
     }
 
@@ -99,7 +98,7 @@ class CacheCommandTest {
         // Uncategorized bulk (still in Total): hash-memo entry
         writeBlob(cache.resolve("hash-memo/aa/memo1"), new byte[4096]);
 
-        String plain = TestAnsi.strip(capture(() -> run("cache", "usage", "--cache-dir", cache.toString())));
+        String plain = TestAnsi.strip(Capture.stdout(() -> run("cache", "usage", "--cache-dir", cache.toString())));
         assertThat(plain).contains("Cache Storage");
         assertThat(plain).contains("Class Files");
         assertThat(plain).contains("Test Results");
@@ -135,7 +134,8 @@ class CacheCommandTest {
             // Backdate the stale entry by 60 days.
             Files.setLastModifiedTime(stale, FileTime.from(Instant.now().minus(60, ChronoUnit.DAYS)));
 
-            String stdout = capture(() -> run("cache", "clean", "--cache-dir", cache.toString(), "--older-than", "30"));
+            String stdout = Capture.stdout(
+                    () -> run("cache", "clean", "--cache-dir", cache.toString(), "--older-than", "30"));
 
             assertThat(Files.exists(stale)).isFalse();
             assertThat(Files.exists(fresh)).isTrue();
@@ -154,7 +154,7 @@ class CacheCommandTest {
         Path stale = writeBlob(cache.resolve("actions/keys/old"), new byte[1024]);
         Files.setLastModifiedTime(stale, FileTime.from(Instant.now().minus(60, ChronoUnit.DAYS)));
 
-        String stdout = capture(() -> run("cache", "clean", "--cache-dir", cache.toString(), "--dry-run"));
+        String stdout = Capture.stdout(() -> run("cache", "clean", "--cache-dir", cache.toString(), "--dry-run"));
 
         assertThat(Files.exists(stale)).isTrue();
         assertThat(stdout).contains("Dry run: would remove");
@@ -170,7 +170,7 @@ class CacheCommandTest {
         writeBlob(cache.resolve("actions/keys/task1"), new byte[1024]);
         writeBlob(cache.resolve("format-stamps/ab/stamp1"), new byte[128]);
 
-        String stdout = capture(() -> run("cache", "nuke", "--cache-dir", cache.toString(), "--yes"));
+        String stdout = Capture.stdout(() -> run("cache", "nuke", "--cache-dir", cache.toString(), "--yes"));
 
         assertThat(stdout).contains("Nuked");
         assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isFalse();
@@ -187,7 +187,8 @@ class CacheCommandTest {
         Path cache = tempDir.resolve("cache");
         writeBlob(cache.resolve("actions/keys/task1"), new byte[4096]);
 
-        String stdout = withStdin("n\n", () -> capture(() -> run("cache", "nuke", "--cache-dir", cache.toString())));
+        String stdout =
+                withStdin("n\n", () -> Capture.stdout(() -> run("cache", "nuke", "--cache-dir", cache.toString())));
 
         assertThat(stdout).contains("aborted");
         assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isTrue();
@@ -198,7 +199,8 @@ class CacheCommandTest {
         Path cache = tempDir.resolve("cache");
         writeBlob(cache.resolve("actions/keys/task1"), new byte[4096]);
 
-        String stdout = withStdin("y\n", () -> capture(() -> run("cache", "nuke", "--cache-dir", cache.toString())));
+        String stdout =
+                withStdin("y\n", () -> Capture.stdout(() -> run("cache", "nuke", "--cache-dir", cache.toString())));
 
         assertThat(stdout).contains("Nuked 1 files");
         assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isFalse();
@@ -209,7 +211,7 @@ class CacheCommandTest {
         Path cache = tempDir.resolve("cache");
         writeBlob(cache.resolve("actions/keys/task1"), new byte[4096]);
 
-        String stdout = capture(() -> run("cache", "nuke", "--cache-dir", cache.toString(), "--dry-run"));
+        String stdout = Capture.stdout(() -> run("cache", "nuke", "--cache-dir", cache.toString(), "--dry-run"));
 
         assertThat(stdout).contains("Dry run: would remove");
         assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isTrue();
@@ -218,7 +220,7 @@ class CacheCommandTest {
     @Test
     void purge_missing_cache_dir_is_a_noop(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        String stdout = capture(() -> run("cache", "nuke", "--cache-dir", cache.toString(), "--yes"));
+        String stdout = Capture.stdout(() -> run("cache", "nuke", "--cache-dir", cache.toString(), "--yes"));
         assertThat(stdout).contains("Nothing to nuke");
     }
 
@@ -228,7 +230,7 @@ class CacheCommandTest {
         // Cache CAS alone is still cache-tier content — purge removes it.
         writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), new byte[4096]);
 
-        String stdout = capture(() -> run("cache", "nuke", "--cache-dir", cache.toString(), "--yes"));
+        String stdout = Capture.stdout(() -> run("cache", "nuke", "--cache-dir", cache.toString(), "--yes"));
 
         assertThat(stdout).contains("Nuked");
         assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isFalse();
@@ -239,7 +241,7 @@ class CacheCommandTest {
         Path cache = tempDir.resolve("cache");
         writeBlob(cache.resolve("actions/keys/task1"), new byte[1024]);
 
-        String stdout = capture(() -> run("storage", "clean", "--dry-run"));
+        String stdout = Capture.stdout(() -> run("storage", "clean", "--dry-run"));
 
         // op "sweep" round-trips the engine; dry run must not touch the action cache.
         assertThat(stdout).contains("Dry run");
@@ -255,7 +257,7 @@ class CacheCommandTest {
 
         // Coordinates print in color; strip ANSI to assert on the visible text.
         String stdout =
-                TestAnsi.strip(capture(() -> run("repo", "search", "jackson", "--cache-dir", cache.toString())));
+                TestAnsi.strip(Capture.stdout(() -> run("repo", "search", "jackson", "--cache-dir", cache.toString())));
 
         assertThat(stdout).contains("com.fasterxml.jackson.core:jackson-databind");
         // newest-first version ordering
@@ -273,7 +275,7 @@ class CacheCommandTest {
 
     @Test
     void bare_storage_prints_help_not_usage(@TempDir Path tempDir) {
-        String plain = TestAnsi.strip(capture(() -> run("storage")));
+        String plain = TestAnsi.strip(Capture.stdout(() -> run("storage")));
         assertThat(plain).contains("Usage:");
         assertThat(plain).contains("usage");
         assertThat(plain).contains("dir");
@@ -289,7 +291,7 @@ class CacheCommandTest {
         // The store has to exist for there to be a table at all — an absent store reports itself.
         writeBlob(cc.jumpkick.cache.JkStores.store().resolve("sha256/aa/bb/blob"), new byte[4096]);
 
-        String plain = TestAnsi.strip(capture(() -> run("storage", "usage")));
+        String plain = TestAnsi.strip(Capture.stdout(() -> run("storage", "usage")));
         assertThat(plain).contains("Artifact Storage");
         assertThat(plain).contains("Jar Files");
         assertThat(plain).contains("Native Bins");
@@ -384,10 +386,6 @@ class CacheCommandTest {
         return file;
     }
 
-    private static int run(String... args) {
-        return Jk.execute(args);
-    }
-
     /** Run {@code body} with {@code System.in} fed from {@code input}. */
     private static String withStdin(String input, Supplier<String> body) {
         var original = System.in;
@@ -397,17 +395,5 @@ class CacheCommandTest {
         } finally {
             System.setIn(original);
         }
-    }
-
-    private static String capture(Runnable body) {
-        PrintStream original = System.out;
-        ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(buf));
-        try {
-            body.run();
-        } finally {
-            System.setOut(original);
-        }
-        return buf.toString(StandardCharsets.UTF_8);
     }
 }

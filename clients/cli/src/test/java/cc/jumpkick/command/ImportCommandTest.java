@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -209,9 +209,5 @@ class ImportCommandTest {
         // Source filename is reflected (e.g. Gradle).
         Path gradle = ImportCommand.defaultReportPath(tmp, "g-a-2.0", "build.gradle.kts");
         assertThat(gradle.getFileName().toString()).isEqualTo("g-a-2.0-1-build.gradle.kts-import.md");
-    }
-
-    private static int run(String... args) {
-        return Jk.execute(args);
     }
 }

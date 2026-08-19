@@ -1,27 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
-import com.sun.net.httpserver.HttpServer;
+import cc.jumpkick.cli.testing.MockMavenServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -34,31 +29,8 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class MvnGradleCommandTest {
 
-    private HttpServer server;
-    private URI base;
-    private final Map<String, byte[]> served = new HashMap<>();
-
-    @BeforeEach
-    void start() throws IOException {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            byte[] body = served.get(exchange.getRequestURI().getPath());
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        server.start();
-        base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-    }
-
-    @AfterEach
-    void stop() {
-        server.stop(0);
-    }
+    @RegisterExtension
+    final MockMavenServer maven = new MockMavenServer();
 
     @Test
     void mvn_passthrough_installs_and_forwards_args(@TempDir Path tempDir) throws Exception {
@@ -67,10 +39,10 @@ class MvnGradleCommandTest {
         Path argsLog = tempDir.resolve("argv.log");
         Path envLog = tempDir.resolve("env.log");
 
-        served.put("/apache-maven-3.9.9-bin.zip", recordingZip("apache-maven-3.9.9", "mvn", argsLog, envLog));
+        maven.served().put("/apache-maven-3.9.9-bin.zip", recordingZip("apache-maven-3.9.9", "mvn", argsLog, envLog));
         Files.writeString(
                 projectDir.resolve(".mvn/wrapper/maven-wrapper.properties"),
-                "distributionUrl=" + base.resolve("/apache-maven-3.9.9-bin.zip") + "\n");
+                "distributionUrl=" + maven.base().resolve("/apache-maven-3.9.9-bin.zip") + "\n");
 
         int exit = run(
                 "mvn",
@@ -102,10 +74,10 @@ class MvnGradleCommandTest {
         Path argsLog = tempDir.resolve("argv.log");
         Path envLog = tempDir.resolve("env.log");
 
-        served.put("/gradle-9.5.1-bin.zip", recordingZip("gradle-9.5.1", "gradle", argsLog, envLog));
+        maven.served().put("/gradle-9.5.1-bin.zip", recordingZip("gradle-9.5.1", "gradle", argsLog, envLog));
         Files.writeString(
                 projectDir.resolve("gradle/wrapper/gradle-wrapper.properties"),
-                "distributionUrl=" + base.resolve("/gradle-9.5.1-bin.zip") + "\n");
+                "distributionUrl=" + maven.base().resolve("/gradle-9.5.1-bin.zip") + "\n");
 
         int exit = run(
                 "gradle",
@@ -131,10 +103,10 @@ class MvnGradleCommandTest {
         Path argsLog = tempDir.resolve("argv.log");
         Path envLog = tempDir.resolve("env.log");
 
-        served.put("/apache-maven-3.9.9-bin.zip", recordingZip("apache-maven-3.9.9", "mvn", argsLog, envLog));
+        maven.served().put("/apache-maven-3.9.9-bin.zip", recordingZip("apache-maven-3.9.9", "mvn", argsLog, envLog));
         Files.writeString(
                 projectDir.resolve(".mvn/wrapper/maven-wrapper.properties"),
-                "distributionUrl=" + base.resolve("/apache-maven-3.9.9-bin.zip") + "\n");
+                "distributionUrl=" + maven.base().resolve("/apache-maven-3.9.9-bin.zip") + "\n");
 
         run(
                 "mvn",
@@ -150,7 +122,7 @@ class MvnGradleCommandTest {
                 .toMillis();
 
         // Drop the served archive; second invocation must not need it.
-        served.clear();
+        maven.served().clear();
         int exit = run(
                 "mvn",
                 "-C",
@@ -167,10 +139,6 @@ class MvnGradleCommandTest {
                 .toMillis();
         assertThat(secondMtime).isEqualTo(firstMtime);
         assertThat(Files.readString(argsLog).trim()).isEqualTo("second");
-    }
-
-    private static int run(String... args) {
-        return Jk.execute(args);
     }
 
     /**

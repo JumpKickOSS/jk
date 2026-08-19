@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -149,9 +149,5 @@ class CompileCommandTest {
     private static void scaffold(Path dir) throws IOException {
         run("new", dir.toString());
         ScaffoldTestSupport.writeEmptyLock(dir); // jk new no longer locks; check needs a lock
-    }
-
-    private static int run(String... args) {
-        return Jk.execute(args);
     }
 }

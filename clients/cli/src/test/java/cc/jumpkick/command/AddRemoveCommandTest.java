@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -275,9 +275,5 @@ class AddRemoveCommandTest {
         Files.createDirectories(tempDir.resolve("mod"));
         int exit = run("add", "./mod", "--ver", "1.0", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(64);
-    }
-
-    private static int run(String... args) {
-        return Jk.execute(args);
     }
 }

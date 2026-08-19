@@ -1,31 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
+import static cc.jumpkick.cli.testing.MockMavenServer.mavenPath;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
-import com.sun.net.httpserver.HttpServer;
+import cc.jumpkick.cli.testing.MockMavenServer;
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -45,31 +41,8 @@ class ToolRunCommandTest {
         System.setProperty("jk.m2.local", m2.toString());
     }
 
-    private HttpServer server;
-    private URI base;
-    private final Map<String, byte[]> served = new HashMap<>();
-
-    @BeforeEach
-    void start() throws IOException {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            byte[] body = served.get(exchange.getRequestURI().getPath());
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        server.start();
-        base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-    }
-
-    @AfterEach
-    void stop() {
-        server.stop(0);
-    }
+    @RegisterExtension
+    final MockMavenServer maven = new MockMavenServer();
 
     @Test
     void runs_a_solo_script_with_no_deps(@TempDir Path tempDir) throws Exception {
@@ -100,7 +73,7 @@ class ToolRunCommandTest {
 
     @Test
     void jbang_alias_resolves_the_catalog_and_runs_the_script(@TempDir Path tempDir) throws Exception {
-        served.put("/cat/jbang-catalog.json", """
+        maven.served().put("/cat/jbang-catalog.json", """
                 {
                   "aliases": {
                     "hello": {
@@ -110,15 +83,15 @@ class ToolRunCommandTest {
                   }
                 }
                 """.getBytes(StandardCharsets.UTF_8));
-        served.put("/cat/scripts/Hello.java", """
+        maven.served().put("/cat/scripts/Hello.java", """
                 public class Hello {
                     public static void main(String[] args) { System.exit(args.length); }
                 }
                 """.getBytes(StandardCharsets.UTF_8));
 
         Path state = tempDir.resolve("home");
-        run("trust", "add", "--state-dir", state.toString(), base.toString() + "/");
-        String host = base.getHost() + ":" + base.getPort();
+        run("trust", "add", "--state-dir", state.toString(), maven.base().toString() + "/");
+        String host = maven.base().getHost() + ":" + maven.base().getPort();
         int exit = run(
                 "tool",
                 "run",
@@ -134,9 +107,10 @@ class ToolRunCommandTest {
 
     @Test
     void jbang_alias_dependencies_and_java_options_are_honored(@TempDir Path tempDir) throws Exception {
-        servePom("com.example", "greeter", "1.0.0");
-        served.put(mavenPath("com.example", "greeter", "1.0.0", "jar"), Files.readAllBytes(buildGreeterJar(tempDir)));
-        served.put("/cat/jbang-catalog.json", """
+        maven.servePom("com.example", "greeter", "1.0.0");
+        maven.served()
+                .put(mavenPath("com.example", "greeter", "1.0.0", "jar"), Files.readAllBytes(buildGreeterJar(tempDir)));
+        maven.served().put("/cat/jbang-catalog.json", """
                 {
                   "aliases": {
                     "probe": {
@@ -147,7 +121,7 @@ class ToolRunCommandTest {
                   }
                 }
                 """.getBytes(StandardCharsets.UTF_8));
-        served.put("/cat/Probe.java", """
+        maven.served().put("/cat/Probe.java", """
                 public class Probe {
                     public static void main(String[] args) {
                         // The alias dep must be on the classpath (Greeter.exitCode() = 17)
@@ -160,8 +134,8 @@ class ToolRunCommandTest {
                 """.getBytes(StandardCharsets.UTF_8));
 
         Path state = tempDir.resolve("home");
-        run("trust", "add", "--state-dir", state.toString(), base.toString() + "/");
-        String host = base.getHost() + ":" + base.getPort();
+        run("trust", "add", "--state-dir", state.toString(), maven.base().toString() + "/");
+        String host = maven.base().getHost() + ":" + maven.base().getPort();
         int exit = run(
                 "tool",
                 "run",
@@ -170,17 +144,17 @@ class ToolRunCommandTest {
                 "--state-dir",
                 state.toString(),
                 "--repo-url",
-                base.toString(),
+                maven.base().toString(),
                 "probe@" + host + "/cat");
         assertThat(exit).isEqualTo(0);
     }
 
     @Test
     void jbang_alias_with_unknown_name_reports_the_catalog(@TempDir Path tempDir) throws Exception {
-        served.put("/cat/jbang-catalog.json", "{ \"aliases\": {} }".getBytes(StandardCharsets.UTF_8));
+        maven.served().put("/cat/jbang-catalog.json", "{ \"aliases\": {} }".getBytes(StandardCharsets.UTF_8));
         Path state = tempDir.resolve("home");
-        run("trust", "add", "--state-dir", state.toString(), base.toString() + "/");
-        String host = base.getHost() + ":" + base.getPort();
+        run("trust", "add", "--state-dir", state.toString(), maven.base().toString() + "/");
+        String host = maven.base().getHost() + ":" + maven.base().getPort();
         int exit = run("tool", "run", "--state-dir", state.toString(), "nope@" + host + "/cat");
         assertThat(exit).isEqualTo(70); // rendered IOException: catalog has no such alias
     }
@@ -251,7 +225,7 @@ class ToolRunCommandTest {
 
     @Test
     void untrusted_url_is_rejected_with_the_trust_hint(@TempDir Path tempDir) throws Exception {
-        served.put("/scripts/Remote.java", """
+        maven.served().put("/scripts/Remote.java", """
                 public class Remote {
                     public static void main(String[] args) { System.exit(0); }
                 }
@@ -265,20 +239,20 @@ class ToolRunCommandTest {
                 tempDir.resolve("home/cache").toString(),
                 "--state-dir",
                 tempDir.resolve("home").toString(),
-                base + "/scripts/Remote.java");
+                maven.base() + "/scripts/Remote.java");
         assertThat(exit).isEqualTo(64);
     }
 
     @Test
     void trusted_url_downloads_and_runs(@TempDir Path tempDir) throws Exception {
-        served.put("/scripts/Remote.java", """
+        maven.served().put("/scripts/Remote.java", """
                 public class Remote {
                     public static void main(String[] args) { System.exit(args.length); }
                 }
                 """.getBytes(StandardCharsets.UTF_8));
 
         Path state = tempDir.resolve("home");
-        assertThat(run("trust", "add", "--state-dir", state.toString(), base.toString() + "/"))
+        assertThat(run("trust", "add", "--state-dir", state.toString(), maven.base().toString() + "/"))
                 .isEqualTo(0);
         int exit = run(
                 "tool",
@@ -287,7 +261,7 @@ class ToolRunCommandTest {
                 tempDir.resolve("home/cache").toString(),
                 "--state-dir",
                 state.toString(),
-                base + "/scripts/Remote.java",
+                maven.base() + "/scripts/Remote.java",
                 "a",
                 "b");
         assertThat(exit).isEqualTo(2);
@@ -295,18 +269,18 @@ class ToolRunCommandTest {
 
     @Test
     void url_script_pulls_its_sources_siblings(@TempDir Path tempDir) throws Exception {
-        served.put("/x/Main.java", """
+        maven.served().put("/x/Main.java", """
                 //SOURCES Helper.java
                 public class Main {
                     public static void main(String[] args) { System.exit(Helper.code()); }
                 }
                 """.getBytes(StandardCharsets.UTF_8));
-        served.put("/x/Helper.java", """
+        maven.served().put("/x/Helper.java", """
                 public class Helper { static int code() { return 0; } }
                 """.getBytes(StandardCharsets.UTF_8));
 
         Path state = tempDir.resolve("home");
-        run("trust", "add", "--state-dir", state.toString(), base.toString() + "/");
+        run("trust", "add", "--state-dir", state.toString(), maven.base().toString() + "/");
         int exit = run(
                 "tool",
                 "run",
@@ -314,7 +288,7 @@ class ToolRunCommandTest {
                 tempDir.resolve("home/cache").toString(),
                 "--state-dir",
                 state.toString(),
-                base + "/x/Main.java");
+                maven.base() + "/x/Main.java");
         assertThat(exit).isEqualTo(0);
     }
 
@@ -524,8 +498,9 @@ class ToolRunCommandTest {
     @Test
     void resolves_dep_from_header(@TempDir Path tempDir) throws Exception {
         // Build a tiny "Greeter" jar that exposes a method our script will call.
-        servePom("com.example", "greeter", "1.0.0");
-        served.put(mavenPath("com.example", "greeter", "1.0.0", "jar"), Files.readAllBytes(buildGreeterJar(tempDir)));
+        maven.servePom("com.example", "greeter", "1.0.0");
+        maven.served()
+                .put(mavenPath("com.example", "greeter", "1.0.0", "jar"), Files.readAllBytes(buildGreeterJar(tempDir)));
 
         Path script = tempDir.resolve("CallGreeter.java");
         Files.writeString(script, """
@@ -547,7 +522,7 @@ class ToolRunCommandTest {
                 "--state-dir",
                 tempDir.resolve("home").toString(),
                 "--repo-url",
-                base.toString(),
+                maven.base().toString(),
                 script.toString());
         assertThat(exit).isEqualTo(17);
     }
@@ -787,19 +762,6 @@ class ToolRunCommandTest {
 
     // --- helpers -----------------------------------------------------------
 
-    private void servePom(String group, String artifact, String version) {
-        String pom = """
-                <?xml version="1.0" encoding="UTF-8"?>
-                <project xmlns="http://maven.apache.org/POM/4.0.0">
-                  <modelVersion>4.0.0</modelVersion>
-                  <groupId>%s</groupId>
-                  <artifactId>%s</artifactId>
-                  <version>%s</version>
-                </project>
-                """.formatted(group, artifact, version);
-        served.put(mavenPath(group, artifact, version, "pom"), pom.getBytes());
-    }
-
     /**
      * Build a jar containing {@code com.example.Greeter} with an {@code exitCode()} method returning
      * 17, used by the dep-resolution test as something the script can call.
@@ -832,21 +794,6 @@ class ToolRunCommandTest {
         return jar;
     }
 
-    private static String mavenPath(String group, String artifact, String version, String ext) {
-        return "/"
-                + group.replace('.', '/')
-                + "/"
-                + artifact
-                + "/"
-                + version
-                + "/"
-                + artifact
-                + "-"
-                + version
-                + "."
-                + ext;
-    }
-
     /** Drive the system git for local-repo fixtures (identity + signing pinned for hermeticity). */
     private static void git(Path dir, String... args) throws Exception {
         List<String> cmd = new ArrayList<>(List.of(
@@ -865,9 +812,5 @@ class ToolRunCommandTest {
         if (p.waitFor() != 0) {
             throw new IllegalStateException("git " + String.join(" ", args) + " failed:\n" + out);
         }
-    }
-
-    private static int run(String... args) {
-        return Jk.execute(args);
     }
 }

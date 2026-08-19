@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
@@ -39,9 +39,5 @@ class ImageCommandTest {
         assertThat(exit).isEqualTo(64);
         assertThat(tempDir.resolve("target/lib/widget-0.1.0.jar")).exists();
         assertThat(tempDir.resolve("jk-lock.toml")).exists();
-    }
-
-    private static int run(String... args) {
-        return Jk.execute(args);
     }
 }

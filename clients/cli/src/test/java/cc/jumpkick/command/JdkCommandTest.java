@@ -1,58 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.util.Hashing;
-import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.net.InetSocketAddress;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.function.IntSupplier;
 import java.util.regex.Pattern;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 @Tag("integration")
 class JdkCommandTest {
 
-    private HttpServer server;
-    private URI base;
-    private final Map<String, byte[]> served = new HashMap<>();
-
-    @BeforeEach
-    void start() throws IOException {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            byte[] body = served.get(exchange.getRequestURI().getPath());
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        server.start();
-        base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-    }
-
-    @AfterEach
-    void stop() {
-        server.stop(0);
-    }
+    @RegisterExtension
+    final MockMavenServer maven = new MockMavenServer();
 
     @Test
     void install_downloads_and_extracts(@TempDir Path tempDir) throws Exception {
@@ -64,14 +37,14 @@ class JdkCommandTest {
                         "bin/java", "#!/fake/java",
                         "bin/javac", "#!/fake/java",
                         "release", "JAVA_VERSION=21.0.5\n"));
-        served.put("/archives/jdk.tar.gz", archive);
+        maven.served().put("/archives/jdk.tar.gz", archive);
 
-        served.put(
+        maven.served().put(
                 "/feed/jdks.json",
                 feedJson(
                                 archive.length,
                                 Hashing.sha256Hex(archive),
-                                base.resolve("/archives/jdk.tar.gz").toString())
+                                maven.base().resolve("/archives/jdk.tar.gz").toString())
                         .getBytes(StandardCharsets.UTF_8));
 
         int exit = run(
@@ -81,7 +54,7 @@ class JdkCommandTest {
                 "--jdks-dir",
                 jdksDir.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString());
+                maven.base().resolve("/feed/jdks.json").toString());
         assertThat(exit).isEqualTo(0);
         assertThat(jdksDir.resolve("temurin-21.0.5").resolve("bin").resolve("java"))
                 .exists();
@@ -97,13 +70,13 @@ class JdkCommandTest {
                         "bin/java", "#!/fake/java",
                         "bin/javac", "#!/fake/java",
                         "release", "JAVA_VERSION=25\nIMPLEMENTOR=\"Oracle Corporation\"\nGRAALVM_VERSION=\"25\"\n"));
-        served.put("/archives/graal.tar.gz", archive);
-        served.put(
+        maven.served().put("/archives/graal.tar.gz", archive);
+        maven.served().put(
                 "/feed/jdks.json",
                 graalFeedJson(
                                 archive.length,
                                 Hashing.sha256Hex(archive),
-                                base.resolve("/archives/graal.tar.gz").toString())
+                                maven.base().resolve("/archives/graal.tar.gz").toString())
                         .getBytes(StandardCharsets.UTF_8));
 
         int exit = run(
@@ -113,7 +86,7 @@ class JdkCommandTest {
                 "--jdks-dir",
                 jdksDir.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString());
+                maven.base().resolve("/feed/jdks.json").toString());
         assertThat(exit).isEqualTo(0);
         // jk owns the on-disk name: <vendor>-<version> via jbPrefix (here version == major).
         assertThat(jdksDir.resolve("graalvm-25").resolve("bin").resolve("java")).exists();
@@ -128,7 +101,7 @@ class JdkCommandTest {
         // Point at a dead feed + empty cache so list stays offline (no outdated!
         // from the developer's real JetBrains cache / network).
         Path cache = tempDir.resolve("empty-feed.json");
-        String stdout = captureStdout(() -> run(
+        String stdout = Capture.stdout(() -> run(
                 "jdk",
                 "list",
                 "--jdks-dir",
@@ -153,19 +126,19 @@ class JdkCommandTest {
         makeJdkInstall(jdks.resolve("temurin-21.0.5"));
 
         byte[] dummyArchive = "stub".getBytes(StandardCharsets.UTF_8);
-        served.put(
+        maven.served().put(
                 "/feed/jdks.json",
-                multiEntryFeedJson(dummyArchive.length, Hashing.sha256Hex(dummyArchive), base.toString())
+                multiEntryFeedJson(dummyArchive.length, Hashing.sha256Hex(dummyArchive), maven.base().toString())
                         .getBytes(StandardCharsets.UTF_8));
 
-        String stdout = captureStdout(() -> run(
+        String stdout = Capture.stdout(() -> run(
                 "jdk",
                 "list",
                 "--all",
                 "--jdks-dir",
                 jdks.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString()));
+                maven.base().resolve("/feed/jdks.json").toString()));
 
         // --all surfaces catalog rows alongside installed rows. Higher major
         // (catalog-only) appears first; installed row follows.
@@ -185,18 +158,18 @@ class JdkCommandTest {
         // Default list consults the feed for outdated! markers but never prints
         // available-only download rows (those require --all).
         byte[] dummyArchive = "stub".getBytes(StandardCharsets.UTF_8);
-        served.put(
+        maven.served().put(
                 "/feed/jdks.json",
-                multiEntryFeedJson(dummyArchive.length, Hashing.sha256Hex(dummyArchive), base.toString())
+                multiEntryFeedJson(dummyArchive.length, Hashing.sha256Hex(dummyArchive), maven.base().toString())
                         .getBytes(StandardCharsets.UTF_8));
 
-        String stdout = captureStdout(() -> run(
+        String stdout = Capture.stdout(() -> run(
                 "jdk",
                 "list",
                 "--jdks-dir",
                 jdks.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString()));
+                maven.base().resolve("/feed/jdks.json").toString()));
 
         assertThat(stdout).contains("temurin-21.0.5");
         assertThat(stdout).contains("installed");
@@ -210,19 +183,19 @@ class JdkCommandTest {
 
         byte[] dummyArchive = "stub".getBytes(StandardCharsets.UTF_8);
         // Feed has 21.0.5 (newer) plus sentinel 99 for a never-installed major.
-        served.put(
+        maven.served().put(
                 "/feed/jdks.json",
-                multiEntryFeedJson(dummyArchive.length, Hashing.sha256Hex(dummyArchive), base.toString())
+                multiEntryFeedJson(dummyArchive.length, Hashing.sha256Hex(dummyArchive), maven.base().toString())
                         .getBytes(StandardCharsets.UTF_8));
 
-        String stdout = captureStdout(() -> run(
+        String stdout = Capture.stdout(() -> run(
                 "jdk",
                 "list",
                 "--all",
                 "--jdks-dir",
                 jdks.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString()));
+                maven.base().resolve("/feed/jdks.json").toString()));
 
         assertThat(stdout).contains("temurin-21.0.4");
         assertThat(stdout).contains("temurin-21.0.5"); // newer patch as available
@@ -237,18 +210,18 @@ class JdkCommandTest {
         makeJdkInstall(jdks.resolve("temurin-21.0.4"));
 
         byte[] dummyArchive = "stub".getBytes(StandardCharsets.UTF_8);
-        served.put(
+        maven.served().put(
                 "/feed/jdks.json",
-                multiEntryFeedJson(dummyArchive.length, Hashing.sha256Hex(dummyArchive), base.toString())
+                multiEntryFeedJson(dummyArchive.length, Hashing.sha256Hex(dummyArchive), maven.base().toString())
                         .getBytes(StandardCharsets.UTF_8));
 
-        String stdout = captureStdout(() -> run(
+        String stdout = Capture.stdout(() -> run(
                 "jdk",
                 "list",
                 "--jdks-dir",
                 jdks.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString()));
+                maven.base().resolve("/feed/jdks.json").toString()));
 
         assertThat(stdout).contains("temurin-21.0.4");
         assertThat(stdout).contains("outdated!");
@@ -454,7 +427,7 @@ class JdkCommandTest {
         Path jdks = tempDir.resolve("jdks");
         makeJdkInstall(jdks.resolve("temurin-21.0.5"));
 
-        String stdout = captureStdout(() -> run("jdks", "list", "--jdks-dir", jdks.toString()));
+        String stdout = Capture.stdout(() -> run("jdks", "list", "--jdks-dir", jdks.toString()));
         assertThat(stdout).contains("temurin-21.0.5");
     }
 
@@ -480,22 +453,6 @@ class JdkCommandTest {
     }
 
     // --- helpers ------------------------------------------------------------
-
-    private static int run(String... args) {
-        return Jk.execute(args);
-    }
-
-    private static String captureStdout(IntSupplier body) {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        PrintStream origOut = System.out;
-        System.setOut(new PrintStream(out));
-        try {
-            body.getAsInt();
-        } finally {
-            System.setOut(origOut);
-        }
-        return out.toString(StandardCharsets.UTF_8);
-    }
 
     private static byte[] buildTarGz(Path tempDir, String topLevelDir, Map<String, String> entries) throws Exception {
         Path workdir = tempDir.resolve("fixture-" + System.nanoTime());

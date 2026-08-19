@@ -4,9 +4,6 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -85,17 +82,5 @@ class StorageSurfacesRenderTest {
         assertThat(widths.stream().distinct())
                 .as("every boxed row renders the same visible width")
                 .hasSize(1);
-    }
-
-    private static String capture(Runnable body) {
-        PrintStream original = System.out;
-        ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(buf));
-        try {
-            body.run();
-        } finally {
-            System.setOut(original);
-        }
-        return buf.toString(StandardCharsets.UTF_8);
     }
 }

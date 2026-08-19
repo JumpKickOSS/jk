@@ -4,9 +4,8 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
+import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.Capture;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -60,16 +59,8 @@ class DoctorCommandTest {
         assertThat(stdout).containsPattern("ok:\\s+gradle 9.5.1");
     }
 
+    /** Strip ANSI so assertions match the text regardless of color/alignment styling. */
     private static String capture(Runnable body) {
-        PrintStream original = System.out;
-        ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(buf));
-        try {
-            body.run();
-        } finally {
-            System.setOut(original);
-        }
-        // Strip ANSI so assertions match the text regardless of color/alignment styling.
-        return buf.toString(StandardCharsets.UTF_8).replaceAll("\\x1b\\[[0-9;]*m", "");
+        return TestAnsi.strip(Capture.stdout(body));
     }
 }

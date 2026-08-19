@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.command.SelfNukeCommand.Target;
 import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayInputStream;
@@ -133,7 +134,7 @@ class SelfNukeCommandTest {
         Files.writeString(marker, "keep");
 
         // Single-target --cache uses the same path as `jk cache nuke` (no self plan table).
-        String out = captureStdout(() -> assertThat(Jk.execute("self", "nuke", "--cache", "--dry-run", "-y"))
+        String out = Capture.stdout(() -> assertThat(Jk.execute("self", "nuke", "--cache", "--dry-run", "-y"))
                 .isZero());
         assertThat(TestAnsi.strip(out)).containsIgnoringCase("dry run");
         assertThat(marker).exists();
@@ -282,7 +283,7 @@ class SelfNukeCommandTest {
         Path marker = cache.resolve("actions/dry-run-no-yes-keep");
         Files.writeString(marker, "keep");
 
-        String out = captureStdout(() ->
+        String out = Capture.stdout(() ->
                 assertThat(Jk.execute("self", "nuke", "--cache", "--dry-run")).isZero());
         assertThat(TestAnsi.strip(out)).containsIgnoringCase("dry run");
         assertThat(TestAnsi.strip(out)).doesNotContain("Nuke aborted");
@@ -310,17 +311,5 @@ class SelfNukeCommandTest {
             System.setOut(out);
             System.setErr(err);
         }
-    }
-
-    private static String captureStdout(Runnable body) {
-        PrintStream out = System.out;
-        ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(buf, true, StandardCharsets.UTF_8));
-        try {
-            body.run();
-        } finally {
-            System.setOut(out);
-        }
-        return buf.toString(StandardCharsets.UTF_8);
     }
 }

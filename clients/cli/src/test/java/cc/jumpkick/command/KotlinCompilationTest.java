@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -222,9 +222,5 @@ class KotlinCompilationTest {
 
         int exit = run("compile", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg());
         assertThat(exit).isEqualTo(0);
-    }
-
-    private static int run(String... args) {
-        return Jk.execute(args);
     }
 }

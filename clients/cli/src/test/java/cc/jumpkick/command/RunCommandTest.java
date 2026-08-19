@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -173,10 +173,6 @@ class RunCommandTest {
     void no_jk_toml_returns_usage_error(@TempDir Path tempDir) {
         int exit = run("run", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(64);
-    }
-
-    private static int run(String... args) {
-        return Jk.execute(args);
     }
 
     /**

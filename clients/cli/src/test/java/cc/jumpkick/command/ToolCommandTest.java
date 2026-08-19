@@ -4,9 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
+import cc.jumpkick.cli.testing.Capture;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
@@ -19,13 +17,13 @@ class ToolCommandTest {
     @Test
     void dir_prints_tools_root(@TempDir Path tempDir) {
         Path tools = tempDir.resolve("tools");
-        String stdout = capture(() -> Jk.execute("tool", "dir", "--tools-dir", tools.toString()));
+        String stdout = Capture.stdout(() -> Jk.execute("tool", "dir", "--tools-dir", tools.toString()));
         assertThat(stdout.trim()).isEqualTo(tools.toString());
     }
 
     @Test
     void list_reports_empty_when_nothing_installed(@TempDir Path tempDir) {
-        String stdout = capture(() -> Jk.execute(
+        String stdout = Capture.stdout(() -> Jk.execute(
                 "tool",
                 "list",
                 "--state-dir",
@@ -44,7 +42,7 @@ class ToolCommandTest {
         Files.createDirectories(bin);
         Files.writeString(bin.resolve("widget"), "#!/bin/sh\n");
 
-        String stdout = capture(
+        String stdout = Capture.stdout(
                 () -> Jk.execute("tool", "list", "--state-dir", tempDir.toString(), "--bin-dir", bin.toString()));
         // Sorted alphabetically: alpha first, then widget.
         assertThat(stdout)
@@ -69,7 +67,7 @@ class ToolCommandTest {
 
     @Test
     void uninstall_unknown_tool_is_a_noop(@TempDir Path tempDir) {
-        String stdout = capture(() -> Jk.execute(
+        String stdout = Capture.stdout(() -> Jk.execute(
                 "tool",
                 "uninstall",
                 "ghost",
@@ -83,10 +81,10 @@ class ToolCommandTest {
     @Test
     void exec_is_a_hidden_alias_of_run() {
         // `jk tool exec --help` renders `jk tool run`'s help (dotnet muscle memory).
-        String stdout = capture(() -> Jk.execute("tool", "exec", "--help"));
+        String stdout = Capture.stdout(() -> Jk.execute("tool", "exec", "--help"));
         assertThat(stdout).contains("jk tool run");
         // Hidden per the hidden-surface policy: the parent's help lists only `run`.
-        String toolHelp = capture(() -> Jk.execute("tool", "--help"));
+        String toolHelp = Capture.stdout(() -> Jk.execute("tool", "--help"));
         assertThat(toolHelp).doesNotContain("exec");
     }
 
@@ -96,17 +94,5 @@ class ToolCommandTest {
         Files.writeString(
                 envDir.resolve("env.json"),
                 "{\n  \"binName\": \"" + bin + "\",\n  \"primary\": \"" + coord + "\"\n}\n");
-    }
-
-    private static String capture(Runnable body) {
-        PrintStream original = System.out;
-        ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(buf));
-        try {
-            body.run();
-        } finally {
-            System.setOut(original);
-        }
-        return buf.toString(StandardCharsets.UTF_8);
     }
 }

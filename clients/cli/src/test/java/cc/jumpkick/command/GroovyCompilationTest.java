@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -242,9 +242,5 @@ class GroovyCompilationTest {
         if (Files.isRegularFile(lock)) {
             assertThat(Files.readString(lock)).contains("org.apache.groovy:groovy");
         }
-    }
-
-    private static int run(String... args) {
-        return Jk.execute(args);
     }
 }

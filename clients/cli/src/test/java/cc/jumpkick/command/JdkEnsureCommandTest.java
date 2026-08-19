@@ -1,60 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.util.Hashing;
-import com.sun.net.httpserver.HttpServer;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.PrintStream;
-import java.net.InetSocketAddress;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.IntSupplier;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /** Integration tests for {@code jk jdk ensure <spec>}. */
 @Tag("integration")
 class JdkEnsureCommandTest {
 
-    private HttpServer server;
-    private URI base;
-    private final Map<String, byte[]> served = new HashMap<>();
-
-    @BeforeEach
-    void start() throws IOException {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            byte[] body = served.get(exchange.getRequestURI().getPath());
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        server.start();
-        base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-    }
-
-    @AfterEach
-    void stop() {
-        server.stop(0);
-    }
+    @RegisterExtension
+    final MockMavenServer maven = new MockMavenServer();
 
     @Test
     void bare_major_satisfied_by_installed_point_release(@TempDir Path tempDir) throws Exception {
@@ -63,7 +34,7 @@ class JdkEnsureCommandTest {
 
         // Fast path: an installed 25.x satisfies `25`. No --feed-url → proves
         // the resolution is offline.
-        String stdout = captureStdout(() -> run("jdk", "ensure", "25", "--jdks-dir", jdks.toString()));
+        String stdout = Capture.stdout(() -> run("jdk", "ensure", "25", "--jdks-dir", jdks.toString()));
         assertThat(stdout).contains("temurin-25.0.2").contains("is available at");
         assertThat(jdks.resolve("temurin-25.0.3")).doesNotExist();
     }
@@ -82,7 +53,7 @@ class JdkEnsureCommandTest {
                 "--jdks-dir",
                 jdks.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString());
+                maven.base().resolve("/feed/jdks.json").toString());
         assertThat(exit).isEqualTo(0);
         assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
                 .exists();
@@ -94,7 +65,7 @@ class JdkEnsureCommandTest {
         makeJdkInstall(jdks.resolve("temurin-25.0.4"), "25.0.4");
 
         // 25.0.4 >= 25.0.3 floor → satisfied, no install, offline.
-        String stdout = captureStdout(() -> run("jdk", "ensure", "25.0.3", "--jdks-dir", jdks.toString()));
+        String stdout = Capture.stdout(() -> run("jdk", "ensure", "25.0.3", "--jdks-dir", jdks.toString()));
         assertThat(stdout).contains("temurin-25.0.4").contains("is available at");
         assertThat(jdks.resolve("temurin-25.0.3")).doesNotExist();
     }
@@ -113,7 +84,7 @@ class JdkEnsureCommandTest {
                 "--jdks-dir",
                 jdks.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString());
+                maven.base().resolve("/feed/jdks.json").toString());
         assertThat(exit).isEqualTo(0);
         // Older LTS point release didn't satisfy `lts` → 25.0.3 installed.
         assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
@@ -132,7 +103,7 @@ class JdkEnsureCommandTest {
                 "--jdks-dir",
                 jdks.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString());
+                maven.base().resolve("/feed/jdks.json").toString());
         assertThat(exit).isEqualTo(0);
         assertThat(jdks.resolve("temurin-26.0.1").resolve("bin").resolve("java"))
                 .exists();
@@ -143,14 +114,14 @@ class JdkEnsureCommandTest {
         Path jdks = tempDir.resolve("jdks");
         serveFeed(tempDir, feedEntry(25, "25.0.3", true));
 
-        String stdout = captureStdout(() -> run(
+        String stdout = Capture.stdout(() -> run(
                 "jdk",
                 "ensure",
                 "99",
                 "--jdks-dir",
                 jdks.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString()));
+                maven.base().resolve("/feed/jdks.json").toString()));
         assertThat(stdout)
                 .contains("no JDK matches")
                 .contains("installing the latest LTS")
@@ -171,14 +142,14 @@ class JdkEnsureCommandTest {
                 feedEntry(26, "26.0.1", false),
                 vendorEntry("Oracle", "OpenJDK", "openjdk", 26, "26.0.1", true));
 
-        String stdout = captureStdout(() -> run(
+        String stdout = Capture.stdout(() -> run(
                 "jdk",
                 "ensure",
                 "26",
                 "--jdks-dir",
                 jdks.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString()));
+                maven.base().resolve("/feed/jdks.json").toString()));
 
         assertThat(stdout)
                 .contains("Unable to locate a suitable JDK")
@@ -206,7 +177,7 @@ class JdkEnsureCommandTest {
                 "--jdks-dir",
                 jdks.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString());
+                maven.base().resolve("/feed/jdks.json").toString());
         assertThat(exit).isEqualTo(0);
         // jk owns the on-disk name: <vendor>-<version> via jbPrefix (here version == major).
         assertThat(jdks.resolve("graalvm-25").resolve("bin").resolve("java")).exists();
@@ -219,14 +190,14 @@ class JdkEnsureCommandTest {
         makeGraalvmInstall(jdks.resolve("graalvm-jdk-25"), "25");
         serveFeed(tempDir, vendorEntry("Oracle", "GraalVM", "graalvm-jdk", 25, "25", false));
 
-        String stdout = captureStdout(() -> run(
+        String stdout = Capture.stdout(() -> run(
                 "jdk",
                 "ensure",
                 "native",
                 "--jdks-dir",
                 jdks.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString()));
+                maven.base().resolve("/feed/jdks.json").toString()));
         assertThat(stdout).contains("graalvm-jdk-25").contains("is available at");
     }
 
@@ -251,15 +222,15 @@ class JdkEnsureCommandTest {
                             "bin/javac", "#!/fake/java",
                             "release", "JAVA_VERSION=\"" + s.version() + "\"\n"));
             String archivePath = "/archives/" + s.installFolder() + ".tar.gz";
-            served.put(archivePath, archive);
+            maven.served().put(archivePath, archive);
             entries.add(entryJson(
                     s,
                     archive.length,
                     Hashing.sha256Hex(archive),
-                    base.resolve(archivePath).toString()));
+                    maven.base().resolve(archivePath).toString()));
         }
         String feed = "{\n  \"jdks\": [\n" + String.join(",\n", entries) + "\n  ]\n}";
-        served.put("/feed/jdks.json", feed.getBytes(StandardCharsets.UTF_8));
+        maven.served().put("/feed/jdks.json", feed.getBytes(StandardCharsets.UTF_8));
     }
 
     private record EntrySpec(
@@ -361,21 +332,5 @@ class JdkEnsureCommandTest {
                         + "GRAALVM_VERSION=\""
                         + version
                         + "\"\n");
-    }
-
-    private static int run(String... args) {
-        return Jk.execute(args);
-    }
-
-    private static String captureStdout(IntSupplier body) {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        PrintStream origOut = System.out;
-        System.setOut(new PrintStream(out));
-        try {
-            body.getAsInt();
-        } finally {
-            System.setOut(origOut);
-        }
-        return out.toString(StandardCharsets.UTF_8);
     }
 }

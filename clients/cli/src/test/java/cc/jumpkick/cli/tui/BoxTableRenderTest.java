@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.TestAnsi;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -11,17 +12,13 @@ import org.junit.jupiter.api.Test;
 /** the shared list-command table renderer. */
 class BoxTableRenderTest {
 
-    private static String stripAnsi(String s) {
-        return s.replaceAll("\\[[0-9;]*m", "");
-    }
-
     @Test
     void renders_title_header_rows_and_close() {
         List<String> out =
                 Table.render("Things", List.of("Name", "Value"), List.of(List.of("alpha", "1"), List.of("b", "22")));
         // title + top divider + header + divider + 2 rows + close
         assertThat(out).hasSize(7);
-        String plain = stripAnsi(String.join("\n", out));
+        String plain = TestAnsi.strip(String.join("\n", out));
         assertThat(plain).contains("Things");
         assertThat(plain).contains("Name");
         assertThat(plain).contains("alpha");
@@ -46,14 +43,14 @@ class BoxTableRenderTest {
     void pads_short_rows_and_truncates_long_ones() {
         List<String> out =
                 Table.render("T", List.of("A", "B"), List.of(List.of("only-a"), List.of("x", "y", "ignored")));
-        String plain = stripAnsi(String.join("\n", out));
+        String plain = TestAnsi.strip(String.join("\n", out));
         assertThat(plain).contains("only-a");
         assertThat(plain).doesNotContain("ignored");
     }
 
     /** Visible terminal columns of a line once ANSI chrome is stripped (wcwidth-aware). */
     private static int visibleColumns(String s) {
-        return new org.jline.utils.AttributedString(stripAnsi(s)).columnLength();
+        return new org.jline.utils.AttributedString(TestAnsi.strip(s)).columnLength();
     }
 
     private static void assertUniformWidth(List<String> out) {
@@ -105,7 +102,7 @@ class BoxTableRenderTest {
         List<String> out = Table.render("Empty", List.of("A", "B"), List.of());
         // title + top divider + header + close — no ├┼┤ between header and bottom border
         assertThat(out).hasSize(4);
-        assertThat(stripAnsi(String.join("\n", out))).doesNotContain("┼");
+        assertThat(TestAnsi.strip(String.join("\n", out))).doesNotContain("┼");
         assertUniformWidth(out);
     }
 
@@ -141,10 +138,10 @@ class BoxTableRenderTest {
     void hybrid_settle_lines_carry_command_and_message() {
         // Settle contract for wave-2 hybrids (tool install / auth logout / history rm):
         // one wedge line naming the command and the outcome.
-        String ok = stripAnsi(CommandWedge.ok("Tool", "Installed foo -> /bin/foo"));
+        String ok = TestAnsi.strip(CommandWedge.ok("Tool", "Installed foo -> /bin/foo"));
         assertThat(ok).contains("Tool");
         assertThat(ok).contains("Installed foo");
-        String fail = stripAnsi(CommandWedge.fail("Verify", "artifact mismatch"));
+        String fail = TestAnsi.strip(CommandWedge.fail("Verify", "artifact mismatch"));
         assertThat(fail).contains("Verify");
         assertThat(fail).contains("artifact mismatch");
     }
