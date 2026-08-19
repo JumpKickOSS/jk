@@ -226,6 +226,20 @@ public final class LibraryCatalog {
         return Optional.empty();
     }
 
+    /**
+     * Reverse lookup: first short name whose module key equals {@code moduleKey} (layers in lookup
+     * order). Empty when blank or unmapped.
+     */
+    public Optional<String> nameForModule(String moduleKey) {
+        if (moduleKey == null || moduleKey.isBlank()) return Optional.empty();
+        for (Layer layer : layers) {
+            for (var e : layer.libraries.entrySet()) {
+                if (moduleKey.equals(e.getValue().moduleKey())) return Optional.of(e.getKey());
+            }
+        }
+        return Optional.empty();
+    }
+
     /** All names across every layer, sorted lexicographically. */
     public Set<String> names() {
         Set<String> all = new TreeSet<>();

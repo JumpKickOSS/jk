@@ -96,6 +96,16 @@ class LibraryCatalogTest {
     }
 
     @Test
+    void name_for_module_reverse_looks_up_short_name() {
+        LibraryCatalog r = LibraryCatalog.bundled();
+        assertThat(r.nameForModule("org.junit.jupiter:junit-jupiter")).contains("junit-jupiter");
+        assertThat(r.nameForModule("info.picocli:picocli")).contains("picocli");
+        assertThat(r.nameForModule("com.example:missing")).isEmpty();
+        assertThat(r.nameForModule(null)).isEmpty();
+        assertThat(r.nameForModule("  ")).isEmpty();
+    }
+
+    @Test
     void unknown_names_return_empty() {
         assertThat(LibraryCatalog.bundled().lookup("does-not-exist-xyz")).isEmpty();
         assertThat(LibraryCatalog.bundled().lookup(null)).isEmpty();

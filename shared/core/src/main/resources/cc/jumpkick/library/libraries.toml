@@ -90,6 +90,8 @@ kotlin-reflect               = "org.jetbrains.kotlin:kotlin-reflect"
 kotlin-test                  = "org.jetbrains.kotlin:kotlin-test"
 kotlinx-coroutines-core      = "org.jetbrains.kotlinx:kotlinx-coroutines-core"
 kotlinx-serialization-json   = "org.jetbrains.kotlinx:kotlinx-serialization-json"
+ktor-server-core             = "io.ktor:ktor-server-core"
+koin-core                    = "io.insert-koin:koin-core"
 
 # Database / persistence
 postgresql                   = "org.postgresql:postgresql"

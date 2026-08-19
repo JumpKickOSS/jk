@@ -999,9 +999,13 @@ public final class NewCommand implements CliCommand {
         return NewWizard.buildWizard(candidates, catalog, groupGuess, parent, hasDefaultJdk, isInit);
     }
 
-    /** Catalog short names as multi-select choices (bundled offline; type-to-filter in the wizard). */
+    /** Curated defaults + host declared-dep frequency for the New wizard library picker. */
     static List<cc.jumpkick.cli.tui.Choice> libraryPickerChoices() {
         return NewWizard.libraryPickerChoices();
+    }
+
+    static List<cc.jumpkick.cli.tui.Choice> libraryPickerChoices(String lang) {
+        return NewWizard.libraryPickerChoices(lang);
     }
 
     /**
