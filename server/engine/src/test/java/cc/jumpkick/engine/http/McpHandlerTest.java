@@ -11,11 +11,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**MCP JSON-RPC tools without a full HTTP bind. */
-@Tag("integration")
 class McpHandlerTest {
 
     private final EngineHttpJobs jobs = new EngineHttpJobs() {
