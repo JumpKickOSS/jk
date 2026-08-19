@@ -630,6 +630,7 @@ public final class JUnitLauncher {
         var workerThreads = new ArrayList<Thread>();
         int[] exits = new int[actualWorkers];
         var captures = new ArrayList<CaptureBuffer>();
+        var lastClasses = new ArrayList<java.util.concurrent.atomic.AtomicReference<String>>();
 
         for (int w = 0; w < actualWorkers; w++) {
             // workerIdBase keeps ids unique across the sharded and serial-tag pools, so the
@@ -642,10 +643,12 @@ public final class JUnitLauncher {
             aggregators.add(agg);
             final var crash = new CaptureBuffer();
             captures.add(crash);
+            final var last = new java.util.concurrent.atomic.AtomicReference<String>("");
+            lastClasses.add(last);
             final int totalWorkers = actualWorkers;
             var t = new Thread(
                     () -> exits[idx] = driveWorker(
-                            javaBinary, classpath, workerId, totalWorkers, args, queue, agg, listener, crash),
+                            javaBinary, classpath, workerId, totalWorkers, args, queue, agg, listener, crash, last),
                     "jk-test-worker-" + workerId);
             t.start();
             workerThreads.add(t);
@@ -690,6 +693,28 @@ public final class JUnitLauncher {
                     List.of(new TestSummary.Failure(
                             "(test run)", "", "runner exited " + worstExit, crash.toString(), moduleLabel, "", 0)));
         }
+        // A worker that died mid-suite while its siblings kept going used to vanish silently:
+        // its in-flight class was neither run nor reported, so the suite went green with a
+        // shortfall. Surface every abnormal exit as a failure naming the worker's last class
+        // (idle-watchdog kills land here too — JK-2202). Skipped on user cancel: those exits
+        // are the kill we asked for.
+        if (worstExit != 0 && !cc.jumpkick.run.SessionCancel.cancelled()) {
+            for (int i = 0; i < actualWorkers; i++) {
+                if (exits[i] == 0) continue;
+                total += 1;
+                failed += 1;
+                String cls = lastClasses.get(i).get();
+                allFailures.add(new TestSummary.Failure(
+                        "(worker " + (workerIdBase + i + 1) + ")",
+                        "",
+                        "test worker exited " + exits[i] + " mid-run"
+                                + (cls.isBlank() ? "" : " (last class dispatched: " + cls + ")"),
+                        captures.get(i).text(),
+                        moduleLabel,
+                        cls,
+                        workerIdBase + i + 1));
+            }
+        }
         return new TestSummary(total, succeeded, failed, skipped, classCount, allFailures, walls);
     }
 
@@ -715,6 +740,25 @@ public final class JUnitLauncher {
         return env;
     }
 
+    /**
+     * Inactivity window for pull-mode test workers. Generous: single tests are legitimately
+     * slow (the Android ladder runs minutes per class), but the runner emits an event per test
+     * start/finish, so a silent worker is a hung one — a JLine tty probe once stalled a worker
+     * (and the whole suite) for 3.5h with zero output (JK-2201/JK-2202). Override:
+     * {@code -Djk.test.worker.idle.ms} / {@code JK_TEST_WORKER_IDLE_MS}; {@code 0} disables.
+     */
+    static long workerIdleTimeoutMs() {
+        String prop = System.getProperty("jk.test.worker.idle.ms", System.getenv("JK_TEST_WORKER_IDLE_MS"));
+        if (prop != null && !prop.isBlank()) {
+            try {
+                return Long.parseLong(prop.trim());
+            } catch (NumberFormatException ignored) {
+                // fall through to default
+            }
+        }
+        return 10 * 60_000L;
+    }
+
     private int driveWorker(
             Path javaBinary,
             String classpath,
@@ -724,13 +768,15 @@ public final class JUnitLauncher {
             ConcurrentLinkedDeque<String> queue,
             ResultAggregator aggregator,
             TestProgressListener listener,
-            CaptureBuffer crash) {
+            CaptureBuffer crash,
+            java.util.concurrent.atomic.AtomicReference<String> lastClass) {
         // Pull protocol: each "ready" pulls the next class from the shared queue.
         BiConsumer<String, PluginProcess.Conversation> handler = (json, convo) -> {
             String event = Jsonl.str(json, "event");
             if ("ready".equals(event)) {
                 String next = queue.pollFirst();
                 if (next != null) {
+                    lastClass.set(next);
                     convo.send("RUN " + next);
                 } else {
                     convo.send("DONE");
@@ -768,7 +814,8 @@ public final class JUnitLauncher {
                     env,
                     inferredModuleDir,
                     handler,
-                    passthrough);
+                    passthrough,
+                    workerIdleTimeoutMs());
         } catch (IOException e) {
             listener.onUserOutput(workerId, "reader error: " + e.getMessage());
             return -1;
