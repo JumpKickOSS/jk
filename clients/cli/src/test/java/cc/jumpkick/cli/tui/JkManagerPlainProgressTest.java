@@ -112,7 +112,10 @@ class JkManagerPlainProgressTest {
                     String out = buf.toString(StandardCharsets.UTF_8);
                     assertThat(out).contains("jk: * Build > initializing...");
                     assertThat(out).contains("jk: * Build > cc.jumpkick:jk :: 0% - prepare");
-                    assertThat(out).contains("jk: * Build > cc.jumpkick:jk :: 0% (ETA ~1m 31s) - start");
+                    // The countdown is wall-clock anchored: the seconds digit can slip while a
+                    // loaded suite JVM gets from plan() to the render, so pin the announce (ETA
+                    // present at 0%, before any module work), not the exact second.
+                    assertThat(out).containsPattern("jk: \\* Build > cc\\.jumpkick:jk :: 0% \\(ETA ~1m \\d{1,2}s\\) - start");
                 });
     }
 
