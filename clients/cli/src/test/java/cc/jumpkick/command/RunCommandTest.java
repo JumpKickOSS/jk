@@ -148,7 +148,12 @@ class RunCommandTest {
                 "traditional",
                 tempDir.toString());
         Path toml = tempDir.resolve("jk.toml");
-        Files.writeString(toml, Files.readString(toml).replaceAll("(?m)^main\\s*=.*$", ""));
+        // Strip the whole [application] table, not just its main line: since the
+        // install-from-[application] rework, a declared table without main is a PARSE error
+        // ("[application].main is required") and the run never reaches the scan. The
+        // ambiguous-scan contract under test needs no table at all.
+        Files.writeString(
+                toml, Files.readString(toml).replaceAll("(?ms)^\\[application\\].*?(?=^\\[|\\z)", ""));
         Path srcDir = tempDir.resolve("src/main/java/com/example");
         Files.createDirectories(srcDir);
         Files.writeString(srcDir.resolve("Main.java"), """

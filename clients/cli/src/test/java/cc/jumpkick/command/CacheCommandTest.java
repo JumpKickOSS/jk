@@ -251,13 +251,25 @@ class CacheCommandTest {
     @Test
     void repo_search_lists_cached_coordinates_with_versions(@TempDir Path tempDir) {
         Path cache = tempDir.resolve("cache");
-        seedRepo(cache, "com.fasterxml.jackson.core", "jackson-databind", "2.18.2");
-        seedRepo(cache, "com.fasterxml.jackson.core", "jackson-databind", "2.17.1");
-        seedRepo(cache, "com.google.guava", "guava", "33.0.0-jre");
+        // Overlay a private store BEFORE seeding: seedRepo materializes into the ambient
+        // store (post-JK-2176, repos live store-side and search walks only the store), and
+        // the suite-shared store legitimately holds jackson artifacts of its own — this test
+        // must see exactly the rows it seeds.
+        String prevStore = System.getProperty("jk.env.JK_STORE_DIR");
+        System.setProperty("jk.env.JK_STORE_DIR", tempDir.resolve("store").toString());
+        String stdout;
+        try {
+            seedRepo(cache, "com.fasterxml.jackson.core", "jackson-databind", "2.18.2");
+            seedRepo(cache, "com.fasterxml.jackson.core", "jackson-databind", "2.17.1");
+            seedRepo(cache, "com.google.guava", "guava", "33.0.0-jre");
 
-        // Coordinates print in color; strip ANSI to assert on the visible text.
-        String stdout =
-                TestAnsi.strip(Capture.stdout(() -> run("repo", "search", "jackson", "--cache-dir", cache.toString())));
+            // Coordinates print in color; strip ANSI to assert on the visible text.
+            stdout = TestAnsi.strip(
+                    Capture.stdout(() -> run("repo", "search", "jackson", "--cache-dir", cache.toString())));
+        } finally {
+            if (prevStore == null) System.clearProperty("jk.env.JK_STORE_DIR");
+            else System.setProperty("jk.env.JK_STORE_DIR", prevStore);
+        }
 
         assertThat(stdout).contains("com.fasterxml.jackson.core:jackson-databind");
         // newest-first version ordering

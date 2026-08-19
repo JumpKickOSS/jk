@@ -26,10 +26,49 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
- * Uses the suite's isolated {@code JK_HOME} so nuke only touches throwaway trees under the test
- * harness, never the developer's real product dirs.
+ * Runs against a per-test {@code JK_HOME}/{@code JK_STATE_DIR} overlay ({@code jk.env.*} seam,
+ * same as {@link cc.jumpkick.cli.engine.IsolatedStoreExtension}) — NOT the suite-shared home.
+ * These tests genuinely nuke the store and stub {@code lib/jk-engine.jar}; against the shared
+ * home that wiped the CAS/worker libs and poisoned every later class's nested engine spawn with
+ * a 6-byte jar (mass exit-70s across the integration phase, JK-2204).
  */
 class SelfNukeCommandTest {
+
+    @org.junit.jupiter.api.io.TempDir
+    Path isolatedHome;
+
+    private String prevHome;
+    private String prevState;
+
+    @org.junit.jupiter.api.BeforeEach
+    void isolateHome() throws IOException {
+        prevHome = System.getProperty("jk.env.JK_HOME");
+        prevState = System.getProperty("jk.env.JK_STATE_DIR");
+        System.setProperty("jk.env.JK_HOME", isolatedHome.toString());
+        System.setProperty("jk.env.JK_STATE_DIR", Files.createDirectories(isolatedHome.resolve("state"))
+                .toString());
+        // self nuke is engine-hosted: give the isolated home a REAL launchable engine by
+        // copying the suite home's materialized install (EngineTestExtension ran beforeAll,
+        // before this overlay). A stub jar here just reproduces "no build engine" (exit 1).
+        String suiteHome = System.getenv("JK_HOME");
+        if (suiteHome != null && !suiteHome.isBlank()) {
+            Path from = Path.of(suiteHome).resolve("lib");
+            Path to = Files.createDirectories(isolatedHome.resolve("lib"));
+            for (String f : List.of("jk-engine.jar", "jk-engine.toml")) {
+                if (Files.isRegularFile(from.resolve(f))) {
+                    Files.copy(from.resolve(f), to.resolve(f));
+                }
+            }
+        }
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void restoreHome() {
+        if (prevHome == null) System.clearProperty("jk.env.JK_HOME");
+        else System.setProperty("jk.env.JK_HOME", prevHome);
+        if (prevState == null) System.clearProperty("jk.env.JK_STATE_DIR");
+        else System.setProperty("jk.env.JK_STATE_DIR", prevState);
+    }
 
     @Test
     void wipeRoots_never_includes_bin_jdks_product_lib_or_store_lib() throws Exception {
@@ -70,12 +109,13 @@ class SelfNukeCommandTest {
     @Tag("integration")
     void store_nuke_wipes_cas_including_lib_keeps_engine_jar_and_bin() throws Exception {
         JkDirs dirs = JkDirs.current();
+        // The isolated home carries a REAL materialized engine (isolateHome copy) — the hosted
+        // nuke needs it to run, and its survival is exactly what this test asserts.
         Path engineJar = dirs.productLibDir().resolve("jk-engine.jar");
         Path cas = dirs.storeDir().resolve("sha256");
         Path lib = dirs.libDir().resolve("jk-java-compiler");
         Path bin = dirs.binDirectory();
         Files.createDirectories(engineJar.getParent());
-        Files.writeString(engineJar, "engine");
         Files.createDirectories(cas.resolve("ab"));
         Files.writeString(cas.resolve("ab/blob"), "cas");
         Files.createDirectories(lib);
