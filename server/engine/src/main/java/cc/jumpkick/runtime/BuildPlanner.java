@@ -980,6 +980,19 @@ public final class BuildPlanner {
         return PlannerSupport.runTestsStampKey(dir, project, compact, mainClasses, lockFile, testRuntimeCp);
     }
 
+    public static String runTestsStampKey(
+            Path dir,
+            JkBuild project,
+            boolean compact,
+            Path mainClasses,
+            String mainClassesFingerprint,
+            Path lockFile,
+            List<Path> testRuntimeCp)
+            throws IOException {
+        return PlannerSupport.runTestsStampKey(
+                dir, project, compact, mainClasses, mainClassesFingerprint, lockFile, testRuntimeCp);
+    }
+
     static List<String> testStampExtras(
             Map<String, String> workerJars,
             cc.jumpkick.config.TestSelection selection,

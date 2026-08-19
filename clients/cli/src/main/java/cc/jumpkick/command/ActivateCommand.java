@@ -107,9 +107,7 @@ public final class ActivateCommand implements CliCommand {
     private int writeActivation(Shell shell) throws IOException {
         Path rcFile = shell.rcFile(home());
         String rcDisplay = shell.rcFileDisplay();
-        Path binDir = JkDirs.binDir();
-        Path dataDir = JkDirs.data();
-        String block = ShellInstallerBlock.render(shell, binDir, home());
+        String block = ShellInstallerBlock.render(shell, JkDirs.binDir(), home());
         NerdFontCaps nerdFont = GlobalConfig.nerdFont();
         Theme t = Theme.active();
 
@@ -130,7 +128,7 @@ public final class ActivateCommand implements CliCommand {
 
         if (rcFile.getParent() != null) Files.createDirectories(rcFile.getParent());
         Files.writeString(rcFile, next.endsWith("\n") ? next : next + "\n", StandardCharsets.UTF_8);
-        JkxLink.Result jkx = ensureJkxLauncher();
+        ensureJkxLauncher();
         ShellCompletions.writeAll();
         CommandWedge.envelopeStart();
         CliOutput.out(JkWedge.chipLine(
@@ -138,18 +136,6 @@ public final class ActivateCommand implements CliCommand {
                 "Activate",
                 nerdFont,
                 "Shell integration configured in " + Theme.colorize(rcDisplay, t.path())));
-        CliOutput.out("  PATH ← " + Theme.colorize(binDir.toString(), t.path()) + "  (real jk / jkx)");
-        CliOutput.out("  hooks ← directory JAVA_HOME via hook-env");
-        CliOutput.out("  completions ← "
-                + Theme.colorize(dataDir.resolve("completions").toString(), t.path()));
-        if (jkx.status() == JkxLink.Status.CREATED) {
-            CliOutput.out("Installed " + Theme.colorize("jkx", t.shell()) + " → "
-                    + Theme.colorize(jkx.path().toString(), t.path()));
-        } else if (jkx.status() == JkxLink.Status.SKIPPED_FOREIGN) {
-            CliOutput.out("Note: " + Theme.colorize(jkx.path().toString(), t.path())
-                    + " exists but wasn't created by jk — left untouched.");
-        }
-        CliOutput.out("Open a new shell (or " + sourceHint(shell, rcDisplay, t) + ") to pick up the change.");
         return 0;
     }
 
@@ -245,14 +231,6 @@ public final class ActivateCommand implements CliCommand {
             return 0;
         }
         return writeActivation(shell);
-    }
-
-    private static String sourceHint(Shell shell, String rcDisplay, Theme t) {
-        return switch (shell.name()) {
-            case "fish" -> "run " + Theme.colorize("source " + rcDisplay, t.shell());
-            case "pwsh" -> "dot-source " + Theme.colorize(rcDisplay, t.shell());
-            default -> "run " + Theme.colorize("source " + rcDisplay, t.shell());
-        };
     }
 
     private static Path home() {

@@ -471,7 +471,7 @@ public final class PluginBuild {
     private static Map<String, String> loadBomConstraints(cc.jumpkick.repo.RepoGroup repos, String bomGav)
             throws IOException, InterruptedException {
         // BOM coordinates are type=pom (default parse is jar).
-        String spec = bomGav.contains("@") ? bomGav : bomGav + "@pom";
+        String spec = bomGav.contains("!") ? bomGav : bomGav + "!pom";
         cc.jumpkick.model.Coordinate bom = cc.jumpkick.model.Coordinate.parse(spec);
         cc.jumpkick.repo.EffectivePom bomPom = new cc.jumpkick.repo.EffectivePomBuilder(repos).build(bom);
         Map<String, String> constraints = new LinkedHashMap<>();

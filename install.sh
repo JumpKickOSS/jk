@@ -61,10 +61,10 @@ LOCAL_FILE="${1:-}"
 # Honour CI and JK_NONINTERACTIVE to force the non-interactive path explicitly.
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != "dumb" ]; then
-  BOLD=$'\033[1m'; RED=$'\033[31m'; GREEN=$'\033[32m'; DIM=$'\033[2m'; RESET=$'\033[0m'
+  BOLD=$'\033[1m'; RED=$'\033[31m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; DIM=$'\033[2m'; RESET=$'\033[0m'
   DOT="●"; CROSS="✖"
 else
-  BOLD=""; RED=""; GREEN=""; DIM=""; RESET=""
+  BOLD=""; RED=""; GREEN=""; YELLOW=""; DIM=""; RESET=""
   DOT="*"; CROSS="x"
 fi
 
@@ -192,7 +192,13 @@ else
     || die "failed to download $ARCHIVE_URL"
 fi
 
-info "Installing JumpKick into $INSTALL_DIR"
+# Prefer a ~ display when the install dir lives under $HOME (uv-style).
+case "$INSTALL_DIR" in
+  "$HOME"/*) INSTALL_DIR_DISPLAY="~${INSTALL_DIR#"$HOME"}" ;;
+  *) INSTALL_DIR_DISPLAY="$INSTALL_DIR" ;;
+esac
+printf '\n'
+info "Installing JumpKick into $INSTALL_DIR_DISPLAY"
 mkdir -p "$INSTALL_DIR"
 
 park_if_present() {
@@ -254,7 +260,7 @@ fi
 
 # ---- activate --------------------------------------------------------------
 
-info "Running \`jk activate\`... This may download a JDK and optimize your installation."
+info "Running \`jk activate\`... This may download a JDK and optimize your installation"
 # --yes: write shell integration without the interactive Yes/No wizard. install.sh
 # used to call bare `jk activate`, which opened a TUI over /dev/tty and waited for
 # a keypress even on automated/local installs. Failure must not abort warm-up —
@@ -366,11 +372,22 @@ rm -f "${JK_BIN}.old" "${JKX_BIN}.old" 2>/dev/null || true
 
 printf '\n'
 
-# ---- restart shell ---------------------------------------------------------
+# ---- ready -----------------------------------------------------------------
 #
 # Never block on a keypress here: install is finished. Cases that used to
 # `read` from /dev/tty (curl|bash) or silently `exec $SHELL` (local tty) made
 # the script feel hung after `jk activate`. Print how to pick up PATH/hooks;
 # the user reloads when ready.
-RELOAD_HINT="Open a new terminal or run 'exec \$SHELL' to start using jk."
-note "$RELOAD_HINT"
+case "${SHELL##*/}" in
+  zsh)  SOURCE_HINT='source ~/.zshrc' ;;
+  bash) SOURCE_HINT='source ~/.bashrc' ;;
+  fish) SOURCE_HINT='source ~/.config/fish/config.fish' ;;
+  *)    SOURCE_HINT='source ~/.zshrc' ;;
+esac
+info "JumpKick is ready! Hi-ya!"
+printf '%s%s%s Run %s%s%s or %s%s%s to start using %s%s%s\n' \
+  "$GREEN" "$DOT" "$RESET" \
+  "$YELLOW" 'exec $SHELL' "$RESET" \
+  "$YELLOW" "$SOURCE_HINT" "$RESET" \
+  "$YELLOW" 'jk' "$RESET"
+printf '\n'

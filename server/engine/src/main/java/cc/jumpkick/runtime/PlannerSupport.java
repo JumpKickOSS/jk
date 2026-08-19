@@ -608,6 +608,22 @@ public final class PlannerSupport {
     public static String runTestsStampKey(
             Path dir, JkBuild project, boolean compact, Path mainClasses, Path lockFile, List<Path> testRuntimeCp)
             throws IOException {
+        return runTestsStampKey(dir, project, compact, mainClasses, null, lockFile, testRuntimeCp);
+    }
+
+    /**
+     * {@code mainClassesFingerprint} overrides the on-disk main-classes tree when non-null (post-
+     * {@code jk clean} projection from the compile action record).
+     */
+    public static String runTestsStampKey(
+            Path dir,
+            JkBuild project,
+            boolean compact,
+            Path mainClasses,
+            String mainClassesFingerprint,
+            Path lockFile,
+            List<Path> testRuntimeCp)
+            throws IOException {
         List<String> discovered = cc.jumpkick.layout.TestSuites.discover(dir, compact);
         var resolved = cc.jumpkick.config.TestSelection.DEFAULT.resolve(discovered);
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(cc.jumpkick.layout.TestSuites.DEFAULT);
@@ -618,6 +634,7 @@ public final class PlannerSupport {
         return cc.jumpkick.task.TestStamp.computeKey(
                 stampSrcs,
                 mainClasses,
+                mainClassesFingerprint,
                 cc.jumpkick.layout.ModuleLayout.suiteResourceDirs(dir, compact, suites),
                 lockFile,
                 testRuntimeCp,

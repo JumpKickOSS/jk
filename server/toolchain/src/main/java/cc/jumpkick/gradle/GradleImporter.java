@@ -450,7 +450,7 @@ public final class GradleImporter {
     private static void addDependency(
             Map<Scope, List<Dependency>> byScope, Scope scope, String coord, ImportReport.Builder report) {
         if (coord == null || coord.isBlank()) return;
-        // Expect g:a:v with optional :classifier@type — strip extras with a warning.
+        // Expect g:a:v with optional :classifier!type — strip extras with a warning.
         String[] parts = coord.split(":");
         if (parts.length == 2 && !parts[0].isBlank() && !parts[1].isBlank()) {
             // Versionless `g:a` -- normal in Boot builds, where the plugin's BOM manages the

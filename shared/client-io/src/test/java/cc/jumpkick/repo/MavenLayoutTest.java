@@ -41,6 +41,13 @@ class MavenLayoutTest {
     }
 
     @Test
+    void bang_aar_coordinate_resolves_to_aar_path() {
+        Coordinate c = Coordinate.parse("androidx.core:core:1.13.1!aar");
+        assertThat(MavenLayout.artifactPath(c)).isEqualTo("androidx/core/core/1.13.1/core-1.13.1.aar");
+        assertThat(MavenLayout.pomPath(c)).isEqualTo("androidx/core/core/1.13.1/core-1.13.1.pom");
+    }
+
+    @Test
     void a_classifier_rides_the_name_but_never_the_pom() {
         assertThat(MavenLayout.artifactPath(coord("jar", "linux-x86_64"))).endsWith("helpers-1.2.3-linux-x86_64.jar");
         // Maven POMs are never classified — secondary artifacts share the main GAV's pom.

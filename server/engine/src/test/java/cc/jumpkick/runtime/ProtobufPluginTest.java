@@ -21,7 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * android-plan Task 5, blocker 3: the protobuf plugin — protoc codegen before compile. A plain
  * Java project (deliberately: the plugin is ecosystem-neutral) declares {@code [protobuf]}, the
- * engine fetches the per-OS protoc binary ({@code ${host.os-arch}@exe} step-dependency), the
+ * engine fetches the per-OS protoc binary ({@code ${host.os-arch}!exe} step-dependency), the
  * plugin worker forks it over {@code proto/}, and the generated Java compiles and packages like
  * any contributed source. Compiling a reference to the generated builder IS the acceptance.
  *
