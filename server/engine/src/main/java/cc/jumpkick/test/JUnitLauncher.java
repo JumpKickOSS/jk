@@ -609,6 +609,22 @@ public final class JUnitLauncher {
      * writing one line to the child's stdin. Non-protocol lines are user test output — passed through
      * to the parent's stdout, tagged with the worker id.
      */
+    /**
+     * Per-worker env when {@code W > 1}: private temp root, and for nested-engine suites a
+     * per-worker {@code JK_STATE_DIR}. Engine identity is keyed on (state, store), so a shared
+     * state dir means one socket for every worker — and one worker's engine force-stop aborts
+     * its siblings mid-request. The suffix stays short: the state dir holds UDS sockets and
+     * {@code sun_path} is ~108 bytes (JK-2183).
+     */
+    static Map<String, String> workerEnv(Map<String, String> base, int workerId, Path tmp) {
+        Map<String, String> env = new LinkedHashMap<>(base);
+        env.put("TMPDIR", tmp.toString());
+        env.put("TMP", tmp.toString());
+        env.put("TEMP", tmp.toString());
+        env.computeIfPresent("JK_STATE_DIR", (k, dir) -> dir + "-w" + workerId);
+        return env;
+    }
+
     private int driveWorker(
             Path javaBinary,
             String classpath,
@@ -647,10 +663,7 @@ public final class JUnitLauncher {
                 try {
                     Path tmp = Files.createTempDirectory("jk-tw-" + workerId + "-");
                     flags.add("-Djava.io.tmpdir=" + tmp);
-                    env = new LinkedHashMap<>(testEnv);
-                    env.put("TMPDIR", tmp.toString());
-                    env.put("TMP", tmp.toString());
-                    env.put("TEMP", tmp.toString());
+                    env = workerEnv(testEnv, workerId, tmp);
                 } catch (IOException ignored) {
                     // best-effort isolation
                 }
