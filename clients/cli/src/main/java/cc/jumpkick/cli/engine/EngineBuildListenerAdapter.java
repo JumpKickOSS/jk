@@ -97,38 +97,7 @@ final class EngineBuildListenerAdapter {
             BufferedReader reader = EngineClient.protocolReader(ch);
 
             writer.write(ProtoSession.withSession(
-                    withWorkspaceSpec(
-                            ProtoJobs.buildRequest(
-                                    req.entryDir().toString(),
-                                    req.cache().toString(),
-                                    req.jdksDir() != null ? req.jdksDir().toString() : null,
-                                    req.workers(),
-                                    req.profile(),
-                                    req.skipTests(),
-                                    req.verbose(),
-                                    req.maxModuleConcurrency(),
-                                    session.parallelTests(),
-                                    session.offline(),
-                                    session.force(),
-                                    // jk build asks the engine to auto-freshen a stale workspace lock; verify's
-                                    // scratch rebuild must use the pinned lock verbatim (see WorkspaceRequest).
-                                    req.freshenLock(),
-                                    // verify's scratch rebuild: never persist action records under
-                                    // scratch-salted keys that can never recur.
-                                    req.ephemeralActions(),
-                                    // workspace jk test: every module plan stops at run-tests.
-                                    req.testOnly(),
-                                    // -m / --affected-since module selection — the engine schedules
-                                    // exactly these dirs instead of forecasting dirtiness itself.
-                                    req.dirtyHint() == null
-                                            ? null
-                                            : req.dirtyHint().stream()
-                                                    .map(Object::toString)
-                                                    .sorted()
-                                                    .toList(),
-                                    null,
-                                    req.modules()),
-                            req),
+                    encodeWorkspaceRequest(req, session),
                     req.variant(),
                     req.clientEnv(),
                     SessionContext.current().jvm(),
@@ -142,6 +111,48 @@ final class EngineBuildListenerAdapter {
 
             return streamEvents(reader, listener, req.cache());
         }
+    }
+
+    /**
+     * The build-request body for {@code req} as the engine sees it (before the session envelope).
+     * Session-owned facts ride from {@code session}: parallel-tests, offline/force, and the
+     * resolved test selection — {@code --all}/{@code --include-tags}/{@code --exclude-tags} must
+     * ride the wire or the engine falls back to each module's {@code [test]} excludes and a
+     * widened tier is silently served from the unit-tier stamp (JK-2181).
+     */
+    static String encodeWorkspaceRequest(WorkspaceRequest req, Session session) {
+        return withWorkspaceSpec(
+                ProtoJobs.buildRequest(
+                        req.entryDir().toString(),
+                        req.cache().toString(),
+                        req.jdksDir() != null ? req.jdksDir().toString() : null,
+                        req.workers(),
+                        req.profile(),
+                        req.skipTests(),
+                        req.verbose(),
+                        req.maxModuleConcurrency(),
+                        session.parallelTests(),
+                        session.offline(),
+                        session.force(),
+                        // jk build asks the engine to auto-freshen a stale workspace lock; verify's
+                        // scratch rebuild must use the pinned lock verbatim (see WorkspaceRequest).
+                        req.freshenLock(),
+                        // verify's scratch rebuild: never persist action records under
+                        // scratch-salted keys that can never recur.
+                        req.ephemeralActions(),
+                        // workspace jk test: every module plan stops at run-tests.
+                        req.testOnly(),
+                        // -m / --affected-since module selection — the engine schedules
+                        // exactly these dirs instead of forecasting dirtiness itself.
+                        req.dirtyHint() == null
+                                ? null
+                                : req.dirtyHint().stream()
+                                        .map(Object::toString)
+                                        .sorted()
+                                        .toList(),
+                        session.testSelection(),
+                        req.modules()),
+                req);
     }
 
     /**
