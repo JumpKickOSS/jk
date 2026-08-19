@@ -57,8 +57,8 @@ public final class EngineSpawn {
         Reachability reach = probe(socket, clientVersion);
         if (reach instanceof Reachability.Live live) {
             EngineClient.Handshake hs = live.handshake();
-            // A draining engine still owns the socket + file lock and is finishing in-flight jobs.
-            // Fail fast — do NOT fall through to spawn a competing engine, and don't killStale it.
+            // A draining engine has unbound its listener; this branch is the race before unbind.
+            // Do not spawn a third copy on top of the successor that is already taking over.
             if (hs.draining()) {
                 throw new IOException(
                         "the build engine is shutting down — wait for it to stop, or run `jk engine stop --force`");

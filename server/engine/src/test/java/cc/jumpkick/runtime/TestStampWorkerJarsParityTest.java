@@ -90,6 +90,8 @@ class TestStampWorkerJarsParityTest {
         Files.createDirectories(cli);
         Map<String, String> env = BuildPlanner.nestedEngineTestEnv(cli);
         assertThat(env).containsKey("JK_HOME");
+        assertThat(env.get("JK_HTTP_ENABLED")).isEqualTo("false");
+        assertThat(env.get("JK_HTTP_PORT")).isEqualTo("0");
         assertThat(env).doesNotContainKey("JK_CACHE_DIR");
         assertThat(env).doesNotContainKey("JK_STORE_DIR");
         Path hostCache = cc.jumpkick.util.JkDirs.cache().toAbsolutePath().normalize();

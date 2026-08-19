@@ -2,6 +2,9 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.engine.EnginePaths;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -74,67 +77,215 @@ public final class EngineFleet {
     public record StopResult(Member member, Outcome outcome) {}
 
     /**
-     * Every engine that is actually running, newest identity first; the current one is flagged.
-     *
-     * <p>Liveness is decided by the recorded pid, not by whether the socket answers. Probing the socket
-     * first was the obvious approach and it hid exactly the engines a user most needs to see: a wedged one
-     * fails the probe while continuing to hold memory and its port. A pointer whose process is gone is
-     * stale and skipped; a process that is alive is listed whether or not it can talk.
+     * Every engine this user is running. Disk pointers under this state dir come first; then any
+     * other generation pid still alive; then every other resident {@code EngineMain} JVM we can
+     * see. Liveness is the process, not the socket: a draining or rebound engine often answers
+     * nowhere and is the one {@code status} must not hide.
      */
     public static List<Member> list() {
-        String currentKey = EnginePaths.current().key();
+        return list(cc.jumpkick.util.JkDirs.state(), EnginePaths.current().key(), true);
+    }
+
+    /**
+     * Engines that belong to this {@code JK_HOME} / state dir. {@link #stopAll} uses this so a
+     * nested test suite cannot kill the host engine running {@code jk build}.
+     */
+    public static List<Member> listThisHome() {
+        return list(cc.jumpkick.util.JkDirs.state(), EnginePaths.current().key(), false);
+    }
+
+    /** Test seam: enumerate against an explicit state dir (all homes). */
+    static List<Member> list(Path stateDir, String currentKey) {
+        return list(stateDir, currentKey, true);
+    }
+
+    static List<Member> list(Path stateDir, String currentKey, boolean allHomes) {
         List<Member> out = new ArrayList<>();
-        for (EnginePaths.Paths paths : EnginePaths.identitiesIn(cc.jumpkick.util.JkDirs.state())) {
+        Set<Long> known = new HashSet<>();
+        for (EnginePaths.Paths paths : EnginePaths.identitiesIn(stateDir)) {
             Path socket = EnginePaths.activeSocket(paths);
             Optional<EngineClient.Status> status = EngineClient.status(socket);
-            boolean isCurrent = paths.key().equals(currentKey);
             if (status.isPresent()) {
-                out.add(new Member(paths, socket, status.get(), status.get().pid(), isCurrent));
+                long pid = status.get().pid();
+                boolean isCurrent = paths.key().equals(currentKey);
+                out.add(new Member(paths, socket, status.get(), pid, isCurrent));
+                known.add(pid);
                 continue;
             }
             long pid = recordedPid(paths, socket);
-            if (pid > 0 && alive(pid)) {
-                out.add(new Member(paths, socket, null, pid, isCurrent));
+            if (pid > 0 && alive(pid) && isEnginePid(pid)) {
+                out.add(new Member(paths, socket, null, pid, paths.key().equals(currentKey)));
+                known.add(pid);
             }
         }
-        Set<Long> known = new HashSet<>();
-        for (Member m : out) known.add(m.pid());
-        out.addAll(untracked(known));
+        addGenerationPids(stateDir, known, out);
+        out.addAll(untracked(known, allHomes));
         return List.copyOf(out);
     }
 
     /**
-     * Engines with no on-disk identity at all, found by matching this installation's engine jar on the
-     * process command line.
-     *
-     * <p>An engine whose endpoint pointer AND pid file are both gone is invisible to every disk-based
-     * lookup, yet still holds memory and a port. Five such processes survived a {@code stop --all} that
-     * reported success — which is precisely the outcome this command exists to prevent, since the
-     * alternative for the user is {@code kill}, or Task Manager on Windows.
-     *
-     * <p>Matching is deliberately narrow: the command line must reference {@code jk-engine.jar} <em>under
-     * this {@code JK_HOME} / platform product layout</em>, so another user's engine, another installation, or an unrelated JVM is never
-     * a candidate. AOT training sidecars are excluded — they are bounded and self-halting, and killing one
-     * mid-recording would discard work for no benefit.
+     * Pid files for every generation under this state dir. A draining predecessor keeps its
+     * {@code .genN.pid} until it exits; the endpoint already names the successor, so the
+     * identity loop above never sees that pid.
      */
-    private static List<Member> untracked(Set<Long> known) {
-        String home =
-                cc.jumpkick.util.JkDirs.home().toAbsolutePath().normalize().toString();
+    private static void addGenerationPids(Path stateDir, Set<Long> known, List<Member> out) {
+        Path dir = stateDir.resolve("engine");
+        if (!Files.isDirectory(dir)) return;
+        try (var listing = Files.list(dir)) {
+            listing.filter(f -> f.getFileName().toString().endsWith(".pid")).forEach(pidFile -> {
+                long pid = EngineClient.readPidFile(pidFile);
+                if (pid <= 0 || known.contains(pid) || !alive(pid) || !isEnginePid(pid)) return;
+                String stem = pidFile.getFileName().toString();
+                stem = stem.substring(0, stem.length() - ".pid".length());
+                Path socket = pidFile.resolveSibling(stem + ".sock");
+                String key = keyFromPidStem(stem);
+                EnginePaths.Paths paths = EnginePaths.forKey(key, stateDir);
+                Optional<EngineClient.Status> status = EngineClient.status(socket);
+                if (status.isPresent() && status.get().pid() == pid) {
+                    out.add(new Member(paths, socket, status.get(), pid, false));
+                } else {
+                    out.add(new Member(paths, socket, null, pid, false));
+                }
+                known.add(pid);
+            });
+        } catch (IOException ignored) {
+            // listing is best-effort
+        }
+    }
+
+    static String keyFromPidStem(String stem) {
+        int gen = stem.indexOf(".gen");
+        return gen > 0 ? stem.substring(0, gen) : stem;
+    }
+
+    /**
+     * Resident engine JVMs this user owns that no on-disk pointer named. Match is the engine
+     * main class or {@code jk-engine.jar} on the command line. Sidecar AOT trainers and other
+     * users' processes are excluded. {@code allHomes} includes other {@code JK_HOME}s (status);
+     * {@code false} keeps stop scoped to this home.
+     */
+    private static List<Member> untracked(Set<Long> known, boolean allHomes) {
         long self = ProcessHandle.current().pid();
+        String me = ProcessHandle.current().info().user().orElse("");
+        Path home = cc.jumpkick.util.JkDirs.home();
+        Path state = cc.jumpkick.util.JkDirs.state();
         List<Member> out = new ArrayList<>();
         try {
             ProcessHandle.allProcesses().forEach(h -> {
                 long pid = h.pid();
-                if (pid == self || known.contains(pid)) return;
-                String cmd = h.info().commandLine().orElse("");
-                if (!cmd.contains("jk-engine.jar") || !cmd.contains(home)) return;
-                if (cmd.contains("--aot-training")) return;
-                out.add(new Member(null, null, null, pid, false));
+                if (pid == self || known.contains(pid) || !h.isAlive()) return;
+                if (!sameUser(me, h)) return;
+                String cmd = commandLineOf(h);
+                if (!isResidentEngine(cmd)) return;
+                if (!allHomes && !belongsToThisHome(cmd, home, state)) return;
+                out.add(memberForProcess(pid, cmd));
             });
         } catch (RuntimeException e) {
-            return List.of(); // process enumeration is best-effort; never fail a stop over it
+            return List.of(); // process enumeration is best-effort; never fail a status over it
         }
         return out;
+    }
+
+    /**
+     * True when {@code commandLine} names this product home or state dir (jar path, AOT path, or
+     * inferred {@code JK_HOME}). A test JVM under {@code target/test-jk-home} must not match the
+     * developer's {@code ~/.local/share/jk} engine.
+     */
+    static boolean belongsToThisHome(String commandLine, Path home, Path state) {
+        if (commandLine == null || commandLine.isBlank() || home == null) return false;
+        String cmd = commandLine.replace('\\', '/');
+        String homeStr = home.toAbsolutePath().normalize().toString().replace('\\', '/');
+        if (!homeStr.isEmpty() && cmd.contains(homeStr)) return true;
+        if (state != null) {
+            String stateStr = state.toAbsolutePath().normalize().toString().replace('\\', '/');
+            if (!stateStr.isEmpty() && cmd.contains(stateStr)) return true;
+        }
+        Path inferred = homeFromCommandLine(commandLine);
+        return inferred != null
+                && inferred.toAbsolutePath()
+                        .normalize()
+                        .equals(home.toAbsolutePath().normalize());
+    }
+
+    /**
+     * Best-effort product home from a spawn line ({@code …/<home>/versions/<v>/lib/jk-engine.jar}).
+     * Empty when the command line is not that shape.
+     */
+    static Path homeFromCommandLine(String commandLine) {
+        if (commandLine == null || commandLine.isBlank()) return null;
+        String norm = commandLine.replace('\\', '/');
+        int jar = norm.indexOf("/lib/jk-engine.jar");
+        if (jar < 0) return null;
+        int versions = norm.lastIndexOf("/versions/", jar);
+        if (versions <= 0) return null;
+        int start = versions;
+        while (start > 0) {
+            char c = norm.charAt(start - 1);
+            if (c == ' ' || c == '\t') break;
+            start--;
+        }
+        String home = norm.substring(start, versions);
+        return home.isBlank() ? null : Path.of(home);
+    }
+
+    private static Member memberForProcess(long pid, String cmd) {
+        Path home = homeFromCommandLine(cmd);
+        if (home != null) {
+            Path state = home.resolve("state");
+            for (EnginePaths.Paths paths : EnginePaths.identitiesIn(state)) {
+                Path socket = EnginePaths.activeSocket(paths);
+                Optional<EngineClient.Status> status = EngineClient.status(socket);
+                if (status.isPresent() && status.get().pid() == pid) {
+                    return new Member(paths, socket, status.get(), pid, false);
+                }
+            }
+        }
+        return new Member(null, null, null, pid, false);
+    }
+
+    /** True when {@code commandLine} is a resident engine JVM. Trainers pass {@code --aot-training}. */
+    static boolean isResidentEngine(String commandLine) {
+        if (commandLine == null || commandLine.isBlank()) return false;
+        if (commandLine.contains("--aot-training")) return false;
+        return commandLine.contains("cc.jumpkick.engine.EngineMain") || commandLine.contains("jk-engine.jar");
+    }
+
+    static String commandLineOf(ProcessHandle handle) {
+        // /proc is the full argv; ProcessHandle.commandLine() is sometimes only the executable.
+        String proc = procCmdline(handle.pid());
+        if (!proc.isBlank()) return proc;
+        var info = handle.info();
+        String cmd = info.command().orElse("");
+        String args = info.arguments().map(a -> String.join(" ", a)).orElse("");
+        String joined = (cmd + " " + args).trim();
+        if (!joined.isBlank()) return joined;
+        return info.commandLine().orElse("");
+    }
+
+    /** {@code /proc/<pid>/cmdline} with NULs turned into spaces; empty off Linux or if unreadable. */
+    static String procCmdline(long pid) {
+        Path file = Path.of("/proc", Long.toString(pid), "cmdline");
+        try {
+            byte[] raw = Files.readAllBytes(file);
+            for (int i = 0; i < raw.length; i++) {
+                if (raw[i] == 0) raw[i] = (byte) ' ';
+            }
+            return new String(raw, StandardCharsets.UTF_8).trim();
+        } catch (IOException e) {
+            return "";
+        }
+    }
+
+    private static boolean sameUser(String me, ProcessHandle them) {
+        if (me.isEmpty()) return true;
+        String other = them.info().user().orElse("");
+        return other.isEmpty() || me.equals(other);
+    }
+
+    private static boolean isEnginePid(long pid) {
+        return ProcessHandle.of(pid)
+                .map(h -> isResidentEngine(commandLineOf(h)))
+                .orElse(false);
     }
 
     /** The pid this identity recorded, from the active generation's file or the base one. */
@@ -174,10 +325,13 @@ public final class EngineFleet {
         return new StopResult(member, settle(member, pid, /* mayKill= */ true));
     }
 
-    /** Stop every running engine. */
+    /**
+     * Stop every engine that belongs to this {@code JK_HOME} / state dir. Other homes stay up —
+     * {@code jk engine status} still lists them; {@code --pid} stops one explicitly.
+     */
     public static List<StopResult> stopAll(boolean now) {
         List<StopResult> results = new ArrayList<>();
-        for (Member m : list()) {
+        for (Member m : listThisHome()) {
             results.add(stop(m, now));
         }
         return List.copyOf(results);

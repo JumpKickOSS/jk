@@ -542,6 +542,8 @@ public final class PlannerSupport {
         env.put("JK_JDKS_DIR", jkHome.resolve("jdks").toAbsolutePath().toString());
         env.put("JK_STATE_DIR", stateDir.toAbsolutePath().toString());
         // Intentionally no JK_CACHE_DIR / JK_STORE_DIR — both resolve under JK_HOME.
+        env.put("JK_HTTP_ENABLED", "false");
+        env.put("JK_HTTP_PORT", "0");
         env.put("JK_STREAM_IDLE_MS", "45000");
         env.put("TERM", "xterm-256color");
         env.put("CI", "false");

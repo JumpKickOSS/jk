@@ -80,6 +80,12 @@ tasks.withType<Test>().configureEach {
     // 127.0.0.1 — so without a throwaway store one test's simulated 429 cools down loopback for every
     // other test, and the record lands in the developer's real product layout.
     systemProperty("jk.http.cooldown.dir", layout.buildDirectory.dir("test-http-cooldown").get().asFile.absolutePath)
+    // Default @TempDir (junit-*) follows java.io.tmpdir. Host /tmp is often a small-inode
+    // tmpfs; leftover fixtures exhaust it and the next suite fails in TempDirFactory.
+    // CLI UDS tests still bind under /tmp via JkTempDirFactory (path-length).
+    val testTmp = layout.buildDirectory.dir("tmp")
+    doFirst { testTmp.get().asFile.mkdirs() }
+    systemProperty("java.io.tmpdir", testTmp.get().asFile.absolutePath)
 }
 
 tasks.named<Test>("test") {

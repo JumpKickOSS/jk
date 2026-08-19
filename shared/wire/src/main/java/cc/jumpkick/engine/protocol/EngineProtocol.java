@@ -60,6 +60,15 @@ public final class EngineProtocol {
     /** Server → client: acknowledges {@link #SHUTDOWN} just before closing the connection. */
     public static final String BYE = "bye";
 
+    /**
+     * Predecessor → successor while a displaced engine drains in-flight jobs. Additive; protocol
+     * stays 1. Fields: {@code pid}, {@code plans}, {@code version}.
+     */
+    public static final String DRAIN_STATUS = "drain-status";
+
+    /** Predecessor → successor: drain finished; the predecessor is exiting. */
+    public static final String DRAIN_DONE = "drain-done";
+
     /** Client → server: start a workspace build (see {@link #buildRequest}). */
     public static final String BUILD_REQUEST = "build-request";
 

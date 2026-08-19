@@ -34,6 +34,8 @@ class TestEnvTest {
                 .isEqualTo(tmp.resolve("target/test-m2").toAbsolutePath().toString());
         // Never the real product data root.
         assertThat(env.get("JK_HOME")).doesNotContain(System.getProperty("user.home") + "/.local/share/jk");
+        assertThat(env.get("JK_HTTP_ENABLED")).isEqualTo("false");
+        assertThat(env.get("JK_HTTP_PORT")).isEqualTo("0");
     }
 
     @Test

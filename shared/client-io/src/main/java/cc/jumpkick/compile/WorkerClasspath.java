@@ -87,6 +87,13 @@ public final class WorkerClasspath {
             Path sdk = findPluginSdk(worker);
             if (sdk != null && !entries.contains(sdk)) entries.add(sdk);
         }
+        // plugin-sdk is a thin jar: Jsonl lives in jk-jsonl. Gradle workers vendor both into
+        // the worker; pure-jk thin jars do not. Isolated JK_HOME also hides store/lib recover.
+        // Without this, kotlinc / test-runner die with NoClassDefFoundError: Jsonl.
+        if (!classpathHas(entries, "cc/jumpkick/jsonl/Jsonl.class")) {
+            Path jsonl = findJsonl(worker);
+            if (jsonl != null && !entries.contains(jsonl)) entries.add(jsonl);
+        }
         return entries;
     }
 
@@ -152,44 +159,81 @@ public final class WorkerClasspath {
      * under the shared store.
      */
     static Path findPluginSdk(Path workerJar) {
+        return findFirstPartyJar(
+                workerJar,
+                List.of("jk-plugin-sdk", "plugin-sdk"),
+                "shared/plugin-sdk/lib",
+                "shared/plugin-sdk/build/libs");
+    }
+
+    /**
+     * {@code jk-jsonl} / {@code jsonl} next to a thin worker. plugin-sdk imports Jsonl but does
+     * not vendor it.
+     */
+    static Path findJsonl(Path workerJar) {
+        return findFirstPartyJar(
+                workerJar, List.of("jk-jsonl", "jsonl"), "shared/jsonl/lib", "shared/jsonl/build/libs");
+    }
+
+    private static Path findFirstPartyJar(Path workerJar, List<String> artifacts, String targetRel, String gradleRel) {
         Path abs = workerJar.toAbsolutePath().normalize();
-        // Workspace pure-jk: …/target/plugins/<name>/jk-….jar → …/target/shared/plugin-sdk/lib/
         for (Path dir = abs.getParent(); dir != null; dir = dir.getParent()) {
             Path target = dir.resolve("target");
             if (Files.isDirectory(target)) {
-                Path hit = firstJar(target.resolve("shared/plugin-sdk/lib"), "jk-plugin-sdk");
-                if (hit == null) hit = firstJar(target.resolve("shared/plugin-sdk/lib"), "plugin-sdk");
+                Path hit = firstJarNamed(target.resolve(targetRel), artifacts);
                 if (hit != null) return hit;
             }
-            // Gradle: …/plugins/kotlin-compiler/build/libs/X.jar → …/shared/plugin-sdk/build/libs/
-            Path sdkGradle = dir.resolve("shared/plugin-sdk/build/libs");
-            Path hit = firstJar(sdkGradle, "plugin-sdk");
-            if (hit == null) hit = firstJar(sdkGradle, "jk-plugin-sdk");
+            Path hit = firstJarNamed(dir.resolve(gradleRel), artifacts);
             if (hit != null) return hit;
-            // Stop at filesystem root
+            // After searching this level: @TempDir trees (often <module>/build/tmp/junit-*)
+            // must not climb into the surrounding monorepo and steal workspace jars.
+            if (isScratchDir(dir)) break;
             if (dir.getParent() == null) break;
-            // Don't walk forever — monorepos are shallow
             if (dir.getNameCount() < 2) break;
         }
-        // Installed: ~/.local/share/jk/store/repos/{local,jumpkick}/cc/jumpkick/jk-plugin-sdk/<ver>/*.jar
-        // (side-loaded installs land in repos/local; official fetches in repos/jumpkick).
         for (String repoName : List.of("local", "jumpkick")) {
             Path storeRepo = JkDirs.store().resolve("repos").resolve(repoName).resolve("cc/jumpkick");
-            for (String artifact : List.of("jk-plugin-sdk", "plugin-sdk")) {
+            for (String artifact : artifacts) {
                 Path base = storeRepo.resolve(artifact);
                 if (!Files.isDirectory(base)) continue;
                 try (Stream<Path> vers = Files.list(base)) {
                     List<Path> versionDirs =
                             vers.filter(Files::isDirectory).sorted().toList();
-                    // Prefer highest version string last
                     for (int i = versionDirs.size() - 1; i >= 0; i--) {
                         Path hit = firstJar(versionDirs.get(i), artifact);
                         if (hit != null) return hit;
                     }
                 } catch (IOException ignored) {
-                    /* try next */
+                    // try next artifact / repo
                 }
             }
+        }
+        return null;
+    }
+
+    private static boolean isScratchDir(Path dir) {
+        if (dir == null) return false;
+        String n = dir.getFileName() != null ? dir.getFileName().toString() : "";
+        return n.equals("tmp")
+                || n.equals("temp")
+                || n.startsWith("junit-")
+                || n.startsWith("jk-junit-")
+                || n.startsWith("jkt-")
+                || n.startsWith("jkd-")
+                || n.startsWith("jk-cli-");
+    }
+
+    private static boolean classpathHas(List<Path> entries, String classFile) {
+        for (Path p : entries) {
+            if (jarContains(p, classFile)) return true;
+        }
+        return false;
+    }
+
+    private static Path firstJarNamed(Path dir, List<String> prefixes) {
+        for (String prefix : prefixes) {
+            Path hit = firstJar(dir, prefix);
+            if (hit != null) return hit;
         }
         return null;
     }

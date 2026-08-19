@@ -119,6 +119,29 @@ class WorkerClasspathTest {
                         sdk.toAbsolutePath().normalize());
     }
 
+    @Test
+    void find_jsonl_from_workspace_target_layout(@TempDir Path root) throws Exception {
+        Path workerDir = root.resolve("target/plugins/kotlin-compiler");
+        Path sdkDir = root.resolve("target/shared/plugin-sdk/lib");
+        Path jsonlDir = root.resolve("target/shared/jsonl/lib");
+        Files.createDirectories(workerDir);
+        Files.createDirectories(sdkDir);
+        Files.createDirectories(jsonlDir);
+        Path worker = workerDir.resolve("jk-kotlin-compiler-1.jar");
+        Path sdk = sdkDir.resolve("jk-plugin-sdk-0.12.0.jar");
+        Path jsonl = jsonlDir.resolve("jk-jsonl-0.12.0.jar");
+        Files.writeString(worker, "w");
+        Files.writeString(sdk, "sdk");
+        Files.writeString(jsonl, "jsonl");
+        assertThat(WorkerClasspath.findJsonl(worker))
+                .isEqualTo(jsonl.toAbsolutePath().normalize());
+        assertThat(WorkerClasspath.paths(worker))
+                .contains(
+                        worker.toAbsolutePath().normalize(),
+                        sdk.toAbsolutePath().normalize(),
+                        jsonl.toAbsolutePath().normalize());
+    }
+
     /** Minimal jar that contains {@code PluginMain} so findPluginSdk is not consulted. */
     private static void writePluginMainJar(Path jar) throws IOException {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();

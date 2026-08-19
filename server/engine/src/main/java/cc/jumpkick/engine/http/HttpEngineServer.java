@@ -232,12 +232,11 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * Bind, retrying briefly on {@link BindException}. A just-displaced predecessor engine drains
-     * gracefully (finishing in-flight work) before it releases the fixed port, so a fresh generation
-     * reaching HTTP bind moments after {@code EngineServer.drainDisplaced} can still lose the handoff
-     * race by a hair. A bounded retry rides that out without blocking startup for long — if the port
-     * is genuinely held by something else, we give up quickly and the engine serves without HTTP,
-     * exactly as before. (Port {@code 0} is OS-assigned and never collides, so this is a no-op there.)
+     * Bind, retrying briefly on {@link BindException}. The predecessor yields HTTP before sending
+     * {@code bye}, and {@code drainDisplaced} waits for that line, so the common path binds first
+     * try. A bounded retry still covers a hair-trigger race or an unrelated occupant; if the port
+     * is genuinely held, we give up quickly and serve without HTTP. (Port {@code 0} is OS-assigned
+     * and never collides, so this is a no-op there.)
      */
     private static HttpServer bindWithRetry(InetSocketAddress bind) throws IOException {
         for (int attempt = 1; ; attempt++) {

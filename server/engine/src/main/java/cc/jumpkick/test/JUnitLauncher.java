@@ -95,14 +95,14 @@ public final class JUnitLauncher {
         if (!testEnv.isEmpty()) {
             flags.add("--enable-native-access=ALL-UNNAMED");
             flags.add("-Djunit.jupiter.extensions.autodetection.enabled=true");
-            // Match Gradle:cli:test — force soft-fail TempDir strategy + short /tmp factory.
-            // Nested engines hardlink into @TempDir caches; macOS then fails Standard delete and
-            // marks the test failed on cleanup even when assertions passed. Soft-fail strategy +
-            // NEVER cleanup mode keep the suite green (dirs are under /tmp and ephemeral).
+            // Match Gradle :cli:test — short /tmp factory + soft-fail delete. Nested engines
+            // hardlink into @TempDir caches; macOS can fail Standard delete. The strategy
+            // reports success anyway. Cleanup stays ALWAYS: NEVER left tens of thousands of
+            // dirs on tmpfs /tmp until the next @TempDir could not allocate an inode.
             flags.add(
                     "-Djunit.jupiter.tempdir.deletion.strategy.default=cc.jumpkick.cli.engine.JkTempDirDeletionStrategy");
             flags.add("-Djunit.jupiter.tempdir.factory.default=cc.jumpkick.cli.engine.JkTempDirFactory");
-            flags.add("-Djunit.jupiter.tempdir.cleanup.mode.default=never");
+            flags.add("-Djunit.jupiter.tempdir.cleanup.mode.default=always");
             String jkHome = testEnv.get("JK_HOME");
             if (jkHome != null && !jkHome.isBlank()) {
                 // Sibling of test-jk-home: <module>/target/test-shared-cache (SharedTestCache).

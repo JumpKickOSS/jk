@@ -52,6 +52,11 @@ public final class TestEnv {
         out.put(JK_HOME, sandboxHome.toString());
         out.put(JK_JDKS_DIR, sandboxHome.resolve("jdks").toString());
         out.put(JK_M2_LOCAL, target.resolve("test-m2").toAbsolutePath().toString());
+        // Unique listeners: a nested engine must not steal the host's HTTP port or share its
+        // UDS (UDS follows JK_HOME/state). Port 0 is OS-assigned; disable HTTP unless a test
+        // opts in — Gradle does the same.
+        out.put("JK_HTTP_ENABLED", "false");
+        out.put("JK_HTTP_PORT", "0");
         for (Map.Entry<String, String> e : project.build().testEnv().entrySet()) {
             String withPaths = expand(e.getValue(), moduleDir, target);
             // Then environment references — a whitelisted position, resolved through the
