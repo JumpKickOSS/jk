@@ -38,22 +38,23 @@ extra-resources = [
   { from = "../../plugins/*/jk-plugin.toml", into = "cc/jumpkick/plugin/manifest", rename = "{1}.jk-plugin.toml" },
   { from = "../../plugins/*/scaffold/**", into = "cc/jumpkick/plugin/manifest", optional = true },
 ]
+# Only the workers engine tests actually fork or verify against. Each entry is a hard
+# build-order edge (the whole plugin plan runs before engine) AND a content hash in the
+# run-tests stamp — a spurious entry makes an unrelated plugin edit re-run this entire
+# suite. publisher/image-builder/compat-bridge/formatter/quarkus were dropped after an
+# import-level audit found zero jar consumers (JK-2190); PluginJar's CAS fallback still
+# covers any incidental locate().
 test-plugin-jars = [
   "test-runner",
   "java-compiler",
   "kotlin-compiler",
   "auditor",
-  "publisher",
-  "image-builder",
-  "compat-bridge",
-  "formatter",
   "spring-boot",
   "android",
   "protobuf",
   "minified",
   "grails",
   "groovy-compiler",
-  "quarkus",
 ]
 
 [test]
