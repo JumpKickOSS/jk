@@ -60,11 +60,26 @@ class KotlinPluginSetupTest {
         String prev = System.getProperty(KotlinPluginSetup.WORKER_JAR_PROPERTY);
         String prevRepo = System.getProperty(PluginJar.OFFICIAL_REPO_URL_PROPERTY);
         System.clearProperty(KotlinPluginSetup.WORKER_JAR_PROPERTY);
-        // Connection refused / empty — fetchOfficial returns null, locate throws NotFound.
-        System.setProperty(PluginJar.OFFICIAL_REPO_URL_PROPERTY, "http://127.0.0.1:1/");
+        // A live local 404 — fetchOfficial returns null, locate throws NotFound. A dead
+        // loopback URL has the same outcome but waits out Http's full retry backoff (~3.3s).
+        com.sun.net.httpserver.HttpServer notFound;
+        try {
+            notFound = com.sun.net.httpserver.HttpServer.create(
+                    new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+        notFound.createContext("/", ex -> {
+            ex.sendResponseHeaders(404, -1);
+            ex.close();
+        });
+        notFound.start();
+        System.setProperty(
+                PluginJar.OFFICIAL_REPO_URL_PROPERTY, "http://127.0.0.1:" + notFound.getAddress().getPort() + "/");
         try {
             body.run();
         } finally {
+            notFound.stop(0);
             if (prev != null) System.setProperty(KotlinPluginSetup.WORKER_JAR_PROPERTY, prev);
             else System.clearProperty(KotlinPluginSetup.WORKER_JAR_PROPERTY);
             if (prevRepo != null) System.setProperty(PluginJar.OFFICIAL_REPO_URL_PROPERTY, prevRepo);

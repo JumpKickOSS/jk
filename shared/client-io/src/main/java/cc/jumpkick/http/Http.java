@@ -57,6 +57,21 @@ public final class Http {
                 BACKOFFS);
     }
 
+    /**
+     * A zero-retry instance for tests that assert failure paths: a refused connection fails in
+     * one attempt instead of waiting out the full 3.1s backoff ladder. Never used in production
+     * — real callers want the retries.
+     */
+    public static Http failFast() {
+        return new Http(
+                HttpClient.newBuilder()
+                        .version(HttpClient.Version.HTTP_2)
+                        .followRedirects(HttpClient.Redirect.NORMAL)
+                        .connectTimeout(Duration.ofSeconds(10))
+                        .build(),
+                new Duration[0]);
+    }
+
     /** Visible for tests — lets the caller shrink the backoff schedule. */
     Http(HttpClient client, Duration[] backoffs) {
         this(client, backoffs, CentralMirror.standard(cc.jumpkick.util.JkDirs.cache()));

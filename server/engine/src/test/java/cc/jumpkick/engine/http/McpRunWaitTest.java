@@ -40,7 +40,28 @@ class McpRunWaitTest {
         }
     };
 
+    /**
+     * Live-run feed that reports the triggered jid live exactly once, then gone. waitUntilGone's
+     * not-seen grace is 250ms of real sleeping — with an always-empty feed every wait in this
+     * class paid it; seen-then-gone exits on the next 50ms poll.
+     */
+    private static Supplier<List<HttpLive.Run>> liveOnce() {
+        AtomicInteger polls = new AtomicInteger();
+        long now = System.currentTimeMillis();
+        HttpLive.Run run =
+                new HttpLive.Run(JID, 9, "build", "/ws", "g:a", now, now, 0.5, "r9", -1, -1, 0, 0, List.of(), List.of());
+        return () -> polls.getAndIncrement() == 0 ? List.of(run) : List.of();
+    }
+
     private McpHandler handler(Supplier<List<String>> history, LongFunction<String> finishedRecords) {
+        McpHandler mcp = newHandler(history, finishedRecords);
+        // These stubs either answer the first by-jid poll or never will — the production 1s
+        // journal-settle window only adds wall time here.
+        mcp.journalSettleMs(50);
+        return mcp;
+    }
+
+    private McpHandler newHandler(Supplier<List<String>> history, LongFunction<String> finishedRecords) {
         return new McpHandler(
                 () -> new StatusSnapshot(
                         "0.12.0",
@@ -60,7 +81,7 @@ class McpRunWaitTest {
                 history,
                 "0.12.0",
                 new ProgressTokenRegistry(),
-                List::of,
+                liveOnce(),
                 AdmissionYield.NONE,
                 finishedRecords);
     }
