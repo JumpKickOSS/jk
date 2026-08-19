@@ -100,7 +100,13 @@ public final class BuildForecasting {
         // forecast walk — a memo hit here would skip a missing binary or a never-skippable
         // image push. The memo is also keyed without target, so a PACKAGE store must never be
         // consumed by a terminal-target run (jk build && jk native would no-op to success).
-        boolean memoSafe = t == WorkspaceTarget.PACKAGE || t == WorkspaceTarget.TEST;
+        // The memo is also keyed without the test selection: a widened run (`jk build --all`,
+        // tag flags) must take the real forecast walk — its run-tests stamps differ from the
+        // default tier the memo's clean claim covered (JK-2203).
+        boolean defaultSelection = SessionContext.current()
+                .testSelection()
+                .equals(cc.jumpkick.config.TestSelection.DEFAULT);
+        boolean memoSafe = (t == WorkspaceTarget.PACKAGE || t == WorkspaceTarget.TEST) && defaultSelection;
         Set<Path> all = new HashSet<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) all.add(u.dir());
         // --force / --redo: every module runs — skip the expensive per-step forecast walk for dirty

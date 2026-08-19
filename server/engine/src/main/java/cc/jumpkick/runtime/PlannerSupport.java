@@ -592,9 +592,13 @@ public final class PlannerSupport {
      * predicts test-skip without drifting.
      */
     public static List<String> testStampExtras(Path dir, JkBuild project) throws IOException {
+        // The SESSION selection, not DEFAULT: the forecast must key run-tests exactly like the
+        // live run (PlannerTest feeds in.session().testSelection()), or a widened build
+        // (`jk build --all`) forecasts "tests cached" off the unit-tier marker and the whole
+        // workspace short-circuits to "up to date" without running the widened tier (JK-2203).
         return testStampExtras(
                 testStampWorkerJars(dir, project),
-                effectiveSelection(cc.jumpkick.config.TestSelection.DEFAULT, dir),
+                effectiveSelection(cc.jumpkick.config.SessionContext.current().testSelection(), dir),
                 project.build().testEnv(),
                 dir);
     }
@@ -625,7 +629,9 @@ public final class PlannerSupport {
             List<Path> testRuntimeCp)
             throws IOException {
         List<String> discovered = cc.jumpkick.layout.TestSuites.discover(dir, compact);
-        var resolved = cc.jumpkick.config.TestSelection.DEFAULT.resolve(discovered);
+        // Session selection for suite resolution too — --all widens the suite set, and the
+        // forecast's source list must cover the same files the live run stamps (JK-2203).
+        var resolved = cc.jumpkick.config.SessionContext.current().testSelection().resolve(discovered);
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(cc.jumpkick.layout.TestSuites.DEFAULT);
         List<Path> stampSrcs = new ArrayList<>();
         stampSrcs.addAll(cc.jumpkick.layout.TestSuites.collectJavaSources(dir, compact, suites));
