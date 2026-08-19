@@ -63,6 +63,9 @@ public final class JUnitLauncher {
     /** JUnit exclude tags. */
     private List<String> excludeTags = List.of();
 
+    /** {@code [test] serial-tags} — see {@link #withSerialTags}. */
+    private List<String> serialTags = List.of();
+
     /**
      * Extra environment for the test JVM. Used to isolate nested-engine suites ({@code jk-cli}) so
      * {@code EngineTestExtension} cannot force-stop the host engine that is running {@code jk test}, and
@@ -316,6 +319,35 @@ public final class JUnitLauncher {
         return this;
     }
 
+    /**
+     * {@code [test] serial-tags}: class-level tags whose classes run on a single trailing worker
+     * instead of the sharded pool (JK-2184). Partitioning is per class — a method-level serial
+     * tag inside an otherwise-untagged class still shards with its class.
+     */
+    public JUnitLauncher withSerialTags(List<String> tags) {
+        this.serialTags = tags == null ? List.of() : List.copyOf(tags);
+        return this;
+    }
+
+    /** List-only discovery with {@code extraExcludes} folded in — the serial-tag partition view. */
+    private List<String> discoverWithExtraExcludes(
+            Path javaBinary, String classpath, Path testClassesDir, List<String> extraExcludes)
+            throws IOException, InterruptedException {
+        List<String> saved = excludeTags;
+        var widened = new ArrayList<>(saved);
+        for (String t : extraExcludes) {
+            if (!widened.contains(t)) widened.add(t);
+        }
+        excludeTags = List.copyOf(widened);
+        try {
+            // noop listener: the full discovery already reported totals; this view must not
+            // grow the denominator a second time.
+            return discoverClasses(javaBinary, classpath, testClassesDir, TestProgressListener.noop());
+        } finally {
+            excludeTags = saved;
+        }
+    }
+
     private List<String> withTagArgs(List<String> base) {
         var out = new ArrayList<>(base);
         if (!includeTags.isEmpty()) out.add("--include-tags=" + String.join(",", includeTags));
@@ -514,14 +546,84 @@ public final class JUnitLauncher {
         if (classes.isEmpty()) {
             return new TestSummary(0, 0, 0, 0, List.of());
         }
-        // Don't waste workers on small suites — N workers > N classes leaves
-        // some idle waiting for a class that'll never come.
-        int actualWorkers = Math.min(workers, classes.size());
-        actualWorkers = TestWorkers.clampByHeap(actualWorkers);
+
+        // [test] serial-tags partition (class-level): classes bearing a serial tag leave the
+        // sharded pool and run on one trailing worker. Partitioned by class-list subtraction —
+        // a second list-only discovery with the serial tags excluded — so tag *expressions*
+        // never enter the picture (JK-2184).
+        List<String> serialClasses = List.of();
+        if (!serialTags.isEmpty()) {
+            Set<String> parallelView =
+                    new HashSet<>(discoverWithExtraExcludes(javaBinary, classpath, testClassesDir, serialTags));
+            List<String> par = new ArrayList<>();
+            List<String> ser = new ArrayList<>();
+            for (String c : classes) (parallelView.contains(c) ? par : ser).add(c);
+            classes = par;
+            serialClasses = ser;
+        }
 
         // One shared report per format — all worker threads write into them (both are thread-safe).
         XmlTestReport xml = testResultsDir != null ? new XmlTestReport() : null;
         MarkdownTestReport md = testResultsDir != null ? new MarkdownTestReport() : null;
+
+        TestSummary summary = classes.isEmpty()
+                ? new TestSummary(0, 0, 0, 0, List.of())
+                : runPool(javaBinary, classpath, testClassesDir, workers, listener, classes, xml, md, 0);
+        // A runner-crash sentinel means the fork itself is broken — don't fork it again.
+        boolean crashed = summary.failures().stream().anyMatch(f -> "(test run)".equals(f.testName()));
+        if (!serialClasses.isEmpty() && !crashed) {
+            TestSummary serial =
+                    runPool(javaBinary, classpath, testClassesDir, 1, listener, serialClasses, xml, md, workers);
+            summary = merge(summary, serial);
+        }
+        if (xml != null) {
+            try {
+                xml.writeAll(testResultsDir);
+            } catch (IOException e) {
+                /* non-fatal: tests ran, just report writing failed */
+            }
+        }
+        if (md != null) {
+            try {
+                md.writeAll(testResultsDir.getParent());
+            } catch (IOException e) {
+                /* non-fatal */
+            }
+        }
+        return summary;
+    }
+
+    private static TestSummary merge(TestSummary a, TestSummary b) {
+        var failures = new ArrayList<>(a.failures());
+        failures.addAll(b.failures());
+        var walls = new LinkedHashMap<>(a.classWallMs());
+        b.classWallMs().forEach((k, v) -> walls.merge(k, v, Long::sum));
+        return new TestSummary(
+                a.total() + b.total(),
+                a.succeeded() + b.succeeded(),
+                a.failed() + b.failed(),
+                a.skipped() + b.skipped(),
+                a.classes() + b.classes(),
+                failures,
+                walls);
+    }
+
+    /** One pull-queue pool over {@code classes}; report accumulation stays with the caller. */
+    private TestSummary runPool(
+            Path javaBinary,
+            String classpath,
+            Path testClassesDir,
+            int workers,
+            TestProgressListener listener,
+            List<String> classes,
+            XmlTestReport xml,
+            MarkdownTestReport md,
+            int workerIdBase)
+            throws IOException, InterruptedException {
+        // Don't waste workers on small suites — N workers > N classes leaves
+        // some idle waiting for a class that'll never come.
+        int actualWorkers = Math.min(workers, classes.size());
+        actualWorkers = TestWorkers.clampByHeap(actualWorkers);
 
         var queue = new ConcurrentLinkedDeque<>(classes);
         var aggregators = new ArrayList<ResultAggregator>();
@@ -530,7 +632,9 @@ public final class JUnitLauncher {
         var captures = new ArrayList<CaptureBuffer>();
 
         for (int w = 0; w < actualWorkers; w++) {
-            final int workerId = w + 1;
+            // workerIdBase keeps ids unique across the sharded and serial-tag pools, so the
+            // per-worker temp/state suffixes and failure attributions never collide.
+            final int workerId = workerIdBase + w + 1;
             final int idx = w;
             List<String> args =
                     withTagArgs(List.of("--pull", "--worker=" + workerId, "--scan-classpath=" + testClassesDir));
@@ -585,20 +689,6 @@ public final class JUnitLauncher {
                     0,
                     List.of(new TestSummary.Failure(
                             "(test run)", "", "runner exited " + worstExit, crash.toString(), moduleLabel, "", 0)));
-        }
-        if (xml != null) {
-            try {
-                xml.writeAll(testResultsDir);
-            } catch (IOException e) {
-                /* non-fatal: tests ran, just report writing failed */
-            }
-        }
-        if (md != null) {
-            try {
-                md.writeAll(testResultsDir.getParent());
-            } catch (IOException e) {
-                /* non-fatal */
-            }
         }
         return new TestSummary(total, succeeded, failed, skipped, classCount, allFailures, walls);
     }

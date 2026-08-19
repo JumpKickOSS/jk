@@ -909,6 +909,13 @@ public record JkBuild(
             /** {@code [build] test-workers}: {@code null} = inherit CLI/auto; {@code 0} = auto; {@code 1} = serial. */
             Integer testWorkers,
             /**
+             * {@code [test] serial-tags}: class-level JUnit tags whose classes never share the
+             * sharded worker pool — they run in a single trailing worker while untagged classes
+             * shard across {@code workers}. Lets a module keep {@code workers = 0} for its unit
+             * tier while its nested-engine/integration classes stay serial (JK-2184).
+             */
+            List<String> testSerialTags,
+            /**
              * {@code [resolve] platform}: how BOM managed pins constrain the graph. Default
              * {@link PlatformPolicy#ENFORCED}.
              */
@@ -935,6 +942,7 @@ public record JkBuild(
                 List.of(),
                 List.of(),
                 null,
+                List.of(),
                 PlatformPolicy.ENFORCED,
                 UnmappedPolicy.MEDIATE,
                 List.of(),
@@ -947,6 +955,7 @@ public record JkBuild(
             kspOptions = kspOptions == null ? List.of() : List.copyOf(kspOptions);
             extraSrc = extraSrc == null ? List.of() : List.copyOf(new LinkedHashSet<>(extraSrc));
             if (testWorkers != null && testWorkers < 0) testWorkers = 0;
+            testSerialTags = testSerialTags == null ? List.of() : List.copyOf(testSerialTags);
             platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
             unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
             extraResources = extraResources == null ? List.of() : List.copyOf(extraResources);
@@ -966,6 +975,7 @@ public record JkBuild(
                     kspOptions,
                     all,
                     testWorkers,
+                    testSerialTags,
                     platformPolicy,
                     unmappedPolicy,
                     extraResources,
@@ -981,6 +991,7 @@ public record JkBuild(
                     kspOptions,
                     extraSrc,
                     testWorkers,
+                    testSerialTags,
                     policy == null ? PlatformPolicy.ENFORCED : policy,
                     unmappedPolicy,
                     extraResources,

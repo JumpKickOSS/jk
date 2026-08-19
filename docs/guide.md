@@ -393,6 +393,20 @@ The module pin **wins** over CLI auto/`-w N` so monorepo `jk test -j0` (default 
 stays safe for known hermetic suites. Use `-w1` for one JVM per module, or `--serial-tests` to
 serialize the whole workspace run-tests gate.
 
+When only *some* classes are unhermetic, don't pin the whole module — name their tag:
+
+```toml
+[test]
+workers = 0                     # unit tier shards across auto workers...
+serial-tags = ["integration"]   # ...while these classes run on one trailing worker
+```
+
+`serial-tags` partitions at **class level** (the repo convention: tag heavy suites on the
+class). Classes bearing a listed tag leave the sharded pool and run serially after it; a
+method-level tag inside an otherwise-untagged class still shards with its class. When `W = 1`
+everything is serial anyway and the setting is a no-op. Worker JVMs also each get their own
+`JK_STATE_DIR` (nested-engine suites resolve distinct engine sockets per worker).
+
 #### Test isolation contract (suite authors)
 
 Defaults assume tests are **hermetic enough to share a machine** with other modules’ suites and
@@ -402,7 +416,8 @@ Defaults assume tests are **hermetic enough to share a machine** with other modu
 |-----------|------|
 | Separate forked test JVMs | Always (tests never run in the engine process) |
 | Per-worker `java.io.tmpdir` + `TMPDIR` | When within-module `W > 1` |
-| Optional nested-engine env isolation | `jk-cli` suite (fixed by product; not general) |
+| Per-worker `JK_STATE_DIR` (own engine socket) | When within-module `W > 1` and the suite sets one |
+| Serial trailing worker for tagged classes | `[test] serial-tags` |
 
 **You still must avoid:**
 

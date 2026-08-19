@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -15,6 +16,8 @@ import org.junit.jupiter.api.io.TempDir;
  * is that it reports what actually happened to a process instead of assuming a request was obeyed. On
  * Windows the alternative is telling someone to identify the right JVM in Task Manager.
  */
+// Serial phase: spawns real processes and asserts on live pids scoped to this home.
+@Tag("integration")
 class EngineFleetTest {
 
     @Test

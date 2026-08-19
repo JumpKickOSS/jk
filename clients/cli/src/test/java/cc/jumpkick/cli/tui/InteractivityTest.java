@@ -28,6 +28,12 @@ class InteractivityTest {
         return TerminalBuilder.builder()
                 .system(false)
                 .dumb(true)
+                // Force the type: with only dumb(true) as a fallback hint, JLine 4 still
+                // types the terminal from $TERM and runs its mode-2027 grapheme probe
+                // against the real controlling tty — which blocks forever in a forked
+                // test worker whose inherited PTY is dead (JK-2201). Type dumb skips
+                // the probe outright.
+                .type("dumb")
                 .streams(new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream())
                 .build();
     }

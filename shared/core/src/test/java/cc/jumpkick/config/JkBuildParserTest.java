@@ -213,6 +213,25 @@ class JkBuildParserTest {
     }
 
     @Test
+    void parses_test_serial_tags() {
+        assertThat(JkBuildParser.parse(PROJECT).build().testSerialTags()).isEmpty();
+        assertThat(JkBuildParser.parse(PROJECT + """
+
+                [test]
+                workers = 0
+                serial-tags = ["integration", "slow"]
+                """).build().testSerialTags())
+                .containsExactly("integration", "slow");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                [test]
+                serial-tags = [1]
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("serial-tags");
+    }
+
+    @Test
     void parses_optional_description() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 description = "A widget for widgeting."

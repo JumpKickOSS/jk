@@ -266,6 +266,7 @@ public final class ManifestBuild {
                     List.of(),
                     List.of(),
                     null,
+                    List.of(),
                     platformPolicy,
                     unmappedPolicy,
                     List.of(),
@@ -278,6 +279,7 @@ public final class ManifestBuild {
         List<String> kspOptions = new ArrayList<>();
         List<String> extraSrc = new ArrayList<>();
         Integer testWorkers = null;
+        List<String> testSerialTags = new ArrayList<>();
 
         if (build != null) {
             TomlArray arr = build.getArray("order-after");
@@ -348,6 +350,16 @@ public final class ManifestBuild {
             if (Boolean.FALSE.equals(test.getBoolean("parallel"))) {
                 testWorkers = 1;
             }
+            // [test] serial-tags — class-level tags that never share the sharded worker pool.
+            TomlArray st = test.getArray("serial-tags");
+            if (st != null) {
+                for (int i = 0; i < st.size(); i++) {
+                    Object val = st.get(i);
+                    if (!(val instanceof String s))
+                        throw new JkBuildParseException("[test].serial-tags must be an array of tag strings");
+                    if (!s.isBlank()) testSerialTags.add(s);
+                }
+            }
         }
         return new JkBuild.Build(
                 orderAfter,
@@ -357,6 +369,7 @@ public final class ManifestBuild {
                 kspOptions,
                 extraSrc,
                 testWorkers,
+                testSerialTags,
                 platformPolicy,
                 unmappedPolicy,
                 parseExtraResources(build),
