@@ -12,6 +12,9 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.WorkspaceRequest;
+import cc.jumpkick.runtime.WorkspaceResult;
+import cc.jumpkick.runtime.WorkspaceSpec;
 import cc.jumpkick.tool.JarManifest;
 import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.tool.ToolLauncher;
@@ -23,8 +26,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -243,6 +249,10 @@ public final class InstallCommand {
             cc.jumpkick.cli.tui.CommandWedge.printFail("Install", proj.error());
             return Exit.CONFIG;
         }
+        CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(projectDir, null, proj);
+        if (proj.workspaceRoot() || cwdScope.workspaceMember()) {
+            return runWorkspaceInstall(cwdScope.workspaceRoot(), cwdScope, planName);
+        }
         if (proj.application()
                 && "DISABLED".equals(proj.nativeMode())
                 && proj.mainClass().isEmpty()
@@ -302,12 +312,12 @@ public final class InstallCommand {
             return failureExit(result, "jk install", cacheDir);
         }
 
-        // Only for applications: place a runnable artifact under ~/.jk (the "make install").
-        // The engine computes the plan (gates, link set, launcher script); this process — which
-        // owns the user's home — applies it.
         Coordinate coord = Coordinate.of(proj.group(), proj.name(), proj.version());
         Path launcher = null;
-        if (proj.application()) {
+        if (isPluginWorker(proj, projectDir)) {
+            int pluginExit = sideLoadPlugin(projectDir, cacheDir);
+            if (pluginExit != 0) return pluginExit;
+        } else if (proj.application()) {
             try {
                 launcher = applyInstallPlan(projectDir, cacheDir);
             } catch (IOException e) {
@@ -319,7 +329,107 @@ public final class InstallCommand {
         return 0;
     }
 
-    /** The engine's parsed-project summarytest.noEngine). */
+    private int runWorkspaceInstall(Path wsRoot, CwdModuleScope.Resolved cwdScope, String planName) throws IOException {
+        Path cacheDir = cacheDir();
+        Path binDir = binDir();
+        cc.jumpkick.engine.protocol.ProjectInfo root = projectInfo(wsRoot);
+        if (root.error() != null) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Install", root.error());
+            return Exit.CONFIG;
+        }
+        List<Path> moduleDirs = new ArrayList<>();
+        for (String rel : root.moduleDirs()) {
+            Path d = Path.of(rel).isAbsolute() ? Path.of(rel) : wsRoot.resolve(rel);
+            moduleDirs.add(d.toAbsolutePath().normalize());
+        }
+        Map<Path, Path> graalByDir = new LinkedHashMap<>();
+        for (Path mod : moduleDirs) {
+            var info = projectInfo(mod);
+            if (info.error() != null || !"ALWAYS".equals(info.nativeMode())) continue;
+            Optional<Path> graal = new cc.jumpkick.cli.GraalResolver(null, false).resolve(mod, info.graal());
+            if (graal.isEmpty()) return 1;
+            graalByDir.put(mod, graal.get());
+        }
+        List<String> tokens = cwdScope.scoped() ? List.of(cwdScope.modulesSpec()) : List.of();
+        Set<Path> selected = cwdScope.scoped() ? Set.of(cwdScope.workingDir()) : Set.of();
+        WorkspaceRequest req = new WorkspaceRequest(
+                        wsRoot,
+                        cacheDir,
+                        null,
+                        0,
+                        null,
+                        buildOpts != null && buildOpts.skipTests,
+                        global.verbose,
+                        0,
+                        selected.isEmpty() ? null : selected,
+                        true,
+                        true)
+                .withModules(tokens)
+                .withSpec(WorkspaceSpec.install(selected, graalByDir));
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        WorkspaceResult result;
+        try {
+            result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
+                    cc.jumpkick.engine.EnginePaths.current(), req, new cc.jumpkick.runtime.WorkspaceBuildListener() {
+                        @Override
+                        public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
+                            return BuildPlanConsole.chooseConsoleListener(
+                                    planName, m.plan().steps(), mode);
+                        }
+                    });
+        } catch (IOException e) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Install", e.getMessage());
+            return Exit.SOFTWARE;
+        }
+        if (!result.success()) return result.exitCode() == 0 ? 1 : result.exitCode();
+        for (var m : result.modules()) {
+            if (!m.success()) continue;
+            Path mod = m.dir();
+            var info = projectInfo(mod);
+            if (isPluginWorker(info, mod)) {
+                int pluginExit = sideLoadPlugin(mod, cacheDir);
+                if (pluginExit != 0) return pluginExit;
+                announceProjectInstall(m.coord(), null, binDir);
+                continue;
+            }
+            Path launcher = null;
+            if (info.application()) {
+                try {
+                    launcher = applyInstallPlan(mod, cacheDir);
+                } catch (IOException e) {
+                    cc.jumpkick.cli.tui.CommandWedge.printFail("Install", "make install failed: " + e.getMessage());
+                    return 1;
+                }
+            }
+            announceProjectInstall(m.coord(), launcher, binDir);
+        }
+        return 0;
+    }
+
+    private static boolean isPluginWorker(cc.jumpkick.engine.protocol.ProjectInfo proj, Path projectDir) {
+        return cc.jumpkick.plugin.PluginModule.isWorker(projectDir)
+                || "cc.jumpkick.plugin.process.PluginMain".equals(proj.mainClass());
+    }
+
+    /** Side-load a plugin worker into the local repo and {@code store/lib/<id>/}. */
+    private int sideLoadPlugin(Path projectDir, Path cacheDir) throws IOException {
+        Path installRoot = JkDirs.store();
+        cc.jumpkick.engine.protocol.PluginInstallLocalAck ack;
+        try {
+            ack = cc.jumpkick.cli.engine.EngineClient.pluginInstallLocal(
+                    cc.jumpkick.engine.EnginePaths.current(), projectDir, cacheDir, installRoot, null, false, true);
+        } catch (Exception e) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Install", e.getMessage());
+            return Exit.SOFTWARE;
+        }
+        if (ack.error() != null && !ack.error().isBlank()) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Install", ack.error());
+            return Exit.CONFIG;
+        }
+        return 0;
+    }
+
+    /** The engine's parsed-project summary. */
     private cc.jumpkick.engine.protocol.ProjectInfo projectInfo(Path projectDir) throws IOException {
         return cc.jumpkick.cli.engine.EngineClient.projectInfo(cc.jumpkick.engine.EnginePaths.current(), projectDir);
     }
@@ -341,6 +451,11 @@ public final class InstallCommand {
                 libDirOverride);
         if (plan.error() != null) {
             throw new IOException(plan.error());
+        }
+        if (plan.linkSrcs().isEmpty()
+                && plan.launcherScript().isEmpty()
+                && plan.binPath().isEmpty()) {
+            return null;
         }
         for (int i = 0; i < plan.linkSrcs().size(); i++) {
             Path src = Path.of(plan.linkSrcs().get(i));

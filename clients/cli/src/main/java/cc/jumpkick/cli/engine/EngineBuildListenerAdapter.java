@@ -25,6 +25,8 @@ import cc.jumpkick.runtime.ModulePlan;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
+import cc.jumpkick.runtime.WorkspaceSpec;
+import cc.jumpkick.runtime.WorkspaceTarget;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -95,36 +97,38 @@ final class EngineBuildListenerAdapter {
             BufferedReader reader = EngineClient.protocolReader(ch);
 
             writer.write(ProtoSession.withSession(
-                    ProtoJobs.buildRequest(
-                            req.entryDir().toString(),
-                            req.cache().toString(),
-                            req.jdksDir() != null ? req.jdksDir().toString() : null,
-                            req.workers(),
-                            req.profile(),
-                            req.skipTests(),
-                            req.verbose(),
-                            req.maxModuleConcurrency(),
-                            session.parallelTests(),
-                            session.offline(),
-                            session.force(),
-                            // jk build asks the engine to auto-freshen a stale workspace lock; verify's
-                            // scratch rebuild must use the pinned lock verbatim (see WorkspaceRequest).
-                            req.freshenLock(),
-                            // verify's scratch rebuild: never persist action records under
-                            // scratch-salted keys that can never recur.
-                            req.ephemeralActions(),
-                            // workspace jk test: every module plan stops at run-tests.
-                            req.testOnly(),
-                            // -m / --affected-since module selection — the engine schedules
-                            // exactly these dirs instead of forecasting dirtiness itself.
-                            req.dirtyHint() == null
-                                    ? null
-                                    : req.dirtyHint().stream()
-                                            .map(Object::toString)
-                                            .sorted()
-                                            .toList(),
-                            null,
-                            req.modules()),
+                    withWorkspaceSpec(
+                            ProtoJobs.buildRequest(
+                                    req.entryDir().toString(),
+                                    req.cache().toString(),
+                                    req.jdksDir() != null ? req.jdksDir().toString() : null,
+                                    req.workers(),
+                                    req.profile(),
+                                    req.skipTests(),
+                                    req.verbose(),
+                                    req.maxModuleConcurrency(),
+                                    session.parallelTests(),
+                                    session.offline(),
+                                    session.force(),
+                                    // jk build asks the engine to auto-freshen a stale workspace lock; verify's
+                                    // scratch rebuild must use the pinned lock verbatim (see WorkspaceRequest).
+                                    req.freshenLock(),
+                                    // verify's scratch rebuild: never persist action records under
+                                    // scratch-salted keys that can never recur.
+                                    req.ephemeralActions(),
+                                    // workspace jk test: every module plan stops at run-tests.
+                                    req.testOnly(),
+                                    // -m / --affected-since module selection — the engine schedules
+                                    // exactly these dirs instead of forecasting dirtiness itself.
+                                    req.dirtyHint() == null
+                                            ? null
+                                            : req.dirtyHint().stream()
+                                                    .map(Object::toString)
+                                                    .sorted()
+                                                    .toList(),
+                                    null,
+                                    req.modules()),
+                            req),
                     req.variant(),
                     req.clientEnv(),
                     SessionContext.current().jvm(),
@@ -138,6 +142,28 @@ final class EngineBuildListenerAdapter {
 
             return streamEvents(reader, listener, req.cache());
         }
+    }
+
+    /**
+     * Additive {@code workspaceTarget} / {@code graalHomes} on a build-request. Omitted when the
+     * spec is the default package basket so older engines see an unchanged body.
+     */
+    static String withWorkspaceSpec(String json, WorkspaceRequest req) {
+        WorkspaceSpec spec = req.spec();
+        if (spec == null || spec == WorkspaceSpec.DEFAULT) return json;
+        if (spec.target() == WorkspaceTarget.PACKAGE && spec.graalByDir().isEmpty()) return json;
+        StringBuilder extra = new StringBuilder();
+        if (spec.target() != WorkspaceTarget.PACKAGE) {
+            extra.append(",\"workspaceTarget\":")
+                    .append(Jsonl.quote(spec.target().name().toLowerCase()));
+        }
+        if (!spec.graalByDir().isEmpty()) {
+            LinkedHashMap<String, String> homes = new LinkedHashMap<>();
+            spec.graalByDir().forEach((dir, home) -> homes.put(dir.toString(), home.toString()));
+            extra.append(",\"graalHomes\":").append(Jsonl.map(homes));
+        }
+        if (extra.isEmpty()) return json;
+        return json.substring(0, json.length() - 1) + extra + "}";
     }
 
     /**

@@ -110,7 +110,7 @@ class ReleaseCommandTest {
         String text = out.toString(StandardCharsets.UTF_8);
         assertThat(text).contains("server/engine");
         assertThat(text).contains("clients/cli");
-        assertThat(text).contains("jk plugin install-local");
+        assertThat(text).contains("jk install");
     }
 
     @Test

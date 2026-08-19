@@ -594,10 +594,17 @@ Assembly merge/exclude rules (SPI, Spring META-INF, drop signatures / `module-in
 
 ```toml
 [application]
-main = "com.example.App"
-assembly = true    # adds -all.jar — jk assemble (or jk build)
-# minified = true  # adds -min.jar via R8, built beside -all.jar
+main     = "com.example.App"   # required
+assembly = true                # adds -all.jar — jk assemble (or jk build)
+# minified = true              # adds -min.jar via R8, built beside -all.jar
+# native   = true              # native-image on jk build and jk install
 ```
+
+`jk install` in a project writes the thin jar to the local repo, then prefers a native
+binary in `~/.local/bin` if one exists, else a minified/fat jar under `$JK_HOME/lib/<name>/`
+plus a `java -jar` script, else a thin `java -cp` script over the repo jars. Plugin
+modules (`jk-plugin.toml` or `[application] main = PluginMain`) are side-loaded into
+the local repo. Outside a project, pass a coordinate (jkx mode).
 
 R8 is **opt-in** via `minified = true` — never the default.
 
@@ -694,6 +701,7 @@ jk assemble                  # fat/minified jar (alias: assembly; or --fat/--min
 jk release                   # local ship layout (alias: dist) — build + workers + target/dist
 jk test
 jk run -- args…              # at workspace root: runs the module with [application] main
+jk install                   # project: repo + PATH; or `jk install g:a:v` (jkx)
 jk clean
 jk explain                   # forecast / cache status (why will this rebuild?)
 jk format

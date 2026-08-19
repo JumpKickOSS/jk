@@ -160,7 +160,10 @@ public final class ManifestBuild {
     static Optional<JkBuild.NativeConfig> parseNativeConfig(TomlTable root) {
         TomlTable native_ = root.getTable("native");
         if (native_ == null) return Optional.empty();
-        String mainClass = native_.getString("main-class");
+        if (native_.contains("main-class")) {
+            throw new JkBuildParseException("[native].main-class was renamed — use main");
+        }
+        String mainClass = native_.getString("main");
         String name = native_.getString("name");
         List<String> args = new ArrayList<>();
         TomlArray argsArr = native_.getArray("args");

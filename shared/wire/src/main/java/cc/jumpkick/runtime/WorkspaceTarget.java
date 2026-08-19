@@ -15,7 +15,12 @@ public enum WorkspaceTarget {
     /** {@code jk native}: selected modules terminal {@code native-image}; prereqs package. */
     NATIVE,
     /** {@code jk image}: selected module terminal {@code write-image}; prereqs package. */
-    IMAGE;
+    IMAGE,
+    /**
+     * {@code jk install}: package (+ declared tails) then {@code cache-install} the thin jar.
+     * Fat/minified and native PATH placement stay client-side.
+     */
+    INSTALL;
 
     public boolean testOnly() {
         return this == TEST;

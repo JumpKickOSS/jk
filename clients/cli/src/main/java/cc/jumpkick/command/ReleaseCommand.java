@@ -15,6 +15,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -110,7 +111,7 @@ public final class ReleaseCommand implements CliCommand {
                                     : " (will try `jk native` if eligible, else running jk)"));
             CliOutput.out("  engine:      JVM assembly" + (engineDir != null ? " from " + engineDir : " (none found)"));
             CliOutput.out("  cli:         " + (cliDir != null ? cliDir : "(none found)"));
-            CliOutput.out("  then:        jk plugin install-local");
+            CliOutput.out("  then:        jk install (plugin workers)");
             return 0;
         }
 
@@ -287,22 +288,18 @@ public final class ReleaseCommand implements CliCommand {
     }
 
     private static int runInstallLocal(Path dir, Path cacheDir) {
-        List<String> args = new ArrayList<>();
-        args.add("plugin");
-        args.add("install-local");
-        args.add("-C");
-        args.add(dir.toString());
-        if (cacheDir != null) {
-            args.add("--cache-dir");
-            args.add(cacheDir.toString());
-        }
-        int code = Jk.execute(args.toArray(String[]::new));
-        // No plugin workers in the workspace is OK for non-jk projects (exit CONFIG).
-        if (code == Exit.CONFIG) {
-            // Non-jk workspaces often have no PluginMain workers — skip quietly.
+        Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
+        try {
+            var ack = cc.jumpkick.cli.engine.EngineClient.pluginInstallLocal(
+                    cc.jumpkick.engine.EnginePaths.current(), dir, cache, JkDirs.store(), null, false, true);
+            if (ack.error() != null && !ack.error().isBlank()) {
+                if (ack.error().contains("no plugin worker") || ack.error().contains("no PluginMain")) return 0;
+                return Exit.CONFIG;
+            }
             return 0;
+        } catch (Exception e) {
+            return Exit.SOFTWARE;
         }
-        return code;
     }
 
     private static Path findEngineModule(Path workspaceRoot, ProjectInfo root) {

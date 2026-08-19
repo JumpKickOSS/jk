@@ -48,7 +48,6 @@ jk build    # target/<name>-<version>.jar (or layout default)
 
 ```toml
 [application]
-# main is optional — library fat jars need no entry point
 main = "com.example.App"
 assembly = true
 ```
@@ -74,7 +73,7 @@ jk assemble --fat --write-config      # fat + assembly = true
 |---|---|
 | `--fat` | Override packaging to classic fat jar (`*-all.jar`) for **this invocation** |
 | `--minified` | Also build the R8 `-min.jar` for **this invocation** |
-| `--write-config` | With `--fat` or `--minified`, surgically edit `[application].assembly` / `.minified` in `jk.toml` (creates the table if missing; leaves `main` and other keys alone). Never rewrites the whole file. |
+| `--write-config` | With `--fat` or `--minified`, surgically edit `[application].assembly` / `.minified` in `jk.toml` (requires an existing `[application].main`; leaves `main` and other keys alone). Never rewrites the whole file. |
 
 One-offs print a loud note that the mode is not persisted (unless you pass `--write-config`). CLI
 overrides ride the client→engine session envelope and are included in packaging action-cache keys

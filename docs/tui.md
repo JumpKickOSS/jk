@@ -201,7 +201,7 @@ Use `new Table(title).columns(...).row(...)` (or the `Table.render` static for s
 | `jk selective prepare` | already wedge-settled |
 | `jk jdk ensure` / `graal` | settles via `JdkRender.available` under the envelope |
 | `jk storage clean` | plan console (`Repo` chip); settles with the sweep summary (`Finished sweeping store …`), like `jk cache clean` |
-| `jk plugin install-local` | `✓ Plugin  Installed N plugins` + Tree of `✓ group:artifact:version` children |
+| `jk install` (plugin module) | `✓ Install` plus local-repo side-load of PluginMain workers |
 | `jk release` / `jk dist` | after nested Build/Plugin settles: `✓ Release  Distribution ready for group:name:version` + Tree of engine/CLI artifact children |
 
 ### Documented exceptions (deliberately plain)

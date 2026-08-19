@@ -18,9 +18,11 @@ import cc.jumpkick.layout.MainClassScanner;
 import cc.jumpkick.layout.SourceLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.VariantApply;
+import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.tool.AppLauncher;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -809,8 +811,9 @@ public final class ExecPlans {
     }
 
     /**
-     * {@code jk install}'s application half: the gates, the {@code $JK_LIB_DIR/&lt;bin&gt;/} link set, and the
-     * launcher script — the client applies links, writes the script, and marks it executable.
+     * {@code jk install}'s application half. Preference by what exists after the build: native
+     * binary → {@code ~/.local/bin}; else minified/fat → {@code $JK_HOME/lib/&lt;bin&gt;/} + {@code
+     * java -jar}; else thin jar stays in the local repo and the script uses {@code java -cp}.
      */
     private static ExecPlan installPlan(
             Path dir,
@@ -822,78 +825,95 @@ public final class ExecPlans {
             Path binDirOverride,
             Path libDirOverride)
             throws IOException {
-        var p = project.project();
-        String bin = binName != null && !binName.isBlank() ? binName : p.name();
-        Path javaHome = projectJavaHome(dir);
-        Path binDir = binDirOverride != null ? binDirOverride : JkDirs.binDir();
-        // Same root as plugin workers (JkDirs.lib → store/lib); each tool gets lib/<bin>/.
-        Path libRoot = libDirOverride != null ? libDirOverride : JkDirs.lib();
-        Path libDir = libRoot.resolve(bin);
-
+        if (isPluginWorker(dir, project)) {
+            return installAck(List.of(), List.of(), "", "", "");
+        }
         if (!project.isApplication()) {
             return ExecPlan.error(
                     "install", "not an application — declare [application] in jk.toml to make it installable");
         }
 
-        List<String> linkSrcs = new ArrayList<>();
-        List<String> linkDests = new ArrayList<>();
+        var p = project.project();
+        Path javaHome = projectJavaHome(dir);
+        Path binDir = binDirOverride != null ? binDirOverride : JkDirs.binDir();
+        Path libRoot = libDirOverride != null ? libDirOverride : JkDirs.productLib();
+        String nativeName =
+                project.nativeConfig().map(JkBuild.NativeConfig::name).orElse(null);
 
-        // Native binary → ~/.local/bin/<bin> directly; no launcher script.
-        if (project.nativeMode() == JkBuild.NativeMode.ALWAYS) {
+        Path nativeBin = layout.nativeBinary();
+        if (Files.isRegularFile(nativeBin)) {
+            String bin = firstNonBlank(binName, nativeName, p.name());
             Path dest = binDir.resolve(bin);
-            linkSrcs.add(layout.nativeBinary().toAbsolutePath().toString());
-            linkDests.add(dest.toString());
-            return installAck(linkSrcs, linkDests, "", "", dest.toString());
+            return installAck(
+                    List.of(nativeBin.toAbsolutePath().toString()), List.of(dest.toString()), "", "", dest.toString());
         }
 
+        String bin = firstNonBlank(binName, p.name());
+        Path libDir = libRoot.resolve(bin);
         Path launcherPath = binDir.resolve(AppLauncher.launcherFileName(bin));
 
-        // Shadow / self-contained packager output: one jar in lib/<bin>/.
+        Path minified = layout.minifiedJar();
+        if (Files.isRegularFile(minified)) {
+            return fatJarPlan(minified, libDir, launcherPath, javaHome);
+        }
+        Path assembly = layout.assemblyJar();
+        if (Files.isRegularFile(assembly)) {
+            return fatJarPlan(assembly, libDir, launcherPath, javaHome);
+        }
         var shape = PluginBuild.shape(project, dir);
-        boolean selfContained = shape.map(sh -> sh.selfContained()).orElse(false);
-        if (project.assembly() || selfContained) {
-            Path src = project.assembly() ? layout.assemblyJar() : layout.mainJar();
-            Path dest = libDir.resolve(src.getFileName().toString());
-            linkSrcs.add(src.toAbsolutePath().toString());
-            linkDests.add(dest.toString());
-            String script = selfContained
-                            && "jar".equals(shape.map(sh -> sh.execMode()).orElse(""))
-                    ? AppLauncher.renderJarScript(javaHome, dest)
-                    : AppLauncher.renderScript(javaHome, resolveMain(project, layout, mainOverride), List.of(dest));
-            return installAck(linkSrcs, linkDests, launcherPath.toString(), script, launcherPath.toString());
+        boolean selfContainedJar = shape.map(sh -> sh.selfContained() && "jar".equals(sh.execMode()))
+                .orElse(false);
+        if (selfContainedJar && Files.isRegularFile(layout.mainJar())) {
+            return fatJarPlan(layout.mainJar(), libDir, launcherPath, javaHome);
         }
 
-        // Plain jar: app jar + hard-linked runtime dependency jars under lib/<bin>/.
+        Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
+        Path repoJar =
+                JkStores.storeRootFor(cache).resolve("repos").resolve("local").resolve(MavenLayout.artifactPath(coord));
+        if (!Files.isRegularFile(repoJar)) {
+            repoJar = layout.mainJar();
+        }
         List<Path> classpath = new ArrayList<>();
-        Path appDest = libDir.resolve(layout.mainJar().getFileName().toString());
-        linkSrcs.add(layout.mainJar().toAbsolutePath().toString());
-        linkDests.add(appDest.toString());
-        classpath.add(appDest);
-
+        classpath.add(repoJar);
         Path lockFile = resolveLockFile(dir);
         if (Files.exists(lockFile)) {
             Lockfile lock = LockfileReader.read(lockFile);
             for (ClasspathResolver.Entry entry :
                     new ClasspathResolver(JkStores.cas(cache)).entriesFor(lock, ClasspathResolver.RUNTIME)) {
-                if (!Files.exists(entry.jar())) continue;
-                Path dest = libDir.resolve(entry.artifact().moduleArtifact() + "-"
-                        + entry.artifact().version() + ".jar");
-                linkSrcs.add(entry.jar().toAbsolutePath().toString());
-                linkDests.add(dest.toString());
-                classpath.add(dest);
+                if (Files.exists(entry.jar())) classpath.add(entry.jar());
             }
         }
         WorkspaceClasspath.Result siblings =
                 WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME));
         for (Path sib : siblings.jars()) {
-            Path dest = libDir.resolve(sib.getFileName().toString());
-            linkSrcs.add(sib.toAbsolutePath().toString());
-            linkDests.add(dest.toString());
-            classpath.add(dest);
+            classpath.add(sib);
         }
-
         String script = AppLauncher.renderScript(javaHome, resolveMain(project, layout, mainOverride), classpath);
-        return installAck(linkSrcs, linkDests, launcherPath.toString(), script, launcherPath.toString());
+        return installAck(List.of(), List.of(), launcherPath.toString(), script, launcherPath.toString());
+    }
+
+    private static ExecPlan fatJarPlan(Path src, Path libDir, Path launcherPath, Path javaHome) {
+        Path dest = libDir.resolve(src.getFileName().toString());
+        String script = AppLauncher.renderJarScript(javaHome, dest);
+        return installAck(
+                List.of(src.toAbsolutePath().toString()),
+                List.of(dest.toString()),
+                launcherPath.toString(),
+                script,
+                launcherPath.toString());
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String v : values) {
+            if (v != null && !v.isBlank()) return v;
+        }
+        return "app";
+    }
+
+    static boolean isPluginWorker(Path dir, JkBuild project) {
+        if (cc.jumpkick.plugin.PluginModule.isWorker(dir)) return true;
+        String main = project.mainClass();
+        return main != null && "cc.jumpkick.plugin.process.PluginMain".equals(main);
     }
 
     private static ExecPlan installAck(

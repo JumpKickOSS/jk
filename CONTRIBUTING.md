@@ -76,7 +76,7 @@ The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `sha
 `server/`, `clients/`, and all first-party `plugins/*`). `clients/web` is a resources module;
 `server/engine` packages as an **assembly** jar (fat) including the web SPA. Workers are thin
 jars whose `Main-Class` is `PluginMain` (implied by `jk-plugin.toml` / the Plugin service file —
-no `[application]` table). Side-load with `jk plugin install-local`.
+no `[application]` table). Side-load with `jk install`.
 
 #### A) Native client bootstrap (CI default; needs GraalVM)
 
@@ -89,7 +89,7 @@ export PATH="$HOME/.local/bin:$PATH"   # install.sh default
 # 2) Lock + compile/package + curated tests + ship layout (no Gradle for javac)
 jk lock
 jk build --skip-tests
-jk plugin install-local
+jk install
 jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
 jk release --skip-tests
 ```
@@ -109,7 +109,7 @@ export PATH="$PWD/clients/cli/build/install/jk/bin:$PATH"
 # 2) Same dogfood as (A); --skip-native stages the bootstrap client (no Graal)
 jk lock
 jk build --skip-tests
-jk plugin install-local
+jk install
 jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
 jk release --skip-tests --skip-native
 ```
@@ -121,7 +121,7 @@ The client never embeds the engine. Spawning uses
 |---|---|
 | `./gradlew test` (unit tier) / `integrationTest` / `checkAll` | CI: unit on every push/PR (`ci.yml`); integration on Linux nightly (`ci-nightly.yml`). Local pre-merge bar is still `checkAll` when you touch wire/engine/CLI — see [docs/perf/test-suite-tiers.md](docs/perf/test-suite-tiers.md) |
 | `./gradlew dist` / `nativeCompile` | Prefer `jk release` for dogfood ship layout; Gradle still for native release matrix |
-| `./gradlew installLocal` | Workers + **engine materialize/bounce**; or `jk plugin install-local` after `jk build` for workers only |
+| `./gradlew installLocal` | Workers + **engine materialize/bounce**; or `jk install` after `jk build` for workers only |
 
 Dogfood ship layout (after bootstrap `jk` on PATH; Graal for native CLI):
 

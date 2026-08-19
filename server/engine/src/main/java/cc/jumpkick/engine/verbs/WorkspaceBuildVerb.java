@@ -18,7 +18,9 @@ import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -165,6 +167,17 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     .withTestOnly(testOnly)
                     .withEphemeralActions(ephemeralActions)
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
+            String workspaceTarget = Jsonl.str(requestLine, "workspaceTarget");
+            if ("install".equals(workspaceTarget)) {
+                Map<Path, Path> graalByDir = new LinkedHashMap<>();
+                Map<String, String> homes = Jsonl.strMap(requestLine, "graalHomes");
+                if (homes != null) {
+                    homes.forEach((d, h) -> graalByDir.put(Path.of(d), Path.of(h)));
+                }
+                Set<Path> selected = dirty == null ? Set.of() : dirty;
+                req = req.withSpec(cc.jumpkick.runtime.WorkspaceSpec.install(selected, graalByDir));
+            }
+            WorkspaceRequest workspaceReq = req;
 
             JkConfig config = new JkConfig(
                     Optional.empty(),
@@ -192,7 +205,8 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             long rid = host.eventRequestId();
             if (rid > 0) host.putProgressRoot(rid, entryDirStr);
             WorkspaceBuildListener listener = host.workspaceListener(writer, entryDirStr);
-            WorkspaceResult result = SessionContext.where(session, () -> BuildService.buildWorkspace(req, listener));
+            WorkspaceResult result =
+                    SessionContext.where(session, () -> BuildService.buildWorkspace(workspaceReq, listener));
             host.releaseExclusiveSlot();
             boolean cancelled = result.cancelled() || host.effectiveCancelled(rid, cancelToken.cancelled());
             cc.jumpkick.engine.jobs.JobOutcome outcome =

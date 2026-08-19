@@ -21,7 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Side-load workspace PluginMain jars into the local store (engine-hosted {@code jk plugin install-local}). */
+/** Side-load workspace PluginMain jars into the local store ({@code jk install} of a plugin module). */
 public final class PluginInstallLocalOps {
 
     private PluginInstallLocalOps() {}

@@ -125,8 +125,9 @@ public final class JkDirs {
     }
 
     /**
-     * Product library for the live engine jar: {@code $JK_HOME/lib} when set, otherwise
-     * {@code <data>/lib}. Distinct from {@link #lib()} ({@code store/lib}, plugin workers).
+     * Product library for the live engine jar and installed fat/minified app jars:
+     * {@code $JK_HOME/lib} when set, otherwise {@code <data>/lib}. Distinct from {@link #lib()}
+     * ({@code store/lib}, plugin workers).
      */
     public static Path productLib() {
         return current().productLibDir();
@@ -246,8 +247,8 @@ public final class JkDirs {
     }
 
     /**
-     * Live engine jar directory: {@code $JK_HOME/lib} when set, otherwise {@code <data>/lib}
-     * ({@code jk-engine.jar} / {@code jk-engine.jar.old}). Not {@link #libDir()}.
+     * Live engine jar and installed fat/minified app jars: {@code $JK_HOME/lib} when set,
+     * otherwise {@code <data>/lib} ({@code jk-engine.jar} / {@code <exec>/…}). Not {@link #libDir()}.
      */
     public Path productLibDir() {
         return homeDir().resolve("lib");

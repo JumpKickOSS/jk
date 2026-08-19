@@ -1704,14 +1704,40 @@ class JkBuildParserTest {
     }
 
     @Test
-    void application_present_without_main_is_still_an_application() {
-        // [application]'s mere presence is the signal — a main class is not required
-        // (e.g. a project that only wants assembly packaging).
-        JkBuild parsed = JkBuildParser.parse(PROJECT + "\n[application]\nassembly = true\n");
+    void application_requires_main() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "\n[application]\nassembly = true\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[application].main");
+    }
+
+    @Test
+    void application_native_true_is_always() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+
+                [application]
+                main   = "com.example.App"
+                native = true
+                """);
         assertThat(parsed.isApplication()).isTrue();
-        assertThat(parsed.mainClass()).isNull();
-        assertThat(parsed.assembly()).isTrue();
-        assertThat(parsed.minified()).isFalse();
+        assertThat(parsed.application().orElseThrow().nativeImage()).isTrue();
+        assertThat(parsed.nativeMode()).isEqualTo(JkBuild.NativeMode.ALWAYS);
+        assertThat(parsed.graal()).isEqualTo("graalvm");
+    }
+
+    @Test
+    void application_native_true_conflicts_with_native_enabled_false() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                [application]
+                main   = "com.example.App"
+                native = true
+
+                [native]
+                enabled = false
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[application].native")
+                .hasMessageContaining("enabled = false");
     }
 
     @Test
@@ -1786,12 +1812,24 @@ class JkBuildParserTest {
     }
 
     @Test
+    void native_main_class_key_was_renamed() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                [native]
+                main-class = "com.example.NativeMain"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[native].main-class")
+                .hasMessageContaining("use main");
+    }
+
+    @Test
     void native_config_fields_parsed() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
 
                 [native]
                 enabled    = "always"
-                main-class = "com.example.NativeMain"
+                main = "com.example.NativeMain"
                 name       = "myapp"
                 args       = ["-O3", "--gc=serial"]
                 """);

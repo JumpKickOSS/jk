@@ -163,7 +163,7 @@ public record JkBuild(
      * {@code JkBuildParser.ensureShrinkForMinified}).
      */
     public JkBuild withArtifacts(boolean assembly, boolean minified) {
-        Application app = application.orElse(new Application(null, false, false));
+        Application app = application.orElse(new Application(null, false, false, false));
         if (app.assembly() == (assembly || minified) && app.minified() == minified) return this;
         return new JkBuild(
                 project,
@@ -174,7 +174,7 @@ public record JkBuild(
                 workspace,
                 manifest,
                 plugins,
-                Optional.of(new Application(app.main(), assembly, minified)),
+                Optional.of(new Application(app.main(), assembly, minified, app.nativeImage())),
                 nativeConfig,
                 pluginConfigs,
                 build,
@@ -248,15 +248,20 @@ public record JkBuild(
 
     /** {@code [native].graal} — the GraalVM spec {@code jk native} uses, or {@code null} if unset. */
     public String graal() {
-        return nativeConfig.map(NativeConfig::graal).orElse(null);
+        return nativeConfig.map(NativeConfig::graal).orElse(nativeMode() != NativeMode.DISABLED ? "graalvm" : null);
     }
 
     /**
-     * From {@code [native]} / {@code enabled}: absent table → {@link NativeMode#DISABLED}; present
-     * with no key or {@code enabled = true} → {@link NativeMode#SUPPORTED}; {@code enabled =
-     * "always"} → {@link NativeMode#ALWAYS}; {@code enabled = false} → {@link NativeMode#DISABLED}.
+     * From {@code [application].native} and {@code [native].enabled}: {@code native = true} →
+     * {@link NativeMode#ALWAYS}; else absent {@code [native]} → {@link NativeMode#DISABLED};
+     * present with no key or {@code enabled = true} → {@link NativeMode#SUPPORTED}; {@code
+     * enabled = "always"} → {@link NativeMode#ALWAYS}; {@code enabled = false} → {@link
+     * NativeMode#DISABLED}.
      */
     public NativeMode nativeMode() {
+        if (application.map(Application::nativeImage).orElse(false)) {
+            return NativeMode.ALWAYS;
+        }
         return nativeConfig.map(NativeConfig::enabled).orElse(NativeMode.DISABLED);
     }
 
@@ -839,12 +844,15 @@ public record JkBuild(
     }
 
     /**
-     * {@code [application]} block. Presence alone marks an application; absent means library.
+     * {@code [application]} block. Presence marks an application; {@code main} is required in
+     * {@code jk.toml}. Absent means library.
      *
      * @param assembly build a fat {@code -all.jar} beside the thin jar
      * @param minified build an R8-minified {@code -min.jar}; implies {@code assembly}
+     * @param nativeImage {@code native = true}: native-image on {@code jk build} and {@code jk
+     *     install}
      */
-    public record Application(String main, boolean assembly, boolean minified) {
+    public record Application(String main, boolean assembly, boolean minified, boolean nativeImage) {
 
         public Application {
             if (main != null && main.isBlank()) main = null;
@@ -854,9 +862,14 @@ public record JkBuild(
             if (minified) assembly = true;
         }
 
-        /** Convenience for importers: no minified artifact. */
+        /** Convenience for importers: no minified artifact, no native image. */
         public Application(String main, boolean assembly) {
-            this(main, assembly, false);
+            this(main, assembly, false, false);
+        }
+
+        /** Convenience: no native image. */
+        public Application(String main, boolean assembly, boolean minified) {
+            this(main, assembly, minified, false);
         }
     }
 

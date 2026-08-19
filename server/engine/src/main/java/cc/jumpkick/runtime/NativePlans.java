@@ -29,7 +29,7 @@ public final class NativePlans {
     }
 
     /**
-     * The native-image main class: {@code --main}, then {@code [native].main-class}, then {@code
+     * The native-image main class: {@code --main}, then {@code [native].main}, then {@code
      * [image].main}, then {@code [application] main}.
      */
     public static String resolveMain(Path buildFile, String mainOverride) {

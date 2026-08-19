@@ -666,6 +666,28 @@ public final class WorkspaceExecute {
             // compile classpath consumes sibling JARS, so prereqs must package, not just compile.
             return CompilePlans.compileBuildPlan(dir, req.cache(), req.profile(), req.verbose(), decorate);
         }
+        if (target == WorkspaceTarget.INSTALL) {
+            Path graal = GraalHomes.lookup(dir, spec.graalByDir());
+            BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
+                            dir,
+                            req.cache(),
+                            req.workers() > 0 ? req.workers() : 1,
+                            req.jdksDir(),
+                            req.profile(),
+                            req.skipTests(),
+                            req.verbose(),
+                            moduleDirs,
+                            false)
+                    .withVariant(req.variant(), req.clientEnv())
+                    .withEphemeralActions(req.ephemeralActions());
+            BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, forceRebuild);
+            BuildPlanner.appendDeclaredTails(b, inputs, graal, true);
+            if (selected) {
+                Path m2 = Path.of(System.getProperty("user.home", "."), ".m2");
+                InstallPlans.appendCacheInstall(b, u.manifest(), req.cache(), m2);
+            }
+            return b.build();
+        }
         // A consumed prereq must package even on the test path: dependents compile against
         // its sibling JAR, not its classes dir (JK-2177).
         boolean consumed = jarConsumed.contains(BuildGraph.canonicalPath(dir));

@@ -37,7 +37,7 @@ After `jk` is on `PATH`, stay in this checkout:
 ```bash
 jk lock
 jk build --skip-tests
-jk plugin install-local
+jk install
 
 # Pure-jk unit suite (includes clients/cli — nested engines use isolated JK_STATE_DIR)
 jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
@@ -80,7 +80,7 @@ With no `[repositories]` table, remotes are **Maven Central then Google Maven** 
 |---|---|
 | Full `./gradlew test` | Parity oracle + bootstrap CI source of truth |
 | `./gradlew dist` / `nativeCompile` | Bootstrap binary when no prior `jk` install exists |
-| `./gradlew installLocal` | Workers + engine materialize/bounce; or `jk plugin install-local` after pure-jk build |
+| `./gradlew installLocal` | Workers + engine materialize/bounce; or `jk install` after pure-jk build |
 
 ### Future cut-over (backlog)
 
@@ -101,9 +101,7 @@ After `jk build` produces thin PluginMain jars under `plugins/*/target/` (or
 `target/plugins/…`):
 
 ```bash
-jk plugin install-local
-# or: jk plugin install-local --modules test-runner,java-compiler
-# or: jk plugin install-local --dry-run
+jk install
 ```
 
 For each PluginMain worker:
@@ -142,7 +140,7 @@ target/dist/
     jk-engine-<version>.jar  # JVM engine assembly (includes web SPA)
 ```
 
-Also runs `jk plugin install-local` for workspace PluginMain workers.
+Also runs `jk install` for workspace PluginMain workers.
 
 Flags: `--out <dir>`, `--skip-tests`, `--skip-native`, `--dry-run`, `--modules <sel>`.
 
@@ -165,7 +163,7 @@ Pure-jk test forks set `-Djk.aot.train=off` automatically. For host engines in C
 
 1. ~~Default Google Maven~~ (done)
 2. ~~`clients/web` + engine assembly~~ (done)
-3. ~~`jk plugin install-local`~~ (done)
+3. ~~`jk install`~~ (done)
 4. ~~`jk release` / `jk dist`~~ (done)
 5. ~~All first-party plugins on the workspace~~ (done)
 6. ~~Curated `jk test` + CI self-host dogfood~~ (done)

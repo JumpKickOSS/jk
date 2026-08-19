@@ -47,10 +47,6 @@ public final class InstallPlans {
             Path projectDir, Path cache, Path m2Dir, boolean skipTests, boolean verbose, Path graalHome)
             throws IOException {
         JkBuild proj = JkBuildParser.parse(projectDir.resolve("jk.toml"));
-        var pj = proj.project();
-        // ALWAYS: native is part of the standard build and install produces a native binary.
-        // SUPPORTED: user runs `jk native` explicitly; install deploys the jar.
-        boolean isNative = proj.isApplication() && proj.nativeMode() == JkBuild.NativeMode.ALWAYS;
 
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
         boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(projectDir);
@@ -75,13 +71,18 @@ public final class InstallPlans {
         // ALWAYS modules get native from appendDeclaredTails (same as jk build); pass the
         // client-resolved GraalVM so install does not re-resolve.
         BuildPlanner.appendDeclaredTails(builder, inputs, graalHome, true);
+        appendCacheInstall(builder, proj, cache, m2Dir);
+        return builder.build();
+    }
 
-        // cache-install reads the freshly-built jar and must run after every runnable artifact
-        // this project produces (so a follow-up client-side make-install finds them all built).
+    /**
+     * Thin-jar {@code cache-install} tail. Fat and minified jars are not written to the local
+     * repo — only the thin jar is.
+     */
+    public static void appendCacheInstall(BuildPlan.Builder builder, JkBuild proj, Path cache, Path m2Dir) {
+        boolean isNative = proj.nativeMode() == JkBuild.NativeMode.ALWAYS;
         List<String> requires = new ArrayList<>(List.of(TaskNames.PACKAGE_JAR));
         if (isNative) requires.add(TaskNames.NATIVE_IMAGE);
-        if (proj.isApplication() && proj.assembly() && !isNative) requires.add(TaskNames.PACKAGE_ASSEMBLY);
-
         Task cacheInstall = Task.builder(TaskNames.CACHE_INSTALL)
                 .stage(cc.jumpkick.run.BuildStage.PUBLISH)
                 .requires(requires.toArray(new String[0]))
@@ -103,8 +104,7 @@ public final class InstallPlans {
                     ctx.progress(1);
                 })
                 .build();
-
-        return builder.addTask(cacheInstall).terminal(TaskNames.CACHE_INSTALL).build();
+        builder.addTask(cacheInstall).terminal(TaskNames.CACHE_INSTALL);
     }
 
     /**
@@ -167,6 +167,13 @@ public final class InstallPlans {
             wrapped.addSuppressed(branchFailure);
             throw wrapped;
         }
+    }
+
+    /** Cache-install the thin jar of {@code moduleDir} after a workspace package. */
+    public static void installThinJar(Path moduleDir, Path cache, Path m2Dir) throws IOException {
+        JkBuild proj = JkBuildParser.parse(moduleDir.resolve("jk.toml"));
+        proj = cc.jumpkick.config.WorkspaceResolve.applyWorkspace(moduleDir, proj);
+        cacheInstallArtifact(proj, BuildLayout.of(moduleDir, proj), cache, m2Dir);
     }
 
     /**

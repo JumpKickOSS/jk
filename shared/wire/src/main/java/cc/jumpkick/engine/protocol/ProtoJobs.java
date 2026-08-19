@@ -901,7 +901,7 @@ public final class ProtoJobs {
 
     /**
      * Build native artifacts (see {@link EngineProtocol#NATIVE_REQUEST}). {@code mainClass} is the {@code --main}
-     * override (may be {@code null} — the engine resolves {@code [native].main-class}/{@code
+     * override (may be {@code null} — the engine resolves {@code [native].main}/{@code
      * [image].main}/{@code [application].main} itself); {@code extraArgs} are forwarded to {@code
      * native-image}; {@code graalHomes} maps each native-eligible module dir to the GraalVM home
      * the client resolved for it (the one flat-map wire encoding — see {@code Jsonl.map}).
