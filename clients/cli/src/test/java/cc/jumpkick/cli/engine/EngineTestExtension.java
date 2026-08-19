@@ -14,11 +14,9 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  * teardown is clean
  * </ul>
  *
- * <p>Warm engine across methods AND classes: the old per-class {@code afterAll} force-stop
- * cost a cold engine respawn for every integration class (~180 respawns per widened run)
- * and, before per-worker state dirs (JK-2183), aborted sibling workers mid-request. TempDir
- * cleanup uses {@link JkTempDirDeletionStrategy}: stop engine only when a delete fails. A
- * test that needs a fresh engine stops it itself ({@link IsolatedStore} classes already do).
+ * <p>Keeps one warm engine across methods and classes. TempDir cleanup uses
+ * {@link JkTempDirDeletionStrategy}: stop engine only when a delete fails. A test that needs
+ * a fresh engine stops it itself ({@link IsolatedStore} classes already do).
  */
 public final class EngineTestExtension implements BeforeAllCallback {
 
@@ -28,9 +26,7 @@ public final class EngineTestExtension implements BeforeAllCallback {
     public void beforeAll(ExtensionContext context) {
         EngineTestSupport.ensureEngineMaterialized();
         // Root-store AutoCloseable: JUnit closes it when the whole suite (this JVM) ends.
-        context.getRoot()
-                .getStore(NS)
-                .getOrComputeIfAbsent(
-                        "engine-teardown", k -> (AutoCloseable) EngineTestSupport::stopEngineAndRelease);
+        context.getRoot().getStore(NS).computeIfAbsent("engine-teardown", _ ->
+                (AutoCloseable) EngineTestSupport::stopEngineAndRelease);
     }
 }
