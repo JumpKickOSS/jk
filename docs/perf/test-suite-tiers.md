@@ -22,6 +22,11 @@ Tag new heavy tests at class level:
 
 ## Redundancy / prune candidates (integration tier)
 
+**JK-2192 (2026-08-19): this backlog was worked and largely disproved at assertion
+level** — the Cache-e2e, JDK-install, and Android-ladder rows below looked like
+duplicates but cover different layers/assertions; see the ticket for the per-item
+disproofs before re-adding anything here.
+
 Measured profiling of a full `integrationTest` is expensive; use this as a **manual prune backlog** when editing those areas:
 
 | Cluster | Keep | Consider folding into nightly-only / fewer cases |
