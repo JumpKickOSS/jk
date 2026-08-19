@@ -76,17 +76,16 @@ tasks.shadowJar {
 }
 
 /**
- * JK-1194: materialize the freshly-built engine fat jar into the versioned data layout
- * (`…/share/jk/versions/<v>/` or `$JK_HOME/versions`) and bounce the resident daemon so local
- * dogfood picks up engine-side first-party plugin tables without a hand copy.
+ * Materialize the freshly-built engine fat jar into {@code $JK_HOME/lib/jk-engine.jar} (or
+ * {@code ~/.local/share/jk/lib/jk-engine.jar}) and bounce the resident daemon so local dogfood
+ * picks up engine-side first-party plugin tables without a hand copy.
  *
  * Client resolution (first hit wins): `:cli:installDist` bin, `build/dist/jk`, platform bin dir
  * (`~/.local/bin/jk`), then PATH `jk`.
  */
 tasks.register("installLocal") {
     group = "distribution"
-    description =
-        "Materialize shadowJar into the versioned layout and restart the engine (JK-1194 dogfood)"
+    description = "Materialize shadowJar into the product lib and restart the engine"
     dependsOn(tasks.named("shadowJar"))
     // Client must exist before materialize: `./gradlew dist installLocal` used to race
     // installLocal (only dependsOn shadowJar) ahead of nativeCompile/dist, so resolveClient

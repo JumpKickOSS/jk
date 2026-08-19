@@ -45,7 +45,7 @@ public final class EngineSpawn {
 
     private static boolean buildIdCurrent(EngineClient.Handshake hs, String clientVersion) {
         if (hs.buildId().isEmpty()) return true;
-        String expected = cc.jumpkick.cache.VersionStore.current()
+        String expected = cc.jumpkick.cache.EngineInstall.current()
                 .engineSha(clientVersion)
                 .orElse("");
         if (expected.isEmpty()) return true;
@@ -386,9 +386,10 @@ public final class EngineSpawn {
     /**
      * Which engine artifact a spawn chose. {@code EXE}: {@code path} is an executable whose {@code
      * main} IS the engine loop. {@code JAR}: {@code path} is the engine's fat jar ({@code
-     * ~/.local/share/jk/versions/<v>/lib/jk-engine.jar}), launched as {@code <managed-jdk>/bin/java … -cp <path>
-     * cc.jumpkick.engine.EngineMain} — the engine is a plain JVM app, never a native image. There is
-     * no client-binary FALLBACK: the slim client never hosts the engine.
+     * $JK_HOME/lib/jk-engine.jar} or {@code <data>/lib/jk-engine.jar}), launched as {@code
+     * <managed-jdk>/bin/java … -cp <path> cc.jumpkick.engine.EngineMain} — the engine is a plain JVM
+     * app, never a native image. There is no client-binary FALLBACK: the slim client never hosts the
+     * engine.
      */
     record EngineArtifact(Kind kind, String path, String how) {
         enum Kind {
@@ -398,26 +399,24 @@ public final class EngineSpawn {
     }
 
     /**
-     * Engine artifact resolution: (a) {@code JK_ENGINE_EXE}; (b) {@code
-     * ~/.local/share/jk/versions/<v>/lib/jk-engine.jar}. Empty when neither is available (caller may download /
-     * materialize, then retry).
+     * Engine artifact resolution: (a) {@code JK_ENGINE_EXE}; (b) the product-lib jar paired with
+     * this client version (live {@code jk-engine.jar}, or {@code jk-engine.jar.old} during drain).
+     * Empty when neither is available (caller may download / materialize, then retry).
      */
     static Optional<EngineArtifact> resolveEngineArtifact(String envOverride, String version) {
-        return resolveEngineArtifact(envOverride, version, cc.jumpkick.cache.VersionStore.current());
+        return resolveEngineArtifact(envOverride, version, cc.jumpkick.cache.EngineInstall.current());
     }
 
     /** Root-injected variant — the testable seam. */
     static Optional<EngineArtifact> resolveEngineArtifact(
-            String envOverride, String version, cc.jumpkick.cache.VersionStore store) {
+            String envOverride, String version, cc.jumpkick.cache.EngineInstall install) {
         if (envOverride != null && !envOverride.isBlank()) {
             return Optional.of(new EngineArtifact(EngineArtifact.Kind.EXE, envOverride, "JK_ENGINE_EXE"));
         }
-        var materialized = store.resolve(version);
+        var materialized = install.resolve(version);
         if (materialized.isPresent()) {
-            cc.jumpkick.task.AccessLedger.atDefaultPath()
-                    .touch(cc.jumpkick.cache.VersionStore.ledgerKey(version)); // version-GC input
             return Optional.of(new EngineArtifact(
-                    EngineArtifact.Kind.JAR, materialized.get().engineJar().toString(), "versions"));
+                    EngineArtifact.Kind.JAR, materialized.get().engineJar().toString(), "lib"));
         }
         return Optional.empty();
     }
@@ -458,7 +457,7 @@ public final class EngineSpawn {
         // user (or `jk engine aot`) finds them all side by side. The engine's file
         // carries its jk version ("engine-<version>-<key>.aot") because its LIFETIME is
         // version-scoped: a new primary reaps other versions' engine AOT, and
-        // VersionStore.prune also retires them with the version tree. The sweep below stays
+        // EngineInstall.gc also retires leftover version trees. The sweep below stays
         // within one version so side-by-side keys for the same version never thrash each other.
         // Worker caches (kotlinc-/java-compiler-) have no version dimension.
         Path aotDir = cc.jumpkick.util.JkDirs.state().resolve("aot");

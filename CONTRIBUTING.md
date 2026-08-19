@@ -74,8 +74,9 @@ catalog file and no `catalog =` pin in `jk.toml`.
 
 The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `shared/`,
 `server/`, `clients/`, and all first-party `plugins/*`). `clients/web` is a resources module;
-`server/engine` packages as an **assembly** jar (fat) including the web SPA. Workers package as
-**assembly jars** with `Main-Class = PluginMain`. Side-load with `jk plugin install-local`.
+`server/engine` packages as an **assembly** jar (fat) including the web SPA. Workers are thin
+jars whose `Main-Class` is `PluginMain` (implied by `jk-plugin.toml` / the Plugin service file —
+no `[application]` table). Side-load with `jk plugin install-local`.
 
 #### A) Native client bootstrap (CI default; needs GraalVM)
 
@@ -83,7 +84,7 @@ The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `sha
 # 1) Produce a local JumpKick + side-load worker jars into ~/.cache/jk
 ./gradlew dist installLocal
 ./install.sh build/dist/jk
-export PATH="$HOME/.local/bin:$PATH"   # install.sh default; or versions/<v>/bin
+export PATH="$HOME/.local/bin:$PATH"   # install.sh default
 
 # 2) Lock + compile/package + curated tests + ship layout (no Gradle for javac)
 jk lock
@@ -96,7 +97,7 @@ jk release --skip-tests
 #### B) Thin JVM client + engine jar (no Graal; dogfood without native-image)
 
 ```bash
-# 1) Slim client + workers + engine materialize + daemon bounce (JK-1194)
+# 1) Slim client + workers + engine materialize + daemon bounce
 ./gradlew :cli:installDist installLocal --no-daemon
 # Root installLocal side-loads every plugin worker, then :engine:installLocal
 # (shadowJar → jk self materialize → engine stop/start).
@@ -113,14 +114,14 @@ jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/en
 jk release --skip-tests --skip-native
 ```
 
-The client never embeds the engine (ticket-1020). Spawning uses
-`~/.local/share/jk/versions/<v>/lib/jk-engine.jar` or `JK_ENGINE_EXE`.
+The client never embeds the engine. Spawning uses
+`~/.local/share/jk/lib/jk-engine.jar` (or `$JK_HOME/lib/jk-engine.jar`) or `JK_ENGINE_EXE`.
 
 | Still Gradle | Why |
 |---|---|
 | `./gradlew test` (unit tier) / `integrationTest` / `checkAll` | CI: unit on every push/PR (`ci.yml`); integration on Linux nightly (`ci-nightly.yml`). Local pre-merge bar is still `checkAll` when you touch wire/engine/CLI — see [docs/perf/test-suite-tiers.md](docs/perf/test-suite-tiers.md) |
 | `./gradlew dist` / `nativeCompile` | Prefer `jk release` for dogfood ship layout; Gradle still for native release matrix |
-| `./gradlew installLocal` | Workers + **engine materialize/bounce** (JK-1194); or `jk plugin install-local` after `jk build` for workers only |
+| `./gradlew installLocal` | Workers + **engine materialize/bounce**; or `jk plugin install-local` after `jk build` for workers only |
 
 Dogfood ship layout (after bootstrap `jk` on PATH; Graal for native CLI):
 

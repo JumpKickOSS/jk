@@ -42,26 +42,27 @@ repo: see [CONTRIBUTING.md](../CONTRIBUTING.md).
 | Role | Linux / macOS | Windows |
 |------|---------------|---------|
 | **bin** (PATH) | `~/.local/bin` | `%USERPROFILE%\.local\bin` |
-| **data** (versions, store/CAS) | `~/.local/share/jk` | `%LOCALAPPDATA%\jk\data` |
+| **data** (engine lib, store/CAS) | `~/.local/share/jk` | `%LOCALAPPDATA%\jk\data` |
 | **cache** (action cache) | `~/.cache/jk` | `%LOCALAPPDATA%\jk\cache` |
 | **state** (engine socket, builds history) | `~/.local/state/jk` | `%LOCALAPPDATA%\jk\state` |
 | **config** | `~/.config/jk/config.toml` | `%APPDATA%\jk\config.toml` |
 | **managed JDKs** | Linux: `~/.jdks` · macOS: `~/Library/Java/JavaVirtualMachines` | `%USERPROFILE%\.jdks` |
 
 **Artifact store** (deps CAS + `repos/`) lives under **data** (`…/store`). **Cache
-CAS** (action outputs) lives under **cache** (`…/cache/sha256`). Side-by-side client +
-engine installs live under **data** (`…/versions/<v>/`). Managed JDKs use the
+CAS** (action outputs) lives under **cache** (`…/cache/sha256`). The live engine jar is
+**`<data>/lib/jk-engine.jar`** (or `$JK_HOME/lib/jk-engine.jar`); an upgrade parks the
+previous copy as `jk-engine.jar.old` until the displaced engine drains. Managed JDKs use the
 **IntelliJ shared root** so the IDE and JumpKick share runtimes; discovery still
 picks up SDKMAN, mise, Homebrew, `JAVA_HOME`, and system installs before
 downloading.
 
 | Env / flag | Effect |
 |------------|--------|
-| `JK_HOME` | Optional **single-tree umbrella** for product dirs (config, cache, store, state, data, bin, versions). Hermetic tests and cold CI roots. Does **not** move the default JDK root. |
+| `JK_HOME` | Optional **single-tree umbrella** for product dirs (config, cache, store, state, data, bin, lib). Hermetic tests and cold CI roots. Does **not** move the default JDK root. |
 | `JK_CACHE_DIR` | Action / local CPU cache. Default: platform cache dir above. |
 | `JK_STORE_DIR` | CAS / network-expensive store. Default: `<data>/store` (or `$JK_HOME/store`). |
 | `JK_STATE_DIR` | Engine sockets, build history. Default: platform state dir. |
-| `JK_DATA_DIR` | Versions + default store parent. Default: platform data dir. |
+| `JK_DATA_DIR` | Product data root (engine lib + default store parent when `JK_HOME` is unset). Default: platform data dir. |
 | `JK_BIN_DIR` / `JK_INSTALL_DIR` | PATH install directory for `jk` / `jkx`. Default: platform bin. |
 | `JK_CONFIG_FILE` | Absolute path to `config.toml`. |
 | `JK_JDKS_DIR` | Managed JDK **write** root. Default: IntelliJ shared root. Set with `JK_HOME` for hermetic JDK isolation. |

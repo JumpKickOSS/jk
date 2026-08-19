@@ -409,7 +409,7 @@ public final class PlannerSupport {
      *
      * <p>{@code jk test} (testOnly) does not package the engine assembly, so the workspace
      * {@code *-all.jar} is often missing. Fall back to the host engine jar (the process serving
-     * this build) or the materialized install under {@code VersionStore} — same fat jar Gradle
+     * this build) or the product-lib install under {@code EngineInstall} — same fat jar Gradle
      * hands CLI tests via {@code :engine:shadowJar}.
      */
     static void enrichCliTestProps(Path moduleDir, Map<String, String> props) throws IOException {
@@ -435,7 +435,7 @@ public final class PlannerSupport {
 
     /**
      * Engine jar for nested CLI suites: workspace assembly when present, else the host process's
-     * fat jar / installed VersionStore materialization.
+     * fat jar / installed EngineInstall materialization.
      */
     static Path resolveEngineJarForNestedTests(Map<String, Path> siblings) {
         Path engine = siblings != null ? siblings.get("jk-engine") : null;
@@ -446,7 +446,7 @@ public final class PlannerSupport {
 
     /**
      * Fat engine jar this process was launched from, the same version under {@link
-     * cc.jumpkick.cache.VersionStore}, or a monorepo product path ({@code build/dist/lib},
+     * cc.jumpkick.cache.EngineInstall}, or a monorepo product path ({@code build/dist/lib},
      * Gradle {@code build/libs}, pure-jk {@code target/server/engine}). Null only when none
      * of those exist (cold checkout with no install and no prior package).
      */
@@ -454,7 +454,7 @@ public final class PlannerSupport {
      * Test hook: when set, host-engine-jar discovery searches only this root's monorepo product
      * paths. Keeps tests from depending on — or worse, seeding — the real checkout's build
      * outputs, and makes fallback assertions deterministic on warm developer trees
-     * where the process/VersionStore probes would otherwise win.
+     * where the process/EngineInstall probes would otherwise win.
      */
     static Path locateHostEngineJar() {
         Path override = BuildPlanner.hostEngineSearchOverride;
@@ -482,12 +482,12 @@ public final class PlannerSupport {
             }
         }
         try {
-            var mat = cc.jumpkick.cache.VersionStore.current().resolve(cc.jumpkick.model.JkVersion.VERSION);
+            var mat = cc.jumpkick.cache.EngineInstall.current().resolve(cc.jumpkick.model.JkVersion.VERSION);
             if (mat.isPresent() && Files.isRegularFile(mat.get().engineJar())) {
                 return mat.get().engineJar().toAbsolutePath().normalize();
             }
         } catch (RuntimeException ignored) {
-            // Isolated JK_HOME (Gradle :engine:test / nested CLI suite) has no versions tree.
+            // Isolated JK_HOME (Gradle :engine:test / nested CLI suite) has no engine jar.
         }
         // Last resort: monorepo product outputs relative to user.dir (and parents). Pure-jk
         // nested isolation runs with user.dir = clients/cli; host run-tests has monorepo root

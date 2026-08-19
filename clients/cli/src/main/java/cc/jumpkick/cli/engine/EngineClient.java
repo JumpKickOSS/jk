@@ -1003,8 +1003,8 @@ public final class EngineClient {
     }
 
     static Optional<EngineSpawn.EngineArtifact> resolveEngineArtifact(
-            String envOverride, String version, cc.jumpkick.cache.VersionStore store) {
-        return EngineSpawn.resolveEngineArtifact(envOverride, version, store);
+            String envOverride, String version, cc.jumpkick.cache.EngineInstall install) {
+        return EngineSpawn.resolveEngineArtifact(envOverride, version, install);
     }
 
     static Path aotCachePath(EnginePaths.Paths paths, Path engineJar, EngineSpawn.EngineJdk jdk) {

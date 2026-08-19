@@ -173,7 +173,7 @@ class TestStampWorkerJarsParityTest {
         // write into the real checkout: a planted near-empty jar under
         // server/engine/build/libs is a production discovery path — a dogfooded build would
         // hand it to nested engine workers. The override also makes this
-        // deterministic on warm developer trees, where the process/VersionStore probes would
+        // deterministic on warm developer trees, where the process/EngineInstall probes would
         // otherwise satisfy the assertion even if monorepo fallback broke.
         String ver = cc.jumpkick.model.JkVersion.VERSION;
         Path seed = tmp.resolve("server/engine/build/libs/jk-engine-" + ver + ".jar");

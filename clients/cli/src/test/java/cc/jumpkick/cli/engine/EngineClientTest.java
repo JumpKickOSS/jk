@@ -257,48 +257,49 @@ class EngineClientTest {
     }
 
     /**
-     * The spawn path's artifact resolution: JK_ENGINE_EXE override, then the side-by-side layout
-     * ({@code ~/.local/share/jk/versions/<v>/lib/jk-engine.jar}). No client-binary FALLBACK.
+     * The spawn path's artifact resolution: JK_ENGINE_EXE override, then the product-lib jar
+     * paired with this client version. No client-binary FALLBACK.
      */
     @Test
-    void engine_artifact_resolution_prefers_override_then_versions_layout() throws IOException {
+    void engine_artifact_resolution_prefers_override_then_product_lib() throws IOException {
         Path dir = shortTempDir();
-        // Isolated store: the machine-global ~/.local/share/jk/versions must not leak into this contract.
-        cc.jumpkick.cache.VersionStore store = new cc.jumpkick.cache.VersionStore(dir.resolve("versions"));
+        // Isolated product lib: the machine-global install must not leak into this contract.
+        cc.jumpkick.cache.EngineInstall install = new cc.jumpkick.cache.EngineInstall(dir.resolve("lib"));
 
         // no override, nothing materialized: empty (caller must materialize or set JK_ENGINE_EXE)
-        assertThat(EngineClient.resolveEngineArtifact(null, "1.2.3", store)).isEmpty();
+        assertThat(EngineClient.resolveEngineArtifact(null, "1.2.3", install)).isEmpty();
 
         // a version-skewed materialization never launches — the version match is the contract
-        materialize(store, dir, "9.9.9");
-        assertThat(EngineClient.resolveEngineArtifact(null, "1.2.3", store)).isEmpty();
+        materialize(install, dir, "0.1.0");
+        assertThat(EngineClient.resolveEngineArtifact(null, "1.2.3", install)).isEmpty();
 
-        // versions/<client version>/lib/jk-engine.jar: the JVM-hosted engine's fat jar
-        Path engineJar = materialize(store, dir, "1.2.3");
-        EngineSpawn.EngineArtifact viaVersions =
-                EngineClient.resolveEngineArtifact(null, "1.2.3", store).orElseThrow();
-        assertThat(viaVersions.kind()).isEqualTo(EngineSpawn.EngineArtifact.Kind.JAR);
-        assertThat(viaVersions.path()).isEqualTo(engineJar.toString());
+        // $JK_HOME/lib/jk-engine.jar: the JVM-hosted engine's fat jar
+        Path engineJar = materialize(install, dir, "1.2.3");
+        EngineSpawn.EngineArtifact viaLib =
+                EngineClient.resolveEngineArtifact(null, "1.2.3", install).orElseThrow();
+        assertThat(viaLib.kind()).isEqualTo(EngineSpawn.EngineArtifact.Kind.JAR);
+        assertThat(viaLib.path()).isEqualTo(engineJar.toString());
 
         // JK_ENGINE_EXE wins over the materialized jar, always a dedicated executable
-        EngineSpawn.EngineArtifact viaEnv = EngineClient.resolveEngineArtifact("/opt/jk/jk-engine", "1.2.3", store)
+        EngineSpawn.EngineArtifact viaEnv = EngineClient.resolveEngineArtifact("/opt/jk/jk-engine", "1.2.3", install)
                 .orElseThrow();
         assertThat(viaEnv.kind()).isEqualTo(EngineSpawn.EngineArtifact.Kind.EXE);
         assertThat(viaEnv.path()).isEqualTo("/opt/jk/jk-engine");
 
         // a blank override is ignored, not obeyed
-        assertThat(EngineClient.resolveEngineArtifact("  ", "1.2.3", store)
+        assertThat(EngineClient.resolveEngineArtifact("  ", "1.2.3", install)
                         .orElseThrow()
                         .path())
-                .isEqualTo(viaVersions.path());
+                .isEqualTo(viaLib.path());
     }
 
-    /** Materialize a fake engine jar for {@code version} into the isolated store. */
-    private static Path materialize(cc.jumpkick.cache.VersionStore store, Path dir, String version) throws IOException {
+    /** Materialize a fake engine jar for {@code version} into the isolated product lib. */
+    private static Path materialize(cc.jumpkick.cache.EngineInstall install, Path dir, String version)
+            throws IOException {
         Path jar = dir.resolve("jk-engine-" + version + "-src.jar");
         Files.writeString(jar, "fake engine " + version);
         cc.jumpkick.cache.Cas cas = new cc.jumpkick.cache.Cas(dir.resolve("cache"));
-        return store.materializeFromFiles(version, cas, jar, null).engineJar();
+        return install.materializeFromFiles(version, cas, jar).engineJar();
     }
 
     @Test

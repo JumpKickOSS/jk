@@ -62,7 +62,6 @@ public final class LockfileWriter {
         }
     }
 
-    /** Engine-jar sha from {@code versions/<v>/manifest.toml}, or {@code ""} if absent. */
     /**
      * The floor stamped into locks that have none: the oldest jk whose reader understands this
      * writer's output. Bumped by hand only when the lock format actually requires a newer

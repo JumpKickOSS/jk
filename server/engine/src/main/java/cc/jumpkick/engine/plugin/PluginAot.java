@@ -194,7 +194,7 @@ public final class PluginAot {
 
     /**
      * On-disk name for a worker cache: {@code <tool>-<JkVersion>-<16hex>.aot}. Version is in the
-     * path so {@link cc.jumpkick.cache.VersionStore#wipeAotDirectory} can keep the live product
+     * path so {@link cc.jumpkick.cache.EngineInstall#wipeAotDirectory} can keep the live product
      * line and drop every other generation's worker + engine caches.
      */
     static Path cacheFile(String toolPrefix, String cacheKey) {
@@ -489,7 +489,7 @@ public final class PluginAot {
      * {@link #UNUSED_TTL_MILLIS}. Several keys are legitimately live at once (different toolchain
      * JDKs, Kotlin versions, GC pins); expiring a stale {@code .noaot} also gives a once-failed key
      * a fresh training attempt. Engine caches ({@code engine-<version>-…}) share this directory but
-     * are version-lifecycle-owned (EngineClient sweep + VersionStore.prune) — never touched here.
+     * are version-lifecycle-owned (EngineClient sweep + EngineInstall.gc) — never touched here.
      *
      * <p>Names are {@code <tool>-<jk-version>-<16hex>.aot}; the pool is one product version of one
      * tool (e.g. {@code java-compiler-0.12.0-*}).

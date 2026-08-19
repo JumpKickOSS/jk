@@ -91,8 +91,8 @@ After code changes, reinstall the **local** JumpKick so dogfood uses the build y
 | Step | What it does |
 |---|---|
 | `clean dist` | Fresh `build/dist/jk` (native CLI) + `build/dist/lib/jk-engine-*.jar` |
-| `installLocal` | Side-loads plugin/worker jars **and** materializes the engine jar + bounces the daemon (`:engine:installLocal`, JK-1194) |
-| `./install.sh build/dist/jk` | Installs that dist into `~/.local/bin` + data `versions/` via CAS materialize |
+| `installLocal` | Side-loads plugin/worker jars **and** materializes the engine jar + bounces the daemon (`:engine:installLocal`) |
+| `./install.sh build/dist/jk` | Installs that dist into `~/.local/bin` + `$JK_HOME/lib/jk-engine.jar` via CAS materialize |
 
 Thin JVM dogfood without Graal: `./gradlew :cli:installDist installLocal` then put `clients/cli/build/install/jk/bin` on `PATH`.
 

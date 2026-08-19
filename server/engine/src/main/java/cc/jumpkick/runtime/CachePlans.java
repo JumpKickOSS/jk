@@ -66,19 +66,14 @@ public final class CachePlans {
         Task pruneStep = Task.builder("prune")
                 .ticks(1)
                 .execute(ctx -> {
-                    // LRU-sweep materialized jk versions (keep running + recent; rest re-fetch).
+                    // Drop parked engine/client files and leftover versions/ trees.
                     try {
-                        var ledger = cc.jumpkick.task.AccessLedger.atDefaultPath();
-                        java.util.Map<String, Long> latest = ledger.latestByHash();
-                        var prunedVersions = cc.jumpkick.cache.VersionStore.current()
-                                .prune(
-                                        cc.jumpkick.model.JkVersion.VERSION,
-                                        java.time.Duration.ofDays(30),
-                                        key -> latest.getOrDefault(key, 0L),
-                                        cc.jumpkick.util.JkDirs.state());
-                        for (String v : prunedVersions) ctx.warn("prune", "retired unused jk " + v);
-                    } catch (java.io.IOException | RuntimeException ignored) {
-                        // version sweep is best-effort maintenance
+                        var pruned = cc.jumpkick.cache.EngineInstall.current().gc();
+                        if (!pruned.isEmpty()) {
+                            ctx.warn("prune", "retired " + pruned.size() + " displaced jk install file(s)");
+                        }
+                    } catch (RuntimeException ignored) {
+                        // install-file sweep is best-effort maintenance
                     }
 
                     ctx.label(dropAllClassC ? "Cleaning cache…" : "Pruning cache…");

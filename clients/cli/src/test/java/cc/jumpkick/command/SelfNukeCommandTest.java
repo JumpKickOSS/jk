@@ -31,13 +31,13 @@ import org.junit.jupiter.api.Test;
 class SelfNukeCommandTest {
 
     @Test
-    void wipeRoots_never_includes_bin_jdks_active_version_or_store_lib() throws Exception {
+    void wipeRoots_never_includes_bin_jdks_product_lib_or_store_lib() throws Exception {
         JkDirs dirs = JkDirs.current();
         Path bin = dirs.binDirectory().toAbsolutePath().normalize();
         Path jdks = dirs.jdksDir().toAbsolutePath().normalize();
-        Path active = dirs.versionsDir().resolve(Jk.VERSION).toAbsolutePath().normalize();
+        Path productLib = dirs.productLibDir().toAbsolutePath().normalize();
         Path lib = dirs.libDir().toAbsolutePath().normalize();
-        Files.createDirectories(active);
+        Files.createDirectories(productLib);
         Files.createDirectories(lib.resolve("jk-java-compiler"));
 
         List<Path> roots = SelfNukeCommand.wipeRoots(dirs);
@@ -45,11 +45,11 @@ class SelfNukeCommandTest {
             Path abs = r.toAbsolutePath().normalize();
             assertThat(abs).isNotEqualTo(bin);
             assertThat(abs).isNotEqualTo(jdks);
-            assertThat(abs).isNotEqualTo(active);
+            assertThat(abs).isNotEqualTo(productLib);
             assertThat(abs).isNotEqualTo(lib);
             assertThat(abs.startsWith(bin)).isFalse();
             assertThat(abs.startsWith(jdks)).isFalse();
-            assertThat(abs.startsWith(active)).isFalse();
+            assertThat(abs.startsWith(productLib)).isFalse();
             assertThat(abs.startsWith(lib)).isFalse();
         }
     }
@@ -67,21 +67,14 @@ class SelfNukeCommandTest {
 
     @Test
     @Tag("integration")
-    void store_nuke_wipes_cas_including_lib_keeps_versions_and_bin() throws Exception {
+    void store_nuke_wipes_cas_including_lib_keeps_engine_jar_and_bin() throws Exception {
         JkDirs dirs = JkDirs.current();
-        Path versions = dirs.versionsDir();
-        Path active = versions.resolve(Jk.VERSION);
-        Path old = versions.resolve("0.9.0");
+        Path engineJar = dirs.productLibDir().resolve("jk-engine.jar");
         Path cas = dirs.storeDir().resolve("sha256");
         Path lib = dirs.libDir().resolve("jk-java-compiler");
         Path bin = dirs.binDirectory();
-        Files.createDirectories(active.resolve("lib"));
-        Path activeManifest = active.resolve("manifest.toml");
-        if (!Files.exists(activeManifest)) {
-            Files.writeString(activeManifest, "version = \"" + Jk.VERSION + "\"\n");
-        }
-        Files.createDirectories(old);
-        Files.writeString(old.resolve("manifest.toml"), "version = \"0.9.0\"\n");
+        Files.createDirectories(engineJar.getParent());
+        Files.writeString(engineJar, "engine");
         Files.createDirectories(cas.resolve("ab"));
         Files.writeString(cas.resolve("ab/blob"), "cas");
         Files.createDirectories(lib);
@@ -92,12 +85,11 @@ class SelfNukeCommandTest {
 
         int exit = capture(() -> Jk.execute("self", "nuke", "--store", "-y"));
         assertThat(exit).isZero();
-        // storage nuke: entire store, including lib
+        // storage nuke: entire store, including plugin lib
         assertThat(cas.resolve("ab/blob")).doesNotExist();
         assertThat(lib.resolve("plugin.jar")).doesNotExist();
-        // versions + PATH are not part of the store
-        assertThat(old.resolve("manifest.toml")).exists();
-        assertThat(activeManifest).exists();
+        // product-lib engine + PATH are not part of the store
+        assertThat(engineJar).exists();
         assertThat(foreign).exists();
     }
 
@@ -153,7 +145,7 @@ class SelfNukeCommandTest {
         Path root = Files.createTempDirectory("jk-purge-cfg");
         Path home = root.resolve("home");
         Path outsideBin = root.resolve("outside-bin");
-        Files.createDirectories(home.resolve("versions"));
+        Files.createDirectories(home.resolve("lib"));
         Files.createDirectories(outsideBin);
         JkDirs dirs = JkDirs.of(
                 env("JK_HOME", home.toString(), "JK_BIN_DIR", outsideBin.toString()),
@@ -166,10 +158,10 @@ class SelfNukeCommandTest {
     }
 
     @Test
-    void guard_refuses_rows_that_contain_active_version_or_lib() throws Exception {
+    void guard_refuses_rows_that_contain_product_lib_or_store_lib() throws Exception {
         Path root = Files.createTempDirectory("jk-purge-anc");
         Path home = root.resolve("home");
-        Files.createDirectories(home.resolve("versions").resolve(Jk.VERSION));
+        Files.createDirectories(home.resolve("lib"));
         Files.createDirectories(home.resolve("store").resolve("lib"));
         // JK_STATE_DIR mis-pointed at the umbrella root: state nuke must not take the whole tree.
         JkDirs dirs = JkDirs.of(
@@ -179,7 +171,7 @@ class SelfNukeCommandTest {
         List<Path> roots = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.STATE));
         Path homeAbs = home.toAbsolutePath().normalize();
         assertThat(roots).noneMatch(p -> p.equals(homeAbs));
-        assertThat(roots).noneMatch(p -> homeAbs.resolve("versions").startsWith(p));
+        assertThat(roots).noneMatch(p -> homeAbs.resolve("lib").startsWith(p));
     }
 
     @Test
@@ -188,8 +180,7 @@ class SelfNukeCommandTest {
         Path home = root.resolve("home");
         Files.createDirectories(home.resolve("store").resolve("lib"));
         Files.createDirectories(home.resolve("store").resolve("sha256"));
-        Files.createDirectories(home.resolve("versions").resolve(Jk.VERSION));
-        Files.createDirectories(home.resolve("versions").resolve("0.0.1"));
+        Files.createDirectories(home.resolve("lib"));
         JkDirs dirs = JkDirs.of(
                 env("JK_HOME", home.toString()), root.resolve("userhome").toString());
 

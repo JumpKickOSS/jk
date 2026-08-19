@@ -101,10 +101,9 @@ class EngineFleetTest {
 
     @Test
     void a_resident_engine_is_recognized_without_this_jk_home_on_the_command_line() {
-        String production =
-                "/home/u/.jdks/temurin-25/bin/java -cp /home/u/.local/share/jk/versions/0.12.0/lib/jk-engine.jar"
-                        + " cc.jumpkick.engine.EngineMain";
-        String testHome = "/home/u/.jdks/temurin-25/bin/java -cp /tmp/test-jk-home/versions/0.12.0/lib/jk-engine.jar"
+        String production = "/home/u/.jdks/temurin-25/bin/java -cp /home/u/.local/share/jk/lib/jk-engine.jar"
+                + " cc.jumpkick.engine.EngineMain";
+        String testHome = "/home/u/.jdks/temurin-25/bin/java -cp /tmp/test-jk-home/lib/jk-engine.jar"
                 + " cc.jumpkick.engine.EngineMain";
         assertThat(EngineFleet.isResidentEngine(production)).isTrue();
         assertThat(EngineFleet.isResidentEngine(testHome)).isTrue();
@@ -119,8 +118,8 @@ class EngineFleetTest {
     void stop_scope_is_this_home_not_a_foreign_jk_home() {
         Path home = Path.of("/tmp/test-jk-home");
         Path state = home.resolve("state");
-        String local = "java -cp /tmp/test-jk-home/versions/0.12.0/lib/jk-engine.jar cc.jumpkick.engine.EngineMain";
-        String production = "java -cp /home/u/.local/share/jk/versions/0.12.0/lib/jk-engine.jar"
+        String local = "java -cp /tmp/test-jk-home/lib/jk-engine.jar cc.jumpkick.engine.EngineMain";
+        String production = "java -cp /home/u/.local/share/jk/lib/jk-engine.jar"
                 + " -Djk.aot.train.output=/home/u/.local/state/jk/aot/engine.aot"
                 + " cc.jumpkick.engine.EngineMain";
         assertThat(EngineFleet.belongsToThisHome(local, home, state)).isTrue();
@@ -129,6 +128,9 @@ class EngineFleetTest {
 
     @Test
     void home_is_parsed_from_the_engine_jar_on_the_command_line() {
+        assertThat(EngineFleet.homeFromCommandLine(
+                        "java -cp /tmp/test-jk-home/lib/jk-engine.jar cc.jumpkick.engine.EngineMain"))
+                .isEqualTo(Path.of("/tmp/test-jk-home"));
         assertThat(EngineFleet.homeFromCommandLine(
                         "java -cp /tmp/test-jk-home/versions/0.12.0/lib/jk-engine.jar cc.jumpkick.engine.EngineMain"))
                 .isEqualTo(Path.of("/tmp/test-jk-home"));

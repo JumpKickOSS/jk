@@ -84,7 +84,7 @@ val checkCliNoParseTypes by tasks.registering {
 tasks.named("check") { dependsOn(checkCliRuntimeClasspath); dependsOn(checkCliNoParseTypes) }
 tasks.named("jar") { dependsOn(checkCliRuntimeClasspath); dependsOn(checkCliNoParseTypes) }
 
-// Thin JVM client (installDist) — no engine on the classpath. Spawns jk-engine.jar via VersionStore
+// Thin JVM client (installDist) — no engine on the classpath. Spawns jk-engine.jar via EngineInstall
 // / JK_ENGINE_EXE. Prefer the native image for production dist; this path is for Temurin-only CI.
 application {
     mainClass.set("cc.jumpkick.cli.Jk")

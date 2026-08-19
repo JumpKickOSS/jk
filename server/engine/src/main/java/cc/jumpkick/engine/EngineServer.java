@@ -471,13 +471,21 @@ public final class EngineServer implements AutoCloseable {
         drainDisplaced(previousActive);
         // Drop other product versions' AOT (engine + workers); keep ours (named *-<version>-*).
         try {
-            int wiped = cc.jumpkick.cache.VersionStore.wipeAotDirectory(
+            int wiped = cc.jumpkick.cache.EngineInstall.wipeAotDirectory(
                     cc.jumpkick.util.JkDirs.state().resolve("aot"), version);
             if (wiped > 0) {
                 log.accept("jk engine: retired " + wiped + " AOT cache(s) from other versions");
             }
         } catch (RuntimeException ignored) {
             // best-effort
+        }
+        try {
+            var gc = cc.jumpkick.cache.EngineInstall.current().gc();
+            if (!gc.isEmpty()) {
+                log.accept("jk engine: removed " + gc.size() + " displaced install file(s)");
+            }
+        } catch (RuntimeException ignored) {
+            // parked files may still be mapped by the predecessor — retry on the next cycle
         }
         aot.startIfConfigured();
         // HTTP binds only after the predecessor has yielded (drainDisplaced waits for bye, which
