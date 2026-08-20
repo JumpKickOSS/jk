@@ -36,6 +36,21 @@ public final class WorkspaceScheduler {
         R run(U unit);
     }
 
+    /**
+     * Build one unit, calling {@code artifactsReady} the moment its cross-module artifacts
+     * (package-jar / package-assembly) are terminal — usually well before the unit's tests and
+     * terminal tails finish. Admission of dependents keys on that signal, not on completion
+     * (JK-2210): Mill/Gradle-shaped edges, where a dependent's compile waits on the upstream
+     * artifact and never on the upstream suite. Calling it more than once is harmless; a task
+     * that never calls it (compile/package failed, or no package steps) implicitly publishes on
+     * completion so admission can never wedge — the failed case is then handled by the sink's
+     * fail-fast, or by the dependent's own accurate "sibling not built" failure.
+     */
+    @FunctionalInterface
+    public interface PhasedUnitTask<U, R> {
+        R run(U unit, Runnable artifactsReady);
+    }
+
     /** Handles completed units. */
     @FunctionalInterface
     public interface LevelSink<U, R> {
@@ -91,6 +106,18 @@ public final class WorkspaceScheduler {
             LevelSink<U, R> sink,
             int maxConcurrency,
             BooleanSupplier cancelled) {
+        return run(units, dirOf, edges, (u, ready) -> task.run(u), sink, maxConcurrency, cancelled);
+    }
+
+    /** As {@link #run(List, Function, Map, UnitTask, LevelSink, int, BooleanSupplier)} with phase gates (JK-2210). */
+    public static <U, R> R run(
+            List<U> units,
+            Function<U, Path> dirOf,
+            Map<Path, Set<Path>> edges,
+            PhasedUnitTask<U, R> task,
+            LevelSink<U, R> sink,
+            int maxConcurrency,
+            BooleanSupplier cancelled) {
         BooleanSupplier stop = cancelled == null ? () -> false : cancelled;
         Set<Path> unitDirs = new HashSet<>();
         for (U u : units) unitDirs.add(dirOf.apply(u));
@@ -115,7 +142,8 @@ public final class WorkspaceScheduler {
                         drainCancelled(futures);
                         return null;
                     }
-                    futures.add(CompletableFuture.supplyAsync(() -> gated(stop, task, u), JkThreads.io()));
+                    // Batch-per-level path: no early admission to feed, publish is a no-op.
+                    futures.add(CompletableFuture.supplyAsync(() -> gated(stop, task, u, () -> {}), JkThreads.io()));
                 }
                 List<R> results = new ArrayList<>(futures.size());
                 for (CompletableFuture<R> f : futures) {
@@ -140,7 +168,11 @@ public final class WorkspaceScheduler {
         List<U> notStarted = new ArrayList<>(units);
         Map<Path, Integer> height = dependentChainHeight(units, dirOf, edges, unitDirs);
         notStarted.sort(java.util.Comparator.comparingInt((U u) -> -height.getOrDefault(dirOf.apply(u), 0)));
-        BlockingQueue<Done<U, R>> completed = new LinkedBlockingQueue<>();
+        // Events: a Done per completed unit, or a Path per artifact-publish. Admission keys on
+        // artifactsReady (JK-2210), so a dependent starts while its prereq's tests still run;
+        // completion accounting (sink, fail-fast, the concurrency cap) stays on Done.
+        BlockingQueue<Object> events = new LinkedBlockingQueue<>();
+        Set<Path> artifactsReady = ConcurrentHashMap.newKeySet();
         Set<CompletableFuture<?>> inflight = ConcurrentHashMap.newKeySet();
         int inFlight = 0;
         while (true) {
@@ -153,7 +185,7 @@ public final class WorkspaceScheduler {
                 for (U u : notStarted) {
                     boolean ready = edges.getOrDefault(dirOf.apply(u), Set.of()).stream()
                             .filter(unitDirs::contains)
-                            .allMatch(done::contains);
+                            .allMatch(artifactsReady::contains);
                     if (ready) {
                         next = u;
                         break;
@@ -162,11 +194,16 @@ public final class WorkspaceScheduler {
                 if (next == null) break;
                 notStarted.remove(next);
                 U unit = next;
-                CompletableFuture<R> f = CompletableFuture.supplyAsync(() -> gated(stop, task, unit), JkThreads.io());
+                Path unitDir = dirOf.apply(unit);
+                Runnable publish = () -> {
+                    if (artifactsReady.add(unitDir)) events.add(unitDir);
+                };
+                CompletableFuture<R> f =
+                        CompletableFuture.supplyAsync(() -> gated(stop, task, unit, publish), JkThreads.io());
                 inflight.add(f);
                 f.whenComplete((r, ex) -> {
                     inflight.remove(f);
-                    completed.add(new Done<>(unit, r, ex));
+                    events.add(new Done<>(unit, r, ex));
                 });
                 inFlight++;
             }
@@ -176,24 +213,32 @@ public final class WorkspaceScheduler {
             }
             if (inFlight == 0) {
                 if (!notStarted.isEmpty()) {
-                    throw unsatisfiable(notStarted, dirOf, edges, unitDirs, done);
+                    throw unsatisfiable(notStarted, dirOf, edges, unitDirs, artifactsReady);
                 }
                 return null;
             }
-            Done<U, R> d;
+            Object event;
             try {
-                d = completed.take();
+                event = events.take();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 cancelAll(inflight);
                 if (stop.getAsBoolean()) return null;
                 throw new CompletionException(e);
             }
+            if (!(event instanceof Done)) {
+                continue; // artifact publish — loop back to admit newly-unblocked units
+            }
+            @SuppressWarnings("unchecked")
+            Done<U, R> d = (Done<U, R>) event;
             inFlight--;
             if (d.error() != null) {
                 throw d.error() instanceof CompletionException ce ? ce : new CompletionException(d.error());
             }
             done.add(dirOf.apply(d.unit()));
+            // Completion always publishes: a unit that failed before its package steps (or has
+            // none) must still unblock — or accurately fail — its dependents, never wedge them.
+            artifactsReady.add(dirOf.apply(d.unit()));
             R sinkStop = sink.after(List.of(d.unit()), Collections.singletonList(d.result()), List.copyOf(notStarted));
             if (sinkStop != null) {
                 cancelAll(inflight);
@@ -244,9 +289,9 @@ public final class WorkspaceScheduler {
     static final long CANCEL_DRAIN_MS = 2_000L;
 
     /** Admission gate: a queued task starting after cancel must do nothing (and emit nothing). */
-    private static <U, R> R gated(BooleanSupplier stop, UnitTask<U, R> task, U unit) {
+    private static <U, R> R gated(BooleanSupplier stop, PhasedUnitTask<U, R> task, U unit, Runnable artifactsReady) {
         if (stop.getAsBoolean()) return null;
-        return task.run(unit);
+        return task.run(unit, artifactsReady);
     }
 
     /** Fail-fast path: in-flight modules keep building; only queued-not-started are prevented. */

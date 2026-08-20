@@ -127,6 +127,71 @@ class WorkspaceSchedulerTest {
     }
 
     @Test
+    void dependents_admit_on_artifact_publish_not_completion() throws Exception {
+        // JK-2210: "up" publishes its artifacts mid-task, then keeps "testing" until released.
+        // "down" (depends on up) must start after the publish but before up completes.
+        CountDownLatch upPublished = new CountDownLatch(1);
+        CountDownLatch downStarted = new CountDownLatch(1);
+        CountDownLatch releaseUp = new CountDownLatch(1);
+        List<String> order = Collections.synchronizedList(new ArrayList<>());
+        WorkspaceScheduler.PhasedUnitTask<String, String> task = (unit, artifactsReady) -> {
+            order.add("start:" + unit);
+            if (unit.equals("up")) {
+                artifactsReady.run();
+                upPublished.countDown();
+                try {
+                    // Hold "up" open (its test phase) until "down" has demonstrably started.
+                    assertThat(downStarted.await(5, TimeUnit.SECONDS))
+                            .as("dependent must start while upstream is still running")
+                            .isTrue();
+                    releaseUp.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                order.add("finish:up");
+            } else {
+                // Admission contract: never before the publish.
+                assertThat(upPublished.getCount()).isZero();
+                downStarted.countDown();
+                releaseUp.countDown();
+                order.add("finish:down");
+            }
+            return unit;
+        };
+        WorkspaceScheduler.run(
+                List.of("up", "down"),
+                WorkspaceSchedulerTest::p,
+                Map.of(p("up"), Set.of(), p("down"), Set.of(p("up"))),
+                task,
+                (justCompleted, results, remaining) -> null,
+                4,
+                () -> false);
+        assertThat(order).startsWith("start:up", "start:down");
+        assertThat(order.indexOf("finish:down")).isLessThan(order.indexOf("finish:up"));
+    }
+
+    @Test
+    void a_unit_that_never_publishes_unblocks_dependents_on_completion() {
+        // Compile/package failure (or no package steps): completion publishes implicitly so
+        // dependents run and fail accurately instead of wedging the schedule.
+        List<String> started = Collections.synchronizedList(new ArrayList<>());
+        WorkspaceScheduler.PhasedUnitTask<String, String> task = (unit, artifactsReady) -> {
+            started.add(unit);
+            return unit; // never calls artifactsReady
+        };
+        Object result = WorkspaceScheduler.run(
+                List.of("up", "down"),
+                WorkspaceSchedulerTest::p,
+                Map.of(p("up"), Set.of(), p("down"), Set.of(p("up"))),
+                task,
+                (justCompleted, results, remaining) -> null,
+                1,
+                () -> false);
+        assertThat(result).isNull();
+        assertThat(started).containsExactly("up", "down");
+    }
+
+    @Test
     void bounded_admission_prefers_the_longest_remaining_chain() {
         // JK-2196: a spine (root -> s1 -> s2 -> s3) plus three independent leaves, declared
         // leaves-first. With cap=1 the old first-ready scan ran the leaves before the spine;

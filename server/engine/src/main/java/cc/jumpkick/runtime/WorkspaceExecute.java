@@ -413,7 +413,7 @@ public final class WorkspaceExecute {
                     dirtyUnits,
                     BuildGraph.BuildUnit::dir,
                     graph.edges(),
-                    u -> runModule(plans.get(u.dir()), listener),
+                    (u, artifactsReady) -> runModule(plans.get(u.dir()), listener, artifactsReady),
                     (ready, results, _) -> {
                         for (int i = 0; i < results.size(); i++) {
                             ModuleOutcome o = results.get(i);
@@ -427,7 +427,8 @@ public final class WorkspaceExecute {
                         }
                         return null;
                     },
-                    req.maxModuleConcurrency());
+                    req.maxModuleConcurrency(),
+                    cc.jumpkick.run.SessionCancel::cancelled);
         }
         Perf.end("ws-schedule-run", tsched);
         long executeWallMs = Math.max(0L, System.currentTimeMillis() - executeStartMs);
@@ -799,8 +800,23 @@ public final class WorkspaceExecute {
 
     /** Run one module's plan, attaching the caller's per-module listener; map the result to an outcome. */
     private static ModuleOutcome runModule(ModulePlan module, WorkspaceBuildListener listener) {
+        return runModule(module, listener, () -> {});
+    }
+
+    /**
+     * As {@link #runModule(ModulePlan, WorkspaceBuildListener)}, firing {@code artifactsReady}
+     * the moment every artifact step other modules consume (package-jar, and package-assembly
+     * when declared — {@code WorkspaceClasspath} sibling jars / {@code enrichCliTestProps}
+     * assemblies) is terminal-ok. With packaging no longer gated on run-tests (JK-2211) that is
+     * right after compile+resources, so dependents overlap this module's test suite (JK-2210).
+     * A failed or absent artifact step never fires — the scheduler publishes on completion
+     * instead, and fail-fast or the dependent's own "sibling not built" reports it.
+     */
+    private static ModuleOutcome runModule(
+            ModulePlan module, WorkspaceBuildListener listener, Runnable artifactsReady) {
         BuildPlanListener ml = listener.onModuleStart(module);
         if (ml != null) module.plan().addListener(ml);
+        watchArtifactSteps(module.plan(), artifactsReady);
         long t0 = System.nanoTime();
         try {
             // Same over-reserve as prepare: BuildPlan.run() re-evaluates step weights into its
@@ -829,6 +845,31 @@ public final class WorkspaceExecute {
             listener.onModuleFinish(o);
             return o;
         }
+    }
+
+    /** Fire {@code artifactsReady} once when all of the plan's artifact steps finish ok (JK-2210). */
+    static void watchArtifactSteps(cc.jumpkick.run.BuildPlan plan, Runnable artifactsReady) {
+        Set<String> artifactSteps = new java.util.HashSet<>();
+        for (cc.jumpkick.run.Task step : plan.steps()) {
+            if (cc.jumpkick.run.TaskNames.PACKAGE_JAR.equals(step.name())
+                    || cc.jumpkick.run.TaskNames.PACKAGE_ASSEMBLY.equals(step.name())) {
+                artifactSteps.add(step.name());
+            }
+        }
+        if (artifactSteps.isEmpty()) return; // testOnly leaf / no packaging — publish on completion
+        java.util.concurrent.atomic.AtomicInteger remaining =
+                new java.util.concurrent.atomic.AtomicInteger(artifactSteps.size());
+        plan.addListener(new BuildPlanListener() {
+            @Override
+            public void stepFinish(
+                    String step, String group, cc.jumpkick.run.TaskStatus status, java.time.Duration duration) {
+                if (!artifactSteps.contains(step)) return;
+                if (status != cc.jumpkick.run.TaskStatus.SUCCESS && status != cc.jumpkick.run.TaskStatus.SKIPPED) {
+                    return; // failed/cancelled artifact: stay unpublished
+                }
+                if (remaining.decrementAndGet() == 0) artifactsReady.run();
+            }
+        });
     }
 
     /** Apply the subset of {@code workspaceLinks} whose sources live under {@code moduleDir} (best-effort). */
