@@ -125,8 +125,8 @@ public final class PluginTableRegistry {
      * The manifests a build of {@code moduleDir} sees: built-ins plus every {@code [plugins]}
      * declaration whose manifest is locked + materialized ({@link PluginDescriptorStore}). An
      * unresolved declaration is silently absent — its table validates on the next parse after the
-     * engine materializes (sync/lock/build pre-flight). A third-party manifest claiming a built-in
-     * id or an already-owned table is a parse error, not a shadow.
+     * engine materializes (sync/lock/build pre-flight). An explicit declaration may <em>replace</em>
+     * a built-in with the same id or table; two declarations colliding with each other is an error.
      */
     public static List<PluginDescriptor> manifestsFor(Path moduleDir, List<cc.jumpkick.model.PluginDeclaration> decls) {
         if (decls == null || decls.isEmpty()) return manifests();
@@ -137,18 +137,30 @@ public final class PluginTableRegistry {
             ids.add(m.id());
             tables.add(m.table());
         }
+        Set<String> declaredIds = new HashSet<>();
+        Set<String> declaredTables = new HashSet<>();
         for (cc.jumpkick.model.PluginDeclaration decl : decls) {
             PluginDescriptor m =
                     PluginDescriptorStore.manifestFor(moduleDir, decl).orElse(null);
             if (m == null) continue;
-            if (!ids.add(m.id())) {
-                throw new cc.jumpkick.config.JkBuildParseException("plugin " + decl.coordinateWithVersion()
-                        + " declares id `" + m.id() + "`, which is already provided by another installed plugin");
+            if (!declaredIds.add(m.id())) {
+                throw new JkBuildParseException("plugin " + decl.coordinateWithVersion() + " declares id `" + m.id()
+                        + "`, which is already provided by another [plugins] entry");
             }
-            if (!tables.add(m.table())) {
-                throw new cc.jumpkick.config.JkBuildParseException("plugin " + decl.coordinateWithVersion()
-                        + " claims table [" + m.table() + "], which is already owned by another installed plugin");
+            if (!declaredTables.add(m.table())) {
+                throw new JkBuildParseException("plugin " + decl.coordinateWithVersion() + " claims table [" + m.table()
+                        + "], which is already owned by another [plugins] entry");
             }
+            out.removeIf(existing -> {
+                boolean hit = existing.id().equals(m.id()) || existing.table().equals(m.table());
+                if (hit) {
+                    ids.remove(existing.id());
+                    tables.remove(existing.table());
+                }
+                return hit;
+            });
+            ids.add(m.id());
+            tables.add(m.table());
             out.add(m);
         }
         return out;

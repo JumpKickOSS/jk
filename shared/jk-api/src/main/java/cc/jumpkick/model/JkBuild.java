@@ -182,6 +182,25 @@ public record JkBuild(
                 variants);
     }
 
+    /** This build with its {@code [plugins]} list replaced (user-config merge / tests). */
+    public JkBuild withPlugins(List<PluginDeclaration> plugins) {
+        return new JkBuild(
+                project,
+                dependencies,
+                repositories,
+                profiles,
+                features,
+                workspace,
+                manifest,
+                plugins,
+                application,
+                nativeConfig,
+                pluginConfigs,
+                build,
+                format,
+                variants);
+    }
+
     /** This build with its {@code [build]} block replaced — the variant extra-src fold point. */
     public JkBuild withBuild(Build build) {
         return new JkBuild(

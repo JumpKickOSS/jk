@@ -73,6 +73,7 @@ public final class EngineMain {
         try {
             EnginePaths.Paths paths = EnginePaths.current();
             cc.jumpkick.engine.plugin.BuiltInPluginJars.install();
+            cc.jumpkick.engine.plugin.BuiltInPluginJars.installUserConfig();
             cc.jumpkick.config.JkEngineConfig config = cc.jumpkick.config.JkEngineConfig.resolve();
             cc.jumpkick.config.JkHttpConfig httpConfig =
                     cc.jumpkick.config.JkHttpConfig.resolve().orElse(null);

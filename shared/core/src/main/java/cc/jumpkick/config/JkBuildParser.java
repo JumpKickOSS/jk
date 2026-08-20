@@ -65,7 +65,10 @@ public final class JkBuildParser {
     public static JkBuild parse(Path file) throws IOException {
         Path abs = file.toAbsolutePath().normalize();
         Path dir = abs.getParent();
-        return WorkspaceResolve.applyWorkspace(dir, parseLocal(file));
+        JkBuild resolved = WorkspaceResolve.applyWorkspace(dir, parseLocal(file));
+        List<cc.jumpkick.model.PluginDeclaration> user = UserPlugins.fromConfig();
+        if (user.isEmpty()) return resolved;
+        return resolved.withPlugins(UserPlugins.merge(user, resolved.plugins()));
     }
 
     /**

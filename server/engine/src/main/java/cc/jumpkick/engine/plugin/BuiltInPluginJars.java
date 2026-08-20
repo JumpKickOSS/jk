@@ -2,11 +2,16 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.UserPlugins;
+import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.runtime.PluginDescriptorOps;
+import cc.jumpkick.util.Hashing;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +30,27 @@ public final class BuiltInPluginJars {
     public static void install() {
         for (Path path : tablePluginJars()) {
             PluginTableRegistry.installFromJar(path);
+        }
+    }
+
+    /**
+     * Overlay {@code ~/.config/jk/config.toml [plugins]} path pins onto the registry. Maven pins
+     * wait for {@code jk lock} (project lock is law).
+     */
+    public static void installUserConfig() {
+        Path config = JkDirs.userConfigFile();
+        Path base = config.getParent() != null ? config.getParent() : Path.of(".");
+        for (PluginDeclaration decl : UserPlugins.fromConfig(config)) {
+            if (!decl.isPathPin()) continue;
+            Path jar = Path.of(decl.path());
+            if (!jar.isAbsolute()) jar = base.resolve(jar).normalize();
+            if (!Files.isRegularFile(jar)) continue;
+            try {
+                if (!Hashing.sha256Hex(jar).equals(decl.sha256())) continue;
+            } catch (IOException e) {
+                continue;
+            }
+            PluginTableRegistry.installFromJar(jar);
         }
     }
 
