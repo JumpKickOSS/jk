@@ -47,7 +47,6 @@ class BuildCleanRestoreTest {
             version = "1.0.0"
             jdk     = 25
             java    = 25
-            layout  = "simple"
 
             # This project runs no tests; owning [test-dependencies] keeps the injected
             # junit-jupiter "latest" out of the graph and the launcher pin keeps the lock
@@ -130,7 +129,6 @@ class BuildCleanRestoreTest {
                 version = "1.0.0"
                 jdk     = 25
                 java    = 25
-                layout  = "simple"
 
                 [test-dependencies]
                 junit-jupiter           = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=6.1.1" }

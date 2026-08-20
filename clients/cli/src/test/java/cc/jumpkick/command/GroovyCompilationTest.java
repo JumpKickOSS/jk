@@ -24,9 +24,9 @@ class GroovyCompilationTest {
 
     @Test
     void build_packages_scaffolded_groovy_classes_into_jar(@TempDir Path tempDir) throws IOException {
-        run("new", "--group", "com.example", "--name", "widget", "--lang", "groovy", tempDir.toString());
-        // Simple layout: package-less Calc.groovy at./src, CalcTest.groovy at./test/src.
-        assertThat(tempDir.resolve("src/Calc.groovy")).exists();
+        run("new", "--group", "com.example", "--name", "widget", "--lang", "groovy", "--no-module", tempDir.toString());
+        // Traditional layout: packaged Calc.groovy under src/main/groovy.
+        assertThat(tempDir.resolve("src/main/groovy/com/example/Calc.groovy")).exists();
 
         int exit = run("build", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg());
         assertThat(exit).isEqualTo(0);
@@ -34,18 +34,18 @@ class GroovyCompilationTest {
         Path jar = tempDir.resolve("target/lib/widget-0.1.0.jar");
         assertThat(jar).exists();
         try (JarFile jf = new JarFile(jar.toFile())) {
-            assertThat(jf.getJarEntry("Calc.class")).isNotNull();
+            assertThat(jf.getJarEntry("com/example/Calc.class")).isNotNull();
         }
     }
 
     @Test
     void second_build_skips_groovy_compile_when_nothing_changed(@TempDir Path tempDir) throws IOException {
-        run("new", "--group", "com.example", "--name", "widget", "--lang", "groovy", tempDir.toString());
+        run("new", "--group", "com.example", "--name", "widget", "--lang", "groovy", "--no-module", tempDir.toString());
         Path cache = tempDir.resolve("cache");
 
         assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
                 .isEqualTo(0);
-        Path gvClass = tempDir.resolve("target/classes/main/Calc.class");
+        Path gvClass = tempDir.resolve("target/classes/main/com/example/Calc.class");
         Path stamp = tempDir.resolve("target/classes/main/.gstamp");
         assertThat(stamp).exists(); // freshness stamp written
         assertThat(gvClass).exists();
@@ -60,18 +60,20 @@ class GroovyCompilationTest {
 
     @Test
     void editing_a_groovy_source_recompiles(@TempDir Path tempDir) throws IOException {
-        run("new", "--group", "com.example", "--name", "widget", "--lang", "groovy", tempDir.toString());
-        Path src = tempDir.resolve("src/Calc.groovy");
+        run("new", "--group", "com.example", "--name", "widget", "--lang", "groovy", "--no-module", tempDir.toString());
+        Path src = tempDir.resolve("src/main/groovy/com/example/Calc.groovy");
         Path cache = tempDir.resolve("cache");
 
         assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
                 .isEqualTo(0);
-        Path gvClass = tempDir.resolve("target/classes/main/Calc.class");
+        Path gvClass = tempDir.resolve("target/classes/main/com/example/Calc.class");
         long firstMtime = Files.getLastModifiedTime(gvClass).toMillis();
 
         // Edit the source forward in time so its mtime exceeds the stamp; the
         // next build must fall through the freshness check and recompile.
         Files.writeString(src, """
+                package com.example
+
                 class Calc {
                     int doubleValue(int value) {
                         value + value
@@ -87,14 +89,14 @@ class GroovyCompilationTest {
 
     @Test
     void test_runs_the_scaffolded_groovy_junit_test(@TempDir Path tempDir) throws IOException {
-        run("new", "--group", "com.example", "--name", "widget", "--lang", "groovy", tempDir.toString());
+        run("new", "--group", "com.example", "--name", "widget", "--lang", "groovy", "--no-module", tempDir.toString());
 
         // The scaffolded CalcTest passes.
         assertThat(run("test", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg()))
                 .isEqualTo(0);
 
         // Break the assertion: a nonzero exit proves the Groovy test actually executed.
-        Path test = tempDir.resolve("test/src/CalcTest.groovy");
+        Path test = tempDir.resolve("src/test/groovy/com/example/CalcTest.groovy");
         assertThat(test).exists();
         Files.writeString(test, Files.readString(test).replace("assertEquals(10,", "assertEquals(11,"));
         assertThat(run("test", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg()))
@@ -103,17 +105,7 @@ class GroovyCompilationTest {
 
     @Test
     void mixed_groovy_and_java_resolve_both_directions(@TempDir Path tempDir) throws IOException {
-        run(
-                "new",
-                "--group",
-                "com.example",
-                "--name",
-                "mixed",
-                "--lang",
-                "groovy",
-                "--layout",
-                "traditional",
-                tempDir.toString());
+        run("new", "--group", "com.example", "--name", "mixed", "--lang", "groovy", "--no-module", tempDir.toString());
         // Opt into Java too — a mixed module declares both java and groovy.
         Path toml = tempDir.resolve("jk.toml");
         Files.writeString(toml, Files.readString(toml) + "java = 25\n");
@@ -170,8 +162,7 @@ class GroovyCompilationTest {
                 "bootapp",
                 "--lang",
                 "groovy",
-                "--layout",
-                "traditional",
+                "--no-module",
                 tempDir.toString());
         Path toml = tempDir.resolve("jk.toml");
         Files.writeString(toml, Files.readString(toml) + """

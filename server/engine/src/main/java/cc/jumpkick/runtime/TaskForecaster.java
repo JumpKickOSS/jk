@@ -6,7 +6,6 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.JavacLint;
 import cc.jumpkick.config.ImageConfigParser;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.layout.BuildLayout;
@@ -242,13 +241,7 @@ public final class TaskForecaster {
         int workerCount = workers > 0 ? workers : 1;
         // testOnly still runs tests (never skip).
         boolean skip = testOnly ? false : skipTests;
-        boolean compactEst = false;
-        try {
-            compactEst =
-                    CompileSupport.isSimpleLayout(JkBuildParser.parse(buildFile).project(), dir);
-        } catch (Exception ignored) {
-            compactEst = !Files.isDirectory(dir.resolve("src/main/java"));
-        }
+        boolean compactEst = CompileSupport.isSimpleLayout(dir);
         int estimatedTestCount = skip ? 0 : TestSupport.estimateAllSuiteTestCount(dir, compactEst);
         return new BuildPlanner.Inputs(
                         dir,
@@ -304,7 +297,7 @@ public final class TaskForecaster {
         try {
             Lockfile lock = LockfileReader.read(lockFile);
             ClasspathResolver resolver = new ClasspathResolver(cas);
-            boolean compact = CompileSupport.isSimpleLayout(project.project(), dir);
+            boolean compact = CompileSupport.isSimpleLayout(dir);
             BuildLayout layout = BuildLayout.of(dir, project);
             int release = project.project().javaRelease();
             // Same contributed-args evaluation as the real compile step, against the same
@@ -910,7 +903,7 @@ public final class TaskForecaster {
         Path assemblyJar = layout.assemblyJar();
         String classesTok = classesTokenForPackage(
                 dir,
-                CompileSupport.isSimpleLayout(project.project(), dir),
+                CompileSupport.isSimpleLayout(dir),
                 layout,
                 project,
                 actionCache,

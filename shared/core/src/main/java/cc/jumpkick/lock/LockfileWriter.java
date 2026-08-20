@@ -204,9 +204,6 @@ public final class LockfileWriter {
             if (Boolean.TRUE.equals(m.m2install())) {
                 out.append("m2install = true\n");
             }
-            if (m.layout() != null && !m.layout().isBlank() && !"auto".equalsIgnoreCase(m.layout())) {
-                out.append("layout  = ").append(quote(m.layout())).append('\n');
-            }
         }
 
         return out.toString();

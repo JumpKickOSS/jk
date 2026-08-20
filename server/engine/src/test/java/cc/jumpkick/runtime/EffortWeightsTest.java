@@ -111,7 +111,6 @@ class EffortWeightsTest {
                 version = "0.1.0"
                 jdk = 25
                 groovy = "5.0.4"
-                layout = "simple"
                 """);
         Path src = Files.createDirectories(dir.resolve("src"));
         // Enough sources that the static compile weight (ceil(n/10)) clears the TOKEN floor.

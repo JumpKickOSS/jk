@@ -37,8 +37,8 @@ public final class CompileSupport {
     }
 
     /** Whether this project uses the flat ({@code src/}/{@code test/}) layout. */
-    public static boolean isSimpleLayout(JkBuild.Project project, Path projectDir) {
-        return cc.jumpkick.layout.SourceLayout.isSimpleLayout(project, projectDir);
+    public static boolean isSimpleLayout(Path projectDir) {
+        return cc.jumpkick.layout.SourceLayout.isSimpleLayout(projectDir);
     }
 
     private static boolean anySourceUnder(Path root, String... extensions) {

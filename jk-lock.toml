@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "ea46851574365fbed6bcb13321071b6c4ec80e24e790ba6dd49af8f1612b8415"
+manifests-sha256 = "8abcc10b0a61b9aba86d1cadfb1681d91d7004618ada5b813a46690b63ad01a4"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [[artifact]]
@@ -2075,7 +2075,6 @@ name    = "jk-web"
 version = "0.12.0"
 java    = 25
 description = "Web dashboard static assets for the engine UI"
-layout  = "traditional"
 
 [[module]]
 path    = "plugins/android"

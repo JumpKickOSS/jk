@@ -1,7 +1,5 @@
 name = "jk-web"
 description = "Web dashboard static assets for the engine UI"
-# Resources-only module; traditional layout keeps tests off the main compile path.
-layout = "traditional"
 
 [test-dependencies]
 assertj-core = "latest"

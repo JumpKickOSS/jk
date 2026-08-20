@@ -39,7 +39,6 @@ class TaskForecasterGroovyTest {
                 version = "0.1.0"
                 jdk = 25
                 groovy = "5.0.4"
-                layout = "simple"
                 """);
         Path src = Files.createDirectories(mod.resolve("src"));
         Path foo = src.resolve("Foo.groovy");

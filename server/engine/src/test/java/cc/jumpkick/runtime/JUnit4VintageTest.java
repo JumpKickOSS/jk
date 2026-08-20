@@ -39,7 +39,6 @@ class JUnit4VintageTest {
                 group   = "com.example"
                 version = "1.0.0"
                 java    = 25
-                layout  = "simple"
 
                 [test-dependencies]
                 junit          = { group = "junit", name = "junit", version = "=4.13.2" }

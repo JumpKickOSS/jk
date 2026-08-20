@@ -225,8 +225,8 @@ class SelfHostingTomlTest {
         assertThat(web.project().name()).isEqualTo("jk-web");
         assertThat(web.mainClass()).isNull();
         assertThat(web.assembly()).isFalse();
-        // Traditional: src/main/resources + src/test/java (not SIMPLE flat src/).
-        assertThat(web.project().layout()).isEqualTo(JkBuild.Layout.TRADITIONAL);
+        assertThat(cc.jumpkick.layout.SourceLayout.looksTraditional(REPO.resolve("clients/web")))
+                .isTrue();
     }
 
     @Test

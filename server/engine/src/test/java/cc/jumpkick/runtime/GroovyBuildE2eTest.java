@@ -48,7 +48,6 @@ class GroovyBuildE2eTest {
                 version = "1.0.0"
                 jdk     = 25
                 groovy  = "5.0.4"
-                layout  = "simple"
 
                 """ + REPOS);
         Path src = Files.createDirectories(project.resolve("src/com/example"));
@@ -86,7 +85,6 @@ class GroovyBuildE2eTest {
                 jdk     = 25
                 java    = 25
                 groovy  = "5.0.4"
-                layout  = "simple"
 
                 """ + REPOS);
         Path src = Files.createDirectories(project.resolve("src/com/example"));

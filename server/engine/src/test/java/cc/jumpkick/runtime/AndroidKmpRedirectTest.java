@@ -36,7 +36,6 @@ class AndroidKmpRedirectTest {
                 group   = "com.example"
                 version = "1.0.0"
                 java    = 17
-                layout  = "simple"
 
                 [android]
                 namespace   = "com.example.kmp"
@@ -75,7 +74,6 @@ class AndroidKmpRedirectTest {
                 group   = "com.example"
                 version = "1.0.0"
                 java    = 17
-                layout  = "simple"
 
                 [dependencies]
                 runtime-annotation = { group = "androidx.compose.runtime", name = "runtime-annotation", version = "=1.9.0" }

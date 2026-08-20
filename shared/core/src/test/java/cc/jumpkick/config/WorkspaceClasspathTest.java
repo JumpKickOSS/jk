@@ -69,7 +69,6 @@ class WorkspaceClasspathTest {
                 name = "%s"
                 version = "0.1.0"
                 jdk = "25"
-                layout = "simple"
 
                 %s""".formatted(name, depsBlock));
     }

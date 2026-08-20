@@ -82,7 +82,7 @@ public final class NewCommand implements CliCommand {
                 Opt.value("<url>", "Extra git template source (repeatable)", "--template-source")
                         .repeat(),
                 Opt.value("<deps>", "Curated deps, comma-separated.", "--deps"),
-                Opt.value("<layout>", "Layout: simple | traditional.", "--layout"),
+                Opt.value("<layout>", "Source tree: traditional (default) | simple.", "--layout"),
                 Opt.value("<module>", "Kotlin module name (-> project.module).", "--kotlin-module"),
                 Opt.flag("Force a standalone project (not a module).", "--no-module"),
                 Opt.flag("", "--no-member").hide()); // undocumented synonym for --no-module
@@ -727,12 +727,8 @@ public final class NewCommand implements CliCommand {
                                         : NewInputs.Language.JAVA;
         var isExecutable =
                 Boolean.TRUE.equals(executable) || assembly || nativeImage || spring || grails || quarkus || micronaut;
-        // A plugin project uses the Maven layout so jk-plugin.toml lands at the jar root
-        // (src/main/resources). PluginMain is implied by that file — no [application] table.
-        // Boot / Quarkus / Grails users also expect the Maven layout. An explicit --layout still wins.
-        var resolvedLayout = (layoutFlag != null && !layoutFlag.isBlank())
-                ? layoutFlag.toLowerCase()
-                : (spring || grails || quarkus || micronaut || plugin) ? "traditional" : "simple";
+        // Traditional (Maven) is the product default. --layout simple opts into the Mill-like tree.
+        var resolvedLayout = (layoutFlag != null && !layoutFlag.isBlank()) ? layoutFlag.toLowerCase() : "traditional";
         var resolvedMain = plugin
                 ? Optional.<String>empty()
                 : (spring || grails || quarkus || micronaut)
@@ -1087,9 +1083,9 @@ public final class NewCommand implements CliCommand {
         boolean resolvedAssembly = isExecutable && targets.contains("assembly");
         boolean resolvedNative = isExecutable && targets.contains("native");
 
-        // Layout comes from its own dedicated step; default to "simple" if not answered.
+        // Layout comes from its own dedicated step; traditional if the step was skipped.
         String resolvedLayout =
-                answers.has("layout") && !answers.get("layout").isBlank() ? answers.get("layout") : "simple";
+                answers.has("layout") && !answers.get("layout").isBlank() ? answers.get("layout") : "traditional";
         Optional<String> resolvedKotlinModule = Optional.empty();
         var deps = new ArrayList<String>(answers.getList("libraries"));
         if (resolvedLang == NewInputs.Language.KOTLIN) {

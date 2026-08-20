@@ -41,7 +41,6 @@ class ProtobufPluginTest {
                 group   = "com.example"
                 version = "1.0.0"
                 java    = 25
-                layout  = "simple"
 
                 [protobuf]
                 version = "4.33.1"
@@ -136,7 +135,6 @@ class ProtobufPluginTest {
                 version = "1.0.0"
                 java    = 25
                 kotlin  = "^2.4.0"
-                layout  = "simple"
 
                 [protobuf]
                 version = "4.29.2"

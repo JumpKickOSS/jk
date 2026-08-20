@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import java.io.ByteArrayOutputStream;
@@ -21,16 +22,18 @@ class NewCommandTest {
 
     @Test
     void flag_mode_writes_files(@TempDir Path tempDir) throws IOException {
-        int exit = Jk.execute("new", "--group", "com.example", "--name", "widget", "--jdk", "25", tempDir.toString());
+        int exit = Jk.execute(
+                "new", "--group", "com.example", "--name", "widget", "--jdk", "25", "--no-module", tempDir.toString());
         assertThat(exit).isEqualTo(0);
 
         Path buildFile = tempDir.resolve("jk.toml");
         assertThat(buildFile).exists();
         // No jk-lock.toml at scaffold time — it's generated on the first build/run.
         assertThat(tempDir.resolve("jk-lock.toml")).doesNotExist();
-        // Simple layout: both source roots exist from the start.
-        assertThat(tempDir.resolve("src")).isDirectory();
-        assertThat(tempDir.resolve("test/src")).isDirectory();
+        // Traditional layout is the default: Maven roots exist from the start.
+        assertThat(tempDir.resolve("src/main/java")).isDirectory();
+        assertThat(tempDir.resolve("src/test/java")).isDirectory();
+        assertThat(Files.readString(buildFile)).doesNotContain("layout");
 
         JkBuild parsed = JkBuildParser.parse(buildFile);
         assertThat(parsed.project().group()).isEqualTo("com.example");
@@ -133,7 +136,7 @@ class NewCommandTest {
         System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
         int exit;
         try {
-            exit = Jk.execute("new", tempDir.toString());
+            exit = Jk.execute("new", "--no-module", tempDir.toString());
         } finally {
             System.setErr(prevErr);
         }
@@ -162,6 +165,7 @@ class NewCommandTest {
                 "--assembly",
                 "--layout",
                 "traditional",
+                "--no-module",
                 tempDir.toString());
         assertThat(exit).isEqualTo(0);
 
@@ -181,6 +185,7 @@ class NewCommandTest {
                 "--executable",
                 "--layout",
                 "traditional",
+                "--no-module",
                 tempDir.toString());
         assertThat(exit).isEqualTo(0);
 
@@ -191,10 +196,19 @@ class NewCommandTest {
 
     @Test
     void executable_simple_layout_writes_packaged_main_fqcn(@TempDir Path tempDir) throws IOException {
-        // Default (simple) layout still packages Main under the group:
-        // src/<group>/Main.java with `package <group>;`. The jk.toml main field
-        // must therefore be the FQCN, not the bare class name.
-        int exit = Jk.execute("new", "--group", "com.example", "--name", "widget", "--executable", tempDir.toString());
+        // Simple layout still packages Main under the group: src/<group>/Main.java
+        // with `package <group>;`. The jk.toml main field must be the FQCN.
+        int exit = Jk.execute(
+                "new",
+                "--group",
+                "com.example",
+                "--name",
+                "widget",
+                "--executable",
+                "--layout",
+                "simple",
+                "--no-module",
+                tempDir.toString());
         assertThat(exit).isEqualTo(0);
 
         Path main = tempDir.resolve("src/com/example/Main.java");
@@ -204,11 +218,37 @@ class NewCommandTest {
         JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         assertThat(parsed.mainClass()).isEqualTo("com.example.Main");
         assertThat(parsed.isRunnable()).isTrue();
+        assertThat(Files.readString(tempDir.resolve("jk.toml"))).doesNotContain("layout");
+    }
+
+    @Test
+    void executable_default_layout_is_traditional(@TempDir Path tempDir) throws IOException {
+        int exit = Jk.execute(
+                "new", "--group", "com.example", "--name", "widget", "--executable", "--no-module", tempDir.toString());
+        assertThat(exit).isEqualTo(0);
+
+        Path main = tempDir.resolve("src/main/java/com/example/Main.java");
+        assertThat(main).exists();
+        assertThat(Files.readString(main)).contains("package com.example;");
+        assertThat(Files.readString(tempDir.resolve("jk.toml"))).doesNotContain("layout");
+    }
+
+    @Test
+    void help_lists_traditional_before_simple() {
+        String newHelp =
+                Capture.stdout(() -> assertThat(Jk.execute("new", "--help")).isZero());
+        assertThat(newHelp).contains("Source tree: traditional (default) | simple.");
+        assertThat(newHelp.indexOf("traditional")).isLessThan(newHelp.indexOf("simple"));
+
+        String initHelp =
+                Capture.stdout(() -> assertThat(Jk.execute("init", "--help")).isZero());
+        assertThat(initHelp).contains("Source tree: traditional (default) | simple.");
+        assertThat(initHelp.indexOf("traditional")).isLessThan(initHelp.indexOf("simple"));
     }
 
     @Test
     void library_when_no_main(@TempDir Path tempDir) throws IOException {
-        int exit = Jk.execute("new", "--group", "com.example", "--name", "widget", tempDir.toString());
+        int exit = Jk.execute("new", "--group", "com.example", "--name", "widget", "--no-module", tempDir.toString());
         assertThat(exit).isEqualTo(0);
 
         JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
@@ -227,12 +267,14 @@ class NewCommandTest {
                 "--lang",
                 "kotlin",
                 "--executable",
+                "--no-module",
                 tempDir.toString());
         assertThat(exit).isEqualTo(0);
 
-        // Default layout is simple: Main.kt lands at ./src/Main.kt with no package.
-        Path app = tempDir.resolve("src/Main.kt");
+        // Default layout is traditional: Main.kt lands under src/main/kotlin/<group>.
+        Path app = tempDir.resolve("src/main/kotlin/com/example/Main.kt");
         assertThat(app).exists();
+        assertThat(Files.readString(app)).contains("package com.example");
         assertThat(Files.readString(app)).contains("fun main()");
     }
 
@@ -247,17 +289,19 @@ class NewCommandTest {
                 "--lang",
                 "groovy",
                 "--executable",
+                "--no-module",
                 tempDir.toString());
         assertThat(exit).isEqualTo(0);
 
-        // Default layout is simple: Main.groovy lands at ./src/Main.groovy with no package.
-        Path app = tempDir.resolve("src/Main.groovy");
+        // Default layout is traditional: Main.groovy lands under src/main/groovy/<group>.
+        Path app = tempDir.resolve("src/main/groovy/com/example/Main.groovy");
         assertThat(app).exists();
+        assertThat(Files.readString(app)).contains("package com.example");
         assertThat(Files.readString(app)).contains("static void main");
 
         JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         assertThat(parsed.project().isGroovy()).isTrue();
-        assertThat(parsed.mainClass()).isEqualTo("Main"); // compact: package-less Main class
+        assertThat(parsed.mainClass()).isEqualTo("com.example.Main");
     }
 
     @Test
@@ -316,7 +360,7 @@ class NewCommandTest {
     void named_positional_uses_arg_as_project_name(@TempDir Path tempDir) throws IOException {
         // `jk init <abs-path>/my-project` → name = "my-project" (the leaf).
         Path target = tempDir.resolve("my-project");
-        int exit = Jk.execute("new", "--group", "com.example", target.toString());
+        int exit = Jk.execute("new", "--group", "com.example", "--no-module", target.toString());
         assertThat(exit).isEqualTo(0);
 
         JkBuild parsed = JkBuildParser.parse(target.resolve("jk.toml"));
@@ -359,7 +403,7 @@ class NewCommandTest {
         System.setOut(new PrintStream(captured, true, StandardCharsets.UTF_8));
         int exit;
         try {
-            exit = Jk.execute("new", "--name", "foo", tempDir.toString());
+            exit = Jk.execute("new", "--name", "foo", "--no-module", tempDir.toString());
         } finally {
             System.setOut(prevOut);
         }

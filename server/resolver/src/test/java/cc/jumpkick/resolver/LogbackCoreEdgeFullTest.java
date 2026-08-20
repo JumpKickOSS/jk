@@ -24,7 +24,6 @@ class LogbackCoreEdgeFullTest {
                 name = "hello-http"
                 version = "0.1.0"
                 java = 25
-                layout = "traditional"
 
                 [application]
                 main = "com.example.hello.Application"

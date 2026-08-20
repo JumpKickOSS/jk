@@ -39,7 +39,6 @@ class VariantSwitchTest {
                 version = "1.0.0"
                 java    = 25
                 kotlin  = "^2.4.0"
-                layout  = "simple"
 
                 [variants.mode.a]
                 extra-src = ["src-a"]

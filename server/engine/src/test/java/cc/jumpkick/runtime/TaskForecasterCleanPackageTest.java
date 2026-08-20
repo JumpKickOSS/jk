@@ -50,7 +50,6 @@ class TaskForecasterCleanPackageTest {
         JkBuild project = JkBuild.builder(JkBuild.Project.builder("g", "lib", "1.0")
                         .jdkMajor(25)
                         .java(21)
-                        .layout(JkBuild.Layout.SIMPLE)
                         .build())
                 .build();
         BuildLayout layout = BuildLayout.of(module, project);
@@ -121,7 +120,6 @@ class TaskForecasterCleanPackageTest {
         JkBuild project = JkBuild.builder(JkBuild.Project.builder("g", "lib", "1.0")
                         .jdkMajor(25)
                         .java(21)
-                        .layout(JkBuild.Layout.SIMPLE)
                         .build())
                 .build();
         BuildLayout layout = BuildLayout.of(module, project);

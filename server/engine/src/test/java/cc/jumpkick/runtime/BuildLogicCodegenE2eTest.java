@@ -45,7 +45,6 @@ class BuildLogicCodegenE2eTest {
                 version = "1.0.0"
                 jdk     = 25
                 java    = 25
-                layout  = "simple"
 
                 """ + REPOS);
 

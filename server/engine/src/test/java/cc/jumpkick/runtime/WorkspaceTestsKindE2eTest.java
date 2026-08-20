@@ -51,7 +51,6 @@ class WorkspaceTestsKindE2eTest {
                 name    = "lib"
                 version = "1.0.0"
                 java    = 25
-                layout  = "simple"
 
                 [test-dependencies]
                 junit-jupiter           = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=6.1.1" }
@@ -90,7 +89,6 @@ class WorkspaceTestsKindE2eTest {
                 name    = "app"
                 version = "1.0.0"
                 java    = 25
-                layout  = "simple"
 
                 [dependencies]
                 lib = { workspace = true }
