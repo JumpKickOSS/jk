@@ -48,7 +48,7 @@ public final class WorkerClasspath {
      * #PLUGIN_MAIN} is not inside the worker.
      *
      * <p>When the sidecar lists lib-dir basenames that no longer exist (Gradle {@code installLocal}
-     * and pure-jk {@code jk plugin install-local} rematerialize {@code store/lib/&lt;id&gt;/} under
+     * and Gradle {@code installLocal} rematerialize {@code store/lib/&lt;id&gt;/} under
      * different filenames), recover the live deps from that lib dir's order file — without taking
      * the lib's worker jar, so a {@code -Djk.*.plugin.jar} override still launches the override
      * bytes.

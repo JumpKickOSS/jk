@@ -5,6 +5,9 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
@@ -21,7 +24,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -188,7 +193,10 @@ public final class InstallPlans {
         String jarRelPath = cc.jumpkick.repo.MavenLayout.artifactPath(coord);
         String pomRelPath = cc.jumpkick.repo.MavenLayout.pomPath(coord);
         String pomXml = cc.jumpkick.publish.PublishablePom.render(
-                        project, null, cc.jumpkick.config.WorkspaceResolve.siblingCoordinates(layout.moduleRoot()))
+                        project,
+                        null,
+                        cc.jumpkick.config.WorkspaceResolve.siblingCoordinates(layout.moduleRoot()),
+                        lockPins(layout.moduleRoot()))
                 .xml();
         byte[] pomBytes = pomXml.getBytes(StandardCharsets.UTF_8);
 
@@ -217,6 +225,30 @@ public final class InstallPlans {
             // repos/local/ is primary (plugin JARs, jk-internal use).
             writeToLocalStore(cacheDir, jarRelPath, jar);
             writeContentToLocalStore(cacheDir, pomRelPath, pomBytes);
+        }
+    }
+
+    /** Exact versions from the module's lock, keyed by {@code group:artifact}. Empty when unlocked. */
+    static Map<String, String> lockPins(Path moduleDir) {
+        try {
+            Path lockFile = LockPaths.lockFile(moduleDir);
+            if (lockFile == null || !Files.isRegularFile(lockFile)) return Map.of();
+            Lockfile lock = LockfileReader.read(lockFile);
+            Map<String, String> out = new LinkedHashMap<>();
+            for (Lockfile.Artifact a : lock.artifacts()) {
+                if (a.name() != null
+                        && !a.name().isBlank()
+                        && a.version() != null
+                        && !a.version().isBlank()) {
+                    out.put(a.name(), a.version());
+                }
+            }
+            for (Lockfile.ModuleEntry m : lock.modules()) {
+                out.put(m.group() + ":" + m.name(), m.version());
+            }
+            return out;
+        } catch (Exception e) {
+            return Map.of();
         }
     }
 

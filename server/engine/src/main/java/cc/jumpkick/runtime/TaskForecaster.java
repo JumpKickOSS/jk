@@ -720,6 +720,16 @@ public final class TaskForecaster {
                         cc.jumpkick.run.TaskNames.WRITE_IMAGE, TaskForecast.Status.RUN, "image side-effect", null));
             }
 
+            // ---- cache-install — jk install terminal. Side-effect into repos/local, like
+            // write-image: a packaged-but-never-installed module must still schedule.
+            if (target == WorkspaceTarget.INSTALL && terminalDirs.contains(dir)) {
+                steps.add(new TaskForecast.Task(
+                        cc.jumpkick.run.TaskNames.CACHE_INSTALL,
+                        TaskForecast.Status.RUN,
+                        "install to local repo",
+                        null));
+            }
+
             // ---- emit resource-drift steps (detected before package) ----
             // Main/extra resource drift schedules the module so the jar ships fresh bytes.
             // Cascade to compile consumers is owned by package-jar above, not by these steps.

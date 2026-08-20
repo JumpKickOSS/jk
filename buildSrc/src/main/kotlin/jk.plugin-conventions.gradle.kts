@@ -185,6 +185,40 @@ tasks.register("installLocal") {
             }
         }
         File(target.path + ".deps").writeText(depsLines.joinToString("\n", postfix = "\n"))
+        // Maven POM with the same runtime closure so launch reconstructs -cp from repos/.
+        val pomFile = repoDir.resolve("$artifact-$ver.pom")
+        val pomDeps = depsLines
+                .filter { it.isNotBlank() && !it.startsWith("#") }
+                .map { line ->
+                    val p = line.split(':')
+                    if (p.size < 3) return@map ""
+                    """
+                    <dependency>
+                      <groupId>${p[0]}</groupId>
+                      <artifactId>${p[1]}</artifactId>
+                      <version>${p[2]}</version>
+                    </dependency>
+                    """.trimIndent()
+                }
+                .filter { it.isNotBlank() }
+                .joinToString("\n")
+        pomFile.writeText(
+                """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>$artifact</artifactId>
+                  <version>$ver</version>
+                  <packaging>jar</packaging>
+                  <dependencies>
+                $pomDeps
+                  </dependencies>
+                </project>
+                """.trimIndent() + "\n")
+        val pomHex = MessageDigest.getInstance("SHA-256").digest(pomFile.readBytes())
+                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        repoDir.resolve("$artifact-$ver.pom.sha256").writeText(pomHex)
         // JK-1348: hard-link worker + deps into JK_LIB_DIR/<artifact>/ (default store/lib/).
         val libRoot: File = System.getenv("JK_LIB_DIR")?.let { File(it) }
                 ?: storeRoot.resolve("lib")

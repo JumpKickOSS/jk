@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
@@ -446,7 +447,7 @@ public final class JUnitLauncher {
         classpathBase.addAll(runtimeClasspath);
         // Thin pure-jk workers: expand .classpath sidecar / findPluginSdk so PluginMain is on -cp
         // . Gradle-vendored runners already contain PluginMain; extra entries are harmless.
-        classpathBase.addAll(cc.jumpkick.compile.WorkerClasspath.paths(runnerJar));
+        classpathBase.addAll(cc.jumpkick.engine.plugin.WorkerLaunchClasspath.paths(runnerJar));
         String classpath = joinClasspath(classpathBase);
         Path javaBinary = javaBinary(javaHome);
 
@@ -630,7 +631,7 @@ public final class JUnitLauncher {
         var workerThreads = new ArrayList<Thread>();
         int[] exits = new int[actualWorkers];
         var captures = new ArrayList<CaptureBuffer>();
-        var lastClasses = new ArrayList<java.util.concurrent.atomic.AtomicReference<String>>();
+        var lastClasses = new ArrayList<AtomicReference<String>>();
 
         for (int w = 0; w < actualWorkers; w++) {
             // workerIdBase keeps ids unique across the sharded and serial-tag pools, so the
@@ -643,7 +644,7 @@ public final class JUnitLauncher {
             aggregators.add(agg);
             final var crash = new CaptureBuffer();
             captures.add(crash);
-            final var last = new java.util.concurrent.atomic.AtomicReference<String>("");
+            final var last = new AtomicReference<String>("");
             lastClasses.add(last);
             final int totalWorkers = actualWorkers;
             // Virtual: the thread blocks on the child's stdout for the worker's whole life —
@@ -770,7 +771,7 @@ public final class JUnitLauncher {
             ResultAggregator aggregator,
             TestProgressListener listener,
             CaptureBuffer crash,
-            java.util.concurrent.atomic.AtomicReference<String> lastClass) {
+            AtomicReference<String> lastClass) {
         // Pull protocol: each "ready" pulls the next class from the shared queue.
         BiConsumer<String, PluginProcess.Conversation> handler = (json, convo) -> {
             String event = Jsonl.str(json, "event");

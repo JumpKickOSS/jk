@@ -3,7 +3,6 @@ package cc.jumpkick.engine.protocol;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -36,23 +35,5 @@ class SlimCliAcksRoundTripTest {
                 NewProjectAck.error("target directory is not empty").encode());
         assertThat(err.error()).isEqualTo("target directory is not empty");
         assertThat(err.filesWritten()).isZero();
-    }
-
-    @Test
-    void plugin_install_local_ack_round_trips() {
-        PluginInstallLocalAck in = new PluginInstallLocalAck(
-                null,
-                2,
-                1,
-                List.of("plugins/foo/target/foo-1.0.jar"),
-                List.of("installed foo 1.0", "skipped bar (\"stale\")"));
-        PluginInstallLocalAck out = PluginInstallLocalAck.decode(in.encode());
-        assertThat(out).isEqualTo(in);
-
-        PluginInstallLocalAck err =
-                PluginInstallLocalAck.decode(PluginInstallLocalAck.error("plugin install-local request names no dir")
-                        .encode());
-        assertThat(err.error()).contains("names no dir");
-        assertThat(err.installed()).isZero();
     }
 }

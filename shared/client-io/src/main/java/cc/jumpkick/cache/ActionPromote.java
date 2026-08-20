@@ -80,7 +80,7 @@ public final class ActionPromote {
 
     /**
      * Hash each existing file and ensure it is in the store CAS; if a matching blob is only in
-     * the cache CAS, promote it. Used by {@code jk release} for staged natives/jars that may not
+     * the cache CAS, promote it. Used when staging natives/jars that may not
      * still be indexed under a live action key.
      */
     public static Report promoteFiles(Cas cacheCas, Cas storeCas, Collection<Path> files) throws IOException {

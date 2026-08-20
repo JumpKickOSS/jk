@@ -66,8 +66,14 @@ while IFS= read -r -d '' jar; do
       sha256sum "$jar" | awk '{print $1}' >"$dest/$(basename "$jar").sha256"
     fi
   fi
- # Minimal POM so Maven-compatible clients can resolve the module.
-  cat >"$dest/$art-$ver.pom" <<EOF
+  # Prefer the installed POM (lock-pinned deps). Stub only when install did not write one.
+  if [[ -f "$ver_dir/$art-$ver.pom" ]]; then
+    cp -f "$ver_dir/$art-$ver.pom" "$dest/"
+    if [[ -f "$ver_dir/$art-$ver.pom.sha256" ]]; then
+      cp -f "$ver_dir/$art-$ver.pom.sha256" "$dest/"
+    fi
+  else
+    cat >"$dest/$art-$ver.pom" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
@@ -79,6 +85,7 @@ while IFS= read -r -d '' jar; do
   <description>JumpKick first-party plugin/worker ($art)</description>
 </project>
 EOF
+  fi
   count=$((count + 1))
   echo "staged $art:$ver"
 done < <(find "$LOCAL" -type f -name "*-${VERSION}.jar" -print0)

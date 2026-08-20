@@ -66,7 +66,7 @@ public final class CacheRoots {
                 }
             }
         }
-        // Release-promoted blobs (jk release → ActionPromote): their Class-C action key is
+        // Promoted blobs (ActionPromote): their Class-C action key is
         // dropped by any `jk cache clean`, so the promotion marker is their root. Markers expire
         // by age (see PROMOTED_MARKER_TTL_MILLIS) — durable, not immortal.
         Path promoted = cas.root().resolve(cc.jumpkick.cache.ActionPromote.PROMOTED_DIR);

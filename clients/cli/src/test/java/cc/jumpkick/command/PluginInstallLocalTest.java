@@ -14,8 +14,50 @@ import org.junit.jupiter.api.io.TempDir;
 class PluginInstallLocalTest {
 
     @Test
-    void install_side_loads_a_plugin_worker_into_the_local_repo(@TempDir Path dir) throws Exception {
+    void workspace_root_install_publishes_plugin_jar_and_pom(@TempDir Path dir) throws Exception {
         Path cache = dir.resolve("cache");
+        Path worker = writePluginWorkspace(dir);
+
+        int exit = Jk.execute(
+                "install",
+                "-C",
+                dir.toString(),
+                "--skip-tests",
+                "--cache-dir",
+                cache.toString(),
+                "--state-dir",
+                dir.resolve("state").toString(),
+                "--bin-dir",
+                dir.resolve("bin").toString());
+        assertThat(exit).isZero();
+        assertInstalled(cache, worker);
+        assertThat(dir.resolve("bin/jk-test-runner")).doesNotExist();
+    }
+
+    @Test
+    void workspace_root_install_after_build_still_publishes_the_worker(@TempDir Path dir) throws Exception {
+        Path cache = dir.resolve("cache");
+        Path worker = writePluginWorkspace(dir);
+
+        assertThat(Jk.execute("build", "-C", dir.toString(), "--skip-tests", "--cache-dir", cache.toString()))
+                .isZero();
+
+        int exit = Jk.execute(
+                "install",
+                "-C",
+                dir.toString(),
+                "--skip-tests",
+                "--cache-dir",
+                cache.toString(),
+                "--state-dir",
+                dir.resolve("state").toString(),
+                "--bin-dir",
+                dir.resolve("bin").toString());
+        assertThat(exit).isZero();
+        assertInstalled(cache, worker);
+    }
+
+    private static Path writePluginWorkspace(Path dir) throws Exception {
         Path mod = dir.resolve("plugins/worker");
         Files.createDirectories(mod.resolve("src/main/java/x"));
         Files.writeString(dir.resolve("jk.toml"), """
@@ -38,23 +80,17 @@ class PluginInstallLocalTest {
                 table = "test-runner"
                 """);
         Files.writeString(mod.resolve("src/main/java/x/X.java"), "package x; public class X {}\n");
+        return mod;
+    }
 
-        int exit = Jk.execute(
-                "install",
-                "-C",
-                dir.toString(),
-                "--skip-tests",
-                "--cache-dir",
-                cache.toString(),
-                "--state-dir",
-                dir.resolve("state").toString(),
-                "--bin-dir",
-                dir.resolve("bin").toString());
-        assertThat(exit).isZero();
+    private static void assertInstalled(Path cache, Path worker) {
         Path dest = cache.resolve("repos/local/cc/jumpkick/jk-test-runner/0.12.0/jk-test-runner-0.12.0.jar");
         Path storeDest = cc.jumpkick.cache.JkStores.storeRootFor(cache)
                 .resolve("repos/local/cc/jumpkick/jk-test-runner/0.12.0/jk-test-runner-0.12.0.jar");
-        assertThat(Files.isRegularFile(dest) || Files.isRegularFile(storeDest)).isTrue();
-        assertThat(dir.resolve("bin/jk-test-runner")).doesNotExist();
+        Path jar = Files.isRegularFile(dest) ? dest : storeDest;
+        assertThat(jar).isRegularFile();
+        Path pom = jar.resolveSibling("jk-test-runner-0.12.0.pom");
+        assertThat(pom).isRegularFile();
+        assertThat(worker.resolve("src/main/java/x/X.java")).isRegularFile();
     }
 }

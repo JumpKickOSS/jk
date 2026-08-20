@@ -91,7 +91,6 @@ jk lock
 jk build --skip-tests
 jk install
 jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
-jk release --skip-tests
 ```
 
 #### B) Thin JVM client + engine jar (no Graal; dogfood without native-image)
@@ -111,7 +110,6 @@ jk lock
 jk build --skip-tests
 jk install
 jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
-jk release --skip-tests --skip-native
 ```
 
 The client never embeds the engine. Spawning uses
@@ -120,15 +118,17 @@ The client never embeds the engine. Spawning uses
 | Still Gradle | Why |
 |---|---|
 | `./gradlew test` (unit tier) / `integrationTest` / `checkAll` | CI: unit on every push/PR (`ci.yml`); integration on Linux nightly (`ci-nightly.yml`). Local pre-merge bar is still `checkAll` when you touch wire/engine/CLI — see [docs/perf/test-suite-tiers.md](docs/perf/test-suite-tiers.md) |
-| `./gradlew dist` / `nativeCompile` | Prefer `jk release` for dogfood ship layout; Gradle still for native release matrix |
+| `./gradlew dist` / `nativeCompile` | Bootstrap / ship layout (`build/dist/jk`); Gradle still for native release matrix |
 | `./gradlew installLocal` | Workers + **engine materialize/bounce**; or `jk install` after `jk build` for workers only |
 
-Dogfood ship layout (after bootstrap `jk` on PATH; Graal for native CLI):
+Dogfood ship layout (bootstrap `jk` on PATH):
 
 ```bash
-jk release --skip-tests    # native CLI + JVM engine + workers; alias: jk dist
-./install.sh target/dist/jk
+./gradlew dist installLocal
+./install.sh build/dist/jk
 ```
+
+Workers after a pure-jk build: `jk install`.
 
 ### CI lanes
 

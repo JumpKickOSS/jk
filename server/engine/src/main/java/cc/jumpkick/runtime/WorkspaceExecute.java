@@ -15,9 +15,11 @@ import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -651,8 +653,16 @@ public final class WorkspaceExecute {
      */
     static Set<Path> terminalTargetDirs(List<BuildGraph.BuildUnit> units, WorkspaceRequest req) {
         WorkspaceTarget target = req.target();
-        if (target != WorkspaceTarget.NATIVE && target != WorkspaceTarget.IMAGE) return Set.of();
         WorkspaceSpec spec = req.spec() == null ? WorkspaceSpec.DEFAULT : req.spec();
+        // INSTALL publishes every module in the (already cone-filtered) graph — selected
+        // terminals and production prereqs — so a worker POM can resolve sibling jars from
+        // repos/local. NATIVE/IMAGE keep selection-only terminals.
+        if (target == WorkspaceTarget.INSTALL) {
+            Set<Path> all = new LinkedHashSet<>();
+            for (BuildGraph.BuildUnit u : units) all.add(u.dir());
+            return all;
+        }
+        if (target != WorkspaceTarget.NATIVE && target != WorkspaceTarget.IMAGE) return Set.of();
         Set<Path> out = new LinkedHashSet<>();
         for (BuildGraph.BuildUnit u : units) {
             Path dir = u.dir();
@@ -741,10 +751,8 @@ public final class WorkspaceExecute {
                     .withEphemeralActions(req.ephemeralActions());
             BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, forceRebuild);
             BuildPlanner.appendDeclaredTails(b, inputs, graal, true);
-            if (selected) {
-                Path m2 = Path.of(System.getProperty("user.home", "."), ".m2");
-                InstallPlans.appendCacheInstall(b, u.manifest(), req.cache(), m2);
-            }
+            Path m2 = Path.of(System.getProperty("user.home", "."), ".m2");
+            InstallPlans.appendCacheInstall(b, u.manifest(), req.cache(), m2);
             return b.build();
         }
         // A consumed prereq must package even on the test path: dependents compile against
@@ -852,7 +860,7 @@ public final class WorkspaceExecute {
 
     /** Fire {@code artifactsReady} once when all of the plan's artifact steps finish ok (JK-2210). */
     static void watchArtifactSteps(cc.jumpkick.run.BuildPlan plan, Runnable artifactsReady) {
-        Set<String> artifactSteps = new java.util.HashSet<>();
+        Set<String> artifactSteps = new HashSet<>();
         for (cc.jumpkick.run.Task step : plan.steps()) {
             // compile-test is an artifact too: kind=tests siblings consume this module's
             // classes/test (WorkspaceClasspath testClassesDir), and it never waits on the suite.
@@ -863,12 +871,10 @@ public final class WorkspaceExecute {
             }
         }
         if (artifactSteps.isEmpty()) return; // no packaging or tests — publish on completion
-        java.util.concurrent.atomic.AtomicInteger remaining =
-                new java.util.concurrent.atomic.AtomicInteger(artifactSteps.size());
+        AtomicInteger remaining = new AtomicInteger(artifactSteps.size());
         plan.addListener(new BuildPlanListener() {
             @Override
-            public void stepFinish(
-                    String step, String group, cc.jumpkick.run.TaskStatus status, java.time.Duration duration) {
+            public void stepFinish(String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
                 if (!artifactSteps.contains(step)) return;
                 if (status != cc.jumpkick.run.TaskStatus.SUCCESS && status != cc.jumpkick.run.TaskStatus.SKIPPED) {
                     return; // failed/cancelled artifact: stay unpublished

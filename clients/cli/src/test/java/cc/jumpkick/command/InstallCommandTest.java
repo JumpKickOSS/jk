@@ -113,7 +113,7 @@ class InstallCommandTest {
     @Test
     @DisabledOnOs(OS.WINDOWS) // POSIX launcher only.
     void application_install_writes_lib_layout_and_launcher(@TempDir Path tempDir) throws Exception {
-        Jk.execute(
+        int created = Jk.execute(
                 "new",
                 "--group",
                 "com.example",
@@ -123,6 +123,7 @@ class InstallCommandTest {
                 "--layout",
                 "traditional",
                 tempDir.toString());
+        assertThat(created).isZero();
         Path src = tempDir.resolve("src/main/java/com/example/Main.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, """
@@ -138,6 +139,7 @@ class InstallCommandTest {
                 "install",
                 "-C",
                 tempDir.toString(),
+                "--skip-tests",
                 "--cache-dir",
                 tempDir.resolve("cache").toString(),
                 "--state-dir",

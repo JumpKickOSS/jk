@@ -37,7 +37,9 @@ import java.util.Set;
 /**
  * App-install plan used by {@code jk tool install} / {@code jk install}: current project, Maven
  * coordinate, or git URL (optional {@code @}/{@code #} ref; {@code gh:owner/repo} shorthands).
- * Cache-installs into the CAS/m2; applications also get a launcher under {@code ~/.local/bin}.
+ * Cache-installs the thin jar and POM into {@code repos/local}; applications also get a launcher
+ * under {@code ~/.local/bin}. Plugin workers are those same repo jars — launch reconstructs the
+ * classpath from the POM.
  */
 public final class InstallCommand {
 
@@ -314,10 +316,7 @@ public final class InstallCommand {
 
         Coordinate coord = Coordinate.of(proj.group(), proj.name(), proj.version());
         Path launcher = null;
-        if (isPluginWorker(proj, projectDir)) {
-            int pluginExit = sideLoadPlugin(projectDir, cacheDir);
-            if (pluginExit != 0) return pluginExit;
-        } else if (proj.application()) {
+        if (!isPluginWorker(proj, projectDir) && proj.application()) {
             try {
                 launcher = applyInstallPlan(projectDir, cacheDir);
             } catch (IOException e) {
@@ -386,14 +385,8 @@ public final class InstallCommand {
             if (!m.success()) continue;
             Path mod = m.dir();
             var info = projectInfo(mod);
-            if (isPluginWorker(info, mod)) {
-                int pluginExit = sideLoadPlugin(mod, cacheDir);
-                if (pluginExit != 0) return pluginExit;
-                announceProjectInstall(m.coord(), null, binDir);
-                continue;
-            }
             Path launcher = null;
-            if (info.application()) {
+            if (!isPluginWorker(info, mod) && info.application()) {
                 try {
                     launcher = applyInstallPlan(mod, cacheDir);
                 } catch (IOException e) {
@@ -409,24 +402,6 @@ public final class InstallCommand {
     private static boolean isPluginWorker(cc.jumpkick.engine.protocol.ProjectInfo proj, Path projectDir) {
         return cc.jumpkick.plugin.PluginModule.isWorker(projectDir)
                 || "cc.jumpkick.plugin.process.PluginMain".equals(proj.mainClass());
-    }
-
-    /** Side-load a plugin worker into the local repo and {@code store/lib/<id>/}. */
-    private int sideLoadPlugin(Path projectDir, Path cacheDir) throws IOException {
-        Path installRoot = JkDirs.store();
-        cc.jumpkick.engine.protocol.PluginInstallLocalAck ack;
-        try {
-            ack = cc.jumpkick.cli.engine.EngineClient.pluginInstallLocal(
-                    cc.jumpkick.engine.EnginePaths.current(), projectDir, cacheDir, installRoot, null, false, true);
-        } catch (Exception e) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Install", e.getMessage());
-            return Exit.SOFTWARE;
-        }
-        if (ack.error() != null && !ack.error().isBlank()) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail("Install", ack.error());
-            return Exit.CONFIG;
-        }
-        return 0;
     }
 
     /** The engine's parsed-project summary. */

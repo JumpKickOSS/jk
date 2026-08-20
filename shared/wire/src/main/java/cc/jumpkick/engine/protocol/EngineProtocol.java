@@ -311,12 +311,6 @@ public final class EngineProtocol {
     /** Server → client, terminal for {@link #NEW_PROJECT_REQUEST}. */
     public static final String NEW_PROJECT_ACK = "new-project-ack";
 
-    /** Client → server: {@code jk plugin install-local}. */
-    public static final String PLUGIN_INSTALL_LOCAL_REQUEST = "plugin-install-local-request";
-
-    /** Server → client, terminal for {@link #PLUGIN_INSTALL_LOCAL_REQUEST}. */
-    public static final String PLUGIN_INSTALL_LOCAL_ACK = "plugin-install-local-ack";
-
     /** Client → server: plugin-declared command; one {@link #PLUGIN_VERB_ACK}. */
     public static final String PLUGIN_VERB_REQUEST = "plugin-command-request";
 

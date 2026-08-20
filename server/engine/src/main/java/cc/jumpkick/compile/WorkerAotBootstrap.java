@@ -68,7 +68,7 @@ public final class WorkerAotBootstrap {
             Path host, long timeoutMs, boolean force, List<String> trained, List<String> skipped, List<String> notes) {
         try {
             Path workerJar = PluginJar.JAVA_COMPILER.locate();
-            String cp = WorkerClasspath.resolve(workerJar);
+            String cp = cc.jumpkick.engine.plugin.WorkerLaunchClasspath.resolve(workerJar);
             Path cache = PluginAot.cachePath("java-compiler", host, cp);
             if (!force && PluginAot.usableCache(cache)) {
                 trained.add("java-compiler (cached)");

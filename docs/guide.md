@@ -205,7 +205,7 @@ fat jars) immediately, plus stale keys and temps, while keeping modular compile/
 `package-assembly` / minified jars — use a tighter opportunistic policy so they do not starve
 modular compile/test cache between cleans: **50 % of the cache budget** (2 GiB at the 4 GiB
 default), **3-day** unused TTL, **2 generations** of native binaries / fat jars, **1 generation**
-of OCI images. On `jk release`, staged natives and engine fat jars are **promoted** into the
+of OCI images. Staged natives and engine fat jars can be **promoted** into the
 artifact store CAS (hard-link when possible); restore still hits those blobs via store fallback.
 
 The artifact store holds long-lived downloads: its
@@ -615,11 +615,12 @@ assembly = true                # adds -all.jar — jk assemble (or jk build)
 # native   = true              # native-image on jk build and jk install
 ```
 
-`jk install` in a project writes the thin jar to the local repo, then prefers a native
-binary in `~/.local/bin` if one exists, else a minified/fat jar under `$JK_HOME/lib/<name>/`
-plus a `java -jar` script, else a thin `java -cp` script over the repo jars. Plugin
-modules (`jk-plugin.toml` or `[application] main = PluginMain`) are side-loaded into
-the local repo. Outside a project, pass a coordinate (jkx mode).
+`jk install` in a project writes the thin jar and POM to the local repo (`repos/local`),
+then prefers a native binary in `~/.local/bin` if one exists, else a minified/fat jar
+under `$JK_HOME/lib/<name>/` plus a `java -jar` script, else a thin `java -cp` script over
+the repo jars. Plugin workers (`jk-plugin.toml`) are those same repo jars — the engine
+rebuilds their runtime classpath from the installed POM. Outside a project, pass a
+coordinate (jkx mode).
 
 R8 is **opt-in** via `minified = true` — never the default.
 
@@ -713,7 +714,6 @@ jk export bom                # freeze lock scope as a Maven BOM POM
 jk compile                   # type-check
 jk build                     # package (thin, fat, minified, Boot, Quarkus, …)
 jk assemble                  # fat/minified jar (alias: assembly; or --fat/--minified)
-jk release                   # local ship layout (alias: dist) — build + workers + target/dist
 jk test
 jk run -- args…              # at workspace root: runs the module with [application] main
 jk install                   # project: repo + PATH; or `jk install g:a:v` (jkx)

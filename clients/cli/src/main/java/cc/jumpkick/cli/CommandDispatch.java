@@ -45,7 +45,6 @@ import cc.jumpkick.command.NativeCommand;
 import cc.jumpkick.command.NewCommand;
 import cc.jumpkick.command.OutdatedCommand;
 import cc.jumpkick.command.PublishCommand;
-import cc.jumpkick.command.ReleaseCommand;
 import cc.jumpkick.command.RemoveCommand;
 import cc.jumpkick.command.RepoCommand;
 import cc.jumpkick.command.SelectiveCommand;
@@ -142,7 +141,6 @@ public final class CommandDispatch {
             new ExportCommand(),
             new ImportCommand(),
             new PublishCommand(),
-            new ReleaseCommand(),
             // `run` and `install` are also mounted under `jk tool` (one implementation, two mounts).
             new ToolRunCommand(),
             new ToolInstallCommand(),

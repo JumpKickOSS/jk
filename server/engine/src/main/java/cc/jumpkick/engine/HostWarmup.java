@@ -12,6 +12,7 @@ import cc.jumpkick.util.AotSettings;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -42,7 +43,7 @@ public final class HostWarmup {
         return enabled(userConfig, env, () -> AotSettings.workerAotEnabled() && AotSettings.trainingEnabled());
     }
 
-    static boolean enabled(Path userConfig, Function<String, String> env, java.util.function.BooleanSupplier aot) {
+    static boolean enabled(Path userConfig, Function<String, String> env, BooleanSupplier aot) {
         String e = env != null ? env.apply("JK_AUTO_WARMUP") : null;
         if (e != null && !e.isBlank()) {
             String t = e.trim();
@@ -88,7 +89,7 @@ public final class HostWarmup {
     private static Path cachePath(String tool, Path host, PluginJar jar) {
         try {
             Path workerJar = jar.locate();
-            String cp = cc.jumpkick.compile.WorkerClasspath.resolve(workerJar);
+            String cp = cc.jumpkick.engine.plugin.WorkerLaunchClasspath.resolve(workerJar);
             return PluginAot.cachePath(tool, host, cp);
         } catch (Exception e) {
             return null;

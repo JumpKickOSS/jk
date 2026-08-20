@@ -156,8 +156,26 @@ public enum PluginJar {
         RepoArtifactStore store = RepoArtifactStore.forRepoName(cas.root(), OFFICIAL_REPO);
         store.materialize(relPath, casBlob, sha);
         Path localJar = store.locate(relPath).orElseThrow();
+        fetchOfficialPom(cas, http, base, relPath, store);
         fetchDepsSidecar(cas, http, base, jarUri, localJar);
         return localJar;
+    }
+
+    /** Fetch the sibling POM into the same repo when the official layout published one. */
+    private static void fetchOfficialPom(Cas cas, Http http, URI base, String jarRel, RepoArtifactStore store) {
+        if (!jarRel.endsWith(".jar")) return;
+        String pomRel = jarRel.substring(0, jarRel.length() - 4) + ".pom";
+        try {
+            HttpResponse<byte[]> pomResp = http.get(base.resolve(pomRel));
+            if (pomResp.statusCode() < 200 || pomResp.statusCode() >= 300) return;
+            byte[] body = pomResp.body();
+            if (body == null || body.length == 0) return;
+            String sha = Hashing.sha256Hex(body);
+            Path blob = cas.put(body, sha);
+            store.materialize(pomRel, blob, sha);
+        } catch (Exception ignored) {
+            // POM is preferred at launch but optional for legacy official layouts.
+        }
     }
 
     /**
