@@ -198,7 +198,17 @@ public final class BuildService {
      * ETA seed plus the cost assembly it was computed from — the single assembly both the
      * estimate and the {@link WorkModel} consume.
      */
-    public record EtaModel(long etaMs, List<EffortWeights.ModuleCost> costs, int concurrency, boolean serial) {
+    public record EtaModel(
+            long etaMs,
+            List<EffortWeights.ModuleCost> costs,
+            int concurrency,
+            boolean serial,
+            /** The schedule simulation BEFORE the learned {@link ScheduleBias} — what bias observations compare against. */
+            long rawScheduleMs) {
+        public EtaModel(long etaMs, List<EffortWeights.ModuleCost> costs, int concurrency, boolean serial) {
+            this(etaMs, costs, concurrency, serial, 0);
+        }
+
         static EtaModel empty() {
             return new EtaModel(0, List.of(), 1, true);
         }

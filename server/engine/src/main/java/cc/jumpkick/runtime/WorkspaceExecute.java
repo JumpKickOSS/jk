@@ -440,6 +440,9 @@ public final class WorkspaceExecute {
         if (ok) {
             // Primary seed-quality KPI: |R0 − execute wall| / wall (never improved by residual).
             BuildEta.logSeedQuality(etaMs, executeWallMs, dirtyUnits.size());
+            // Fold the schedule-contention observation (actual vs the PRE-bias simulation) so
+            // the next estimate prices this host's real overlap efficiency.
+            ScheduleBias.observe(req.entryDir(), etaModel.rawScheduleMs(), executeWallMs, dirtyUnits.size());
             // Fold this run's step durations + measured throughput into the learned ledger + host
             // calibration (EWMA) so the next build's estimate is time-accurate. Failed and cancelled
             // builds never train — truncated walls poison ETA priors.
