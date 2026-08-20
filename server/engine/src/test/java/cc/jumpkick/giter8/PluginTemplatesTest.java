@@ -97,5 +97,6 @@ class PluginTemplatesTest {
                 .orElseThrow();
         assertThat(row.plugin()).isTrue();
         assertThat(row.kinds().get("java")).containsExactly("default", "webmvc");
+        assertThat(Giter8TemplateIndex.picker(List.of()).getFirst().plugin()).isTrue();
     }
 }

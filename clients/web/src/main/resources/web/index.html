@@ -608,21 +608,15 @@
             </select>
           </label>
           <label>
-            <span>Template <span class="dim">(optional · {{ newProject.lang }})</span></span>
-            <select v-model="newProject.template" @change="onNewProjectTemplateChange()">
+            <span>Template / kind <span class="dim">(optional · {{ newProject.lang }})</span></span>
+            <select v-model="newProject.templateChoice" @change="onNewProjectTemplateChange()">
               <option value="">None — blank project from language / layout</option>
-              <option v-for="t in templatesForLang" :key="t.id" :value="t.id">{{ t.id }} — {{ t.description }}</option>
-            </select>
-          </label>
-          <label v-if="kindsForSelection.length">
-            <span>Kind <span class="dim">({{ newProject.lang }})</span></span>
-            <select v-model="newProject.kind">
-              <option v-for="k in kindsForSelection" :key="k" :value="k">{{ k }}</option>
+              <option v-for="c in templateChoices" :key="c.value" :value="c.value">{{ c.label }}</option>
             </select>
           </label>
           <!-- Layout + executable only apply to the blank scaffolder. A Giter8 template ships a
                fixed tree (traditional / simple / custom) — the apply path does not reshape it. -->
-          <label v-if="!newProject.template">
+          <label v-if="!parsedTemplateChoice().template">
             <span>Layout</span>
             <select v-model="newProject.layout">
               <option value="traditional">Traditional (Maven-like)</option>
@@ -642,7 +636,7 @@
                       data-tip="Browse for a parent directory"><jk-icon name="folder-open"></jk-icon></button>
             </div>
           </label>
-          <label v-if="!newProject.template" class="check">
+          <label v-if="!parsedTemplateChoice().template" class="check">
             <input type="checkbox" v-model="newProject.executable">
             <span class="check-box" aria-hidden="true"></span>
             <span>Executable (with main)</span>

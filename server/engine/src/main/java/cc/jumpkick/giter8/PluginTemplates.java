@@ -39,7 +39,7 @@ public final class PluginTemplates {
             }
             if (byLang.isEmpty()) continue;
             out.add(new Installed(
-                    d.id(), d.id() + " plugin templates", List.copyOf(byLang.keySet()), Map.copyOf(byLang)));
+                    d.id(), d.id() + " plugin", List.copyOf(byLang.keySet()), Map.copyOf(byLang)));
         }
         return List.copyOf(out);
     }

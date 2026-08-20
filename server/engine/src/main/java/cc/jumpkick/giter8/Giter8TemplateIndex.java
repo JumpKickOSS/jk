@@ -59,12 +59,9 @@ public final class Giter8TemplateIndex {
         }
     }
 
-    /** Catalog + local roots + installed plugin jars. */
+    /** Installed plugin jars first (they win on id collision), then catalog + local roots. */
     public static List<PickerRow> picker(List<Path> roots) {
         Map<String, PickerRow> byId = new LinkedHashMap<>();
-        for (Giter8ShortNames.Entry e : build(roots)) {
-            byId.put(e.id(), new PickerRow(e.id(), e.description(), e.languages(), e.layout(), false, Map.of()));
-        }
         for (PluginTemplates.Installed p : PluginTemplates.installed()) {
             byId.put(
                     p.id(),
@@ -75,6 +72,11 @@ public final class Giter8TemplateIndex {
                             Giter8ShortNames.LAYOUT_TRADITIONAL,
                             true,
                             p.kindsByLang()));
+        }
+        for (Giter8ShortNames.Entry e : build(roots)) {
+            byId.putIfAbsent(
+                    e.id(),
+                    new PickerRow(e.id(), e.description(), e.languages(), e.layout(), false, Map.of()));
         }
         return List.copyOf(byId.values());
     }

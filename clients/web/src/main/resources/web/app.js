@@ -965,6 +965,22 @@ function fmtMillis(millis) {
   return Math.floor(totalSec / 60) + 'm ' + String(totalSec % 60).padStart(2, '0') + 's';
 }
 
+function kindsForTemplate(t, lang) {
+  if (!t || !t.kinds) return [];
+  if (Array.isArray(t.kinds)) return t.kinds;
+  const forLang = t.kinds[lang];
+  return Array.isArray(forLang) ? forLang : [];
+}
+
+function parseTemplateChoice(choice) {
+  const raw = (choice || '').trim();
+  if (!raw) return { template: '', kind: 'default' };
+  const i = raw.indexOf('::');
+  if (i <= 0) return { template: raw, kind: 'default' };
+  const kind = raw.slice(i + 2).trim();
+  return { template: raw.slice(0, i), kind: kind || 'default' };
+}
+
 // Exported for the headless harness (app.test.mjs); the browser block below mounts it.
 export const appOptions = {
   data: () => ({
@@ -1008,6 +1024,7 @@ export const appOptions = {
       lang: 'java',
       layout: 'traditional',
       template: '',
+      templateChoice: '',
       kind: 'default',
       parentDir: '',
       executable: true,
@@ -1059,12 +1076,38 @@ export const appOptions = {
     },
 
     kindsForSelection() {
-      const t = (this.templates || []).find((x) => x.id === this.newProject.template);
+      const parsed = this.parsedTemplateChoice();
+      const t = (this.templates || []).find((x) => x.id === parsed.template);
       if (!t || !t.kinds) return [];
       const lang = (this.newProject.lang || 'java').toLowerCase();
       if (Array.isArray(t.kinds)) return t.kinds;
       const forLang = t.kinds[lang];
       return Array.isArray(forLang) ? forLang : [];
+    },
+
+    // Plugin kinds are first-class rows (`spring-boot / webmvc`) so they are visible without a
+    // second dropdown that only appears after picking a plugin id.
+    templateChoices() {
+      const lang = (this.newProject?.lang || 'java').toLowerCase();
+      const out = [];
+      for (const t of this.templatesForLang) {
+        const kinds = kindsForTemplate(t, lang);
+        if (kinds.length) {
+          for (const k of kinds) {
+            const desc = (t.description || '').trim();
+            out.push({
+              value: t.id + '::' + k,
+              label: desc ? t.id + ' / ' + k + ' — ' + desc : t.id + ' / ' + k,
+            });
+          }
+        } else {
+          out.push({
+            value: t.id,
+            label: t.description ? t.id + ' — ' + t.description : t.id,
+          });
+        }
+      }
+      return out;
     },
 
     // Group the journal into per-project rows for the Projects tab. A computed (not a method) so it
@@ -2396,6 +2439,7 @@ export const appOptions = {
       this.templates = Array.isArray(templates) && templates.length
         ? templates
         : [
+            { id: 'spring-boot', description: 'Spring Boot plugin', languages: ['java', 'kotlin'], layout: 'traditional', plugin: true, kinds: { java: ['default', 'webmvc'], kotlin: ['default', 'webmvc'] } },
             { id: 'cli', description: 'Simple executable (Mill SIMPLE layout)', languages: ['java', 'kotlin'], layout: 'simple' },
             { id: 'cli-native', description: 'Interactive Java CLI with JLine (jk native ready)', languages: ['java'], layout: 'simple' },
             { id: 'spring-boot-webmvc', description: 'Spring Boot WebMVC + JPA/H2 + Actuator', languages: ['java', 'kotlin'], layout: 'traditional' },
@@ -2404,7 +2448,6 @@ export const appOptions = {
             { id: 'ktor-3', description: 'Ktor service with Koin DI and Exposed/H2', languages: ['kotlin'], layout: 'simple' },
             { id: 'micronaut', description: 'Micronaut HTTP service (compile-time DI, Netty)', languages: ['java', 'kotlin'], layout: 'simple' },
             { id: 'grails-8', description: 'Grails 8 REST app (GORM, H2, Groovy)', languages: ['groovy'], layout: 'custom' },
-            { id: 'spring-boot', description: 'spring-boot plugin templates', languages: ['java', 'kotlin'], layout: 'traditional', plugin: true, kinds: { java: ['default', 'webmvc'], kotlin: ['default', 'webmvc'] } },
           ];
       this.onNewProjectLangChange(); // drop a leftover template that no longer matches Language
       // Focus Name so the user can type the app name immediately; @focus selects any existing value.
@@ -2414,10 +2457,15 @@ export const appOptions = {
       });
     },
 
+    parsedTemplateChoice() {
+      return parseTemplateChoice(this.newProject.templateChoice);
+    },
+
     // Language drives the template short-name list; clear a selection that is no longer offered.
     onNewProjectLangChange() {
-      const id = this.newProject.template;
-      if (id && !this.templatesForLang.some((t) => t.id === id)) {
+      const choice = this.newProject.templateChoice;
+      if (choice && !this.templateChoices.some((c) => c.value === choice)) {
+        this.newProject.templateChoice = '';
         this.newProject.template = '';
         this.newProject.kind = 'default';
         return;
@@ -2430,18 +2478,13 @@ export const appOptions = {
     },
 
     syncNewProjectKind() {
-      const kinds = this.kindsForSelection;
-      if (!kinds.length) {
-        this.newProject.kind = 'default';
-        return;
-      }
-      if (!kinds.includes(this.newProject.kind)) {
-        this.newProject.kind = kinds.includes('default') ? 'default' : kinds[0];
-      }
+      const parsed = this.parsedTemplateChoice();
+      this.newProject.template = parsed.template;
+      this.newProject.kind = parsed.kind;
     },
 
     selectedTemplateLayout() {
-      const id = this.newProject.template;
+      const id = this.parsedTemplateChoice().template;
       if (!id) return '';
       const t = (this.templates || []).find((x) => x.id === id);
       return (t && t.layout) || 'traditional';
@@ -2456,7 +2499,8 @@ export const appOptions = {
     async submitNewProject() {
       this.newProjectError = null;
       this.newProjectBusy = true;
-      const hasTemplate = !!(this.newProject.template && this.newProject.template.trim());
+      const parsed = this.parsedTemplateChoice();
+      const hasTemplate = !!parsed.template;
       const body = {
         name: this.newProject.name.trim(),
         group: this.newProject.group.trim() || 'com.example',
@@ -2467,10 +2511,9 @@ export const appOptions = {
         executable: hasTemplate ? false : !!this.newProject.executable,
       };
       if (hasTemplate) {
-        body.template = this.newProject.template.trim();
-        if (this.kindsForSelection.length && this.newProject.kind) {
-          body.kind = this.newProject.kind;
-        }
+        body.template = parsed.template;
+        if (parsed.kind && parsed.kind !== 'default') body.kind = parsed.kind;
+        else if (this.kindsForSelection.length) body.kind = parsed.kind;
       }
       try {
         const res = await post('/api/projects', body);
@@ -2478,6 +2521,7 @@ export const appOptions = {
         this.closeNewProject();
         this.newProject.name = '';
         this.newProject.template = '';
+        this.newProject.templateChoice = '';
         this.newProject.kind = 'default';
         // Keep group + parentDir so the next create is one field away from a sibling project.
         if (path) {
