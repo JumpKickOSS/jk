@@ -40,8 +40,8 @@ public final class NewProjectOps {
             String lang,
             String layout,
             String template,
+            String kind,
             boolean executable,
-            String framework,
             String jdk,
             int javaRelease,
             boolean assembly,
@@ -62,8 +62,20 @@ public final class NewProjectOps {
                 String lang,
                 String layout,
                 String template,
-                boolean executable,
-                String framework) {
+                boolean executable) {
+            this(name, parentDir, group, lang, layout, template, null, executable);
+        }
+
+        /** HTTP/MCP compact shape with an explicit plugin kind. */
+        public Request(
+                String name,
+                String parentDir,
+                String group,
+                String lang,
+                String layout,
+                String template,
+                String kind,
+                boolean executable) {
             this(
                     name,
                     parentDir,
@@ -71,8 +83,8 @@ public final class NewProjectOps {
                     lang,
                     layout,
                     template,
+                    kind,
                     executable,
-                    framework,
                     null,
                     0,
                     false,
@@ -84,49 +96,6 @@ public final class NewProjectOps {
                     true,
                     Map.of(),
                     false,
-                    null);
-        }
-
-        public Request(
-                String name,
-                String parentDir,
-                String group,
-                String lang,
-                String layout,
-                String template,
-                boolean executable,
-                String framework,
-                String jdk,
-                int javaRelease,
-                boolean assembly,
-                boolean nativeImage,
-                boolean plugin,
-                String kotlinModule,
-                List<String> deps,
-                boolean sample,
-                boolean standalone,
-                Map<String, String> templateParams,
-                boolean relaxParent) {
-            this(
-                    name,
-                    parentDir,
-                    group,
-                    lang,
-                    layout,
-                    template,
-                    executable,
-                    framework,
-                    jdk,
-                    javaRelease,
-                    assembly,
-                    nativeImage,
-                    plugin,
-                    kotlinModule,
-                    deps,
-                    sample,
-                    standalone,
-                    templateParams,
-                    relaxParent,
                     null);
         }
     }
@@ -227,7 +196,9 @@ public final class NewProjectOps {
             }
             boolean offline =
                     cc.jumpkick.config.SessionContext.current().config().offlineOr(false);
-            String kind = params.getOrDefault("jk_kind", "default");
+            String kind = req.kind() == null || req.kind().isBlank()
+                    ? "default"
+                    : req.kind().strip();
             Path templateRoot;
             Path extracted = null;
             String langName = prep.lang() == null ? null : prep.lang().hoconValue();
@@ -253,10 +224,6 @@ public final class NewProjectOps {
             }
             return;
         }
-        boolean spring = false;
-        boolean grails = false;
-        boolean quarkus = false;
-        boolean micronaut = false;
         Optional<String> main = Optional.empty();
         if (prep.executable() && !req.plugin()) {
             boolean compact = "simple".equalsIgnoreCase(prep.layout());
@@ -280,10 +247,6 @@ public final class NewProjectOps {
                 main,
                 req.assembly(),
                 req.nativeImage(),
-                spring,
-                grails,
-                quarkus,
-                micronaut,
                 req.plugin(),
                 prep.lang(),
                 prep.layout(),
@@ -293,26 +256,7 @@ public final class NewProjectOps {
                 req.deps() == null ? List.of() : req.deps(),
                 req.sample(),
                 target);
-        NewScaffolder.write(inputs, req.standalone(), NewProjectOps::frameworkScaffold);
-    }
-
-    private static NewScaffolder.ScaffoldFiles frameworkScaffold(NewInputs inputs) throws IOException {
-        var params = new LinkedHashMap<String, String>();
-        params.put("plugin", inputs.frameworkPluginFlag());
-        params.put("lang", inputs.lang().hoconValue());
-        params.put("package", inputs.group());
-        params.put("group", inputs.group());
-        params.put("name", inputs.name());
-        params.put("version", "0.1.0");
-        params.putIfAbsent("quarkus.version", "latest");
-        params.put("simpleLayout", String.valueOf(inputs.isSimpleLayout()));
-        params.put("sample", String.valueOf(inputs.sample()));
-        params.put("baseToml", cc.jumpkick.scaffold.NewJkBuildRenderer.render(inputs));
-        var files = cc.jumpkick.runtime.GenerateOps.generate(inputs.directory(), "scaffold", params);
-        if (files.error() != null && !files.error().isBlank()) {
-            throw new IOException(files.error());
-        }
-        return new NewScaffolder.ScaffoldFiles(files.paths(), files.contents());
+        NewScaffolder.write(inputs, req.standalone());
     }
 
     private static Prepared prepare(Request req) throws IOException {
@@ -335,9 +279,7 @@ public final class NewProjectOps {
         String targetRaw = req.targetDir() == null ? "" : req.targetDir().strip();
         if (!targetRaw.isEmpty()) {
             target = cc.jumpkick.util.PathUtil.resolveUserPath(targetRaw).normalize();
-            // targetDir gets the same allowlist gate as parentDir — the old
-            // target.startsWith(target.getParent()) check was a tautology, so a
-            // relaxParent=false wire caller could scaffold anywhere (JK-2166).
+            // targetDir gets the same allowlist gate as parentDir.
             if (!req.relaxParent()) assertAllowedParent(target.getParent() != null ? target.getParent() : target);
         } else {
             target = parent.resolve(name).normalize();
@@ -459,7 +401,7 @@ public final class NewProjectOps {
     /**
      * Clone {@code ref} into a per-process staging dir, then rename into place — a concurrent
      * clone from ANOTHER engine process loses the rename instead of failing "destination
-     * exists" mid-clone (JK-2166).
+     * exists" mid-clone.
      */
     private static void cloneInto(String ref, Path cache, String key, Path dest) throws IOException {
         String url = ref;

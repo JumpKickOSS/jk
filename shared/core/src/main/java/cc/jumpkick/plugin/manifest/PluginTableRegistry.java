@@ -108,7 +108,7 @@ public final class PluginTableRegistry {
 
     /**
      * Register or replace a built-in manifest loaded from a self-describing plugin jar.
-     * {@code archive} is the zip {@link #resourceText} reads scaffold templates from.
+     * {@code archive} is the zip {@link #resourceText} reads plugin resources from.
      */
     public static void putBuiltIn(PluginDescriptor manifest, Path archive) {
         Objects.requireNonNull(manifest, "manifest");

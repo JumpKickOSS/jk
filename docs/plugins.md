@@ -122,7 +122,7 @@ Static data consulted by `jk run` / `install` / `image` without forking your cod
 
 Bundle Giter8 trees at `src/main/resources/templates/<lang>/<kind>/` (see
 [giter8-templates.md](features/giter8-templates.md)). `jk new -t <plugin-id>` applies
-`templates/<lang>/default` (or `--kind`). No `[scaffold]` table.
+`templates/<lang>/default` (or `--kind`).
 
 ```toml
 [[import.gradle-plugin]]

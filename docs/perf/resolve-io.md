@@ -25,7 +25,7 @@ Pre-1088 dogfood (same laptop, first-ish cache): multi-minute Spring Boot locks 
 
 ### Quarkus platform (post JK-1202)
 
-`jk new --quarkus` / `[quarkus] version` pulls **`io.quarkus.platform:quarkus-bom`** plus REST
+`jk new -t quarkus` / `[quarkus] version` pulls **`io.quarkus.platform:quarkus-bom`** plus REST
 starters — often **200+** packages on first lock. Expect multi-minute cold materialize on a
 laptop if the CAS is empty; warm re-lock is seconds. Tips:
 

@@ -22,6 +22,7 @@ import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -295,7 +296,6 @@ public final class NewCommand implements CliCommand {
             params.putIfAbsent("group", group);
             params.putIfAbsent("package", group);
         }
-        if (kind != null && !kind.isBlank()) params.put("jk_kind", kind);
         String resolvedLang = (lang != null && !lang.isBlank()) ? lang : "java";
         Path target = resolveTarget(directory, cwd, resolvedName);
         Path parentDir = target.getParent() == null ? cwd : target.getParent();
@@ -313,8 +313,8 @@ public final class NewCommand implements CliCommand {
                             resolvedLang,
                             "simple",
                             templateRef,
+                            kind,
                             false,
-                            null,
                             null,
                             0,
                             false,
@@ -616,8 +616,8 @@ public final class NewCommand implements CliCommand {
                         inputs.lang().hoconValue(),
                         inputs.layout(),
                         null,
-                        inputs.isRunnable(),
                         null,
+                        inputs.isRunnable(),
                         inputs.jdk(),
                         inputs.javaRelease(),
                         inputs.assembly(),
@@ -723,10 +723,6 @@ public final class NewCommand implements CliCommand {
                 resolvedMain,
                 assembly,
                 nativeImage,
-                false,
-                false,
-                false,
-                false,
                 plugin,
                 resolvedLang,
                 resolvedLayout,

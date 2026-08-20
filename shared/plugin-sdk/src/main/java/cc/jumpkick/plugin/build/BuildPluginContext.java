@@ -32,9 +32,7 @@ public interface BuildPluginContext {
     // ---- reserved hooks -----------------------------------------------------------------
     // run()/nativeImage() shaping is a LATER step (jk dev's hot-reload hooks) — the hooks and
     // their shape records land WITH the feature; a published method that always throws is
-    // a lie in the contract. Scaffold and import are
-    // manifest data (plan rows 9-10 — pure data, no code hook needed; see [scaffold] and
-    // [[import.gradle-plugin]]). Declared now so the blueprint shows the full surface;
-    // registering one today is a loud error rather than a silent no-op.
+    // a lie in the contract. Import is manifest data ({@code [[import.gradle-plugin]]}).
+    // Giter8 templates live under {@code templates/<lang>/<kind>/} in the plugin jar.
 
 }

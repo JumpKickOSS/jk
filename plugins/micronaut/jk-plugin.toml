@@ -1,5 +1,6 @@
-# Built-in Micronaut 5.x plugin (JK-1533/1534/1536).
-# Declarative: BOM + scaffold. Worker: micronaut-aot step. Packaging: assembly fat jar.
+# Built-in Micronaut 5.x plugin.
+# Declarative: BOM. Worker: micronaut-aot step. Packaging: assembly fat jar.
+# Giter8 trees: src/main/resources/templates/<lang>/<kind>/.
 
 [plugin]
 id        = "micronaut"

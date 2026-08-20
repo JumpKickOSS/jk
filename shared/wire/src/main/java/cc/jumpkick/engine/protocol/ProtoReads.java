@@ -235,8 +235,8 @@ public final class ProtoReads {
             String lang,
             String layout,
             String template,
+            String kind,
             boolean executable,
-            String framework,
             String jdk,
             int javaRelease,
             boolean assembly,
@@ -256,8 +256,8 @@ public final class ProtoReads {
                 + ",\"lang\":" + Jsonl.quote(lang)
                 + ",\"layout\":" + Jsonl.quote(layout)
                 + ",\"template\":" + Jsonl.quote(template)
+                + ((kind == null || kind.isBlank()) ? "" : ",\"kind\":" + Jsonl.quote(kind))
                 + ",\"executable\":" + executable
-                + ",\"framework\":" + Jsonl.quote(framework)
                 + ",\"jdk\":" + Jsonl.quote(jdk)
                 + ",\"javaRelease\":" + javaRelease
                 + ",\"assembly\":" + assembly

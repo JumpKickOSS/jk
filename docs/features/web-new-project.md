@@ -4,7 +4,7 @@
 
 **Implemented (JK-1193).** Engine `POST /api/projects` + `GET /api/templates`; dashboard
 **New project** modal. Scaffold path is shared with CLI via `cc.jumpkick.scaffold.NewScaffolder`
-(in `:core`). CLI `jk new` remains the full-featured entry (framework flags, remote Giter8 git).
+(in `:core`). CLI `jk new` remains the full-featured entry (`-t` / `--template`, remote Giter8 git).
 
 ## UX
 
@@ -30,7 +30,7 @@ bearer token even on loopback; a tokenless session falls back to blank/`com.exam
 | Piece | Proposal |
 |-------|----------|
 | Wire | `new-project` JSONL / HTTP `POST /api/projects` with body `{ name, group, lang, layout, template?, parentDir }` |
-| Engine | Call shared scaffolder (extract from CLI `NewScaffolder` / `Giter8LocalApply` into engine-callable API) |
+| Engine | Call shared scaffolder (`NewScaffolder` for blank; engine Giter8 apply for `-t`) |
 | Auth | Same bearer as dashboard; only paths under configured roots |
 | Response | `{ path, jid? }` + SSE progress optional |
 
@@ -50,5 +50,5 @@ jk new -t cli my-tool
 | Template picker | Short names via `GET /api/templates`; local/classpath apply on engine |
 | Errors | 400/409 with `error` message (exists, invalid name, parent outside home) |
 | Shared scaffold path | **Done** — `cc.jumpkick.scaffold.*` used by CLI + engine |
-| Framework templates from web | Template picker (`spring-boot`, `quarkus`, …) + language |
-| Remote Giter8 short names | Engine uses local/classpath; full git resolve remains CLI (`Giter8Git`) |
+| Plugin / catalog templates from web | Template picker (`spring-boot`, `cli`, …) + language |
+| Remote Giter8 short names | Engine clones git refs and freshens the official catalog |

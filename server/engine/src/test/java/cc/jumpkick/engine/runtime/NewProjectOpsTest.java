@@ -18,7 +18,7 @@ class NewProjectOpsTest {
     void creates_plain_java_project(@TempDir Path temp) throws Exception {
         // temp is under java.io.tmpdir → allowed parent
         var result = NewProjectOps.create(
-                new NewProjectOps.Request("widget", temp.toString(), "com.acme", "java", "simple", null, true, null));
+                new NewProjectOps.Request("widget", temp.toString(), "com.acme", "java", "simple", null, true));
         Path root = result.path();
         assertThat(root).isEqualTo(temp.resolve("widget"));
         assertThat(root.resolve("jk.toml")).exists();
@@ -31,9 +31,9 @@ class NewProjectOpsTest {
     @Test
     void rejects_existing_project(@TempDir Path temp) throws Exception {
         NewProjectOps.create(
-                new NewProjectOps.Request("dup", temp.toString(), "com.example", "java", "simple", null, false, null));
+                new NewProjectOps.Request("dup", temp.toString(), "com.example", "java", "simple", null, false));
         assertThatThrownBy(() -> NewProjectOps.create(new NewProjectOps.Request(
-                        "dup", temp.toString(), "com.example", "java", "simple", null, false, null)))
+                        "dup", temp.toString(), "com.example", "java", "simple", null, false)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("already exists");
     }
@@ -41,14 +41,13 @@ class NewProjectOpsTest {
     @Test
     void rejects_bad_name(@TempDir Path temp) {
         assertThatThrownBy(() -> NewProjectOps.create(new NewProjectOps.Request(
-                        "../evil", temp.toString(), "com.example", "java", "simple", null, true, null)))
+                        "../evil", temp.toString(), "com.example", "java", "simple", null, true)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void target_dir_scaffolds_into_the_requested_directory(@TempDir Path temp) throws Exception {
-        // JK-2142 follow-up fix 9d1fc1f5 landed without a test: targetDir wins over
-        // parentDir/name for the write location.
+        // targetDir wins over parentDir/name for the write location.
         Path custom = temp.resolve("elsewhere/custom-home");
         var created = NewProjectOps.create(new NewProjectOps.Request(
                 "x",
@@ -57,8 +56,8 @@ class NewProjectOpsTest {
                 "java",
                 "simple",
                 null,
-                true,
                 null,
+                true,
                 null,
                 0,
                 false,
@@ -78,8 +77,6 @@ class NewProjectOpsTest {
 
     @Test
     void target_dir_outside_the_allowlist_is_refused_without_relax(@TempDir Path temp) {
-        // JK-2166: the old check compared target against its own parent (a tautology), so a
-        // relaxParent=false wire caller could scaffold anywhere via targetDir.
         assertThatThrownBy(() -> NewProjectOps.create(new NewProjectOps.Request(
                         "x",
                         temp.toString(),
@@ -87,8 +84,8 @@ class NewProjectOpsTest {
                         "java",
                         "simple",
                         null,
-                        true,
                         null,
+                        true,
                         null,
                         0,
                         false,
@@ -108,7 +105,7 @@ class NewProjectOpsTest {
     @Test
     void rejects_path_outside_home_and_tmp() {
         assertThatThrownBy(() -> NewProjectOps.create(
-                        new NewProjectOps.Request("x", "/etc", "com.example", "java", "simple", null, true, null)))
+                        new NewProjectOps.Request("x", "/etc", "com.example", "java", "simple", null, true)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("HOME");
     }

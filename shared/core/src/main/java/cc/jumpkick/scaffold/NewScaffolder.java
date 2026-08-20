@@ -23,31 +23,10 @@ import java.util.Map;
  * Maven coordinate + version + scope; both the renderer and the wizard's MultiSelect step pull from
  * it.
  *
- * <p>Shared by CLI {@code jk new} and engine {@code POST /api/projects}. Framework plugin
- * scaffolds ({@code --spring}/…​) use {@link FrameworkScaffoldSource} so the engine can call
- * {@code ScaffoldOps} in-process while the CLI still goes over the wire.
+ * <p>Shared by CLI {@code jk new} and engine {@code POST /api/projects}. Framework apps come
+ * from Giter8 ({@code jk new -t …}), not this writer.
  */
 public final class NewScaffolder {
-
-    /**
-     * Supplies engine-rendered plugin scaffold files (paths + contents). CLI uses ExportSupport;
-     * engine uses ScaffoldOps. Null-safe: when no framework flag is set, this is never called.
-     */
-    @FunctionalInterface
-    public interface FrameworkScaffoldSource {
-        ScaffoldFiles generate(NewInputs inputs) throws IOException;
-    }
-
-    /** Parallel path/content lists from a framework plugin scaffold (same shape as GeneratedFiles). */
-    public record ScaffoldFiles(List<String> paths, List<String> contents) {
-        public ScaffoldFiles {
-            paths = paths == null ? List.of() : List.copyOf(paths);
-            contents = contents == null ? List.of() : List.copyOf(contents);
-        }
-    }
-
-    /** Thread-local / call-scoped source for framework scaffolds. Default: unset (plain only). */
-    private static final ThreadLocal<FrameworkScaffoldSource> FRAMEWORK = new ThreadLocal<>();
 
     /**
      * Per-dep record. {@code version} is the major-version selector that ends up after the {@code @}
@@ -75,88 +54,37 @@ public final class NewScaffolder {
     private NewScaffolder() {}
 
     public static void write(NewInputs inputs) throws IOException {
-        write(inputs, true, null);
-    }
-
-    public static void write(NewInputs inputs, boolean standalone) throws IOException {
-        write(inputs, standalone, null);
+        write(inputs, true);
     }
 
     /**
-     * Scaffold the project tree. {@code standalone} is false for a workspace module, whose {@code
-     * .gitignore} is owned by the workspace root and so is skipped here (Cargo/uv: modules never
-     * carry their own gitignore).
+     * Write the project tree. {@code standalone} is false for a workspace module, whose {@code
+     * .gitignore} is owned by the workspace root and so is skipped here.
      *
-     * <p>No {@code jk-lock.toml} is written — it's generated on the first build or run, so a
-     * freshly-scaffolded project carries only its manifest + sources.
-     *
-     * <p>A plugin scaffold ({@code --spring}) fetches its payloads BEFORE anything touches disk via
-     * {@code frameworkSource}: the engine renders the plugin's {@code [scaffold]} data, and a
-     * failure leaves no half-written project behind.
+     * <p>No {@code jk-lock.toml} is written — it's generated on the first build or run.
      */
-    public static void write(NewInputs inputs, boolean standalone, FrameworkScaffoldSource frameworkSource)
-            throws IOException {
+    public static void write(NewInputs inputs, boolean standalone) throws IOException {
         if (inputs.plugin()) {
             writePluginProject(inputs, standalone);
             return;
         }
         var dir = inputs.directory();
-        ScaffoldFiles plugin = null;
-        if (inputs.frameworkScaffold()) {
-            FrameworkScaffoldSource src = frameworkSource != null ? frameworkSource : FRAMEWORK.get();
-            if (src == null) {
-                throw new IOException("jk new: framework scaffold ("
-                        + inputs.frameworkPluginFlag()
-                        + ") requires an engine FrameworkScaffoldSource");
-            }
-            plugin = src.generate(inputs);
-            if (plugin == null) throw new IOException("jk new: plugin scaffold failed");
-        }
-
         Files.createDirectories(dir);
-        if (plugin != null) {
-            for (int i = 0; i < plugin.paths().size(); i++) {
-                Path target = Path.of(plugin.paths().get(i));
-                if (target.getParent() != null) Files.createDirectories(target.getParent());
-                Files.writeString(target, plugin.contents().get(i), StandardCharsets.UTF_8);
-            }
-        } else {
-            Files.writeString(dir.resolve("jk.toml"), NewJkBuildRenderer.render(inputs), StandardCharsets.UTF_8);
-        }
+        Files.writeString(dir.resolve("jk.toml"), NewJkBuildRenderer.render(inputs), StandardCharsets.UTF_8);
 
         if (standalone) {
-            writeGitignore(dir); // modules inherit the workspace root's.gitignore
+            writeGitignore(dir);
         }
 
         createSourceTree(inputs);
 
-        if (plugin == null && inputs.sample()) {
+        if (inputs.sample()) {
             writeSample(inputs);
         }
     }
 
-    /**
-     * Run {@code action} with a thread-local framework scaffold source (CLI ExportSupport adapter).
-     */
-    public static void withFrameworkSource(FrameworkScaffoldSource source, IoRunnable action) throws IOException {
-        FrameworkScaffoldSource prev = FRAMEWORK.get();
-        FRAMEWORK.set(source);
-        try {
-            action.run();
-        } finally {
-            if (prev == null) FRAMEWORK.remove();
-            else FRAMEWORK.set(prev);
-        }
-    }
-
-    @FunctionalInterface
-    public interface IoRunnable {
-        void run() throws IOException;
-    }
-
     // jk new --plugin: a build-plugin AUTHORING project (jk-plugin.toml at the jar root; PluginMain
-    // is implied by that file). Fully client-side and framework-free — the opposite direction from
-    // pluginScaffold above (a plugin CONTRIBUTING a `jk new --<flag>`).
+    // is implied by that file).
 
     private static void writePluginProject(NewInputs inputs, boolean standalone) throws IOException {
         Path dir = inputs.directory();
@@ -372,6 +300,7 @@ public final class NewScaffolder {
                   the declarative manifest jk reads: the `[%1$s]` schema and the code hook.
                 - `%2$s` — the code layer: implements the SDK's `Plugin` + `BuildPlugin`, registered
                   via `META-INF/services/cc.jumpkick.plugin.Plugin`.
+                - `src/main/resources/templates/<lang>/<kind>/` — Giter8 trees for `jk new -t %1$s`.
                 - `jk.toml` — depends on `cc.jumpkick:jk-plugin-sdk`. No `[application]` table:
                   `jk-plugin.toml` implies the SDK's `PluginMain` worker host.
 

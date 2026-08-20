@@ -1,5 +1,6 @@
 # Built-in Quarkus build plugin — declarative layer.
-# Worker code (augment + fast-jar packager) lands in the jar; BOM + scaffold are pure data.
+# Worker code (augment + fast-jar packager) lands in the jar; BOM is pure data.
+# Giter8 trees: src/main/resources/templates/<lang>/<kind>/.
 
 [plugin]
 id        = "quarkus"

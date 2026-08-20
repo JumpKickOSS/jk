@@ -51,9 +51,6 @@ public final class NewJkBuildRenderer {
             return sb.toString();
         }
 
-        // Plugin scaffolds (--spring) append their own tables engine-side (the plugin's
-        // [scaffold] fragments) — this renderer emits only jk-core content.
-
         var picks = resolvePicks(inputs.deps());
         if (picks.isEmpty()) return sb.toString();
 

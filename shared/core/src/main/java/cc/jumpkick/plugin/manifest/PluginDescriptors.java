@@ -86,10 +86,14 @@ public final class PluginDescriptors {
             }
         }
 
+        if (result.getTable("scaffold") != null) {
+            throw new JkBuildParseException(
+                    displayPath + ": [scaffold] is not supported; ship Giter8 trees under templates/<lang>/<kind>/");
+        }
+
         PluginDescriptor.Contributions contributions = parseContributions(result, schema.keySet(), displayPath);
         PluginDescriptor.Code code = parseCode(result, displayPath);
         PluginDescriptor.Packaging packaging = parsePackaging(result, displayPath);
-        PluginDescriptor.Scaffold scaffold = parseScaffold(result, displayPath);
         List<PluginDescriptor.GradleImport> gradleImports = parseGradleImports(result, displayPath);
         return new PluginDescriptor(
                 id,
@@ -100,7 +104,6 @@ public final class PluginDescriptors {
                 contributions,
                 code,
                 packaging,
-                scaffold,
                 gradleImports,
                 subSchemas,
                 subTables);
@@ -134,14 +137,6 @@ public final class PluginDescriptors {
                             Boolean.TRUE.equals(spec.getBoolean("secret"))));
         }
         return schema;
-    }
-
-    /** Reject leftover {@code [scaffold]} tables. Templates live under {@code templates/<lang>/<kind>/}. */
-    private static PluginDescriptor.Scaffold parseScaffold(TomlParseResult result, String displayPath) {
-        TomlTable scaffold = result.getTable("scaffold");
-        if (scaffold == null) return null;
-        throw new JkBuildParseException(
-                displayPath + ": [scaffold] is not supported; ship Giter8 trees under templates/<lang>/<kind>/");
     }
 
     /** The {@code [[import.gradle-plugin]]} rules — jk import's plugin-id mappings (P4). */

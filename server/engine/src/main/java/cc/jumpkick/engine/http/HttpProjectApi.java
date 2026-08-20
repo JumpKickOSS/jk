@@ -48,13 +48,13 @@ final class HttpProjectApi {
         String lang = cc.jumpkick.jsonl.Jsonl.str(body, "lang");
         String layout = cc.jumpkick.jsonl.Jsonl.str(body, "layout");
         String template = cc.jumpkick.jsonl.Jsonl.str(body, "template");
-        String framework = cc.jumpkick.jsonl.Jsonl.str(body, "framework");
+        String kind = cc.jumpkick.jsonl.Jsonl.str(body, "kind");
         boolean executable = cc.jumpkick.jsonl.Jsonl.bool(body, "executable", true);
         try {
             // The SPA routes #project/<id> immediately, so identity materializes with creation.
             var result = cc.jumpkick.engine.runtime.NewProjectOps.createWithIdentity(
                     new cc.jumpkick.engine.runtime.NewProjectOps.Request(
-                            name, parentDir, group, lang, layout, template, executable, framework));
+                            name, parentDir, group, lang, layout, template, kind, executable));
             JsonOut created = JsonOut.object()
                     .put("path", result.path().toString())
                     .put("dir", result.path().toString());

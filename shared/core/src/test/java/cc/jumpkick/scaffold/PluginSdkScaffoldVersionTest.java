@@ -13,9 +13,8 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code jk new --plugin} scaffolds a hardcoded jk-plugin-sdk version (the
- * PluginSdkVersion.VERSION reference was dropped for native-image reachability, JK-2151);
- * this self-hosting tripwire keeps the three declarations in sync (JK-2172).
+ * {@code jk new --plugin} writes a hardcoded jk-plugin-sdk version; this tripwire keeps
+ * the renderer pin, {@code PluginSdkVersion.VERSION}, and the plugin-sdk Gradle version in sync.
  */
 class PluginSdkScaffoldVersionTest {
 
@@ -43,10 +42,6 @@ class PluginSdkScaffoldVersionTest {
                 25,
                 Optional.empty(),
                 Optional.empty(),
-                false,
-                false,
-                false,
-                false,
                 false,
                 false,
                 true,

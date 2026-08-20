@@ -74,6 +74,16 @@ class PluginTableRegistryTest {
         assertThatThrownBy(() -> PluginDescriptors.parse(
                         "[plugin]\nid = \"x\"\ntable = \"x\"\n[schema]\nk = { type = \"nope\" }", "p.toml"))
                 .hasMessageContaining("unknown schema type");
+        assertThatThrownBy(() -> PluginDescriptors.parse("""
+                        [plugin]
+                        id = "x"
+                        table = "x"
+                        [scaffold]
+                        flag = "spring"
+                        """, "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[scaffold]")
+                .hasMessageContaining("templates/<lang>/<kind>/");
     }
 
     @org.junit.jupiter.api.Test
@@ -83,7 +93,6 @@ class PluginTableRegistryTest {
                 .findFirst()
                 .orElseThrow();
 
-        org.assertj.core.api.Assertions.assertThat(boot.scaffold()).isNull();
         org.assertj.core.api.Assertions.assertThat(boot.gradleImports())
                 .anyMatch(r -> r.id().equals("org.springframework.boot")
                         && "version".equals(r.versionTo())
@@ -120,12 +129,10 @@ class PluginTableRegistryTest {
                         "grails-app/conf",
                         "grails-app/i18n",
                         "grails-app/views");
-
-        assertThat(grails.scaffold()).isNull();
     }
 
     @Test
-    void resourceText_reads_scaffold_from_self_describing_jar(@TempDir Path dir) throws Exception {
+    void resourceText_reads_from_self_describing_jar(@TempDir Path dir) throws Exception {
         Path jar = dir.resolve("plug.jar");
         try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
             out.putNextEntry(new JarEntry("jk-plugin.toml"));

@@ -13,8 +13,9 @@ import java.util.Map;
 /**
  * Resolves {@code [build] extra-resources} into concrete source→destination copies.
  *
- * <p>Table-owning first-party plugins use this to place their own {@code jk-plugin.toml} (and
- * {@code scaffold/}) at the jar root. Patterns are module-relative and clamped to the workspace.
+ * <p>Table-owning first-party plugins use this to place their own {@code jk-plugin.toml} at the
+ * jar root. Giter8 trees ride {@code src/main/resources/templates/}. Patterns are
+ * module-relative and clamped to the workspace.
  *
  * <p>Destination shape: a match keeps its path relative to the pattern's literal prefix, placed
  * under {@code into}.

@@ -40,7 +40,6 @@ public final class GenerateOps {
                 case "export-maven" -> exportMaven(dir);
                 case "export-gradle" -> exportGradle(dir);
                 case "export-bom" -> exportBom(dir, params);
-                case "scaffold" -> GeneratedFiles.error("unknown generate kind: scaffold");
                 default -> GeneratedFiles.error("unknown generate kind: " + kind);
             };
         } catch (IOException | RuntimeException e) {
