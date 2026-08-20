@@ -73,12 +73,18 @@ publishing {
     }
 }
 
-// Publisher / compat-bridge parse JkBuild via PluginTableRegistry. Manifests stay
-// off :core so the native CLI cannot see them; workers load them from this jar via
-// the context classloader.
-tasks.processResources {
-    duplicatesStrategy = DuplicatesStrategy.INCLUDE
-    pluginManifestResources(rootProject)
+// Table-owning plugins ship their own jk-plugin.toml (+ scaffold/) at the jar root —
+// the same shape as a third-party plugin. Sibling catalogs are not copied here.
+val ownManifest = project.file("jk-plugin.toml")
+if (ownManifest.isFile) {
+    tasks.processResources {
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+        from(ownManifest)
+        val scaffold = project.file("scaffold")
+        if (scaffold.isDirectory) {
+            from(scaffold) { into("scaffold") }
+        }
+    }
 }
 
 tasks.jar {
@@ -91,6 +97,13 @@ tasks.jar {
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     exclude("META-INF/*.SF", "META-INF/*.RSA", "META-INF/*.DSA", "META-INF/*.EC")
+    doLast {
+        val jar = archiveFile.get().asFile
+        assertJarHasNoFlattenedPluginCatalog(jar)
+        if (ownManifest.isFile) {
+            assertJarHasRootPluginManifest(jar)
+        }
+    }
 }
 
 fun xmlEsc(s: String): String = buildString {

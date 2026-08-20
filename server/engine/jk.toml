@@ -31,13 +31,6 @@ assertj-core = "latest"
 junit-jupiter = "latest"
 
 [build]
-# Bake built-in plugin manifests (and optional scaffolds) into the engine jar — never
-# jk-core, which the native CLI compiles against (JK-2149/JK-2157). Mirrors
-# pluginManifestResources in the Gradle build.
-extra-resources = [
-  { from = "../../plugins/*/jk-plugin.toml", into = "cc/jumpkick/plugin/manifest", rename = "{1}.jk-plugin.toml" },
-  { from = "../../plugins/*/scaffold/**", into = "cc/jumpkick/plugin/manifest", optional = true },
-]
 # Only the workers engine tests actually fork or verify against. Each entry is a hard
 # build-order edge (the whole plugin plan runs before engine) AND a content hash in the
 # run-tests stamp — a spurious entry makes an unrelated plugin edit re-run this entire

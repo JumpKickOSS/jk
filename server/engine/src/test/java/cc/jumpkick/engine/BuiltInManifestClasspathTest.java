@@ -7,17 +7,16 @@ import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import org.junit.jupiter.api.Test;
 
 /**
- * The engine classpath must carry every built-in plugin manifest (JK-2149 moved them off
- * :core main, so a baking regression in {@code server/engine/build.gradle.kts} or the
- * worker conventions would otherwise degrade SILENTLY — {@code loadBuiltIns} treats
- * all-absent as the intentional native-CLI state and returns an empty registry).
+ * Engine <em>tests</em> still bake plugin fixtures on the test classpath so unit tests
+ * can parse {@code [spring-boot]} without locating worker jars. Production engine jars
+ * do not contain the flattened catalog ({@code BuiltInPluginJars} reads each plugin zip).
  */
 class BuiltInManifestClasspathTest {
 
     @Test
-    void engine_classpath_bakes_every_built_in_manifest() {
+    void engine_test_classpath_has_built_in_fixtures() {
         assertThat(PluginTableRegistry.manifests().stream().map(m -> m.id()).toList())
-                .as("built-in manifests must ride the engine classpath (JK-2149)")
+                .as("built-in fixtures must ride the engine test classpath")
                 .contains("spring-boot", "grails", "quarkus", "android", "protobuf", "minified", "micronaut");
     }
 }

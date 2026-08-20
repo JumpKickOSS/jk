@@ -6,7 +6,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.model.PluginConfig;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.tomlj.Toml;
 
 class PluginTableRegistryTest {
@@ -139,5 +145,32 @@ class PluginTableRegistryTest {
         for (var f : scaffold.files()) {
             assertThat(PluginTableRegistry.resourceText(grails, f.template())).isNotBlank();
         }
+    }
+
+    @Test
+    void resourceText_reads_scaffold_from_self_describing_jar(@TempDir Path dir) throws Exception {
+        Path jar = dir.resolve("plug.jar");
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
+            out.putNextEntry(new JarEntry("jk-plugin.toml"));
+            out.write("""
+                    [plugin]
+                    id = "zip-plug"
+                    table = "zip-plug"
+                    version = "1"
+                    """.getBytes(StandardCharsets.UTF_8));
+            out.closeEntry();
+            out.putNextEntry(new JarEntry("scaffold/hello.txt"));
+            out.write("hi from zip".getBytes(StandardCharsets.UTF_8));
+            out.closeEntry();
+        }
+        PluginDescriptor d = PluginDescriptors.parse("""
+                [plugin]
+                id = "zip-plug"
+                table = "zip-plug"
+                version = "1"
+                """, "zip-plug.jk-plugin.toml");
+        PluginTableRegistry.putBuiltIn(d, jar);
+        assertThat(PluginTableRegistry.byTable("zip-plug")).isPresent();
+        assertThat(PluginTableRegistry.resourceText(d, "scaffold/hello.txt")).isEqualTo("hi from zip");
     }
 }

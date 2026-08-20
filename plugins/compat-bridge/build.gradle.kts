@@ -8,6 +8,13 @@ description = "jk-compat-runner: child-JVM worker that handles Maven/Gradle impo
         "and distribution provisioning. Keeps Maven XML parsing code and tool installer " +
         "out of the main jk binary's GraalVM reachable set."
 
+// Import unit tests parse [spring-boot] via PluginTableRegistry — fixtures on the
+// test classpath only. The published worker jar is not a catalog.
+tasks.processTestResources {
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    pluginManifestResources(rootProject)
+}
+
 dependencies {
     implementation(project(":core"))
     implementation(project(":io"))

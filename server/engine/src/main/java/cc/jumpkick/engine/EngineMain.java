@@ -72,6 +72,7 @@ public final class EngineMain {
         TerminalSignals.ignoreInterruptAndHangup();
         try {
             EnginePaths.Paths paths = EnginePaths.current();
+            cc.jumpkick.engine.plugin.BuiltInPluginJars.install();
             cc.jumpkick.config.JkEngineConfig config = cc.jumpkick.config.JkEngineConfig.resolve();
             cc.jumpkick.config.JkHttpConfig httpConfig =
                     cc.jumpkick.config.JkHttpConfig.resolve().orElse(null);

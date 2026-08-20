@@ -13,15 +13,11 @@ import java.util.Map;
 /**
  * Resolves {@code [build] extra-resources} into concrete source→destination copies.
  *
- * <p>The engine bakes {@code plugins/*}{@code /jk-plugin.toml} in as the built-in plugin registry. Those
- * blueprint files are the single source of truth third parties copy, so duplicating them into the
- * module would create a second copy that drifts — and {@code jk.toml} previously had no way to say
- * "include that file from over there", which is what stopped the repo self-hosting.
+ * <p>Table-owning first-party plugins use this to place their own {@code jk-plugin.toml} (and
+ * {@code scaffold/}) at the jar root. Patterns are module-relative and clamped to the workspace.
  *
  * <p>Destination shape: a match keeps its path relative to the pattern's literal prefix, placed
- * under {@code into}. So {@code../../plugins/spring-boot/scaffold/**} preserves the scaffold tree,
- * while {@code../../plugins/&#42;/jk-plugin.toml} with {@code rename = "{1}.jk-plugin.toml"} flattens
- * four same-named files into four distinct ones.
+ * under {@code into}.
  */
 final class ExtraResources {
 

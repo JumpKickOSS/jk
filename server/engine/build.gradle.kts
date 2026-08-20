@@ -42,11 +42,15 @@ dependencies {
     implementation(libs.tukaani.xz)
 }
 
-// First-party jk-plugin.toml + scaffold templates (JK-2149). Kept off :core so
-// the native CLI compile/runtime set cannot see them.
-tasks.processResources {
+// Production engine has no flattened catalog — BuiltInPluginJars reads each
+// plugin jar's root jk-plugin.toml. Tests still parse PluginTableRegistry.
+tasks.processTestResources {
     duplicatesStrategy = DuplicatesStrategy.INCLUDE
     pluginManifestResources(rootProject)
+}
+
+tasks.named<Jar>("jar") {
+    doLast { assertJarHasNoFlattenedPluginCatalog(archiveFile.get().asFile) }
 }
 
 application {
@@ -73,6 +77,7 @@ tasks.shadowJar {
         attributes("Main-Class" to "cc.jumpkick.engine.EngineMain")
     }
     mergeServiceFiles()
+    doLast { assertJarHasNoFlattenedPluginCatalog(archiveFile.get().asFile) }
 }
 
 /**
