@@ -157,7 +157,10 @@ public final class BuildForecasting {
                     System.err.println("[jk-perf] preflight-memo hit dirty="
                             + memo.get().dirty().size()
                             + " restore="
-                            + memo.get().restoreNeeded().size());
+                            + memo.get().restoreNeeded().size()
+                            + (memo.get().restoreNeeded().isEmpty()
+                                    ? ""
+                                    : " " + memo.get().restoreNeeded()));
                 }
                 // Memo hit: inputs validated. Empty dirty+restore → skip TaskForecaster.
                 // restoreNeeded alone → restore path (no full rebuild forecast).

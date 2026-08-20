@@ -34,10 +34,13 @@ public final class ModuleOutputRestore {
      */
     public static boolean packageOutputsMissing(Path workspaceRoot, Path moduleDir, JkBuild build) {
         BuildLayout layout = BuildLayout.of(workspaceRoot, moduleDir, build);
-        if (!Files.isRegularFile(layout.mainJar())) return true;
-        if (hasMainSources(moduleDir, build) && !classesDirHasContent(layout.classesDir())) return true;
+        // Sources-less modules (jk-web: resources/test-only) plan no package-jar step at all —
+        // demanding one flagged them restore-needed on every fully-cached build (JK-2214).
+        boolean hasSources = hasMainSources(moduleDir, build);
+        if (hasSources && !Files.isRegularFile(layout.mainJar())) return true;
+        if (hasSources && !classesDirHasContent(layout.classesDir())) return true;
         if (build.assembly() && !Files.isRegularFile(layout.assemblyJar())) return true;
-        if (build.nativeMode() == JkBuild.NativeMode.ALWAYS && !nativePresent(layout)) return true;
+        if (build.nativeMode() == JkBuild.NativeMode.ALWAYS && !nativePresent(layout, build)) return true;
         return false;
     }
 
@@ -70,7 +73,12 @@ public final class ModuleOutputRestore {
             restoreArtifact(ac, TaskNames.PACKAGE_ASSEMBLY, layout.assemblyJar());
         }
         if (build.nativeMode() == JkBuild.NativeMode.ALWAYS) {
-            Path nativeOut = layout.nativeBinary();
+            // Same [native].name override as the probe/PlannerNative.
+            Path nativeOut = build.nativeConfig()
+                    .map(JkBuild.NativeConfig::name)
+                    .filter(n -> n != null && !n.isBlank())
+                    .map(n -> layout.moduleTargetDir().resolve(n))
+                    .orElse(layout.nativeBinary());
             restoreArtifact(ac, TaskNames.NATIVE_IMAGE, nativeOut);
         }
 
@@ -130,7 +138,24 @@ public final class ModuleOutputRestore {
         ac.restoreArtifacts(rec.get(), parent);
     }
 
-    private static boolean nativePresent(BuildLayout layout) {
+    private static boolean nativePresent(BuildLayout layout, JkBuild build) {
+        // [native].name overrides the artifact-derived filename (PlannerNative writes
+        // target/<name>); probing only nativeBinary() flagged jk-cli (binary "jk", artifact
+        // "jk-cli") restore-needed on every fully-cached build (JK-2214).
+        String named = build.nativeConfig()
+                .map(JkBuild.NativeConfig::name)
+                .filter(n -> n != null && !n.isBlank())
+                .orElse(null);
+        if (named != null) {
+            Path base = layout.moduleTargetDir();
+            if (Files.isRegularFile(base.resolve(named))) return true;
+            String lib = named.startsWith("lib") ? named : "lib" + named;
+            if (Files.isRegularFile(base.resolve(lib + ".so"))
+                    || Files.isRegularFile(base.resolve(lib + ".dylib"))
+                    || Files.isRegularFile(base.resolve(lib + ".dll"))) {
+                return true;
+            }
+        }
         return Files.isRegularFile(layout.nativeBinary())
                 || Files.isRegularFile(Path.of(layout.nativeLibrary() + ".so"))
                 || Files.isRegularFile(Path.of(layout.nativeLibrary() + ".dylib"))
@@ -151,7 +176,11 @@ public final class ModuleOutputRestore {
 
     static boolean classesDirHasContent(Path classesDir) {
         if (classesDir == null || !Files.isDirectory(classesDir)) return false;
-        try (var walk = Files.walk(classesDir, 3)) {
+        // Unbounded walk (anyMatch short-circuits at the first class file): a depth cap of 3
+        // missed every package deeper than three segments — cc/jumpkick/... classes sat at
+        // depth 4+, so all 28 self-host modules read as "outputs missing" and the restore
+        // path re-ran the whole workspace on every fully-cached build (JK-2214: 400ms → 4.5s).
+        try (var walk = Files.walk(classesDir)) {
             return walk.anyMatch(p -> Files.isRegularFile(p)
                     && p.getFileName() != null
                     && p.getFileName().toString().endsWith(".class"));
