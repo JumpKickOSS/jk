@@ -2,7 +2,6 @@ name = "$name$"
 group = "$organization$"
 version = "0.1.0"
 groovy = "$groovy$"
-layout = "traditional"
 
 [application]
 main = "$package$.Application"

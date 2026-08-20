@@ -51,8 +51,8 @@ public final class GradleExporter {
      * Export a project or workspace. {@code modulesByRelPath} (empty for a single project) maps each
      * module's path relative to the root to its parsed build; {@code layoutByRelPath} carries the
      * concrete {@link JkBuild.Layout} for each project keyed the same way (root = {@code ""}), so
-     * jk's flat {@code SIMPLE} layout emits a matching {@code sourceSets} block (callers resolve
-     * {@code AUTO} against the directory tree). Missing entries default to {@code AUTO}.
+     * jk's flat {@code SIMPLE} layout emits a matching {@code sourceSets} block. Missing entries
+     * default to traditional (Maven source sets).
      */
     public static Result export(
             JkBuild root,
@@ -75,7 +75,7 @@ public final class GradleExporter {
 
     private static JkBuild.Layout layoutOf(Map<String, JkBuild.Layout> map, String key) {
         JkBuild.Layout l = map.get(key);
-        return l != null ? l : JkBuild.Layout.AUTO;
+        return l != null ? l : JkBuild.Layout.TRADITIONAL;
     }
 
     private static String renderSettings(JkBuild root, Set<String> moduleRelPaths) {

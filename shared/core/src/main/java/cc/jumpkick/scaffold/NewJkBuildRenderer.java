@@ -44,9 +44,6 @@ public final class NewJkBuildRenderer {
                         .append(inputs.grails() ? GRAILS_GROOVY_VERSION : DEFAULT_GROOVY_VERSION)
                         .append("\"\n");
         }
-        if (inputs.layout() != null && !inputs.layout().isBlank() && !"auto".equalsIgnoreCase(inputs.layout())) {
-            sb.append("layout   = \"").append(inputs.layout().toLowerCase()).append("\"\n");
-        }
         inputs.kotlinModuleName()
                 .ifPresent(m -> sb.append("module   = \"").append(m).append("\"\n"));
 

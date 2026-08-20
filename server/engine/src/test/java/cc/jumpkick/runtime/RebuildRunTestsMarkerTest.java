@@ -50,7 +50,6 @@ class RebuildRunTestsMarkerTest {
                 version = "1.0.0"
                 jdk     = 25
                 java    = 25
-                layout  = "simple"
 
                 [test-dependencies]
                 junit-jupiter           = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=6.1.1" }

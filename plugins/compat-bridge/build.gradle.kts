@@ -20,5 +20,5 @@ dependencies {
     implementation(project(":io"))
     implementation(project(":toolchain"))
     // compat deleted: mvn/gradle/kotlin bridge + JkBuildRenderer moved into this module
-    implementation(project(":plugin-sdk"))  // shared JSONL codec (on the worker runtime classpath (thin jar + sidecar))
+    implementation(project(":plugin-sdk"))  // shared JSONL codec (worker runtime classpath via POM)
 }

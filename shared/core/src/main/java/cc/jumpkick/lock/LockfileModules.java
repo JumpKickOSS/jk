@@ -83,7 +83,6 @@ public final class LockfileModules {
                     case PUBLISH -> "publish";
                     case ALWAYS -> "always";
                 };
-        String layout = p.layout() == null ? null : p.layout().tomlValue();
         return new Lockfile.ModuleEntry(
                 path,
                 p.group(),
@@ -96,7 +95,7 @@ public final class LockfileModules {
                 p.description(),
                 sources,
                 p.m2install() ? Boolean.TRUE : null,
-                layout);
+                null);
     }
 
     private static String selectorRaw(VersionSelector v) {

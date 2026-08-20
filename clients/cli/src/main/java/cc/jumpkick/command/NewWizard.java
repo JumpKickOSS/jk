@@ -127,18 +127,11 @@ public final class NewWizard {
                     .orElse(defaultJdkId);
         }
 
-        var javaLayoutStep = WizardStep.RadioStep.vertical("layout", "Project layout:")
+        // Placement only — jk.toml has no layout key; the tree on disk is the convention.
+        var layoutStep = WizardStep.RadioStep.vertical("layout", "Project layout:")
                 .choice("traditional", "Traditional", "(./src/main/java, ./src/test/java, etc.)")
                 .choice("simple", "Simple", "(./src, ./test/src, etc.)")
                 .defaultChoice("traditional")
-                .when(a -> "java".equals(a.get("lang")))
-                .build();
-
-        var kotlinLayoutStep = WizardStep.RadioStep.vertical("layout", "Project layout:")
-                .choice("traditional", "Traditional", "(./src/main/kotlin, ./src/test/kotlin, etc.)")
-                .choice("simple", "Simple", "(./src, ./test/src, etc.)")
-                .defaultChoice("traditional")
-                .when(a -> "kotlin".equals(a.get("lang")))
                 .build();
 
         // Curated defaults + host declared-dep frequency (≤10); free-form GAV via custom row.
@@ -265,8 +258,7 @@ public final class NewWizard {
                         .build())
                 .step(javaVersion)
                 .step(jdkStep.build())
-                .step(javaLayoutStep)
-                .step(kotlinLayoutStep)
+                .step(layoutStep)
                 .step(librariesStep)
                 .step(kotlinLibrariesStep)
                 .step(kotlinOptions)

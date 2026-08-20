@@ -277,8 +277,14 @@ class NewScaffolderTest {
         NewScaffolder.write(inputs);
 
         var build = Files.readString(tempDir.resolve("jk.toml"));
-        assertThat(build).contains("layout   = \"simple\"");
+        assertThat(build).doesNotContain("layout");
         assertThat(build).contains("module   = \"widget-core\"");
+    }
+
+    @Test
+    void traditional_layout_omits_layout_key(@TempDir Path tempDir) throws IOException {
+        NewScaffolder.write(library(tempDir, NewInputs.Language.JAVA, false, 25));
+        assertThat(Files.readString(tempDir.resolve("jk.toml"))).doesNotContain("layout");
     }
 
     @Test

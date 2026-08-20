@@ -3,7 +3,6 @@ name = "$name$"
 version = "0.1.0"
 java = $java$
 kotlin = "$kotlin$"
-layout = "traditional"
 
 [application]
 main = "$package$.ApplicationKt"

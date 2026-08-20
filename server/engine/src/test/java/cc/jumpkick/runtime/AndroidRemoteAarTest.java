@@ -111,7 +111,6 @@ class AndroidRemoteAarTest {
                 group   = "com.example"
                 version = "1.0.0"
                 java    = 17
-                layout  = "simple"
 
                 [android]
                 namespace   = "com.example.remote"

@@ -88,7 +88,6 @@ class KotlinForecastStampTest {
                 name    = "proj"
                 version = "1.0.0"
                 kotlin  = "2.4.10"
-                layout  = "simple"
                 """);
         Path src = Files.createDirectories(dir.resolve("src/app"));
         Files.writeString(src.resolve("A.kt"), "package app\ninternal object A\n");

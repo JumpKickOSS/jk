@@ -556,10 +556,10 @@ public final class NewProjectOps {
     }
 
     private static String parseLayout(String layout) {
-        if (layout == null || layout.isBlank()) return "simple";
+        if (layout == null || layout.isBlank()) return "traditional";
         String l = layout.strip().toLowerCase(Locale.ROOT);
         if ("simple".equals(l) || "traditional".equals(l)) return l;
-        throw new IllegalArgumentException("layout must be simple|traditional");
+        throw new IllegalArgumentException("layout must be traditional|simple");
     }
 
     private static String nullToEmpty(String s) {

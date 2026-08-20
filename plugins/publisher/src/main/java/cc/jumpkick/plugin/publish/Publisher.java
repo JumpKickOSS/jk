@@ -136,7 +136,7 @@ public final class Publisher implements Plugin, PublishExtension {
             if (Files.isRegularFile(onDisk)) {
                 sourcesBytes = Files.readAllBytes(onDisk);
             } else {
-                boolean compact = project.project().layout() == cc.jumpkick.model.JkBuild.Layout.SIMPLE;
+                boolean compact = cc.jumpkick.layout.SourceLayout.isSimpleLayout(projectDir);
                 List<Path> sourceRoots = compact
                         ? List.of(projectDir.resolve("src"))
                         : List.of(projectDir.resolve("src/main/java"), projectDir.resolve("src/main/kotlin"));

@@ -16,7 +16,7 @@ tasks.processTestResources {
 dependencies {
     implementation(project(":core"))  // Hashing (util) + io + jsonl codec all reachable transitively
     implementation(project(":io"))
-    implementation(project(":plugin-sdk"))  // shared JSONL codec (on the worker runtime classpath (thin jar + sidecar))
+    implementation(project(":plugin-sdk"))  // shared JSONL codec (worker runtime classpath via POM)
     implementation(libs.bouncycastle.bcpg)
     implementation(libs.sigstore.java)
 

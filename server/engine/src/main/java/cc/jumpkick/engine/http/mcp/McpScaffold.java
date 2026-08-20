@@ -30,7 +30,7 @@ public final class McpScaffold {
         }
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("templates", rows);
-        m.put("builtinLayouts", List.of("simple", "traditional"));
+        m.put("builtinLayouts", List.of("traditional", "simple"));
         m.put("builtinLangs", List.of("java", "kotlin", "groovy"));
         return m;
     }

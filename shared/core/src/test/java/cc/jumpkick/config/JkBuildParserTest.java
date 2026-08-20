@@ -220,8 +220,7 @@ class JkBuildParserTest {
                 [test]
                 workers = 0
                 serial-tags = ["integration", "slow"]
-                """).build().testSerialTags())
-                .containsExactly("integration", "slow");
+                """).build().testSerialTags()).containsExactly("integration", "slow");
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
 
                 [test]
@@ -1880,7 +1879,14 @@ class JkBuildParserTest {
     void compact_key_is_inert() {
         // `compact` is no longer supported; a stray one in an old jk.toml has no effect.
         JkBuild parsed = JkBuildParser.parse(PROJECT + "compact = true\n");
-        assertThat(parsed.project().layout()).isEqualTo(JkBuild.Layout.AUTO);
+        assertThat(parsed.project().name()).isEqualTo("widget");
+    }
+
+    @Test
+    void layout_key_is_rejected() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "layout = \"simple\"\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("layout is not a jk.toml key");
     }
 
     @Test

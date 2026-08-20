@@ -864,31 +864,33 @@ ships — silent no-ops are not allowed.
 Progress bar and ETA are **run-wide aggregates** of outstanding real work (cache skips are token
 ticks only); see [progress-contract.md](perf/progress-contract.md).
 
-jk modules use a **Mill-like** source layout by default (`layout = "simple"` / AUTO when
-no Maven tree is present). Language is by file extension (`.java` / `.kt` / `.groovy` may
-share a dir).
+jk honors **either** source tree — no `jk.toml` switch. If `src/main/java`, `src/main/kotlin`,
+`src/main/scala`, `src/main/groovy`, or `src/main/resources` exists as a directory, the module
+is **traditional** (Maven). Otherwise it is **simple** (Mill-like). Language is by file extension (`.java` /
+`.kt` / `.groovy` may share a dir). `jk new` still asks which tree to scaffold; that only
+places files.
 
-| Input | Simple (default) | Traditional (Maven import) |
-|-------|------------------|----------------------------|
-| Main sources | `src/` | `src/main/{java,kotlin,groovy}` |
-| Main resources | `resources/` | `src/main/resources` |
-| Default tests | `test/src/` | `src/test/{java,kotlin,groovy}` |
-| Default test resources | `test/resources/` | `src/test/resources` |
-| Named test suite `<name>` | `<name>/src/` (e.g. `integration/src/`) | `src/<name>/{java,kotlin,groovy}` |
-| Named suite resources | `<name>/resources/` | `src/<name>/resources` |
+| Input | Traditional | Simple |
+|-------|-------------|--------|
+| Main sources | `src/main/{java,kotlin,groovy}` | `src/` |
+| Main resources | `src/main/resources` | `resources/` |
+| Default tests | `src/test/{java,kotlin,groovy}` | `test/src/` |
+| Default test resources | `src/test/resources` | `test/resources/` |
+| Named test suite `<name>` | `src/<name>/{java,kotlin,groovy}` | `<name>/src/` (e.g. `integration/src/`) |
+| Named suite resources | `src/<name>/resources` | `<name>/resources` |
 
-Outputs always land under `target/`. `jk new` scaffolds the simple columns; use traditional
-paths (or `layout = "traditional"`) when importing a Maven tree. Suite resources ride the test
-classpath only when that suite is selected (`jk test --suite integration`, `--all`, etc.).
+Outputs always land under `target/`. `jk new --layout simple` scaffolds the Mill-like columns.
+Suite resources ride the test classpath only when that suite is selected (`jk test --suite
+integration`, `--all`, etc.).
 
 `jk test` runs the **test** suite only by default; see [Test suites and tags](#test-suites-and-tags).
 `jk ide` marks every discovered suite as IDE test source roots.
 
 ## Test suites and tags
 
-`jk test` runs the **default suite** only: sources under `test/src/` (simple layout) or
-`src/test/{java,kotlin,groovy}` (traditional). Optional sibling suites are discovered when they
-exist — for example `integration/src/` or `src/integration/java`.
+`jk test` runs the **default suite** only: sources under `src/test/{java,kotlin,groovy}`
+when the tree is traditional, or `test/src/` when it is simple. Optional sibling suites are
+discovered when they exist — for example `src/integration/java` or `integration/src/`.
 
 ```bash
 jk test                              # default suite ("test") only

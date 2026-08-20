@@ -77,8 +77,17 @@ class GitForgeDetectorTest {
     }
 
     @Test
-    void no_git_repo_yields_empty(@TempDir Path notARepo) {
-        assertThat(GitForgeDetector.detect(notARepo, null)).isEmpty();
+    void no_origin_yields_empty(@TempDir Path repo) throws Exception {
+        // JUnit @TempDir lives under this module's build/, inside the jk checkout.
+        // A bare directory would walk up and inherit the parent origin — plant a git
+        // dir with no remotes so detection stops here.
+        Path gitDir = repo.resolve(".git");
+        Files.createDirectories(gitDir);
+        Files.writeString(gitDir.resolve("config"), """
+                [core]
+                    bare = false
+                """);
+        assertThat(GitForgeDetector.detect(repo, null)).isEmpty();
     }
 
     @Test

@@ -8,9 +8,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
- * Canonical module input roots Mill-like SIMPLE).
+ * Canonical module input roots.
  *
- * <p><b>SIMPLE (default / Mill-shaped):</b>
+ * <p><b>SIMPLE (Mill-shaped — no {@code src/main/{java,kotlin,scala,groovy,resources}} dir):</b>
  *
  * <ul>
  * <li>main sources {@code src/}
@@ -49,17 +49,9 @@ public final class ModuleLayout {
 
     private ModuleLayout() {}
 
-    /** Compact/SIMPLE layout for this module (bootstrap {@code layout =} when present). */
+    /** Compact/SIMPLE layout: no {@code src/main/{java,kotlin,scala,groovy,resources}} directory. */
     public static boolean isCompact(Path moduleDir) {
-        Path toml = moduleDir.resolve("jk.toml");
-        if (Files.isRegularFile(toml)) {
-            String layout = cc.jumpkick.config.TomlScan.scan(toml, "layout").get("layout");
-            if (layout != null) {
-                if ("traditional".equalsIgnoreCase(layout)) return false;
-                if ("simple".equalsIgnoreCase(layout)) return true;
-            }
-        }
-        return !SourceLayout.looksTraditional(moduleDir);
+        return SourceLayout.isSimpleLayout(moduleDir);
     }
 
     static boolean hasTraditionalDirs(Path moduleDir) {

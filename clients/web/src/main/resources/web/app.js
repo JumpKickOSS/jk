@@ -1006,7 +1006,7 @@ export const appOptions = {
       name: '',
       group: '',
       lang: 'java',
-      layout: 'simple',
+      layout: 'traditional',
       template: '',
       parentDir: '',
       executable: true,
@@ -2417,7 +2417,7 @@ export const appOptions = {
       const id = this.newProject.template;
       if (!id) return '';
       const t = (this.templates || []).find((x) => x.id === id);
-      return (t && t.layout) || 'simple';
+      return (t && t.layout) || 'traditional';
     },
 
     closeNewProject() {
@@ -2435,7 +2435,7 @@ export const appOptions = {
         group: this.newProject.group.trim() || 'com.example',
         lang: this.newProject.lang,
         // Layout + executable only affect the blank scaffolder; omit noise when a template applies.
-        layout: hasTemplate ? 'simple' : this.newProject.layout,
+        layout: hasTemplate ? 'traditional' : this.newProject.layout,
         parentDir: this.newProject.parentDir.trim(),
         executable: hasTemplate ? false : !!this.newProject.executable,
       };

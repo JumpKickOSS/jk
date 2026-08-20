@@ -62,7 +62,6 @@ class ExecPlansWorkspaceRunTest {
                     version = "0.1.0"
                     jdk = 25
                     java = 25
-                    layout = "simple"
 
                     [application]
                     main = "com.example.%s"
@@ -104,7 +103,6 @@ class ExecPlansWorkspaceRunTest {
                 version = "0.1.0"
                 jdk = 25
                 java = 25
-                layout = "simple"
                 """);
         Files.createDirectories(dir.resolve("src"));
         Files.writeString(dir.resolve("src/Lib.java"), "package com.example; public class Lib {}\n");
@@ -122,7 +120,6 @@ class ExecPlansWorkspaceRunTest {
                 version = "0.1.0"
                 jdk = 25
                 java = 25
-                layout = "simple"
 
                 %s
                 [dependencies]

@@ -33,4 +33,14 @@ class FormatPlansCollectTest {
         assertThat(found.kotlinFiles()).containsExactly(keepKt);
         assertThat(found.total()).isEqualTo(2);
     }
+
+    @Test
+    void ancestor_named_build_does_not_hide_sources(@TempDir Path tmp) throws Exception {
+        Path project = tmp.resolve("build/tmp/proj");
+        Path src = project.resolve("src/main/java");
+        Files.createDirectories(src);
+        Path keep = src.resolve("Keep.java");
+        Files.writeString(keep, "class Keep {}");
+        assertThat(FormatPlans.collectSources(project).javaFiles()).containsExactly(keep);
+    }
 }

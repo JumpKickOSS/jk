@@ -42,7 +42,6 @@ class FirstBuildJdkTest {
                 group   = "com.example"
                 version = "1.0.0"
                 jdk     = 17
-                layout  = "simple"
 
                 [test-dependencies]
                 junit-jupiter           = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=6.1.1" }

@@ -422,7 +422,6 @@ class PreflightMemoTest {
                 version = "0.1.0"
                 jdk = 25
                 java = 25
-                layout = "simple"
                 """);
         Files.writeString(dir.resolve("jk-lock.toml"), """
                 version = 1

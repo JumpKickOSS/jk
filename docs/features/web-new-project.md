@@ -10,7 +10,8 @@
 
 1. Dashboard empty state / “New project”
 2. Fields: name, group, language, optional template short name
-3. **Layout (simple/traditional) + Executable** only when Template is “None” (blank scaffold).
+3. **Layout (traditional/simple) + Executable** only when Template is “None” (blank scaffold).
+   Layout here is only where the scaffolder writes files; there is no `layout` key in `jk.toml`.
    A selected Giter8 template owns its tree (`jk_layout`); the layout control is hidden and a
    read-only “Template layout: …” note is shown instead. See [giter8-templates.md](giter8-templates.md).
 4. Parent directory picker (engine-local filesystem roots only)
@@ -36,6 +37,7 @@ bearer token even on loopback; a tokenless session falls back to blank/`com.exam
 Until the RPC exists, the UI may deep-link to CLI instructions:
 
 ```text
+jk new my-app --lang java
 jk new my-app --lang java --layout simple
 jk new --template java-cli my-tool
 ```

@@ -84,7 +84,7 @@ public final class LocalProjectBuilder {
         Path classes = layout.classesDir();
         Files.createDirectories(classes);
 
-        boolean simple = CompileSupport.isSimpleLayout(project.project(), projectDir);
+        boolean simple = CompileSupport.isSimpleLayout(projectDir);
         cc.jumpkick.layout.Languages langs = CompileSupport.resolveLanguages(project.project(), projectDir);
         Path javaRoot = simple ? projectDir.resolve("src") : projectDir.resolve("src/main/java");
 
@@ -180,8 +180,7 @@ public final class LocalProjectBuilder {
                 p.groovy(),
                 p.sourcesMode(),
                 p.description(),
-                p.m2install(),
-                p.layout());
+                p.m2install());
         return JkBuild.builder(overridden)
                 .dependencies(project.dependencies())
                 .repositories(project.repositories())

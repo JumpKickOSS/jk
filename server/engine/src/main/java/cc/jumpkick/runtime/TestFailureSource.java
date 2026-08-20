@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.SourceLayout;
 import cc.jumpkick.layout.TestSuites;
-import cc.jumpkick.model.JkBuild;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -350,17 +348,7 @@ public final class TestFailureSource {
     }
 
     private static boolean isSimpleLayout(Path moduleDir) {
-        JkBuild.Project auto = JkBuild.Project.builder("x", "x", "0")
-                .layout(JkBuild.Layout.AUTO)
-                .build();
-        try {
-            Path toml = moduleDir.resolve("jk.toml");
-            if (!Files.isRegularFile(toml)) return SourceLayout.isSimpleLayout(auto, moduleDir);
-            JkBuild b = JkBuildParser.parse(toml);
-            return SourceLayout.isSimpleLayout(b.project(), moduleDir);
-        } catch (Exception e) {
-            return SourceLayout.isSimpleLayout(auto, moduleDir);
-        }
+        return SourceLayout.isSimpleLayout(moduleDir);
     }
 
     private static String packagePath(String testClass) {

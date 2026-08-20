@@ -503,7 +503,13 @@ public final class FormatPlans {
 
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                if (!notExcluded(file)) return FileVisitResult.CONTINUE;
+                Path rel;
+                try {
+                    rel = root.relativize(file);
+                } catch (IllegalArgumentException e) {
+                    rel = file;
+                }
+                if (!notExcluded(rel)) return FileVisitResult.CONTINUE;
                 String name = file.getFileName().toString();
                 if (name.endsWith(".java")) java.add(file);
                 else if (name.endsWith(".kt")) kotlin.add(file);

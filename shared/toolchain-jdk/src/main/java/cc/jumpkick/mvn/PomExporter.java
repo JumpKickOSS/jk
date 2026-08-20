@@ -22,14 +22,14 @@ public final class PomExporter {
 
     private PomExporter() {}
 
-    /** Export with auto layout and no locked versions (collapses selectors). */
+    /** Export with traditional (Maven) source dirs and no locked versions (collapses selectors). */
     public static Result export(JkBuild jkBuild) {
-        return export(jkBuild, JkBuild.Layout.AUTO, Map.of());
+        return export(jkBuild, JkBuild.Layout.TRADITIONAL, Map.of());
     }
 
-    /** Export with auto layout. */
+    /** Export with traditional (Maven) source dirs. */
     public static Result export(JkBuild jkBuild, Map<String, String> locked) {
-        return export(jkBuild, JkBuild.Layout.AUTO, locked);
+        return export(jkBuild, JkBuild.Layout.TRADITIONAL, locked);
     }
 
     /**
@@ -38,7 +38,7 @@ public final class PomExporter {
      */
     public static Result export(JkBuild jkBuild, JkBuild.Layout layout, Map<String, String> locked) {
         if (locked == null) locked = Map.of();
-        if (layout == null) layout = JkBuild.Layout.AUTO;
+        if (layout == null) layout = JkBuild.Layout.TRADITIONAL;
         ImportReport.Builder report = ImportReport.builder();
         StringBuilder sb = new StringBuilder(1024);
         PomXml.appendPreamble(sb);

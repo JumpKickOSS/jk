@@ -34,7 +34,6 @@ class IdeSuiteRunConfigTest {
                 version = "1.0.0"
                 jdk = 25
                 java = 25
-                layout = "simple"
                 """);
         Path runDir = tmp.resolve(".idea/runConfigurations");
         int n = IntellijIdeGenerator.writeJkTestRunConfigs(runDir, tmp, Set.of(mod));
@@ -60,7 +59,6 @@ class IdeSuiteRunConfigTest {
                 version = "1.0.0"
                 jdk = 25
                 java = 25
-                layout = "simple"
                 """);
         IdeModule im = new IdeModule(
                 "m",

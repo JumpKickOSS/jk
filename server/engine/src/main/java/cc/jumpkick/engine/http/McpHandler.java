@@ -541,7 +541,11 @@ public final class McpHandler {
                         "lang",
                         Map.of("type", "string", "description", "java (default) | kotlin | groovy"),
                         "layout",
-                        Map.of("type", "string", "description", "simple (default) | traditional"),
+                        Map.of(
+                                "type",
+                                "string",
+                                "description",
+                                "traditional (default) | simple — where to place sources, not a jk.toml key"),
                         "template",
                         Map.of("type", "string", "description", "Giter8 short name or path (see action=templates)"),
                         "preview",
