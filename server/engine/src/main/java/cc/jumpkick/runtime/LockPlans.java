@@ -292,11 +292,11 @@ public final class LockPlans {
         Task lockPlugins = Task.builder(TaskNames.LOCK_PLUGINS)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.RESOLVE_DEPS)
-                .ticks(() ->
-                        effective.plugins().isEmpty() ? 0 : effective.plugins().size())
+                .ticks(() -> Math.max(
+                        1,
+                        effective.plugins().isEmpty() ? 0 : effective.plugins().size()))
                 .execute(ctx -> {
                     var decls = effective.plugins();
-                    if (decls.isEmpty()) return;
                     ctx.label("lock plugins");
                     Cas cas = JkStores.cas(cache);
                     RepoGroup repos = RepoGroupBuilder.buildFor(effective, repoUrl, cas);
@@ -347,7 +347,36 @@ public final class LockPlans {
                         }
                         ctx.progress(1);
                     }
-                    ctx.put(LOCKFILE, ctx.require(LOCKFILE).withPlugins(entries));
+                    String floor = ctx.require(LOCKFILE).jkMin();
+                    Set<String> seen = new HashSet<>();
+                    for (var e : entries) seen.add(e.coordinate() + ":" + e.version());
+                    for (var located : cc.jumpkick.engine.plugin.BuiltInPluginJars.locatedTablePlugins()) {
+                        Path jar = located.path();
+                        String hex;
+                        try {
+                            hex = cc.jumpkick.util.Hashing.sha256Hex(jar);
+                        } catch (IOException e) {
+                            continue;
+                        }
+                        String coord = "cc.jumpkick:" + located.plugin().artifactId();
+                        String ver = cc.jumpkick.model.JkVersion.VERSION;
+                        if (seen.add(coord + ":" + ver)) {
+                            entries.add(new Lockfile.PluginEntry(coord, ver, "sha256:" + hex));
+                        }
+                        try {
+                            String toml = cc.jumpkick.engine.plugin.BuiltInPluginJars.manifestToml(jar);
+                            if (toml != null && !toml.isBlank()) {
+                                var d = cc.jumpkick.plugin.manifest.PluginDescriptors.parse(
+                                        toml, jar.toString(), false);
+                                floor = cc.jumpkick.plugin.manifest.PluginDescriptors.maxFloor(
+                                        floor,
+                                        cc.jumpkick.plugin.manifest.PluginDescriptors.jkCompatFloor(d.jkCompat()));
+                            }
+                        } catch (Exception ignored) {
+                            // still lock the jar
+                        }
+                    }
+                    ctx.put(LOCKFILE, ctx.require(LOCKFILE).withPlugins(entries).withJkMin(floor));
                 })
                 .build();
 

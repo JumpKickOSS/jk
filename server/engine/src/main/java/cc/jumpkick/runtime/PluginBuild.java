@@ -727,15 +727,32 @@ public final class PluginBuild {
                             + " is not in the local cache — run `jk sync` first"));
         }
         if (PluginTableRegistry.isBuiltIn(active.manifest().id())) {
-            PluginJar workerJar = PluginJar.byArtifactId(
-                            active.manifest().code().worker())
+            String worker = active.manifest().code().worker();
+            Path locked = lockedFirstPartyJar(active.moduleDir(), worker, cache);
+            if (locked != null) return locked;
+            PluginJar workerJar = PluginJar.byArtifactId(worker)
                     .orElseThrow(() -> new IllegalStateException(
-                            "plugin " + active.manifest().id() + " names unregistered worker "
-                                    + active.manifest().code().worker()));
+                            "plugin " + active.manifest().id() + " names unregistered worker " + worker));
             return workerJar.locate(JkStores.cas(cache));
         }
         throw new IOException("plugin " + active.manifest().id()
                 + " has no matching [plugins] declaration — declare it (or run `jk sync`)");
+    }
+
+    private static Path lockedFirstPartyJar(Path moduleDir, String workerArtifact, Path cache) {
+        try {
+            Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+            if (!Files.isRegularFile(lockFile)) return null;
+            String coord = "cc.jumpkick:" + workerArtifact;
+            for (var e : cc.jumpkick.lock.LockfileReader.read(lockFile).plugins()) {
+                if (!coord.equals(e.coordinate())) continue;
+                Path pinned = JkStores.cas(cache).pathFor(e.sha256Hex());
+                if (Files.isRegularFile(pinned)) return pinned;
+            }
+        } catch (Exception ignored) {
+            return null;
+        }
+        return null;
     }
 
     private static String blankToNull(String s) {

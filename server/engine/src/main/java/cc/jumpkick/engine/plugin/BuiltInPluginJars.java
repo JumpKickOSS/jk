@@ -56,17 +56,29 @@ public final class BuiltInPluginJars {
 
     /** Located first-party jars that carry a root {@code jk-plugin.toml}. */
     public static List<Path> tablePluginJars() {
-        List<Path> out = new ArrayList<>();
+        return locatedTablePlugins().stream().map(Located::path).toList();
+    }
+
+    public record Located(PluginJar plugin, Path path) {}
+
+    public static List<Located> locatedTablePlugins() {
+        List<Located> out = new ArrayList<>();
         for (PluginJar jar : PluginJar.values()) {
             Path path = jar.locateOrNull(JkStores.storeCas());
             if (path == null) continue;
             try {
-                if (zipText(path, PluginDescriptorOps.MANIFEST_ENTRY) != null) out.add(path);
+                if (zipText(path, PluginDescriptorOps.MANIFEST_ENTRY) != null) {
+                    out.add(new Located(jar, path));
+                }
             } catch (IOException ignored) {
                 // skip unreadable jars
             }
         }
         return out;
+    }
+
+    public static String manifestToml(Path jar) throws IOException {
+        return zipText(jar, PluginDescriptorOps.MANIFEST_ENTRY);
     }
 
     private static String zipText(Path jar, String entry) throws IOException {
