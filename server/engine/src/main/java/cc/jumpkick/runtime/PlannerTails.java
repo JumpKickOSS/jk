@@ -79,15 +79,23 @@ public final class PlannerTails {
                 b.addTask(sourcesStep(in.cache(), !in.ephemeralActions()));
                 leaves.add(TaskNames.PACKAGE_SOURCES);
             }
-            if (leaves.isEmpty()) return;
-            if (leaves.size() == 1) {
-                b.terminal(leaves.get(0));
+            // run-tests is a LEAF, not a gate (JK-2211): packaging no longer requires it, so
+            // without joining it here the terminal's requires-closure would prune the suite
+            // out of `jk build` entirely. Joining keeps tests scheduled — concurrently with
+            // packaging — while a failure still fails the plan.
+            List<String> joined = new ArrayList<>(leaves.isEmpty() ? List.of(TaskNames.PACKAGE_JAR) : leaves);
+            if (!in.skipTests()) {
+                joined.add(TaskNames.RUN_TESTS);
+            }
+            if (joined.size() == 1 && leaves.isEmpty()) return; // skip-tests, no tails: package-jar stays terminal
+            if (joined.size() == 1) {
+                b.terminal(joined.get(0));
                 return;
             }
-            // Multiple independent tails of package-jar — join them so prune keeps every branch.
+            // Independent branches (package tails + the test leaf) — join so prune keeps each.
             b.addTask(Task.builder(DELIVER_JOIN)
                     .stage(joinStage)
-                    .requires(leaves.toArray(String[]::new))
+                    .requires(joined.toArray(String[]::new))
                     .weight(0)
                     .ticks(0)
                     .execute(ctx -> {

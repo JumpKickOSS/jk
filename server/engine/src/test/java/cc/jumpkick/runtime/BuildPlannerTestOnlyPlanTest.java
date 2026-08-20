@@ -204,7 +204,11 @@ class BuildPlannerTestOnlyPlanTest {
                 version = "1.0"
                 java = 25
                 """);
-        var plan = BuildPlanner.coreBuilder(inputs(dir, false, false)).build();
+        BuildPlanner.Inputs in = inputs(dir, false, false);
+        cc.jumpkick.run.BuildPlan.Builder b = BuildPlanner.coreBuilder(in);
+        // Tails keep the test branch in a full plan (JK-2211 terminal join).
+        BuildPlanner.appendDeclaredTails(b, in);
+        var plan = b.build();
         var compileTest = plan.steps().stream()
                 .filter(s -> s.name().equals(TaskNames.COMPILE_TEST))
                 .findFirst()
@@ -266,9 +270,12 @@ class BuildPlannerTestOnlyPlanTest {
     }
 
     private Set<String> planNames(Path dir, boolean testOnly) {
-        return BuildPlanner.coreBuilder(inputs(dir, testOnly, false)).build().steps().stream()
-                .map(s -> s.name())
-                .collect(Collectors.toSet());
+        // Full plans need the tails: since JK-2211 run-tests is a terminal-join leaf, not a
+        // packaging prerequisite, and a core-only build would prune the whole test branch.
+        BuildPlanner.Inputs in = inputs(dir, testOnly, false);
+        cc.jumpkick.run.BuildPlan.Builder b = BuildPlanner.coreBuilder(in);
+        if (!testOnly) BuildPlanner.appendDeclaredTails(b, in);
+        return b.build().steps().stream().map(s -> s.name()).collect(Collectors.toSet());
     }
 
     private BuildPlanner.Inputs inputs(Path dir, boolean testOnly, boolean compileOnly) {
