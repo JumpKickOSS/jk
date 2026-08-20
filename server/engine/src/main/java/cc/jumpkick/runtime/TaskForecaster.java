@@ -720,13 +720,18 @@ public final class TaskForecaster {
                         cc.jumpkick.run.TaskNames.WRITE_IMAGE, TaskForecast.Status.RUN, "image side-effect", null));
             }
 
-            // ---- cache-install — jk install terminal. Side-effect into repos/local, like
-            // write-image: a packaged-but-never-installed module must still schedule.
+            // ---- cache-install — jk install terminal. Skip when repos/local already has this
+            // jar (matching SHA) and its POM. A packaged-but-never-installed module still runs.
             if (target == WorkspaceTarget.INSTALL && terminalDirs.contains(dir)) {
+                boolean jarDirty = steps.stream()
+                        .anyMatch(s -> cc.jumpkick.run.TaskNames.PACKAGE_JAR.equals(s.name()) && !s.cached());
+                boolean skip = !jarDirty
+                        && InstallPlans.alreadyInstalled(
+                                project, cc.jumpkick.layout.BuildLayout.of(dir, project), cache);
                 steps.add(new TaskForecast.Task(
                         cc.jumpkick.run.TaskNames.CACHE_INSTALL,
-                        TaskForecast.Status.RUN,
-                        "install to local repo",
+                        skip ? TaskForecast.Status.CACHED : TaskForecast.Status.RUN,
+                        skip ? "" : "install to local repo",
                         null));
             }
 

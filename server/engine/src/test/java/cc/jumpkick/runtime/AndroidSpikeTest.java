@@ -242,13 +242,13 @@ class AndroidSpikeTest {
             }
         } else {
             // Pure-jk fork: no Gradle configuration — apksig is a dependency of the android
-            // worker itself, so expand the worker's sidecar classpath (jk.android.plugin.jar
-            // is set by [build] test-plugin-jars) and load the verifier from there.
+            // worker itself, so rebuild -cp from the worker POM (jk.android.plugin.jar is set
+            // by [build] test-plugin-jars).
             String workerJar = System.getProperty("jk.android.plugin.jar", "");
             assertThat(workerJar)
                     .as("jk.android.apksig.classpath or jk.android.plugin.jar system property")
                     .isNotBlank();
-            for (Path p : cc.jumpkick.compile.WorkerClasspath.paths(Path.of(workerJar))) {
+            for (Path p : cc.jumpkick.engine.plugin.WorkerLaunchClasspath.paths(Path.of(workerJar))) {
                 urls.add(p.toUri().toURL());
             }
         }

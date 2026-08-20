@@ -2,9 +2,11 @@
 package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.compile.WorkerClasspath;
+import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.repo.PomRuntimeClasspath;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -21,8 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A thin worker fetched from the official repo provisions its runtime classpath from the
- * published {@code <jar>.deps} coordinate closure — no install-local required on a cold store.
- * Legacy artifacts without {@code .deps} fetch exactly as before.
+ * published Maven POM — jar + pom only; no {@code .deps} closure file.
  */
 class PluginJarDepsFetchTest {
 
@@ -48,9 +49,6 @@ class PluginJarDepsFetchTest {
         server.start();
         base = "http://127.0.0.1:" + server.getAddress().getPort() + "/";
         System.setProperty(PluginJar.OFFICIAL_REPO_URL_PROPERTY, base);
-        // Self-host engine tests set -Djk.publisher.plugin.jar to the monorepo assembly
-        // (server/engine/jk.toml test-plugin-jars). locate() would return that binary jar
-        // before the cold-store official fetch — Files.readString then throws MalformedInput.
         savedPublisherJarProp = System.getProperty(PluginJar.PUBLISHER.jarProperty());
         System.clearProperty(PluginJar.PUBLISHER.jarProperty());
     }
@@ -67,37 +65,57 @@ class PluginJarDepsFetchTest {
     }
 
     @Test
-    void official_fetch_resolves_deps_and_writes_the_launch_sidecar(@TempDir Path tmp) throws Exception {
+    void official_fetch_walks_the_pom_and_pulls_maven_deps(@TempDir Path tmp) throws Exception {
         String rel = PluginJar.PUBLISHER.relativePath();
+        String pomRel = rel.substring(0, rel.length() - 4) + ".pom";
+        String ver = JkVersion.VERSION;
         serve("/" + rel, "thin-worker-jar");
-        serve("/" + rel + ".deps", "# closure\ncom.foo:lib:1.0\n");
+        serve("/" + pomRel, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-publisher</artifactId>
+                  <version>%s</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId>
+                      <artifactId>lib</artifactId>
+                      <version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """.formatted(ver));
         serve("/com/foo/lib/1.0/lib-1.0.jar", "dep-bytes");
+        serve("/com/foo/lib/1.0/lib-1.0.pom", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.foo</groupId>
+                  <artifactId>lib</artifactId>
+                  <version>1.0</version>
+                </project>
+                """);
 
         Path jar = PluginJar.PUBLISHER.locate(new Cas(tmp.resolve("cache")));
 
         assertThat(Files.readString(jar)).isEqualTo("thin-worker-jar");
-        Path sidecar = WorkerClasspath.sidecarPath(jar);
-        assertThat(sidecar).exists();
-        List<String> entries = Files.readAllLines(sidecar).stream()
-                .filter(l -> !l.isBlank() && !l.startsWith("#"))
-                .toList();
-        assertThat(entries).hasSize(1);
-        Path dep = Path.of(entries.getFirst());
-        assertThat(dep).exists();
+        assertThat(Files.exists(Path.of(jar + ".deps"))).isFalse();
+        assertThat(Files.exists(Path.of(jar + ".classpath"))).isFalse();
+        Path pom = jar.resolveSibling(jar.getFileName().toString().replace(".jar", ".pom"));
+        assertThat(pom).exists();
+        List<Path> cp = PomRuntimeClasspath.resolve(jar);
+        Path dep = tmp.resolve("cache/repos/jumpkick/com/foo/lib/1.0/lib-1.0.jar");
+        assertThat(cp).contains(dep.toAbsolutePath().normalize());
         assertThat(Files.readString(dep)).isEqualTo("dep-bytes");
-        // The launch classpath picks the dep up (worker jar has no vendored PluginMain).
-        assertThat(WorkerClasspath.paths(jar)).contains(dep.toAbsolutePath().normalize());
     }
 
     @Test
-    void legacy_artifact_without_deps_fetches_like_before(@TempDir Path tmp) throws Exception {
+    void official_fetch_without_a_pom_fails(@TempDir Path tmp) {
         String rel = PluginJar.PUBLISHER.relativePath();
         serve("/" + rel, "fat-worker-jar");
 
-        Path jar = PluginJar.PUBLISHER.locate(new Cas(tmp.resolve("cache")));
-
-        assertThat(Files.readString(jar)).isEqualTo("fat-worker-jar");
-        assertThat(Files.exists(WorkerClasspath.sidecarPath(jar))).isFalse();
+        assertThatThrownBy(() -> PluginJar.PUBLISHER.locate(new Cas(tmp.resolve("cache"))))
+                .isInstanceOf(PluginJarNotFoundException.class)
+                .hasMessageContaining("POM");
     }
 
     private void serve(String path, String body) {

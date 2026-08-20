@@ -45,7 +45,7 @@ public final class GroovyPluginSetup {
         List<Path> closure = GroovyToolResolver.resolveClasspath(repos, cas, version);
         Path groovyJar = GroovyToolResolver.resolveGroovyJar(repos, cas, version);
 
-        // Expand thin worker jar + optional .classpath sidecar (plugin-sdk, …) then Groovy closure.
+        // Expand thin worker jar + Maven runtime closure from its POM, then Groovy closure.
         List<Path> workerClasspath =
                 new ArrayList<>(cc.jumpkick.engine.plugin.WorkerLaunchClasspath.paths(locateWorkerJar(cas)));
         for (Path p : closure) {

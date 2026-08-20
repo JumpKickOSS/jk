@@ -125,10 +125,8 @@ class WorkerLibTest {
             List<Path> sameCp = WorkerLib.pathsIfPresent(v1);
             assertThat(sameCp).isNotNull();
             assertThat(sameCp.get(0).getFileName().toString()).isEqualTo("jk-stale-1.0.jar");
-            // A different jar with the same id must fall back (null → sidecar path).
+            // A different jar with the same id must not take the stale lib dir.
             assertThat(WorkerLib.pathsIfPresent(v2)).isNull();
-            List<Path> cp = WorkerClasspath.paths(v2);
-            assertThat(cp.get(0)).isEqualTo(v2.toAbsolutePath().normalize());
         } finally {
             try {
                 WorkerLib.remove(id);
@@ -155,8 +153,6 @@ class WorkerLibTest {
             WorkerLib.materialize(id, installed, List.of());
             assertThat(WorkerLib.pathsIfPresent(installed)).isNotNull();
             assertThat(WorkerLib.pathsIfPresent(override)).isNull();
-            assertThat(WorkerClasspath.paths(override).get(0))
-                    .isEqualTo(override.toAbsolutePath().normalize());
         } finally {
             try {
                 WorkerLib.remove(id);
@@ -201,42 +197,6 @@ class WorkerLibTest {
             WorkerLib.remove(id);
             assertThat(Files.exists(lib)).isFalse(); // dir itself gone → CAS inodes unpinned
         } finally {
-            deleteTree(src);
-        }
-    }
-
-    @Test
-    void worker_classpath_prefers_lib_when_materialized() throws Exception {
-        // Store-side sources: real installs hardlink store → store/lib on one filesystem, and the
-        //  inode guard only accepts a lib dir materialized from the exact jar launched.
-        Path src = storeSideSrc();
-        Path worker = src.resolve("w/jk-pref-1.0.jar");
-        Path dep = src.resolve("d/extra.jar");
-        Files.createDirectories(worker.getParent());
-        Files.createDirectories(dep.getParent());
-        Files.writeString(worker, "w");
-        Files.writeString(dep, "d");
-        // Sidecar points at a third path that should be ignored when lib is present.
-        Path other = src.resolve("other.jar");
-        Files.writeString(other, "o");
-        WorkerClasspath.writeSidecar(worker, List.of(other));
-
-        try {
-            WorkerLib.materialize(WorkerLib.idFromWorkerJar(worker), worker, List.of(dep));
-
-            List<Path> cp = WorkerClasspath.paths(worker);
-            assertThat(cp).hasSize(2);
-            assertThat(cp.get(0).toString()).contains(WorkerLib.root().toString());
-            assertThat(cp.get(0).getFileName().toString()).isEqualTo("jk-pref-1.0.jar");
-            assertThat(cp.get(1).getFileName().toString()).isEqualTo("extra.jar");
-            // Not the ugly sidecar path
-            assertThat(cp).doesNotContain(other.toAbsolutePath().normalize());
-        } finally {
-            try {
-                WorkerLib.remove(WorkerLib.idFromWorkerJar(worker));
-            } catch (Exception ignored) {
-                /* cleanup */
-            }
             deleteTree(src);
         }
     }

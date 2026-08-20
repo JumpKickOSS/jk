@@ -78,8 +78,8 @@ public final class WorkerLib {
      * Materialize {@code workerJar} + {@code depJars} into {@code store/lib/&lt;id&gt;/} as
      * hardlinks (copy fallback). Writes {@link #ORDER_FILE} for launch order (worker first).
      * Replaces any previous contents of the lib dir via temp-dir + rename, so a
-     * concurrent launcher observes the old dir, no dir at all (brief swap window → sidecar
-     * fallback), or the complete new dir — never a partial one.
+     * concurrent launcher observes the old dir, no dir at all, or the complete new dir —
+     * never a partial one.
      *
      * @return the lib directory
      */
@@ -128,7 +128,7 @@ public final class WorkerLib {
 
     /**
      * If {@code store/lib/&lt;id&gt;/} has a complete {@link #ORDER_FILE}, return absolute paths in
-     * launch order; otherwise {@code null} (caller falls back to sidecar/CAS paths). Strict on
+     * launch order; otherwise {@code null} (caller uses the Maven POM classpath). Strict on
      * purpose: no order file means the dir is not a materialized worker (e.g. an
      * installed tool's bin dir sharing {@code lib/}), and a missing listed entry means a partial
      * or damaged dir — neither may ever launch as a worker classpath.
@@ -158,7 +158,7 @@ public final class WorkerLib {
      * else {@code null}. Lib entries are hardlinks of their sources, so the requested jar must
      * share an inode with one of them ({@link Files#isSameFile}) — a version bump, a freshly built
      * workspace jar, or a {@code -Djk.*.plugin.jar} override points at different content and must
-     * launch via the sidecar path instead of a stale lib dir. A copy-fallback
+     * launch from the jar+POM instead of a stale lib dir. A copy-fallback
      * materialization (cross-device store) fails the check and simply keeps long-path launches.
      */
     public static List<Path> pathsIfPresent(Path workerJar) {

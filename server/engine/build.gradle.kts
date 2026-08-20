@@ -153,10 +153,22 @@ val javaCompilerWorkerJar by configurations.creating {
     isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
 }
 dependencies { javaCompilerWorkerJar(project(":java-compiler")) }
+fun Test.seedWorkerRepos(vararg projects: String) {
+    projects.forEach { dependsOn("$it:stageWorkerRepo") }
+    doFirst {
+        val home = environment["JK_HOME"] as? String ?: return@doFirst
+        val store = file("$home/store")
+        projects.forEach { p ->
+            val src = project(p).layout.buildDirectory.dir("worker-repo").get().asFile
+            if (src.isDirectory) src.copyRecursively(store, overwrite = true)
+        }
+    }
+}
+
 tasks.withType<Test>().configureEach {
     // MemoryProbe's host_statistics64 FFM downcall (macOS memory read).
     jvmArgs("--enable-native-access=ALL-UNNAMED")
-    dependsOn(javaCompilerWorkerJar, testRunnerJarCfg)
+    dependsOn(javaCompilerWorkerJar, testRunnerJarCfg, ":java-compiler:writeWorkerPom", ":test-runner:writeWorkerPom")
     doFirst {
         systemProperty("jk.java.plugin.jar", javaCompilerWorkerJar.singleFile.absolutePath)
         systemProperty("jk.test.runner.jar", testRunnerJarCfg.singleFile.absolutePath)
@@ -200,6 +212,15 @@ tasks.named<Test>("integrationTest") {
         dependsOn(cfg)
         doFirst { systemProperty(prop, cfg.singleFile.absolutePath) }
     }
+    seedWorkerRepos(
+            ":spring-boot",
+            ":grails",
+            ":android",
+            ":protobuf",
+            ":minified",
+            ":kotlin-compiler",
+            ":groovy-compiler",
+            ":auditor")
     dependsOn(testApksig)
     doFirst { systemProperty("jk.android.apksig.classpath", testApksig.asPath) }
 }

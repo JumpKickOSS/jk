@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.util.Hashing;
@@ -54,8 +55,7 @@ class PomRuntimeClasspathTest {
         putJar(store, "central", junit, "junit-bytes");
 
         Path workerJar = store.resolve("repos/local").resolve(MavenLayout.artifactPath(worker));
-        List<Path> cp = PomRuntimeClasspath.resolveOrNull(workerJar);
-        assertThat(cp).isNotNull();
+        List<Path> cp = PomRuntimeClasspath.resolve(workerJar);
         assertThat(cp).contains(workerJar.toAbsolutePath().normalize());
         assertThat(cp)
                 .contains(store.resolve("repos/local")
@@ -66,10 +66,12 @@ class PomRuntimeClasspathTest {
     }
 
     @Test
-    void returns_null_without_a_sibling_pom(@TempDir Path tmp) throws Exception {
+    void throws_without_a_pom(@TempDir Path tmp) throws Exception {
         Path jar = tmp.resolve("lonely.jar");
         Files.writeString(jar, "x");
-        assertThat(PomRuntimeClasspath.resolveOrNull(jar)).isNull();
+        assertThatThrownBy(() -> PomRuntimeClasspath.resolve(jar))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("POM");
     }
 
     private static void putJar(Path store, String repo, Coordinate coord, String bytes) throws Exception {

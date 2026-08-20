@@ -257,7 +257,7 @@ class SelfHostingTomlTest {
 
     @Test
     void thin_worker_plugins_have_plugin_main_without_fat_assembly() throws Exception {
-        // workers are thin jars + classpath sidecars, not assembly fat jars.
+        // workers are thin jars (runtime classpath from the installed POM), not assembly fat jars.
         // Only the engine stays assembly = true for ship.
         for (String module : List.of("plugins/test-runner", "plugins/java-compiler")) {
             JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));

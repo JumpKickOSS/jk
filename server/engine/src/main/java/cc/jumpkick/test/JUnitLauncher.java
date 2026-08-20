@@ -445,8 +445,8 @@ public final class JUnitLauncher {
         var classpathBase = new LinkedHashSet<Path>();
         classpathBase.add(testClassesDir);
         classpathBase.addAll(runtimeClasspath);
-        // Thin pure-jk workers: expand .classpath sidecar / findPluginSdk so PluginMain is on -cp
-        // . Gradle-vendored runners already contain PluginMain; extra entries are harmless.
+        // Thin workers: jar + Maven runtime closure from the POM. Gradle-vendored runners
+        // already contain PluginMain; extra entries are harmless.
         classpathBase.addAll(cc.jumpkick.engine.plugin.WorkerLaunchClasspath.paths(runnerJar));
         String classpath = joinClasspath(classpathBase);
         Path javaBinary = javaBinary(javaHome);

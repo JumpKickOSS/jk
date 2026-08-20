@@ -97,6 +97,13 @@ public final class InstallPlans {
                     BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
                     var p = project.project();
                     Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
+                    if (alreadyInstalled(project, layout, cache)) {
+                        ctx.label("already in local repo");
+                        ctx.cached();
+                        ctx.put(PRIMARY, coord);
+                        ctx.progress(1);
+                        return;
+                    }
                     ctx.label(
                             "install " + coord.group() + ":" + coord.artifact() + ":" + coord.version() + " to cache");
                     try {
@@ -192,13 +199,7 @@ public final class InstallPlans {
         Path jar = layout.mainJar();
         String jarRelPath = cc.jumpkick.repo.MavenLayout.artifactPath(coord);
         String pomRelPath = cc.jumpkick.repo.MavenLayout.pomPath(coord);
-        String pomXml = cc.jumpkick.publish.PublishablePom.render(
-                        project,
-                        null,
-                        cc.jumpkick.config.WorkspaceResolve.siblingCoordinates(layout.moduleRoot()),
-                        lockPins(layout.moduleRoot()))
-                .xml();
-        byte[] pomBytes = pomXml.getBytes(StandardCharsets.UTF_8);
+        byte[] pomBytes = renderedPom(project, layout);
 
         if (p.m2install()) {
             // The local Maven repo is primary. m2Dir is caller-resolved (--m2-dir redirects it).
@@ -226,6 +227,40 @@ public final class InstallPlans {
             writeToLocalStore(cacheDir, jarRelPath, jar);
             writeContentToLocalStore(cacheDir, pomRelPath, pomBytes);
         }
+    }
+
+    /**
+     * True when {@code repos/local} already holds this module's thin jar (same SHA-256) and POM.
+     * {@code jk install} skips the copy in that case.
+     */
+    public static boolean alreadyInstalled(JkBuild project, BuildLayout layout, Path cacheDir) {
+        if (project == null || layout == null) return false;
+        Path jar = layout.mainJar();
+        if (!Files.isRegularFile(jar)) return false;
+        var p = project.project();
+        Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
+        Path store = JkStores.storeRootFor(cacheDir);
+        cc.jumpkick.repo.RepoArtifactStore local = new cc.jumpkick.repo.RepoArtifactStore(store, "local");
+        var installed = local.locate(cc.jumpkick.repo.MavenLayout.artifactPath(coord));
+        if (installed.isEmpty()) return false;
+        var installedPom = local.locate(cc.jumpkick.repo.MavenLayout.pomPath(coord));
+        if (installedPom.isEmpty()) return false;
+        try {
+            if (!Hashing.sha256Hex(jar).equals(Hashing.sha256Hex(installed.get()))) return false;
+            return Hashing.sha256Hex(renderedPom(project, layout)).equals(Hashing.sha256Hex(installedPom.get()));
+        } catch (RuntimeException | IOException e) {
+            return false;
+        }
+    }
+
+    private static byte[] renderedPom(JkBuild project, BuildLayout layout) {
+        String pomXml = cc.jumpkick.publish.PublishablePom.render(
+                        project,
+                        null,
+                        cc.jumpkick.config.WorkspaceResolve.siblingCoordinates(layout.moduleRoot()),
+                        lockPins(layout.moduleRoot()))
+                .xml();
+        return pomXml.getBytes(StandardCharsets.UTF_8);
     }
 
     /** Exact versions from the module's lock, keyed by {@code group:artifact}. Empty when unlocked. */

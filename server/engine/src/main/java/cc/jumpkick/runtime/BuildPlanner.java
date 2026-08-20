@@ -1096,10 +1096,6 @@ public final class BuildPlanner {
         return PlannerResources.beforePackageRequires(in);
     }
 
-    static void writeWorkerClasspathSidecar(Path moduleDir, JkBuild project, Path jarPath, Path cache) {
-        PlannerPackage.writeWorkerClasspathSidecar(moduleDir, project, jarPath, cache);
-    }
-
     static String[] packageRequires(
             Inputs in, PluginBuild.Declarations decls, boolean useJava, boolean useKotlin, boolean useGroovy) {
         return PlannerPackage.packageRequires(in, decls, useJava, useKotlin, useGroovy);

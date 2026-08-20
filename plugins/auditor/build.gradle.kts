@@ -10,6 +10,6 @@ description = "jk-audit-runner: child-JVM worker that queries the OSV vulnerabil
 
 dependencies {
     implementation(project(":core"))
-    implementation(project(":plugin-sdk"))  // shared JSONL codec (on the worker runtime classpath (thin jar + sidecar))
+    implementation(project(":plugin-sdk"))  // shared JSONL codec (worker runtime classpath via POM)
     implementation(libs.jackson.databind)
 }

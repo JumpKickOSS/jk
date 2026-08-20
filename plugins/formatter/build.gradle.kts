@@ -15,8 +15,8 @@ dependencies {
     // formatter implementations are loaded at runtime via a Provisioner from
     // jar paths jk resolves and passes in the spec.
     implementation(libs.spotless.lib)
-    // OpenRewrite: on the worker *runtime classpath* (thin jar + .classpath sidecar), not fat-merged
-    // (JK-1347). rewrite-java-21 is the parser impl for JDK 21+; see JavaParser.fromJavaVersion().
+    // OpenRewrite: on the worker runtime classpath (thin jar + POM), not fat-merged.
+    // rewrite-java-21 is the parser impl for JDK 21+; see JavaParser.fromJavaVersion().
     implementation(libs.openrewrite.java)
     implementation(libs.openrewrite.java21)
     // spotless-lib needs slf4j-api at runtime (it declares it compileOnly); a

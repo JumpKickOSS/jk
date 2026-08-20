@@ -22,6 +22,7 @@ repo/
         jk-test-runner-0.12.0.jar
         jk-test-runner-0.12.0.jar.sha256
         jk-test-runner-0.12.0.pom
+        jk-test-runner-0.12.0.pom.sha256
       maven-metadata.xml
     jk-kotlin-compiler/
       …

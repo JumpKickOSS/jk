@@ -17,9 +17,9 @@ val bundledCodec by configurations.creating {
 }
 
 dependencies {
-    // Engine is required to link ServiceLoader/TestEngine paths; launcher is compileOnly so the
-    // forked test JVM uses the project's version (Quarkus hooks LauncherSessionListener on it).
-    implementation(libs.junit.platform.engine)
+    // Engine/launcher are compileOnly so the forked test JVM uses the project's version
+    // (Quarkus hooks LauncherSessionListener on it). Matches jk.toml [provided-dependencies].
+    compileOnly(libs.junit.platform.engine)
     compileOnly(libs.junit.platform.launcher)
     compileOnly(project(":plugin-sdk"))
     bundledCodec(project(":plugin-sdk"))
