@@ -58,11 +58,11 @@ class EffortWeightsStepEtaTest {
         long serialTests =
                 EffortWeights.scheduleMillis(List.of(engCost, cliCost), 8, false, false, EffortWeights.MS_PER_WEIGHT);
         assertThat(serialTests).isBetween(48_000L, 55_000L);
-        // Parallel tests + list schedule: cli waits for full eng finish (scheduler done-set), so
-        // wall ≈ eng(42s) + cli(10s) when serialised by the dep edge — not eng alone.
+        // Phase-gated schedule (JK-2210/2211): cli admits at eng's ARTIFACT point (~2s — the
+        // compile slice; eng's 40s suite overlaps), so wall ≈ eng alone (~42s), not 42+10.
         long parallelTests =
                 EffortWeights.scheduleMillis(List.of(engCost, cliCost), 8, false, true, EffortWeights.MS_PER_WEIGHT);
-        assertThat(parallelTests).isBetween(50_000L, 56_000L);
+        assertThat(parallelTests).isBetween(40_000L, 44_000L);
     }
 
     @Test
@@ -135,6 +135,17 @@ class EffortWeightsStepEtaTest {
         // TOKEN weights only
         assertThat(cost.weight()).isEqualTo(2 * EffortWeights.TOKEN);
         assertThat(cost.testWeight()).isZero();
+    }
+
+    @Test
+    void restore_outputs_prices_as_restore_not_zero_or_compile() {
+        BuildMetrics metrics = BuildMetrics.load(Path.of("/nonexistent-" + System.nanoTime()));
+        var cost = EffortWeights.costFromRunningSteps(
+                Path.of("/ws/lib"), Set.of(), List.of("restore-outputs"), metrics, null, List.of(), Map.of());
+        assertThat(cost.weight()).isEqualTo(EffortWeights.RESTORE);
+        assertThat(cost.testWeight()).isZero();
+        // Far below a cold compile wall for a non-trivial source count.
+        assertThat(cost.weight()).isLessThan(EffortWeights.coldWorkWeight("compile-java", 50));
     }
 
     @Test

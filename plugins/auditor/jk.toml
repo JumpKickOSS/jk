@@ -1,9 +1,6 @@
 name = "jk-auditor"
 description = "JumpKick's OSV audit plugin"
 
-[application]
-main = "cc.jumpkick.plugin.process.PluginMain"
-
 [dependencies]
 jk-core.workspace = true
 jk-plugin-sdk.workspace = true

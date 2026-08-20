@@ -21,7 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * android-plan Task 5, blocker 3: the protobuf plugin — protoc codegen before compile. A plain
  * Java project (deliberately: the plugin is ecosystem-neutral) declares {@code [protobuf]}, the
- * engine fetches the per-OS protoc binary ({@code ${host.os-arch}@exe} step-dependency), the
+ * engine fetches the per-OS protoc binary ({@code ${host.os-arch}!exe} step-dependency), the
  * plugin worker forks it over {@code proto/}, and the generated Java compiles and packages like
  * any contributed source. Compiling a reference to the generated builder IS the acceptance.
  *
@@ -41,7 +41,6 @@ class ProtobufPluginTest {
                 group   = "com.example"
                 version = "1.0.0"
                 java    = 25
-                layout  = "simple"
 
                 [protobuf]
                 version = "4.33.1"
@@ -107,7 +106,7 @@ class ProtobufPluginTest {
                 false,
                 Set.of(),
                 SessionContext.current());
-        BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+        BuildPlan plan = BuildPlanner.fullPlan(in);
         BuildPlanResult result = plan.run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
@@ -136,7 +135,6 @@ class ProtobufPluginTest {
                 version = "1.0.0"
                 java    = 25
                 kotlin  = "^2.4.0"
-                layout  = "simple"
 
                 [protobuf]
                 version = "4.29.2"
@@ -197,7 +195,7 @@ class ProtobufPluginTest {
                 false,
                 Set.of(),
                 SessionContext.current());
-        BuildPlanResult result = BuildPlanner.coreBuilder(in).build().run();
+        BuildPlanResult result = BuildPlanner.fullPlan(in).run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
         assertThat(anyFile(project.resolve("target"), "GreetingKt.class"))

@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
@@ -24,9 +25,10 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Machine-local preflight memo+): dirty-set, graph structure, and plan shape caches
- * under {@code <entry>/target/.jk/preflight/}. Never git-committed; miss or corrupt → full recompute
- * (fail-open).
+ * Machine-local preflight memos: dirty-set, graph structure, and plan shape. Written under
+ * {@code <entry>/target/.jk/preflight/} and dual-written to {@code ~/.cache/jk/projects/<id>/preflight/}
+ * so {@code jk clean} does not erase input fingerprints. Never git-committed; miss or corrupt →
+ * full recompute (fail-open).
  *
  * <p>Schema 3: module fingerprints cover every file under {@code src}/{@code test}/
  * suite resource dirs (resources included); dirty rows are stored with fingerprints captured at
@@ -59,14 +61,59 @@ public final class PreflightMemo {
         return entryDir.resolve("target").resolve(".jk").resolve("preflight").resolve(SHAPE_FILE);
     }
 
+    /**
+     * Durable dirty-memo under the product cache so {@code jk clean} (which wipes {@code target/})
+     * does not erase input fingerprints. Prefer this on load when present and valid.
+     */
+    public static Path durableMemoFile(Path entryDir) {
+        return durablePreflightDir(entryDir).resolve(DIRTY_FILE);
+    }
+
+    static Path durablePreflightDir(Path entryDir) {
+        String key = workspaceKey(entryDir);
+        return cc.jumpkick.util.JkDirs.cache().resolve("projects").resolve(key).resolve("preflight");
+    }
+
+    static String workspaceKey(Path entryDir) {
+        Path p = entryDir.toAbsolutePath().normalize();
+        try {
+            if (Files.exists(p)) p = p.toRealPath();
+        } catch (IOException ignored) {
+            // keep normalized absolute path
+        }
+        return Hashing.sha256Hex(p.toString()).substring(0, 16);
+    }
+
+    /** Prefer durable memo (survives clean), else the in-tree target memo. */
+    static Path resolveDirtyMemoFile(Path entryDir) {
+        Path durable = durableMemoFile(entryDir);
+        if (Files.isRegularFile(durable)) return durable;
+        Path local = memoFile(entryDir);
+        return Files.isRegularFile(local) ? local : null;
+    }
+
     // Dirty set (layer C)
 
-    /** A memo hit: the dirty set plus the validated per-module fingerprints (current as of load). */
-    public record DirtyMemo(Set<Path> dirty, Map<Path, String> fingerprints) {}
+    /**
+     * A memo hit: input-dirty modules, validated fingerprints, and modules whose inputs still match
+     * but required PACKAGE outputs are missing (restore from action cache — not a full rebuild).
+     */
+    public record DirtyMemo(Set<Path> dirty, Map<Path, String> fingerprints, Set<Path> restoreNeeded) {
+        public DirtyMemo {
+            dirty = dirty == null ? Set.of() : Set.copyOf(dirty);
+            fingerprints = fingerprints == null ? Map.of() : Map.copyOf(fingerprints);
+            restoreNeeded = restoreNeeded == null ? Set.of() : Set.copyOf(restoreNeeded);
+        }
+
+        /** Back-compat: input-dirty only (restoreNeeded empty). */
+        public DirtyMemo(Set<Path> dirty, Map<Path, String> fingerprints) {
+            this(dirty, fingerprints, Set.of());
+        }
+    }
 
     public static Optional<DirtyMemo> tryLoadDirty(Path entryDir, BuildGraph.Result graph, boolean skipTests) {
-        Path file = memoFile(entryDir);
-        if (!Files.isRegularFile(file)) return Optional.empty();
+        Path file = resolveDirtyMemoFile(entryDir);
+        if (file == null || !Files.isRegularFile(file)) return Optional.empty();
         try {
             List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
             if (lines.isEmpty() || !lines.getFirst().startsWith("schema=" + SCHEMA)) return Optional.empty();
@@ -104,6 +151,7 @@ public final class PreflightMemo {
             if (units.size() != rows.size()) return Optional.empty();
 
             Set<Path> dirty = new LinkedHashSet<>();
+            Set<Path> restoreNeeded = new LinkedHashSet<>();
             Map<Path, String> fps = new LinkedHashMap<>();
             Set<String> seen = new LinkedHashSet<>();
             for (BuildGraph.BuildUnit u : units) {
@@ -112,19 +160,18 @@ public final class PreflightMemo {
                 MemoRow row = rows.get(rel);
                 if (row == null) return Optional.empty();
                 if (!row.fp().equals(fingerprintModule(dir, skipTests))) return Optional.empty();
-                // A clean claim is a promise that the module's output tree holds the outputs; a
-                // hand-deleted target invalidates it even though no source changed. Workspace
-                // members write under <workspace>/target/<rel>/ — checking <member>/target here
-                // silently killed the memo for every workspace.
-                if (!row.dirty() && !Files.isDirectory(cc.jumpkick.layout.BuildLayout.moduleTargetDir(root, dir))) {
-                    return Optional.empty();
-                }
                 seen.add(rel);
                 fps.put(dir, row.fp());
-                if (row.dirty()) dirty.add(dir);
+                if (row.dirty()) {
+                    dirty.add(dir);
+                } else if (ModuleOutputRestore.packageOutputsMissing(root, dir, u.manifest())) {
+                    // Inputs still match — missing jars/classes need action-cache restore, not
+                    // a memo miss that forces a full TaskForecaster rebuild wall.
+                    restoreNeeded.add(dir);
+                }
             }
             if (!seen.equals(rows.keySet())) return Optional.empty();
-            return Optional.of(new DirtyMemo(dirty, fps));
+            return Optional.of(new DirtyMemo(dirty, fps, restoreNeeded));
         } catch (Exception e) {
             return Optional.empty();
         }
@@ -152,8 +199,6 @@ public final class PreflightMemo {
             Map<Path, String> fingerprints) {
         try {
             Path root = entryDir.toAbsolutePath().normalize();
-            Path file = memoFile(entryDir);
-            Files.createDirectories(file.getParent());
             StringBuilder sb = new StringBuilder();
             sb.append("schema=").append(SCHEMA).append('\n');
             sb.append("cacheKeyVersion=")
@@ -174,10 +219,28 @@ public final class PreflightMemo {
                         .append(dirtyNorm.contains(dir) ? "1" : "0")
                         .append('\n');
             }
-            AtomicWrites.replace(file, sb.toString());
+            String body = sb.toString();
+            // Dual-write: durable cache survives jk clean; in-tree copy stays for local inspection.
+            Path durable = durableMemoFile(entryDir);
+            Files.createDirectories(durable.getParent());
+            AtomicWrites.replace(durable, body);
+            writeInTree(memoFile(entryDir), entryDir, body);
         } catch (Exception ignored) {
             // fail-open
         }
+    }
+
+    /**
+     * In-tree copy, written only while {@code target/} is alive. Memo stores run after the
+     * plan's terminal event reaches the client, so a fast follow-up {@code jk clean [--force]}
+     * can wipe target in the gap — recreating {@code target/.jk} here resurrected the dir the
+     * clean just removed AND left a memo claiming outputs that no longer exist (JK-2205). The
+     * durable copy is authoritative; the in-tree copy is inspection-only.
+     */
+    private static void writeInTree(Path file, Path entryDir, String body) throws IOException {
+        if (!Files.isDirectory(entryDir.resolve("target"))) return;
+        Files.createDirectories(file.getParent());
+        AtomicWrites.replace(file, body);
     }
 
     // Graph structure (layer A) + rebuild without WorkspaceLoader
@@ -191,6 +254,8 @@ public final class PreflightMemo {
         try {
             Path root = entryDir.toAbsolutePath().normalize();
             Path file = graphMemoFile(entryDir);
+            // Same clean-race guard as the dirty memo (JK-2205): never resurrect target/.
+            if (!Files.isDirectory(entryDir.resolve("target"))) return;
             Files.createDirectories(file.getParent());
             List<Path> unitDirs = new ArrayList<>();
             for (BuildGraph.BuildUnit u : graph.topoOrder()) {

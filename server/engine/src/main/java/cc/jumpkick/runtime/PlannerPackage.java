@@ -4,10 +4,7 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.JarPackager;
-import cc.jumpkick.compile.ModuleRuntimeClasspath;
-import cc.jumpkick.compile.WorkerClasspath;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
@@ -79,7 +76,7 @@ public final class PlannerPackage {
                     // cache check below.
                     List<Path> contributed = existingContributedDirs(pluginDecls, layout);
                     Files.createDirectories(jarPath.getParent());
-                    String mainClass = project.mainClass();
+                    String mainClass = cc.jumpkick.plugin.PluginModule.mainClass(in.dir(), project);
                     // Application jars embed the lockfile-derived SBOM (libraries don't:
                     // their consumers' lockfiles are the truth for the final classpath).
                     byte[] sbom = null;
@@ -101,8 +98,6 @@ public final class PlannerPackage {
                     String pkgKey =
                             ActionKey.forArtifact(pkgTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);
                     if (restorePackaged(in.cache(), pkgKey, jarPath.getParent())) {
-                        // Sidecar is not in the action cache — refresh for thin PluginMain workers.
-                        writeWorkerClasspathSidecar(in.dir(), project, jarPath, in.cache());
                         ctx.put(JAR_PATH, jarPath);
                         ctx.label(jarPath.getFileName() + " up-to-date");
                         ctx.cached();
@@ -129,48 +124,10 @@ public final class PlannerPackage {
                             jarPath.getParent(),
                             List.of(jarPath),
                             !in.ephemeralActions());
-                    // Thin PluginMain workers: write .classpath next to the jar so -cp launches
-                    // find plugin-sdk and other runtime deps.
-                    writeWorkerClasspathSidecar(in.dir(), project, jarPath, in.cache());
                     ctx.put(JAR_PATH, jarPath);
                     ctx.progress(1);
                 })
                 .build();
-    }
-
-    /**
-     * When packaging a PluginMain worker, write {@code <jar>.classpath} for thin launches. No-op
-     * for libraries / ordinary applications. Prefer lock/workspace closure; fall back to {@link
-     * WorkerClasspath#paths} discovery so pure-jk thin jars still get {@code plugin-sdk}.
-     */
-    static void writeWorkerClasspathSidecar(Path moduleDir, JkBuild project, Path jarPath, Path cache) {
-        String main = project.mainClass();
-        if (main == null || !"cc.jumpkick.plugin.process.PluginMain".equals(main)) return;
-        try {
-            Path jarAbs = jarPath.toAbsolutePath().normalize();
-            List<Path> side = new ArrayList<>();
-            try {
-                for (Path d : ModuleRuntimeClasspath.jars(moduleDir, project, JkStores.cas(cache))) {
-                    if (d == null) continue;
-                    Path abs = d.toAbsolutePath().normalize();
-                    if (!abs.equals(jarAbs) && !side.contains(abs)) side.add(abs);
-                }
-            } catch (Exception ignored) {
-                /* fall through to WorkerClasspath.paths */
-            }
-            // The closure is authoritative when it produced anything: merging the OLD sidecar back
-            // in (via paths()) would carry removed/upgraded deps forever. Only an empty
-            // closure (e.g. empty lock mid-bootstrap) falls back to sidecar + findPluginSdk.
-            if (side.isEmpty()) {
-                for (Path p : WorkerClasspath.paths(jarPath)) {
-                    Path abs = p.toAbsolutePath().normalize();
-                    if (!abs.equals(jarAbs) && !side.contains(abs)) side.add(abs);
-                }
-            }
-            WorkerClasspath.writeSidecar(jarPath, side);
-        } catch (Exception ignored) {
-            // Best-effort: launch may still work if the jar vendors the codec or findPluginSdk runs.
-        }
     }
 
     /**

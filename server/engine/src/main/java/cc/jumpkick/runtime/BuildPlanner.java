@@ -366,6 +366,18 @@ public final class BuildPlanner {
 
     static final int W_NATIVE = 90;
 
+    /**
+     * Core + declared tails — the exact plan {@code jk build} runs. Prefer this over a bare
+     * {@code coreBuilder(...).build()} anywhere a FULL build is intended: since JK-2211 the
+     * test branch hangs off the terminal join the tails add, and a core-only plan silently
+     * prunes run-tests (a fixture that "builds and tests" would stop testing).
+     */
+    public static cc.jumpkick.run.BuildPlan fullPlan(Inputs in) {
+        cc.jumpkick.run.BuildPlan.Builder b = coreBuilder(in);
+        appendDeclaredTails(b, in);
+        return b.build();
+    }
+
     /** Core build steps plus assembly/native tails from {@code jk.toml}. */
     public static BuildPlan.Builder coreBuilder(Inputs in) {
         return coreBuilder(in, false);
@@ -418,7 +430,7 @@ public final class BuildPlanner {
             if (useKotlin && !useJava && PlannerCompile.hasProcessorDeps(jkBuild)) {
                 useJava = true;
             }
-            compactLayout = CompileSupport.isSimpleLayout(project, in.dir());
+            compactLayout = CompileSupport.isSimpleLayout(in.dir());
             // Workspace root with no source tree: nothing to compile or package.
             if (jkBuild.isWorkspaceRoot() && !CompileSupport.hasSources(in.dir())) {
                 useJava = false;
@@ -980,6 +992,19 @@ public final class BuildPlanner {
         return PlannerSupport.runTestsStampKey(dir, project, compact, mainClasses, lockFile, testRuntimeCp);
     }
 
+    public static String runTestsStampKey(
+            Path dir,
+            JkBuild project,
+            boolean compact,
+            Path mainClasses,
+            String mainClassesFingerprint,
+            Path lockFile,
+            List<Path> testRuntimeCp)
+            throws IOException {
+        return PlannerSupport.runTestsStampKey(
+                dir, project, compact, mainClasses, mainClassesFingerprint, lockFile, testRuntimeCp);
+    }
+
     static List<String> testStampExtras(
             Map<String, String> workerJars,
             cc.jumpkick.config.TestSelection selection,
@@ -1069,10 +1094,6 @@ public final class BuildPlanner {
 
     static String[] beforePackageRequires(Inputs in) {
         return PlannerResources.beforePackageRequires(in);
-    }
-
-    static void writeWorkerClasspathSidecar(Path moduleDir, JkBuild project, Path jarPath, Path cache) {
-        PlannerPackage.writeWorkerClasspathSidecar(moduleDir, project, jarPath, cache);
     }
 
     static String[] packageRequires(

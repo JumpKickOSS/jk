@@ -35,7 +35,8 @@ import java.util.function.Supplier;
  *   <tr><td>config</td><td>{@code $XDG_CONFIG_HOME/jk/config.toml} →
  *       {@code ~/.config/jk/config.toml}</td>
  *       <td>{@code %APPDATA%\jk\config.toml}</td></tr>
- *   <tr><td>store / versions</td><td>under <em>data</em></td><td>under <em>data</em></td></tr>
+ *   <tr><td>store / product lib</td><td>under <em>data</em> (or {@code $JK_HOME})</td>
+ *       <td>under <em>data</em> (or {@code $JK_HOME})</td></tr>
  *   <tr><td>jdks (write root)</td><td>IntelliJ shared root — not under product data
  *       (see {@link #jdksDir()})</td><td>same</td></tr>
  * </table>
@@ -123,7 +124,19 @@ public final class JkDirs {
         return current().libDir();
     }
 
-    /** Side-by-side materialized jk versions ({@code …/versions/<v>/}). */
+    /**
+     * Product library for the live engine jar and installed fat/minified app jars:
+     * {@code $JK_HOME/lib} when set, otherwise {@code <data>/lib}. Distinct from {@link #lib()}
+     * ({@code store/lib}, installed tools).
+     */
+    public static Path productLib() {
+        return current().productLibDir();
+    }
+
+    /**
+     * Leftover side-by-side tree ({@code …/versions/<v>/}). New installs do not write here;
+     * the engine GC deletes it once the product-lib engine exists.
+     */
     public static Path versions() {
         return current().versionsDir();
     }
@@ -224,8 +237,8 @@ public final class JkDirs {
     }
 
     /**
-     * Shared jar library for tools and plugin workers: {@code <store>/lib/} by default. Override
-     * via {@code JK_LIB_DIR}.
+     * Shared jar library for installed tools: {@code <store>/lib/} by default. Override via
+     * {@code JK_LIB_DIR}.
      */
     public Path libDir() {
         String override = nonBlank(env.apply("JK_LIB_DIR"));
@@ -233,7 +246,15 @@ public final class JkDirs {
         return storeDir().resolve("lib");
     }
 
-    /** Side-by-side version installs: {@code <data>/versions} or {@code $JK_HOME/versions}. */
+    /**
+     * Live engine jar and installed fat/minified app jars: {@code $JK_HOME/lib} when set,
+     * otherwise {@code <data>/lib} ({@code jk-engine.jar} / {@code <exec>/…}). Not {@link #libDir()}.
+     */
+    public Path productLibDir() {
+        return homeDir().resolve("lib");
+    }
+
+    /** Leftover {@code versions/} tree under {@code $JK_HOME} or {@code <data>}. */
     public Path versionsDir() {
         if (jkHomeOrNull() != null) return Path.of(jkHomeOrNull()).resolve("versions");
         return dataDir().resolve("versions");

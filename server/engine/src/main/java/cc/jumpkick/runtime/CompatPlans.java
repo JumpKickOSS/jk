@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.compat.ProjectImport;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.jsonl.Jsonl;
@@ -44,8 +45,8 @@ public final class CompatPlans {
 
     /**
      * Build the import plan. All paths arrive absolute (the command pre-flighted source detection
-     * and overwrite checks); {@code report} may be {@code null}. Locates the plugin jar eagerly, so
-     * a missing plugin fails here with side-load instructions rather than mid-plan.
+     * and overwrite checks); {@code report} may be {@code null}. Conversion runs in-process so
+     * {@code [[import.gradle-plugin]]} rules come from the engine registry, not a worker catalog.
      */
     public static BuildPlan importBuildPlan(
             Path source,
@@ -56,46 +57,24 @@ public final class CompatPlans {
             Path report,
             Path cache,
             NoteObserver observer) {
-        Path workerJar = PluginJar.COMPAT_BRIDGE.locate(JkStores.cas(cache));
-
-        SpecWriter specWriter = new SpecWriter()
-                .op(PluginProtocol.OP_COMMAND, "import", "jk-compat-bridge")
-                .configString("source", source.toAbsolutePath().toString())
-                .configString("out", out.toAbsolutePath().toString())
-                .configString("baseDir", baseDir.toAbsolutePath().toString())
-                .configString("tmpDir", tmpDir.toAbsolutePath().toString())
-                .configBool("force", force);
-        if (report != null)
-            specWriter.configString("report", report.toAbsolutePath().toString());
-
         Task convert = Task.builder("import")
                 .kind(TaskKind.IO)
                 .ticks(1)
                 .execute(ctx -> {
-                    ctx.label("convert " + source.getFileName() + " via compat plugin");
-                    Path spec = Files.createTempFile("jk-compat-", ".spec");
-                    try {
-                        Files.write(spec, specWriter.lines(), StandardCharsets.UTF_8);
-                        StringBuilder diag = new StringBuilder();
-                        int exit = new PluginClient("##JKCMP:")
-                                .on(PluginProtocol.WROTE, json -> observer.onNote("wrote", Jsonl.str(json, "path")))
-                                .on(
-                                        PluginProtocol.ERROR,
-                                        json -> ctx.put(ERROR, Jsonl.str(json, PluginProtocol.MESSAGE)))
-                                .on(
-                                        PluginProtocol.RESULT,
-                                        json -> ctx.put(WARNINGS, Jsonl.intValue(json, "warnings", 0)))
-                                .passthrough(ln -> diag.append(ln).append('\n'))
-                                .run(PluginLaunch.javaCommand(workerJar, spec));
-                        ctx.put(EXIT, exit);
-                        if (exit != 0 && diag.length() > 0) {
-                            ctx.put(DIAG, diag.toString().trim());
-                        }
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException("import worker interrupted", e);
-                    } finally {
-                        Files.deleteIfExists(spec);
+                    ctx.label("convert " + source.getFileName());
+                    ProjectImport.Outcome outcome = ProjectImport.run(
+                            source.toAbsolutePath(),
+                            out.toAbsolutePath(),
+                            baseDir == null ? null : baseDir.toAbsolutePath(),
+                            tmpDir == null ? null : tmpDir.toAbsolutePath(),
+                            force,
+                            report == null ? null : report.toAbsolutePath());
+                    for (Path wrote : outcome.wrote()) observer.onNote("wrote", wrote.toString());
+                    if (outcome.error() != null && outcome.exit() != 0) ctx.put(ERROR, outcome.error());
+                    ctx.put(WARNINGS, outcome.warnings());
+                    ctx.put(EXIT, outcome.exit());
+                    if (outcome.exit() != 0 && outcome.error() != null) {
+                        ctx.put(DIAG, outcome.error());
                     }
                     ctx.progress(1);
                 })

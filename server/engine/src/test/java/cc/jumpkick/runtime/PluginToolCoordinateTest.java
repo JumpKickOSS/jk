@@ -88,7 +88,7 @@ class PluginToolCoordinateTest {
         serveMetadata("com.google.protobuf", "protoc", List.of("4.33.1", "4.34.0"));
 
         Coordinate coord =
-                PluginBuild.resolveCoordinate(repos(tmp), "com.google.protobuf:protoc:^4.33.1:linux-x86_64@exe");
+                PluginBuild.resolveCoordinate(repos(tmp), "com.google.protobuf:protoc:^4.33.1:linux-x86_64!exe");
 
         assertThat(coord.version()).isEqualTo("4.34.0");
         assertThat(coord.classifier()).isEqualTo("linux-x86_64");

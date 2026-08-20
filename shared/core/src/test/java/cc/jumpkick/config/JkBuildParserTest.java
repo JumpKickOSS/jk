@@ -213,6 +213,24 @@ class JkBuildParserTest {
     }
 
     @Test
+    void parses_test_serial_tags() {
+        assertThat(JkBuildParser.parse(PROJECT).build().testSerialTags()).isEmpty();
+        assertThat(JkBuildParser.parse(PROJECT + """
+
+                [test]
+                workers = 0
+                serial-tags = ["integration", "slow"]
+                """).build().testSerialTags()).containsExactly("integration", "slow");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                [test]
+                serial-tags = [1]
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("serial-tags");
+    }
+
+    @Test
     void parses_optional_description() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 description = "A widget for widgeting."
@@ -1685,6 +1703,18 @@ class JkBuildParserTest {
     }
 
     @Test
+    void application_table_is_rejected_on_a_plugin_module(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk-plugin.toml"), "[plugin]\nid = \"x\"\ntable = \"x\"\n");
+        Files.writeString(
+                dir.resolve("jk.toml"),
+                PROJECT + "\n[application]\nmain = \"cc.jumpkick.plugin.process.PluginMain\"\n");
+        assertThatThrownBy(() -> JkBuildParser.parse(dir.resolve("jk.toml")))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[application]")
+                .hasMessageContaining("plugin worker");
+    }
+
+    @Test
     void application_present_with_main() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"com.example.Main\"\n");
         assertThat(parsed.isApplication()).isTrue();
@@ -1692,14 +1722,40 @@ class JkBuildParserTest {
     }
 
     @Test
-    void application_present_without_main_is_still_an_application() {
-        // [application]'s mere presence is the signal — a main class is not required
-        // (e.g. a project that only wants assembly packaging).
-        JkBuild parsed = JkBuildParser.parse(PROJECT + "\n[application]\nassembly = true\n");
+    void application_requires_main() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "\n[application]\nassembly = true\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[application].main");
+    }
+
+    @Test
+    void application_native_true_is_always() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+
+                [application]
+                main   = "com.example.App"
+                native = true
+                """);
         assertThat(parsed.isApplication()).isTrue();
-        assertThat(parsed.mainClass()).isNull();
-        assertThat(parsed.assembly()).isTrue();
-        assertThat(parsed.minified()).isFalse();
+        assertThat(parsed.application().orElseThrow().nativeImage()).isTrue();
+        assertThat(parsed.nativeMode()).isEqualTo(JkBuild.NativeMode.ALWAYS);
+        assertThat(parsed.graal()).isEqualTo("graalvm");
+    }
+
+    @Test
+    void application_native_true_conflicts_with_native_enabled_false() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                [application]
+                main   = "com.example.App"
+                native = true
+
+                [native]
+                enabled = false
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[application].native")
+                .hasMessageContaining("enabled = false");
     }
 
     @Test
@@ -1774,12 +1830,24 @@ class JkBuildParserTest {
     }
 
     @Test
+    void native_main_class_key_was_renamed() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                [native]
+                main-class = "com.example.NativeMain"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[native].main-class")
+                .hasMessageContaining("use main");
+    }
+
+    @Test
     void native_config_fields_parsed() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
 
                 [native]
                 enabled    = "always"
-                main-class = "com.example.NativeMain"
+                main = "com.example.NativeMain"
                 name       = "myapp"
                 args       = ["-O3", "--gc=serial"]
                 """);
@@ -1811,7 +1879,14 @@ class JkBuildParserTest {
     void compact_key_is_inert() {
         // `compact` is no longer supported; a stray one in an old jk.toml has no effect.
         JkBuild parsed = JkBuildParser.parse(PROJECT + "compact = true\n");
-        assertThat(parsed.project().layout()).isEqualTo(JkBuild.Layout.AUTO);
+        assertThat(parsed.project().name()).isEqualTo("widget");
+    }
+
+    @Test
+    void layout_key_is_rejected() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "layout = \"simple\"\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("layout is not a jk.toml key");
     }
 
     @Test

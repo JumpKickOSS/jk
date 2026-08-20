@@ -41,9 +41,9 @@ public enum BuildStage {
     /** OCI / image packaging. */
     IMAGE("image"),
     /**
-     * Publishing what the pipeline produced: {@code jk install}, {@code jk publish},
-     * {@code jk release}. Sits after every artifact-producing stage — installing is not
-     * packaging, it just follows it (Maven's package → install → deploy).
+     * Publishing what the pipeline produced: {@code jk install}, {@code jk publish}.
+     * Sits after every artifact-producing stage — installing is not packaging, it just
+     * follows it (Maven's package → install → deploy).
      */
     PUBLISH("publish"),
     /**

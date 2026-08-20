@@ -128,6 +128,6 @@ class BuildPlannerGroovyStepTest {
                 false,
                 Set.of(),
                 cc.jumpkick.config.SessionContext.current());
-        return BuildPlanner.coreBuilder(in).build();
+        return BuildPlanner.fullPlan(in);
     }
 }

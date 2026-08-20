@@ -115,7 +115,7 @@ class BuildPlannerKotlinStepTest {
                 false,
                 Set.of(),
                 cc.jumpkick.config.SessionContext.current());
-        BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+        BuildPlan plan = BuildPlanner.fullPlan(in);
         return plan.steps().stream().map(Task::name).toList();
     }
 }

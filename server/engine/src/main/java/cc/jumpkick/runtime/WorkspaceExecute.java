@@ -15,9 +15,11 @@ import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -62,7 +64,7 @@ public final class WorkspaceExecute {
                 continue;
             }
             BuildLayout layout = BuildLayout.of(wsRoot, moduleDir, build);
-            if (!layout.hasMain()) continue;
+            if (!layout.packagedAtRoot()) continue;
             List<Path> candidates = new ArrayList<>();
             candidates.add(layout.mainJar());
             candidates.add(layout.assemblyJar());
@@ -128,10 +130,9 @@ public final class WorkspaceExecute {
                 // does not pure count-up for the whole re-lock window. Remaining-work semantics —
                 // the CLI converts via elapsed + remaining after each onEtaEstimate.
                 long lockEta = WorkspaceLock.estimateLockMillis(req.entryDir(), req.cache());
-                long provisionalBuild = BuildEta.applyHistoryPrior(0, BuildEta.okHistory(req.entryDir()));
-                if (provisionalBuild <= 0) {
-                    provisionalBuild = EffortWeights.MS_PER_WEIGHT * 8L; // ~1.2s floor
-                }
+                // Do not seed from full-build history here — that flashes multi-minute ETAs on
+                // restore-shaped runs (clean → build). Use a small lock+floor provisional only.
+                long provisionalBuild = EffortWeights.MS_PER_WEIGHT * 8L; // ~1.2s floor
                 listener.onEtaEstimate(lockEta + provisionalBuild);
             }
             listener.onPreflight("lock", 0, 0, lockStale ? "Refreshing workspace lock…" : "Workspace lock ready");
@@ -224,6 +225,7 @@ public final class WorkspaceExecute {
         // --force/--redo short-circuits forecastDirtyDirs to "all" without per-step hashing.
         // when forecasting here, consult/store the local dirty memo under target/.jk/preflight/.
         Set<Path> dirty;
+        Set<Path> restoreNeeded = Set.of();
         BuildForecasting.Preflight preflight = null;
         if (req.dirtyHint() != null) {
             listener.onPreflight("checking", 0, 0, "Using dirty set…");
@@ -243,10 +245,65 @@ public final class WorkspaceExecute {
             preflight = BuildForecasting.forecastWithFingerprints(
                     graph, req.cache(), req.skipTests(), req.entryDir(), req.target(), terminalTargetDirs(units, req));
             dirty = preflight.dirty();
-            listener.onPreflight(
-                    "checking", 1, 1, dirty.isEmpty() ? "All modules up to date" : dirty.size() + " module(s) dirty");
+            restoreNeeded = preflight.restoreNeeded();
+            String msg;
+            if (dirty.isEmpty() && restoreNeeded.isEmpty()) msg = "All modules up to date";
+            else if (dirty.isEmpty()) msg = restoreNeeded.size() + " module(s) restore";
+            else if (restoreNeeded.isEmpty()) msg = dirty.size() + " module(s) dirty";
+            else msg = dirty.size() + " dirty, " + restoreNeeded.size() + " restore";
+            listener.onPreflight("checking", 1, 1, msg);
         }
-        Perf.end("ws-forecast(hint=" + (req.dirtyHint() != null) + ",dirty=" + dirty.size() + ")", tf);
+        Perf.end(
+                "ws-forecast(hint="
+                        + (req.dirtyHint() != null)
+                        + ",dirty="
+                        + dirty.size()
+                        + ",restore="
+                        + restoreNeeded.size()
+                        + ")",
+                tf);
+
+        // Inputs clean + outputs missing: restore from action cache, then treat as fully cached.
+        if (dirty.isEmpty()
+                && !restoreNeeded.isEmpty()
+                && req.target() == WorkspaceTarget.PACKAGE
+                && !SessionContext.current().config().rebuildOr(false)
+                && !SessionContext.current().config().forceOr(false)) {
+            listener.onPreflight("restore", 0, restoreNeeded.size(), "Restoring outputs…");
+            long restoreEta = (long) EffortWeights.RESTORE * EffortWeights.MS_PER_WEIGHT * restoreNeeded.size();
+            listener.onEtaEstimate(restoreEta);
+            List<Path> failed;
+            try {
+                failed = ModuleOutputRestore.restoreAll(req.entryDir(), List.copyOf(restoreNeeded), req.cache());
+            } catch (IOException e) {
+                WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.util.Errors.text(e)));
+                listener.onWorkspaceFinish(r);
+                return r;
+            }
+            listener.onPreflight("restore", restoreNeeded.size(), restoreNeeded.size(), "Restoring outputs…");
+            if (!failed.isEmpty()) {
+                // Action-cache miss: fall through to normal RUN for those modules only.
+                dirty = new LinkedHashSet<>(failed);
+            } else {
+                Map<Path, Path> wsLinks = computeWorkspaceLinks(moduleDirs, req.entryDir());
+                for (BuildGraph.BuildUnit u : units) {
+                    linkModuleArtifacts(u.dir(), wsLinks);
+                }
+                if (req.dirtyHint() == null && !req.testOnly()) {
+                    Map<Path, String> fps =
+                            preflight != null && !preflight.fingerprints().isEmpty()
+                                    ? preflight.fingerprints()
+                                    : PreflightMemo.snapshotFingerprints(graph, req.skipTests());
+                    if (!fps.isEmpty()) {
+                        PreflightMemo.storeDirty(req.entryDir(), graph, req.skipTests(), Set.of(), fps);
+                    }
+                }
+                listener.onEtaEstimate(0);
+                WorkspaceResult r = new WorkspaceResult(true, 0, List.of(), List.of());
+                listener.onWorkspaceFinish(r);
+                return r;
+            }
+        }
 
         // Each module's step durations feed one shared sink, folded into the learned ledger on success.
         List<StepTimings.Sample> timingSamples = Collections.synchronizedList(new ArrayList<>());
@@ -358,7 +415,7 @@ public final class WorkspaceExecute {
                     dirtyUnits,
                     BuildGraph.BuildUnit::dir,
                     graph.edges(),
-                    u -> runModule(plans.get(u.dir()), listener),
+                    (u, artifactsReady) -> runModule(plans.get(u.dir()), listener, artifactsReady),
                     (ready, results, _) -> {
                         for (int i = 0; i < results.size(); i++) {
                             ModuleOutcome o = results.get(i);
@@ -372,7 +429,8 @@ public final class WorkspaceExecute {
                         }
                         return null;
                     },
-                    req.maxModuleConcurrency());
+                    req.maxModuleConcurrency(),
+                    cc.jumpkick.run.SessionCancel::cancelled);
         }
         Perf.end("ws-schedule-run", tsched);
         long executeWallMs = Math.max(0L, System.currentTimeMillis() - executeStartMs);
@@ -384,6 +442,9 @@ public final class WorkspaceExecute {
         if (ok) {
             // Primary seed-quality KPI: |R0 − execute wall| / wall (never improved by residual).
             BuildEta.logSeedQuality(etaMs, executeWallMs, dirtyUnits.size());
+            // Fold the schedule-contention observation (actual vs the PRE-bias simulation) so
+            // the next estimate prices this host's real overlap efficiency.
+            ScheduleBias.observe(req.entryDir(), etaModel.rawScheduleMs(), executeWallMs, dirtyUnits.size());
             // Fold this run's step durations + measured throughput into the learned ledger + host
             // calibration (EWMA) so the next build's estimate is time-accurate. Failed and cancelled
             // builds never train — truncated walls poison ETA priors.
@@ -592,8 +653,16 @@ public final class WorkspaceExecute {
      */
     static Set<Path> terminalTargetDirs(List<BuildGraph.BuildUnit> units, WorkspaceRequest req) {
         WorkspaceTarget target = req.target();
-        if (target != WorkspaceTarget.NATIVE && target != WorkspaceTarget.IMAGE) return Set.of();
         WorkspaceSpec spec = req.spec() == null ? WorkspaceSpec.DEFAULT : req.spec();
+        // INSTALL publishes every module in the (already cone-filtered) graph — selected
+        // terminals and production prereqs — so a worker POM can resolve sibling jars from
+        // repos/local. NATIVE/IMAGE keep selection-only terminals.
+        if (target == WorkspaceTarget.INSTALL) {
+            Set<Path> all = new LinkedHashSet<>();
+            for (BuildGraph.BuildUnit u : units) all.add(u.dir());
+            return all;
+        }
+        if (target != WorkspaceTarget.NATIVE && target != WorkspaceTarget.IMAGE) return Set.of();
         Set<Path> out = new LinkedHashSet<>();
         for (BuildGraph.BuildUnit u : units) {
             Path dir = u.dir();
@@ -666,6 +735,26 @@ public final class WorkspaceExecute {
             // compile classpath consumes sibling JARS, so prereqs must package, not just compile.
             return CompilePlans.compileBuildPlan(dir, req.cache(), req.profile(), req.verbose(), decorate);
         }
+        if (target == WorkspaceTarget.INSTALL) {
+            Path graal = GraalHomes.lookup(dir, spec.graalByDir());
+            BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
+                            dir,
+                            req.cache(),
+                            req.workers() > 0 ? req.workers() : 1,
+                            req.jdksDir(),
+                            req.profile(),
+                            req.skipTests(),
+                            req.verbose(),
+                            moduleDirs,
+                            false)
+                    .withVariant(req.variant(), req.clientEnv())
+                    .withEphemeralActions(req.ephemeralActions());
+            BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, forceRebuild);
+            BuildPlanner.appendDeclaredTails(b, inputs, graal, true);
+            Path m2 = Path.of(System.getProperty("user.home", "."), ".m2");
+            InstallPlans.appendCacheInstall(b, u.manifest(), req.cache(), m2);
+            return b.build();
+        }
         // A consumed prereq must package even on the test path: dependents compile against
         // its sibling JAR, not its classes dir (JK-2177).
         boolean consumed = jarConsumed.contains(BuildGraph.canonicalPath(dir));
@@ -722,8 +811,23 @@ public final class WorkspaceExecute {
 
     /** Run one module's plan, attaching the caller's per-module listener; map the result to an outcome. */
     private static ModuleOutcome runModule(ModulePlan module, WorkspaceBuildListener listener) {
+        return runModule(module, listener, () -> {});
+    }
+
+    /**
+     * As {@link #runModule(ModulePlan, WorkspaceBuildListener)}, firing {@code artifactsReady}
+     * the moment every artifact step other modules consume (package-jar, and package-assembly
+     * when declared — {@code WorkspaceClasspath} sibling jars / {@code enrichCliTestProps}
+     * assemblies) is terminal-ok. With packaging no longer gated on run-tests (JK-2211) that is
+     * right after compile+resources, so dependents overlap this module's test suite (JK-2210).
+     * A failed or absent artifact step never fires — the scheduler publishes on completion
+     * instead, and fail-fast or the dependent's own "sibling not built" reports it.
+     */
+    private static ModuleOutcome runModule(
+            ModulePlan module, WorkspaceBuildListener listener, Runnable artifactsReady) {
         BuildPlanListener ml = listener.onModuleStart(module);
         if (ml != null) module.plan().addListener(ml);
+        watchArtifactSteps(module.plan(), artifactsReady);
         long t0 = System.nanoTime();
         try {
             // Same over-reserve as prepare: BuildPlan.run() re-evaluates step weights into its
@@ -752,6 +856,32 @@ public final class WorkspaceExecute {
             listener.onModuleFinish(o);
             return o;
         }
+    }
+
+    /** Fire {@code artifactsReady} once when all of the plan's artifact steps finish ok (JK-2210). */
+    static void watchArtifactSteps(cc.jumpkick.run.BuildPlan plan, Runnable artifactsReady) {
+        Set<String> artifactSteps = new HashSet<>();
+        for (cc.jumpkick.run.Task step : plan.steps()) {
+            // compile-test is an artifact too: kind=tests siblings consume this module's
+            // classes/test (WorkspaceClasspath testClassesDir), and it never waits on the suite.
+            if (cc.jumpkick.run.TaskNames.PACKAGE_JAR.equals(step.name())
+                    || cc.jumpkick.run.TaskNames.PACKAGE_ASSEMBLY.equals(step.name())
+                    || cc.jumpkick.run.TaskNames.COMPILE_TEST.equals(step.name())) {
+                artifactSteps.add(step.name());
+            }
+        }
+        if (artifactSteps.isEmpty()) return; // no packaging or tests — publish on completion
+        AtomicInteger remaining = new AtomicInteger(artifactSteps.size());
+        plan.addListener(new BuildPlanListener() {
+            @Override
+            public void stepFinish(String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
+                if (!artifactSteps.contains(step)) return;
+                if (status != cc.jumpkick.run.TaskStatus.SUCCESS && status != cc.jumpkick.run.TaskStatus.SKIPPED) {
+                    return; // failed/cancelled artifact: stay unpublished
+                }
+                if (remaining.decrementAndGet() == 0) artifactsReady.run();
+            }
+        });
     }
 
     /** Apply the subset of {@code workspaceLinks} whose sources live under {@code moduleDir} (best-effort). */

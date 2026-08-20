@@ -21,7 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The spawn path's engine-jar self-heal ({@link EngineJarFetcher}): download from the release
  * layout ({@code releases/<version>/jk-engine-<version>.jar} + {@code SHA256SUMS}), verify,
- * ingest into the CAS, and materialize {@code versions/<v>/} — the only installed layout. The
+ * ingest into the CAS, and install {@code $JK_HOME/lib/jk-engine.jar}. The
  * wiring INTO {@code spawn()} is native-client-only and stays manual-verification territory,
  * like the spawn itself (see {@code EngineClientTest}).
  */
@@ -66,8 +66,8 @@ class EngineJarFetcherTest {
         return new cc.jumpkick.cache.Cas(root.resolve("cache"));
     }
 
-    private static cc.jumpkick.cache.VersionStore store(Path root) {
-        return new cc.jumpkick.cache.VersionStore(root.resolve("versions"));
+    private static cc.jumpkick.cache.EngineInstall engineInstall(Path root) {
+        return new cc.jumpkick.cache.EngineInstall(root.resolve("lib"));
     }
 
     /**
@@ -79,16 +79,16 @@ class EngineJarFetcherTest {
     }
 
     private Path fetch(Path root) throws IOException {
-        return EngineJarFetcher.fetch(base, VERSION, cas(root), store(root), null, noSig());
+        return EngineJarFetcher.fetch(base, VERSION, cas(root), engineInstall(root), noSig());
     }
 
     @Test
     void fetch_verifies_and_materializes_cas_first(@TempDir Path root) throws Exception {
         var cas = cas(root);
-        var store = store(root);
-        Path installed = EngineJarFetcher.fetch(base, VERSION, cas, store, null, noSig());
+        var install = engineInstall(root);
+        Path installed = EngineJarFetcher.fetch(base, VERSION, cas, install, noSig());
 
-        var m = store.resolve(VERSION).orElseThrow();
+        var m = install.resolve(VERSION).orElseThrow();
         assertThat(installed).isEqualTo(m.engineJar());
         assertThat(installed).hasBinaryContent(JAR);
         // The CAS holds the blob — a pruned version re-materializes from it offline.
@@ -99,18 +99,18 @@ class EngineJarFetcherTest {
     void checksum_mismatch_fails_and_installs_nothing(@TempDir Path root) {
         jarBody = "tampered bytes".getBytes(StandardCharsets.UTF_8);
 
-        var store = store(root);
+        var install = engineInstall(root);
         assertThatThrownBy(() -> fetch(root)).isInstanceOf(IOException.class).hasMessageContaining("checksum mismatch");
-        assertThat(store.resolve(VERSION)).isEmpty();
+        assertThat(install.resolve(VERSION)).isEmpty();
     }
 
     @Test
     void missing_checksums_file_refuses_to_install(@TempDir Path root) {
         sumsStatus = 404;
 
-        var store = store(root);
+        var install = engineInstall(root);
         assertThatThrownBy(() -> fetch(root)).isInstanceOf(IOException.class).hasMessageContaining("HTTP 404");
-        assertThat(store.resolve(VERSION)).isEmpty();
+        assertThat(install.resolve(VERSION)).isEmpty();
     }
 
     @Test

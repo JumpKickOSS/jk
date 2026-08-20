@@ -1,9 +1,6 @@
 name = "jk-minified"
 description = "JumpKick's R8 minify plugin"
 
-[application]
-main = "cc.jumpkick.plugin.process.PluginMain"
-
 [dependencies]
 jk-plugin-sdk.workspace = true
 jk-dynamic-surface.workspace = true
@@ -11,3 +8,8 @@ jk-dynamic-surface.workspace = true
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"
+
+[build]
+extra-resources = [
+  { from = "jk-plugin.toml", into = "" },
+]

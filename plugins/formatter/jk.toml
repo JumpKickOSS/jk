@@ -1,9 +1,6 @@
 name = "jk-formatter"
 description = "JumpKick's source code formatter plugin"
 
-[application]
-main = "cc.jumpkick.plugin.process.PluginMain"
-
 [dependencies]
 jk-plugin-sdk.workspace = true
 spotless-lib = "latest"

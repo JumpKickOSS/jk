@@ -2,7 +2,7 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.cache.VersionStore;
+import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.util.JkDirs;
@@ -28,7 +28,7 @@ public final class EngineTestSupport {
     private EngineTestSupport() {}
 
     /**
-     * Idempotent materialize of the engine assembly into VersionStore under the test {@code
+     * Idempotent materialize of the engine assembly into EngineInstall under the test {@code
      * JK_HOME}. Prefers {@code -Djk.engine.jar} (Gradle / pure-jk run-tests); falls back to a
      * workspace-relative assembly jar so a miswired fork fails with a path hint rather than a bare
      * missing-property error.
@@ -50,24 +50,25 @@ public final class EngineTestSupport {
                 if (state != null && !state.isBlank()) {
                     Files.createDirectories(Path.of(state));
                 }
-                VersionStore store = VersionStore.current();
-                // ALWAYS materialize — VersionStore is content-aware (same bytes return
-                // immediately; same version + different bytes replaces the tree).
+                EngineInstall install = EngineInstall.current();
+                // ALWAYS materialize — EngineInstall is content-aware (same bytes return
+                // immediately; same version + different bytes parks the previous jar).
                 // The old presence-check skipped the refresh, so a persistent test JK_HOME
                 // kept serving a STALE engine across rebuilds (every
                 // :cli:integrationTest run tonight resolved with last week's resolver).
                 String wantSha = cc.jumpkick.util.Hashing.sha256Hex(engineJar);
-                boolean bitsChanged =
-                        !store.engineSha(JkVersion.VERSION).map(wantSha::equals).orElse(false);
+                boolean bitsChanged = !install.engineSha(JkVersion.VERSION)
+                        .map(wantSha::equals)
+                        .orElse(false);
                 Path cacheRoot = JkDirs.cache();
                 Files.createDirectories(cacheRoot);
                 Cas cas = new Cas(cacheRoot);
-                store.materializeFromFiles(JkVersion.VERSION, cas, engineJar, null);
+                install.materializeFromFiles(JkVersion.VERSION, cas, engineJar);
                 if (bitsChanged) {
                     // Same version string, different bits: a resident engine surviving from a
                     // previous test invocation still serves the OLD jar off its socket — the
                     // version handshake cannot catch it, so stop the fleet (scoped to this
-                    // test JK_HOME) and let the next connect spawn fresh (JK-2175).
+                    // test JK_HOME) and let the next connect spawn fresh.
                     EngineFleet.stopAll(true);
                 }
             } catch (IOException e) {
@@ -79,7 +80,7 @@ public final class EngineTestSupport {
 
     /**
      * {@code -Djk.engine.jar}, workspace assembly (module-local or Mill-style {@code
-     * target/<rel>/}), or the installed engine under {@link VersionStore}.
+     * target/<rel>/}), or the installed engine under {@link EngineInstall}.
      */
     static Path resolveEngineJar() {
         String jarProp = System.getProperty("jk.engine.jar");
@@ -105,12 +106,12 @@ public final class EngineTestSupport {
             }
         }
         try {
-            var mat = VersionStore.current().resolve(JkVersion.VERSION);
+            var mat = EngineInstall.current().resolve(JkVersion.VERSION);
             if (mat.isPresent() && Files.isRegularFile(mat.get().engineJar())) {
                 return mat.get().engineJar().toAbsolutePath().normalize();
             }
         } catch (RuntimeException ignored) {
-            // isolated JK_HOME with no versions tree
+            // isolated JK_HOME with no engine jar
         }
         return null;
     }

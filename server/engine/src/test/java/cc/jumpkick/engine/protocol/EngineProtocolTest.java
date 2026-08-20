@@ -105,6 +105,18 @@ class EngineProtocolTest {
     }
 
     @Test
+    void drain_status_and_done_round_trip() {
+        String status = ProtoLifecycle.drainStatus(99, 3, "1.2.3");
+        assertThat(EngineProtocol.typeOf(status)).isEqualTo(EngineProtocol.DRAIN_STATUS);
+        assertThat(Jsonl.longValue(status, "pid", -1)).isEqualTo(99);
+        assertThat(Jsonl.intValue(status, "plans", -1)).isEqualTo(3);
+        assertThat(Jsonl.str(status, "version")).isEqualTo("1.2.3");
+        String done = ProtoLifecycle.drainDone(99);
+        assertThat(EngineProtocol.typeOf(done)).isEqualTo(EngineProtocol.DRAIN_DONE);
+        assertThat(Jsonl.longValue(done, "pid", -1)).isEqualTo(99);
+    }
+
+    @Test
     void bye_reports_in_flight_jobs_and_draining() {
         String bye = ProtoLifecycle.bye(3, true);
         assertThat(EngineProtocol.typeOf(bye)).isEqualTo(EngineProtocol.BYE);

@@ -22,6 +22,11 @@ Tag new heavy tests at class level:
 
 ## Redundancy / prune candidates (integration tier)
 
+**JK-2192 (2026-08-19): this backlog was worked and largely disproved at assertion
+level** — the Cache-e2e, JDK-install, and Android-ladder rows below looked like
+duplicates but cover different layers/assertions; see the ticket for the per-item
+disproofs before re-adding anything here.
+
 Measured profiling of a full `integrationTest` is expensive; use this as a **manual prune backlog** when editing those areas:
 
 | Cluster | Keep | Consider folding into nightly-only / fewer cases |
@@ -59,7 +64,7 @@ Gradle tiers remain how **this monorepo** is bootstrapped. Once dogfooding with 
 |--------|---------|
 | Fast / default | `jk test` (suite `test` only; optional `[test] exclude-tags`) |
 | Extra suite | `jk test --suite integration` or put e2e under `integration/` |
-| Everything | `jk test --all` |
+| Everything | `jk test --all` / `jk build --all` (all suites, config tag excludes cleared) |
 | Tag filter | `jk test --exclude-tags slow` / `--include-tags smoke` |
 | CI profile | `[profiles.ci] exclude-tags = []` (overrides `[test]`) + `--profile ci` (auto on CI) |
 

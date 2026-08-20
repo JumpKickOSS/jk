@@ -418,6 +418,24 @@ public final class ProtoJobs {
             boolean verbose,
             boolean offline,
             boolean force) {
+        return singleBuildRequest(dir, cache, jdksDir, workers, profile, skipTests, verbose, offline, force, null);
+    }
+
+    /**
+     * As above with suite/tag selection ({@code jk build --all} / tag flags). Selection fields are
+     * omitted when default so older engines see an unchanged body.
+     */
+    public static String singleBuildRequest(
+            String dir,
+            String cache,
+            String jdksDir,
+            int workers,
+            String profile,
+            boolean skipTests,
+            boolean verbose,
+            boolean offline,
+            boolean force,
+            cc.jumpkick.config.TestSelection selection) {
         // noTimeline: session envelope only (see {@link #withSession}).
         return "{\"type\":\""
                 + EngineProtocol.SINGLE_BUILD_REQUEST
@@ -439,6 +457,9 @@ public final class ProtoJobs {
                 + offline
                 + ",\"force\":"
                 + force
+                + (selection != null && !selection.equals(cc.jumpkick.config.TestSelection.DEFAULT)
+                        ? testSelectionFields(selection)
+                        : "")
                 + "}";
     }
 
@@ -901,7 +922,7 @@ public final class ProtoJobs {
 
     /**
      * Build native artifacts (see {@link EngineProtocol#NATIVE_REQUEST}). {@code mainClass} is the {@code --main}
-     * override (may be {@code null} — the engine resolves {@code [native].main-class}/{@code
+     * override (may be {@code null} — the engine resolves {@code [native].main}/{@code
      * [image].main}/{@code [application].main} itself); {@code extraArgs} are forwarded to {@code
      * native-image}; {@code graalHomes} maps each native-eligible module dir to the GraalVM home
      * the client resolved for it (the one flat-map wire encoding — see {@code Jsonl.map}).

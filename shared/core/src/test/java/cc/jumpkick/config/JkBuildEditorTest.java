@@ -475,8 +475,16 @@ class JkBuildEditorTest {
     }
 
     @Test
-    void set_artifacts_creates_application_table() {
-        String fat = JkBuildEditor.setArtifacts(BASE, true, false);
+    void set_artifacts_requires_application_main() {
+        assertThatThrownBy(() -> JkBuildEditor.setArtifacts(BASE, true, false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("[application].main");
+    }
+
+    @Test
+    void set_artifacts_writes_assembly_on_an_existing_application() {
+        String start = BASE + "[application]\nmain = \"demo.App\"\n";
+        String fat = JkBuildEditor.setArtifacts(start, true, false);
         assertThat(fat).contains("[application]").contains("assembly = true").doesNotContain("minified");
         assertThat(JkBuildParser.parse(fat).assembly()).isTrue();
         assertThat(JkBuildParser.parse(fat).minified()).isFalse();
@@ -484,7 +492,7 @@ class JkBuildEditorTest {
 
     @Test
     void minified_writes_both_keys_because_artifacts_are_additive() {
-        String min = JkBuildEditor.setArtifacts(BASE, false, true);
+        String min = JkBuildEditor.setArtifacts(BASE + "[application]\nmain = \"demo.App\"\n", false, true);
         assertThat(min).contains("assembly = true").contains("minified = true");
 
         JkBuild parsed = JkBuildParser.parse(min);

@@ -13,15 +13,24 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
 
 /**
  * Installed plugins keyed by owned jk.toml table (built-ins + third-party). {@link #validate}
  * schema-checks a raw table into a {@link PluginConfig}.
+ *
+ * <p>Production built-ins come from self-describing plugin jars ({@code jk-plugin.toml} at the
+ * zip root). The engine installs them via {@link #putBuiltIn}. {@code :core} main and the native
+ * CLI see an empty set. Unit tests may still load the same files from
+ * {@code cc/jumpkick/plugin/manifest/} on the <em>test</em> classpath.
  */
 public final class PluginTableRegistry {
 
@@ -36,20 +45,66 @@ public final class PluginTableRegistry {
 
     /** Load a plugin resource relative to its manifest ({@code <id>/<relPath>}). */
     public static String resourceText(PluginDescriptor manifest, String relPath) {
+        Path archive = ARCHIVES.get(manifest.id());
+        if (archive != null) {
+            try {
+                String text = zipEntryText(archive, relPath);
+                if (text == null) {
+                    throw new JkBuildParseException(
+                            "plugin " + manifest.id() + " names a missing resource: " + relPath);
+                }
+                return text;
+            } catch (IOException e) {
+                throw new JkBuildParseException(
+                        "plugin " + manifest.id() + " resource " + relPath + " is unreadable: " + e.getMessage());
+            }
+        }
         String resource = manifest.id() + "/" + relPath;
         try (InputStream in = openBuiltIn(resource)) {
             if (in == null) {
-                throw new cc.jumpkick.config.JkBuildParseException(
-                        "plugin " + manifest.id() + " names a missing resource: " + relPath);
+                throw new JkBuildParseException("plugin " + manifest.id() + " names a missing resource: " + relPath);
             }
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new cc.jumpkick.config.JkBuildParseException(
+            throw new JkBuildParseException(
                     "plugin " + manifest.id() + " resource " + relPath + " is unreadable: " + e.getMessage());
         }
     }
 
-    private static final Map<String, PluginDescriptor> BY_TABLE = loadBuiltIns();
+    private static volatile Map<String, PluginDescriptor> BY_TABLE = loadBuiltIns();
+
+    /** Plugin id → jar that owns {@code jk-plugin.toml} and {@code scaffold/}. */
+    private static final Map<String, Path> ARCHIVES = new ConcurrentHashMap<>();
+
+    /**
+     * Load {@code jk-plugin.toml} from a self-describing plugin jar and {@link #putBuiltIn}.
+     * Jars without that root entry are ignored.
+     */
+    public static void installFromJar(Path jar) {
+        Objects.requireNonNull(jar, "jar");
+        try {
+            String toml = zipEntryText(jar, "jk-plugin.toml");
+            if (toml == null || toml.isBlank()) return;
+            PluginDescriptor manifest = PluginDescriptors.parse(toml, jar + "!jk-plugin.toml");
+            putBuiltIn(manifest, jar);
+        } catch (IOException e) {
+            throw new UncheckedIOException("failed to read plugin manifest from " + jar, e);
+        }
+    }
+
+    /**
+     * Register or replace a built-in manifest loaded from a self-describing plugin jar.
+     * {@code archive} is the zip {@link #resourceText} reads scaffold templates from.
+     */
+    public static void putBuiltIn(PluginDescriptor manifest, Path archive) {
+        Objects.requireNonNull(manifest, "manifest");
+        synchronized (PluginTableRegistry.class) {
+            Map<String, PluginDescriptor> next = new LinkedHashMap<>(BY_TABLE);
+            next.put(manifest.table(), manifest);
+            BY_TABLE = Map.copyOf(next);
+        }
+        if (archive != null) ARCHIVES.put(manifest.id(), archive);
+    }
 
     private PluginTableRegistry() {}
 
@@ -70,8 +125,8 @@ public final class PluginTableRegistry {
      * The manifests a build of {@code moduleDir} sees: built-ins plus every {@code [plugins]}
      * declaration whose manifest is locked + materialized ({@link PluginDescriptorStore}). An
      * unresolved declaration is silently absent — its table validates on the next parse after the
-     * engine materializes (sync/lock/build pre-flight). A third-party manifest claiming a built-in
-     * id or an already-owned table is a parse error, not a shadow.
+     * engine materializes (sync/lock/build pre-flight). An explicit declaration may <em>replace</em>
+     * a built-in with the same id or table; two declarations colliding with each other is an error.
      */
     public static List<PluginDescriptor> manifestsFor(Path moduleDir, List<cc.jumpkick.model.PluginDeclaration> decls) {
         if (decls == null || decls.isEmpty()) return manifests();
@@ -82,18 +137,30 @@ public final class PluginTableRegistry {
             ids.add(m.id());
             tables.add(m.table());
         }
+        Set<String> declaredIds = new HashSet<>();
+        Set<String> declaredTables = new HashSet<>();
         for (cc.jumpkick.model.PluginDeclaration decl : decls) {
             PluginDescriptor m =
                     PluginDescriptorStore.manifestFor(moduleDir, decl).orElse(null);
             if (m == null) continue;
-            if (!ids.add(m.id())) {
-                throw new cc.jumpkick.config.JkBuildParseException("plugin " + decl.coordinateWithVersion()
-                        + " declares id `" + m.id() + "`, which is already provided by another installed plugin");
+            if (!declaredIds.add(m.id())) {
+                throw new JkBuildParseException("plugin " + decl.coordinateWithVersion() + " declares id `" + m.id()
+                        + "`, which is already provided by another [plugins] entry");
             }
-            if (!tables.add(m.table())) {
-                throw new cc.jumpkick.config.JkBuildParseException("plugin " + decl.coordinateWithVersion()
-                        + " claims table [" + m.table() + "], which is already owned by another installed plugin");
+            if (!declaredTables.add(m.table())) {
+                throw new JkBuildParseException("plugin " + decl.coordinateWithVersion() + " claims table [" + m.table()
+                        + "], which is already owned by another [plugins] entry");
             }
+            out.removeIf(existing -> {
+                boolean hit = existing.id().equals(m.id()) || existing.table().equals(m.table());
+                if (hit) {
+                    ids.remove(existing.id());
+                    tables.remove(existing.table());
+                }
+                return hit;
+            });
+            ids.add(m.id());
+            tables.add(m.table());
             out.add(m);
         }
         return out;
@@ -252,8 +319,9 @@ public final class PluginTableRegistry {
     }
 
     /**
-     * Built-in manifests sit on the engine classpath (JK-2149), not next to this class in {@code
-     * :core}. Try the class, then the context loader, then the defining loader with the full path.
+     * Test-classpath fixtures live under {@code cc/jumpkick/plugin/manifest/}, not next to this
+     * class in {@code :core} main. Try the class, then the context loader, then the defining
+     * loader with the full path.
      */
     private static InputStream openBuiltIn(String resource) {
         InputStream in = PluginTableRegistry.class.getResourceAsStream(resource);
@@ -288,13 +356,24 @@ public final class PluginTableRegistry {
                 throw new UncheckedIOException("failed to load built-in plugin manifest " + resource, e);
             }
         }
-        // Native CLI / :core main have no baked manifests (JK-2149). Engine and workers do.
+        // Native CLI / :core main have no classpath fixtures. Tests bake them; the engine
+        // installs from self-describing jars via putBuiltIn.
         if (missing == 0) return byTable;
         if (missing == BUILT_IN.size()) return Map.of();
         throw new IllegalStateException("missing built-in plugin manifest resources ("
                 + missing
                 + "/"
                 + BUILT_IN.size()
-                + "; first-party manifests live on the engine and worker classpaths, not :core)");
+                + "; first-party manifests live on plugin jars and the test classpath, not :core)");
+    }
+
+    private static String zipEntryText(Path jar, String entry) throws IOException {
+        try (ZipFile zip = new ZipFile(jar.toFile())) {
+            ZipEntry e = zip.getEntry(entry);
+            if (e == null) return null;
+            try (InputStream in = zip.getInputStream(e)) {
+                return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            }
+        }
     }
 }

@@ -146,9 +146,8 @@ public final class JobEnvelope {
         JobBody runner = job.body();
         boolean plan = job.joinsActivePlans();
         boolean workspaceStream = job.workspaceTerminal();
-        // Refuse new jobs while draining (a graceful shutdown is finishing in-flight work). The client
-        // normally can't even get here — its handshake sees `draining` and fails first — but guard the
-        // server too so a raced/last-moment request is rejected instead of prolonging the drain.
+        // Refuse new jobs while draining. The listener is already closed, so this is the race
+        // on a connection accepted just before yield, or an already-open session.
         // A plan claims its slot in the same breath, so shutdown can never observe zero
         // plans for a job that is about to start.
         boolean claimedBuildPlanSlot = false;

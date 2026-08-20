@@ -80,8 +80,8 @@ public final class ForkedJavac {
             boolean win = HostPlatform.isWindows();
             Path hostJavaHome = cc.jumpkick.jdk.JavaHomes.runningJavaHome();
             Path javaExe = hostJavaHome.resolve("bin").resolve(win ? "java.exe" : "java");
-            // Thin worker + optional .classpath sidecar (plugin-sdk when not vendored).
-            String workerCp = WorkerClasspath.resolve(req.workerJar());
+            // Thin worker + Maven runtime closure from its POM.
+            String workerCp = cc.jumpkick.engine.plugin.WorkerLaunchClasspath.resolve(req.workerJar());
             // AOT for this *java* process (ToolProvider host) — not bare `javac` launcher AOT.
             List<String> jvmFlags = new ArrayList<>(cc.jumpkick.engine.plugin.PluginAot.javaCompilerFlags(
                     hostJavaHome,

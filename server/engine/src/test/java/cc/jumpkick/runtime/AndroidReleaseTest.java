@@ -85,7 +85,7 @@ class AndroidReleaseTest {
                                 "RELEASE_KEYSTORE", keystore.toAbsolutePath().toString(),
                                 "RELEASE_STORE_PASSWORD", "rel-store-pass",
                                 "RELEASE_KEY_PASSWORD", "rel-key-pass"));
-        BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+        BuildPlan plan = BuildPlanner.fullPlan(in);
         BuildPlanResult result = plan.run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
@@ -225,7 +225,6 @@ class AndroidReleaseTest {
                 group   = "com.example"
                 version = "1.0.0"
                 java    = 17
-                layout  = "simple"
 
                 [android]
                 namespace   = "com.example.relapp"

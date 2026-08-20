@@ -300,6 +300,27 @@ public final class ProtoLifecycle {
         return "{\"type\":\"" + EngineProtocol.BYE + "\",\"plans\":" + plans + ",\"draining\":" + draining + "}";
     }
 
+    /**
+     * Predecessor → successor: in-flight job count after this engine yielded its listeners.
+     * The successor is already bound; this is status, not a request for work.
+     */
+    public static String drainStatus(long pid, int plans, String version) {
+        return "{\"type\":\""
+                + EngineProtocol.DRAIN_STATUS
+                + "\",\"pid\":"
+                + pid
+                + ",\"plans\":"
+                + plans
+                + ",\"version\":"
+                + Jsonl.quote(version == null ? "" : version)
+                + "}";
+    }
+
+    /** Predecessor → successor: no in-flight jobs remain; this process is exiting. */
+    public static String drainDone(long pid) {
+        return "{\"type\":\"" + EngineProtocol.DRAIN_DONE + "\",\"pid\":" + pid + "}";
+    }
+
     // ---- build-request (client → server) -------------------------------------------------------
 
     /**

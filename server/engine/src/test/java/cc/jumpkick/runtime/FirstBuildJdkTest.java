@@ -42,7 +42,6 @@ class FirstBuildJdkTest {
                 group   = "com.example"
                 version = "1.0.0"
                 jdk     = 17
-                layout  = "simple"
 
                 [test-dependencies]
                 junit-jupiter           = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=6.1.1" }
@@ -94,7 +93,7 @@ import org.junit.jupiter.api.Tag;
                     false,
                     Set.of(),
                     nested);
-            BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+            BuildPlan plan = BuildPlanner.fullPlan(in);
             BuildPlanResult result = plan.run();
             StringBuilder dump = new StringBuilder();
             for (BuildPlanResult.Diagnostic d : result.errors()) {

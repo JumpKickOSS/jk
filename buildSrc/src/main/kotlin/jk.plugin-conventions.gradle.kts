@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Shared conventions for jk's child-JVM worker modules (the "runner" plugins).
-// Each worker jar is published to the local Maven repo so `jk sync` can pull it
-// into the CAS, is launchable as thin jar + classpath sidecar (JK-1347), and ships
-// an `installLocal` task that side-loads the freshly-built jar into ~/.local/share/jk/store.
-// What stays in each worker's build.gradle.kts: its `description`, its
-// `dependencies`, and optional codec-vendoring. The artifactId is always `jk-<projectName>`.
+// Each worker jar+POM is installed to store/repos/local under cc.jumpkick:jk-<projectName>
+// — the same Maven layout `jk install` writes. Launch rebuilds the runtime classpath from
+// that POM. What stays in each worker's build.gradle.kts: its `description`, its
+// `dependencies`, and optional codec-vendoring.
 
 import java.io.File
 import java.nio.file.AtomicMoveNotSupportedException
@@ -45,7 +44,7 @@ fun copyReplacing(src: File, dest: File) {
     }
 }
 
-// Coordinates + version must match cc.jumpkick.util.JkVersion.VERSION and the
+// Coordinates + version must match cc.jumpkick.model.JkVersion.VERSION and the
 // cc.jumpkick.engine.plugin.PluginJar registry (artifactId = jk-<projectName>).
 group = "cc.jumpkick"
 version = "0.12.0"
@@ -57,19 +56,39 @@ publishing {
         create<MavenPublication>("worker") {
             artifactId = workerArtifact
             from(components["java"])
+            pom.withXml {
+                val firstParty = rootProject.subprojects.map { it.name }.toSet()
+                fun remap(node: groovy.util.Node) {
+                    if (node.name().toString() == "artifactId") {
+                        val v = node.text()
+                        if (v != null && !v.startsWith("jk-") && v in firstParty) {
+                            node.setValue("jk-$v")
+                        }
+                    }
+                    node.children().filterIsInstance<groovy.util.Node>().forEach { remap(it) }
+                }
+                remap(asNode())
+            }
         }
     }
 }
 
-// Publisher / compat-bridge parse JkBuild via PluginTableRegistry. Manifests stay
-// off :core (JK-2149) so the native CLI cannot see them; workers load them from
-// this jar via the context classloader.
-tasks.processResources {
-    duplicatesStrategy = DuplicatesStrategy.INCLUDE
-    pluginManifestResources(rootProject)
+// Table-owning plugins ship their own jk-plugin.toml (+ scaffold/) at the jar root —
+// the same shape as a third-party plugin. Sibling catalogs are not copied here.
+val ownManifest = project.file("jk-plugin.toml")
+if (ownManifest.isFile) {
+    tasks.processResources {
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+        from(ownManifest)
+        val scaffold = project.file("scaffold")
+        if (scaffold.isDirectory) {
+            from(scaffold) { into("scaffold") }
+        }
+    }
 }
 
 tasks.jar {
+    archiveBaseName.set(workerArtifact)
     manifest {
         attributes(
                 "Main-Class" to "cc.jumpkick.plugin.process.PluginMain",
@@ -78,175 +97,198 @@ tasks.jar {
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     exclude("META-INF/*.SF", "META-INF/*.RSA", "META-INF/*.DSA", "META-INF/*.EC")
+    doLast {
+        val jar = archiveFile.get().asFile
+        assertJarHasNoFlattenedPluginCatalog(jar)
+        if (ownManifest.isFile) {
+            assertJarHasRootPluginManifest(jar)
+        }
+    }
 }
 
-/**
- * Collect jars for the thin-worker classpath sidecar: runtimeClasspath plus optional
- * `bundledCodec` (plugin-sdk is compileOnly+vendored on several workers — still list it so
- * a jar that lost PluginMain can fall back to -cp).
- */
-fun workerClasspathJars(): List<File> {
-    val seen = linkedSetOf<File>()
-    configurations.findByName("runtimeClasspath")?.files?.forEach { f ->
-        if (f.isFile && f.name.endsWith(".jar")) seen.add(f)
+fun xmlEsc(s: String): String = buildString {
+    for (c in s) {
+        when (c) {
+            '&' -> append("&amp;")
+            '<' -> append("&lt;")
+            '>' -> append("&gt;")
+            '"' -> append("&quot;")
+            '\'' -> append("&apos;")
+            else -> append(c)
+        }
     }
-    configurations.findByName("bundledCodec")?.files?.forEach { f ->
-        if (f.isFile && f.name.endsWith(".jar")) seen.add(f)
-    }
-    return seen.toList()
 }
 
-/**
- * Write `<jar>.classpath` next to the worker jar listing runtimeClasspath (+ bundledCodec)
- * entries so PluginLaunch can `java -cp worker:deps… PluginMain` without fat-jarring (JK-1347).
- */
-tasks.register("writeWorkerClasspath") {
-    description = "Write .classpath sidecar for thin worker launch"
+fun publishedArtifactId(gradleName: String): String =
+        if (gradleName.startsWith("jk-")) gradleName else "jk-$gradleName"
+
+fun sha256Hex(bytes: ByteArray): String {
+    val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+    return digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+}
+
+fun sha256Hex(file: File): String = sha256Hex(file.readBytes())
+
+data class WorkerGav(val group: String, val artifact: String, val version: String, val file: File)
+
+/** Resolved runtime jars with Maven coordinates. First-party projects publish as {@code jk-<name>}. */
+fun runtimeGavs(): List<WorkerGav> {
+    val runtime = configurations.findByName("runtimeClasspath") ?: return emptyList()
+    val artifacts = runCatching { runtime.resolvedConfiguration.resolvedArtifacts }.getOrDefault(emptySet())
+    val byFile = artifacts.associateBy { it.file.absoluteFile }
+    val out = linkedMapOf<String, WorkerGav>()
+    runtime.files.filter { it.isFile && it.name.endsWith(".jar") }.forEach { f ->
+        val art = byFile[f.absoluteFile] ?: return@forEach
+        val id = art.moduleVersion.id
+        val cid = art.id.componentIdentifier
+        val gav =
+                if (cid is org.gradle.api.artifacts.component.ProjectComponentIdentifier) {
+                    val proj = rootProject.findProject(cid.projectPath)
+                    val artifactId = publishedArtifactId(proj?.name ?: id.name)
+                    val raw = proj?.version?.toString() ?: id.version
+                    val ver = if (raw.isBlank() || raw == "unspecified") project.version.toString() else raw
+                    WorkerGav("cc.jumpkick", artifactId, ver, f)
+                } else {
+                    WorkerGav(id.group, id.name, id.version, f)
+                }
+        out.putIfAbsent("${gav.group}:${gav.artifact}:${gav.version}", gav)
+    }
+    return out.values.toList()
+}
+
+fun workerPomXml(): String {
+    val sb = StringBuilder()
+    sb.appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
+    sb.appendLine("""<project xmlns="http://maven.apache.org/POM/4.0.0">""")
+    sb.appendLine("  <modelVersion>4.0.0</modelVersion>")
+    sb.appendLine("  <groupId>cc.jumpkick</groupId>")
+    sb.appendLine("  <artifactId>$workerArtifact</artifactId>")
+    sb.appendLine("  <version>${project.version}</version>")
+    sb.appendLine("  <packaging>jar</packaging>")
+    sb.appendLine("  <name>$workerArtifact</name>")
+    val desc = project.description?.trim().orEmpty()
+    if (desc.isNotEmpty()) {
+        sb.appendLine("  <description>${xmlEsc(desc)}</description>")
+    }
+    sb.appendLine("  <dependencies>")
+    runtimeGavs().forEach { g ->
+        sb.appendLine("    <dependency>")
+        sb.appendLine("      <groupId>${xmlEsc(g.group)}</groupId>")
+        sb.appendLine("      <artifactId>${xmlEsc(g.artifact)}</artifactId>")
+        sb.appendLine("      <version>${xmlEsc(g.version)}</version>")
+        sb.appendLine("    </dependency>")
+    }
+    sb.appendLine("  </dependencies>")
+    sb.appendLine("</project>")
+    return sb.toString()
+}
+
+fun mavenLocalDir(storeRoot: File, group: String, artifact: String, version: String): File =
+        storeRoot.resolve("repos/local/${group.replace('.', '/')}/$artifact/$version")
+
+fun installJar(storeRoot: File, group: String, artifact: String, version: String, jar: File) {
+    val dir = mavenLocalDir(storeRoot, group, artifact, version)
+    dir.mkdirs()
+    val dest = dir.resolve("$artifact-$version.jar")
+    copyReplacing(jar, dest)
+    File(dest.path + ".sha256").writeText(sha256Hex(jar))
+    File(dest.path + ".classpath").delete()
+    File(dest.path + ".deps").delete()
+}
+
+fun installPom(storeRoot: File, group: String, artifact: String, version: String, xml: String) {
+    val dir = mavenLocalDir(storeRoot, group, artifact, version)
+    dir.mkdirs()
+    val dest = dir.resolve("$artifact-$version.pom")
+    val bytes = xml.toByteArray(Charsets.UTF_8)
+    dest.writeBytes(bytes)
+    File(dest.path + ".sha256").writeText(sha256Hex(bytes))
+}
+
+fun stageWorkerMavenRepo(storeRoot: File, jar: File, pomXml: String) {
+    val ver = project.version.toString()
+    installJar(storeRoot, "cc.jumpkick", workerArtifact, ver, jar)
+    installPom(storeRoot, "cc.jumpkick", workerArtifact, ver, pomXml)
+    runtimeGavs().forEach { g -> installJar(storeRoot, g.group, g.artifact, g.version, g.file) }
+}
+
+fun deleteStaleSidecars(vararg files: File) {
+    files.forEach { f ->
+        File(f.path + ".classpath").delete()
+        File(f.path + ".deps").delete()
+    }
+}
+
+val jarProvider = tasks.named<Jar>("jar").flatMap { it.archiveFile }
+val runtimeCp = configurations.named("runtimeClasspath")
+
+tasks.register("writeWorkerPom") {
+    description = "Write the Maven POM next to the worker jar (same GAV as jk install)"
     group = "jk"
     dependsOn(tasks.jar)
-    val jarProvider = tasks.named<Jar>("jar").flatMap { it.archiveFile }
-    val runtimeCp = configurations.named("runtimeClasspath")
     inputs.file(jarProvider)
     inputs.files(runtimeCp)
-    configurations.findByName("bundledCodec")?.let { inputs.files(it) }
     doLast {
         val jar = jarProvider.get().asFile
-        val side = File(jar.path + ".classpath")
-        val lines = mutableListOf("# jk worker classpath — generated by writeWorkerClasspath")
-        workerClasspathJars().forEach { f -> lines.add(f.absolutePath) }
-        side.writeText(lines.joinToString("\n", postfix = "\n"))
+        val pom = File(jar.path.removeSuffix(".jar") + ".pom")
+        pom.writeText(workerPomXml())
+        deleteStaleSidecars(jar)
     }
 }
 
-tasks.named("jar") { finalizedBy("writeWorkerClasspath") }
+tasks.named("jar") { finalizedBy("writeWorkerPom") }
 
-// Side-load the freshly-built worker jar into the developer's local Maven repo at
-// ~/.local/share/jk/store/repos/local/cc/jumpkick/<artifact>/<version>/<artifact>-<version>.jar
-// so PluginJar.locate finds the worker without requiring -Djk.<x>.plugin.jar.
-// Also writes a .sha256 sidecar and the .classpath sidecar for thin launch.
-tasks.register("installLocal") {
-    description = "Side-load the freshly-built $workerArtifact jar into ~/.local/share/jk/store/repos/local/ (m2 layout)"
+val workerRepoDir = layout.buildDirectory.dir("worker-repo")
+
+tasks.register("stageWorkerRepo") {
+    description = "Stage $workerArtifact + runtime jars as a Maven repo fragment under build/worker-repo"
     group = "jk"
-    dependsOn(tasks.jar, "writeWorkerClasspath")
-    val jarProvider = tasks.named<Jar>("jar").flatMap { it.archiveFile }
-    val runtimeCp = configurations.named("runtimeClasspath")
+    dependsOn(tasks.jar, "writeWorkerPom")
     inputs.file(jarProvider)
     inputs.files(runtimeCp)
-    configurations.findByName("bundledCodec")?.let { inputs.files(it) }
+    outputs.dir(workerRepoDir)
+    doLast {
+        val dest = workerRepoDir.get().asFile
+        dest.deleteRecursively()
+        stageWorkerMavenRepo(dest, jarProvider.get().asFile, workerPomXml())
+    }
+}
+
+// Same destination as `jk install`: store/repos/local/cc/jumpkick/<jk-artifact>/<ver>/.
+tasks.register("installLocal") {
+    description = "Install $workerArtifact jar+pom into the local Maven store (repos/local)"
+    group = "jk"
+    dependsOn(tasks.jar, "writeWorkerPom", "stageWorkerRepo")
+    inputs.file(jarProvider)
+    inputs.files(runtimeCp)
     val artifact = workerArtifact
     val ver = project.version.toString()
     doLast {
         val jar = jarProvider.get().asFile
-        val digest = MessageDigest.getInstance("SHA-256").digest(jar.readBytes())
-        val hex = digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        val pomXml = workerPomXml()
         val storeRoot: File = JkLayoutPaths.storeRoot()
-        // Engine also probes cache/repos/local — write both when store != cache layouts differ.
-        // Primary: store/repos/local (see JkDirs / RepoArtifactStore).
-        val repoDir = storeRoot.resolve("repos/local/cc/jumpkick/$artifact/$ver")
-        repoDir.mkdirs()
-        val target = repoDir.resolve("$artifact-$ver.jar")
-        val sidecar = repoDir.resolve("$artifact-$ver.jar.sha256")
-        copyReplacing(jar, target)
-        sidecar.writeText(hex)
-        // Classpath sidecar: absolute paths (runtimeClasspath + bundledCodec).
-        val depJars = workerClasspathJars()
-        val cpLines = mutableListOf("# jk worker classpath — generated by installLocal")
-        depJars.forEach { f -> cpLines.add(f.absolutePath) }
-        File(target.path + ".classpath").writeText(cpLines.joinToString("\n", postfix = "\n"))
-        // Mirror next to build jar for -Djk.*.plugin.jar test overrides.
-        File(jar.path + ".classpath").writeText(cpLines.joinToString("\n", postfix = "\n"))
-        // JK-1351: publishable flat coordinate closure (`<jar>.deps`) so a cold store can
-        // provision the thin worker: external deps keep their Maven coordinates (fetched from
-        // Central); project-built jars are staged into repos/local under cc.jumpkick:<base>:<ver>
-        // so publish-maven-repo.sh ships them to the official repo.
-        val externalByFile = runCatching {
-            configurations.getByName("runtimeClasspath").resolvedConfiguration.resolvedArtifacts
-                    .filter { it.id.componentIdentifier !is org.gradle.api.artifacts.component.ProjectComponentIdentifier }
-                    .associateBy({ it.file }, { "${it.moduleVersion.id.group}:${it.moduleVersion.id.name}:${it.moduleVersion.id.version}" })
-        }.getOrDefault(emptyMap())
-        val depsLines = mutableListOf("# jk worker deps — flat runtime closure, group:artifact:version")
-        depJars.forEach { f ->
-            val external = externalByFile[f]
-            if (external != null) {
-                depsLines.add(external)
-            } else {
-                val noExt = f.name.removeSuffix(".jar")
-                val tail = noExt.substringAfterLast('-')
-                val base = if (tail.firstOrNull()?.isDigit() == true) noExt.substringBeforeLast('-') else noExt
-                val d = storeRoot.resolve("repos/local/cc/jumpkick/$base/$ver")
-                d.mkdirs()
-                // Shared project jars (plugin-sdk, core, …) are staged by every worker's
-                // installLocal in parallel — must tolerate concurrent replace.
-                copyReplacing(f, d.resolve("$base-$ver.jar"))
-                val h = MessageDigest.getInstance("SHA-256").digest(f.readBytes())
-                        .joinToString("") { "%02x".format(it.toInt() and 0xff) }
-                d.resolve("$base-$ver.jar.sha256").writeText(h)
-                depsLines.add("cc.jumpkick:$base:$ver")
-            }
-        }
-        File(target.path + ".deps").writeText(depsLines.joinToString("\n", postfix = "\n"))
-        // JK-1348: hard-link worker + deps into JK_LIB_DIR/<artifact>/ (default store/lib/).
-        val libRoot: File = System.getenv("JK_LIB_DIR")?.let { File(it) }
-                ?: storeRoot.resolve("lib")
-        val libDir = libRoot.resolve(artifact)
-        try {
-            // Temp-dir + rename (JK-1353): concurrent launchers never observe a partial lib dir.
-            libRoot.mkdirs()
-            val tmpDir = Files.createTempDirectory(libRoot.toPath(), ".$artifact-tmp-").toFile()
-            val order = mutableListOf<String>()
-            fun linkOne(src: File) {
-                if (!src.isFile) return
-                var name = src.name
-                var dest = tmpDir.resolve(name)
-                var n = 2
-                while (dest.exists()) {
-                    val stem = src.nameWithoutExtension
-                    val ext = src.extension.let { if (it.isEmpty()) "" else ".$it" }
-                    name = "$stem-$n$ext"
-                    dest = tmpDir.resolve(name)
-                    n++
-                }
-                try {
-                    Files.createLink(dest.toPath(), src.toPath())
-                } catch (_: Exception) {
-                    src.copyTo(dest, overwrite = true)
-                }
-                order.add(name)
-            }
-            linkOne(target)
-            depJars.forEach { linkOne(it) }
-            tmpDir.resolve(".classpath").writeText(
-                    (listOf("# jk worker lib classpath — generated by installLocal") + order)
-                            .joinToString("\n", postfix = "\n"))
-            val oldDir = libRoot.resolve(".$artifact-old-${System.nanoTime()}")
-            if (libDir.exists()) Files.move(libDir.toPath(), oldDir.toPath())
-            try {
-                Files.move(tmpDir.toPath(), libDir.toPath(), StandardCopyOption.ATOMIC_MOVE)
-            } catch (_: AtomicMoveNotSupportedException) {
-                Files.move(tmpDir.toPath(), libDir.toPath())
-            }
-            if (oldDir.exists()) oldDir.deleteRecursively()
-            // Prefer lib-dir paths in both sidecars when materialize succeeded (JK-1368: the
-            // build-jar mirror serves -Djk.*.plugin.jar overrides and wants the same compact,
-            // GC-pinned paths as the store copy).
-            if (order.size > 1) {
-                val libCp =
-                        order.drop(1).map { libDir.resolve(it).absolutePath }
-                val libLines = mutableListOf("# jk worker classpath — lib/<id> (JK-1348)")
-                libLines.addAll(libCp)
-                val libText = libLines.joinToString("\n", postfix = "\n")
-                File(target.path + ".classpath").writeText(libText)
-                File(jar.path + ".classpath").writeText(libText)
-            }
-            println("Installed $artifact $ver ${jar.length()} bytes (+ ${order.size - 1} classpath jars)")
-            println("  sha256: $hex")
+        val target = mavenLocalDir(storeRoot, "cc.jumpkick", artifact, ver).resolve("$artifact-$ver.jar")
+        val pomTarget = mavenLocalDir(storeRoot, "cc.jumpkick", artifact, ver).resolve("$artifact-$ver.pom")
+        val hex = sha256Hex(jar)
+        deleteStaleSidecars(jar, target)
+        if (target.isFile &&
+                pomTarget.isFile &&
+                sha256Hex(target) == hex &&
+                sha256Hex(pomTarget) == sha256Hex(pomXml.toByteArray(Charsets.UTF_8))) {
+            println("Already installed $artifact $ver (sha256 match)")
             println("  path:   $target")
-            println("  lib:    $libDir")
-        } catch (e: Exception) {
-            println("Installed $artifact $ver ${jar.length()} bytes (+ ${cpLines.size - 1} classpath jars)")
-            println("  sha256: $hex")
-            println("  path:   $target")
-            println("  lib:    (skipped: ${e.message})")
+            return@doLast
         }
+        val staged = workerRepoDir.get().asFile
+        if (staged.isDirectory) {
+            staged.walkTopDown().filter { it.isFile }.forEach { src ->
+                copyReplacing(src, storeRoot.resolve(src.relativeTo(staged).path))
+            }
+        } else {
+            stageWorkerMavenRepo(storeRoot, jar, pomXml)
+        }
+        println("Installed $artifact $ver ${jar.length()} bytes")
+        println("  sha256: $hex")
+        println("  path:   $target")
     }
 }

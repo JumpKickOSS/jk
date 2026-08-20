@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
+import cc.jumpkick.cli.testing.Capture;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.function.IntSupplier;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -68,7 +65,7 @@ class CleanExplainWhyRebuiltTest {
         Files.createDirectories(src.getParent());
         Files.writeString(src, "package example; public class Hello {}");
 
-        String stdout = captureStdout(() -> run(
+        String stdout = Capture.stdout(() -> run(
                 "why-rebuilt",
                 "-C",
                 tempDir.toString(),
@@ -87,7 +84,7 @@ class CleanExplainWhyRebuiltTest {
         Files.createDirectories(src.getParent());
         Files.writeString(src, "package example; public class Hello {}");
 
-        String stdout = captureStdout(() -> run(
+        String stdout = Capture.stdout(() -> run(
                 "explain",
                 "-C",
                 tempDir.toString(),
@@ -113,7 +110,7 @@ class CleanExplainWhyRebuiltTest {
         Path cache = tempDir.resolve("cache");
         run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString());
 
-        String stdout = captureStdout(() -> run("explain", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
+        String stdout = Capture.stdout(() -> run("explain", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
         // After a real build the module is cached: the "Fully Cached" section (or a
         // "✓ cached <key>" step if a downstream step still rebuilds).
         assertThat(stdout).containsIgnoringCase("cached");
@@ -123,7 +120,7 @@ class CleanExplainWhyRebuiltTest {
     void explain_graph_dot_single_module(@TempDir Path tempDir) throws Exception {
         run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
         // --graph does not need a lock or engine
-        String stdout = captureStdout(() -> run("explain", "--graph", "dot", "-C", tempDir.toString()));
+        String stdout = Capture.stdout(() -> run("explain", "--graph", "dot", "-C", tempDir.toString()));
         assertThat(stdout).contains("digraph modules");
         assertThat(stdout).contains("widget");
         assertThat(stdout).doesNotContain("Build Plan");
@@ -156,7 +153,7 @@ class CleanExplainWhyRebuiltTest {
                 lib = { group = "com.example", name = "lib", version = "1.0.0" }
                 """);
 
-        String stdout = captureStdout(() -> run("explain", "--graph", "dot", "-C", tempDir.toString()));
+        String stdout = Capture.stdout(() -> run("explain", "--graph", "dot", "-C", tempDir.toString()));
         assertThat(stdout).contains("com.example:lib");
         assertThat(stdout).contains("com.example:app");
         assertThat(stdout).contains("->");
@@ -165,23 +162,5 @@ class CleanExplainWhyRebuiltTest {
         int exit = run("explain", "--graph", "dot", "--graph-out", out.toString(), "-C", tempDir.toString());
         assertThat(exit).isZero();
         assertThat(Files.readString(out)).contains("digraph modules");
-    }
-
-    // --- helpers -----------------------------------------------------------
-
-    private static int run(String... args) {
-        return Jk.execute(args);
-    }
-
-    private static String captureStdout(IntSupplier body) {
-        PrintStream original = System.out;
-        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(buffer));
-        try {
-            body.getAsInt();
-        } finally {
-            System.setOut(original);
-        }
-        return buffer.toString(StandardCharsets.UTF_8);
     }
 }

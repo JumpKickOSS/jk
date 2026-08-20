@@ -80,7 +80,7 @@ public final class EngineStopCommand implements CliCommand {
                     "Engine", "shutdown scheduled (" + jobs + " job" + (jobs == 1 ? "" : "s") + " will finish first)");
             return Exit.SUCCESS;
         }
-        return drainOnTty(paths, jobs, started);
+        return drainOnTty(paths, jobs, started, before.get().pid());
     }
 
     /**
@@ -171,7 +171,7 @@ public final class EngineStopCommand implements CliCommand {
     }
 
     /** Block on a TTY with the live drain region until the engine exits or Ctrl-X forces it. */
-    private int drainOnTty(EnginePaths.Paths paths, int jobs, long started) {
+    private int drainOnTty(EnginePaths.Paths paths, int jobs, long started, long pid) {
         DrainView view = DrainView.start(jobs, GlobalConfig.nerdFont());
         try {
             while (true) {
@@ -182,7 +182,13 @@ public final class EngineStopCommand implements CliCommand {
                 Optional<EngineClient.Status> s =
                         EngineClient.status(cc.jumpkick.engine.EnginePaths.activeSocket(paths));
                 if (s.isEmpty()) {
-                    // Confirm the engine really exited (avoid a transient accept/close false positive).
+                    // The draining engine has unbound its listener so a successor can bind. Status
+                    // going silent is not exit — wait for the process, not the socket.
+                    if (pid > 0
+                            && ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)) {
+                        sleep(200);
+                        continue;
+                    }
                     sleep(150);
                     if (EngineClient.status(cc.jumpkick.engine.EnginePaths.activeSocket(paths))
                                     .isEmpty()

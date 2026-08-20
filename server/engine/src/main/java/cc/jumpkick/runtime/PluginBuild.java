@@ -53,10 +53,9 @@ public final class PluginBuild {
             if (m.code() == null) continue;
             Optional<PluginConfig> config = project.pluginConfig(m.id());
             if (config.isPresent()) {
-                cc.jumpkick.model.PluginDeclaration declaration = PluginTableRegistry.isBuiltIn(m.id())
-                        ? null
-                        : PluginDescriptorOps.declarationOf(moduleDir, project, m.id())
-                                .orElse(null);
+                cc.jumpkick.model.PluginDeclaration declaration = PluginDescriptorOps.declarationOf(
+                                moduleDir, project, m.id())
+                        .orElse(null);
                 return Optional.of(new Active(m, config.get(), moduleDir, declaration));
             }
         }
@@ -471,7 +470,7 @@ public final class PluginBuild {
     private static Map<String, String> loadBomConstraints(cc.jumpkick.repo.RepoGroup repos, String bomGav)
             throws IOException, InterruptedException {
         // BOM coordinates are type=pom (default parse is jar).
-        String spec = bomGav.contains("@") ? bomGav : bomGav + "@pom";
+        String spec = bomGav.contains("!") ? bomGav : bomGav + "!pom";
         cc.jumpkick.model.Coordinate bom = cc.jumpkick.model.Coordinate.parse(spec);
         cc.jumpkick.repo.EffectivePom bomPom = new cc.jumpkick.repo.EffectivePomBuilder(repos).build(bom);
         Map<String, String> constraints = new LinkedHashMap<>();
@@ -706,37 +705,54 @@ public final class PluginBuild {
      * the engine refuses untrusted third-party code with the {@code jk trust plugin} remediation).
      */
     static Path workerJarFor(Active active, Path cache) throws IOException {
+        cc.jumpkick.model.PluginDeclaration declaration = active.declaration();
+        if (declaration != null) {
+            if (!"cc.jumpkick".equals(declaration.group())) {
+                String stateOverride = System.getProperty("jk.trust.state.dir");
+                Path stateDir = stateOverride != null ? Path.of(stateOverride) : cc.jumpkick.util.JkDirs.state();
+                cc.jumpkick.tool.TrustedPlugins trust;
+                try {
+                    trust = cc.jumpkick.tool.TrustedPlugins.load(stateDir);
+                } catch (IOException e) {
+                    trust = null;
+                }
+                if (trust == null || !trust.isTrusted(declaration.coordinate())) {
+                    throw new IOException("plugin " + declaration.coordinateWithVersion()
+                            + " is not trusted to run build code on this machine.\n"
+                            + "Trust it first: jk trust plugin " + declaration.coordinate());
+                }
+            }
+            return PluginDescriptorOps.jarFor(active.moduleDir(), declaration, cache)
+                    .orElseThrow(() -> new IOException("plugin " + declaration.coordinateWithVersion()
+                            + " is not in the local cache — run `jk sync` first"));
+        }
         if (PluginTableRegistry.isBuiltIn(active.manifest().id())) {
-            PluginJar workerJar = PluginJar.byArtifactId(
-                            active.manifest().code().worker())
+            String worker = active.manifest().code().worker();
+            Path locked = lockedFirstPartyJar(active.moduleDir(), worker, cache);
+            if (locked != null) return locked;
+            PluginJar workerJar = PluginJar.byArtifactId(worker)
                     .orElseThrow(() -> new IllegalStateException(
-                            "plugin " + active.manifest().id() + " names unregistered worker "
-                                    + active.manifest().code().worker()));
+                            "plugin " + active.manifest().id() + " names unregistered worker " + worker));
             return workerJar.locate(JkStores.cas(cache));
         }
-        cc.jumpkick.model.PluginDeclaration declaration = active.declaration();
-        if (declaration == null) {
-            throw new IOException("plugin " + active.manifest().id()
-                    + " has no matching [plugins] declaration — declare it (or run `jk sync`)");
-        }
-        // The trust file lives in the machine's state dir; the sysprop is the test seam,
-        // exactly like the jk.<worker>.jar properties the plugin registry uses.
-        String stateOverride = System.getProperty("jk.trust.state.dir");
-        Path stateDir = stateOverride != null ? Path.of(stateOverride) : cc.jumpkick.util.JkDirs.state();
-        cc.jumpkick.tool.TrustedPlugins trust;
+        throw new IOException("plugin " + active.manifest().id()
+                + " has no matching [plugins] declaration — declare it (or run `jk sync`)");
+    }
+
+    private static Path lockedFirstPartyJar(Path moduleDir, String workerArtifact, Path cache) {
         try {
-            trust = cc.jumpkick.tool.TrustedPlugins.load(stateDir);
-        } catch (IOException e) {
-            trust = null;
+            Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+            if (!Files.isRegularFile(lockFile)) return null;
+            String coord = "cc.jumpkick:" + workerArtifact;
+            for (var e : cc.jumpkick.lock.LockfileReader.read(lockFile).plugins()) {
+                if (!coord.equals(e.coordinate())) continue;
+                Path pinned = JkStores.cas(cache).pathFor(e.sha256Hex());
+                if (Files.isRegularFile(pinned)) return pinned;
+            }
+        } catch (Exception ignored) {
+            return null;
         }
-        if (trust == null || !trust.isTrusted(declaration.coordinate())) {
-            throw new IOException("plugin " + declaration.coordinateWithVersion()
-                    + " is not trusted to run build code on this machine.\n"
-                    + "Trust it first: jk trust plugin " + declaration.coordinate());
-        }
-        return PluginDescriptorOps.jarFor(active.moduleDir(), declaration, cache)
-                .orElseThrow(() -> new IOException("plugin " + declaration.coordinateWithVersion()
-                        + " is not in the local cache — run `jk sync` first"));
+        return null;
     }
 
     private static String blankToNull(String s) {

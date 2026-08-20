@@ -72,13 +72,19 @@ if ($leaf -eq "jk" -or $leaf -eq "jk.bat") {
 
 $dest = Join-Path $InstallDir $destName
 Write-Info "Installing JumpKick into $InstallDir"
+if (Test-Path -LiteralPath $dest) {
+    $parked = "$dest.old"
+    try { Move-Item -LiteralPath $dest -Destination $parked -Force } catch { Remove-Item -LiteralPath $dest -Force }
+}
 Copy-Item -LiteralPath $LocalPath -Destination $dest -Force
 
 # jkx — hardlink to jk (argv[0] dispatch; zero extra disk), same as install.sh.
 # Fallback: jkx.bat exec shim when the filesystem refuses hardlinks (non-NTFS, etc.).
 $ext = [IO.Path]::GetExtension($destName)
 $jkx = Join-Path $InstallDir ("jkx" + $ext)
-Remove-Item -LiteralPath $jkx -Force -ErrorAction SilentlyContinue
+if (Test-Path -LiteralPath $jkx) {
+    try { Move-Item -LiteralPath $jkx -Destination "$jkx.old" -Force } catch { Remove-Item -LiteralPath $jkx -Force }
+}
 $linked = $false
 try {
     New-Item -ItemType HardLink -Path $jkx -Target $dest -Force | Out-Null
@@ -126,7 +132,7 @@ if ($engineJar) {
     try {
         & $jkBin self materialize $jkBin $engineJar 2>$null
     } catch {
-        Write-Note "versions/ materialization skipped ($_); client re-fetches on demand"
+        Write-Note "engine materialization skipped ($_); client re-fetches on demand"
     }
 }
 
@@ -134,6 +140,12 @@ if (-not $SkipEngineWarm -and $engineJar) {
     Write-Info "Warming engine (best-effort)..."
     # Engine self-heals missing worker AOT + host calibration on idle (and every 12h).
     try { & $jkBin engine start 2>$null | Out-Null } catch { Write-Note "Engine warm-up skipped" }
+}
+
+foreach ($parked in @("$dest.old", "$jkx.old")) {
+    if (Test-Path -LiteralPath $parked) {
+        Remove-Item -LiteralPath $parked -Force -ErrorAction SilentlyContinue
+    }
 }
 
 Write-Info "Installed. Add to PATH if needed:"

@@ -60,6 +60,15 @@ public final class EngineProtocol {
     /** Server → client: acknowledges {@link #SHUTDOWN} just before closing the connection. */
     public static final String BYE = "bye";
 
+    /**
+     * Predecessor → successor while a displaced engine drains in-flight jobs. Additive; protocol
+     * stays 1. Fields: {@code pid}, {@code plans}, {@code version}.
+     */
+    public static final String DRAIN_STATUS = "drain-status";
+
+    /** Predecessor → successor: drain finished; the predecessor is exiting. */
+    public static final String DRAIN_DONE = "drain-done";
+
     /** Client → server: start a workspace build (see {@link #buildRequest}). */
     public static final String BUILD_REQUEST = "build-request";
 
@@ -301,12 +310,6 @@ public final class EngineProtocol {
 
     /** Server → client, terminal for {@link #NEW_PROJECT_REQUEST}. */
     public static final String NEW_PROJECT_ACK = "new-project-ack";
-
-    /** Client → server: {@code jk plugin install-local}. */
-    public static final String PLUGIN_INSTALL_LOCAL_REQUEST = "plugin-install-local-request";
-
-    /** Server → client, terminal for {@link #PLUGIN_INSTALL_LOCAL_REQUEST}. */
-    public static final String PLUGIN_INSTALL_LOCAL_ACK = "plugin-install-local-ack";
 
     /** Client → server: plugin-declared command; one {@link #PLUGIN_VERB_ACK}. */
     public static final String PLUGIN_VERB_REQUEST = "plugin-command-request";

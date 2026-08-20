@@ -90,6 +90,8 @@ class TestStampWorkerJarsParityTest {
         Files.createDirectories(cli);
         Map<String, String> env = BuildPlanner.nestedEngineTestEnv(cli);
         assertThat(env).containsKey("JK_HOME");
+        assertThat(env.get("JK_HTTP_ENABLED")).isEqualTo("false");
+        assertThat(env.get("JK_HTTP_PORT")).isEqualTo("0");
         assertThat(env).doesNotContainKey("JK_CACHE_DIR");
         assertThat(env).doesNotContainKey("JK_STORE_DIR");
         Path hostCache = cc.jumpkick.util.JkDirs.cache().toAbsolutePath().normalize();
@@ -171,7 +173,7 @@ class TestStampWorkerJarsParityTest {
         // write into the real checkout: a planted near-empty jar under
         // server/engine/build/libs is a production discovery path — a dogfooded build would
         // hand it to nested engine workers. The override also makes this
-        // deterministic on warm developer trees, where the process/VersionStore probes would
+        // deterministic on warm developer trees, where the process/EngineInstall probes would
         // otherwise satisfy the assertion even if monorepo fallback broke.
         String ver = cc.jumpkick.model.JkVersion.VERSION;
         Path seed = tmp.resolve("server/engine/build/libs/jk-engine-" + ver + ".jar");

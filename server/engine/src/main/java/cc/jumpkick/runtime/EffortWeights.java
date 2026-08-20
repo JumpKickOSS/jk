@@ -598,6 +598,8 @@ public final class EffortWeights {
                     "write-stamp-groovy",
                     "build-logic-after-compile",
                     "build-logic-before-package" -> TOKEN;
+            // Post-jk-clean gate: action keys hit, target/ wiped — live work is CAS restore.
+            case "restore-outputs" -> RESTORE;
             default -> 0;
         };
     }

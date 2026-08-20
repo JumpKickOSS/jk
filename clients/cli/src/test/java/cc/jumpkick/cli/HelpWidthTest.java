@@ -3,10 +3,8 @@ package cc.jumpkick.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.model.command.CliCommand;
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -66,20 +64,8 @@ class HelpWidthTest {
     @Test
     void top_level_help_screens_fit_78_columns() {
         List<String> violations = new ArrayList<>();
-        check("jk --help", capture(() -> assertThat(Jk.execute("--help")).isZero()), violations);
-        check("jk", capture(() -> assertThat(Jk.execute()).isZero()), violations);
+        check("jk --help", Capture.stdout(() -> assertThat(Jk.execute("--help")).isZero()), violations);
+        check("jk", Capture.stdout(() -> assertThat(Jk.execute()).isZero()), violations);
         assertThat(violations).isEmpty();
-    }
-
-    private static String capture(Runnable body) {
-        PrintStream original = System.out;
-        ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(buf, true, StandardCharsets.UTF_8));
-        try {
-            body.run();
-        } finally {
-            System.setOut(original);
-        }
-        return buf.toString(StandardCharsets.UTF_8);
     }
 }

@@ -18,6 +18,14 @@ public final class PluginDescriptors {
     private PluginDescriptors() {}
 
     public static PluginDescriptor parse(String toml, String displayPath) {
+        return parse(toml, displayPath, true);
+    }
+
+    /**
+     * @param enforceJkCompat when false, {@code jk-compat} is recorded but not checked against
+     *     this jk (lock writes the floor into {@code jk-min} instead).
+     */
+    public static PluginDescriptor parse(String toml, String displayPath, boolean enforceJkCompat) {
         TomlParseResult result = Toml.parse(toml);
         if (result.hasErrors()) {
             throw new JkBuildParseException(displayPath + " has invalid TOML: "
@@ -31,7 +39,7 @@ public final class PluginDescriptors {
         String table = requireString(plugin, "table", displayPath);
         String version = plugin.getString("version");
         String jkCompat = plugin.getString("jk-compat");
-        requireJkCompat(id, jkCompat);
+        if (enforceJkCompat) requireJkCompat(id, jkCompat);
 
         Map<String, PluginDescriptor.SchemaKey> schema =
                 parseSchemaKeys(result.getTable("schema"), displayPath + ".schema");
@@ -580,7 +588,23 @@ public final class PluginDescriptors {
         }
     }
 
-    private static int compareNumericCore(String a, String b) {
+    /** Numeric core of a {@code >=x.y} spec, or null when unset. */
+    public static String jkCompatFloor(String jkCompat) {
+        if (jkCompat == null || jkCompat.isBlank()) return null;
+        String spec = jkCompat.trim();
+        if (!spec.startsWith(">=")) return null;
+        String floor = spec.substring(2).trim();
+        return floor.isEmpty() ? null : floor;
+    }
+
+    /** Higher of two {@code x.y[.z]} floors; nulls sort as lowest. */
+    public static String maxFloor(String a, String b) {
+        if (a == null || a.isBlank()) return b;
+        if (b == null || b.isBlank()) return a;
+        return compareNumericCore(a, b) >= 0 ? a : b;
+    }
+
+    static int compareNumericCore(String a, String b) {
         String[] as = a.split("-", 2)[0].split("\\.");
         String[] bs = b.split("-", 2)[0].split("\\.");
         for (int i = 0; i < Math.max(as.length, bs.length); i++) {

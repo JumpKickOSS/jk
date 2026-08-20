@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.compat;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
@@ -101,12 +102,11 @@ class JkBuildRendererTest {
 
     @Test
     void application_presence_alone_drives_is_application() {
-        // [application] declared (even without main) → isApplication() true.
         JkBuild withApplication = JkBuild.builder(JkBuild.Project.builder("com.example", "app", "1.0.0")
                         .jdkMajor(25)
                         .java(25)
                         .build())
-                .application(new JkBuild.Application(null, false))
+                .application(new JkBuild.Application("com.example.App", false))
                 .build();
         assertThat(JkBuildRenderer.render(withApplication)).contains("[application]");
         assertThat(JkBuildParser.parse(JkBuildRenderer.render(withApplication)).isApplication())

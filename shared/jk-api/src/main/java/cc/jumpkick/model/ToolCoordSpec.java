@@ -4,9 +4,9 @@ package cc.jumpkick.model;
 import java.util.Objects;
 
 /**
- * Tool coordinate for {@code jk tool run|install}: {@code g:a:v[:classifier][@type]} →
- * {@link Pinned}; {@code g:a@selector} or bare {@code g:a} → {@link Floating}. One colon before
- * {@code @} means floating selector; two+ means packaging type on a full GAV.
+ * Tool coordinate for {@code jk tool run|install}: {@code g:a:v[:classifier][!type]} →
+ * {@link Pinned}; {@code g:a@selector} or bare {@code g:a} → {@link Floating}. {@code @} is always
+ * a version selector; {@code !} is packaging type on a full GAV ({@link Coordinate#parse}).
  */
 public sealed interface ToolCoordSpec {
 
@@ -16,7 +16,7 @@ public sealed interface ToolCoordSpec {
     /** {@code group:artifact} module identifier. */
     String module();
 
-    /** An exact {@code g:a:v[:classifier][@type]} — resolve and fetch as-is. */
+    /** An exact {@code g:a:v[:classifier][!type]} — resolve and fetch as-is. */
     record Pinned(Coordinate coordinate, String raw) implements ToolCoordSpec {
         @Override
         public String module() {
@@ -35,8 +35,11 @@ public sealed interface ToolCoordSpec {
     static ToolCoordSpec parse(String spec) {
         Objects.requireNonNull(spec, "spec");
         String trimmed = spec.trim();
-        int at = trimmed.indexOf('@');
-        String body = at >= 0 ? trimmed.substring(0, at) : trimmed;
+        // Strip packaging type before counting colons so g:a:v!pom stays pinned.
+        int bang = trimmed.indexOf('!');
+        String withoutType = bang >= 0 ? trimmed.substring(0, bang) : trimmed;
+        int at = withoutType.indexOf('@');
+        String body = at >= 0 ? withoutType.substring(0, at) : withoutType;
         long colons = body.chars().filter(c -> c == ':').count();
         if (colons == 1) {
             int colon = body.indexOf(':');
@@ -45,8 +48,12 @@ public sealed interface ToolCoordSpec {
             if (group.isBlank() || artifact.isBlank()) {
                 throw new IllegalArgumentException("tool coordinate must be group:artifact[…], got: " + spec);
             }
+            if (bang >= 0) {
+                throw new IllegalArgumentException(
+                        "packaging type ('!') requires a full g:a:v coordinate, got: " + spec);
+            }
             VersionSelector selector = at >= 0
-                    ? VersionSelector.parseFloating(trimmed.substring(at + 1))
+                    ? VersionSelector.parseFloating(withoutType.substring(at + 1))
                     : VersionSelector.parse("latest");
             return new Floating(group, artifact, selector, spec);
         }

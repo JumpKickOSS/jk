@@ -6,8 +6,8 @@ the single source of truth; `JkAliasTest` keeps aliases out of the help screen.
 
 ## Verb rewrites (first argument only)
 
-Rewritten before dispatch (`Jk.VERB_ALIASES`); they never join unique-prefix matching, so `jk pl`
-still means `jk plugin` and `jk wh` means `jk why`.
+Rewritten before dispatch (`Jk.VERB_ALIASES`); they never join unique-prefix matching. That keeps
+`jk wh` uniquely `jk why` (not `why-rebuilt`) and keeps `jk pl` from becoming a prefix of `plan`.
 
 | Alias           | Canonical | Origin                                   |
 | --------------- | --------- | ---------------------------------------- |

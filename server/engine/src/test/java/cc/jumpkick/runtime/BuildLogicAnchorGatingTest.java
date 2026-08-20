@@ -53,9 +53,11 @@ class BuildLogicAnchorGatingTest {
         assertThat(compileTest.requires()).contains(TaskNames.BUILD_LOGIC_AFTER_COMPILE);
         assertThat(after.requires()).isNotEmpty(); // mainCompile at minimum
 
-        // BEFORE_PACKAGE is not level-0: needs resources + tests.
+        // BEFORE_PACKAGE is not level-0: needs resources — and since JK-2211 never tests, so
+        // artifact creation overlaps the suite. Tests stay scheduled via the terminal join.
         assertThat(before.requires())
-                .contains(TaskNames.COPY_RESOURCES, TaskNames.RUN_TESTS)
+                .contains(TaskNames.COPY_RESOURCES)
+                .doesNotContain(TaskNames.RUN_TESTS)
                 .doesNotContain(TaskNames.PARSE_BUILD);
 
         // package-jar waits on BEFORE_PACKAGE (not only resources).
@@ -113,7 +115,11 @@ class BuildLogicAnchorGatingTest {
                 false,
                 Set.of(),
                 cc.jumpkick.config.SessionContext.current());
-        return BuildPlanner.coreBuilder(in).build();
+        // Core + tails, same as jk build: since JK-2211 run-tests is a terminal LEAF joined by
+        // the tails (never a package prerequisite), so a core-only build would prune it.
+        cc.jumpkick.run.BuildPlan.Builder b = BuildPlanner.coreBuilder(in);
+        BuildPlanner.appendDeclaredTails(b, in);
+        return b.build();
     }
 
     private static void FilesCreateCache(Path cache) {

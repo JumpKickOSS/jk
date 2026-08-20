@@ -1,12 +1,14 @@
 name = "jk-protobuf"
 description = "JumpKick's Protobuf plugin"
 
-[application]
-main = "cc.jumpkick.plugin.process.PluginMain"
-
 [dependencies]
 jk-plugin-sdk.workspace = true
 
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"
+
+[build]
+extra-resources = [
+  { from = "jk-plugin.toml", into = "" },
+]

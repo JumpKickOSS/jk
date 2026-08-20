@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
 import cc.jumpkick.layout.NativePreflight;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -54,9 +54,5 @@ class NativeCommandTest {
                         NativePreflight.NATIVE_IMAGE_MISSING,
                         NativePreflight.NO_MAIN,
                         NativePreflight.MANY_MAINS);
-    }
-
-    private static int run(String... args) {
-        return Jk.execute(args);
     }
 }

@@ -7,11 +7,10 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * Fetches the matching engine fat jar into {@code ~/.local/share/jk/versions/<v>/} when spawn finds none
+ * Fetches the matching engine fat jar into {@code $JK_HOME/lib/jk-engine.jar} when spawn finds none
  * (built into {@link EngineClient}, no separate fetch command). Verifies {@code SHA256SUMS} and
  * materializes atomically so a torn download is never launchable.
  */
@@ -42,26 +41,18 @@ final class EngineJarFetcher {
                 releasesBase,
                 version,
                 cc.jumpkick.cache.JkStores.cas(cc.jumpkick.util.JkDirs.cache()),
-                cc.jumpkick.cache.VersionStore.current(),
-                cc.jumpkick.task.CachePruneScheduler.resolveJkExe()
-                        .map(Path::of)
-                        .orElse(null));
+                cc.jumpkick.cache.EngineInstall.current());
     }
 
-    /** Root-injected variant — the testable seam; production uses the live {@code JK_HOME} / platform product layout roots. */
+    /** Root-injected variant — the testable seam. */
     static Path fetch(
-            URI releasesBase,
-            String version,
-            cc.jumpkick.cache.Cas cas,
-            cc.jumpkick.cache.VersionStore store,
-            Path clientBin)
+            URI releasesBase, String version, cc.jumpkick.cache.Cas cas, cc.jumpkick.cache.EngineInstall install)
             throws IOException {
         return fetch(
                 releasesBase,
                 version,
                 cas,
-                store,
-                clientBin,
+                install,
                 cc.jumpkick.repo.ReleaseVerifier.current(cc.jumpkick.config.GlobalConfig.releaseTrustedKeys()));
     }
 
@@ -73,8 +64,7 @@ final class EngineJarFetcher {
             URI releasesBase,
             String version,
             cc.jumpkick.cache.Cas cas,
-            cc.jumpkick.cache.VersionStore store,
-            Path clientBin,
+            cc.jumpkick.cache.EngineInstall install,
             cc.jumpkick.repo.ReleaseVerifier verifier)
             throws IOException {
         String jarName = "jk-engine-" + version + ".jar";
@@ -98,15 +88,8 @@ final class EngineJarFetcher {
                     + " (a mirror or proxy may have served a stale/corrupt file)");
         }
 
-        // Verified bytes flow CAS-first into the side-by-side version layout. The running client
-        // is this version's client — hand its own binary over for complete materialization.
-        cas.put(jar, actualSha); // already hashed for verification — no second pass
-        String clientSha = null;
-        if (clientBin != null && Files.isRegularFile(clientBin)) {
-            clientSha = Hashing.sha256Hex(clientBin);
-            cas.putFile(clientBin, clientSha);
-        }
-        return store.materialize(version, cas, actualSha, clientSha).engineJar();
+        cas.put(jar, actualSha);
+        return install.materialize(version, cas, actualSha).engineJar();
     }
 
     private static byte[] get(Http http, URI uri, String what) throws IOException {

@@ -4,8 +4,10 @@ package cc.jumpkick.model;
 import java.util.Objects;
 
 /**
- * Maven coordinate: {@code groupId:artifactId:version[:classifier@type]}. Type defaults to {@code
- * jar}; classifier defaults to absent.
+ * Maven coordinate: {@code groupId:artifactId:version[:classifier][!type]}. Type defaults to
+ * {@code jar}; classifier defaults to absent. {@code !} marks packaging type; {@code @} is reserved
+ * for JumpKick version selectors ({@code g:a@1.2} / {@code g:a@~1.2}); {@code ~} stays a version-range
+ * prefix.
  */
 public record Coordinate(String group, String artifact, String version, String classifier, String type) {
 
@@ -33,20 +35,29 @@ public record Coordinate(String group, String artifact, String version, String c
         return of(module.substring(0, colon), module.substring(colon + 1), version);
     }
 
-    /** Parse a coordinate spec of the form {@code group:artifact:version[:classifier][@type]}. */
+    /** Parse a coordinate spec of the form {@code group:artifact:version[:classifier][!type]}. */
     public static Coordinate parse(String spec) {
         Objects.requireNonNull(spec, "spec");
-        String type = "jar";
         int at = spec.indexOf('@');
-        String body = spec;
         if (at >= 0) {
-            type = spec.substring(at + 1);
-            body = spec.substring(0, at);
+            throw new IllegalArgumentException(
+                    "packaging type uses '!' (e.g. g:a:1.0!pom); '@' is for version selectors (g:a@latest), got: "
+                            + spec);
+        }
+        String type = "jar";
+        String body = spec;
+        int bang = spec.indexOf('!');
+        if (bang >= 0) {
+            type = spec.substring(bang + 1);
+            body = spec.substring(0, bang);
+            if (type.isBlank()) {
+                throw new IllegalArgumentException("packaging type after '!' is blank: " + spec);
+            }
         }
         String[] parts = body.split(":", -1);
         if (parts.length < 3 || parts.length > 4) {
             throw new IllegalArgumentException(
-                    "coordinate must be group:artifact:version[:classifier][@type], got: " + spec);
+                    "coordinate must be group:artifact:version[:classifier][!type], got: " + spec);
         }
         String classifier = parts.length == 4 ? parts[3] : null;
         return new Coordinate(parts[0], parts[1], parts[2], classifier, type);
@@ -66,7 +77,7 @@ public record Coordinate(String group, String artifact, String version, String c
     public String toString() {
         StringBuilder sb = new StringBuilder(toGav());
         if (classifier != null) sb.append(':').append(classifier);
-        if (!"jar".equals(type)) sb.append('@').append(type);
+        if (!"jar".equals(type)) sb.append('!').append(type);
         return sb.toString();
     }
 }

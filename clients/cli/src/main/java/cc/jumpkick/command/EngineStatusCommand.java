@@ -144,16 +144,17 @@ public final class EngineStatusCommand implements CliCommand {
                         .append(formatUptime(up))
                         .append("  jobs ")
                         .append(m.status().activeBuildPlans());
+                if (m.status().draining()) line.append("  draining");
             } else {
-                // Alive but not answering. Worth saying plainly: it still holds memory and its port, and it
-                // is the case a user is most likely to need to stop.
+                // Alive but not answering: yielded listeners, rebound socket, or wedged. Still
+                // holds memory; stop --pid is how it goes away.
                 line.append("  unresponsive (alive, not answering)");
             }
             if (m.current()) line.append("   (this directory)");
             CliOutput.out(line.toString());
         }
         CliOutput.out("");
-        CliOutput.out(" Stop one with `jk engine stop --pid <pid>`, or all with `jk engine stop --all`.");
+        CliOutput.out(" Stop this home with `jk engine stop --all`, or one engine with `jk engine stop --pid <pid>`.");
     }
 
     private static String enginesJson(java.util.List<cc.jumpkick.cli.engine.EngineFleet.Member> fleet) {
@@ -174,6 +175,8 @@ public final class EngineStatusCommand implements CliCommand {
                         .append(m.status().startedAtMillis())
                         .append(",\"activeBuildPlans\":")
                         .append(m.status().activeBuildPlans())
+                        .append(",\"draining\":")
+                        .append(m.status().draining())
                         .append(",\"version\":")
                         .append(Jsonl.quote(m.status().version()));
             }

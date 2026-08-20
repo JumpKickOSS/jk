@@ -1,51 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
-import com.sun.net.httpserver.HttpServer;
+import cc.jumpkick.cli.testing.MockMavenServer;
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.Map;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 @Tag("integration")
 class TestCommandTest {
 
-    private HttpServer server;
-    private URI base;
-    private final Map<String, byte[]> served = new HashMap<>();
-
-    @BeforeEach
-    void start() throws IOException {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            byte[] body = served.get(exchange.getRequestURI().getPath());
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        server.start();
-        base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-    }
-
-    @AfterEach
-    void stop() {
-        server.stop(0);
-    }
+    @RegisterExtension
+    final MockMavenServer maven = new MockMavenServer();
 
     @Test
     void test_with_no_test_sources_passes(@TempDir Path tempDir) throws Exception {
@@ -71,9 +43,5 @@ class TestCommandTest {
                 dir.resolve("jk.toml"),
                 "group = \"com.example\"\nname = \"x\"\nversion = \"0.1.0\"\njdk = \"25\"\njava = 25\n");
         ScaffoldTestSupport.writeEmptyLock(dir); // jk test needs a lock; nothing to resolve
-    }
-
-    private static int run(String... args) {
-        return Jk.execute(args);
     }
 }

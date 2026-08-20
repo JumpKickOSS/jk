@@ -299,7 +299,7 @@ public final class PlannerSetup {
                     var observer = new CacheSync.ProgressObserver() {
                         @Override
                         public void fetched(Lockfile.Artifact pkg) {
-                            ctx.label("fetched " + pkg.name());
+                            ctx.label("fetched " + pkg.displayCoord());
                             ctx.progress(1);
                         }
 
@@ -315,7 +315,7 @@ public final class PlannerSetup {
 
                         @Override
                         public void failed(Lockfile.Artifact pkg, String err) {
-                            ctx.error("dep", pkg.name() + " — " + err);
+                            ctx.error("dep", pkg.displayCoord() + " — " + err);
                             ctx.progress(1);
                         }
                     };

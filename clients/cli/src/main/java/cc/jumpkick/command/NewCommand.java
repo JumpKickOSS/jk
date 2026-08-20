@@ -82,7 +82,7 @@ public final class NewCommand implements CliCommand {
                 Opt.value("<url>", "Extra git template source (repeatable)", "--template-source")
                         .repeat(),
                 Opt.value("<deps>", "Curated deps, comma-separated.", "--deps"),
-                Opt.value("<layout>", "Layout: simple | traditional.", "--layout"),
+                Opt.value("<layout>", "Source tree: traditional (default) | simple.", "--layout"),
                 Opt.value("<module>", "Kotlin module name (-> project.module).", "--kotlin-module"),
                 Opt.flag("Force a standalone project (not a module).", "--no-module"),
                 Opt.flag("", "--no-member").hide()); // undocumented synonym for --no-module
@@ -725,22 +725,12 @@ public final class NewCommand implements CliCommand {
                                 : (parent != null && parent.groovy())
                                         ? NewInputs.Language.GROOVY
                                         : NewInputs.Language.JAVA;
-        var isExecutable = Boolean.TRUE.equals(executable)
-                || assembly
-                || nativeImage
-                || spring
-                || grails
-                || quarkus
-                || micronaut
-                || plugin;
-        // A plugin project is a fat jar whose "main" is the SDK's PluginMain; it uses the Maven
-        // layout so its jk-plugin.toml resource lands at the jar root (src/main/resources). Boot /
-        // Quarkus / Grails users also expect the Maven layout. An explicit --layout still wins.
-        var resolvedLayout = (layoutFlag != null && !layoutFlag.isBlank())
-                ? layoutFlag.toLowerCase()
-                : (spring || grails || quarkus || micronaut || plugin) ? "traditional" : "simple";
+        var isExecutable =
+                Boolean.TRUE.equals(executable) || assembly || nativeImage || spring || grails || quarkus || micronaut;
+        // Traditional (Maven) is the product default. --layout simple opts into the Mill-like tree.
+        var resolvedLayout = (layoutFlag != null && !layoutFlag.isBlank()) ? layoutFlag.toLowerCase() : "traditional";
         var resolvedMain = plugin
-                ? Optional.of("cc.jumpkick.plugin.process.PluginMain")
+                ? Optional.<String>empty()
                 : (spring || grails || quarkus || micronaut)
                         // Kotlin's top-level main lives on the ApplicationKt facade class.
                         // Quarkus scaffold uses an object Application with @JvmStatic main → Application.
@@ -1005,9 +995,13 @@ public final class NewCommand implements CliCommand {
         return NewWizard.buildWizard(candidates, catalog, groupGuess, parent, hasDefaultJdk, isInit);
     }
 
-    /** Catalog short names as multi-select choices (bundled offline; type-to-filter in the wizard). */
+    /** Curated defaults + host declared-dep frequency for the New wizard library picker. */
     static List<cc.jumpkick.cli.tui.Choice> libraryPickerChoices() {
         return NewWizard.libraryPickerChoices();
+    }
+
+    static List<cc.jumpkick.cli.tui.Choice> libraryPickerChoices(String lang) {
+        return NewWizard.libraryPickerChoices(lang);
     }
 
     /**
@@ -1089,9 +1083,9 @@ public final class NewCommand implements CliCommand {
         boolean resolvedAssembly = isExecutable && targets.contains("assembly");
         boolean resolvedNative = isExecutable && targets.contains("native");
 
-        // Layout comes from its own dedicated step; default to "simple" if not answered.
+        // Layout comes from its own dedicated step; traditional if the step was skipped.
         String resolvedLayout =
-                answers.has("layout") && !answers.get("layout").isBlank() ? answers.get("layout") : "simple";
+                answers.has("layout") && !answers.get("layout").isBlank() ? answers.get("layout") : "traditional";
         Optional<String> resolvedKotlinModule = Optional.empty();
         var deps = new ArrayList<String>(answers.getList("libraries"));
         if (resolvedLang == NewInputs.Language.KOTLIN) {

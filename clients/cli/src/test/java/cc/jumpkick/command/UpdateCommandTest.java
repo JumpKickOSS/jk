@@ -1,25 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
+import static cc.jumpkick.cli.testing.MockMavenServer.pom;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
-import com.sun.net.httpserver.HttpServer;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 @Tag("integration")
@@ -34,40 +31,25 @@ class UpdateCommandTest {
         System.setProperty("jk.m2.local", m2.toString());
     }
 
-    private HttpServer server;
-    private URI base;
-    private final Map<String, byte[]> served = new HashMap<>();
+    @RegisterExtension
+    final MockMavenServer maven = new MockMavenServer();
 
     @BeforeEach
-    void start() throws IOException {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            byte[] body = served.get(exchange.getRequestURI().getPath());
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        server.start();
-        base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-        DefaultTestDepsFixture.seed(served);
+    void seedRepo() {
+        DefaultTestDepsFixture.seed(maven.served());
     }
 
     @AfterEach
-    void stop() {
-        server.stop(0);
+    void reset() {
         cc.jumpkick.config.SessionContext.reset();
         LockfileReader.clearCache();
     }
 
     @Test
     void update_offline_resolves_from_journal(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo.update", "leaf", "1.0");
-        registerPom("com.foo.update", "leaf", "1.0", pom("com.foo.update", "leaf", "1.0", ""));
-        registerJar("com.foo.update", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
+        maven.registerMetadata("com.foo.update", "leaf", "1.0");
+        maven.registerPom("com.foo.update", "leaf", "1.0", pom("com.foo.update", "leaf", "1.0", ""));
+        maven.registerJar("com.foo.update", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
         Path cache = tempDir.resolve("cache");
 
         // Warm cache + journal online.
@@ -78,14 +60,14 @@ class UpdateCommandTest {
                         "-C",
                         tempDir.toString(),
                         "--repo-url",
-                        base.toString(),
+                        maven.base().toString(),
                         "--cache-dir",
                         cache.toString()))
                 .isEqualTo(0);
         Files.delete(tempDir.resolve("jk-lock.toml"));
 
         // Offline re-solve must come entirely from the journal.
-        server.stop(0);
+        maven.stop();
         int exit = run("update", "--offline", "-C", tempDir.toString(), "--cache-dir", cache.toString());
         assertThat(exit).isEqualTo(0);
 
@@ -95,9 +77,9 @@ class UpdateCommandTest {
 
     @Test
     void update_rewrites_lockfile_after_dep_added(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo.update", "leaf", "1.0");
-        registerPom("com.foo.update", "leaf", "1.0", pom("com.foo.update", "leaf", "1.0", ""));
-        registerJar("com.foo.update", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
+        maven.registerMetadata("com.foo.update", "leaf", "1.0");
+        maven.registerPom("com.foo.update", "leaf", "1.0", pom("com.foo.update", "leaf", "1.0", ""));
+        maven.registerJar("com.foo.update", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
 
         // Initial state: no deps.
         run("new", tempDir.toString());
@@ -106,7 +88,7 @@ class UpdateCommandTest {
                 "-C",
                 tempDir.toString(),
                 "--repo-url",
-                base.toString(),
+                maven.base().toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString());
         Lockfile initial = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
@@ -119,7 +101,7 @@ class UpdateCommandTest {
                 "-C",
                 tempDir.toString(),
                 "--repo-url",
-                base.toString(),
+                maven.base().toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString());
         assertThat(exit).isEqualTo(0);
@@ -135,7 +117,7 @@ class UpdateCommandTest {
                 "-C",
                 tempDir.toString(),
                 "--repo-url",
-                base.toString(),
+                maven.base().toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString());
         assertThat(exit).isEqualTo(2);
@@ -143,9 +125,9 @@ class UpdateCommandTest {
 
     @Test
     void update_from_module_dir_locks_module_only(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo.update", "leaf", "1.0");
-        registerPom("com.foo.update", "leaf", "1.0", pom("com.foo.update", "leaf", "1.0", ""));
-        registerJar("com.foo.update", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
+        maven.registerMetadata("com.foo.update", "leaf", "1.0");
+        maven.registerPom("com.foo.update", "leaf", "1.0", pom("com.foo.update", "leaf", "1.0", ""));
+        maven.registerJar("com.foo.update", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
 
         Files.writeString(tempDir.resolve("jk.toml"), """
                 group = "com.acme"
@@ -178,7 +160,7 @@ class UpdateCommandTest {
                 "-C",
                 app.toString(),
                 "--repo-url",
-                base.toString(),
+                maven.base().toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString());
         assertThat(exit).isEqualTo(0);
@@ -187,65 +169,5 @@ class UpdateCommandTest {
         assertThat(Files.exists(app.resolve("jk-lock.toml"))).isFalse();
         Lockfile lock = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
         assertThat(DefaultTestDepsFixture.projectCoords(lock)).containsExactly("com.foo.update:leaf");
-    }
-
-    // --- helpers -----------------------------------------------------------
-
-    private static int run(String... args) {
-        return Jk.execute(args);
-    }
-
-    private void registerPom(String group, String artifact, String version, String body) {
-        String path = "/"
-                + group.replace('.', '/')
-                + "/"
-                + artifact
-                + "/"
-                + version
-                + "/"
-                + artifact
-                + "-"
-                + version
-                + ".pom";
-        served.put(path, body.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private void registerJar(String group, String artifact, String version, byte[] bytes) {
-        String path = "/"
-                + group.replace('.', '/')
-                + "/"
-                + artifact
-                + "/"
-                + version
-                + "/"
-                + artifact
-                + "-"
-                + version
-                + ".jar";
-        served.put(path, bytes);
-    }
-
-    private void registerMetadata(String group, String artifact, String... versions) {
-        StringBuilder xml = new StringBuilder("<metadata><groupId>")
-                .append(group)
-                .append("</groupId><artifactId>")
-                .append(artifact)
-                .append("</artifactId><versioning><versions>");
-        for (String v : versions) xml.append("<version>").append(v).append("</version>");
-        xml.append("</versions></versioning></metadata>");
-        served.put(
-                "/" + group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml",
-                xml.toString().getBytes(StandardCharsets.UTF_8));
-    }
-
-    private static String pom(String group, String artifact, String version, String depBlock) {
-        return """
-                <project>
-                  <groupId>%s</groupId>
-                  <artifactId>%s</artifactId>
-                  <version>%s</version>
-                  <dependencies>%s</dependencies>
-                </project>
-                """.formatted(group, artifact, version, depBlock);
     }
 }

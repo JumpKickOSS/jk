@@ -12,6 +12,7 @@ import cc.jumpkick.util.AotSettings;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -35,6 +36,14 @@ public final class HostWarmup {
     }
 
     static boolean enabled(Path userConfig, Function<String, String> env) {
+        // Baseline: the process-wide AOT switches, including the permanent lame-duck
+        // suppression a displaced engine sets. Tests inject their own baseline — the
+        // suppression is JVM-global and another suite's EngineServer shutdown must not
+        // flip this config/env decision order-dependently.
+        return enabled(userConfig, env, () -> AotSettings.workerAotEnabled() && AotSettings.trainingEnabled());
+    }
+
+    static boolean enabled(Path userConfig, Function<String, String> env, BooleanSupplier aot) {
         String e = env != null ? env.apply("JK_AUTO_WARMUP") : null;
         if (e != null && !e.isBlank()) {
             String t = e.trim();
@@ -49,7 +58,7 @@ public final class HostWarmup {
         } catch (RuntimeException ignored) {
         }
         // Kill-switch also covers worker train (mapping of existing caches still OK elsewhere).
-        return AotSettings.workerAotEnabled() && AotSettings.trainingEnabled();
+        return aot.getAsBoolean();
     }
 
     /**
@@ -80,7 +89,7 @@ public final class HostWarmup {
     private static Path cachePath(String tool, Path host, PluginJar jar) {
         try {
             Path workerJar = jar.locate();
-            String cp = cc.jumpkick.compile.WorkerClasspath.resolve(workerJar);
+            String cp = cc.jumpkick.engine.plugin.WorkerLaunchClasspath.resolve(workerJar);
             return PluginAot.cachePath(tool, host, cp);
         } catch (Exception e) {
             return null;

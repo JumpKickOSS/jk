@@ -213,12 +213,15 @@ public final class PlannerResources {
                 .build();
     }
 
-    /** BEFORE_PACKAGE waits on resources (and tests when they run) so packaging sees a complete tree. */
+    /**
+     * BEFORE_PACKAGE waits on resources only — never on tests (JK-2211). Packaging needs a
+     * complete classes tree, which tests do not contribute to; gating on run-tests serialized
+     * artifact creation behind the module's whole suite and, at workspace scope, put every
+     * dependent behind it too. A failing suite still fails the build; the artifact is just
+     * built concurrently.
+     */
     static String[] beforePackageRequires(BuildPlanner.Inputs in) {
-        List<String> requires = new ArrayList<>();
-        requires.add(TaskNames.COPY_RESOURCES);
-        if (!in.skipTests()) requires.add(TaskNames.RUN_TESTS);
-        return requires.toArray(new String[0]);
+        return new String[] {TaskNames.COPY_RESOURCES};
     }
 
     /**

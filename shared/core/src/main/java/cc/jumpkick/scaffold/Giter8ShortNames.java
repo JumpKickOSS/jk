@@ -18,13 +18,13 @@ import java.util.Optional;
  *
  * <ul>
  *   <li>{@code jk_languages} — comma-separated {@code java} / {@code kotlin} / {@code groovy}
- *   <li>{@code jk_layout} — {@code simple} | {@code traditional} | {@code custom}
+ *   <li>{@code jk_layout} — {@code traditional} | {@code simple} | {@code custom}
  * </ul>
  *
  * The catalog below is a fast index for first-party short names (description + defaults). {@link
  * Giter8TemplateIndex} merges catalog rows with on-disk props when building the picker list.
  *
- * <p><b>Layout vs template:</b> simple/traditional is a <em>blank scaffolder</em> choice only. A
+ * <p><b>Layout vs template:</b> traditional/simple is a <em>blank scaffolder</em> choice only. A
  * Giter8 apply copies a fixed tree (our apply has no conditionals), so the user's layout selection
  * does not reshape a template. Framework templates may use {@code custom} (e.g. Grails).
  */
@@ -115,13 +115,13 @@ public final class Giter8ShortNames {
     }
 
     public static String normalizeLayout(String layout) {
-        if (layout == null || layout.isBlank()) return LAYOUT_SIMPLE;
+        if (layout == null || layout.isBlank()) return LAYOUT_TRADITIONAL;
         String l = layout.strip().toLowerCase(Locale.ROOT);
         return switch (l) {
             case LAYOUT_TRADITIONAL, "maven", "maven-like" -> LAYOUT_TRADITIONAL;
             case LAYOUT_CUSTOM, "framework", "grails" -> LAYOUT_CUSTOM;
             case LAYOUT_SIMPLE, "mill", "mill-like" -> LAYOUT_SIMPLE;
-            default -> LAYOUT_SIMPLE;
+            default -> LAYOUT_TRADITIONAL;
         };
     }
 

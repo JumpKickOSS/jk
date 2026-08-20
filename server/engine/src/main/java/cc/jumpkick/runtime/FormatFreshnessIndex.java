@@ -185,13 +185,20 @@ public final class FormatFreshnessIndex {
 
     /**
      * Worker identity is path:size:mtime of the thin jar <em>and</em> a content hash of its
-     * {@code .classpath} sidecar. OpenRewrite/Spotless live on the sidecar; fingerprinting only
-     * the thin jar left freshness green across formatter dependency upgrades. The sidecar is
+     * sibling Maven POM. OpenRewrite/Spotless live on the POM runtime closure; fingerprinting
+     * only the thin jar left freshness green across formatter dependency upgrades. The POM is
      * hashed (not size:mtime) so same-length, same-millisecond rewrites still invalidate.
      */
     private static String identity(Path workerJar) {
         if (workerJar == null || !Files.isRegularFile(workerJar)) return "none";
-        return fileIdentity(workerJar) + "|" + classpathIdentity(Path.of(workerJar.toString() + ".classpath"));
+        return fileIdentity(workerJar) + "|" + contentIdentity(siblingPom(workerJar));
+    }
+
+    private static Path siblingPom(Path workerJar) {
+        String name =
+                workerJar.getFileName() == null ? "" : workerJar.getFileName().toString();
+        if (!name.endsWith(".jar")) return workerJar.resolveSibling(name + ".pom");
+        return workerJar.resolveSibling(name.substring(0, name.length() - 4) + ".pom");
     }
 
     private static String fileIdentity(Path path) {
@@ -208,7 +215,7 @@ public final class FormatFreshnessIndex {
         }
     }
 
-    private static String classpathIdentity(Path path) {
+    private static String contentIdentity(Path path) {
         if (path == null || !Files.isRegularFile(path)) return "none";
         try {
             return path.toAbsolutePath().normalize() + ":" + Hashing.sha256Hex(path);

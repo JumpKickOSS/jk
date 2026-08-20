@@ -1,9 +1,6 @@
 name = "jk-android"
 description = "JumpKick's Android packaging plugin"
 
-[application]
-main = "cc.jumpkick.plugin.process.PluginMain"
-
 [dependencies]
 jk-plugin-sdk.workspace = true
 apksig = "latest"
@@ -12,3 +9,8 @@ asm = "latest"
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"
+
+[build]
+extra-resources = [
+  { from = "jk-plugin.toml", into = "" },
+]

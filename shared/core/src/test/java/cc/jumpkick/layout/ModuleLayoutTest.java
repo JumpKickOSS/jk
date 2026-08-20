@@ -13,7 +13,7 @@ class ModuleLayoutTest {
 
     @Test
     void simple_main_resources_is_top_level_resources(@TempDir Path tmp) throws Exception {
-        writeToml(tmp, "simple");
+        writeToml(tmp);
         Files.createDirectories(tmp.resolve("resources"));
         assertThat(ModuleLayout.mainResourcesDir(tmp, true)).isEqualTo(tmp.resolve("resources"));
         assertThat(ModuleLayout.roots(tmp).stream().map(ModuleLayout.Root::relative))
@@ -22,7 +22,7 @@ class ModuleLayoutTest {
 
     @Test
     void fingerprint_dirs_include_compact_named_suite(@TempDir Path tmp) throws Exception {
-        writeToml(tmp, "simple");
+        writeToml(tmp);
         Files.createDirectories(tmp.resolve("src"));
         Files.writeString(tmp.resolve("src/Main.java"), "class Main {}");
         Files.createDirectories(tmp.resolve("test/src"));
@@ -45,7 +45,7 @@ class ModuleLayoutTest {
 
     @Test
     void traditional_main_resources_under_src_main(@TempDir Path tmp) throws Exception {
-        writeToml(tmp, "traditional");
+        writeToml(tmp);
         Files.createDirectories(tmp.resolve("src/main/resources"));
         assertThat(ModuleLayout.mainResourcesDir(tmp, false).endsWith("src/main/resources"))
                 .isTrue();
@@ -53,7 +53,7 @@ class ModuleLayoutTest {
 
     @Test
     void named_suite_resources_convention(@TempDir Path tmp) throws Exception {
-        writeToml(tmp, "simple");
+        writeToml(tmp);
         assertThat(ModuleLayout.suiteResourcesDir(tmp, true, "test")).isEqualTo(tmp.resolve("test/resources"));
         assertThat(ModuleLayout.suiteResourcesDir(tmp, true, "integration"))
                 .isEqualTo(tmp.resolve("integration/resources"));
@@ -67,14 +67,13 @@ class ModuleLayoutTest {
                 .contains("integration/src", "integration/resources");
     }
 
-    private static void writeToml(Path dir, String layout) throws Exception {
+    private static void writeToml(Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
                 group = "t"
                 name = "app"
                 version = "1.0.0"
                 jdk = 25
                 java = 25
-                layout = "%s"
-                """.formatted(layout));
+                """);
     }
 }

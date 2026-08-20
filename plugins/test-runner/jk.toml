@@ -3,9 +3,6 @@ description = "JumpKick's JUnit Platform test-runner plugin"
 # Workers load on user JVMs (JDK 17+); stay on release 17.
 java = 17
 
-[application]
-main = "cc.jumpkick.plugin.process.PluginMain"
-
 [dependencies]
 jk-plugin-sdk.workspace = true
 

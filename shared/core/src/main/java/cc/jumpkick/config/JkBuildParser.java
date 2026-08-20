@@ -65,7 +65,10 @@ public final class JkBuildParser {
     public static JkBuild parse(Path file) throws IOException {
         Path abs = file.toAbsolutePath().normalize();
         Path dir = abs.getParent();
-        return WorkspaceResolve.applyWorkspace(dir, parseLocal(file));
+        JkBuild resolved = WorkspaceResolve.applyWorkspace(dir, parseLocal(file));
+        List<cc.jumpkick.model.PluginDeclaration> user = UserPlugins.fromConfig();
+        if (user.isEmpty()) return resolved;
+        return resolved.withPlugins(UserPlugins.merge(user, resolved.plugins()));
     }
 
     /**
@@ -170,14 +173,28 @@ public final class JkBuildParser {
         Map<String, String> manifest = ManifestTables.parseManifest(result);
         List<PluginDeclaration> plugins = ManifestBuild.parsePlugins(result);
         Optional<JkBuild.Application> application = ManifestTables.parseApplication(result);
+        if (application.isPresent() && cc.jumpkick.plugin.PluginModule.isWorker(moduleDir)) {
+            throw new JkBuildParseException(
+                    "[application] is for apps — a plugin worker (jk-plugin.toml or Plugin service)"
+                            + " already implies main "
+                            + cc.jumpkick.plugin.PluginModule.WORKER_MAIN
+                            + "; drop the [application] table");
+        }
         Optional<JkBuild.NativeConfig> nativeConfig = ManifestBuild.parseNativeConfig(result);
+        if (application.map(JkBuild.Application::nativeImage).orElse(false)
+                && nativeConfig.isPresent()
+                && nativeConfig.get().enabled() == JkBuild.NativeMode.DISABLED) {
+            throw new JkBuildParseException("[application].native = true conflicts with [native] enabled = false");
+        }
         List<PluginDescriptor> installedManifests = PluginTableRegistry.manifestsFor(moduleDir, plugins);
         Map<String, PluginConfig> pluginConfigs = ManifestTables.parsePluginTables(result, installedManifests);
         // minified = true enables the minified packager without requiring an empty [minified] table.
         pluginConfigs = ManifestTables.ensureMinifiedPluginConfigured(application, pluginConfigs, installedManifests);
         ManifestBuild.checkUnownedTables(result, moduleDir, plugins, installedManifests);
+        boolean nativeDeclared = nativeConfig.isPresent()
+                || application.map(JkBuild.Application::nativeImage).orElse(false);
         deps = ManifestBuild.withPlatformContributions(
-                deps, project, nativeConfig.isPresent(), pluginConfigs, installedManifests);
+                deps, project, nativeDeclared, pluginConfigs, installedManifests);
         JkBuild.Build build = ManifestBuild.parseBuild(result);
         List<JkBuild.KotlinPluginDecl> kotlinPlugins = ManifestBuild.parseKotlinPlugins(result);
         if (!kotlinPlugins.isEmpty()) {
@@ -189,6 +206,7 @@ public final class JkBuildParser {
                     build.kspOptions(),
                     build.extraSrc(),
                     build.testWorkers(),
+                    build.testSerialTags(),
                     build.platformPolicy(),
                     build.unmappedPolicy(),
                     build.extraResources(),
@@ -206,6 +224,7 @@ public final class JkBuildParser {
                     build.kspOptions(),
                     build.extraSrc(),
                     build.testWorkers(),
+                    build.testSerialTags(),
                     build.platformPolicy(),
                     build.unmappedPolicy(),
                     build.extraResources(),

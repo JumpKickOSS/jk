@@ -88,7 +88,7 @@ class AndroidSpikeTest {
                 false,
                 Set.of(),
                 cc.jumpkick.config.SessionContext.current());
-        BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+        BuildPlan plan = BuildPlanner.fullPlan(in);
 
         assertThat(plan.steps().stream().map(p -> p.name()))
                 .contains("plugin-android-manifest", "plugin-android-res", "plugin-android-dex", "package-jar");
@@ -233,11 +233,24 @@ class AndroidSpikeTest {
      * run time), so it does not carry apksig's classes.
      */
     private static boolean verifiedByApksig(Path apk) throws Exception {
-        String cp = System.getProperty("jk.android.apksig.classpath", "");
-        assertThat(cp).as("jk.android.apksig.classpath system property").isNotBlank();
         List<URL> urls = new ArrayList<>();
-        for (String part : cp.split(File.pathSeparator)) {
-            if (!part.isBlank()) urls.add(Path.of(part).toUri().toURL());
+        String cp = System.getProperty("jk.android.apksig.classpath", "");
+        if (!cp.isBlank()) {
+            // Gradle wires apksig via the testApksig configuration.
+            for (String part : cp.split(File.pathSeparator)) {
+                if (!part.isBlank()) urls.add(Path.of(part).toUri().toURL());
+            }
+        } else {
+            // Pure-jk fork: no Gradle configuration — apksig is a dependency of the android
+            // worker itself, so rebuild -cp from the worker POM (jk.android.plugin.jar is set
+            // by [build] test-plugin-jars).
+            String workerJar = System.getProperty("jk.android.plugin.jar", "");
+            assertThat(workerJar)
+                    .as("jk.android.apksig.classpath or jk.android.plugin.jar system property")
+                    .isNotBlank();
+            for (Path p : cc.jumpkick.engine.plugin.WorkerLaunchClasspath.paths(Path.of(workerJar))) {
+                urls.add(p.toUri().toURL());
+            }
         }
         try (var loader = new URLClassLoader(urls.toArray(new URL[0]))) {
             Class<?> builderClass = loader.loadClass("com.android.apksig.ApkVerifier$Builder");
@@ -254,7 +267,6 @@ class AndroidSpikeTest {
                 group   = "com.example"
                 version = "1.0.0"
                 java    = 17
-                layout  = "simple"
 
                 [android]
                 namespace   = "com.example.hello"

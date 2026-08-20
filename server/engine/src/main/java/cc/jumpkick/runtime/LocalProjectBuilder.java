@@ -84,7 +84,7 @@ public final class LocalProjectBuilder {
         Path classes = layout.classesDir();
         Files.createDirectories(classes);
 
-        boolean simple = CompileSupport.isSimpleLayout(project.project(), projectDir);
+        boolean simple = CompileSupport.isSimpleLayout(projectDir);
         cc.jumpkick.layout.Languages langs = CompileSupport.resolveLanguages(project.project(), projectDir);
         Path javaRoot = simple ? projectDir.resolve("src") : projectDir.resolve("src/main/java");
 
@@ -153,7 +153,9 @@ public final class LocalProjectBuilder {
         // 3. Package the jar (epoch 0 → deterministic; identity isn't lock-pinned).
         Path jarOut = layout.mainJar();
         Files.createDirectories(jarOut.getParent());
-        new JarPackager().packageJar(new JarPackager.JarRequest(classes, jarOut, project.mainClass(), 0L, Map.of()));
+        new JarPackager()
+                .packageJar(new JarPackager.JarRequest(
+                        classes, jarOut, cc.jumpkick.plugin.PluginModule.mainClass(projectDir, project), 0L, Map.of()));
 
         // 4. Render the POM, stamped with the published coordinate + version.
         String pomXml = PublishablePom.render(
@@ -178,8 +180,7 @@ public final class LocalProjectBuilder {
                 p.groovy(),
                 p.sourcesMode(),
                 p.description(),
-                p.m2install(),
-                p.layout());
+                p.m2install());
         return JkBuild.builder(overridden)
                 .dependencies(project.dependencies())
                 .repositories(project.repositories())

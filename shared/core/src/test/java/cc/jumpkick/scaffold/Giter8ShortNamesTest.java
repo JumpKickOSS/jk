@@ -38,6 +38,14 @@ class Giter8ShortNamesTest {
     }
 
     @Test
+    void normalize_layout_defaults_to_traditional() {
+        assertThat(Giter8ShortNames.normalizeLayout(null)).isEqualTo(Giter8ShortNames.LAYOUT_TRADITIONAL);
+        assertThat(Giter8ShortNames.normalizeLayout("")).isEqualTo(Giter8ShortNames.LAYOUT_TRADITIONAL);
+        assertThat(Giter8ShortNames.normalizeLayout("nope")).isEqualTo(Giter8ShortNames.LAYOUT_TRADITIONAL);
+        assertThat(Giter8ShortNames.normalizeLayout("simple")).isEqualTo(Giter8ShortNames.LAYOUT_SIMPLE);
+    }
+
+    @Test
     void languages_from_properties_accepts_jk_languages() {
         assertThat(Giter8ShortNames.languagesFromProperties(Map.of("jk_languages", "kotlin")))
                 .containsExactly("kotlin");

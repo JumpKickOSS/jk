@@ -8,17 +8,21 @@ import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Shared lazy CLI executors: {@link #cpu()} (bounded FJP, ≤8) and {@link #io()} (virtual threads),
+ * Shared lazy CLI executors: {@link #cpu()} (bounded FJP, max(8, cores)) and {@link #io()} (virtual threads),
  * each wrapped once in {@link ContextPropagatingExecutorService}. Shutdown hook on first use;
  * Ctrl-C {@code halt} kills both pools.
  */
 public final class JkThreads {
 
     /**
-     * Parallelism for the CPU pool — clamped so we don't over-subscribe small machines via 96-thread
-     * containers.
+     * Parallelism for the CPU pool: the machine's cores with a floor of 8 (JK-2212). The old
+     * {@code min(cores, 8)} capped big machines at 8 concurrent compile/package steps — with 13
+     * modules ready at the workspace graph's widest level, a 24-core host ran at a third of its
+     * width. The floor keeps small hosts responsive: CPU steps mostly BLOCK on forked compiler
+     * JVMs, and actual fork concurrency is governed by the memory plan ({@code PluginSlots}), not
+     * by this pool.
      */
-    public static final int CPU_THREADS = Math.min(Runtime.getRuntime().availableProcessors(), 8);
+    public static final int CPU_THREADS = Math.max(Runtime.getRuntime().availableProcessors(), 8);
 
     /** The real pools; {@link #cpu}/{@link #io} hold their context-propagating wrappers. */
     private static volatile ExecutorService cpuReal;

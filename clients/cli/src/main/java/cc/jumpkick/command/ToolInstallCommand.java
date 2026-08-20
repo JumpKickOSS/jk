@@ -98,7 +98,6 @@ public final class ToolInstallCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
-        this.coord = in.positionals().isEmpty() ? "." : in.positionals().get(0);
         this.binName = in.value("bin").orElse(null);
         this.mainClass = in.value("main").orElse(null);
         this.cacheDirOverride =
@@ -114,10 +113,20 @@ public final class ToolInstallCommand implements CliCommand {
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.global = GlobalOptions.from(in);
 
-        // A local script/jar installs as a snapshot env (launcher must not depend on the source
-        // path). Project dirs and git URLs delegate to InstallCommand. Local paths (including
-        // ".") resolve against -C/--dir, not the process cwd.
         Path base = global.workingDir();
+        if (in.positionals().isEmpty()) {
+            if (Files.isRegularFile(base.resolve("jk.toml"))) {
+                return appInstallDelegate().runProjectInstallBuildPlan(base, "install");
+            }
+            cc.jumpkick.cli.tui.CommandWedge.printFail(
+                    "Install",
+                    "no target specified — pass a coordinate, catalog name, path, or git URL, or run inside a directory with jk.toml");
+            return Exit.USAGE;
+        }
+        this.coord = in.positionals().get(0);
+        // A local script/jar installs as a snapshot env (launcher must not depend on the source
+        // path). Project dirs and git URLs delegate to InstallCommand. Local paths resolve
+        // against -C/--dir, not the process cwd.
         cc.jumpkick.tool.ToolTarget classified = cc.jumpkick.tool.ToolTarget.classify(coord);
         boolean m2Intent = groupFlag != null || nameFlag != null || verFlag != null;
         if (m2Intent && classified instanceof cc.jumpkick.tool.ToolTarget.RunnableFile file) {

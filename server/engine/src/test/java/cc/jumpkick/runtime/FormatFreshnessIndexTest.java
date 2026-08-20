@@ -68,16 +68,16 @@ class FormatFreshnessIndexTest {
     }
 
     @Test
-    void worker_classpath_sidecar_change_is_a_different_index(@TempDir Path tmp) throws Exception {
+    void worker_pom_change_is_a_different_index(@TempDir Path tmp) throws Exception {
         Path worker = tmp.resolve("jk-formatter.jar");
-        Path sidecar = Path.of(worker + ".classpath");
+        Path pom = tmp.resolve("jk-formatter.pom");
         Files.writeString(worker, "thin");
-        Files.writeString(sidecar, "/lib/rewrite-java-8.56.1.jar\n");
+        Files.writeString(pom, "<project><artifactId>jk-formatter</artifactId><version>1</version></project>\n");
 
         String before = FormatFreshnessIndex.configKey(
                 "palantir", "2.80.0", "kotlinlang", "0.61", true, true, true, null, worker);
 
-        Files.writeString(sidecar, "/lib/rewrite-java-8.89.2.jar\n");
+        Files.writeString(pom, "<project><artifactId>jk-formatter</artifactId><version>2</version></project>\n");
         String after = FormatFreshnessIndex.configKey(
                 "palantir", "2.80.0", "kotlinlang", "0.61", true, true, true, null, worker);
 

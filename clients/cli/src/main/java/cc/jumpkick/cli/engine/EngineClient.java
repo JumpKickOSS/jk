@@ -594,19 +594,6 @@ public final class EngineClient {
         return EngineBuildListenerAdapter.cacheInventory(paths, query, cache, store, terms, coords, dryRun);
     }
 
-    public static cc.jumpkick.engine.protocol.PluginInstallLocalAck pluginInstallLocal(
-            cc.jumpkick.engine.EnginePaths.Paths paths,
-            Path dir,
-            Path cache,
-            Path installRoot,
-            String modules,
-            boolean dryRun,
-            boolean ambientStore)
-            throws IOException {
-        return EngineBuildListenerAdapter.pluginInstallLocal(
-                paths, dir, cache, installRoot, modules, dryRun, ambientStore);
-    }
-
     /** Engine-hosted {@code jk new} / init scaffold. */
     public static cc.jumpkick.engine.protocol.NewProjectAck newProject(
             cc.jumpkick.engine.EnginePaths.Paths paths, EngineRequests.NewProjectRequest req) throws IOException {
@@ -1003,8 +990,8 @@ public final class EngineClient {
     }
 
     static Optional<EngineSpawn.EngineArtifact> resolveEngineArtifact(
-            String envOverride, String version, cc.jumpkick.cache.VersionStore store) {
-        return EngineSpawn.resolveEngineArtifact(envOverride, version, store);
+            String envOverride, String version, cc.jumpkick.cache.EngineInstall install) {
+        return EngineSpawn.resolveEngineArtifact(envOverride, version, install);
     }
 
     static Path aotCachePath(EnginePaths.Paths paths, Path engineJar, EngineSpawn.EngineJdk jdk) {

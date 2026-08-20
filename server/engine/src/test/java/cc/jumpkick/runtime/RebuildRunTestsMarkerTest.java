@@ -50,7 +50,6 @@ class RebuildRunTestsMarkerTest {
                 version = "1.0.0"
                 jdk     = 25
                 java    = 25
-                layout  = "simple"
 
                 [test-dependencies]
                 junit-jupiter           = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=6.1.1" }
@@ -93,24 +92,27 @@ class RebuildRunTestsMarkerTest {
                         project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
                 assertThat(lock.run().errors()).isEmpty();
 
-                BuildPlanResult result = BuildPlanner.coreBuilder(new BuildPlanner.Inputs(
-                                project,
-                                cache,
-                                project.resolve("jk.toml"),
-                                project.resolve("jk-lock.toml"),
-                                project,
-                                1,
-                                1,
-                                null,
-                                null,
-                                false,
-                                false,
-                                false,
-                                false,
-                                Set.of(),
-                                rebuild))
-                        .build()
-                        .run();
+                BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
+                        project,
+                        cache,
+                        project.resolve("jk.toml"),
+                        project.resolve("jk-lock.toml"),
+                        project,
+                        1,
+                        1,
+                        null,
+                        null,
+                        false,
+                        false,
+                        false,
+                        false,
+                        Set.of(),
+                        rebuild);
+                // Core + tails, like jk build: post-JK-2211 run-tests is a terminal-join leaf and
+                // a core-only plan prunes the whole test branch (no run, no marker).
+                BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
+                BuildPlanner.appendDeclaredTails(builder, inputs);
+                BuildPlanResult result = builder.build().run();
                 assertThat(result.errors()).isEmpty();
                 assertThat(result.success()).isTrue();
             } catch (Exception e) {

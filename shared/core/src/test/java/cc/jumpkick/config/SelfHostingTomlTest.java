@@ -225,8 +225,8 @@ class SelfHostingTomlTest {
         assertThat(web.project().name()).isEqualTo("jk-web");
         assertThat(web.mainClass()).isNull();
         assertThat(web.assembly()).isFalse();
-        // Traditional: src/main/resources + src/test/java (not SIMPLE flat src/).
-        assertThat(web.project().layout()).isEqualTo(JkBuild.Layout.TRADITIONAL);
+        assertThat(cc.jumpkick.layout.SourceLayout.looksTraditional(REPO.resolve("clients/web")))
+                .isTrue();
     }
 
     @Test
@@ -257,13 +257,19 @@ class SelfHostingTomlTest {
 
     @Test
     void thin_worker_plugins_have_plugin_main_without_fat_assembly() throws Exception {
-        // workers are thin jars + classpath sidecars, not assembly fat jars.
+        // workers are thin jars (runtime classpath from the installed POM), not assembly fat jars.
         // Only the engine stays assembly = true for ship.
         for (String module : List.of("plugins/test-runner", "plugins/java-compiler")) {
             JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
             assertThat(p.assembly()).as(module + " must not fat-assemble").isFalse();
             assertThat(p.minified()).as(module).isFalse();
-            assertThat(p.mainClass()).as(module).isEqualTo("cc.jumpkick.plugin.process.PluginMain");
+            assertThat(p.isApplication())
+                    .as(module + " must not declare [application]")
+                    .isFalse();
+            assertThat(p.mainClass()).as(module).isNull();
+            assertThat(cc.jumpkick.plugin.PluginModule.isWorker(REPO.resolve(module)))
+                    .as(module + " is a plugin worker")
+                    .isTrue();
             assertThat(p.dependencies().of(Scope.MAIN).stream()
                             .map(d -> d.module())
                             .toList())
@@ -286,7 +292,13 @@ class SelfHostingTomlTest {
         for (String module : root.workspace().modules()) {
             if (!module.startsWith("plugins/")) continue;
             JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
-            assertThat(p.mainClass()).as(module).isEqualTo("cc.jumpkick.plugin.process.PluginMain");
+            assertThat(p.isApplication())
+                    .as(module + " must not declare [application]")
+                    .isFalse();
+            assertThat(p.mainClass()).as(module).isNull();
+            assertThat(cc.jumpkick.plugin.PluginModule.isWorker(REPO.resolve(module)))
+                    .as(module + " is a plugin worker")
+                    .isTrue();
             assertThat(p.assembly())
                     .as(module + " must not set assembly (thin workers)")
                     .isFalse();

@@ -26,7 +26,7 @@ import java.util.List;
  * parse {@code jk.toml} to decide staleness (JK-2151).
  *
  * <p>Call sites: explain, tree, why, audit, deny, outdated, jshell, status, export, ide, sync,
- * plugin install-local, and anything else that reads the lock. Build already freshes engine-side.
+ * install, and anything else that reads the lock. Build already freshes engine-side.
  * {@code jk verify} is the exception — it must rebuild against the pinned lock verbatim.
  */
 public final class EnsureFreshLock {

@@ -54,6 +54,31 @@ class TestStampTest {
     }
 
     @Test
+    void projected_main_fingerprint_matches_on_disk_tree(@TempDir Path dir) throws IOException {
+        Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
+        Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
+        write(mainClasses.resolve("Foo.class"), "AAAA");
+        Path lock = write(dir.resolve("jk-lock.toml"), "v=1");
+
+        String live = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of());
+        String projected = ClasspathFingerprint.entry(mainClasses);
+        String viaOverride =
+                TestStamp.computeKey(List.of(testSrc), mainClasses, projected, List.of(), lock, List.of(), List.of());
+        assertThat(viaOverride).isEqualTo(live);
+
+        // Wiped classes + missing: token must NOT match the live green key.
+        Path wiped = dir.resolve("classes/wiped");
+        String missing = ClasspathFingerprint.entry(wiped);
+        assertThat(missing).startsWith("missing:");
+        String afterCleanWrong = TestStamp.computeKey(List.of(testSrc), wiped, List.of(), lock, List.of(), List.of());
+        assertThat(afterCleanWrong).isNotEqualTo(live);
+        // Same wipe with the projected fingerprint recovers the green key.
+        String afterCleanProjected =
+                TestStamp.computeKey(List.of(testSrc), wiped, projected, List.of(), lock, List.of(), List.of());
+        assertThat(afterCleanProjected).isEqualTo(live);
+    }
+
+    @Test
     void dependency_content_change_busts_but_identical_rebuild_does_not(@TempDir Path dir) throws IOException {
         Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
         Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));

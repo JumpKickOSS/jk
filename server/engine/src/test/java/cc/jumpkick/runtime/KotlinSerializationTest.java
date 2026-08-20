@@ -42,7 +42,6 @@ class KotlinSerializationTest {
                 version = "1.0.0"
                 java    = 25
                 kotlin  = "^2.4.0"
-                layout  = "simple"
 
                 [[kotlin-plugins]]
                 coordinate = "org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable"
@@ -103,7 +102,7 @@ class KotlinSerializationTest {
                 false,
                 Set.of(),
                 SessionContext.current());
-        BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+        BuildPlan plan = BuildPlanner.fullPlan(in);
         BuildPlanResult result = plan.run();
         System.out.println(
                 "STEPS: " + plan.steps().stream().map(ph -> ph.name()).toList());

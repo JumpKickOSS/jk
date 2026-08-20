@@ -417,16 +417,21 @@ public final class ManifestTables {
     }
 
     /**
-     * The optional {@code [application]} table. Its mere presence marks the project as an
-     * application ({@link JkBuild#isApplication}) — {@code Optional.empty} when absent, never a
-     * defaulted-fields sentinel, so presence and "declared but empty" stay distinguishable.
+     * The optional {@code [application]} table. Presence marks the project as an application
+     * ({@link JkBuild#isApplication}). {@code main} is required. {@code Optional.empty} when the
+     * table is absent.
      */
     static Optional<JkBuild.Application> parseApplication(TomlTable root) {
         TomlTable application = root.getTable("application");
         if (application == null) return Optional.empty();
         String main = application.getString("main");
-        return Optional.of(new JkBuild.Application(
-                main, artifactFlag(application, "assembly"), artifactFlag(application, "minified")));
+        boolean assembly = artifactFlag(application, "assembly");
+        boolean minified = artifactFlag(application, "minified");
+        boolean nativeImage = artifactFlag(application, "native");
+        if (main == null || main.isBlank()) {
+            throw new JkBuildParseException("[application].main is required");
+        }
+        return Optional.of(new JkBuild.Application(main, assembly, minified, nativeImage));
     }
 
     /**

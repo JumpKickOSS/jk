@@ -137,7 +137,7 @@ class NiaScratchTest {
                                 // PKCS12: the key password IS the store password (keytool
                                 // ignores -keypass for PKCS12 stores).
                                 "RELEASE_KEY_PASSWORD", "rel-store-pass"));
-        BuildPlanResult result = BuildPlanner.coreBuilder(in).build().run();
+        BuildPlanResult result = BuildPlanner.fullPlan(in).run();
         System.out.println("NIA-RELEASE diags: " + result.errors());
         System.out.println("NIA-RELEASE success: " + result.success());
         try (var walk = Files.walk(module.resolve("target"))) {
@@ -189,7 +189,7 @@ class NiaScratchTest {
                 || module.getFileName().toString().equals("app")) {
             in = in.withVariant("contentType=demo", Map.of());
         }
-        BuildPlanResult result = BuildPlanner.coreBuilder(in).build().run();
+        BuildPlanResult result = BuildPlanner.fullPlan(in).run();
         if (!result.errors().isEmpty()) return "build: ALL-DIAGS " + result.errors();
         if (!result.success()) return "build: failed without diagnostics";
         return null;

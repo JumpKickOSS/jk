@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -25,6 +26,8 @@ import org.junit.jupiter.api.io.TempDir;
  * kind. After building lib (with tests), app's test classpath must include lib's test classes,
  * and app's test that references the helper must pass.
  */
+// Out of the unit tier: network resolve + a real forked test JVM.
+@Tag("integration")
 class WorkspaceTestsKindE2eTest {
 
     @Test
@@ -48,7 +51,6 @@ class WorkspaceTestsKindE2eTest {
                 name    = "lib"
                 version = "1.0.0"
                 java    = 25
-                layout  = "simple"
 
                 [test-dependencies]
                 junit-jupiter           = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=6.1.1" }
@@ -87,7 +89,6 @@ class WorkspaceTestsKindE2eTest {
                 name    = "app"
                 version = "1.0.0"
                 java    = 25
-                layout  = "simple"
 
                 [dependencies]
                 lib = { workspace = true }
@@ -175,6 +176,10 @@ class WorkspaceTestsKindE2eTest {
                 false,
                 Set.of(),
                 SessionContext.current());
-        return BuildPlanner.coreBuilder(in).build().run();
+        // Core + tails, like jk build: post-JK-2211 run-tests (and its compile-test) are on
+        // the terminal-join branch, not the packaging path — a core-only plan prunes them.
+        BuildPlan.Builder b = BuildPlanner.coreBuilder(in);
+        BuildPlanner.appendDeclaredTails(b, in);
+        return b.build().run();
     }
 }

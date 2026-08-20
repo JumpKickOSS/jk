@@ -19,7 +19,7 @@ class VerbRegistryTest {
     @Test
     void standard_lists_workspace_test_and_single_build() {
         VerbRegistry reg = VerbRegistry.standard(new FakeHost());
-        assertThat(reg.all()).hasSize(44);
+        assertThat(reg.all()).hasSize(43);
         HostedVerb build = reg.find(EngineProtocol.BUILD_REQUEST);
         HostedVerb test = reg.find(EngineProtocol.TEST_REQUEST);
         HostedVerb single = reg.find(EngineProtocol.SINGLE_BUILD_REQUEST);

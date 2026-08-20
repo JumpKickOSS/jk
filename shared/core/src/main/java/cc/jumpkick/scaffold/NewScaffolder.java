@@ -154,9 +154,9 @@ public final class NewScaffolder {
         void run() throws IOException;
     }
 
-    // jk new --plugin: a build-plugin AUTHORING project (a fat jar carrying jk-plugin.toml at its
-    // root, whose Main-Class is the SDK's PluginMain). Fully client-side and framework-free — the
-    // opposite direction from pluginScaffold above (a plugin CONTRIBUTING a `jk new --<flag>`).
+    // jk new --plugin: a build-plugin AUTHORING project (jk-plugin.toml at the jar root; PluginMain
+    // is implied by that file). Fully client-side and framework-free — the opposite direction from
+    // pluginScaffold above (a plugin CONTRIBUTING a `jk new --<flag>`).
 
     private static void writePluginProject(NewInputs inputs, boolean standalone) throws IOException {
         Path dir = inputs.directory();
@@ -265,9 +265,10 @@ public final class NewScaffolder {
                 import java.util.List;
 
                 /**
-                 * A jk build plugin. Compiles against cc.jumpkick:jk-plugin-sdk, ships as a fat jar
-                 * whose Main-Class is PluginMain (see jk.toml), and is discovered via
-                 * META-INF/services/cc.jumpkick.plugin.Plugin. Docs: docs/authoring-plugins.md.
+                 * A jk build plugin. Compiles against cc.jumpkick:jk-plugin-sdk, ships as a thin
+                 * worker whose process entry is PluginMain (implied by jk-plugin.toml), and is
+                 * discovered via META-INF/services/cc.jumpkick.plugin.Plugin.
+                 * Docs: docs/authoring-plugins.md.
                  */
                 public final class %2$s implements Plugin, BuildPlugin {
 
@@ -312,9 +313,10 @@ public final class NewScaffolder {
                 import cc.jumpkick.plugin.protocol.ProtocolWriter
 
                 /**
-                 * A jk build plugin. Compiles against cc.jumpkick:jk-plugin-sdk, ships as a fat jar
-                 * whose Main-Class is PluginMain (see jk.toml), and is discovered via
-                 * META-INF/services/cc.jumpkick.plugin.Plugin. Docs: docs/authoring-plugins.md.
+                 * A jk build plugin. Compiles against cc.jumpkick:jk-plugin-sdk, ships as a thin
+                 * worker whose process entry is PluginMain (implied by jk-plugin.toml), and is
+                 * discovered via META-INF/services/cc.jumpkick.plugin.Plugin.
+                 * Docs: docs/authoring-plugins.md.
                  */
                 class %2$s : Plugin, BuildPlugin {
 
@@ -352,19 +354,18 @@ public final class NewScaffolder {
                   the declarative manifest jk reads: the `[%1$s]` schema and the code hook.
                 - `%2$s` — the code layer: implements the SDK's `Plugin` + `BuildPlugin`, registered
                   via `META-INF/services/cc.jumpkick.plugin.Plugin`.
-                - `jk.toml` — depends on `cc.jumpkick:jk-plugin-sdk` and packages a **fat jar**
-                  (`assembly = true`) whose `Main-Class` is the SDK's `PluginMain`. The SDK must be
-                  shaded IN (the worker forks as `java -jar`), so the dep is a normal `main` dep.
+                - `jk.toml` — depends on `cc.jumpkick:jk-plugin-sdk`. No `[application]` table:
+                  `jk-plugin.toml` implies the SDK's `PluginMain` worker host.
 
                 # # Build
                 ```
                 jk build
                 ```
-                Produces `target/%1$s-0.1.0-all.jar` — the fat jar with `jk-plugin.toml` at its root.
+                Produces `target/%1$s-0.1.0.jar` — the thin worker with `jk-plugin.toml` at its root.
 
                 # # Publish, declare, trust
                 ```
-                jk publish                 # ships the fat jar as the coordinate
+                jk publish                 # ships the worker jar as the coordinate
                 ```
                 In a consumer project:
                 ```toml

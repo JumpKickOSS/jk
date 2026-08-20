@@ -44,13 +44,10 @@ public final class NewJkBuildRenderer {
                         .append(inputs.grails() ? GRAILS_GROOVY_VERSION : DEFAULT_GROOVY_VERSION)
                         .append("\"\n");
         }
-        if (inputs.layout() != null && !inputs.layout().isBlank() && !"auto".equalsIgnoreCase(inputs.layout())) {
-            sb.append("layout   = \"").append(inputs.layout().toLowerCase()).append("\"\n");
-        }
         inputs.kotlinModuleName()
                 .ifPresent(m -> sb.append("module   = \"").append(m).append("\"\n"));
 
-        if (inputs.main().isPresent() || inputs.assembly()) {
+        if (!inputs.plugin() && (inputs.main().isPresent() || inputs.assembly())) {
             sb.append("\n[application]\n");
             if (inputs.main().isPresent()) {
                 sb.append("main       = \"").append(inputs.main().get()).append("\"\n");

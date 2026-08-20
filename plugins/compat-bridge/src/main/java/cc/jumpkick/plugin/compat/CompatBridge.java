@@ -1,17 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.compat;
 
-import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.InstalledTool;
+import cc.jumpkick.compat.ProjectImport;
 import cc.jumpkick.compat.ToolDistribution;
 import cc.jumpkick.compat.ToolProvisioning;
 import cc.jumpkick.compat.ToolRegistry;
-import cc.jumpkick.gradle.GradleImporter;
 import cc.jumpkick.gradle.GradleResolver;
 import cc.jumpkick.http.Http;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.mvn.MavenResolver;
-import cc.jumpkick.mvn.PomImporter;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;
@@ -19,18 +16,15 @@ import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 /**
  * The {@code jk-compat-bridge} plugin (op {@code command}, name {@code import}/{@code provision_mvn}/
  * {@code provision_gradle}): Maven/Gradle import + tool provisioning, isolated in a forked plugin JVM
- * so the Maven/Gradle machinery never loads in jk's own process. Speaks the unified wire — JSONL
+ * so provisioning never loads in the engine JVM. Import conversion runs in the engine. Speaks JSONL
  * config spec, {@code wrote}/{@code result} replies + {@code error} on failure. Exit 0 success, 1
  * operation error, 2 bad arguments, 64 unrecognised source, 73 overwrite-without-force.
  */
@@ -79,69 +73,16 @@ public final class CompatBridge implements Plugin {
         Path tmpDir = c.stringOpt("tmpDir").map(Path::of).orElse(null);
         Path baseDir = c.stringOpt("baseDir").map(Path::of).orElse(null);
         boolean force = c.bool("force", false);
-        if (source == null || outPath == null) {
-            System.err.println("jk-compat-bridge: import requires source and out");
-            return 2;
+        var outcome = ProjectImport.run(source, outPath, baseDir, tmpDir, force, report);
+        for (Path wrote : outcome.wrote()) out.emit(PluginReply.wrote(wrote.toString()));
+        if (outcome.exit() != 0) {
+            if (outcome.error() != null) {
+                out.emit(PluginReply.error("import", outcome.error()));
+            }
+            return outcome.exit();
         }
-        try {
-            String filename = source.getFileName().toString().toLowerCase(Locale.ROOT);
-            JkBuild root;
-            Map<String, JkBuild> modules = new LinkedHashMap<>();
-            ImportReport importReport;
-
-            if (filename.endsWith("pom.xml")) {
-                PomImporter.WorkspaceImportResult result = PomImporter.importWorkspace(source);
-                root = result.root();
-                modules.putAll(result.modules());
-                importReport = result.report();
-            } else if (filename.equals("build.gradle") || filename.equals("build.gradle.kts")) {
-                GradleImporter.Result result = GradleImporter.importFrom(source);
-                root = result.jkBuild();
-                importReport = result.report();
-            } else {
-                System.err.println("jk-compat-bridge: unrecognised source: " + source.getFileName());
-                return 64;
-            }
-
-            Files.writeString(outPath, JkBuildRenderer.render(root), StandardCharsets.UTF_8);
-            out.emit(PluginReply.wrote(outPath.toString()));
-
-            Path effectiveBaseDir = baseDir != null ? baseDir : source.getParent();
-            for (Map.Entry<String, JkBuild> e : modules.entrySet()) {
-                Path moduleJkBuild = effectiveBaseDir.resolve(e.getKey()).resolve("jk.toml");
-                if (Files.exists(moduleJkBuild) && !force) {
-                    out.emit(PluginReply.error("overwrite", "would overwrite " + moduleJkBuild + " — pass --force"));
-                    return 73;
-                }
-                Files.writeString(moduleJkBuild, JkBuildRenderer.render(e.getValue()), StandardCharsets.UTF_8);
-                out.emit(PluginReply.wrote(moduleJkBuild.toString()));
-            }
-
-            Path reportTarget = report;
-            if (reportTarget == null && tmpDir != null) {
-                var proj = root.project();
-                String coord = proj.group() + "-" + proj.name() + "-" + proj.version();
-                for (int n = 1; ; n++) {
-                    Path candidate = tmpDir.resolve(coord + "-" + n + "-" + source.getFileName() + "-import.md");
-                    if (!Files.exists(candidate)) {
-                        reportTarget = candidate;
-                        break;
-                    }
-                }
-            }
-            if (reportTarget != null) {
-                Path rDir = reportTarget.getParent();
-                if (rDir != null) Files.createDirectories(rDir);
-                Files.writeString(reportTarget, importReport.renderMarkdown(source.toString()), StandardCharsets.UTF_8);
-                out.emit(PluginReply.wrote(reportTarget.toString()));
-            }
-
-            out.emit(PluginReply.result(Map.of("warnings", importReport.issues().size())));
-            return 0;
-        } catch (IOException e) {
-            out.emit(PluginReply.error("import", e.getMessage()));
-            return 1;
-        }
+        out.emit(PluginReply.result(Map.of("warnings", outcome.warnings())));
+        return 0;
     }
 
     private static int runProvision(ProtocolWriter out, PluginConfig c, boolean isGradle) {

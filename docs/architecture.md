@@ -43,15 +43,22 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
   in-process fallback for hosted work). That is how concurrent builds avoid RAM overcommit.
 - **Lifecycle** — lazy start on first need; stays resident until `jk engine stop` or
   version-skew replacement. **No idle timeout**: the dashboard is written against that guarantee, and
-  a browser tab cannot respawn an engine the way the CLI can — see [http.md](http.md). The one
-  exception is an *orphaned* engine (no endpoint pointer names it, so nothing can reach it), which
-  exits once it has no in-flight jobs and no attached event stream.
+  a browser tab cannot respawn an engine the way the CLI can — see [http.md](http.md). A displaced
+  predecessor yields UDS / wire / HTTP immediately, drains in-flight jobs, and reports
+  `drain-status` to the successor. The one exception is an *orphaned* engine (no endpoint pointer
+  names it, so nothing can reach it), which exits once it has no in-flight jobs and no attached
+  event stream.
 - **Identity** — one engine per (state directory, artifact store) pair. The store is part of the
   identity hash because two invocations can share a state dir while disagreeing about where downloads
   belong; without it, `JK_STORE_DIR` silently did nothing. A machine can therefore hold several
-  engines: `jk engine status` lists them, `jk engine stop --all` stops all of them.
-- **Versioning** — side-by-side installs under `~/.local/share/jk/versions/<v>/`; client and engine jar
-  share a version; handshake detects skew and takes over. **Newer always wins**: the lock's
+  engines: `jk engine status` lists every resident engine this user owns (including other
+  `JK_HOME`s and draining/ghost pids). `jk engine stop --all` stops **this home only** so a
+  nested test suite cannot kill the host engine. `--pid` stops one explicitly.
+- **Versioning** — one live engine at `~/.local/share/jk/lib/jk-engine.jar` (or
+  `$JK_HOME/lib/jk-engine.jar`), paired with the PATH `jk`. An upgrade parks the previous jar as
+  `jk-engine.jar.old` and the previous client as `jk.old` (`jk.exe.old` on Windows) until the
+  displaced engine drains; GC deletes the parked files. Handshake detects skew and takes over.
+  **Newer always wins**: the lock's
   `jk-min` is a *floor*, never a pin — a jk older than the floor refuses artifact jobs with an
   upgrade error (`jk self update`) on every surface, and nothing ever fetches or runs an older
   engine to satisfy a lock. The lock pins inputs (artifacts, checksums, BOMs), not the operator;
@@ -145,6 +152,7 @@ Same-version client/engine only — not a multi-version public API. Conventions 
 | Envelope | One JSON object per line; discriminator field `"type"` (same as CLI JSONL / SSE / MCP) |
 | Auth (TCP only) | First line `{"type":"auth","token":…}` — never a raw token line |
 | Handshake | `hello` / `hello-ack` carry `version`, `proto` (`EngineProtocol.PROTOCOL`), `purpose` (`connect`\|`probe`); `hello-ack` uses `startedAt` (millis) |
+| Handover | Displaced predecessor yields UDS/HTTP, then `drain-status` / `drain-done` to the successor |
 | Errors | `{"type":"error","code",…,"message",…}` (`auth`, `protocol`, `version-skew`, …) |
 | Project path | Field name is always `dir` |
 | BuildPlan finish | `{"type":"buildplan-finish","kind":…,"dir":…,"success":…}` (+ kind-specific tails) |

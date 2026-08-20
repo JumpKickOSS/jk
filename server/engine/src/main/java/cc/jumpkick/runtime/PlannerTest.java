@@ -445,6 +445,9 @@ public final class PlannerTest {
                         result = new JUnitLauncher()
                                 .withModuleLabel(moduleLabel)
                                 .withTagFilters(effectiveSel.includeTags(), effectiveSel.excludeTags())
+                                // [test] serial-tags: those classes run on one trailing worker
+                                // while the rest shard (JK-2184).
+                                .withSerialTags(projectUnderTest.build().testSerialTags())
                                 .run(
                                         ctx.require(JAVA_HOME),
                                         ctx.require(TEST_CLASSES),

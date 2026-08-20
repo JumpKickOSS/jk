@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -23,6 +24,8 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Network test (Maven Central; kotlinc worker via the test JVM's worker-jar property); the
  * CAS persists under build/ so repeat runs are warm.
  */
+// Out of the unit tier: Maven Central resolve + a real kotlinc worker fork.
+@Tag("slow")
 class VariantSwitchTest {
 
     @Test
@@ -36,7 +39,6 @@ class VariantSwitchTest {
                 version = "1.0.0"
                 java    = 25
                 kotlin  = "^2.4.0"
-                layout  = "simple"
 
                 [variants.mode.a]
                 extra-src = ["src-a"]
@@ -124,7 +126,7 @@ class VariantSwitchTest {
                         Set.of(),
                         cc.jumpkick.config.SessionContext.current())
                 .withVariant(selection, Map.of());
-        BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+        BuildPlan plan = BuildPlanner.fullPlan(in);
         BuildPlanResult result = plan.run();
         for (BuildPlanResult.Diagnostic d : result.errors()) {
             System.out.println("DIAG [" + d.step() + "]: " + d.message());

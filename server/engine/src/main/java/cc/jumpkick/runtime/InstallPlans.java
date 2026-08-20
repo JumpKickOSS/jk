@@ -5,6 +5,9 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
@@ -21,7 +24,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -47,10 +52,6 @@ public final class InstallPlans {
             Path projectDir, Path cache, Path m2Dir, boolean skipTests, boolean verbose, Path graalHome)
             throws IOException {
         JkBuild proj = JkBuildParser.parse(projectDir.resolve("jk.toml"));
-        var pj = proj.project();
-        // ALWAYS: native is part of the standard build and install produces a native binary.
-        // SUPPORTED: user runs `jk native` explicitly; install deploys the jar.
-        boolean isNative = proj.isApplication() && proj.nativeMode() == JkBuild.NativeMode.ALWAYS;
 
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
         boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(projectDir);
@@ -75,13 +76,18 @@ public final class InstallPlans {
         // ALWAYS modules get native from appendDeclaredTails (same as jk build); pass the
         // client-resolved GraalVM so install does not re-resolve.
         BuildPlanner.appendDeclaredTails(builder, inputs, graalHome, true);
+        appendCacheInstall(builder, proj, cache, m2Dir);
+        return builder.build();
+    }
 
-        // cache-install reads the freshly-built jar and must run after every runnable artifact
-        // this project produces (so a follow-up client-side make-install finds them all built).
+    /**
+     * Thin-jar {@code cache-install} tail. Fat and minified jars are not written to the local
+     * repo — only the thin jar is.
+     */
+    public static void appendCacheInstall(BuildPlan.Builder builder, JkBuild proj, Path cache, Path m2Dir) {
+        boolean isNative = proj.nativeMode() == JkBuild.NativeMode.ALWAYS;
         List<String> requires = new ArrayList<>(List.of(TaskNames.PACKAGE_JAR));
         if (isNative) requires.add(TaskNames.NATIVE_IMAGE);
-        if (proj.isApplication() && proj.assembly() && !isNative) requires.add(TaskNames.PACKAGE_ASSEMBLY);
-
         Task cacheInstall = Task.builder(TaskNames.CACHE_INSTALL)
                 .stage(cc.jumpkick.run.BuildStage.PUBLISH)
                 .requires(requires.toArray(new String[0]))
@@ -91,6 +97,13 @@ public final class InstallPlans {
                     BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
                     var p = project.project();
                     Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
+                    if (alreadyInstalled(project, layout, cache)) {
+                        ctx.label("already in local repo");
+                        ctx.cached();
+                        ctx.put(PRIMARY, coord);
+                        ctx.progress(1);
+                        return;
+                    }
                     ctx.label(
                             "install " + coord.group() + ":" + coord.artifact() + ":" + coord.version() + " to cache");
                     try {
@@ -103,8 +116,7 @@ public final class InstallPlans {
                     ctx.progress(1);
                 })
                 .build();
-
-        return builder.addTask(cacheInstall).terminal(TaskNames.CACHE_INSTALL).build();
+        builder.addTask(cacheInstall).terminal(TaskNames.CACHE_INSTALL);
     }
 
     /**
@@ -169,6 +181,13 @@ public final class InstallPlans {
         }
     }
 
+    /** Cache-install the thin jar of {@code moduleDir} after a workspace package. */
+    public static void installThinJar(Path moduleDir, Path cache, Path m2Dir) throws IOException {
+        JkBuild proj = JkBuildParser.parse(moduleDir.resolve("jk.toml"));
+        proj = cc.jumpkick.config.WorkspaceResolve.applyWorkspace(moduleDir, proj);
+        cacheInstallArtifact(proj, BuildLayout.of(moduleDir, proj), cache, m2Dir);
+    }
+
     /**
      * Install the built JAR and POM into {@code repos/local/}; when {@code m2install}, also mirror
      * to the local Maven repo with checksum sidecars.
@@ -180,10 +199,7 @@ public final class InstallPlans {
         Path jar = layout.mainJar();
         String jarRelPath = cc.jumpkick.repo.MavenLayout.artifactPath(coord);
         String pomRelPath = cc.jumpkick.repo.MavenLayout.pomPath(coord);
-        String pomXml = cc.jumpkick.publish.PublishablePom.render(
-                        project, null, cc.jumpkick.config.WorkspaceResolve.siblingCoordinates(layout.moduleRoot()))
-                .xml();
-        byte[] pomBytes = pomXml.getBytes(StandardCharsets.UTF_8);
+        byte[] pomBytes = renderedPom(project, layout);
 
         if (p.m2install()) {
             // The local Maven repo is primary. m2Dir is caller-resolved (--m2-dir redirects it).
@@ -210,6 +226,64 @@ public final class InstallPlans {
             // repos/local/ is primary (plugin JARs, jk-internal use).
             writeToLocalStore(cacheDir, jarRelPath, jar);
             writeContentToLocalStore(cacheDir, pomRelPath, pomBytes);
+        }
+    }
+
+    /**
+     * True when {@code repos/local} already holds this module's thin jar (same SHA-256) and POM.
+     * {@code jk install} skips the copy in that case.
+     */
+    public static boolean alreadyInstalled(JkBuild project, BuildLayout layout, Path cacheDir) {
+        if (project == null || layout == null) return false;
+        Path jar = layout.mainJar();
+        if (!Files.isRegularFile(jar)) return false;
+        var p = project.project();
+        Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
+        Path store = JkStores.storeRootFor(cacheDir);
+        cc.jumpkick.repo.RepoArtifactStore local = new cc.jumpkick.repo.RepoArtifactStore(store, "local");
+        var installed = local.locate(cc.jumpkick.repo.MavenLayout.artifactPath(coord));
+        if (installed.isEmpty()) return false;
+        var installedPom = local.locate(cc.jumpkick.repo.MavenLayout.pomPath(coord));
+        if (installedPom.isEmpty()) return false;
+        try {
+            if (!Hashing.sha256Hex(jar).equals(Hashing.sha256Hex(installed.get()))) return false;
+            return Hashing.sha256Hex(renderedPom(project, layout)).equals(Hashing.sha256Hex(installedPom.get()));
+        } catch (RuntimeException | IOException e) {
+            return false;
+        }
+    }
+
+    private static byte[] renderedPom(JkBuild project, BuildLayout layout) {
+        String pomXml = cc.jumpkick.publish.PublishablePom.render(
+                        project,
+                        null,
+                        cc.jumpkick.config.WorkspaceResolve.siblingCoordinates(layout.moduleRoot()),
+                        lockPins(layout.moduleRoot()))
+                .xml();
+        return pomXml.getBytes(StandardCharsets.UTF_8);
+    }
+
+    /** Exact versions from the module's lock, keyed by {@code group:artifact}. Empty when unlocked. */
+    static Map<String, String> lockPins(Path moduleDir) {
+        try {
+            Path lockFile = LockPaths.lockFile(moduleDir);
+            if (lockFile == null || !Files.isRegularFile(lockFile)) return Map.of();
+            Lockfile lock = LockfileReader.read(lockFile);
+            Map<String, String> out = new LinkedHashMap<>();
+            for (Lockfile.Artifact a : lock.artifacts()) {
+                if (a.name() != null
+                        && !a.name().isBlank()
+                        && a.version() != null
+                        && !a.version().isBlank()) {
+                    out.put(a.name(), a.version());
+                }
+            }
+            for (Lockfile.ModuleEntry m : lock.modules()) {
+                out.put(m.group() + ":" + m.name(), m.version());
+            }
+            return out;
+        } catch (Exception e) {
+            return Map.of();
         }
     }
 

@@ -1,26 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
+import static cc.jumpkick.cli.testing.MockMavenServer.pom;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.lock.LockfileReader;
-import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.net.InetSocketAddress;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -37,42 +35,28 @@ class OutdatedCommandTest {
         System.setProperty("jk.m2.local", m2.toString());
     }
 
-    private HttpServer server;
-    private URI base;
-    private final Map<String, byte[]> served = new HashMap<>();
+    @RegisterExtension
+    final MockMavenServer maven = new MockMavenServer();
+
     private final PrintStream originalOut = System.out;
 
     @BeforeEach
-    void start() throws IOException {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            byte[] body = served.get(exchange.getRequestURI().getPath());
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        server.start();
-        base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-        DefaultTestDepsFixture.seed(served); // implicit junit-platform-launcher, for the lock-based tests
+    void seedRepo() {
+        DefaultTestDepsFixture.seed(maven.served()); // implicit junit-platform-launcher, for the lock-based tests
     }
 
     @AfterEach
-    void stop() {
+    void reset() {
         System.setOut(originalOut);
-        server.stop(0);
         cc.jumpkick.config.SessionContext.reset();
         LockfileReader.clearCache();
     }
 
     @Test
     void reports_compatible_at_selector_ceiling_and_latest_beyond(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo.outdated", "leaf", "1.0", "1.1", "2.0");
-        registerPom("com.foo.outdated", "leaf", "1.1", pom("com.foo.outdated", "leaf", "1.1"));
-        registerJar("com.foo.outdated", "leaf", "1.1", "leaf".getBytes(StandardCharsets.UTF_8));
+        maven.registerMetadata("com.foo.outdated", "leaf", "1.0", "1.1", "2.0");
+        maven.registerPom("com.foo.outdated", "leaf", "1.1", pom("com.foo.outdated", "leaf", "1.1"));
+        maven.registerJar("com.foo.outdated", "leaf", "1.1", "leaf".getBytes(StandardCharsets.UTF_8));
         Path cache = tempDir.resolve("cache");
 
         writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
@@ -88,12 +72,12 @@ class OutdatedCommandTest {
     @Test
     void exclude_up_to_date_hides_current_but_keeps_behind(@TempDir Path tempDir) throws Exception {
         // upToDate: only 1.0 exists. behind: 1.0 pinned but 2.0 exists.
-        registerMetadata("com.foo.outdated", "upToDate", "1.0");
-        registerPom("com.foo.outdated", "upToDate", "1.0", pom("com.foo.outdated", "upToDate", "1.0"));
-        registerJar("com.foo.outdated", "upToDate", "1.0", "a".getBytes(StandardCharsets.UTF_8));
-        registerMetadata("com.foo.outdated", "behind", "1.0", "2.0");
-        registerPom("com.foo.outdated", "behind", "1.0", pom("com.foo.outdated", "behind", "1.0"));
-        registerJar("com.foo.outdated", "behind", "1.0", "b".getBytes(StandardCharsets.UTF_8));
+        maven.registerMetadata("com.foo.outdated", "upToDate", "1.0");
+        maven.registerPom("com.foo.outdated", "upToDate", "1.0", pom("com.foo.outdated", "upToDate", "1.0"));
+        maven.registerJar("com.foo.outdated", "upToDate", "1.0", "a".getBytes(StandardCharsets.UTF_8));
+        maven.registerMetadata("com.foo.outdated", "behind", "1.0", "2.0");
+        maven.registerPom("com.foo.outdated", "behind", "1.0", pom("com.foo.outdated", "behind", "1.0"));
+        maven.registerJar("com.foo.outdated", "behind", "1.0", "b".getBytes(StandardCharsets.UTF_8));
         Path cache = tempDir.resolve("cache");
 
         writeProject(
@@ -112,7 +96,7 @@ class OutdatedCommandTest {
 
     @Test
     void show_tip_adds_column_with_prerelease(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo.outdated", "leaf", "1.0", "1.1", "2.0-alpha1");
+        maven.registerMetadata("com.foo.outdated", "leaf", "1.0", "1.1", "2.0-alpha1");
         Path cache = tempDir.resolve("cache");
         writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
         // No lock needed: latest/tip come from metadata regardless of current.
@@ -128,7 +112,7 @@ class OutdatedCommandTest {
     @Test
     void substitutes_short_catalog_name_in_json(@TempDir Path tempDir) throws Exception {
         // A coordinate that maps to a bundled short name.
-        registerMetadata("com.fasterxml.jackson.core", "jackson-databind", "2.18.0");
+        maven.registerMetadata("com.fasterxml.jackson.core", "jackson-databind", "2.18.0");
         Path cache = tempDir.resolve("cache");
         writeProject(
                 tempDir,
@@ -141,8 +125,8 @@ class OutdatedCommandTest {
 
     @Test
     void workspace_cascade_tags_each_row_with_its_module(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo.outdated", "leaf", "1.0", "2.0");
-        registerMetadata("com.foo.outdated", "core", "3.0", "3.1");
+        maven.registerMetadata("com.foo.outdated", "leaf", "1.0", "2.0");
+        maven.registerMetadata("com.foo.outdated", "core", "3.0", "3.1");
         Files.writeString(tempDir.resolve("jk.toml"), """
                 group = "com.acme"
                 name = "ws"
@@ -180,9 +164,9 @@ class OutdatedCommandTest {
 
     @Test
     void human_table_lists_dependency_and_versions(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo.outdated", "leaf", "1.0", "1.1", "2.0");
-        registerPom("com.foo.outdated", "leaf", "1.1", pom("com.foo.outdated", "leaf", "1.1"));
-        registerJar("com.foo.outdated", "leaf", "1.1", "leaf".getBytes(StandardCharsets.UTF_8));
+        maven.registerMetadata("com.foo.outdated", "leaf", "1.0", "1.1", "2.0");
+        maven.registerPom("com.foo.outdated", "leaf", "1.1", pom("com.foo.outdated", "leaf", "1.1"));
+        maven.registerJar("com.foo.outdated", "leaf", "1.1", "leaf".getBytes(StandardCharsets.UTF_8));
         Path cache = tempDir.resolve("cache");
         writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
         assertThat(lock(tempDir, cache)).isEqualTo(0);
@@ -197,7 +181,7 @@ class OutdatedCommandTest {
 
     @Test
     void offline_flag_prints_cache_only_note(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo.outdated", "leaf", "1.0", "2.0");
+        maven.registerMetadata("com.foo.outdated", "leaf", "1.0", "2.0");
         Path cache = tempDir.resolve("cache");
         writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
 
@@ -208,7 +192,7 @@ class OutdatedCommandTest {
 
     @Test
     void json_array_schema_fields_are_stable(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo.outdated", "leaf", "1.0", "2.0");
+        maven.registerMetadata("com.foo.outdated", "leaf", "1.0", "2.0");
         Path cache = tempDir.resolve("cache");
         writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
 
@@ -232,7 +216,7 @@ class OutdatedCommandTest {
                 "-C",
                 tempDir.toString(),
                 "--repo-url",
-                base.toString(),
+                maven.base().toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString());
         assertThat(exit).isEqualTo(2);
@@ -241,7 +225,8 @@ class OutdatedCommandTest {
     // --- helpers -----------------------------------------------------------
 
     private int lock(Path dir, Path cache) {
-        return run("lock", "-C", dir.toString(), "--repo-url", base.toString(), "--cache-dir", cache.toString());
+        return run(
+                "lock", "-C", dir.toString(), "--repo-url", maven.base().toString(), "--cache-dir", cache.toString());
     }
 
     private String json(Path dir, Path cache) {
@@ -258,7 +243,7 @@ class OutdatedCommandTest {
 
     private String capture(Path dir, Path cache, String[] extra) {
         String[] base = {
-            "outdated", "-C", dir.toString(), "--repo-url", this.base.toString(), "--cache-dir", cache.toString()
+            "outdated", "-C", dir.toString(), "--repo-url", maven.base().toString(), "--cache-dir", cache.toString()
         };
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         System.setOut(new PrintStream(out, true, StandardCharsets.UTF_8));
@@ -288,46 +273,5 @@ class OutdatedCommandTest {
                 [dependencies]
                 %s
                 """.formatted(depLines));
-    }
-
-    private static int run(String... args) {
-        return Jk.execute(args);
-    }
-
-    private void registerMetadata(String group, String artifact, String... versions) {
-        StringBuilder xml = new StringBuilder("<metadata><groupId>")
-                .append(group)
-                .append("</groupId><artifactId>")
-                .append(artifact)
-                .append("</artifactId><versioning><versions>");
-        for (String v : versions) xml.append("<version>").append(v).append("</version>");
-        xml.append("</versions></versioning></metadata>");
-        served.put(
-                "/" + group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml",
-                xml.toString().getBytes(StandardCharsets.UTF_8));
-    }
-
-    private void registerPom(String group, String artifact, String version, String body) {
-        served.put(coordPath(group, artifact, version, "pom"), body.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private void registerJar(String group, String artifact, String version, byte[] bytes) {
-        served.put(coordPath(group, artifact, version, "jar"), bytes);
-    }
-
-    private static String coordPath(String group, String artifact, String version, String ext) {
-        return "/" + group.replace('.', '/') + "/" + artifact + "/" + version + "/" + artifact + "-" + version + "."
-                + ext;
-    }
-
-    private static String pom(String group, String artifact, String version) {
-        return """
-                <project>
-                  <groupId>%s</groupId>
-                  <artifactId>%s</artifactId>
-                  <version>%s</version>
-                  <dependencies></dependencies>
-                </project>
-                """.formatted(group, artifact, version);
     }
 }

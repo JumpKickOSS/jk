@@ -34,7 +34,7 @@ import java.util.stream.Stream;
  * always copy (never hard-link) so compile trees cannot poison CAS blobs.
  *
  * <p>Optional {@code storeCas}: Class-C blobs promoted by {@link cc.jumpkick.cache.ActionPromote} /
- * {@code jk release} may live only in the artifact store — restore falls back there on cache miss.
+ * Staged natives/jars may live only in the artifact store — restore falls back there on cache miss.
  * Class-C tasks also keep a short generation list ({@code tasks/<taskId>.gens}).
  */
 public final class ActionCache {

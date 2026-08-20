@@ -34,5 +34,50 @@ class NewJkBuildRendererTest {
         assertThat(toml).contains("[dependencies]");
         assertThat(toml).contains("guava");
         assertThat(toml).contains("gson");
+        assertThat(toml).doesNotContain("layout");
+    }
+
+    @Test
+    void traditional_layout_is_omitted_from_toml() {
+        NewInputs inputs = new NewInputs(
+                "com.example",
+                "demo",
+                "25",
+                25,
+                25,
+                Optional.empty(),
+                Optional.empty(),
+                false,
+                false,
+                NewInputs.Language.JAVA,
+                "traditional",
+                Optional.empty(),
+                List.of(),
+                true,
+                Path.of("/tmp/demo"));
+        String toml = NewJkBuildRenderer.render(inputs);
+        assertThat(toml).doesNotContain("layout");
+    }
+
+    @Test
+    void blank_layout_is_omitted_from_toml() {
+        NewInputs inputs = new NewInputs(
+                "com.example",
+                "demo",
+                "25",
+                25,
+                25,
+                Optional.empty(),
+                Optional.empty(),
+                false,
+                false,
+                NewInputs.Language.JAVA,
+                null,
+                Optional.empty(),
+                List.of(),
+                true,
+                Path.of("/tmp/demo"));
+        String toml = NewJkBuildRenderer.render(inputs);
+        assertThat(toml).doesNotContain("layout");
     }
 }

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.compile.WorkerClasspath;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginLoader;
+import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JavaHomes;
 import java.io.IOException;
@@ -18,9 +18,7 @@ import java.util.jar.JarFile;
  * cc.jumpkick.plugin.process.PluginMain <spec>}. Heap sizing goes through {@link
  * JvmOptions}' shared plan.
  *
- * <p>Classpath resolution: prefer {@code $JK_LIB_DIR/&lt;id&gt;/} hardlinks (default {@code
- * store/lib/&lt;id&gt;/}, same tree as installed tools) when install materialised them;
- * else the optional {@code <worker>.jar.classpath} sidecar.
+ * <p>Classpath resolution: sibling POM + {@code repos/local} (and the other store repos).
  */
 final class PluginLaunch {
 
@@ -30,7 +28,7 @@ final class PluginLaunch {
     static List<String> javaCommand(Path workerJar, List<String> extraJvmArgs, Path spec) {
         Path javaExe =
                 JavaHomes.runningJavaHome().resolve("bin").resolve(HostPlatform.isWindows() ? "java.exe" : "java");
-        String cp = WorkerClasspath.resolve(workerJar);
+        String cp = WorkerLaunchClasspath.resolve(workerJar);
         List<String> jvmFlags = new ArrayList<>(extraJvmArgs);
         // batchFlags applied inside JvmOptions.javaCommand via concurrency=1 — but PluginLoader
         // expects raw flags only. Use the same heap plan as before.

@@ -69,7 +69,7 @@ class HiltTransformTest {
                 false,
                 Set.of(),
                 SessionContext.current());
-        BuildPlanResult result = BuildPlanner.coreBuilder(in).build().run();
+        BuildPlanResult result = BuildPlanner.fullPlan(in).run();
         assertThat(result.errors().stream()
                         .filter(d -> d.message() == null || !d.message().contains("sun.misc.Unsafe"))
                         .toList())
@@ -163,7 +163,6 @@ class HiltTransformTest {
                 version = "1.0.0"
                 java    = 17
                 kotlin  = "^2.4.0"
-                layout  = "simple"
 
                 [android]
                 namespace   = "com.example.hilttx"

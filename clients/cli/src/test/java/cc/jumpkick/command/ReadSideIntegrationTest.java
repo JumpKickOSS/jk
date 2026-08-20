@@ -1,26 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
+import static cc.jumpkick.cli.testing.MockMavenServer.pom;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
-import com.sun.net.httpserver.HttpServer;
-import java.io.ByteArrayOutputStream;
+import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.MockMavenServer;
 import java.io.IOException;
-import java.io.PrintStream;
-import java.net.InetSocketAddress;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.Map;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /** Exercises the full plan: init -> add -> lock -> tree / why / sync. */
@@ -37,74 +33,55 @@ class ReadSideIntegrationTest {
         System.setProperty("jk.m2.local", m2.toString());
     }
 
-    private HttpServer server;
-    private URI base;
-    private final Map<String, byte[]> served = new HashMap<>();
+    @RegisterExtension
+    final MockMavenServer maven = new MockMavenServer();
 
     @BeforeEach
-    void start() throws IOException {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            byte[] body = served.get(exchange.getRequestURI().getPath());
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        server.start();
-        base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-        DefaultTestDepsFixture.seed(served);
-    }
-
-    @AfterEach
-    void stop() {
-        server.stop(0);
+    void seedRepo() {
+        DefaultTestDepsFixture.seed(maven.served());
     }
 
     @Test
     void full_pipeline_init_add_lock_tree_why_sync(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo", "leaf", "1.0");
-        registerPom("com.foo", "leaf", "1.0", pom("com.foo", "leaf", "1.0", ""));
-        registerJar("com.foo", "leaf", "1.0", "leaf-jar".getBytes(StandardCharsets.UTF_8));
-        registerMetadata("com.foo", "root", "1.0");
-        registerPom("com.foo", "root", "1.0", pom("com.foo", "root", "1.0", """
+        maven.registerMetadata("com.foo", "leaf", "1.0");
+        maven.registerPom("com.foo", "leaf", "1.0", pom("com.foo", "leaf", "1.0", ""));
+        maven.registerJar("com.foo", "leaf", "1.0", "leaf-jar".getBytes(StandardCharsets.UTF_8));
+        maven.registerMetadata("com.foo", "root", "1.0");
+        maven.registerPom("com.foo", "root", "1.0", pom("com.foo", "root", "1.0", """
                 <dependency>
                   <groupId>com.foo</groupId>
                   <artifactId>leaf</artifactId>
                   <version>1.0</version>
                 </dependency>
                 """));
-        registerJar("com.foo", "root", "1.0", "root-jar".getBytes(StandardCharsets.UTF_8));
+        maven.registerJar("com.foo", "root", "1.0", "root-jar".getBytes(StandardCharsets.UTF_8));
 
         Path cache = tempDir.resolve("cache");
 
         run("new", tempDir.toString());
         run("add", "com.foo:root:1.0", "-C", tempDir.toString());
-        run("lock", "-C", tempDir.toString(), "--repo-url", base.toString(), "--cache-dir", cache.toString());
+        run("lock", "-C", tempDir.toString(), "--repo-url", maven.base().toString(), "--cache-dir", cache.toString());
 
         // jk tree — strip ANSI escapes so the GAV-formatted labels
         // line up as plain substrings the assertions can match
         // against. --color=never drops the foreground colors but
         // leaves text attributes (underline/bold) in place, hence
         // the regex below.
-        String declared = TestAnsi.strip(captureStdout(() -> run("tree", "-C", tempDir.toString())));
+        String declared = TestAnsi.strip(Capture.stdout(() -> run("tree", "-C", tempDir.toString())));
         assertThat(declared).contains("com.foo:root:1.0");
         assertThat(declared).doesNotContain("com.foo:leaf:1.0");
 
-        String tree = TestAnsi.strip(captureStdout(() -> run("tree", "-t", "-C", tempDir.toString())));
+        String tree = TestAnsi.strip(Capture.stdout(() -> run("tree", "-t", "-C", tempDir.toString())));
         assertThat(tree).contains("com.foo:root:1.0");
         assertThat(tree).contains("com.foo:leaf:1.0");
 
         // jk why
-        String why = TestAnsi.strip(captureStdout(() -> run("why", "com.foo:leaf", "-C", tempDir.toString())));
+        String why = TestAnsi.strip(Capture.stdout(() -> run("why", "com.foo:leaf", "-C", tempDir.toString())));
         assertThat(why).contains("com.foo:leaf:1.0 is pulled in by:");
         assertThat(why).contains("com.foo:root:1.0");
 
         // jk sync — second time with cache populated should report up-to-date.
-        String sync = captureStdout(() -> run("sync", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
+        String sync = Capture.stdout(() -> run("sync", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
         assertThat(sync).contains("up-to-date");
 
         // jk sync with a fresh ACTION cache must NOT re-fetch: since the cache/store split the
@@ -113,7 +90,7 @@ class ReadSideIntegrationTest {
         Path freshCache = tempDir.resolve("fresh-cache");
         Files.createDirectories(freshCache);
         String resync =
-                captureStdout(() -> run("sync", "-C", tempDir.toString(), "--cache-dir", freshCache.toString()));
+                Capture.stdout(() -> run("sync", "-C", tempDir.toString(), "--cache-dir", freshCache.toString()));
         assertThat(resync).contains("4 up-to-date");
     }
 
@@ -140,9 +117,9 @@ class ReadSideIntegrationTest {
 
     @Test
     void sync_creates_lockfile_when_missing(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo", "leaf", "1.0");
-        registerPom("com.foo", "leaf", "1.0", pom("com.foo", "leaf", "1.0", ""));
-        registerJar("com.foo", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
+        maven.registerMetadata("com.foo", "leaf", "1.0");
+        maven.registerPom("com.foo", "leaf", "1.0", pom("com.foo", "leaf", "1.0", ""));
+        maven.registerJar("com.foo", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
 
         run("new", tempDir.toString());
         run("add", "com.foo:leaf:1.0", "-C", tempDir.toString());
@@ -151,14 +128,14 @@ class ReadSideIntegrationTest {
         Path lockFile = tempDir.resolve("jk-lock.toml");
         Files.deleteIfExists(lockFile);
 
-        String out = captureStdout(() -> run(
+        String out = Capture.stdout(() -> run(
                 "sync",
                 "-C",
                 tempDir.toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString(),
                 "--repo-url",
-                base.toString()));
+                maven.base().toString()));
 
         assertThat(lockFile).exists();
         // sync auto-locks when jk-lock.toml is missing, then reports its summary.
@@ -169,9 +146,9 @@ class ReadSideIntegrationTest {
 
     @Test
     void sync_accepts_offline_prepare_flag(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo", "leaf", "1.0");
-        registerPom("com.foo", "leaf", "1.0", pom("com.foo", "leaf", "1.0", ""));
-        registerJar("com.foo", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
+        maven.registerMetadata("com.foo", "leaf", "1.0");
+        maven.registerPom("com.foo", "leaf", "1.0", pom("com.foo", "leaf", "1.0", ""));
+        maven.registerJar("com.foo", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
 
         run("new", tempDir.toString());
         run("add", "com.foo:leaf:1.0", "-C", tempDir.toString());
@@ -180,7 +157,7 @@ class ReadSideIntegrationTest {
                 "-C",
                 tempDir.toString(),
                 "--repo-url",
-                base.toString(),
+                maven.base().toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString());
 
@@ -192,78 +169,5 @@ class ReadSideIntegrationTest {
                 tempDir.resolve("fresh").toString(),
                 "--offline-prepare");
         assertThat(exit).isEqualTo(0);
-    }
-
-    // --- helpers -----------------------------------------------------------
-
-    private static int run(String... args) {
-        return Jk.execute(args);
-    }
-
-    /** Remove ANSI CSI escape sequences from {@code s}. */
-    private static String captureStdout(Runnable body) {
-        PrintStream original = System.out;
-        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(buffer));
-        try {
-            body.run();
-        } finally {
-            System.setOut(original);
-        }
-        return buffer.toString(StandardCharsets.UTF_8);
-    }
-
-    private void registerPom(String group, String artifact, String version, String body) {
-        String path = "/"
-                + group.replace('.', '/')
-                + "/"
-                + artifact
-                + "/"
-                + version
-                + "/"
-                + artifact
-                + "-"
-                + version
-                + ".pom";
-        served.put(path, body.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private void registerJar(String group, String artifact, String version, byte[] bytes) {
-        String path = "/"
-                + group.replace('.', '/')
-                + "/"
-                + artifact
-                + "/"
-                + version
-                + "/"
-                + artifact
-                + "-"
-                + version
-                + ".jar";
-        served.put(path, bytes);
-    }
-
-    private void registerMetadata(String group, String artifact, String... versions) {
-        StringBuilder xml = new StringBuilder("<metadata><groupId>")
-                .append(group)
-                .append("</groupId><artifactId>")
-                .append(artifact)
-                .append("</artifactId><versioning><versions>");
-        for (String v : versions) xml.append("<version>").append(v).append("</version>");
-        xml.append("</versions></versioning></metadata>");
-        served.put(
-                "/" + group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml",
-                xml.toString().getBytes(StandardCharsets.UTF_8));
-    }
-
-    private static String pom(String group, String artifact, String version, String depBlock) {
-        return """
-                <project>
-                  <groupId>%s</groupId>
-                  <artifactId>%s</artifactId>
-                  <version>%s</version>
-                  <dependencies>%s</dependencies>
-                </project>
-                """.formatted(group, artifact, version, depBlock);
     }
 }

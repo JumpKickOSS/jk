@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Deterministic TOML emitter for {@link Lockfile}: sorted keys, LF newlines, two-space indent, no
@@ -57,12 +58,19 @@ public final class LockfileWriter {
             Path home = cc.jumpkick.builds.ProjectBuilds.projectHome(
                     cc.jumpkick.builds.ProjectBuilds.buildsRoot(), identity);
             cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(home, identity);
+            // Host declared-dep frequency for the New wizard library picker.
+            try {
+                String id = identity.id();
+                Set<String> deps = cc.jumpkick.builds.DeclaredDeps.collect(owner);
+                cc.jumpkick.builds.DepFrequency.load().observe(id, deps).save();
+            } catch (Exception ignoredFreq) {
+                // never fail the lock write over frequency tracking
+            }
         } catch (Exception ignored) {
             // best-effort; lock is already durable
         }
     }
 
-    /** Engine-jar sha from {@code versions/<v>/manifest.toml}, or {@code ""} if absent. */
     /**
      * The floor stamped into locks that have none: the oldest jk whose reader understands this
      * writer's output. Bumped by hand only when the lock format actually requires a newer
@@ -195,9 +203,6 @@ public final class LockfileWriter {
             }
             if (Boolean.TRUE.equals(m.m2install())) {
                 out.append("m2install = true\n");
-            }
-            if (m.layout() != null && !m.layout().isBlank() && !"auto".equalsIgnoreCase(m.layout())) {
-                out.append("layout  = ").append(quote(m.layout())).append('\n');
             }
         }
 

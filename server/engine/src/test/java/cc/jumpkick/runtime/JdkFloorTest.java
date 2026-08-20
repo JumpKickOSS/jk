@@ -48,7 +48,6 @@ class JdkFloorTest {
                 version = "1.0.0"
                 jdk     = %s
                 kotlin  = "^2.4.0"
-                layout  = "simple"
 
                 [test-dependencies]
                 junit-jupiter           = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=6.1.1" }
@@ -104,7 +103,7 @@ class JdkFloorTest {
                     false,
                     Set.of(),
                     nested);
-            BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+            BuildPlan plan = BuildPlanner.fullPlan(in);
             BuildPlanResult result = plan.run();
             for (BuildPlanResult.Diagnostic d : result.errors()) {
                 System.out.println("DIAG [" + d.step() + "]: " + d.message());

@@ -30,7 +30,7 @@ import java.util.Set;
 
 /**
  * {@code jk self nuke} — wipe JumpKick product data while leaving the PATH install binaries,
- * managed JDKs, and the <strong>active engine version</strong> intact.
+ * managed JDKs, and the <strong>live engine jar</strong> intact.
  *
  * <p>Targets (stackable; default {@code --all}):
  *
@@ -69,14 +69,10 @@ public final class SelfNukeCommand implements CliCommand {
      * <em>same</em> {@link JkDirs} the rows come from, so synthetic test environments guard
      * consistently.
      */
-    record Guards(Path bin, Path jdks, Path activeVersion, Path lib) {
+    record Guards(Path bin, Path jdks, Path productLib, Path lib) {
         static Guards of(JkDirs dirs) {
-            Path versions = abs(dirs.versionsDir());
             return new Guards(
-                    abs(dirs.binDirectory()),
-                    abs(dirs.jdksDir()),
-                    versions == null ? null : versions.resolve(Jk.VERSION).normalize(),
-                    abs(dirs.libDir()));
+                    abs(dirs.binDirectory()), abs(dirs.jdksDir()), abs(dirs.productLibDir()), abs(dirs.libDir()));
         }
     }
 
@@ -92,7 +88,7 @@ public final class SelfNukeCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Nuke data/state (keeps active engine, PATH, JDKs)";
+        return "Nuke data/state (keeps live engine jar, PATH, JDKs)";
     }
 
     @Override
@@ -234,7 +230,7 @@ public final class SelfNukeCommand implements CliCommand {
 
     /**
      * Build ordered purge rows for the selected targets. Never includes bin, JDKs, the active
-     * {@code versions/<Jk.VERSION>/} tree, or {@code store/lib/} (latest plugin workers).
+     * product-lib engine jar, or {@code store/lib/} (installed tools).
      */
     static List<PurgeRow> plan(JkDirs dirs, Set<Target> selected) {
         Guards guards = Guards.of(dirs);
@@ -275,7 +271,7 @@ public final class SelfNukeCommand implements CliCommand {
 
     /**
      * Config nuke targets the dedicated platform config dir ({@code ~/.config/jk}) when there is
-     * one. Under {@code JK_HOME} the "config dir" is the umbrella root shared with versions, store,
+     * one. Under {@code JK_HOME} the "config dir" is the umbrella root shared with the engine lib, store,
      * and state — deleting it would wipe every kept subtree — so only {@code config.toml} itself is
      * scheduled. Same when the config dir coincides with the product home/data root for any other
      * reason.
@@ -305,7 +301,7 @@ public final class SelfNukeCommand implements CliCommand {
 
     /**
      * Schedule a row unless it would touch a guarded tree: equal to, inside, or an <em>ancestor</em>
-     * of bin, jdks, the active version, or {@code store/lib}. Comparisons also run on real paths so
+     * of bin, jdks, the product-lib engine, or {@code store/lib} (installed tools). Comparisons also run on real paths so
      * a guarded dir reached through a symlink (e.g. {@code ~/.local/bin -> <data>/bin}) stays safe.
      *
      * @return whether the row was scheduled
@@ -315,7 +311,7 @@ public final class SelfNukeCommand implements CliCommand {
         Path norm = path.toAbsolutePath().normalize();
         if (conflicts(norm, guards.bin())
                 || conflicts(norm, guards.jdks())
-                || conflicts(norm, guards.activeVersion())
+                || conflicts(norm, guards.productLib())
                 || conflicts(norm, guards.lib())) {
             return false;
         }
@@ -342,7 +338,7 @@ public final class SelfNukeCommand implements CliCommand {
         }
         if (wantStore) {
             CliOutput.out("  Kept:  forge/repo credentials  (remove via jk repo logout)");
-            CliOutput.out("  Kept:  " + pathStyled(dirs.versionsDir().resolve(Jk.VERSION)) + "  (active engine)");
+            CliOutput.out("  Kept:  " + pathStyled(dirs.productLibDir().resolve("jk-engine.jar")) + "  (live engine)");
         }
         CliOutput.out("  Kept:  " + pathStyled(dirs.binDirectory()) + "  (PATH binaries)");
         CliOutput.out("  Kept:  " + pathStyled(dirs.jdksDir()) + "  (managed JDKs)");

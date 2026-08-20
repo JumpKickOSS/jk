@@ -1,12 +1,10 @@
 name = "jk-compat-bridge"
 description = "JumpKick's Maven/Gradle compatibility plugin"
 
-[application]
-main = "cc.jumpkick.plugin.process.PluginMain"
-
 [dependencies]
+# No cc.jumpkick.repo.* imports — jk-io was a false edge (JK-2193). Http and the
+# importer stack ride in through jk-toolchain, same as the engine's own convention.
 jk-core.workspace = true
-jk-io.workspace = true
 jk-toolchain.workspace = true
 jk-plugin-sdk.workspace = true
 

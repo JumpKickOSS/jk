@@ -21,9 +21,28 @@ class CoordinateTest {
 
     @Test
     void parses_gav_with_classifier_and_type() {
-        Coordinate c = Coordinate.parse("io.netty:netty-transport-native-epoll:4.1.115:linux-x86_64@jar");
+        Coordinate c = Coordinate.parse("io.netty:netty-transport-native-epoll:4.1.115:linux-x86_64!jar");
         assertThat(c.classifier()).isEqualTo("linux-x86_64");
         assertThat(c.type()).isEqualTo("jar");
+        assertThat(c.toString()).isEqualTo("io.netty:netty-transport-native-epoll:4.1.115:linux-x86_64");
+    }
+
+    @Test
+    void parses_non_jar_type_with_bang() {
+        Coordinate c = Coordinate.parse("com.example:widget:1.0.0!pom");
+        assertThat(c.type()).isEqualTo("pom");
+        assertThat(c.toString()).isEqualTo("com.example:widget:1.0.0!pom");
+    }
+
+    @Test
+    void android_aar_round_trips_and_omits_default_jar_noise() {
+        Coordinate aar = Coordinate.parse("androidx.core:core:1.13.1!aar");
+        assertThat(aar.type()).isEqualTo("aar");
+        assertThat(aar.toString()).isEqualTo("androidx.core:core:1.13.1!aar");
+
+        Coordinate jar = Coordinate.parse("androidx.core:core:1.13.1");
+        assertThat(jar.type()).isEqualTo("jar");
+        assertThat(jar.toString()).isEqualTo("androidx.core:core:1.13.1"); // no !jar
     }
 
     @Test
@@ -35,5 +54,12 @@ class CoordinateTest {
     @Test
     void rejects_malformed() {
         assertThatThrownBy(() -> Coordinate.parse("foo:bar")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejects_at_as_packaging_type() {
+        assertThatThrownBy(() -> Coordinate.parse("com.example:widget:1.0.0@pom"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("!");
     }
 }

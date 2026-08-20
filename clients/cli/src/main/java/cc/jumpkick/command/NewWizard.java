@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.builds.DepFrequency;
+import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Answers;
+import cc.jumpkick.cli.tui.Choice;
 import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.cli.tui.WizardStep;
-import cc.jumpkick.engine.protocol.CatalogReadAck;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -125,23 +127,16 @@ public final class NewWizard {
                     .orElse(defaultJdkId);
         }
 
-        var javaLayoutStep = WizardStep.RadioStep.vertical("layout", "Project layout:")
-                .choice("simple", "Simple / Mill-like (./src, ./test/src, ./resources, ./test/resources)")
-                .choice("traditional", "Traditional (sources in ./src/main/java, tests in ./src/test/java)")
-                .defaultChoice("simple")
-                .when(a -> "java".equals(a.get("lang")))
+        // Placement only — jk.toml has no layout key; the tree on disk is the convention.
+        var layoutStep = WizardStep.RadioStep.vertical("layout", "Project layout:")
+                .choice("traditional", "Traditional", "(./src/main/java, ./src/test/java, etc.)")
+                .choice("simple", "Simple", "(./src, ./test/src, etc.)")
+                .defaultChoice("traditional")
                 .build();
 
-        var kotlinLayoutStep = WizardStep.RadioStep.vertical("layout", "Project layout:")
-                .choice("simple", "Simple / Mill-like (./src, ./test/src, ./resources, ./test/resources)")
-                .choice("traditional", "Traditional (sources in ./src/main/kotlin, tests in ./src/test/kotlin)")
-                .defaultChoice("simple")
-                .when(a -> "kotlin".equals(a.get("lang")))
-                .build();
-
-        // Type-ahead library picker: catalog short names + free-form GAV.
+        // Curated defaults + host declared-dep frequency (≤10); free-form GAV via custom row.
         var librariesStep = WizardStep.MultiSelectStep.vertical("libraries", "Libraries / dependencies:")
-                .choicesFn(a -> libraryPickerChoices())
+                .choicesFn(a -> libraryPickerChoices("java"))
                 .filterable(true)
                 .customOption("group:artifact or short-name (e.g. com.google.guava:guava)")
                 .defaults(Set.of("jspecify"))
@@ -149,10 +144,10 @@ public final class NewWizard {
                 .build();
 
         var kotlinLibrariesStep = WizardStep.MultiSelectStep.vertical("libraries", "Libraries / dependencies:")
-                .choicesFn(a -> libraryPickerChoices())
+                .choicesFn(a -> libraryPickerChoices("kotlin"))
                 .filterable(true)
                 .customOption("group:artifact or short-name")
-                .defaults(Set.of("kotest"))
+                .defaults(Set.of("kotlinx-coroutines-core"))
                 .when(a -> "kotlin".equals(a.get("lang")))
                 .build();
 
@@ -231,7 +226,10 @@ public final class NewWizard {
                 .defaultChoice(defaultJdkId);
 
         String wizardSubtitle = module
-                ? "Create a new module for " + parent.displayName()
+                ? "Create a new module for "
+                        + Theme.colorize(
+                                parent.displayName(),
+                                Theme.active().brightCyan().bold())
                 : isInit ? "Initialize this project" : "Create a new project";
         return Wizard.builder()
                 .command(module ? "New Module" : isInit ? "Init" : "New Project")
@@ -245,9 +243,9 @@ public final class NewWizard {
                         .defaultValue(effectiveGroup)
                         .build())
                 .step(WizardStep.RadioStep.horizontal("kind", "Project type:")
-                        .choice("executable", "Executable")
                         .choice("library", "Library")
-                        .defaultChoice("executable")
+                        .choice("executable", "Executable")
+                        .defaultChoice("library")
                         .build())
                 .step(buildTargets)
                 // Language first, then (for Java) the language version, then the
@@ -260,49 +258,55 @@ public final class NewWizard {
                         .build())
                 .step(javaVersion)
                 .step(jdkStep.build())
-                .step(javaLayoutStep)
-                .step(kotlinLayoutStep)
+                .step(layoutStep)
                 .step(librariesStep)
                 .step(kotlinLibrariesStep)
                 .step(kotlinOptions)
                 .build();
     }
 
-    /** Catalog short names as multi-select choices (bundled layer via the catalog-read verb). */
-    static List<cc.jumpkick.cli.tui.Choice> libraryPickerChoices() {
-        var out = new ArrayList<cc.jumpkick.cli.tui.Choice>();
-        CatalogReadAck ack = bundledCatalogOrEmpty();
-        var byName = new LinkedHashMap<String, CatalogReadAck.Entry>();
-        for (CatalogReadAck.Entry e : ack.entries()) byName.put(e.name(), e);
-        // Prefer curated scaffold ids first (stable defaults for new projects) — but only ones
-        // the bundled catalog actually resolves. The old second clause re-tested membership in
-        // the very list being iterated, silently offering unresolvable ids (JK-2172).
-        for (String id : NewCommand.CURATED_IDS) {
-            if (byName.containsKey(id)) {
-                out.add(new cc.jumpkick.cli.tui.Choice(id, id, "curated"));
-            }
-        }
-        for (CatalogReadAck.Entry e : ack.entries()) {
-            if (NewCommand.CURATED_IDS.contains(e.name())) continue;
-            out.add(new cc.jumpkick.cli.tui.Choice(e.name(), e.name(), e.moduleKey()));
-        }
-        return out;
+    /** Fixed Java library ids always shown at the top of the New wizard picker. */
+    static final List<String> JAVA_LIBRARY_DEFAULTS = List.of("jspecify", "lombok");
+
+    /** Fixed Kotlin library ids always shown at the top of the New wizard picker. */
+    static final List<String> KOTLIN_LIBRARY_DEFAULTS =
+            List.of("kotlinx-coroutines-core", "kotlinx-serialization-json", "okhttp", "ktor-server-core", "koin-core");
+
+    /** Max selectable library rows (defaults + host-frequency fill), excluding the custom row. */
+    static final int LIBRARY_PICKER_CAP = 10;
+
+    /** Language-specific defaults plus host declared-dep frequency, capped at {@link #LIBRARY_PICKER_CAP}. */
+    static List<Choice> libraryPickerChoices() {
+        return libraryPickerChoices("java");
     }
 
-    private static CatalogReadAck bundledCatalogOrEmpty() {
-        try {
-            return cc.jumpkick.cli.engine.EngineClient.catalogRead(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    Path.of("."),
-                    null,
-                    "list",
-                    List.of(),
-                    false,
-                    false,
-                    true);
-        } catch (Exception e) {
-            return CatalogReadAck.of(List.of(), List.of(), List.of());
+    static List<Choice> libraryPickerChoices(String lang) {
+        List<String> fixed =
+                switch (lang == null ? "" : lang.toLowerCase(Locale.ROOT)) {
+                    case "kotlin" -> KOTLIN_LIBRARY_DEFAULTS;
+                    case "java" -> JAVA_LIBRARY_DEFAULTS;
+                    default -> List.of();
+                };
+        Set<String> seen = new LinkedHashSet<>(fixed);
+        List<Choice> out = new ArrayList<>(LIBRARY_PICKER_CAP);
+        for (String id : fixed) {
+            out.add(new Choice(id, id));
         }
+        int remaining = LIBRARY_PICKER_CAP - out.size();
+        if (remaining > 0) {
+            List<String> popular;
+            try {
+                popular = DepFrequency.load().top(remaining, seen);
+            } catch (RuntimeException e) {
+                popular = List.of();
+            }
+            for (String id : popular) {
+                if (id == null || id.isBlank() || !seen.add(id)) continue;
+                out.add(new Choice(id, id));
+                if (out.size() >= LIBRARY_PICKER_CAP) break;
+            }
+        }
+        return List.copyOf(out);
     }
 
     /**

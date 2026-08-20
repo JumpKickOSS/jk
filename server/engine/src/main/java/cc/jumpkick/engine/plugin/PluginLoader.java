@@ -139,6 +139,30 @@ public final class PluginLoader {
                 command(javaExe, classpath, jvmFlags, args), extraEnv, workDir, prefix, onProtocol, onPassthrough);
     }
 
+    /** As {@link #converse} with an inactivity watchdog — see {@link PluginProcess#converse}. */
+    public static int converse(
+            Path javaExe,
+            String classpath,
+            List<String> jvmFlags,
+            String prefix,
+            List<String> args,
+            Map<String, String> extraEnv,
+            Path workDir,
+            BiConsumer<String, PluginProcess.Conversation> onProtocol,
+            Consumer<String> onPassthrough,
+            long idleTimeoutMs)
+            throws IOException, InterruptedException {
+        return PluginProcess.converse(
+                command(javaExe, classpath, jvmFlags, args),
+                extraEnv,
+                workDir,
+                prefix,
+                onProtocol,
+                onPassthrough,
+                false,
+                idleTimeoutMs);
+    }
+
     /**
      * Build the plugin launch command {@code <java> <jvmFlags> -cp <classpath>
      * cc.jumpkick.plugin.process.PluginMain <args>} without running it — for callers that drive

@@ -93,7 +93,8 @@ public final class ExplainVerb implements HostedVerb {
                                 Jsonl.str(requestLine, "profile"),
                                 workers,
                                 maxModuleConcurrency,
-                                Jsonl.bool(requestLine, "parallelTests", false),
+                                // Same default as the build surfaces (JK-2213).
+                                Jsonl.bool(requestLine, "parallelTests", true),
                                 skipTests,
                                 verbose));
                 ExplainPlan plan = report.plan();

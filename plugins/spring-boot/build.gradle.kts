@@ -7,7 +7,7 @@ plugins {
 description = "jk-spring-boot: the built-in Spring Boot build plugin's code layer — the " +
         "Spring AOT step and the boot-jar packager, run in a forked worker JVM over the " +
         "build-plugin harness. The declarative layer (schema, BOM, compiler args, kotlin " +
-        "plugins) lives in jk-plugin.toml; this jar carries only the hard 10%. Deliberately " +
+        "plugins) lives in jk-plugin.toml at this jar's root, plus the hard 10% code. Deliberately " +
         "depends on plugin-api alone: it is the blueprint third-party build plugins copy."
 
 dependencies {

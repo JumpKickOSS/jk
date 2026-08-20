@@ -152,8 +152,8 @@ public final class Giter8TemplateIndex {
     private static void mergeInto(
             Map<String, Giter8ShortNames.Entry> byId, Set<String> overlaid, String id, Path templateRoot) {
         if (id == null || id.isBlank()) return;
-        Giter8ShortNames.Entry base =
-                byId.getOrDefault(id, new Giter8ShortNames.Entry(id, id, List.of(), Giter8ShortNames.LAYOUT_SIMPLE));
+        Giter8ShortNames.Entry base = byId.getOrDefault(
+                id, new Giter8ShortNames.Entry(id, id, List.of(), Giter8ShortNames.LAYOUT_TRADITIONAL));
         byId.put(id, mergeFromDisk(base, templateRoot));
         overlaid.add(id);
     }

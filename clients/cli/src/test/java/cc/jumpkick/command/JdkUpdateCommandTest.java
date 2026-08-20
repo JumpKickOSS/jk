@@ -1,63 +1,34 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.util.Hashing;
-import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.PrintStream;
-import java.net.InetSocketAddress;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.IntSupplier;
 import java.util.function.Supplier;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /** Integration tests for {@code jk jdk update [spec]}. */
 @Tag("integration")
 class JdkUpdateCommandTest {
 
-    private HttpServer server;
-    private URI base;
-    private final Map<String, byte[]> served = new HashMap<>();
-
-    @BeforeEach
-    void start() throws IOException {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            byte[] body = served.get(exchange.getRequestURI().getPath());
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        server.start();
-        base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-    }
-
-    @AfterEach
-    void stop() {
-        server.stop(0);
-    }
+    @RegisterExtension
+    final MockMavenServer maven = new MockMavenServer();
 
     @Test
     void updates_to_latest_point_release_and_removes_old(@TempDir Path tempDir) throws Exception {
@@ -73,7 +44,7 @@ class JdkUpdateCommandTest {
                 "--jdks-dir",
                 jdks.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString());
+                maven.base().resolve("/feed/jdks.json").toString());
         assertThat(exit).isEqualTo(0);
         assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
                 .exists();
@@ -98,7 +69,7 @@ class JdkUpdateCommandTest {
                 "--jdks-dir",
                 jdks.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString());
+                maven.base().resolve("/feed/jdks.json").toString());
         assertThat(exit).isEqualTo(0);
         assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
                 .exists();
@@ -126,7 +97,7 @@ class JdkUpdateCommandTest {
                 "--jdks-dir",
                 jdks.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString());
+                maven.base().resolve("/feed/jdks.json").toString());
         assertThat(exit).isEqualTo(0);
         assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
                 .exists();
@@ -155,7 +126,7 @@ class JdkUpdateCommandTest {
                 "--jdks-dir",
                 jdks.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString());
+                maven.base().resolve("/feed/jdks.json").toString());
         assertThat(exit).isEqualTo(0);
         assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
                 .exists();
@@ -168,14 +139,14 @@ class JdkUpdateCommandTest {
         makeJdkInstall(jdks.resolve("temurin-25.0.3"), "25.0.3", "Eclipse Adoptium");
         serveFeed(tempDir, vendorEntry("Eclipse", "Temurin", "temurin", 25, "25.0.3"));
 
-        String stdout = captureStdout(() -> run(
+        String stdout = Capture.stdout(() -> run(
                 "jdk",
                 "update",
                 "--yes",
                 "--jdks-dir",
                 jdks.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString()));
+                maven.base().resolve("/feed/jdks.json").toString()));
         assertThat(stdout).contains("Nothing to do");
         assertThat(stdout).contains("up to date");
         assertThat(stdout).contains("JDK"); // CommandWedge chip label
@@ -186,7 +157,7 @@ class JdkUpdateCommandTest {
     @Test
     void no_managed_jdks_is_a_noop(@TempDir Path tempDir) {
         Path jdks = tempDir.resolve("jdks");
-        String stdout = captureStdout(() -> run("jdk", "update", "--yes", "--jdks-dir", jdks.toString()));
+        String stdout = Capture.stdout(() -> run("jdk", "update", "--yes", "--jdks-dir", jdks.toString()));
         assertThat(stdout).contains("Nothing to do");
         assertThat(stdout).contains("No JumpKick-managed JDKs installed");
         assertThat(stdout).contains("JDK");
@@ -200,14 +171,14 @@ class JdkUpdateCommandTest {
 
         String stdout = withStdin(
                 "n\n",
-                () -> captureStdout(() -> run(
+                () -> Capture.stdout(() -> run(
                         "jdk",
                         "update",
                         "25",
                         "--jdks-dir",
                         jdks.toString(),
                         "--feed-url",
-                        base.resolve("/feed/jdks.json").toString())));
+                        maven.base().resolve("/feed/jdks.json").toString())));
         assertThat(stdout).contains("Aborted");
         assertThat(jdks.resolve("temurin-25.0.2").resolve("bin").resolve("java"))
                 .exists();
@@ -228,7 +199,7 @@ class JdkUpdateCommandTest {
                 "--jdks-dir",
                 jdks.toString(),
                 "--feed-url",
-                base.resolve("/feed/jdks.json").toString());
+                maven.base().resolve("/feed/jdks.json").toString());
         assertThat(exit).isEqualTo(0);
         assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
                 .exists();
@@ -247,15 +218,15 @@ class JdkUpdateCommandTest {
                             "bin/javac", "#!/fake/java",
                             "release", "JAVA_VERSION=\"" + s.version() + "\"\n"));
             String archivePath = "/archives/" + s.installFolder() + ".tar.gz";
-            served.put(archivePath, archive);
+            maven.served().put(archivePath, archive);
             entries.add(entryJson(
                     s,
                     archive.length,
                     Hashing.sha256Hex(archive),
-                    base.resolve(archivePath).toString()));
+                    maven.base().resolve(archivePath).toString()));
         }
         String feed = "{\n  \"jdks\": [\n" + String.join(",\n", entries) + "\n  ]\n}";
-        served.put("/feed/jdks.json", feed.getBytes(StandardCharsets.UTF_8));
+        maven.served().put("/feed/jdks.json", feed.getBytes(StandardCharsets.UTF_8));
     }
 
     private record EntrySpec(String vendor, String product, String sdkPrefix, int major, String version) {
@@ -333,22 +304,6 @@ class JdkUpdateCommandTest {
         Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"" + implementor + "\"\n");
-    }
-
-    private static int run(String... args) {
-        return Jk.execute(args);
-    }
-
-    private static String captureStdout(IntSupplier body) {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        PrintStream origOut = System.out;
-        System.setOut(new PrintStream(out));
-        try {
-            body.getAsInt();
-        } finally {
-            System.setOut(origOut);
-        }
-        return out.toString(StandardCharsets.UTF_8);
     }
 
     private static <T> T withStdin(String input, Supplier<T> body) {

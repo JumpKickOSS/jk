@@ -224,8 +224,10 @@ class StoreFeedRefreshTest {
         Path jdks = tmp.resolve("jdks.json");
         List<String> logs = new ArrayList<>();
         URI dead = URI.create("http://127.0.0.1:1/nope");
+        // failFast: connection-refused surfaces in one attempt — with the default backoff
+        // ladder this single method waited out ~6s of retries, 19% of the whole unit tier.
         try (StoreFeedRefresh refresh =
-                new StoreFeedRefresh(logs::add, new Http(), () -> libs, () -> jdks, dead, dead, null)) {
+                new StoreFeedRefresh(logs::add, Http.failFast(), () -> libs, () -> jdks, dead, dead, null)) {
             refresh.tickQuietly();
         }
         assertThat(libs).doesNotExist();

@@ -45,7 +45,6 @@ class BuildLogicCodegenE2eTest {
                 version = "1.0.0"
                 jdk     = 25
                 java    = 25
-                layout  = "simple"
 
                 """ + REPOS);
 
@@ -131,6 +130,6 @@ class BuildLogicCodegenE2eTest {
                 false,
                 Set.of(),
                 SessionContext.current());
-        return BuildPlanner.coreBuilder(in).build().run();
+        return BuildPlanner.fullPlan(in).run();
     }
 }

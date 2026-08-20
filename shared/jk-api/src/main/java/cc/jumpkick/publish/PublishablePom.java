@@ -8,6 +8,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.pom.PomXml;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -60,9 +61,20 @@ public final class PublishablePom {
      * upstream.
      */
     public static Pom render(JkBuild jkBuild, Metadata meta, Set<String> workspaceSiblings) {
+        return render(jkBuild, meta, workspaceSiblings, Map.of());
+    }
+
+    /**
+     * As {@link #render(JkBuild, Metadata, Set)}, pinning {@code &lt;version&gt;} from {@code locked}
+     * ({@code group:artifact} or package key → exact version) when present so a locally installed
+     * POM can rebuild a runtime classpath without re-resolving ranges.
+     */
+    public static Pom render(
+            JkBuild jkBuild, Metadata meta, Set<String> workspaceSiblings, Map<String, String> locked) {
         Objects.requireNonNull(jkBuild, "jkBuild");
         if (meta == null) meta = Metadata.empty();
         if (workspaceSiblings == null) workspaceSiblings = Set.of();
+        if (locked == null) locked = Map.of();
 
         StringBuilder sb = new StringBuilder(512);
         PomXml.appendPreamble(sb);
@@ -89,8 +101,9 @@ public final class PublishablePom {
         appendDevelopers(sb, meta.developers());
         appendScm(sb, meta.scm());
 
-        PomXml.appendDependencyManagement(sb, jkBuild.dependencies().of(Scope.PLATFORM), d -> versionOf(d.version()));
-        appendDependencies(sb, jkBuild, workspaceSiblings);
+        Map<String, String> pins = locked;
+        PomXml.appendDependencyManagement(sb, jkBuild.dependencies().of(Scope.PLATFORM), d -> versionOf(d, pins));
+        appendDependencies(sb, jkBuild, workspaceSiblings, pins);
 
         sb.append("</project>\n");
         return new Pom(sb.toString());
@@ -145,7 +158,8 @@ public final class PublishablePom {
         sb.append("  </scm>\n");
     }
 
-    private static void appendDependencies(StringBuilder sb, JkBuild jkBuild, Set<String> workspaceSiblings) {
+    private static void appendDependencies(
+            StringBuilder sb, JkBuild jkBuild, Set<String> workspaceSiblings, Map<String, String> locked) {
         Scope[] order = {Scope.MAIN, Scope.RUNTIME, Scope.PROVIDED, Scope.TEST};
         boolean any = false;
         for (Scope s : order) {
@@ -160,6 +174,8 @@ public final class PublishablePom {
         for (Scope s : order) {
             String mavenScope = PomXml.mavenScope(s);
             for (Dependency d : jkBuild.dependencies().of(s)) {
+                // Unresolved workspace placeholders cannot be Maven coordinates.
+                if (d.isWorkspace()) continue;
                 // A branch-tracked git dep, even though it's locked in jk-lock.toml, is still not a
                 // stable reference for external consumers of the published artifact. `jk
                 // publish` rejects it up front; skip here as a safety net so a stray caller
@@ -172,10 +188,19 @@ public final class PublishablePom {
                 if (d.isTestsKind() && workspaceSiblings.contains(d.module())) {
                     continue;
                 }
-                PomXml.appendDependency(sb, d, versionOf(d.version()), mavenScope);
+                PomXml.appendDependency(sb, d, versionOf(d, locked), mavenScope);
             }
         }
         sb.append("  </dependencies>\n");
+    }
+
+    private static String versionOf(Dependency d, Map<String, String> locked) {
+        if (locked != null && !locked.isEmpty()) {
+            String pin = locked.get(d.packageKey());
+            if (pin == null || pin.isBlank()) pin = locked.get(d.module());
+            if (pin != null && !pin.isBlank()) return pin;
+        }
+        return versionOf(d.version());
     }
 
     private static String versionOf(VersionSelector v) {

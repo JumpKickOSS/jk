@@ -36,6 +36,33 @@ class BuildPlanTest {
     }
 
     @Test
+    void an_unreported_step_throwable_reaches_listeners_not_just_the_result() {
+        // JK-2199: the synthesized "exception" diagnostic landed only in the result's
+        // diagnostics, which never cross the wire on the workspace path — a GlobException
+        // out of copy-resources failed the module with no message anywhere.
+        List<String> seen = new ArrayList<>();
+        var plan = BuildPlan.builder("boom")
+                .addListener(new BuildPlanListener() {
+                    @Override
+                    public void error(String step, String code, String message) {
+                        seen.add(step + ":" + code + ":" + message);
+                    }
+                })
+                .addTask(Task.builder("copy-resources")
+                        .ticks(1)
+                        .execute(ctx -> {
+                            throw new IllegalStateException("path `../x` matched no files");
+                        })
+                        .build())
+                .build();
+
+        var result = plan.run();
+        assertThat(result.success()).isFalse();
+        assertThat(seen).containsExactly("copy-resources:exception:path `../x` matched no files");
+        assertThat(result.errors()).hasSize(1);
+    }
+
+    @Test
     void scope_sums_across_phases() {
         var plan = BuildPlan.builder("multi")
                 .addTask(Task.builder("a").ticks(3).execute(ctx -> {}).build())

@@ -38,7 +38,8 @@ public record JkBuild(
         Objects.requireNonNull(profiles, "profiles");
         Objects.requireNonNull(features, "features");
         repositories = List.copyOf(repositories);
-        // [manifest] custom attributes; Main-Class comes from [application].main, not here.
+        // [manifest] custom attributes; Main-Class comes from [application].main (or PluginMain
+        // for a plugin worker), not here.
         manifest = manifest == null || manifest.isEmpty()
                 ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(manifest));
@@ -162,7 +163,7 @@ public record JkBuild(
      * {@code JkBuildParser.ensureShrinkForMinified}).
      */
     public JkBuild withArtifacts(boolean assembly, boolean minified) {
-        Application app = application.orElse(new Application(null, false, false));
+        Application app = application.orElse(new Application(null, false, false, false));
         if (app.assembly() == (assembly || minified) && app.minified() == minified) return this;
         return new JkBuild(
                 project,
@@ -173,7 +174,26 @@ public record JkBuild(
                 workspace,
                 manifest,
                 plugins,
-                Optional.of(new Application(app.main(), assembly, minified)),
+                Optional.of(new Application(app.main(), assembly, minified, app.nativeImage())),
+                nativeConfig,
+                pluginConfigs,
+                build,
+                format,
+                variants);
+    }
+
+    /** This build with its {@code [plugins]} list replaced (user-config merge / tests). */
+    public JkBuild withPlugins(List<PluginDeclaration> plugins) {
+        return new JkBuild(
+                project,
+                dependencies,
+                repositories,
+                profiles,
+                features,
+                workspace,
+                manifest,
+                plugins,
+                application,
                 nativeConfig,
                 pluginConfigs,
                 build,
@@ -247,15 +267,20 @@ public record JkBuild(
 
     /** {@code [native].graal} — the GraalVM spec {@code jk native} uses, or {@code null} if unset. */
     public String graal() {
-        return nativeConfig.map(NativeConfig::graal).orElse(null);
+        return nativeConfig.map(NativeConfig::graal).orElse(nativeMode() != NativeMode.DISABLED ? "graalvm" : null);
     }
 
     /**
-     * From {@code [native]} / {@code enabled}: absent table → {@link NativeMode#DISABLED}; present
-     * with no key or {@code enabled = true} → {@link NativeMode#SUPPORTED}; {@code enabled =
-     * "always"} → {@link NativeMode#ALWAYS}; {@code enabled = false} → {@link NativeMode#DISABLED}.
+     * From {@code [application].native} and {@code [native].enabled}: {@code native = true} →
+     * {@link NativeMode#ALWAYS}; else absent {@code [native]} → {@link NativeMode#DISABLED};
+     * present with no key or {@code enabled = true} → {@link NativeMode#SUPPORTED}; {@code
+     * enabled = "always"} → {@link NativeMode#ALWAYS}; {@code enabled = false} → {@link
+     * NativeMode#DISABLED}.
      */
     public NativeMode nativeMode() {
+        if (application.map(Application::nativeImage).orElse(false)) {
+            return NativeMode.ALWAYS;
+        }
         return nativeConfig.map(NativeConfig::enabled).orElse(NativeMode.DISABLED);
     }
 
@@ -442,36 +467,12 @@ public record JkBuild(
     }
 
     /**
-     * Source layout: {@code simple} (Mill-like {@code./src}, {@code./test/src},
-     * {@code./resources}, {@code./test/resources}), {@code traditional} (Maven), or {@code auto}
-     * (infer; default when absent).
+     * Resolved source-tree convention for exporters (Maven vs Mill-like). Not a {@code jk.toml}
+     * field — {@code src/main/{java,kotlin,scala,groovy,resources}} decides at the module dir.
      */
     public enum Layout {
         SIMPLE,
-        TRADITIONAL,
-        AUTO;
-
-        /** Parse from a jk.toml string value; null or blank → AUTO. */
-        public static Layout parse(String raw) {
-            if (raw == null || raw.isBlank()) return AUTO;
-            return switch (raw.trim().toLowerCase()) {
-                case "simple" -> SIMPLE;
-                case "traditional" -> TRADITIONAL;
-                case "auto" -> AUTO;
-                default ->
-                    throw new IllegalArgumentException(
-                            "layout must be \"simple\", \"traditional\", or \"auto\" (got: " + raw + ")");
-            };
-        }
-
-        /** The string written to jk.toml, or null for AUTO (omitted). */
-        public String tomlValue() {
-            return switch (this) {
-                case SIMPLE -> "simple";
-                case TRADITIONAL -> "traditional";
-                case AUTO -> null;
-            };
-        }
+        TRADITIONAL
     }
 
     /**
@@ -528,8 +529,7 @@ public record JkBuild(
         GROOVY,
         SOURCES,
         DESCRIPTION,
-        M2INSTALL,
-        LAYOUT
+        M2INSTALL
     }
 
     public record Project(
@@ -543,7 +543,6 @@ public record JkBuild(
             SourcesMode sourcesMode,
             String description,
             boolean m2install,
-            Layout layout,
             Set<ProjectInherit> workspaceInherits) {
 
         public Project {
@@ -558,7 +557,6 @@ public record JkBuild(
             }
             if (jdk != null && jdk.isBlank()) jdk = null;
             if (sourcesMode == null) sourcesMode = SourcesMode.DISABLED;
-            if (layout == null) layout = Layout.AUTO;
             if (description != null && description.isBlank()) description = null;
             workspaceInherits =
                     workspaceInherits == null || workspaceInherits.isEmpty() ? Set.of() : Set.copyOf(workspaceInherits);
@@ -575,21 +573,8 @@ public record JkBuild(
                 VersionSelector groovy,
                 SourcesMode sourcesMode,
                 String description,
-                boolean m2install,
-                Layout layout) {
-            this(
-                    group,
-                    name,
-                    version,
-                    jdk,
-                    java,
-                    kotlin,
-                    groovy,
-                    sourcesMode,
-                    description,
-                    m2install,
-                    layout,
-                    Set.of());
+                boolean m2install) {
+            this(group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, Set.of());
         }
 
         /** True when any project identity field still needs workspace-root resolution. */
@@ -627,10 +612,9 @@ public record JkBuild(
             next.remove(ProjectInherit.SOURCES);
             next.remove(ProjectInherit.DESCRIPTION);
             next.remove(ProjectInherit.M2INSTALL);
-            next.remove(ProjectInherit.LAYOUT);
             if (next.equals(workspaceInherits)) return this;
             return new Project(
-                    group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, layout, next);
+                    group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, next);
         }
 
         /** True when this project declared {@code version.workspace = true} and is not yet resolved. */
@@ -660,8 +644,7 @@ public record JkBuild(
             SourcesMode src = inherits(ProjectInherit.SOURCES) ? root.sourcesMode() : sourcesMode;
             String desc = inherits(ProjectInherit.DESCRIPTION) ? root.description() : description;
             boolean m2 = inherits(ProjectInherit.M2INSTALL) ? root.m2install() : m2install;
-            Layout lay = inherits(ProjectInherit.LAYOUT) ? root.layout() : layout;
-            return new Project(g, name, v, j, ja, kt, gr, src, desc, m2, lay, Set.of());
+            return new Project(g, name, v, j, ja, kt, gr, src, desc, m2, Set.of());
         }
 
         private static String requireRoot(String value, String field) {
@@ -682,23 +665,12 @@ public record JkBuild(
                     : EnumSet.copyOf(workspaceInherits);
             next.remove(ProjectInherit.VERSION);
             return new Project(
-                    group,
-                    name,
-                    newVersion,
-                    jdk,
-                    java,
-                    kotlin,
-                    groovy,
-                    sourcesMode,
-                    description,
-                    m2install,
-                    layout,
-                    next);
+                    group, name, newVersion, jdk, java, kotlin, groovy, sourcesMode, description, m2install, next);
         }
 
         /** Library project — bare-major {@code jdk} (0 → unset). */
         public Project(String group, String name, String version, int jdk) {
-            this(group, name, version, majorSpec(jdk), jdk, null, null, null, null, false, Layout.AUTO, Set.of());
+            this(group, name, version, majorSpec(jdk), jdk, null, null, null, null, false, Set.of());
         }
 
         /** A bare-major int as a jdk spec string ({@code 25} → {@code "25"}); 0/negative → unset. */
@@ -723,7 +695,6 @@ public record JkBuild(
             private SourcesMode sourcesMode = SourcesMode.DISABLED;
             private String description;
             private boolean m2install;
-            private Layout layout = Layout.AUTO;
 
             private Builder(String group, String name, String version) {
                 this.group = group;
@@ -774,14 +745,9 @@ public record JkBuild(
                 return this;
             }
 
-            public Builder layout(Layout layout) {
-                this.layout = layout;
-                return this;
-            }
-
             public Project build() {
                 return new Project(
-                        group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, layout);
+                        group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install);
             }
         }
 
@@ -838,12 +804,15 @@ public record JkBuild(
     }
 
     /**
-     * {@code [application]} block. Presence alone marks an application; absent means library.
+     * {@code [application]} block. Presence marks an application; {@code main} is required in
+     * {@code jk.toml}. Absent means library.
      *
      * @param assembly build a fat {@code -all.jar} beside the thin jar
      * @param minified build an R8-minified {@code -min.jar}; implies {@code assembly}
+     * @param nativeImage {@code native = true}: native-image on {@code jk build} and {@code jk
+     *     install}
      */
-    public record Application(String main, boolean assembly, boolean minified) {
+    public record Application(String main, boolean assembly, boolean minified, boolean nativeImage) {
 
         public Application {
             if (main != null && main.isBlank()) main = null;
@@ -853,9 +822,14 @@ public record JkBuild(
             if (minified) assembly = true;
         }
 
-        /** Convenience for importers: no minified artifact. */
+        /** Convenience for importers: no minified artifact, no native image. */
         public Application(String main, boolean assembly) {
-            this(main, assembly, false);
+            this(main, assembly, false, false);
+        }
+
+        /** Convenience: no native image. */
+        public Application(String main, boolean assembly, boolean minified) {
+            this(main, assembly, minified, false);
         }
     }
 
@@ -895,6 +869,13 @@ public record JkBuild(
             /** {@code [build] test-workers}: {@code null} = inherit CLI/auto; {@code 0} = auto; {@code 1} = serial. */
             Integer testWorkers,
             /**
+             * {@code [test] serial-tags}: class-level JUnit tags whose classes never share the
+             * sharded worker pool — they run in a single trailing worker while untagged classes
+             * shard across {@code workers}. Lets a module keep {@code workers = 0} for its unit
+             * tier while its nested-engine/integration classes stay serial (JK-2184).
+             */
+            List<String> testSerialTags,
+            /**
              * {@code [resolve] platform}: how BOM managed pins constrain the graph. Default
              * {@link PlatformPolicy#ENFORCED}.
              */
@@ -921,6 +902,7 @@ public record JkBuild(
                 List.of(),
                 List.of(),
                 null,
+                List.of(),
                 PlatformPolicy.ENFORCED,
                 UnmappedPolicy.MEDIATE,
                 List.of(),
@@ -933,6 +915,7 @@ public record JkBuild(
             kspOptions = kspOptions == null ? List.of() : List.copyOf(kspOptions);
             extraSrc = extraSrc == null ? List.of() : List.copyOf(new LinkedHashSet<>(extraSrc));
             if (testWorkers != null && testWorkers < 0) testWorkers = 0;
+            testSerialTags = testSerialTags == null ? List.of() : List.copyOf(testSerialTags);
             platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
             unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
             extraResources = extraResources == null ? List.of() : List.copyOf(extraResources);
@@ -952,6 +935,7 @@ public record JkBuild(
                     kspOptions,
                     all,
                     testWorkers,
+                    testSerialTags,
                     platformPolicy,
                     unmappedPolicy,
                     extraResources,
@@ -967,6 +951,7 @@ public record JkBuild(
                     kspOptions,
                     extraSrc,
                     testWorkers,
+                    testSerialTags,
                     policy == null ? PlatformPolicy.ENFORCED : policy,
                     unmappedPolicy,
                     extraResources,

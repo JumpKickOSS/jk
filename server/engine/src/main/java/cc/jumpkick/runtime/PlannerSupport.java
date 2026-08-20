@@ -409,7 +409,7 @@ public final class PlannerSupport {
      *
      * <p>{@code jk test} (testOnly) does not package the engine assembly, so the workspace
      * {@code *-all.jar} is often missing. Fall back to the host engine jar (the process serving
-     * this build) or the materialized install under {@code VersionStore} — same fat jar Gradle
+     * this build) or the product-lib install under {@code EngineInstall} — same fat jar Gradle
      * hands CLI tests via {@code :engine:shadowJar}.
      */
     static void enrichCliTestProps(Path moduleDir, Map<String, String> props) throws IOException {
@@ -435,7 +435,7 @@ public final class PlannerSupport {
 
     /**
      * Engine jar for nested CLI suites: workspace assembly when present, else the host process's
-     * fat jar / installed VersionStore materialization.
+     * fat jar / installed EngineInstall materialization.
      */
     static Path resolveEngineJarForNestedTests(Map<String, Path> siblings) {
         Path engine = siblings != null ? siblings.get("jk-engine") : null;
@@ -446,7 +446,7 @@ public final class PlannerSupport {
 
     /**
      * Fat engine jar this process was launched from, the same version under {@link
-     * cc.jumpkick.cache.VersionStore}, or a monorepo product path ({@code build/dist/lib},
+     * cc.jumpkick.cache.EngineInstall}, or a monorepo product path ({@code build/dist/lib},
      * Gradle {@code build/libs}, pure-jk {@code target/server/engine}). Null only when none
      * of those exist (cold checkout with no install and no prior package).
      */
@@ -454,7 +454,7 @@ public final class PlannerSupport {
      * Test hook: when set, host-engine-jar discovery searches only this root's monorepo product
      * paths. Keeps tests from depending on — or worse, seeding — the real checkout's build
      * outputs, and makes fallback assertions deterministic on warm developer trees
-     * where the process/VersionStore probes would otherwise win.
+     * where the process/EngineInstall probes would otherwise win.
      */
     static Path locateHostEngineJar() {
         Path override = BuildPlanner.hostEngineSearchOverride;
@@ -482,12 +482,12 @@ public final class PlannerSupport {
             }
         }
         try {
-            var mat = cc.jumpkick.cache.VersionStore.current().resolve(cc.jumpkick.model.JkVersion.VERSION);
+            var mat = cc.jumpkick.cache.EngineInstall.current().resolve(cc.jumpkick.model.JkVersion.VERSION);
             if (mat.isPresent() && Files.isRegularFile(mat.get().engineJar())) {
                 return mat.get().engineJar().toAbsolutePath().normalize();
             }
         } catch (RuntimeException ignored) {
-            // Isolated JK_HOME (Gradle :engine:test / nested CLI suite) has no versions tree.
+            // Isolated JK_HOME (Gradle :engine:test / nested CLI suite) has no engine jar.
         }
         // Last resort: monorepo product outputs relative to user.dir (and parents). Pure-jk
         // nested isolation runs with user.dir = clients/cli; host run-tests has monorepo root
@@ -542,6 +542,8 @@ public final class PlannerSupport {
         env.put("JK_JDKS_DIR", jkHome.resolve("jdks").toAbsolutePath().toString());
         env.put("JK_STATE_DIR", stateDir.toAbsolutePath().toString());
         // Intentionally no JK_CACHE_DIR / JK_STORE_DIR — both resolve under JK_HOME.
+        env.put("JK_HTTP_ENABLED", "false");
+        env.put("JK_HTTP_PORT", "0");
         env.put("JK_STREAM_IDLE_MS", "45000");
         env.put("TERM", "xterm-256color");
         env.put("CI", "false");
@@ -590,9 +592,13 @@ public final class PlannerSupport {
      * predicts test-skip without drifting.
      */
     public static List<String> testStampExtras(Path dir, JkBuild project) throws IOException {
+        // The SESSION selection, not DEFAULT: the forecast must key run-tests exactly like the
+        // live run (PlannerTest feeds in.session().testSelection()), or a widened build
+        // (`jk build --all`) forecasts "tests cached" off the unit-tier marker and the whole
+        // workspace short-circuits to "up to date" without running the widened tier (JK-2203).
         return testStampExtras(
                 testStampWorkerJars(dir, project),
-                effectiveSelection(cc.jumpkick.config.TestSelection.DEFAULT, dir),
+                effectiveSelection(cc.jumpkick.config.SessionContext.current().testSelection(), dir),
                 project.build().testEnv(),
                 dir);
     }
@@ -606,8 +612,26 @@ public final class PlannerSupport {
     public static String runTestsStampKey(
             Path dir, JkBuild project, boolean compact, Path mainClasses, Path lockFile, List<Path> testRuntimeCp)
             throws IOException {
+        return runTestsStampKey(dir, project, compact, mainClasses, null, lockFile, testRuntimeCp);
+    }
+
+    /**
+     * {@code mainClassesFingerprint} overrides the on-disk main-classes tree when non-null (post-
+     * {@code jk clean} projection from the compile action record).
+     */
+    public static String runTestsStampKey(
+            Path dir,
+            JkBuild project,
+            boolean compact,
+            Path mainClasses,
+            String mainClassesFingerprint,
+            Path lockFile,
+            List<Path> testRuntimeCp)
+            throws IOException {
         List<String> discovered = cc.jumpkick.layout.TestSuites.discover(dir, compact);
-        var resolved = cc.jumpkick.config.TestSelection.DEFAULT.resolve(discovered);
+        // Session selection for suite resolution too — --all widens the suite set, and the
+        // forecast's source list must cover the same files the live run stamps (JK-2203).
+        var resolved = cc.jumpkick.config.SessionContext.current().testSelection().resolve(discovered);
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(cc.jumpkick.layout.TestSuites.DEFAULT);
         List<Path> stampSrcs = new ArrayList<>();
         stampSrcs.addAll(cc.jumpkick.layout.TestSuites.collectJavaSources(dir, compact, suites));
@@ -616,6 +640,7 @@ public final class PlannerSupport {
         return cc.jumpkick.task.TestStamp.computeKey(
                 stampSrcs,
                 mainClasses,
+                mainClassesFingerprint,
                 cc.jumpkick.layout.ModuleLayout.suiteResourceDirs(dir, compact, suites),
                 lockFile,
                 testRuntimeCp,

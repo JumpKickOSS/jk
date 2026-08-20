@@ -133,8 +133,11 @@ version-to = "version"
 
 ```toml
 [code]
-main = "cc.example.MyPluginMain"   # implements the plugin-sdk entry
+protocol-prefix = "##FOO:"   # worker JSONL marker; must match Plugin.manifest()
 ```
+
+The process entry is always the SDK's `PluginMain` — do not put `[application]` on a plugin
+`jk.toml`. Presence of `jk-plugin.toml` (or a `Plugin` service registration) is the worker flag.
 
 Workers speak the same JSONL style as compiler plugins: one shared `SpecWriter` builds every
 spec, and the engine reads worker replies through a bounded line reader. Prefer the harness in
@@ -171,7 +174,7 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
 
 | Path | Status |
 |---|---|
-| **First-party** plugins under `plugins/` | Ship inside the jk dist; version with jk |
+| **First-party** plugins under `plugins/` | Ship with jk; `jk install` publishes them to `repos/local` |
 | **Private / vendored** jars (`[plugins]` + `sha256`) | Supported now — see below |
 | **Public third-party** SDK on Maven | **Not available** until ~1.0 SPI freeze (JK-1074) |
 | **Plugin marketplace / registry** | Intentionally deferred (product anti-goal pre-freeze) |

@@ -51,7 +51,7 @@ public final class ExplainCommand implements CliCommand {
 
     // Hidden aliases plan / why-rebuilt live in Jk.VERB_ALIASES (exact-token rewrite before
     // dispatch) — never here: dispatcher aliases join the unique-prefix candidate set and would
-    // make `jk pl` ambiguous with plugin and `jk wh` with why.
+    // make `jk pl` a prefix of plan and `jk wh` ambiguous with why.
 
     @Override
     public String description() {

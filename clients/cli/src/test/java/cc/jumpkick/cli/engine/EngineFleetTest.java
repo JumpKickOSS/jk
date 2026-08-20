@@ -3,7 +3,11 @@ package cc.jumpkick.cli.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * stopping an engine must be reliable without the user reaching for {@code kill}.
@@ -12,6 +16,8 @@ import org.junit.jupiter.api.Test;
  * is that it reports what actually happened to a process instead of assuming a request was obeyed. On
  * Windows the alternative is telling someone to identify the right JVM in Task Manager.
  */
+// Serial phase: spawns real processes and asserts on live pids scoped to this home.
+@Tag("integration")
 class EngineFleetTest {
 
     @Test
@@ -94,5 +100,72 @@ class EngineFleetTest {
     void listing_never_throws_when_nothing_is_running() {
         // Called from `jk engine status` on every invocation, including a machine with no engine at all.
         assertThat(EngineFleet.list()).isNotNull();
+    }
+
+    @Test
+    void a_resident_engine_is_recognized_without_this_jk_home_on_the_command_line() {
+        String production = "/home/u/.jdks/temurin-25/bin/java -cp /home/u/.local/share/jk/lib/jk-engine.jar"
+                + " cc.jumpkick.engine.EngineMain";
+        String testHome = "/home/u/.jdks/temurin-25/bin/java -cp /tmp/test-jk-home/lib/jk-engine.jar"
+                + " cc.jumpkick.engine.EngineMain";
+        assertThat(EngineFleet.isResidentEngine(production)).isTrue();
+        assertThat(EngineFleet.isResidentEngine(testHome)).isTrue();
+        assertThat(EngineFleet.isResidentEngine(production + " --aot-training")).isFalse();
+        assertThat(EngineFleet.isResidentEngine("/usr/bin/java -jar some-app.jar"))
+                .isFalse();
+        assertThat(EngineFleet.isResidentEngine("")).isFalse();
+        assertThat(EngineFleet.isResidentEngine(null)).isFalse();
+    }
+
+    @Test
+    void stop_scope_is_this_home_not_a_foreign_jk_home() {
+        Path home = Path.of("/tmp/test-jk-home");
+        Path state = home.resolve("state");
+        String local = "java -cp /tmp/test-jk-home/lib/jk-engine.jar cc.jumpkick.engine.EngineMain";
+        String production = "java -cp /home/u/.local/share/jk/lib/jk-engine.jar"
+                + " -Djk.aot.train.output=/home/u/.local/state/jk/aot/engine.aot"
+                + " cc.jumpkick.engine.EngineMain";
+        assertThat(EngineFleet.belongsToThisHome(local, home, state)).isTrue();
+        assertThat(EngineFleet.belongsToThisHome(production, home, state)).isFalse();
+    }
+
+    @Test
+    void home_is_parsed_from_the_engine_jar_on_the_command_line() {
+        assertThat(EngineFleet.homeFromCommandLine(
+                        "java -cp /tmp/test-jk-home/lib/jk-engine.jar cc.jumpkick.engine.EngineMain"))
+                .isEqualTo(Path.of("/tmp/test-jk-home"));
+        assertThat(EngineFleet.homeFromCommandLine(
+                        "java -cp /tmp/test-jk-home/versions/0.12.0/lib/jk-engine.jar cc.jumpkick.engine.EngineMain"))
+                .isEqualTo(Path.of("/tmp/test-jk-home"));
+        assertThat(EngineFleet.homeFromCommandLine("java -jar other.jar")).isNull();
+    }
+
+    @Test
+    void a_generation_pid_stem_drops_the_gen_suffix() {
+        assertThat(EngineFleet.keyFromPidStem("3fa429a3357ac034.gen1")).isEqualTo("3fa429a3357ac034");
+        assertThat(EngineFleet.keyFromPidStem("3fa429a3357ac034")).isEqualTo("3fa429a3357ac034");
+    }
+
+    @Test
+    void list_includes_a_live_generation_pid_that_the_endpoint_does_not_name(@TempDir Path state) throws Exception {
+        // $0 is the engine main class so the dummy matches the resident-engine command-line
+        // predicate; GNU sleep rejects extra operands and would have exited immediately.
+        Process dummy = new ProcessBuilder("sh", "-c", "sleep 30; :", "cc.jumpkick.engine.EngineMain").start();
+        try {
+            Path engineDir = Files.createDirectories(state.resolve("engine"));
+            Files.writeString(engineDir.resolve("abcd1234.endpoint"), "abcd1234.gen2.sock\n");
+            Files.writeString(engineDir.resolve("abcd1234.gen1.pid"), dummy.pid() + "\n");
+
+            var members = EngineFleet.list(state, "abcd1234");
+            assertThat(members.stream().map(EngineFleet.Member::pid))
+                    .as("draining predecessor pid is listed even though the endpoint names gen2")
+                    .contains(dummy.pid());
+            assertThat(members.stream().filter(m -> m.pid() == dummy.pid()).count())
+                    .as("the same pid is not listed twice (generation file + process scan)")
+                    .isEqualTo(1);
+        } finally {
+            dummy.destroyForcibly();
+            dummy.waitFor();
+        }
     }
 }

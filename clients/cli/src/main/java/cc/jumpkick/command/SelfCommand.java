@@ -2,8 +2,8 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.cache.VersionStore;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -28,9 +28,9 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * {@code jk self} — self-update: download a verified release into {@code ~/.local/share/jk/versions/<v>/},
- * flip {@code bin/jk}, start the new engine (graceful drain). {@code --now} stops the old engine
- * first.
+ * {@code jk self} — self-update: install {@code $JK_HOME/lib/jk-engine.jar} (parking the previous
+ * jar as {@code .old}), flip PATH {@code jk} (parking {@code jk.old} / {@code jk.exe.old}), start
+ * the new engine (graceful drain). {@code --now} stops the old engine first.
  */
 public final class SelfCommand extends GroupCommand {
 
@@ -117,10 +117,9 @@ public final class SelfCommand extends GroupCommand {
 
     /**
      * {@code jk self materialize <client-bin> <engine-jar>} — hidden install-time seam: ingest a
-     * local dist's artifacts into the CAS and materialize {@code versions/<running>/} through the
-     * ONE Java materializer. install.sh calls this through the freshly-installed client instead
-     * of hand-rolling the layout in shell — a shell copy that skipped the CAS left pruned
-     * versions unrecoverable (VersionStore.prune re-materializes from CAS blobs).
+     * local dist's engine jar into the CAS and install {@code $JK_HOME/lib/jk-engine.jar}.
+     * install.sh calls this through the freshly-installed client. The client-bin argument is the
+     * PATH binary already written by the installer (not copied into the product lib).
      */
     static final class MaterializeSub implements CliCommand {
 
@@ -131,7 +130,7 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Materialize versions/<running> from local artifacts";
+            return "Install jk-engine.jar into $JK_HOME/lib from local artifacts";
         }
 
         @Override
@@ -150,30 +149,17 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public int run(Invocation in) throws Exception {
-            Path client = Path.of(in.positionals().get(0));
             Path engineJar = Path.of(in.positionals().get(1));
             if (!Files.isRegularFile(engineJar)) {
                 cc.jumpkick.cli.tui.CommandWedge.printFail("Self", "engine jar not found: " + engineJar);
                 return Exit.SOFTWARE;
             }
-            VersionStore.Materialized m = VersionStore.current()
-                    .materializeFromFiles(cc.jumpkick.cli.Jk.VERSION, JkStores.cas(JkDirs.cache()), engineJar, client);
-            // install lands a new version — drop other versions' AOT; keep this line's.
-            VersionStore.wipeAotDirectory(JkDirs.state().resolve("aot"), cc.jumpkick.cli.Jk.VERSION);
-            Path distLib = distLibFor(client);
-            if (distLib != null) {
-                // Dev dogfood: the client is a Gradle start script whose classpath is
-                // "$APP_HOME/../lib/*.jar". Alone in the store it cannot start — sync its dist
-                // jars beside it and repoint PATH entrypoints as symlinks (a hardlinked script
-                // resolves APP_HOME to the bin dir of the LINK and dies the same way).
-                syncDistLibs(distLib, m.root().resolve("lib"));
-                Path storeClient = m.clientBin().orElse(null);
-                if (storeClient != null) {
-                    repointDevScript(JkDirs.binDir().resolve("jk"), storeClient);
-                    repointDevScript(JkDirs.binDir().resolve("jkx"), storeClient);
-                }
-            }
-            CliOutput.out("materialized " + m.root());
+            EngineInstall install = EngineInstall.current();
+            EngineInstall.Materialized m =
+                    install.materializeFromFiles(cc.jumpkick.cli.Jk.VERSION, JkStores.cas(JkDirs.cache()), engineJar);
+            EngineInstall.wipeAotDirectory(JkDirs.state().resolve("aot"), cc.jumpkick.cli.Jk.VERSION);
+            install.gc();
+            CliOutput.out("materialized " + m.engineJar());
             // Best-effort install-time terminal probe; never fail materialize.
             try {
                 new SetupTerminalSub().run(Invocation.builder().build());
@@ -181,55 +167,6 @@ public final class SelfCommand extends GroupCommand {
                 // ignore
             }
             return 0;
-        }
-
-        /**
-         * The installDist {@code lib/} sibling when {@code client} is a start script inside a
-         * {@code bin/} + {@code lib/} dist tree, else {@code null} (native image client).
-         */
-        static Path distLibFor(Path client) {
-            try {
-                if (client == null || !Files.isRegularFile(client)) return null;
-                Path bin = client.toAbsolutePath().normalize().getParent();
-                if (bin == null || !"bin".equals(String.valueOf(bin.getFileName()))) return null;
-                Path lib = bin.resolveSibling("lib");
-                if (!Files.isDirectory(lib)) return null;
-                byte[] head = new byte[2];
-                try (var is = Files.newInputStream(client)) {
-                    if (is.read(head) < 2) return null;
-                }
-                return (head[0] == '#' && head[1] == '!') ? lib : null;
-            } catch (IOException e) {
-                return null;
-            }
-        }
-
-        /** Copy the dist client jars into the store version's lib (engine jar name never clashes). */
-        static void syncDistLibs(Path distLib, Path storeLib) throws IOException {
-            Files.createDirectories(storeLib);
-            try (var jars = Files.newDirectoryStream(distLib, "*.jar")) {
-                for (Path jar : jars) {
-                    Files.copy(jar, storeLib.resolve(jar.getFileName()), StandardCopyOption.REPLACE_EXISTING);
-                }
-            }
-        }
-
-        /**
-         * Dev-only entrypoint flip: symlink so the start script resolves {@code APP_HOME} to the
-         * store version dir (where its lib now lives). Release/native installs keep the
-         * hard-link/copy policy in {@link UpdateSub}. Best-effort — a failed link leaves the
-         * existing entrypoint alone.
-         */
-        private static void repointDevScript(Path pointer, Path storeClient) {
-            try {
-                Files.createDirectories(pointer.getParent());
-                Path tmp = pointer.resolveSibling("." + pointer.getFileName() + "-new");
-                Files.deleteIfExists(tmp);
-                Files.createSymbolicLink(tmp, storeClient);
-                Files.move(tmp, pointer, StandardCopyOption.REPLACE_EXISTING);
-            } catch (IOException | UnsupportedOperationException e) {
-                CliOutput.out("note: could not repoint " + pointer + " (" + e.getMessage() + ")");
-            }
         }
     }
 
@@ -275,21 +212,18 @@ public final class SelfCommand extends GroupCommand {
                 cc.jumpkick.cli.tui.CommandWedge.printFail("Self", "could not resolve a target version");
                 return Exit.SOFTWARE;
             }
-            VersionStore store = VersionStore.current();
+            EngineInstall install = EngineInstall.current();
             Cas cas = JkStores.cas(JkDirs.cache());
             String running = cc.jumpkick.cli.Jk.VERSION;
-            if (target.equals(running) && store.resolve(target).isPresent()) {
+            if (target.equals(running) && install.resolve(target).isPresent()) {
                 cc.jumpkick.cli.tui.CommandWedge.printOk("Self", target + " is already current");
                 return 0;
             }
 
-            VersionStore.Materialized m = store.resolve(target).orElse(null);
-            if (m == null) {
-                m = fetchAndMaterialize(http, base, target, store, cas);
-            }
-
-            flipPointer(m);
-            cc.jumpkick.cli.tui.CommandWedge.printOk("Self", target + " installed (" + m.root() + ")");
+            Fetched fetched = fetchAndMaterialize(http, base, target, install, cas);
+            EngineInstall.installBinaries(cas.pathFor(fetched.clientSha()), JkDirs.binDir());
+            cc.jumpkick.cli.tui.CommandWedge.printOk(
+                    "Self", target + " installed (" + fetched.engine().engineJar() + ")");
 
             // Hand the engine over: --now stops the old daemon (killing its jobs) first;
             // otherwise the NEW engine's startup drains it gracefully — zero interrupted builds.
@@ -297,9 +231,9 @@ public final class SelfCommand extends GroupCommand {
             if (in.isSet("now")) {
                 cc.jumpkick.cli.engine.EngineClient.forceStop(cc.jumpkick.engine.EnginePaths.activeSocket(paths));
             }
-            Path newClient = m.clientBin().orElse(null);
-            if (newClient != null) {
-                new ProcessBuilder(newClient.toString(), "engine", "start")
+            Path newJk = pathClient(JkDirs.binDir());
+            if (Files.isRegularFile(newJk)) {
+                new ProcessBuilder(newJk.toString(), "engine", "start")
                         .inheritIO()
                         .start()
                         .waitFor();
@@ -309,8 +243,16 @@ public final class SelfCommand extends GroupCommand {
             return 0;
         }
 
-        static VersionStore.Materialized fetchAndMaterialize(
-                cc.jumpkick.http.Http http, URI base, String version, VersionStore store, Cas cas)
+        record Fetched(EngineInstall.Materialized engine, String clientSha) {}
+
+        static Path pathClient(Path binDir) {
+            Path exe = binDir.resolve("jk.exe");
+            if (Files.isRegularFile(exe)) return exe;
+            return binDir.resolve("jk");
+        }
+
+        static Fetched fetchAndMaterialize(
+                cc.jumpkick.http.Http http, URI base, String version, EngineInstall install, Cas cas)
                 throws IOException, InterruptedException {
             URI dir = URI.create(base + "/" + version + "/");
             byte[] sums = get(http, dir.resolve("SHA256SUMS"), "release checksums");
@@ -335,7 +277,8 @@ public final class SelfCommand extends GroupCommand {
             String jarSha = Hashing.sha256Hex(jar);
             cas.put(jar, jarSha);
             String clientSha = ingestClient(cas, client);
-            return store.materialize(version, cas, jarSha, clientSha);
+            EngineInstall.Materialized engine = install.materialize(version, cas, jarSha);
+            return new Fetched(engine, clientSha);
         }
 
         /**
@@ -438,7 +381,7 @@ public final class SelfCommand extends GroupCommand {
         private static Path inflaterEngineJar(byte[] downloadedJar, Path downloadedTmp) throws IOException {
             Files.write(downloadedTmp, downloadedJar);
             if (hasInflateXz(downloadedTmp)) return downloadedTmp;
-            var current = VersionStore.current().resolve(cc.jumpkick.cli.Jk.VERSION);
+            var current = EngineInstall.current().resolve(cc.jumpkick.cli.Jk.VERSION);
             if (current.isPresent()) {
                 Path jar = current.get().engineJar();
                 if (Files.isRegularFile(jar) && hasInflateXz(jar)) return jar;
@@ -480,54 +423,6 @@ public final class SelfCommand extends GroupCommand {
                 throw new IOException(name + " checksum mismatch — expected " + expected + ", got " + actual);
             }
             return body;
-        }
-
-        /**
-         * Flip PATH entrypoints under {@link JkDirs#binDir()} to the materialized client;
-         * {@code jkx} follows. Prefer a hard link (zero disk; survives deletion of the
-         * versions tree while the inode remains), then a real byte copy. Symlinks are not
-         * used: they dangle when product data is wiped and defeat the "CLI outlives state"
-         * layout. Stages at a temp sibling and renames into place.
-         */
-        private static void flipPointer(VersionStore.Materialized m) throws IOException {
-            Path client = m.clientBin()
-                    .orElseThrow(() -> new IOException("materialized " + m.version() + " has no client binary"));
-            Path bin = JkDirs.binDir();
-            Files.createDirectories(bin);
-            repoint(bin.resolve("jk"), client);
-            repoint(bin.resolve("jkx"), client);
-        }
-
-        private static void repoint(Path pointer, Path client) throws IOException {
-            Path tmp = pointer.resolveSibling("." + pointer.getFileName() + "-new");
-            Files.deleteIfExists(tmp);
-            try {
-                Files.createLink(tmp, client);
-            } catch (IOException | UnsupportedOperationException noHardlink) {
-                Files.copy(client, tmp, StandardCopyOption.REPLACE_EXISTING);
-            }
-            try {
-                Files.move(tmp, pointer, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (IOException replaceDenied) {
-                // Windows can rename a RUNNING exe but never delete/replace it (the image is
-                // memory-mapped): step the live pointer aside, then slide the new one in. The
-                // parked old image stays locked until that process exits — the next flip's
-                // deleteIfExists reclaims it.
-                Path old = pointer.resolveSibling("." + pointer.getFileName() + "-old");
-                try {
-                    Files.deleteIfExists(old);
-                } catch (IOException stillRunning) {
-                    // a previous update's parked image is still executing; park beside it
-                    old = pointer.resolveSibling("." + pointer.getFileName() + "-old-" + System.nanoTime());
-                }
-                Files.move(pointer, old, StandardCopyOption.REPLACE_EXISTING);
-                Files.move(tmp, pointer);
-                try {
-                    Files.deleteIfExists(old);
-                } catch (IOException ignored) {
-                    // locked while the old image runs; reclaimed on a later flip
-                }
-            }
         }
 
         private static byte[] get(cc.jumpkick.http.Http http, URI uri, String what)

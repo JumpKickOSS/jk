@@ -22,6 +22,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -33,9 +34,9 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
- * Engine-versioning-plan §2: a newer engine takes over by atomically repointing the endpoint
- * file and gracefully draining the displaced generation — no kill, no lull-waiting. Also covers
- * the displacement watchdog (an engine whose endpoint stops naming it drains itself).
+ * A newer engine takes over by atomically repointing the endpoint, the predecessor yields its
+ * listeners immediately, and in-flight jobs drain — no kill, no lull-waiting. Also covers the
+ * displacement watchdog (pid-file / endpoint identity) and drain-status reports to the successor.
  */
 @Tag("integration")
 class EngineTakeoverTest {
@@ -88,6 +89,22 @@ class EngineTakeoverTest {
             String ack = r.readLine();
             if (ack == null || !EngineProtocol.HELLO_ACK.equals(EngineProtocol.typeOf(ack))) return null;
             return Jsonl.str(ack, "version");
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static String send(Path socket, String line) {
+        try (SocketChannel ch = SocketChannel.open(StandardProtocolFamily.UNIX)) {
+            ch.connect(UnixDomainSocketAddress.of(socket));
+            BufferedWriter w =
+                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
+            BufferedReader r =
+                    new BufferedReader(new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
+            w.write(line);
+            w.write('\n');
+            w.flush();
+            return r.readLine();
         } catch (IOException e) {
             return null;
         }
@@ -183,6 +200,111 @@ class EngineTakeoverTest {
         assertThat(helloVersion(EnginePaths.activeSocket(p))).isEqualTo("2.0.0-test");
         newer.close();
         newT.join(10_000);
+    }
+
+    @Test
+    void pid_file_mismatch_drains_a_ghost_engine() throws Exception {
+        Path state = shortTempDir();
+        EnginePaths.Paths p = EnginePaths.resolve(state);
+
+        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
+        CountDownLatch done = new CountDownLatch(1);
+        Thread t = new Thread(() -> {
+            try {
+                server.run();
+            } catch (IOException ignored) {
+            } finally {
+                done.countDown();
+            }
+        });
+        t.start();
+        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+
+        Path pidFile = EnginePaths.pidFor(EnginePaths.activeSocket(p));
+        assertThat(pidFile).exists();
+        // Recreated state dir: successor overwrote the generation pid file. Filename still matches.
+        Files.writeString(pidFile, "1\n");
+
+        assertThat(done.await(10, TimeUnit.SECONDS))
+                .as("engine whose pid file names another process yields and exits")
+                .isTrue();
+    }
+
+    @Test
+    void drain_closes_the_listener_while_a_plan_is_in_flight() throws Exception {
+        Path state = shortTempDir();
+        EnginePaths.Paths p = EnginePaths.resolve(state);
+
+        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
+        CountDownLatch done = new CountDownLatch(1);
+        Thread t = new Thread(() -> {
+            try {
+                server.run();
+            } catch (IOException ignored) {
+            } finally {
+                done.countDown();
+            }
+        });
+        t.start();
+        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+        Path sock = EnginePaths.activeSocket(p);
+        assertThat(server.claimPlanSlotForTests()).isTrue();
+
+        String bye = send(sock, ProtoLifecycle.shutdown(false));
+        assertThat(EngineProtocol.typeOf(bye)).isEqualTo(EngineProtocol.BYE);
+        assertThat(Jsonl.bool(bye, "draining", false)).isTrue();
+
+        waitUntil(Duration.ofSeconds(5), () -> helloVersion(sock) == null);
+        assertThat(t.isAlive())
+                .as("process stays up until in-flight plans finish")
+                .isTrue();
+
+        server.releasePlanSlotForTests();
+        assertThat(done.await(10, TimeUnit.SECONDS))
+                .as("engine exits once the last in-flight plan finishes")
+                .isTrue();
+    }
+
+    @Test
+    void displaced_engine_reports_drain_status_to_the_successor() throws Exception {
+        Path state = shortTempDir();
+        EnginePaths.Paths p = EnginePaths.resolve(state);
+
+        EngineServer old = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
+        CountDownLatch oldDone = new CountDownLatch(1);
+        Thread oldT = new Thread(() -> {
+            try {
+                old.run();
+            } catch (IOException ignored) {
+            } finally {
+                oldDone.countDown();
+            }
+        });
+        oldT.start();
+        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+        Path firstSocket = EnginePaths.activeSocket(p);
+        assertThat(old.claimPlanSlotForTests()).isTrue();
+
+        List<String> logs = Collections.synchronizedList(new ArrayList<>());
+        EngineServer newer = new EngineServer(p, JkEngineConfig.DEFAULTS, "2.0.0-test", logs::add);
+        Thread newT = new Thread(() -> {
+            try {
+                newer.run();
+            } catch (IOException ignored) {
+            }
+        });
+        newT.start();
+        try {
+            waitUntil(Duration.ofSeconds(10), () -> "2.0.0-test".equals(helloVersion(EnginePaths.activeSocket(p))));
+            waitUntil(Duration.ofSeconds(5), () -> helloVersion(firstSocket) == null);
+            waitUntil(Duration.ofSeconds(10), () -> logs.stream().anyMatch(s -> s.contains("is draining")));
+            old.releasePlanSlotForTests();
+            assertThat(oldDone.await(10, TimeUnit.SECONDS)).isTrue();
+            waitUntil(Duration.ofSeconds(5), () -> logs.stream().anyMatch(s -> s.contains("finished draining")));
+        } finally {
+            newer.close();
+            newT.join(10_000);
+        }
     }
 
     @Test

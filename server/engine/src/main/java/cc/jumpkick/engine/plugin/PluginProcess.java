@@ -144,13 +144,35 @@ public final class PluginProcess {
             Consumer<String> onPassthrough,
             boolean closeStdinImmediately)
             throws IOException, InterruptedException {
+        return converse(command, extraEnv, workDir, prefix, onProtocol, onPassthrough, closeStdinImmediately, 0L);
+    }
+
+    /**
+     * As {@link #converse(List, Map, Path, String, BiConsumer, Consumer)} with an inactivity
+     * watchdog: when the child emits no output line for {@code idleTimeoutMs}, it is
+     * force-killed and the conversation ends with its (non-zero) exit code. {@code 0} = no
+     * watchdog — compiler workers are legitimately silent for long stretches; only callers
+     * whose protocol guarantees a heartbeat-ish cadence (the test runner's per-test events)
+     * should pass a window (JK-2202: a JLine tty probe hung a test worker — and the whole
+     * suite — for 3.5h with zero output).
+     */
+    public static int converse(
+            List<String> command,
+            java.util.Map<String, String> extraEnv,
+            Path workDir,
+            String prefix,
+            BiConsumer<String, Conversation> onProtocol,
+            Consumer<String> onPassthrough,
+            boolean closeStdinImmediately,
+            long idleTimeoutMs)
+            throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
         if (extraEnv != null && !extraEnv.isEmpty()) pb.environment().putAll(extraEnv);
         if (workDir != null && Files.isDirectory(workDir)) pb.directory(workDir.toFile());
         // Hold a worker slot for the child's whole lifetime so no more than the
         // memory plan's parallelism run at once (open gate when unconfigured).
         try (PluginSlots.Lease lease = PluginSlots.acquire()) {
-            return converse(pb, prefix, onProtocol, onPassthrough, closeStdinImmediately);
+            return converse(pb, prefix, onProtocol, onPassthrough, closeStdinImmediately, idleTimeoutMs);
         }
     }
 
@@ -159,9 +181,31 @@ public final class PluginProcess {
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
             Consumer<String> onPassthrough,
-            boolean closeStdinImmediately)
+            boolean closeStdinImmediately,
+            long idleTimeoutMs)
             throws IOException, InterruptedException {
         Process process = cc.jumpkick.engine.JobWorkers.start(pb);
+        final java.util.concurrent.atomic.AtomicLong lastLineAt =
+                new java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis());
+        Thread watchdog = null;
+        if (idleTimeoutMs > 0) {
+            watchdog = Thread.ofVirtual().name("jk-worker-watchdog").unstarted(
+                    () -> {
+                        while (process.isAlive()) {
+                            long idle = System.currentTimeMillis() - lastLineAt.get();
+                            if (idle >= idleTimeoutMs) {
+                                process.destroyForcibly();
+                                return;
+                            }
+                            try {
+                                Thread.sleep(Math.min(idleTimeoutMs - idle + 50, 5_000));
+                            } catch (InterruptedException e) {
+                                return; // conversation finished normally
+                            }
+                        }
+                    });
+            watchdog.start();
+        }
         // Bounded like the client socket: a worker emitting an unbounded line must not OOM the
         // engine. No idle timeout — a compiling worker is legitimately silent for long stretches.
         try (BufferedReader reader = new cc.jumpkick.jsonl.BoundedLineReader(
@@ -197,6 +241,7 @@ public final class PluginProcess {
             try {
                 String line;
                 while ((line = reader.readLine()) != null) {
+                    lastLineAt.set(System.currentTimeMillis());
                     if (line.startsWith(prefix)) {
                         onProtocol.accept(line.substring(prefix.length()), convo);
                     } else if (onPassthrough != null) {
@@ -225,6 +270,7 @@ public final class PluginProcess {
             }
         } finally {
             try {
+                if (watchdog != null) watchdog.interrupt();
                 if (process.isAlive()) {
                     process.destroyForcibly();
                 }

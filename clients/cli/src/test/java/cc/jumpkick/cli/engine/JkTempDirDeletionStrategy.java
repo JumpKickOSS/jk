@@ -20,7 +20,8 @@ import org.junit.jupiter.api.io.TempDirDeletionStrategy;
  * <li>On failure, force-stop the resident engine (releases CAS hardlinks / jar FDs under the
  * project tree), GC, retry.
  * <li>If still stuck, best-effort walk-delete then return a successful empty result so the suite
- * continues (leftovers under {@code /tmp} are ephemeral).
+ * continues. Leftovers still cost tmpfs inodes, so this is last-resort, not a substitute for
+ * {@code cleanup.mode=always}.
  * </ol>
  */
 public final class JkTempDirDeletionStrategy implements TempDirDeletionStrategy {

@@ -109,11 +109,15 @@ public final class PackageId {
         return DEFAULT_TYPE.equals(type) && classifier.isEmpty();
     }
 
-    /** Human display: {@code g:a}, or {@code g:a:classifier}, or {@code g:a@type} when non-default. */
+    /**
+     * Human display: {@code g:a}, or {@code g:a:classifier}, or {@code g:a!type} when non-default.
+     * Uses {@code !} for packaging type so {@code @} stays version selectors and {@code ~} stays
+     * version-range prefixes.
+     */
     public String display() {
         StringBuilder sb = new StringBuilder(ga());
         if (!classifier.isEmpty()) sb.append(':').append(classifier);
-        if (!DEFAULT_TYPE.equals(type)) sb.append('@').append(type);
+        if (!DEFAULT_TYPE.equals(type)) sb.append('!').append(type);
         return sb.toString();
     }
 

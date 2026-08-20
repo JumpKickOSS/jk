@@ -6,7 +6,6 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.JavacLint;
 import cc.jumpkick.config.ImageConfigParser;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.layout.BuildLayout;
@@ -242,13 +241,7 @@ public final class TaskForecaster {
         int workerCount = workers > 0 ? workers : 1;
         // testOnly still runs tests (never skip).
         boolean skip = testOnly ? false : skipTests;
-        boolean compactEst = false;
-        try {
-            compactEst =
-                    CompileSupport.isSimpleLayout(JkBuildParser.parse(buildFile).project(), dir);
-        } catch (Exception ignored) {
-            compactEst = !Files.isDirectory(dir.resolve("src/main/java"));
-        }
+        boolean compactEst = CompileSupport.isSimpleLayout(dir);
         int estimatedTestCount = skip ? 0 : TestSupport.estimateAllSuiteTestCount(dir, compactEst);
         return new BuildPlanner.Inputs(
                         dir,
@@ -304,7 +297,7 @@ public final class TaskForecaster {
         try {
             Lockfile lock = LockfileReader.read(lockFile);
             ClasspathResolver resolver = new ClasspathResolver(cas);
-            boolean compact = CompileSupport.isSimpleLayout(project.project(), dir);
+            boolean compact = CompileSupport.isSimpleLayout(dir);
             BuildLayout layout = BuildLayout.of(dir, project);
             int release = project.project().javaRelease();
             // Same contributed-args evaluation as the real compile step, against the same
@@ -398,7 +391,7 @@ public final class TaskForecaster {
                 }
             }
 
-            // ---- compile-kotlin (best-effort: freshness stamp; no content key yet) ----
+            // ---- compile-kotlin (freshness stamp; post-clean uses last action record) ----
             if (!ktSrc.isEmpty()) {
                 // The stamp lives with the MERGED classes (BuildPlanner writes it to
                 // MAIN_CLASSES), not in kotlinc's incremental workspace under target/kotlin/main.
@@ -407,33 +400,52 @@ public final class TaskForecaster {
                 boolean fresh = !compileDepDirty
                         && !force
                         && FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, ktSrc);
-                steps.add(
-                        fresh
-                                ? new TaskForecast.Task("compile-kotlin", TaskForecast.Status.CACHED, "", null)
-                                : new TaskForecast.Task(
-                                        "compile-kotlin",
-                                        TaskForecast.Status.FULL,
-                                        "full compile · " + count(ktSrc.size(), "source"),
-                                        null));
-                if (!fresh) compileDirty = true;
+                // After jk clean the stamp is gone with target/, but the action-cache pointer
+                // under tasks/ survives. lastFor+present ⇒ live kotlinc will restore — do not
+                // price FULL (never-built modules have no pointer and stay FULL).
+                boolean restoreHit = !compileDepDirty
+                        && !force
+                        && !classesDirHasContent(layout.classesDir())
+                        && stampLangActionPresent(
+                                actionCache,
+                                ActionKey.qualifiedTaskId(
+                                        cc.jumpkick.run.TaskNames.COMPILE_KOTLIN, layout.classesDir()));
+                if (fresh || restoreHit) {
+                    steps.add(new TaskForecast.Task("compile-kotlin", TaskForecast.Status.CACHED, "", null));
+                } else {
+                    steps.add(new TaskForecast.Task(
+                            "compile-kotlin",
+                            TaskForecast.Status.FULL,
+                            "full compile · " + count(ktSrc.size(), "source"),
+                            null));
+                    compileDirty = true;
+                }
             }
 
-            // ---- compile-groovy (stamp-only, like Kotlin's — no content key yet) ----
+            // ---- compile-groovy (stamp + post-clean restore, same as Kotlin) ----
             // The groovy stamp lives in the merged classes dir (where write-stamp-groovy
             // writes it), unlike Kotlin's forecast probe of kotlinClassesDir.
             if (!gvSrc.isEmpty()) {
                 boolean fresh = !compileDepDirty
                         && !force
                         && FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.GROOVY_STAMP, gvSrc);
-                steps.add(
-                        fresh
-                                ? new TaskForecast.Task("compile-groovy", TaskForecast.Status.CACHED, "", null)
-                                : new TaskForecast.Task(
-                                        "compile-groovy",
-                                        TaskForecast.Status.FULL,
-                                        "full compile · " + count(gvSrc.size(), "source"),
-                                        null));
-                if (!fresh) compileDirty = true;
+                boolean restoreHit = !compileDepDirty
+                        && !force
+                        && !classesDirHasContent(layout.classesDir())
+                        && stampLangActionPresent(
+                                actionCache,
+                                ActionKey.qualifiedTaskId(
+                                        cc.jumpkick.run.TaskNames.COMPILE_GROOVY, layout.classesDir()));
+                if (fresh || restoreHit) {
+                    steps.add(new TaskForecast.Task("compile-groovy", TaskForecast.Status.CACHED, "", null));
+                } else {
+                    steps.add(new TaskForecast.Task(
+                            "compile-groovy",
+                            TaskForecast.Status.FULL,
+                            "full compile · " + count(gvSrc.size(), "source"),
+                            null));
+                    compileDirty = true;
+                }
             }
 
             producesJar = !mainSrc.isEmpty() || !ktSrc.isEmpty() || !gvSrc.isEmpty();
@@ -509,13 +521,23 @@ public final class TaskForecaster {
                     steps.add(
                             new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · " + tests, null));
                 } else {
-                    // Same factory as live run-testsdefault selection sources +
+                    // Same factory as live run-tests default selection sources +
                     // worker/engine jar extras (nested-engine CLI included) so the key matches the
-                    // stored green marker.
+                    // stored green marker. After jk clean, project the main: fingerprint from the
+                    // compile action record — ClasspathFingerprint.entry(empty classes) is
+                    // missing:… and would falsely forecast a full suite.
                     List<Path> testRt = testRuntimeClasspath(dir, project, lock, resolver);
                     long ts = Perf.start();
-                    String stampKey =
-                            BuildPlanner.runTestsStampKey(dir, project, compact, layout.classesDir(), lockFile, testRt);
+                    String mainFp = null;
+                    if (!classesDirHasContent(layout.classesDir())) {
+                        // Resource-drift flag is computed later; empty classes uses compile
+                        // outputs + resource roots (same merge as package post-clean).
+                        mainFp = classesTokenForPackage(
+                                dir, compact, layout, project, actionCache, compileMainKey, null);
+                        if (mainFp != null && mainFp.startsWith("missing:")) mainFp = null;
+                    }
+                    String stampKey = BuildPlanner.runTestsStampKey(
+                            dir, project, compact, layout.classesDir(), mainFp, lockFile, testRt);
                     Perf.end("  test-stamp-key", ts);
                     boolean hit = stampKey != null && present(actionCache, stampKey);
                     steps.add(
@@ -575,7 +597,7 @@ public final class TaskForecaster {
                         "package-jar", TaskForecast.Status.RUN, "repackage · compile changed", null));
             } else {
                 Path jar = layout.mainJar();
-                String mainClass = project.mainClass();
+                String mainClass = cc.jumpkick.plugin.PluginModule.mainClass(dir, project);
                 long tp = Perf.start();
                 byte[] sbom = null;
                 if (project.isApplication()) {
@@ -665,7 +687,15 @@ public final class TaskForecaster {
                 boolean jarDirty = steps.stream().anyMatch(s -> "package-jar".equals(s.name()) && !s.cached());
                 Path nativeOut = layout.nativeBinary();
                 boolean binaryPresent = Files.isRegularFile(nativeOut) || Files.isRegularFile(layout.nativeLibrary());
-                if (jarDirty || compileDirty || !binaryPresent) {
+                // Missing binary after wipe: action-cache hit ⇒ restore (CACHED), not a FULL
+                // native wall. lastFor tags the binary path (see PlannerNative).
+                boolean nativeRestoreHit = !binaryPresent
+                        && !jarDirty
+                        && !compileDirty
+                        && stampLangActionPresent(
+                                actionCache,
+                                ActionKey.qualifiedTaskId(cc.jumpkick.run.TaskNames.NATIVE_IMAGE, nativeOut));
+                if (jarDirty || compileDirty || (!binaryPresent && !nativeRestoreHit)) {
                     String why = jarDirty || compileDirty ? "rebuild · compile changed" : "native-image";
                     steps.add(new TaskForecast.Task("native-image", TaskForecast.Status.RUN, why, null));
                 } else {
@@ -681,6 +711,21 @@ public final class TaskForecaster {
             if (target == WorkspaceTarget.IMAGE && terminalDirs.contains(dir)) {
                 steps.add(new TaskForecast.Task(
                         cc.jumpkick.run.TaskNames.WRITE_IMAGE, TaskForecast.Status.RUN, "image side-effect", null));
+            }
+
+            // ---- cache-install — jk install terminal. Skip when repos/local already has this
+            // jar (matching SHA) and its POM. A packaged-but-never-installed module still runs.
+            if (target == WorkspaceTarget.INSTALL && terminalDirs.contains(dir)) {
+                boolean jarDirty = steps.stream()
+                        .anyMatch(s -> cc.jumpkick.run.TaskNames.PACKAGE_JAR.equals(s.name()) && !s.cached());
+                boolean skip = !jarDirty
+                        && InstallPlans.alreadyInstalled(
+                                project, cc.jumpkick.layout.BuildLayout.of(dir, project), cache);
+                steps.add(new TaskForecast.Task(
+                        cc.jumpkick.run.TaskNames.CACHE_INSTALL,
+                        skip ? TaskForecast.Status.CACHED : TaskForecast.Status.RUN,
+                        skip ? "" : "install to local repo",
+                        null));
             }
 
             // ---- emit resource-drift steps (detected before package) ----
@@ -858,7 +903,7 @@ public final class TaskForecaster {
         Path assemblyJar = layout.assemblyJar();
         String classesTok = classesTokenForPackage(
                 dir,
-                CompileSupport.isSimpleLayout(project.project(), dir),
+                CompileSupport.isSimpleLayout(dir),
                 layout,
                 project,
                 actionCache,
@@ -877,11 +922,12 @@ public final class TaskForecaster {
         }
         List<Path> contributed = BuildPlanner.existingContributedDirs(pkgDecls, layout);
         String contribTok = BuildPlanner.contributionsToken(contributed);
+        String mainClass = cc.jumpkick.plugin.PluginModule.mainClass(dir, project);
         List<String> tokens = List.of(
                 "classes:" + classesTok,
                 "contrib:" + contribTok,
                 "deps:" + depsTok,
-                "main:" + (project.mainClass() == null ? "" : project.mainClass()),
+                "main:" + (mainClass == null ? "" : mainClass),
                 "manifest:" + project.manifest(),
                 "packaging:fat");
         String shTask = ActionKey.qualifiedTaskId("package-assembly", assemblyJar);
@@ -1032,6 +1078,20 @@ public final class TaskForecaster {
             }
         }
         return cp;
+    }
+
+    /**
+     * True when the stamp-language compile ({@code compile-kotlin} / {@code compile-groovy}) has a
+     * surviving action-cache pointer whose payloads are still present — the post-{@code jk clean}
+     * restore path. Never-built modules have no {@code tasks/} pointer.
+     */
+    static boolean stampLangActionPresent(ActionCache ac, String taskId) {
+        try {
+            var rec = ac.lastFor(taskId);
+            return rec.isPresent() && present(ac, rec.get().actionKey());
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**

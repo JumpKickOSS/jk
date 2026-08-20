@@ -50,7 +50,7 @@ public final class NativePreflight {
     }
 
     /**
-     * {@code --main} / {@code [native].main-class} / {@code [image].main} / {@code [application]
+     * {@code --main} / {@code [native].main} / {@code [image].main} / {@code [application]
      * main}, else a classfile or source scan.
      */
     public static Main resolveMain(Path moduleDir, String cliOverride) {
@@ -75,8 +75,8 @@ public final class NativePreflight {
         if (notBlank(cliOverride)) return cliOverride;
         Path toml = moduleDir.resolve("jk.toml");
         if (!Files.isRegularFile(toml)) return null;
-        var scan = TomlScan.scan(toml, "native.main-class", "image.main", "application.main");
-        String fromNative = scan.get("native.main-class");
+        var scan = TomlScan.scan(toml, "native.main", "image.main", "application.main");
+        String fromNative = scan.get("native.main");
         if (notBlank(fromNative)) return fromNative;
         String fromImage = scan.get("image.main");
         if (notBlank(fromImage)) return fromImage;

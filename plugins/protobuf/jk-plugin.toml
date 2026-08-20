@@ -21,7 +21,7 @@ lite    = { type = "bool", default = false }       # lite-runtime codegen (Andro
 kotlin  = { type = "bool", default = false }       # also emit Kotlin DSL codegen (--kotlin_out; pairs with protobuf-kotlin[-lite])
 
 # protoc ships as a per-OS/arch native binary published straight to Maven (no jar
-# wrapper) — ${host.os-arch} picks the classifier, @exe the packaging.
+# wrapper) — ${host.os-arch} picks the classifier, !exe the packaging.
 [[contribute.step-dependency]]
 artifact   = "protoc"
-coordinate = "com.google.protobuf:protoc:${config.version}:${host.os-arch}@exe"
+coordinate = "com.google.protobuf:protoc:${config.version}:${host.os-arch}!exe"

@@ -84,7 +84,7 @@ val checkCliNoParseTypes by tasks.registering {
 tasks.named("check") { dependsOn(checkCliRuntimeClasspath); dependsOn(checkCliNoParseTypes) }
 tasks.named("jar") { dependsOn(checkCliRuntimeClasspath); dependsOn(checkCliNoParseTypes) }
 
-// Thin JVM client (installDist) — no engine on the classpath. Spawns jk-engine.jar via VersionStore
+// Thin JVM client (installDist) — no engine on the classpath. Spawns jk-engine.jar via EngineInstall
 // / JK_ENGINE_EXE. Prefer the native image for production dist; this path is for Temurin-only CI.
 application {
     mainClass.set("cc.jumpkick.cli.Jk")
@@ -184,7 +184,16 @@ tasks.named<Test>("integrationTest") {
     dependsOn(
             ":engine:shadowJar",
             kotlinWorkerJar, groovyWorkerJar, testRunnerJar, auditorWorkerJar, publisherWorkerJar,
-            imageBuilderWorkerJar, compatBridgeWorkerJar, springBootWorkerJar, androidWorkerJar)
+            imageBuilderWorkerJar, compatBridgeWorkerJar, springBootWorkerJar, androidWorkerJar,
+            ":kotlin-compiler:stageWorkerRepo",
+            ":groovy-compiler:stageWorkerRepo",
+            ":test-runner:stageWorkerRepo",
+            ":auditor:stageWorkerRepo",
+            ":publisher:stageWorkerRepo",
+            ":image-builder:stageWorkerRepo",
+            ":compat-bridge:stageWorkerRepo",
+            ":spring-boot:stageWorkerRepo",
+            ":android:stageWorkerRepo")
     environment("TERM", "xterm-256color")
     environment("CI", "false")
     environment("NO_COLOR", "")
@@ -208,6 +217,21 @@ tasks.named<Test>("integrationTest") {
         val testJkHome = layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath
         environment("JK_HOME", testJkHome)
         environment("JK_JDKS_DIR", "$testJkHome/jdks")
+        val store = file("$testJkHome/store")
+        listOf(
+                        ":kotlin-compiler",
+                        ":groovy-compiler",
+                        ":test-runner",
+                        ":auditor",
+                        ":publisher",
+                        ":image-builder",
+                        ":compat-bridge",
+                        ":spring-boot",
+                        ":android")
+                .forEach { p ->
+                    val src = project(p).layout.buildDirectory.dir("worker-repo").get().asFile
+                    if (src.isDirectory) src.copyRecursively(store, overwrite = true)
+                }
 
         val engineJar = project(":engine").tasks.named("shadowJar", org.gradle.jvm.tasks.Jar::class.java)
                 .get().archiveFile.get().asFile

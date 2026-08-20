@@ -92,7 +92,7 @@ public final class PlannerNative {
                         ctx.error("native", "jar not found at " + mainJar);
                         throw new RuntimeException("missing main jar for native-image");
                     }
-                    // Resolution order: --main CLI flag > [native].main-class > [application].main.
+                    // Resolution order: --main CLI flag > [native].main > [application].main.
                     // A resolvable main → executable; none → shared library (--shared) on jk
                     // build. jk native requires a unique main (allowShared=false).
                     String mainClass = (mainOverride != null && !mainOverride.isBlank())

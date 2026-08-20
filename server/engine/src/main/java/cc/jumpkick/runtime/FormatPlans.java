@@ -2,12 +2,12 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.compile.WorkerClasspath;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.PluginLoader;
+import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JavaHomes;
@@ -247,7 +247,7 @@ public final class FormatPlans {
                         AtomicInteger errors = new AtomicInteger();
                         AtomicInteger index = new AtomicInteger();
                         Path hostJava = JavaHomes.runningJavaHome();
-                        String workerCp = WorkerClasspath.resolve(workerJar);
+                        String workerCp = WorkerLaunchClasspath.resolve(workerJar);
                         List<String> extra = new ArrayList<>(PluginAot.formatterFlags(
                                 hostJava,
                                 workerCp,
@@ -503,7 +503,13 @@ public final class FormatPlans {
 
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                if (!notExcluded(file)) return FileVisitResult.CONTINUE;
+                Path rel;
+                try {
+                    rel = root.relativize(file);
+                } catch (IllegalArgumentException e) {
+                    rel = file;
+                }
+                if (!notExcluded(rel)) return FileVisitResult.CONTINUE;
                 String name = file.getFileName().toString();
                 if (name.endsWith(".java")) java.add(file);
                 else if (name.endsWith(".kt")) kotlin.add(file);

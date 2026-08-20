@@ -473,8 +473,8 @@ public final class JkBuildEditor {
     /**
      * Set {@code [application].assembly} and {@code minified} surgically. Artifacts are additive,
      * so both keys are written independently; a minified build also carries {@code assembly = true}
-     * because the R8 jar is built beside the fat one. Creates {@code [application]} if missing and
-     * leaves other keys (e.g. {@code main}) intact.
+     * because the R8 jar is built beside the fat one. Requires an existing {@code [application]}
+     * table with {@code main}; other keys are left intact.
      */
     public static String setArtifacts(String content, boolean assembly, boolean minified) {
         String next = setApplicationFlag(content, "assembly", assembly || minified);
@@ -496,10 +496,7 @@ public final class JkBuildEditor {
         String assignment = value ? key + " = true" : null;
         if (header < 0) {
             if (assignment == null) return content; // nothing to remove
-            ensureTrailingBlankLine(lines);
-            lines.add("[application]");
-            lines.add(assignment);
-            return validated(join(lines));
+            throw new IllegalArgumentException("[application].main is required before setting " + key);
         }
         int end = endOfTable(lines, header);
         int existing = -1;

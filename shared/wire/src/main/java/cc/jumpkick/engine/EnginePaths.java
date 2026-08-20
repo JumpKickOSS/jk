@@ -114,7 +114,7 @@ public final class EnginePaths {
     }
 
     /** The paths for an already-known key — the inverse of hashing, for enumeration. */
-    private static Paths forKey(String key, Path stateDir) {
+    public static Paths forKey(String key, Path stateDir) {
         Path dir = stateDir.resolve("engine");
         return new Paths(
                 key,

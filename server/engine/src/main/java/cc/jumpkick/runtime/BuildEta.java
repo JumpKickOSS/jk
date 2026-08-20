@@ -81,7 +81,7 @@ public final class BuildEta {
             int concurrency = etaConcurrency(plan.maxReadyWidth(), workers, parallelTests, maxModuleConcurrency);
             boolean serialEta = concurrency <= 1;
             if (costs.isEmpty()) return new BuildService.EtaModel(0, costs, concurrency, serialEta);
-            long etaMs = seedEta(
+            Seed seed = seedEta(
                     entryDir,
                     costs,
                     costDirs(costs),
@@ -91,7 +91,7 @@ public final class BuildEta {
                     cache,
                     jdksDir,
                     historyShapeForCosts(costs.size()));
-            return new BuildService.EtaModel(etaMs, costs, concurrency, serialEta);
+            return new BuildService.EtaModel(seed.etaMs(), costs, concurrency, serialEta, seed.rawScheduleMs());
         } catch (RuntimeException e) {
             // Never fail explain/build over the estimate — but do not silently advertise 0s/empty.
             System.err.println("jk: ETA estimate failed: " + e.getClass().getSimpleName() + ": " + e.getMessage());
@@ -390,7 +390,10 @@ public final class BuildEta {
      * composes them with concurrency / serial-test bounds. Whole-build history is only a cold seed
      * when the schedule has no costs — never a substitute for step composition.
      */
-    private static long seedEta(
+    /** The seed plus the pre-bias schedule the observation loop compares actual walls against. */
+    record Seed(long etaMs, long rawScheduleMs) {}
+
+    private static Seed seedEta(
             Path entryDir,
             List<EffortWeights.ModuleCost> costs,
             Set<Path> dirs,
@@ -406,7 +409,7 @@ public final class BuildEta {
             // NEVER fall back to whole-build history here: that produced a phantom multi-minute
             // seed whenever every step was CACHED / bookkeeping-only, while `jk explain` hid the
             // lie behind "Fully Cached / <1s". History floors apply only when there is real work.
-            return 0;
+            return new Seed(0, 0);
         }
         // Always convert at MS_PER_WEIGHT. Costs are priced either as absolute step walls
         // (flatWeight(avgMs) round-trips with ×150) or residual/static units trained in that same
@@ -415,6 +418,10 @@ public final class BuildEta {
         // Whole-build history floor only for true full rebuilds — not merely "many modules are
         // dirty." Require substantial scheduled weight breadth, or an explicit --force/--rebuild.
         boolean fullWork = isFullWorkShape(hist, costs);
+        if (Perf.ENABLED) {
+            System.err.println("[jk-perf] eta-seed fullWork=" + fullWork + " okHist="
+                    + (okHist == null ? "none" : okHist.count() + "x avg=" + okHist.avgMillis()));
+        }
         boolean coldFull = fullWork && (okHist == null || okHist.count() == 0);
         int etaConcurrency = concurrency;
         if (coldFull && !serial && concurrency > 1) {
@@ -423,6 +430,14 @@ public final class BuildEta {
         }
         long base =
                 EffortWeights.scheduleMillis(costs, etaConcurrency, serial, parallelTests, EffortWeights.MS_PER_WEIGHT);
+        long rawSchedule = base;
+        // Learned schedule-contention bias (actual/simulated EWMA from real runs): the ideal
+        // schedule composes measured step walls with perfect overlap; real workspaces pay JVM
+        // spawn queuing, PluginSlots gating, and IO contention the model cannot see. Applied
+        // only to multi-module schedules — the observation loop only learns from those.
+        if (costs.size() >= ScheduleBias.MIN_MODULES) {
+            base = Math.round(base * ScheduleBias.current(entryDir));
+        }
         if (coldFull && base > 0) {
             base = Math.round(base * 1.08);
         }
@@ -430,19 +445,33 @@ public final class BuildEta {
             BuildMetrics.Stats plainFull =
                     okHistory(entryDir, new BuildService.HistoryShape(false, hist.dirtyModules()));
             BuildMetrics.Stats floorSrc = higherAvg(okHist, plainFull);
-            if (floorSrc != null && floorSrc.count() > 0) {
+            // Credibility: the shape lookup can fall back to bare project stats, whose average
+            // is dominated by sub-second cached no-ops (observed: 4x avg=262ms posing as
+            // full-rebuild history). A floor that cannot even be one real build is no floor.
+            if (floorSrc != null && floorSrc.count() > 0 && floorSrc.maxMillis() >= 5_000L) {
                 long floor = floorSrc.avgMillis();
                 if (floorSrc.count() >= 2 && floorSrc.maxMillis() > floor) {
                     floor = hist.rebuild()
                             ? Math.round(0.25 * floorSrc.avgMillis() + 0.75 * floorSrc.maxMillis())
                             : Math.round(0.5 * floorSrc.avgMillis() + 0.5 * floorSrc.maxMillis());
                 }
+                // The floor catches sims that under-price unlearned steps — it must not let
+                // stale history override a structurally faster schedule outright (phase-gated
+                // pipelining halved real walls while history still remembered the serialized
+                // ones, JK-2216). Cap its uplift at 1.5x the simulated schedule; as post-change
+                // builds land, avg/max converge and the cap stops binding.
+                floor = Math.min(floor, Math.round(base * 1.5));
+                if (Perf.ENABLED) {
+                    System.err.println("[jk-perf] eta-seed base=" + base + "ms floor=" + floor + "ms hist(count="
+                            + floorSrc.count() + " avg=" + floorSrc.avgMillis() + " max=" + floorSrc.maxMillis()
+                            + ") coldFull=" + coldFull);
+                }
                 if (floor > base) base = floor;
             }
         }
         // One-sided clamp for absurd over-estimates only (never pull incremental work up to history).
         // Then a tiny open-loop preference for mild over-estimate (finishing early feels worse than late).
-        return preferSlightOverEstimate(applyHistoryPrior(base, okHist));
+        return new Seed(preferSlightOverEstimate(applyHistoryPrior(base, okHist)), rawSchedule);
     }
 
     /**

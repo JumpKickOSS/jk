@@ -615,17 +615,17 @@
             </select>
           </label>
           <!-- Layout + executable only apply to the blank scaffolder. A Giter8 template ships a
-               fixed tree (simple / traditional / custom) — the apply path does not reshape it. -->
+               fixed tree (traditional / simple / custom) — the apply path does not reshape it. -->
           <label v-if="!newProject.template">
             <span>Layout</span>
             <select v-model="newProject.layout">
-              <option value="simple">Simple (Mill-like)</option>
               <option value="traditional">Traditional (Maven-like)</option>
+              <option value="simple">Simple (Mill-like)</option>
             </select>
           </label>
           <p v-else class="template-meta dim small">
             Template layout: <b>{{ selectedTemplateLayout() }}</b>
-            <span v-if="selectedTemplateLayout() === 'custom'"> (framework tree — not simple/traditional)</span>
+            <span v-if="selectedTemplateLayout() === 'custom'"> (framework tree — not traditional/simple)</span>
           </p>
           <label>
             <span>Parent directory</span>

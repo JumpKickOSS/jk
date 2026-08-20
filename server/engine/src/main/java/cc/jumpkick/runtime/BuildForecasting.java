@@ -54,17 +54,39 @@ public final class BuildForecasting {
     }
 
     /**
-     * A preflight verdict: dirty set, fingerprints for the dirty memo, and optional
-     * {@link TaskForecast.Module} list when a full forecast walk ran (reuse for ETA — do not walk
-     * twice).
+     * Read-only variant for pure estimates (ForecastVerb, post-clean ETA): consults the memo but
+     * NEVER stores one. A query that writes {@code target/.jk/preflight} resurrects the target
+     * dir right after {@code jk clean --force} wiped it (JK-2205).
      */
-    record Preflight(Set<Path> dirty, Map<Path, String> fingerprints, List<TaskForecast.Module> modules) {
+    public static Set<Path> forecastDirtyDirsReadOnly(
+            BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
+        return forecastWithFingerprints(graph, cache, skipTests, entryDir, WorkspaceTarget.PACKAGE, Set.of(), false)
+                .dirty();
+    }
+
+    /**
+     * A preflight verdict: input-dirty modules, modules needing output restore (inputs clean),
+     * fingerprints for the dirty memo, and optional {@link TaskForecast.Module} list when a full
+     * forecast walk ran (reuse for ETA — do not walk twice).
+     */
+    record Preflight(
+            Set<Path> dirty,
+            Set<Path> restoreNeeded,
+            Map<Path, String> fingerprints,
+            List<TaskForecast.Module> modules) {
         Preflight {
+            dirty = dirty == null ? Set.of() : Set.copyOf(dirty);
+            restoreNeeded = restoreNeeded == null ? Set.of() : Set.copyOf(restoreNeeded);
+            fingerprints = fingerprints == null ? Map.of() : Map.copyOf(fingerprints);
             modules = modules == null ? List.of() : List.copyOf(modules);
         }
 
+        Preflight(Set<Path> dirty, Map<Path, String> fingerprints, List<TaskForecast.Module> modules) {
+            this(dirty, Set.of(), fingerprints, modules);
+        }
+
         Preflight(Set<Path> dirty, Map<Path, String> fingerprints) {
-            this(dirty, fingerprints, List.of());
+            this(dirty, Set.of(), fingerprints, List.of());
         }
     }
 
@@ -94,13 +116,31 @@ public final class BuildForecasting {
             Path entryDir,
             WorkspaceTarget target,
             Set<Path> terminalDirs) {
+        return forecastWithFingerprints(graph, cache, skipTests, entryDir, target, terminalDirs, true);
+    }
+
+    /** {@code persistMemo=false}: consult but never store — read-only estimates (JK-2205). */
+    static Preflight forecastWithFingerprints(
+            BuildGraph.Result graph,
+            Path cache,
+            boolean skipTests,
+            Path entryDir,
+            WorkspaceTarget target,
+            Set<Path> terminalDirs,
+            boolean persistMemo) {
         WorkspaceTarget t = target == null ? WorkspaceTarget.PACKAGE : target;
         // The dirty memo's clean claim covers package outputs only (it checks the module target
-        // dir, not terminal artifacts). NATIVE/IMAGE/COMPILE must always run the target-aware
-        // forecast walk — a memo hit here would skip a missing binary or a never-skippable
-        // image push. The memo is also keyed without target, so a PACKAGE store must never be
-        // consumed by a terminal-target run (jk build && jk native would no-op to success).
-        boolean memoSafe = t == WorkspaceTarget.PACKAGE || t == WorkspaceTarget.TEST;
+        // dir, not terminal artifacts). NATIVE/IMAGE/COMPILE/INSTALL must always run the
+        // target-aware forecast walk — a memo hit here would skip a missing binary, a
+        // never-skippable image push, or a cache-install into repos/local. The memo is also
+        // keyed without target, so a PACKAGE store must never be consumed by a terminal-target
+        // run (jk build && jk install would no-op to success).
+        // The memo is also keyed without the test selection: a widened run (`jk build --all`,
+        // tag flags) must take the real forecast walk — its run-tests stamps differ from the
+        // default tier the memo's clean claim covered (JK-2203).
+        boolean defaultSelection =
+                SessionContext.current().testSelection().equals(cc.jumpkick.config.TestSelection.DEFAULT);
+        boolean memoSafe = (t == WorkspaceTarget.PACKAGE || t == WorkspaceTarget.TEST) && defaultSelection;
         Set<Path> all = new HashSet<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) all.add(u.dir());
         // --force / --redo: every module runs — skip the expensive per-step forecast walk for dirty
@@ -115,11 +155,21 @@ public final class BuildForecasting {
             if (memo.isPresent()) {
                 if (Perf.ENABLED) {
                     System.err.println("[jk-perf] preflight-memo hit dirty="
-                            + memo.get().dirty().size());
+                            + memo.get().dirty().size()
+                            + " restore="
+                            + memo.get().restoreNeeded().size()
+                            + (memo.get().restoreNeeded().isEmpty()
+                                    ? ""
+                                    : " " + memo.get().restoreNeeded()));
                 }
-                // Memo hit with empty dirty: fully cached — no TaskForecaster walk (fast path).
+                // Memo hit: inputs validated. Empty dirty+restore → skip TaskForecaster.
+                // restoreNeeded alone → restore path (no full rebuild forecast).
                 // Non-empty dirty still needs a forecast for ETA step lists; caller walks once.
-                return new Preflight(memo.get().dirty(), memo.get().fingerprints(), List.of());
+                return new Preflight(
+                        memo.get().dirty(),
+                        memo.get().restoreNeeded(),
+                        memo.get().fingerprints(),
+                        List.of());
             }
             fps = PreflightMemo.snapshotFingerprints(graph, skipTests);
         } else {
@@ -131,22 +181,44 @@ public final class BuildForecasting {
             List<TaskForecast.Module> modules = TaskForecaster.of(
                     graph, cas, ac, cache, skipTests, t, terminalDirs == null ? Set.of() : terminalDirs);
             Set<Path> dirty = new HashSet<>();
+            Set<Path> restoreNeeded = new HashSet<>();
             for (TaskForecast.Module m : modules) {
-                if (m.dirty()) dirty.add(m.dir());
-                if (Perf.ENABLED && m.dirty()) {
+                if (!m.dirty()) continue;
+                if (isRestoreOnly(m)) {
+                    restoreNeeded.add(m.dir());
+                } else {
+                    dirty.add(m.dir());
+                }
+                if (Perf.ENABLED) {
                     for (TaskForecast.Task p : m.steps()) {
                         if (!p.cached())
                             System.err.println("[jk-perf] dirty " + m.coord() + " " + p.name() + " (" + p.text() + ")");
                     }
                 }
             }
-            if (entryDir != null && memoSafe) {
+            if (entryDir != null && memoSafe && persistMemo) {
+                // Store input-dirty only — restoreNeeded is re-derived from missing outputs on load.
                 PreflightMemo.storeDirty(entryDir, graph, skipTests, dirty, fps);
             }
-            return new Preflight(dirty, fps, modules);
+            return new Preflight(dirty, restoreNeeded, fps, modules);
         } catch (RuntimeException e) {
-            return new Preflight(all, fps, List.of());
+            return new Preflight(all, Set.of(), fps, List.of());
         }
+    }
+
+    /** True when the only material non-cached step is the synthetic restore gate. */
+    static boolean isRestoreOnly(TaskForecast.Module m) {
+        boolean sawRestore = false;
+        for (TaskForecast.Task s : m.steps()) {
+            if (s.cached() || TaskForecast.Module.isBookkeepingStep(s.name())) continue;
+            if (!TaskForecast.Module.isMaterialWork(s.name())) continue;
+            if ("restore-outputs".equals(s.name())) {
+                sawRestore = true;
+                continue;
+            }
+            return false;
+        }
+        return sawRestore;
     }
 
     /**

@@ -1,18 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
-import java.io.ByteArrayOutputStream;
+import cc.jumpkick.cli.testing.Capture;
 import java.io.IOException;
-import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.Comparator;
-import java.util.function.IntSupplier;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -43,7 +40,7 @@ class BuildCacheTest {
 
         // Second build: stamp is fresh, no input newer → fast skip without
         // even hashing source content for an action-key lookup.
-        String stdout = captureStdout(() -> run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
+        String stdout = Capture.stdout(() -> run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
         assertThat(stdout).contains("project up to date");
     }
 
@@ -66,7 +63,7 @@ class BuildCacheTest {
         // "project up to date" fast path (and unlike --force, no dependency re-fetch).
         // (--rebuild remains a supported alias for --redo.)
         String stdout =
-                captureStdout(() -> run("build", "--redo", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
+                Capture.stdout(() -> run("build", "--redo", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
         assertThat(stdout).doesNotContain("project up to date");
         assertThat(stdout).contains("Build successful");
     }
@@ -92,7 +89,7 @@ class BuildCacheTest {
         deleteRecursively(tempDir.resolve("build"));
         deleteRecursively(tempDir.resolve("target"));
 
-        String stdout = captureStdout(() -> run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
+        String stdout = Capture.stdout(() -> run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
         assertThat(stdout).contains("Built");
     }
 
@@ -172,26 +169,8 @@ class BuildCacheTest {
         // which let a real content change look "up to date".
         Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() + 5_000));
 
-        String stdout = captureStdout(() -> run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
+        String stdout = Capture.stdout(() -> run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
         assertThat(stdout).doesNotContain("Cache hit");
         assertThat(stdout).contains("Built");
-    }
-
-    // --- helpers -----------------------------------------------------------
-
-    private static int run(String... args) {
-        return Jk.execute(args);
-    }
-
-    private static String captureStdout(IntSupplier body) {
-        PrintStream original = System.out;
-        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(buffer));
-        try {
-            body.getAsInt();
-        } finally {
-            System.setOut(original);
-        }
-        return buffer.toString(StandardCharsets.UTF_8);
     }
 }

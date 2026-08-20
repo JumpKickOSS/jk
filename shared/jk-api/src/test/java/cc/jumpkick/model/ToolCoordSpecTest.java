@@ -17,9 +17,9 @@ class ToolCoordSpecTest {
     }
 
     @Test
-    void pinned_gav_keeps_the_packaging_type_meaning_of_at() {
-        // Three coordinate segments before `@` → `@pom` is a packaging type, not a selector.
-        var spec = ToolCoordSpec.parse("com.example:widget-cli:1.0.0@pom");
+    void pinned_gav_uses_bang_for_packaging_type() {
+        // `!pom` is packaging type; `@` remains a version selector on floating coords.
+        var spec = ToolCoordSpec.parse("com.example:widget-cli:1.0.0!pom");
         assertThat(spec).isInstanceOf(ToolCoordSpec.Pinned.class);
         assertThat(((ToolCoordSpec.Pinned) spec).coordinate().type()).isEqualTo("pom");
     }

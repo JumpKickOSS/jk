@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.plugin.compat;
+package cc.jumpkick.compat;
 
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
@@ -107,6 +107,7 @@ public final class JkBuildRenderer {
             sb.append("main       = ").append(quote(app.main())).append('\n');
         if (app.assembly()) sb.append("assembly = true\n");
         if (app.minified()) sb.append("minified = true\n");
+        if (app.nativeImage()) sb.append("native   = true\n");
     }
 
     /** {@code [native]} table — {@code enabled} defaults true when the table is present. */
@@ -120,7 +121,7 @@ public final class JkBuildRenderer {
             sb.append("enabled    = false\n");
         }
         if (nc.mainClass() != null)
-            sb.append("main-class = ").append(quote(nc.mainClass())).append('\n');
+            sb.append("main       = ").append(quote(nc.mainClass())).append('\n');
         if (nc.name() != null)
             sb.append("name       = ").append(quote(nc.name())).append('\n');
         if (!nc.args().isEmpty()) {

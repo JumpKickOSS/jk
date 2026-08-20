@@ -43,26 +43,30 @@ working the next morning.
 
 ## When an engine *does* exit
 
-Three states, decided by whether the `<key>.endpoint` pointer names this engine:
+Three states, decided by whether this process is still the named primary (endpoint pointer **and**
+pid file). The generation filename alone is not identity: deleting and recreating the state directory
+can leave a ghost engine whose socket *name* matches the successor.
 
-| Pointer | State | Behaviour |
+| Pointer / pid | State | Behaviour |
 |---|---|---|
-| names this engine | **primary** | Never self-terminates. Exits on `jk engine stop` or version-skew replacement. |
-| names another | **displaced** | Surrenders the HTTP port **immediately**, then drains in-flight jobs and exits. |
+| names this engine (pid matches) | **primary** | Never self-terminates. Exits on `jk engine stop` or version-skew replacement. |
+| names another process, or pid file / hello pid differs | **displaced** | Yields UDS, wire, and HTTP **immediately**, drains in-flight jobs, reports `drain-status` to the successor, exits when idle. |
 | absent | **orphaned** | Exits once genuinely unused: no in-flight jobs **and** no attached SSE stream. |
 
-### Displacement surrenders the port unconditionally
+### Displacement surrenders every listener unconditionally
 
-A newer engine taking over needs the port. A displaced engine calls `stopNow()` on its HTTP server
-right away — attached dashboard streams get **no vote**. This is correct because there *is* a
-successor: the tab reconnects to it, and the HTTP token is deliberately preserved across the respawn
-so it does not have to re-authenticate. Client-side reconnect is the SPA's job.
+A newer engine taking over needs the HTTP port and the UDS (or Windows wire socket). A displaced
+engine closes those listeners right away — attached dashboard streams get **no vote** — then keeps
+only already-accepted job connections until they finish. The successor binds, and the predecessor
+sends `drain-status` / `drain-done` to it over the new listener. The HTTP token is deliberately
+preserved across the respawn so the tab does not have to re-authenticate. Client-side reconnect is
+the SPA's job.
 
 ### An orphan waits for an attached tab
 
 An orphaned engine is one no pointer names: no CLI will reach it again, and no successor wants its
 port either. Before this was handled, such an engine served forever — the displacement check required
-the pointer to *exist*, so a deleted one left an unreachable engine running indefinitely (JK-1293).
+the pointer to *exist*, so a deleted one left an unreachable engine running indefinitely.
 
 It now exits when unused, but an attached SSE stream vetoes that. Unlike displacement there is no
 successor to hand the tab to, so exiting under an open dashboard would strand it with nothing to
@@ -74,9 +78,13 @@ what actually holds a slot: a stream keeps its permit for the life of the connec
 ## Stopping engines
 
 The engine identity is a hash of the state directory **and** the artifact store, so a machine can
-hold several at once — one per `(state dir, store)` pair. `jk engine status` lists every running
-engine with its id and pid; `jk engine stop` addresses the one this directory resolves to,
-`--all` stops all of them, and `--pid <pid>` stops one by pid.
+hold several at once — one per `(state dir, store)` pair, plus a draining predecessor that has
+already yielded its listeners. A unique {@code JK_HOME} (test sandboxes under
+{@code target/test-jk-home}) gets its own UDS and, unless the suite opts in, HTTP disabled or
+bound on port {@code 0} so it cannot steal the host dashboard. `jk engine status` lists every
+resident engine this user owns. `jk engine stop` addresses the one this directory resolves to,
+`--all` stops **this home only** (nested tests must not kill the host engine running
+{@code jk build}), and `--pid <pid>` stops one by pid.
 
 Every form of stop escalates to a hard kill if the engine does not exit, and reports what actually
 happened. Reliably stopping an engine must never require the user to reach for `kill` or hunt through

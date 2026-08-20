@@ -1,12 +1,16 @@
 name = "jk-spring-boot"
 description = "JumpKick's Spring Boot packaging plugin"
 
-[application]
-main = "cc.jumpkick.plugin.process.PluginMain"
-
 [dependencies]
 jk-plugin-sdk.workspace = true
 
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"
+
+[build]
+# Own declarative layer at the jar root — the third-party plugin shape.
+extra-resources = [
+  { from = "jk-plugin.toml", into = "" },
+  { from = "scaffold/**", into = "scaffold", optional = true },
+]

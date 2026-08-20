@@ -369,8 +369,15 @@ public final class BuildPlan {
             boolean stepAlreadyReported =
                     !cancel && errors.stream().anyMatch(d -> step.name().equals(d.step()));
             if (!stepAlreadyReported) {
-                errors.add(new BuildPlanResult.Diagnostic(
-                        step.name(), cancel ? "cancelled" : "exception", diagnosticMessage(t)));
+                String message = diagnosticMessage(t);
+                errors.add(new BuildPlanResult.Diagnostic(step.name(), cancel ? "cancelled" : "exception", message));
+                // Emit too: the result's diagnostics never cross the wire on the workspace
+                // path, so without this a step that throws without ctx.error (e.g. a
+                // GlobException out of copy-resources) failed the module with NO message
+                // anywhere — CLI and details.jsonl both showed a bare FAIL (JK-2199).
+                if (!cancel) {
+                    emit(l -> l.error(step.name(), "exception", message));
+                }
             }
             TaskStatus terminal = cancel ? TaskStatus.CANCELLED : TaskStatus.FAIL;
             statuses.put(step.name(), terminal);

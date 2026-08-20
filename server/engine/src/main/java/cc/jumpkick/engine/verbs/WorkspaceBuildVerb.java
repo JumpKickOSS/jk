@@ -18,7 +18,9 @@ import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -84,7 +86,8 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                         skipTests,
                         false,
                         0,
-                        false,
+                        // Parallel module tests: same default as the CLI (JK-2213).
+                        true,
                         false,
                         false,
                         true,
@@ -96,6 +99,15 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                         cc.jumpkick.engine.jobs.JobSelect.testSelection(
                                 spec.includeTags(), spec.excludeTags(), spec.suites())),
                 "web");
+    }
+
+    /**
+     * Non-positive wire concurrency resolves to the same effective jobs the CLI sends, so every
+     * client takes the streaming scheduler — never the batch-per-level path (JK-2213).
+     */
+    static int effectiveModuleConcurrency(int wire) {
+        if (wire > 0) return wire;
+        return cc.jumpkick.config.Jobs.resolve(cc.jumpkick.config.JkEngineConfig.resolve());
     }
 
     /** A workspace test job journals as kind {@code test} on every surface, not {@code build}. */
@@ -117,8 +129,13 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             String profile = Jsonl.str(requestLine, "profile");
             boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
             boolean verbose = Jsonl.bool(requestLine, "verbose", false);
-            int maxModuleConcurrency = Jsonl.intValue(requestLine, "maxModuleConcurrency", 0);
-            boolean parallelTests = Jsonl.bool(requestLine, "parallelTests", false);
+            // One behavior for every client (JK-2213): absent/zero module concurrency resolves
+            // to the same effective jobs the CLI sends (streaming scheduler — never the
+            // batch-per-level path), and cross-module tests default parallel. Explicit wire
+            // values (any client, any age) still win.
+            int maxModuleConcurrency =
+                    effectiveModuleConcurrency(Jsonl.intValue(requestLine, "maxModuleConcurrency", 0));
+            boolean parallelTests = Jsonl.bool(requestLine, "parallelTests", true);
             boolean offline = Jsonl.bool(requestLine, "offline", false);
             boolean force = Jsonl.bool(requestLine, "force", false);
             boolean rerun = Jsonl.bool(requestLine, "rebuild", false);
@@ -165,6 +182,17 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     .withTestOnly(testOnly)
                     .withEphemeralActions(ephemeralActions)
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
+            String workspaceTarget = Jsonl.str(requestLine, "workspaceTarget");
+            if ("install".equals(workspaceTarget)) {
+                Map<Path, Path> graalByDir = new LinkedHashMap<>();
+                Map<String, String> homes = Jsonl.strMap(requestLine, "graalHomes");
+                if (homes != null) {
+                    homes.forEach((d, h) -> graalByDir.put(Path.of(d), Path.of(h)));
+                }
+                Set<Path> selected = dirty == null ? Set.of() : dirty;
+                req = req.withSpec(cc.jumpkick.runtime.WorkspaceSpec.install(selected, graalByDir));
+            }
+            WorkspaceRequest workspaceReq = req;
 
             JkConfig config = new JkConfig(
                     Optional.empty(),
@@ -192,7 +220,8 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             long rid = host.eventRequestId();
             if (rid > 0) host.putProgressRoot(rid, entryDirStr);
             WorkspaceBuildListener listener = host.workspaceListener(writer, entryDirStr);
-            WorkspaceResult result = SessionContext.where(session, () -> BuildService.buildWorkspace(req, listener));
+            WorkspaceResult result =
+                    SessionContext.where(session, () -> BuildService.buildWorkspace(workspaceReq, listener));
             host.releaseExclusiveSlot();
             boolean cancelled = result.cancelled() || host.effectiveCancelled(rid, cancelToken.cancelled());
             cc.jumpkick.engine.jobs.JobOutcome outcome =

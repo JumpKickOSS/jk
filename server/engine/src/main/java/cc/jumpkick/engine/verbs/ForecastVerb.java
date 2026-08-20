@@ -88,7 +88,9 @@ public final class ForecastVerb implements HostedVerb {
                         return null;
                     }
                     List<String> dirty = new ArrayList<>();
-                    for (Path d : BuildService.forecastDirtyDirs(graph, cache, skipTests, entryDir))
+                    // Read-only: a forecast that stored the dirty memo recreated target/.jk
+                    // right after jk clean --force wiped it (JK-2205).
+                    for (Path d : BuildService.forecastDirtyDirsReadOnly(graph, cache, skipTests, entryDir))
                         dirty.add(d.toString());
                     boolean lockStale = BuildService.workspaceLockStale(
                             entryDir, entryBuild, cc.jumpkick.lock.LockPaths.lockFile(entryDir));

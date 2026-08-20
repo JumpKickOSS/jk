@@ -21,6 +21,7 @@ class JkDirsTest {
         assertThat(dirs.binDirectory()).isEqualTo(Path.of("/home/me/.local/bin"));
         assertThat(dirs.storeDir()).isEqualTo(Path.of("/home/me/.local/share/jk/store"));
         assertThat(dirs.libDir()).isEqualTo(Path.of("/home/me/.local/share/jk/store/lib"));
+        assertThat(dirs.productLibDir()).isEqualTo(Path.of("/home/me/.local/share/jk/lib"));
         assertThat(dirs.versionsDir()).isEqualTo(Path.of("/home/me/.local/share/jk/versions"));
         assertThat(dirs.jdksDir()).isEqualTo(Path.of("/home/me/.jdks"));
         assertThat(dirs.buildsDir()).isEqualTo(Path.of("/home/me/.local/state/jk/builds"));
@@ -53,6 +54,8 @@ class JkDirsTest {
         assertThat(dirs.jdksDir()).isEqualTo(home.resolve(".jdks"));
         assertThat(dirs.storeDir())
                 .isEqualTo(local.resolve("jk").resolve("data").resolve("store"));
+        assertThat(dirs.productLibDir())
+                .isEqualTo(local.resolve("jk").resolve("data").resolve("lib"));
         assertThat(dirs.versionsDir())
                 .isEqualTo(local.resolve("jk").resolve("data").resolve("versions"));
     }
@@ -106,6 +109,7 @@ class JkDirsTest {
         assertThat(dirs.binDirectory()).isEqualTo(Path.of("/opt/jk/bin"));
         assertThat(dirs.storeDir()).isEqualTo(Path.of("/opt/jk/store"));
         assertThat(dirs.libDir()).isEqualTo(Path.of("/opt/jk/store/lib"));
+        assertThat(dirs.productLibDir()).isEqualTo(Path.of("/opt/jk/lib"));
         assertThat(dirs.versionsDir()).isEqualTo(Path.of("/opt/jk/versions"));
         // Shared IntelliJ root — not $JK_HOME/jdks
         assertThat(dirs.jdksDir()).isEqualTo(Path.of("/home/me/.jdks"));

@@ -104,6 +104,12 @@ public final class BuildService {
         return BuildForecasting.forecastDirtyDirs(graph, cache, skipTests, entryDir);
     }
 
+    /** Read-only estimate: consults the preflight memo but never writes one (JK-2205). */
+    public static Set<Path> forecastDirtyDirsReadOnly(
+            BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
+        return BuildForecasting.forecastDirtyDirsReadOnly(graph, cache, skipTests, entryDir);
+    }
+
     /**
      * Forecast the build without running it: resolve the module graph and run the truthful
      * per-step {@link TaskForecaster} over it, returning an {@link ExplainPlan} the caller
@@ -192,7 +198,17 @@ public final class BuildService {
      * ETA seed plus the cost assembly it was computed from — the single assembly both the
      * estimate and the {@link WorkModel} consume.
      */
-    public record EtaModel(long etaMs, List<EffortWeights.ModuleCost> costs, int concurrency, boolean serial) {
+    public record EtaModel(
+            long etaMs,
+            List<EffortWeights.ModuleCost> costs,
+            int concurrency,
+            boolean serial,
+            /** The schedule simulation BEFORE the learned {@link ScheduleBias} — what bias observations compare against. */
+            long rawScheduleMs) {
+        public EtaModel(long etaMs, List<EffortWeights.ModuleCost> costs, int concurrency, boolean serial) {
+            this(etaMs, costs, concurrency, serial, 0);
+        }
+
         static EtaModel empty() {
             return new EtaModel(0, List.of(), 1, true);
         }
@@ -387,6 +403,12 @@ public final class BuildService {
     /** As {@link #forecastDirtyDirs(ResolvedGraph, Path, boolean)} with preflight memo root. */
     public static Set<Path> forecastDirtyDirs(ResolvedGraph graph, Path cache, boolean skipTests, Path entryDir) {
         return forecastDirtyDirs(graph.graph(), cache, skipTests, entryDir);
+    }
+
+    /** Read-only estimate over a front-end-held graph: never writes the memo (JK-2205). */
+    public static Set<Path> forecastDirtyDirsReadOnly(
+            ResolvedGraph graph, Path cache, boolean skipTests, Path entryDir) {
+        return forecastDirtyDirsReadOnly(graph.graph(), cache, skipTests, entryDir);
     }
 
     /**

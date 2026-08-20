@@ -541,7 +541,11 @@ public final class McpHandler {
                         "lang",
                         Map.of("type", "string", "description", "java (default) | kotlin | groovy"),
                         "layout",
-                        Map.of("type", "string", "description", "simple (default) | traditional"),
+                        Map.of(
+                                "type",
+                                "string",
+                                "description",
+                                "traditional (default) | simple — where to place sources, not a jk.toml key"),
                         "template",
                         Map.of("type", "string", "description", "Giter8 short name or path (see action=templates)"),
                         "preview",
@@ -857,8 +861,16 @@ public final class McpHandler {
      * Poll briefly for the finished row stamped with this jid — via {@link #finishedRecords}, so
      * each poll is a memoized single-record read, never a full journal re-scan.
      */
+    /** Journal-write settle budget for {@link #waitForJournal}. Tests shrink it — a wait whose
+     * jid deliberately never lands a record otherwise sleeps out the full second per call. */
+    private long journalSettleMs = 1_000;
+
+    void journalSettleMs(long ms) {
+        this.journalSettleMs = ms;
+    }
+
     private @org.jspecify.annotations.Nullable Map<String, Object> waitForJournal(long jid) {
-        long deadline = System.currentTimeMillis() + 1_000;
+        long deadline = System.currentTimeMillis() + journalSettleMs;
         while (true) {
             String raw = finishedRecords.apply(jid);
             if (raw != null) return parseRecord(raw);

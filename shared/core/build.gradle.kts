@@ -34,7 +34,7 @@ tasks.named<Jar>("jar") {
                 .files
         if (baked.isNotEmpty()) {
             throw GradleException(
-                ":core jar must not contain plugin manifests (JK-2149): " +
+                ":core jar must not contain plugin manifests: " +
                     baked.map { it.name }.sorted())
         }
     }

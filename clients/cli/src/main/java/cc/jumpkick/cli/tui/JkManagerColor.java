@@ -405,7 +405,9 @@ public final class JkManagerColor {
 
     /**
      * Maven-style {@code group:artifact} or {@code group:artifact:version} (optionally with
-     * classifier/extension segments). Requires at least one {@code ':'} and no whitespace.
+     * classifier segments, {@code artifact!type} for non-default packaging, or {@code @} version
+     * selectors). Requires at least one {@code ':'} and no whitespace. Rejects lock package keys
+     * with an empty classifier segment ({@code g:a:jar:}).
      */
     static boolean looksLikeCoord(String tok) {
         if (tok == null || tok.isEmpty()) return false;
@@ -418,7 +420,14 @@ public final class JkManagerColor {
             if (p.isEmpty()) return false;
             for (int i = 0; i < p.length(); i++) {
                 char c = p.charAt(i);
-                if (!(Character.isLetterOrDigit(c) || c == '.' || c == '-' || c == '_')) return false;
+                // '!' = packaging type (g:a!aar); '@' = version selector (g:a@1.2 / g:a@~1.2).
+                if (!(Character.isLetterOrDigit(c)
+                        || c == '.'
+                        || c == '-'
+                        || c == '_'
+                        || c == '@'
+                        || c == '~'
+                        || c == '!')) return false;
             }
         }
         // group usually has a dot (reverse-DNS) OR artifact has a hyphen/common form.

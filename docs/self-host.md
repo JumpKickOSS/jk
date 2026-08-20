@@ -8,7 +8,7 @@ This repository is a **dual-build tree**: the same product sources build under *
 | System | Config | Typical output | Role today |
 |--------|--------|----------------|------------|
 | **Gradle** | `gradlew`, `build.gradle.kts`, `buildSrc/` | `*/build/` | Bootstrap `jk`, unit/integration CI, parity oracle |
-| **JumpKick** | `jk.toml`, module manifests, `jk-libs.toml`, `jk-lock.toml` | `target/` | Self-host compile/package/test/release, worker install |
+| **JumpKick** | `jk.toml`, module manifests, `jk-libs.toml`, `jk-lock.toml` | `target/` | Self-host compile/package/test/install, worker publish |
 
 Do not treat dual-build as temporary scaffolding you must hide: both layouts live in this
 repo until a deliberate Gradle cut-over (backlog below).
@@ -37,17 +37,14 @@ After `jk` is on `PATH`, stay in this checkout:
 ```bash
 jk lock
 jk build --skip-tests
-jk plugin install-local
+jk install
 
 # Pure-jk unit suite (includes clients/cli — nested engines use isolated JK_STATE_DIR)
 jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
-
-jk release --skip-tests
-./install.sh target/dist/jk
 ```
 
 Workspace members: libraries, `clients/cli`, `clients/web`, `server/engine` (assembly fat
-jar), and all first-party `plugins/*` workers (`assembly` + `PluginMain`).
+jar), and all first-party `plugins/*` workers (thin jars; `PluginMain` implied by `jk-plugin.toml`).
 
 ### `jk test` coverage
 
@@ -80,7 +77,7 @@ With no `[repositories]` table, remotes are **Maven Central then Google Maven** 
 |---|---|
 | Full `./gradlew test` | Parity oracle + bootstrap CI source of truth |
 | `./gradlew dist` / `nativeCompile` | Bootstrap binary when no prior `jk` install exists |
-| `./gradlew installLocal` | Workers + engine materialize/bounce; or `jk plugin install-local` after pure-jk build |
+| `./gradlew installLocal` | Workers + engine materialize/bounce; or `jk install` after pure-jk build |
 
 ### Future cut-over (backlog)
 
@@ -95,58 +92,38 @@ Not started — keep dual-build green until this epic is scheduled:
 Until then: pure-jk dogfood is required for product tickets that touch runtime; Gradle remains
 valid for bootstrap and comparison.
 
-## Side-load workers (no Gradle)
+## Install workers (no Gradle)
 
 After `jk build` produces thin PluginMain jars under `plugins/*/target/` (or
 `target/plugins/…`):
 
 ```bash
-jk plugin install-local
-# or: jk plugin install-local --modules test-runner,java-compiler
-# or: jk plugin install-local --dry-run
+jk install
 ```
 
-For each PluginMain worker:
+Each worker's thin jar and POM land in
+`~/.local/share/jk/store/repos/local/cc/jumpkick/jk-<name>/<ver>/` (Maven layout;
+same as Gradle `installLocal`). Launch rebuilds the runtime classpath from that POM
+and the jars already in the local repo.
 
-1. Thin jar → `~/.local/share/jk/store/repos/local/cc/jumpkick/jk-<name>/<ver>/` (Maven layout;
-   same as Gradle `installLocal`).
-2. Runtime deps → `.classpath` sidecar next to the jar.
-3. Worker + deps hard-linked into `~/.local/share/jk/store/lib/jk-<name>/` (same
-   `JK_LIB_DIR` tree as `jk tool install` / `jk install` apps — default
-   `$JK_STORE_DIR/lib`). Launch uses those short paths in `ps`. A normal CAS/`repos/`
-   sweep that unlinks repo materializations leaves these hardlinks; the inode stays until
-   you uninstall (remove that lib dir) or reinstall.
+## Ship layout
 
-## Ship layout (`jk release` / `jk dist`)
-
-JumpKick’s ship shape is fixed: **native CLI** + **JVM engine** jar + PluginMain workers.
-There is no `--native` / `--jvm` mode switch.
-
-After a bootstrap `jk` is on PATH (GraalVM on PATH for the native step):
+JumpKick’s ship shape is **native CLI** + **JVM engine** jar + PluginMain workers.
+Until a dedicated command replaces the old `jk release` name, produce that layout
+with Gradle and install workers with `jk install`:
 
 ```bash
-jk release --skip-tests
-# alias: jk dist --skip-tests
-# If no native CLI is present yet and clients/cli has [native] enabled = "always",
-# release runs `jk native --skip-tests` first. Use --skip-native to stage the
-# currently running jk as a bootstrap client only.
-./install.sh target/dist/jk
+./gradlew dist installLocal
+./install.sh build/dist/jk
+jk install   # after a pure-jk build, refreshes repos/local workers
 ```
 
-Produces:
-
 ```text
-target/dist/
-  jk                         # native CLI (preferred) or bootstrap client
+build/dist/
+  jk                         # native CLI
   lib/
     jk-engine-<version>.jar  # JVM engine assembly (includes web SPA)
 ```
-
-Also runs `jk plugin install-local` for workspace PluginMain workers.
-
-Flags: `--out <dir>`, `--skip-tests`, `--skip-native`, `--dry-run`, `--modules <sel>`.
-
-Gradle still produces a comparable bootstrap layout at `build/dist/` via `./gradlew dist`.
 
 ## AOT during self-host / CI
 
@@ -165,12 +142,12 @@ Pure-jk test forks set `-Djk.aot.train=off` automatically. For host engines in C
 
 1. ~~Default Google Maven~~ (done)
 2. ~~`clients/web` + engine assembly~~ (done)
-3. ~~`jk plugin install-local`~~ (done)
-4. ~~`jk release` / `jk dist`~~ (done)
+3. ~~`jk install`~~ (done)
+4. ~~local worker publish via `jk install`~~ (done; a future ship-layout command will replace the retired `jk release` name)
 5. ~~All first-party plugins on the workspace~~ (done)
 6. ~~Curated `jk test` + CI self-host dogfood~~ (done)
 7. ~~Engine + plugins under pure-jk `jk test`~~ (done)
-8. ~~Native CLI via `jk native` / `jk release`~~ (done)
+8. ~~Native CLI via `jk native`~~ (done)
 9. ~~`clients/cli` under pure-jk `jk test` (nested-engine isolation)~~ (done)
 10. ~~Same-repo dual-build (`jk.toml` + Gradle; no `jk.jk`)~~ (done)
 11. **Mill-class test parallelism** — isolation + default `-w` / `--parallel-tests` policy

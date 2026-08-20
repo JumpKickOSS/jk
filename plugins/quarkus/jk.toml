@@ -1,9 +1,6 @@
 name = "jk-quarkus"
 description = "JumpKick's Quarkus packaging plugin"
 
-[application]
-main = "cc.jumpkick.plugin.process.PluginMain"
-
 [dependencies]
 jk-plugin-sdk.workspace = true
 
@@ -15,3 +12,9 @@ quarkus-bootstrap-app-model = "=3.38.0"
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"
+
+[build]
+extra-resources = [
+  { from = "jk-plugin.toml", into = "" },
+  { from = "scaffold/**", into = "scaffold", optional = true },
+]

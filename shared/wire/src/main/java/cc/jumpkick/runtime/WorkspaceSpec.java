@@ -56,6 +56,12 @@ public record WorkspaceSpec(
                 WorkspaceTarget.COMPILE, selected, Map.of(), null, List.of(), null, null, null, null, null);
     }
 
+    /** {@code jk install}: package + cache-install on the cone; {@code graalByDir} for ALWAYS native. */
+    public static WorkspaceSpec install(Set<Path> selected, Map<Path, Path> graalByDir) {
+        return new WorkspaceSpec(
+                WorkspaceTarget.INSTALL, selected, graalByDir, null, List.of(), null, null, null, null, null);
+    }
+
     public boolean hasSelection() {
         return !selectedModules.isEmpty();
     }

@@ -207,4 +207,21 @@ class PublishablePomTest {
         assertThat(xml).contains("<scope>provided</scope>");
         assertThat(xml).contains("<scope>test</scope>");
     }
+
+    @Test
+    void lock_pins_win_over_latest_selectors() {
+        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(Scope.MAIN, List.of(new Dependency("com.acme:lib", VersionSelector.parse("latest"))));
+        String xml = PublishablePom.render(
+                        new JkBuild(
+                                new JkBuild.Project("com.example", "widget", "1.0.0", 21),
+                                new JkBuild.Dependencies(byScope)),
+                        null,
+                        Set.of(),
+                        Map.of("com.acme:lib", "9.9.9"))
+                .xml();
+        assertThat(xml).contains("<artifactId>lib</artifactId>");
+        assertThat(xml).contains("<version>9.9.9</version>");
+        assertThat(xml).doesNotContain("LATEST");
+    }
 }

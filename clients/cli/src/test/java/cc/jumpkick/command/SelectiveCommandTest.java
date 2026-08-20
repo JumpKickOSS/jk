@@ -4,12 +4,12 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.testing.Capture;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.function.IntSupplier;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -20,8 +20,8 @@ class SelectiveCommandTest {
     @Test
     void resolve_modules_selector(@TempDir Path tempDir) throws Exception {
         writeWorkspace(tempDir);
-        String out =
-                capture(() -> Jk.execute("selective", "resolve", "-C", tempDir.toString(), "--modules", "api,worker"));
+        String out = Capture.stdout(
+                () -> Jk.execute("selective", "resolve", "-C", tempDir.toString(), "--modules", "api,worker"));
         assertThat(out).contains("api").contains("worker");
         assertThat(out).doesNotContain("libs/core");
     }
@@ -47,7 +47,7 @@ class SelectiveCommandTest {
         assertThat(Jk.execute("selective", "prepare", "-C", tempDir.toString(), "--modules", "api"))
                 .isZero();
         // Second prepare not needed — run with plan should see matching hashes and skip.
-        String out = capture(() -> Jk.execute("selective", "run", "build", "-C", tempDir.toString()));
+        String out = Capture.stdout(() -> Jk.execute("selective", "run", "build", "-C", tempDir.toString()));
         assertThat(out).contains("nothing changed");
     }
 
@@ -76,7 +76,7 @@ class SelectiveCommandTest {
         System.setErr(new PrintStream(err));
         String out;
         try {
-            out = capture(() -> Jk.execute("selective", "run", "build", "-C", tempDir.toString()));
+            out = Capture.stdout(() -> Jk.execute("selective", "run", "build", "-C", tempDir.toString()));
         } finally {
             System.setErr(origErr);
         }
@@ -112,17 +112,5 @@ class SelectiveCommandTest {
                 [workspace]
                 modules = ["api", "worker", "libs/core"]
                 """);
-    }
-
-    private static String capture(IntSupplier body) {
-        PrintStream original = System.out;
-        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(buffer));
-        try {
-            body.getAsInt();
-        } finally {
-            System.setOut(original);
-        }
-        return buffer.toString(StandardCharsets.UTF_8);
     }
 }

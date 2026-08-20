@@ -42,26 +42,27 @@ repo: see [CONTRIBUTING.md](../CONTRIBUTING.md).
 | Role | Linux / macOS | Windows |
 |------|---------------|---------|
 | **bin** (PATH) | `~/.local/bin` | `%USERPROFILE%\.local\bin` |
-| **data** (versions, store/CAS) | `~/.local/share/jk` | `%LOCALAPPDATA%\jk\data` |
+| **data** (engine lib, store/CAS) | `~/.local/share/jk` | `%LOCALAPPDATA%\jk\data` |
 | **cache** (action cache) | `~/.cache/jk` | `%LOCALAPPDATA%\jk\cache` |
 | **state** (engine socket, builds history) | `~/.local/state/jk` | `%LOCALAPPDATA%\jk\state` |
 | **config** | `~/.config/jk/config.toml` | `%APPDATA%\jk\config.toml` |
 | **managed JDKs** | Linux: `~/.jdks` · macOS: `~/Library/Java/JavaVirtualMachines` | `%USERPROFILE%\.jdks` |
 
 **Artifact store** (deps CAS + `repos/`) lives under **data** (`…/store`). **Cache
-CAS** (action outputs) lives under **cache** (`…/cache/sha256`). Side-by-side client +
-engine installs live under **data** (`…/versions/<v>/`). Managed JDKs use the
+CAS** (action outputs) lives under **cache** (`…/cache/sha256`). The live engine jar is
+**`<data>/lib/jk-engine.jar`** (or `$JK_HOME/lib/jk-engine.jar`); an upgrade parks the
+previous copy as `jk-engine.jar.old` until the displaced engine drains. Managed JDKs use the
 **IntelliJ shared root** so the IDE and JumpKick share runtimes; discovery still
 picks up SDKMAN, mise, Homebrew, `JAVA_HOME`, and system installs before
 downloading.
 
 | Env / flag | Effect |
 |------------|--------|
-| `JK_HOME` | Optional **single-tree umbrella** for product dirs (config, cache, store, state, data, bin, versions). Hermetic tests and cold CI roots. Does **not** move the default JDK root. |
+| `JK_HOME` | Optional **single-tree umbrella** for product dirs (config, cache, store, state, data, bin, lib). Hermetic tests and cold CI roots. Does **not** move the default JDK root. |
 | `JK_CACHE_DIR` | Action / local CPU cache. Default: platform cache dir above. |
 | `JK_STORE_DIR` | CAS / network-expensive store. Default: `<data>/store` (or `$JK_HOME/store`). |
 | `JK_STATE_DIR` | Engine sockets, build history. Default: platform state dir. |
-| `JK_DATA_DIR` | Versions + default store parent. Default: platform data dir. |
+| `JK_DATA_DIR` | Product data root (engine lib + default store parent when `JK_HOME` is unset). Default: platform data dir. |
 | `JK_BIN_DIR` / `JK_INSTALL_DIR` | PATH install directory for `jk` / `jkx`. Default: platform bin. |
 | `JK_CONFIG_FILE` | Absolute path to `config.toml`. |
 | `JK_JDKS_DIR` | Managed JDK **write** root. Default: IntelliJ shared root. Set with `JK_HOME` for hermetic JDK isolation. |
@@ -148,7 +149,7 @@ cache, a normal `jk build` should hit action cache for unchanged modules.
 | **`jk storage dir`** | Print the artifact store path (`JK_STORE_DIR`) |
 | **`jk storage clean`** | Hygiene: unreferenced store CAS blobs + expired run logs (garbage only) |
 | **`jk storage nuke`** | Wipe the **entire artifact store**. Confirms first |
-| **`jk clean`** | Delete project `target/` outputs; with **`--force`**, also invalidate this project's action-cache entries |
+| **`jk clean`** | Delete project `target/` outputs. Next build: if inputs are unchanged, **restore** jars/classes/binaries from the action cache (discovery + I/O only). Input fingerprints also live under `~/.cache/jk/projects/…` so clean does not force a full rebuild forecast. **`--force`** also invalidates this project's action-cache entries |
 | **`jk repo search` / `refresh` / `login` / `logout`** | Mirror search, coord re-fetch, credentials |
 | **`jk self nuke`** | Wipe **jk-owned** data only. Never touches the PATH bin dir or JDKs. `--cache` / `--store` share code with `jk cache nuke` / `jk storage nuke` |
 
@@ -204,7 +205,7 @@ fat jars) immediately, plus stale keys and temps, while keeping modular compile/
 `package-assembly` / minified jars — use a tighter opportunistic policy so they do not starve
 modular compile/test cache between cleans: **50 % of the cache budget** (2 GiB at the 4 GiB
 default), **3-day** unused TTL, **2 generations** of native binaries / fat jars, **1 generation**
-of OCI images. On `jk release`, staged natives and engine fat jars are **promoted** into the
+of OCI images. Staged natives and engine fat jars can be **promoted** into the
 artifact store CAS (hard-link when possible); restore still hits those blobs via store fallback.
 
 The artifact store holds long-lived downloads: its
@@ -392,6 +393,20 @@ The module pin **wins** over CLI auto/`-w N` so monorepo `jk test -j0` (default 
 stays safe for known hermetic suites. Use `-w1` for one JVM per module, or `--serial-tests` to
 serialize the whole workspace run-tests gate.
 
+When only *some* classes are unhermetic, don't pin the whole module — name their tag:
+
+```toml
+[test]
+workers = 0                     # unit tier shards across auto workers...
+serial-tags = ["integration"]   # ...while these classes run on one trailing worker
+```
+
+`serial-tags` partitions at **class level** (the repo convention: tag heavy suites on the
+class). Classes bearing a listed tag leave the sharded pool and run serially after it; a
+method-level tag inside an otherwise-untagged class still shards with its class. When `W = 1`
+everything is serial anyway and the setting is a no-op. Worker JVMs also each get their own
+`JK_STATE_DIR` (nested-engine suites resolve distinct engine sockets per worker).
+
 #### Test isolation contract (suite authors)
 
 Defaults assume tests are **hermetic enough to share a machine** with other modules’ suites and
@@ -401,7 +416,8 @@ Defaults assume tests are **hermetic enough to share a machine** with other modu
 |-----------|------|
 | Separate forked test JVMs | Always (tests never run in the engine process) |
 | Per-worker `java.io.tmpdir` + `TMPDIR` | When within-module `W > 1` |
-| Optional nested-engine env isolation | `jk-cli` suite (fixed by product; not general) |
+| Per-worker `JK_STATE_DIR` (own engine socket) | When within-module `W > 1` and the suite sets one |
+| Serial trailing worker for tagged classes | `[test] serial-tags` |
 
 **You still must avoid:**
 
@@ -593,10 +609,18 @@ Assembly merge/exclude rules (SPI, Spring META-INF, drop signatures / `module-in
 
 ```toml
 [application]
-main = "com.example.App"
-assembly = true    # adds -all.jar — jk assemble (or jk build)
-# minified = true  # adds -min.jar via R8, built beside -all.jar
+main     = "com.example.App"   # required
+assembly = true                # adds -all.jar — jk assemble (or jk build)
+# minified = true              # adds -min.jar via R8, built beside -all.jar
+# native   = true              # native-image on jk build and jk install
 ```
+
+`jk install` in a project writes the thin jar and POM to the local repo (`repos/local`),
+then prefers a native binary in `~/.local/bin` if one exists, else a minified/fat jar
+under `$JK_HOME/lib/<name>/` plus a `java -jar` script, else a thin `java -cp` script over
+the repo jars. Plugin workers (`jk-plugin.toml`) are those same repo jars — the engine
+rebuilds their runtime classpath from the installed POM. Outside a project, pass a
+coordinate (jkx mode).
 
 R8 is **opt-in** via `minified = true` — never the default.
 
@@ -690,9 +714,9 @@ jk export bom                # freeze lock scope as a Maven BOM POM
 jk compile                   # type-check
 jk build                     # package (thin, fat, minified, Boot, Quarkus, …)
 jk assemble                  # fat/minified jar (alias: assembly; or --fat/--minified)
-jk release                   # local ship layout (alias: dist) — build + workers + target/dist
 jk test
 jk run -- args…              # at workspace root: runs the module with [application] main
+jk install                   # project: repo + PATH; or `jk install g:a:v` (jkx)
 jk clean
 jk explain                   # forecast / cache status (why will this rebuild?)
 jk format
@@ -840,43 +864,49 @@ ships — silent no-ops are not allowed.
 Progress bar and ETA are **run-wide aggregates** of outstanding real work (cache skips are token
 ticks only); see [progress-contract.md](perf/progress-contract.md).
 
-jk modules use a **Mill-like** source layout by default (`layout = "simple"` / AUTO when
-no Maven tree is present). Language is by file extension (`.java` / `.kt` / `.groovy` may
-share a dir).
+jk honors **either** source tree — no `jk.toml` switch. If `src/main/java`, `src/main/kotlin`,
+`src/main/scala`, `src/main/groovy`, or `src/main/resources` exists as a directory, the module
+is **traditional** (Maven). Otherwise it is **simple** (Mill-like). Language is by file extension (`.java` /
+`.kt` / `.groovy` may share a dir). `jk new` still asks which tree to scaffold; that only
+places files.
 
-| Input | Simple (default) | Traditional (Maven import) |
-|-------|------------------|----------------------------|
-| Main sources | `src/` | `src/main/{java,kotlin,groovy}` |
-| Main resources | `resources/` | `src/main/resources` |
-| Default tests | `test/src/` | `src/test/{java,kotlin,groovy}` |
-| Default test resources | `test/resources/` | `src/test/resources` |
-| Named test suite `<name>` | `<name>/src/` (e.g. `integration/src/`) | `src/<name>/{java,kotlin,groovy}` |
-| Named suite resources | `<name>/resources/` | `src/<name>/resources` |
+| Input | Traditional | Simple |
+|-------|-------------|--------|
+| Main sources | `src/main/{java,kotlin,groovy}` | `src/` |
+| Main resources | `src/main/resources` | `resources/` |
+| Default tests | `src/test/{java,kotlin,groovy}` | `test/src/` |
+| Default test resources | `src/test/resources` | `test/resources/` |
+| Named test suite `<name>` | `src/<name>/{java,kotlin,groovy}` | `<name>/src/` (e.g. `integration/src/`) |
+| Named suite resources | `src/<name>/resources` | `<name>/resources` |
 
-Outputs always land under `target/`. `jk new` scaffolds the simple columns; use traditional
-paths (or `layout = "traditional"`) when importing a Maven tree. Suite resources ride the test
-classpath only when that suite is selected (`jk test --suite integration`, `--all`, etc.).
+Outputs always land under `target/`. `jk new --layout simple` scaffolds the Mill-like columns.
+Suite resources ride the test classpath only when that suite is selected (`jk test --suite
+integration`, `--all`, etc.).
 
 `jk test` runs the **test** suite only by default; see [Test suites and tags](#test-suites-and-tags).
 `jk ide` marks every discovered suite as IDE test source roots.
 
 ## Test suites and tags
 
-`jk test` runs the **default suite** only: sources under `test/src/` (simple layout) or
-`src/test/{java,kotlin,groovy}` (traditional). Optional sibling suites are discovered when they
-exist — for example `integration/src/` or `src/integration/java`.
+`jk test` runs the **default suite** only: sources under `src/test/{java,kotlin,groovy}`
+when the tree is traditional, or `test/src/` when it is simple. Optional sibling suites are
+discovered when they exist — for example `src/integration/java` or `integration/src/`.
 
 ```bash
 jk test                              # default suite ("test") only
 jk test --suite integration          # only that suite (-s is the short form)
 jk test -s test -s integration
-jk test --all                        # every discovered suite
+jk test --all                        # EVERYTHING: every suite, config tag excludes cleared
 jk test --exclude-tags slow,bench    # JUnit Platform tags (comma-separated)
 jk test --include-tags smoke
-jk test --all --exclude-tags bench
+jk test --all --exclude-tags bench   # widen, but keep bench out
+jk build --all                       # build + package with the full suite green
 ```
 
 `--all` and `--suite`/`-s` cannot be combined. Unknown suite names error with the available list.
+`--all` also clears `[test]`/profile tag excludes — it means "everything", not just "every suite
+directory"; explicit `--include-tags`/`--exclude-tags` still compose on top. `jk build` accepts
+the same selection flags as `jk test`.
 
 Declarative tag filters (same key names as CLI and profiles):
 

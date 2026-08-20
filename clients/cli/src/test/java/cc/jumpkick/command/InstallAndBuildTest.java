@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
 import cc.jumpkick.util.Hashing;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -238,9 +238,5 @@ class InstallAndBuildTest {
             }
         }
         return jar;
-    }
-
-    private static int run(String... args) {
-        return Jk.execute(args);
     }
 }

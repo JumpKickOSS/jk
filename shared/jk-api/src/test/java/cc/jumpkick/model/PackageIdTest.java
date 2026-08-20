@@ -41,4 +41,13 @@ class PackageIdTest {
     void ofGa_rejects_multi_colon() {
         assertThatThrownBy(() -> PackageId.ofGa("g:a:extra")).isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void display_omits_default_jar_type() {
+        assertThat(PackageId.parse("org.jetbrains.kotlin:kotlin-build-tools-api:jar:")
+                        .display())
+                .isEqualTo("org.jetbrains.kotlin:kotlin-build-tools-api");
+        assertThat(PackageId.parse("com.android.support:support-compat:aar:").display())
+                .isEqualTo("com.android.support:support-compat!aar");
+    }
 }
