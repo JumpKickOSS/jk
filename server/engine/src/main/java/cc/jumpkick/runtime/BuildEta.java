@@ -437,6 +437,12 @@ public final class BuildEta {
                             ? Math.round(0.25 * floorSrc.avgMillis() + 0.75 * floorSrc.maxMillis())
                             : Math.round(0.5 * floorSrc.avgMillis() + 0.5 * floorSrc.maxMillis());
                 }
+                // The floor catches sims that under-price unlearned steps — it must not let
+                // stale history override a structurally faster schedule outright (phase-gated
+                // pipelining halved real walls while history still remembered the serialized
+                // ones, JK-2216). Cap its uplift at 1.5x the simulated schedule; as post-change
+                // builds land, avg/max converge and the cap stops binding.
+                floor = Math.min(floor, Math.round(base * 1.5));
                 if (floor > base) base = floor;
             }
         }

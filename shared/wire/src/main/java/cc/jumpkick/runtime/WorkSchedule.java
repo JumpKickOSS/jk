@@ -59,46 +59,64 @@ public final class WorkSchedule {
         }
         if (byDir.isEmpty()) return 0;
 
-        Map<Path, Long> doneAt = new HashMap<>();
-        record Flight(long finish, Path dir) {}
-        PriorityQueue<Flight> inFlight = new PriorityQueue<>(Comparator.comparingLong(Flight::finish));
+        // Phase-gated admission (JK-2210/2211): dependents wait on the upstream ARTIFACT point
+        // (weight minus the run-tests slice — packaging no longer gates on tests), never on the
+        // upstream's full plan. The slot itself stays occupied for the full weight.
+        Map<Path, Long> artifactAt = new HashMap<>();
+        // Two event kinds: an artifact landing (wakes admission, frees nothing) and a flight
+        // finishing (frees the slot). Without artifact events a dependent could only start at
+        // some unrelated module's finish, overestimating exactly the overlap this models.
+        record Event(long at, Path dir, boolean finish) {}
+        PriorityQueue<Event> events = new PriorityQueue<>(Comparator.comparingLong(Event::at));
         long t = 0;
+        long end = 0;
         int free = slots;
+        int flying = 0;
         Set<Path> dirtyDirs = byDir.keySet();
 
-        while (!remaining.isEmpty() || !inFlight.isEmpty()) {
+        while (!remaining.isEmpty() || flying > 0) {
             while (free > 0 && !remaining.isEmpty()) {
                 Path next = null;
                 for (Path d : remaining) {
                     ModuleWorkCost m = byDir.get(d);
-                    if (!prereqsDone(m, dirtyDirs, doneAt)) continue;
+                    if (!prereqArtifactsReady(m, dirtyDirs, artifactAt, t)) continue;
                     next = d; // first ready in order
                     break;
                 }
                 if (next == null) break;
                 remaining.remove(next);
-                long fin = t + Math.max(0, byDir.get(next).weight());
-                inFlight.add(new Flight(fin, next));
+                ModuleWorkCost m = byDir.get(next);
+                long fin = t + Math.max(0, m.weight());
+                long art = t + Math.max(0, m.weight() - Math.max(0, m.testWeight()));
+                artifactAt.put(next, art);
+                if (art < fin) events.add(new Event(art, next, false));
+                events.add(new Event(fin, next, true));
+                end = Math.max(end, fin);
                 free--;
+                flying++;
             }
-            if (inFlight.isEmpty()) {
+            if (events.isEmpty()) {
                 long extra = 0;
                 for (Path d : remaining) extra += Math.max(0, byDir.get(d).weight());
                 return t + extra;
             }
-            Flight done = inFlight.poll();
-            t = done.finish();
-            doneAt.put(done.dir(), t);
-            free++;
+            Event e = events.poll();
+            t = e.at();
+            if (e.finish()) {
+                free++;
+                flying--;
+            }
         }
-        return t;
+        return end;
     }
 
-    private static boolean prereqsDone(ModuleWorkCost m, Set<Path> dirtyDirs, Map<Path, Long> doneAt) {
+    private static boolean prereqArtifactsReady(
+            ModuleWorkCost m, Set<Path> dirtyDirs, Map<Path, Long> artifactAt, long now) {
         if (m.prereqs() == null) return true;
         for (Path p : m.prereqs()) {
             if (!dirtyDirs.contains(p)) continue; // clean prereq — already built
-            if (!doneAt.containsKey(p)) return false;
+            Long at = artifactAt.get(p);
+            if (at == null || at > now) return false;
         }
         return true;
     }
