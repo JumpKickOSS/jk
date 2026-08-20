@@ -107,7 +107,7 @@ class ProtobufPluginTest {
                 false,
                 Set.of(),
                 SessionContext.current());
-        BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+        BuildPlan plan = BuildPlanner.fullPlan(in);
         BuildPlanResult result = plan.run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
@@ -197,7 +197,7 @@ class ProtobufPluginTest {
                 false,
                 Set.of(),
                 SessionContext.current());
-        BuildPlanResult result = BuildPlanner.coreBuilder(in).build().run();
+        BuildPlanResult result = BuildPlanner.fullPlan(in).run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
         assertThat(anyFile(project.resolve("target"), "GreetingKt.class"))

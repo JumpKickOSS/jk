@@ -88,7 +88,7 @@ class AndroidSpikeTest {
                 false,
                 Set.of(),
                 cc.jumpkick.config.SessionContext.current());
-        BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+        BuildPlan plan = BuildPlanner.fullPlan(in);
 
         assertThat(plan.steps().stream().map(p -> p.name()))
                 .contains("plugin-android-manifest", "plugin-android-res", "plugin-android-dex", "package-jar");

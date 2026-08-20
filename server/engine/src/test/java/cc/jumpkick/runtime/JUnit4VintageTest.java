@@ -92,7 +92,7 @@ class JUnit4VintageTest {
                 false,
                 Set.of(),
                 SessionContext.current());
-        BuildPlanResult result = BuildPlanner.coreBuilder(in).build().run();
+        BuildPlanResult result = BuildPlanner.fullPlan(in).run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success())
                 .as("JUnit4 test discovered and passed via vintage")

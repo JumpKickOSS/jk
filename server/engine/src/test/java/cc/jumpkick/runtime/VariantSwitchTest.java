@@ -127,7 +127,7 @@ class VariantSwitchTest {
                         Set.of(),
                         cc.jumpkick.config.SessionContext.current())
                 .withVariant(selection, Map.of());
-        BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+        BuildPlan plan = BuildPlanner.fullPlan(in);
         BuildPlanResult result = plan.run();
         for (BuildPlanResult.Diagnostic d : result.errors()) {
             System.out.println("DIAG [" + d.step() + "]: " + d.message());

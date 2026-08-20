@@ -145,7 +145,7 @@ class AndroidWorkspaceTest {
                 false,
                 java.util.Set.of(),
                 cc.jumpkick.config.SessionContext.current());
-        BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+        BuildPlan plan = BuildPlanner.fullPlan(in);
         return plan.run();
     }
 

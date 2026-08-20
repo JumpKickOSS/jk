@@ -73,7 +73,7 @@ class KspRoomHiltTest {
                 false,
                 Set.of(),
                 SessionContext.current());
-        BuildPlanResult result = BuildPlanner.coreBuilder(in).build().run();
+        BuildPlanResult result = BuildPlanner.fullPlan(in).run();
         assertThat(result.errors().stream()
                         .filter(d -> d.message() == null || !d.message().contains("sun.misc.Unsafe"))
                         .toList())

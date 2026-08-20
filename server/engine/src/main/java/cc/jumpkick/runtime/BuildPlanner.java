@@ -366,6 +366,18 @@ public final class BuildPlanner {
 
     static final int W_NATIVE = 90;
 
+    /**
+     * Core + declared tails — the exact plan {@code jk build} runs. Prefer this over a bare
+     * {@code coreBuilder(...).build()} anywhere a FULL build is intended: since JK-2211 the
+     * test branch hangs off the terminal join the tails add, and a core-only plan silently
+     * prunes run-tests (a fixture that "builds and tests" would stop testing).
+     */
+    public static cc.jumpkick.run.BuildPlan fullPlan(Inputs in) {
+        cc.jumpkick.run.BuildPlan.Builder b = coreBuilder(in);
+        appendDeclaredTails(b, in);
+        return b.build();
+    }
+
     /** Core build steps plus assembly/native tails from {@code jk.toml}. */
     public static BuildPlan.Builder coreBuilder(Inputs in) {
         return coreBuilder(in, false);

@@ -851,12 +851,15 @@ public final class WorkspaceExecute {
     static void watchArtifactSteps(cc.jumpkick.run.BuildPlan plan, Runnable artifactsReady) {
         Set<String> artifactSteps = new java.util.HashSet<>();
         for (cc.jumpkick.run.Task step : plan.steps()) {
+            // compile-test is an artifact too: kind=tests siblings consume this module's
+            // classes/test (WorkspaceClasspath testClassesDir), and it never waits on the suite.
             if (cc.jumpkick.run.TaskNames.PACKAGE_JAR.equals(step.name())
-                    || cc.jumpkick.run.TaskNames.PACKAGE_ASSEMBLY.equals(step.name())) {
+                    || cc.jumpkick.run.TaskNames.PACKAGE_ASSEMBLY.equals(step.name())
+                    || cc.jumpkick.run.TaskNames.COMPILE_TEST.equals(step.name())) {
                 artifactSteps.add(step.name());
             }
         }
-        if (artifactSteps.isEmpty()) return; // testOnly leaf / no packaging — publish on completion
+        if (artifactSteps.isEmpty()) return; // no packaging or tests — publish on completion
         java.util.concurrent.atomic.AtomicInteger remaining =
                 new java.util.concurrent.atomic.AtomicInteger(artifactSteps.size());
         plan.addListener(new BuildPlanListener() {

@@ -104,7 +104,7 @@ class JdkFloorTest {
                     false,
                     Set.of(),
                     nested);
-            BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+            BuildPlan plan = BuildPlanner.fullPlan(in);
             BuildPlanResult result = plan.run();
             for (BuildPlanResult.Diagnostic d : result.errors()) {
                 System.out.println("DIAG [" + d.step() + "]: " + d.message());

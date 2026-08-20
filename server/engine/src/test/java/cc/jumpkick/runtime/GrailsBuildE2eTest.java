@@ -202,6 +202,6 @@ class GrailsBuildE2eTest {
                 false,
                 Set.of(),
                 SessionContext.current());
-        return BuildPlanner.coreBuilder(in).build().run();
+        return BuildPlanner.fullPlan(in).run();
     }
 }

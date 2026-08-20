@@ -94,7 +94,7 @@ import org.junit.jupiter.api.Tag;
                     false,
                     Set.of(),
                     nested);
-            BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+            BuildPlan plan = BuildPlanner.fullPlan(in);
             BuildPlanResult result = plan.run();
             StringBuilder dump = new StringBuilder();
             for (BuildPlanResult.Diagnostic d : result.errors()) {

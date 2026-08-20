@@ -69,7 +69,7 @@ class RobolectricUnitTest {
                 false,
                 Set.of(),
                 SessionContext.current());
-        BuildPlanResult result = BuildPlanner.coreBuilder(in).build().run();
+        BuildPlanResult result = BuildPlanner.fullPlan(in).run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success())
                 .as("Robolectric resource test passed through jk's test step")
