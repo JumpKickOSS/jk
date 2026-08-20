@@ -2,14 +2,14 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.plugin.manifest.PluginDescriptor;
-import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.runtime.PluginDescriptorOps;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -23,19 +23,24 @@ public final class BuiltInPluginJars {
 
     /** Locate each {@link PluginJar} and install any root manifest into the registry. */
     public static void install() {
+        for (Path path : tablePluginJars()) {
+            PluginTableRegistry.installFromJar(path);
+        }
+    }
+
+    /** Located first-party jars that carry a root {@code jk-plugin.toml}. */
+    public static List<Path> tablePluginJars() {
+        List<Path> out = new ArrayList<>();
         for (PluginJar jar : PluginJar.values()) {
             Path path = jar.locateOrNull(JkStores.storeCas());
             if (path == null) continue;
-            String toml;
             try {
-                toml = zipText(path, PluginDescriptorOps.MANIFEST_ENTRY);
-            } catch (IOException e) {
-                continue;
+                if (zipText(path, PluginDescriptorOps.MANIFEST_ENTRY) != null) out.add(path);
+            } catch (IOException ignored) {
+                // skip unreadable jars
             }
-            if (toml == null || toml.isBlank()) continue;
-            PluginDescriptor manifest = PluginDescriptors.parse(toml, path + "!" + PluginDescriptorOps.MANIFEST_ENTRY);
-            PluginTableRegistry.putBuiltIn(manifest, path);
         }
+        return out;
     }
 
     private static String zipText(Path jar, String entry) throws IOException {

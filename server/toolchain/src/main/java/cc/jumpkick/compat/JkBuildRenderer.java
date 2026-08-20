@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.plugin.compat;
+package cc.jumpkick.compat;
 
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;

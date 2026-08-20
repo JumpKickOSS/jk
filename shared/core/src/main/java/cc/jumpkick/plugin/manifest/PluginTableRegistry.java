@@ -77,6 +77,22 @@ public final class PluginTableRegistry {
     private static final Map<String, Path> ARCHIVES = new ConcurrentHashMap<>();
 
     /**
+     * Load {@code jk-plugin.toml} from a self-describing plugin jar and {@link #putBuiltIn}.
+     * Jars without that root entry are ignored.
+     */
+    public static void installFromJar(Path jar) {
+        Objects.requireNonNull(jar, "jar");
+        try {
+            String toml = zipEntryText(jar, "jk-plugin.toml");
+            if (toml == null || toml.isBlank()) return;
+            PluginDescriptor manifest = PluginDescriptors.parse(toml, jar + "!jk-plugin.toml");
+            putBuiltIn(manifest, jar);
+        } catch (IOException e) {
+            throw new UncheckedIOException("failed to read plugin manifest from " + jar, e);
+        }
+    }
+
+    /**
      * Register or replace a built-in manifest loaded from a self-describing plugin jar.
      * {@code archive} is the zip {@link #resourceText} reads scaffold templates from.
      */

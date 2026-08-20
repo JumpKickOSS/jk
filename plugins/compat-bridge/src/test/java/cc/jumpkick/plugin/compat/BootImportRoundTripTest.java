@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.compat;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.gradle.GradleImporter;
 import org.junit.jupiter.api.Test;
 
