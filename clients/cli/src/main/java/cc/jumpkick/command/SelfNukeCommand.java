@@ -230,7 +230,7 @@ public final class SelfNukeCommand implements CliCommand {
 
     /**
      * Build ordered purge rows for the selected targets. Never includes bin, JDKs, the active
-     * product-lib engine jar, or {@code store/lib/} (latest plugin workers).
+     * product-lib engine jar, or {@code store/lib/} (installed tools).
      */
     static List<PurgeRow> plan(JkDirs dirs, Set<Target> selected) {
         Guards guards = Guards.of(dirs);
@@ -301,7 +301,7 @@ public final class SelfNukeCommand implements CliCommand {
 
     /**
      * Schedule a row unless it would touch a guarded tree: equal to, inside, or an <em>ancestor</em>
-     * of bin, jdks, the product-lib engine, or {@code store/lib}. Comparisons also run on real paths so
+     * of bin, jdks, the product-lib engine, or {@code store/lib} (installed tools). Comparisons also run on real paths so
      * a guarded dir reached through a symlink (e.g. {@code ~/.local/bin -> <data>/bin}) stays safe.
      *
      * @return whether the row was scheduled

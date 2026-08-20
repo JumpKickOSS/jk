@@ -127,7 +127,7 @@ public final class JkDirs {
     /**
      * Product library for the live engine jar and installed fat/minified app jars:
      * {@code $JK_HOME/lib} when set, otherwise {@code <data>/lib}. Distinct from {@link #lib()}
-     * ({@code store/lib}, plugin workers).
+     * ({@code store/lib}, installed tools).
      */
     public static Path productLib() {
         return current().productLibDir();
@@ -237,8 +237,8 @@ public final class JkDirs {
     }
 
     /**
-     * Shared jar library for tools and plugin workers: {@code <store>/lib/} by default. Override
-     * via {@code JK_LIB_DIR}.
+     * Shared jar library for installed tools: {@code <store>/lib/} by default. Override via
+     * {@code JK_LIB_DIR}.
      */
     public Path libDir() {
         String override = nonBlank(env.apply("JK_LIB_DIR"));
