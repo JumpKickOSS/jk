@@ -55,7 +55,9 @@ public final class TestVerb implements HostedVerb {
             boolean verbose = Jsonl.bool(requestLine, "verbose", false);
             boolean offline = Jsonl.bool(requestLine, "offline", false);
             boolean force = Jsonl.bool(requestLine, "force", false);
-            boolean parallelTests = Jsonl.bool(requestLine, "parallelTests", false);
+            // Default parallel, same as every other surface (JK-2213): a serial default here
+            // put concurrent single-module test jobs behind the process-wide TEST_GATE.
+            boolean parallelTests = Jsonl.bool(requestLine, "parallelTests", true);
 
             Path entryDir = Path.of(entryDirStr);
             Path cache = Path.of(cacheStr);

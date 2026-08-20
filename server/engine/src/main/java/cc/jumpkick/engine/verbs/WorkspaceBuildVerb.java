@@ -86,7 +86,8 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                         skipTests,
                         false,
                         0,
-                        false,
+                        // Parallel module tests: same default as the CLI (JK-2213).
+                        true,
                         false,
                         false,
                         true,
@@ -98,6 +99,15 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                         cc.jumpkick.engine.jobs.JobSelect.testSelection(
                                 spec.includeTags(), spec.excludeTags(), spec.suites())),
                 "web");
+    }
+
+    /**
+     * Non-positive wire concurrency resolves to the same effective jobs the CLI sends, so every
+     * client takes the streaming scheduler — never the batch-per-level path (JK-2213).
+     */
+    static int effectiveModuleConcurrency(int wire) {
+        if (wire > 0) return wire;
+        return cc.jumpkick.config.Jobs.resolve(cc.jumpkick.config.JkEngineConfig.resolve());
     }
 
     /** A workspace test job journals as kind {@code test} on every surface, not {@code build}. */
@@ -119,8 +129,13 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             String profile = Jsonl.str(requestLine, "profile");
             boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
             boolean verbose = Jsonl.bool(requestLine, "verbose", false);
-            int maxModuleConcurrency = Jsonl.intValue(requestLine, "maxModuleConcurrency", 0);
-            boolean parallelTests = Jsonl.bool(requestLine, "parallelTests", false);
+            // One behavior for every client (JK-2213): absent/zero module concurrency resolves
+            // to the same effective jobs the CLI sends (streaming scheduler — never the
+            // batch-per-level path), and cross-module tests default parallel. Explicit wire
+            // values (any client, any age) still win.
+            int maxModuleConcurrency =
+                    effectiveModuleConcurrency(Jsonl.intValue(requestLine, "maxModuleConcurrency", 0));
+            boolean parallelTests = Jsonl.bool(requestLine, "parallelTests", true);
             boolean offline = Jsonl.bool(requestLine, "offline", false);
             boolean force = Jsonl.bool(requestLine, "force", false);
             boolean rerun = Jsonl.bool(requestLine, "rebuild", false);
