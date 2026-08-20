@@ -55,10 +55,16 @@ public sealed interface VersionSelector {
             return new Snapshot(spec);
         }
         if (trimmed.startsWith("^")) {
-            return new Caret(spec, trimmed.substring(1).trim());
+            String inner = trimmed.substring(1).trim();
+            if ("latest".equalsIgnoreCase(inner)) return new Latest(spec);
+            if ("snapshot".equalsIgnoreCase(inner)) return new Snapshot(spec);
+            return new Caret(spec, inner);
         }
         if (trimmed.startsWith("~")) {
-            return new Tilde(spec, trimmed.substring(1).trim());
+            String inner = trimmed.substring(1).trim();
+            if ("latest".equalsIgnoreCase(inner)) return new Latest(spec);
+            if ("snapshot".equalsIgnoreCase(inner)) return new Snapshot(spec);
+            return new Tilde(spec, inner);
         }
         if (trimmed.startsWith(">") || trimmed.startsWith("<") || trimmed.contains(",")) {
             return new Range(spec);

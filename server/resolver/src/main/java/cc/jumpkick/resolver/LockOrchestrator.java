@@ -681,8 +681,8 @@ public final class LockOrchestrator {
             Map<String, String> constraintProvenance)
             throws IOException, InterruptedException {
         for (Dependency platformDep : project.dependencies().of(Scope.PLATFORM)) {
-            // resolve caret/tilde against repo metadata, then load *that* BOM's catalog.
-            // Exact pins skip metadata. latest/open ranges still rejected (R6b / PlatformBomVersions).
+            // Resolve caret/tilde/latest/snapshot against repo metadata, then load *that* BOM's
+            // catalog. Exact pins skip metadata. Open ranges are still rejected.
             String bomVersion =
                     PlatformBomVersions.resolve(repos, platformDep.group(), platformDep.name(), platformDep.version());
             Coordinate bomCoord = Coordinate.of(platformDep.group(), platformDep.name(), bomVersion);
@@ -1080,7 +1080,9 @@ public final class LockOrchestrator {
             VersionSelector declared,
             String fallbackMajor) {
         String pinLit = declared != null ? versionLiteral(declared) : null;
-        boolean pinned = pinLit != null && !pinLit.isBlank();
+        boolean pinned = (pinLit != null && !pinLit.isBlank())
+                || declared instanceof VersionSelector.Latest
+                || declared instanceof VersionSelector.Snapshot;
         Dependency dep = new Dependency(module, runtimeSelector(bomConstraints, module, declared, fallbackMajor));
         // mainDeduped is keyed by packageKey (so a jar and a test-jar of one GA can both root), so
         // probe with the same key — a bare-GA probe never sees the user's own dep and injects a
@@ -1100,6 +1102,11 @@ public final class LockOrchestrator {
      */
     private static VersionSelector runtimeSelector(
             Map<String, String> bomConstraints, String module, VersionSelector declared, String fallbackMajor) {
+        if (declared instanceof VersionSelector.Latest || declared instanceof VersionSelector.Snapshot) {
+            // Floating keywords are a deliberate choice, same as an exact pin: they override a
+            // platform that manages this GA (Grails' bom pins an older groovy than latest).
+            return declared;
+        }
         String lit = declared != null ? versionLiteral(declared) : null;
         if (lit != null && !lit.isBlank()) {
             // Any project version literal (bare/caret/tilde all carry one) is a deliberate

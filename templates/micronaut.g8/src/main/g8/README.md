@@ -1,7 +1,8 @@
 # $name$
 
 Micronaut HTTP service (compile-time DI, Netty server). Scaffolded from the jk
-`micronaut` template — Micronaut platform $micronaut$.
+`micronaut` template. First `jk lock` pins the current Micronaut platform from
+`[micronaut] version = "latest"`.
 
 ```bash
 jk build
@@ -10,8 +11,6 @@ jk run       # serve on :8080
 curl -s 'localhost:8080/hello?name=jk'
 ```
 
-The `micronaut-platform` BOM in `[platform-dependencies]` pins all Micronaut modules;
-`[processor-dependencies]` wires `micronaut-inject-java` so bean definitions are
-generated at compile time (no reflection at runtime). Bump the BOM version to upgrade.
-
-Uses the built-in `[micronaut]` plugin (5.x major-line float). `jk update` lifts within 5.x.
+The `[micronaut]` plugin imports `micronaut-platform`; `[processor-dependencies]`
+wires `micronaut-inject-java` so bean definitions are generated at compile time
+(no reflection at runtime). `jk update` re-locks `"latest"` to a newer stable.

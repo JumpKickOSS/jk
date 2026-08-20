@@ -1,7 +1,8 @@
 # $name$
 
 Spring Boot WebMVC service (JPA/Hibernate + H2, validation, Actuator). Scaffolded from
-the jk `spring-boot-webmvc` template — Spring Boot $spring_boot$.
+the jk `spring-boot-webmvc` template. First `jk lock` pins the current Spring Boot
+line from `[spring-boot] version = "latest"`.
 
 ```bash
 jk build     # boot-aware packaging via the built-in [spring-boot] plugin
@@ -17,7 +18,5 @@ curl -s -X POST localhost:8080/api/notes -H 'content-type: application/json' -d 
 curl -s localhost:8080/actuator/health
 ```
 
-Upgrade path: bump `[spring-boot] version` in `jk.toml`; starters are version-managed by
-the plugin, so no per-dependency pins to touch.
-
-Version policy: `[spring-boot] version` is a major-line floor (caret). First `jk lock` pins an exact 4.x; `jk update` may lift within 4.x. Use `=4.1.0` to freeze.
+Upgrade path: `jk update` re-locks `[spring-boot] version = "latest"` to a newer
+stable; starters stay versionless under the plugin BOM. Use `=4.1.0` to freeze.

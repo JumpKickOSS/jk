@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.model.ToolDefaults;
 import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.scaffold.NewJkBuildRenderer;
 import cc.jumpkick.scaffold.NewScaffolder.FrameworkScaffoldSource;
@@ -54,7 +53,7 @@ public final class NewScaffolder {
         params.put("group", inputs.group());
         params.put("name", inputs.name());
         params.put("version", "0.1.0");
-        params.putIfAbsent("quarkus.version", ToolDefaults.QUARKUS_PLATFORM_FLOOR);
+        params.putIfAbsent("quarkus.version", "latest");
         params.put("simpleLayout", String.valueOf(inputs.isSimpleLayout()));
         params.put("sample", String.valueOf(inputs.sample()));
         params.put("baseToml", NewJkBuildRenderer.render(inputs));

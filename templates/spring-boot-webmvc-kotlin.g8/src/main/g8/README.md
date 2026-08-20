@@ -1,7 +1,8 @@
 # $name$
 
 Kotlin Spring Boot WebMVC service (JPA/Hibernate + H2, validation, Actuator). Scaffolded
-from the jk `spring-boot-webmvc-kotlin` template — Spring Boot $spring_boot$, Kotlin $kotlin$.
+from the jk `spring-boot-webmvc-kotlin` template. First `jk lock` pins the current
+Spring Boot and Kotlin lines from `"latest"`.
 
 ```bash
 jk build     # boot-aware packaging via the built-in [spring-boot] plugin
@@ -21,7 +22,5 @@ No Kotlin compiler plugins required: classes Spring or JPA must subclass declare
 themselves, and the entity carries an explicit default constructor. If you prefer
 `kotlin-spring`/`kotlin-jpa` semantics, wire them and drop the manual `open`s.
 
-Upgrade path: bump `[spring-boot] version` (starters are version-managed) and the
-`kotlin` pin in `jk.toml` together.
-
-Version policy: `[spring-boot] version` is a major-line floor (caret). First `jk lock` pins an exact 4.x; `jk update` may lift within 4.x. Use `=4.1.0` to freeze.
+Upgrade path: `jk update` re-locks `"latest"` selectors (Boot BOM and Kotlin) to a
+newer stable. Use `=4.1.0` / `=2.4.10` to freeze.

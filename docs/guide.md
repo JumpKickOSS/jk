@@ -522,7 +522,8 @@ jk new --quarkus my-api          # plugin [scaffold]
 jk new --template quarkus my-api # Giter8 short name (same single-module shape)
 ```
 
-- Pin with `[quarkus] version = "3"` (major-line floor / platform BOM; lock pins exact). Starters / extensions are
+- Use `[quarkus] version = "latest"` (first `jk lock` pins the current stable BOM). A major-line
+  floor (`"3"`) or exact pin (`=3.38.0`) also works. Starters / extensions are
   versionless under `[dependencies]` (e.g. `quarkus-rest`, `quarkus-rest-jackson`).
 - Default package is **fast-jar** (`quarkus-run.jar` + `lib/` + `quarkus-app/`). Set
   `package = "uber-jar"` for a single runner. Packaging uses pure bootstrap (no permanent
@@ -551,10 +552,11 @@ More packaging detail: [features/packaging.md](features/packaging.md). Giter8 ca
 
 Platform BOMs (`[platform-dependencies]` / `[spring-boot] version` / `[quarkus] version`) are
 **enforced platforms** by default: GAs listed in the BOM map use the BOM pin on transitive
-edges. Explicit Maven ranges on a POM edge remain open ranges. Use an exact or caret/tilde
-version on the BOM itself — not `latest`. The BOM is a **pin source** (recorded on managed
-lock rows as `pinned-by`), not a runtime jar; `jk tree -s platform` shows it under the platform section
-with its version and a `(platform)` tag, not as missing.
+edges. Explicit Maven ranges on a POM edge remain open ranges. Use `latest`, an exact pin,
+or a caret/tilde floor on the BOM itself. First `jk lock` records the concrete BOM version
+(and `pinned-by` on managed lock rows). The BOM is a **pin source**, not a runtime jar;
+`jk tree -s platform` shows it under the platform section with its version and a
+`(platform)` tag, not as missing. Open ranges are rejected.
 
 | Policy | Config / flag | BOM-map pin |
 |--------|---------------|-------------|
@@ -684,14 +686,14 @@ restriction is Won't Fix upstream.
 
 ### Grails (`[grails]`)
 
-Grails 8 (Apache, Spring Boot 4.1) on the Groovy lane — `jk new --grails` scaffolds a
+Grails 8 (Apache, Spring Boot 4) on the Groovy lane — `jk new --grails` scaffolds a
 minimal REST app (GORM domain, controller, `grails-app/conf/application.yml`):
 
 ```toml
-groovy = "5.0.7"
+groovy = "latest"
 
 [grails]
-version = "8.0.0-M4"          # pins org.apache.grails:grails-bom (imports the Boot BOM)
+version = "8.0.0-M4"          # 8.x milestone floor (caret); `"latest"` would pick Grails 7 GA
 
 [dependencies]                # versionless under the BOM
 grails-core     = { group = "org.apache.grails", name = "grails-core" }

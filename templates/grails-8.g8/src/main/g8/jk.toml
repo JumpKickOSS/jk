@@ -1,13 +1,13 @@
 name = "$name$"
 group = "$organization$"
 version = "0.1.0"
-groovy = "$groovy$"
+groovy = "latest"
 
 [application]
 main = "$package$.Application"
 
 [grails]
-version = "$grails$"
+version = "8.0.0-M4"
 
 # grails-bom manages every version below. url-mappings/databinding carry plugin
 # descriptors the web chain depends on (absent ⇒ every route 404s); Grails apps

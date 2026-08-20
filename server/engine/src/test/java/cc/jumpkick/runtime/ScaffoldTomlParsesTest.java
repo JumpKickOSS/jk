@@ -65,7 +65,7 @@ class ScaffoldTomlParsesTest {
         params.put("name", inputs.name());
         params.put("simpleLayout", "false");
         params.put("sample", "false"); // only jk.toml is under test
-        params.put("quarkus.version", cc.jumpkick.model.ToolDefaults.QUARKUS_PLATFORM_FLOOR);
+        params.put("quarkus.version", "latest");
         params.put("baseToml", NewJkBuildRenderer.render(inputs));
 
         var generated = ScaffoldOps.scaffold(dir, params);

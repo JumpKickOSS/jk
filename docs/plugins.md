@@ -46,7 +46,7 @@ jk-compat = ">=0.10"
 
 [schema]
 version = { type = "string", required = true, example = "4",
-            hint = "major-line floor for the platform BOM (caret; lock pins exact). Use =4.1.0 to hard-pin" }
+            hint = "platform BOM selector — latest, a major-line floor (caret; lock pins exact), or =4.1.0 to hard-pin" }
 aot     = { type = "bool" }   # no default = tri-state
 ```
 

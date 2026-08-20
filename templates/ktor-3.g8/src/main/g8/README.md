@@ -16,6 +16,6 @@ curl -s localhost:8080/api/notes
 curl -s -X POST localhost:8080/api/notes -H 'content-type: application/json' -d '{"text":"first"}'
 ```
 
-Versions in `jk.toml` are caret ranges (latest compatible resolves at lock time);
-`jk.lock` pins the exact set. JSON uses Jackson content negotiation, so no
+Versions in `jk.toml` are `"latest"`; first `jk lock` pins the current stable set
+(`jk update` refreshes). JSON uses Jackson content negotiation, so no
 kotlinx-serialization compiler plugin is involved.

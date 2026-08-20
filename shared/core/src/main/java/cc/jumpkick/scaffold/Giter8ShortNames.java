@@ -76,17 +76,17 @@ public final class Giter8ShortNames {
             entry("java-cli", "Simple Java 25 executable (Mill SIMPLE layout)", LAYOUT_SIMPLE, "java"),
             entry("kotlin-cli", "Simple Kotlin executable (Mill SIMPLE layout)", LAYOUT_SIMPLE, "kotlin"),
             entry("java-cli-native", "Interactive Java CLI with JLine (jk native ready)", LAYOUT_SIMPLE, "java"),
-            entry("spring-boot-webmvc", "Spring Boot 4.1 WebMVC + JPA/H2 + Actuator", LAYOUT_TRADITIONAL, "java"),
+            entry("spring-boot-webmvc", "Spring Boot WebMVC + JPA/H2 + Actuator", LAYOUT_TRADITIONAL, "java"),
             entry(
                     "spring-boot-webmvc-kotlin",
-                    "Kotlin Spring Boot 4.1 WebMVC + JPA/H2 + Actuator",
+                    "Kotlin Spring Boot WebMVC + JPA/H2 + Actuator",
                     LAYOUT_TRADITIONAL,
                     "kotlin"),
             entry("spring-boot-mcp", "Spring Boot MCP server (Spring AI, @Tool over SSE)", LAYOUT_TRADITIONAL, "java"),
-            entry("quarkus", "Quarkus 3.x REST application ([quarkus] plugin)", LAYOUT_SIMPLE, "java"),
-            entry("ktor-3", "Ktor 3 service with Koin DI and Exposed/H2", LAYOUT_SIMPLE, "kotlin"),
+            entry("quarkus", "Quarkus REST application ([quarkus] plugin)", LAYOUT_SIMPLE, "java"),
+            entry("ktor-3", "Ktor service with Koin DI and Exposed/H2", LAYOUT_SIMPLE, "kotlin"),
             entry("micronaut", "Micronaut HTTP service (compile-time DI, Netty)", LAYOUT_SIMPLE, "java"),
-            entry("grails-8", "Grails 8 REST app (GORM, H2, Groovy 5)", LAYOUT_CUSTOM, "groovy"));
+            entry("grails-8", "Grails 8 REST app (GORM, H2, Groovy)", LAYOUT_CUSTOM, "groovy"));
 
     private Giter8ShortNames() {}
 

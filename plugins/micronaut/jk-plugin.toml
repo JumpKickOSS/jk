@@ -12,7 +12,7 @@ worker          = "jk-micronaut"
 protocol-prefix = "##JKMN:"
 
 [schema]
-version     = { type = "string", required = true, example = "5", hint = "major-line floor for micronaut-platform (caret; lock pins exact). Use =5.1.0 to hard-pin" }
+version     = { type = "string", required = true, example = "latest", hint = "micronaut-platform selector — latest, a major-line floor (caret; lock pins exact), or =5.1.0 to hard-pin" }
 aot         = { type = "bool" }  # tri-state: absent = auto (on when [native] is declared)
 aot-runtime = { type = "string", example = "native", hint = "jit or native; unset follows the project — native when [native] is declared, else jit" }
 aot-package = { type = "string", example = "com.example.aot.generated", hint = "Java package for AOT-generated classes; default is project.group + .aot.generated" }

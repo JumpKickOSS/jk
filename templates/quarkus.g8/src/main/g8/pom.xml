@@ -12,7 +12,7 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>17</maven.compiler.release>
-    <quarkus.platform.version>$quarkus_version$</quarkus.platform.version>
+    <quarkus.platform.version>latest</quarkus.platform.version>
   </properties>
   <dependencyManagement>
     <dependencies>

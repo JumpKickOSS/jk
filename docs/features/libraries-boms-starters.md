@@ -132,7 +132,7 @@ starter entries resolve under either.
   BOM is active, bare EffectivePom-filled versions are exact as well. Opt-in
   `[resolve] platform = "floor"` (or `jk update --platform=floor`) treats managed pins as
   floors only (JK-1206).
-- The BOM pin itself must be exact or caret/tilde-anchored (not floating `latest`).
+- The BOM pin itself may be `latest`, exact, or caret/tilde-anchored (not an open range).
 - **Export:** `jk export bom` freezes lockfile versions for a scope into a publishable Maven
   BOM (JK-1207) — producer side of the platform story.
 

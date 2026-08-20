@@ -78,7 +78,7 @@ When `<ref>` is a known short name (not a path):
 |------|--------|
 | `java-cli` | Simple Java 25 executable (Mill SIMPLE layout) |
 | `kotlin-cli` | Simple Kotlin executable (Mill SIMPLE layout) |
-| `quarkus` | Quarkus 3.x REST app (`[quarkus]` plugin, plain `Application` main, `@QuarkusTest`) |
+| `quarkus` | Quarkus REST app (`[quarkus] version = "latest"`, plain `Application` main, `@QuarkusTest`) |
 
 ```bash
 jk new --template quarkus my-api

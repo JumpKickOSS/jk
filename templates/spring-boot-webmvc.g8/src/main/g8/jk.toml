@@ -7,7 +7,7 @@ java = $java$
 main = "$package$.Application"
 
 [spring-boot]
-version = "$spring_boot$"
+version = "latest"
 
 [dependencies]
 starter-webmvc = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc" }
