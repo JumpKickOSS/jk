@@ -160,6 +160,11 @@ val javaCompilerWorkerJar by configurations.creating {
     isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
 }
 dependencies { javaCompilerWorkerJar(project(":java-compiler")) }
+
+val quarkusPluginJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+dependencies { quarkusPluginJar(project(":quarkus")) }
 fun Test.seedWorkerRepos(vararg projects: String) {
     projects.forEach { dependsOn("$it:stageWorkerRepo") }
     doFirst {
@@ -175,10 +180,16 @@ fun Test.seedWorkerRepos(vararg projects: String) {
 tasks.withType<Test>().configureEach {
     // MemoryProbe's host_statistics64 FFM downcall (macOS memory read).
     jvmArgs("--enable-native-access=ALL-UNNAMED")
-    dependsOn(javaCompilerWorkerJar, testRunnerJarCfg, ":java-compiler:writeWorkerPom", ":test-runner:writeWorkerPom")
+    dependsOn(
+            javaCompilerWorkerJar,
+            testRunnerJarCfg,
+            quarkusPluginJar,
+            ":java-compiler:writeWorkerPom",
+            ":test-runner:writeWorkerPom")
     doFirst {
         systemProperty("jk.java.plugin.jar", javaCompilerWorkerJar.singleFile.absolutePath)
         systemProperty("jk.test.runner.jar", testRunnerJarCfg.singleFile.absolutePath)
+        systemProperty("jk.quarkus.plugin.jar", quarkusPluginJar.singleFile.absolutePath)
     }
 }
 

@@ -14,9 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
@@ -51,7 +49,7 @@ public final class PlannerResources {
                 .ticks(1)
                 .execute(ctx -> {
                     Path classes = ctx.require(MAIN_CLASSES);
-                    // /1145: SIMPLE uses top-level resources/; TRADITIONAL uses src/main/resources.
+                    // SIMPLE uses top-level resources/; TRADITIONAL uses src/main/resources.
                     // Plugin-contributed resource roots (grails-app/conf, i18n, views) merge after.
                     List<Path> resDirs = new ArrayList<>();
                     Path resMain = cc.jumpkick.layout.ModuleLayout.mainResourcesDir(in.dir(), compact);
@@ -61,27 +59,22 @@ public final class PlannerResources {
                         Path dir = in.dir().resolve(root.relative());
                         if (Files.isDirectory(dir)) resDirs.add(dir);
                     }
-                    // [build] extra-resources: individual files from outside the module, each with
-                    // its own destination and optional rename, so they cannot ride resDirs.
-                    List<ExtraResources.Copy> extra = ExtraResources.resolve(ctx.require(PROJECT), in.dir());
+                    Path pluginManifest = in.dir().resolve("jk-plugin.toml");
+                    boolean ownManifest = Files.isRegularFile(pluginManifest);
                     boolean copied = false;
-                    if (!resDirs.isEmpty() || !extra.isEmpty()) {
+                    if (!resDirs.isEmpty() || ownManifest) {
                         ctx.label("copy resources");
                         for (Path dir : resDirs) copyResources(dir, classes);
-                        for (ExtraResources.Copy c : extra) {
-                            Path target = classes.resolve(c.destination());
-                            Files.createDirectories(target.getParent());
-                            Files.copy(c.source(), target, StandardCopyOption.REPLACE_EXISTING);
+                        if (ownManifest) {
+                            Files.copy(
+                                    pluginManifest,
+                                    classes.resolve("jk-plugin.toml"),
+                                    StandardCopyOption.REPLACE_EXISTING);
                         }
                         copied = true;
                     } else {
                         ctx.label("no static resources");
                     }
-                    // Sync: destinations copied by a PREVIOUS run but no longer declared must
-                    // leave the classes dir, or a shrunk/renamed extra-resources config ships
-                    // stale files in every later jar (JK-2174). Deleting them also changes the
-                    // classes tree, so the package step's action key re-runs.
-                    syncExtraResourceManifest(in.dir(), classes, extra);
                     // Project build logic: AFTER_RESOURCES anchor.
                     boolean logicRan = false;
                     try {
@@ -214,74 +207,11 @@ public final class PlannerResources {
     }
 
     /**
-     * BEFORE_PACKAGE waits on resources only — never on tests (JK-2211). Packaging needs a
-     * complete classes tree, which tests do not contribute to; gating on run-tests serialized
-     * artifact creation behind the module's whole suite and, at workspace scope, put every
-     * dependent behind it too. A failing suite still fails the build; the artifact is just
-     * built concurrently.
+     * BEFORE_PACKAGE waits on resources only — never on tests. Packaging needs a complete
+     * classes tree, which tests do not contribute to. A failing suite still fails the build;
+     * the artifact is built concurrently.
      */
     static String[] beforePackageRequires(BuildPlanner.Inputs in) {
         return new String[] {TaskNames.COPY_RESOURCES};
-    }
-
-    /**
-     * Reconcile the classes dir against the previous run's extra-resources manifest
-     * ({@code target/.jk/extra-resources.txt}): delete destinations that are no longer
-     * declared, then record the current set. Best-effort — a missing/corrupt manifest just
-     * means nothing to clean (JK-2174).
-     */
-    static Path extraResourceManifest(Path moduleDir) {
-        return moduleDir.resolve("target").resolve(".jk").resolve("extra-resources.txt");
-    }
-
-    /** True when the recorded manifest names a destination the current declaration lacks. */
-    static boolean hasOrphanedExtraResources(Path moduleDir, List<ExtraResources.Copy> declared) {
-        Path manifest = extraResourceManifest(moduleDir);
-        if (!Files.isRegularFile(manifest)) return false;
-        Set<String> current = new LinkedHashSet<>();
-        for (ExtraResources.Copy c : declared) current.add(c.destination());
-        try {
-            for (String prior : Files.readAllLines(manifest)) {
-                if (!prior.isBlank() && !current.contains(prior)) return true;
-            }
-            return false;
-        } catch (IOException e) {
-            return true; // unreadable manifest — run the copy step and let it reconcile
-        }
-    }
-
-    static void syncExtraResourceManifest(Path moduleDir, Path classes, List<ExtraResources.Copy> extra) {
-        Path manifest = extraResourceManifest(moduleDir);
-        Set<String> current = new LinkedHashSet<>();
-        for (ExtraResources.Copy c : extra) current.add(c.destination());
-        try {
-            if (Files.isRegularFile(manifest)) {
-                Path classesRoot = classes.toAbsolutePath().normalize();
-                for (String prior : Files.readAllLines(manifest)) {
-                    if (prior.isBlank() || current.contains(prior)) continue;
-                    Path stale = classesRoot.resolve(prior).normalize();
-                    // Clamp: a manifest edited by hand must never delete outside classes/.
-                    if (!stale.startsWith(classesRoot)) continue;
-                    Files.deleteIfExists(stale);
-                    // Prune now-empty parents up to the classes root.
-                    Path parent = stale.getParent();
-                    while (parent != null && !parent.equals(classesRoot)) {
-                        try (var s = Files.list(parent)) {
-                            if (s.findAny().isPresent()) break;
-                        }
-                        Files.deleteIfExists(parent);
-                        parent = parent.getParent();
-                    }
-                }
-            }
-            if (current.isEmpty()) {
-                Files.deleteIfExists(manifest);
-            } else {
-                Files.createDirectories(manifest.getParent());
-                cc.jumpkick.util.AtomicWrites.replace(manifest, String.join("\n", current) + "\n");
-            }
-        } catch (IOException | RuntimeException ignored) {
-            // best-effort — the next full clean rebuild converges anyway
-        }
     }
 }

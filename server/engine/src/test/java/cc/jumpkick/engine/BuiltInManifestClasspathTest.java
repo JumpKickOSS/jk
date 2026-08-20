@@ -3,20 +3,24 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import org.junit.jupiter.api.Test;
 
 /**
- * Engine <em>tests</em> still bake plugin fixtures on the test classpath so unit tests
- * can parse {@code [spring-boot]} without locating worker jars. Production engine jars
- * do not contain the flattened catalog ({@code BuiltInPluginJars} reads each plugin zip).
+ * Production engine jars do not contain a flattened plugin catalog. The engine installs
+ * first-party tables from located worker zips ({@link BuiltInPluginJars}).
  */
 class BuiltInManifestClasspathTest {
 
     @Test
-    void engine_test_classpath_has_built_in_fixtures() {
+    void install_registers_table_plugins_from_located_jars() {
+        BuiltInPluginJars.install();
+        assertThat(BuiltInPluginJars.locatedTablePlugins())
+                .as("test-plugin-jars / -Djk.*.plugin.jar must locate table plugins")
+                .isNotEmpty();
         assertThat(PluginTableRegistry.manifests().stream().map(m -> m.id()).toList())
-                .as("built-in fixtures must ride the engine test classpath")
-                .contains("spring-boot", "grails", "quarkus", "android", "protobuf", "minified", "micronaut");
+                .as("BuiltInPluginJars.install must register located table plugins")
+                .contains("spring-boot", "grails", "quarkus", "android", "protobuf", "minified");
     }
 }

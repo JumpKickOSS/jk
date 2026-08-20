@@ -269,7 +269,6 @@ public final class ManifestBuild {
                     List.of(),
                     platformPolicy,
                     unmappedPolicy,
-                    List.of(),
                     Map.of());
         }
 
@@ -282,6 +281,12 @@ public final class ManifestBuild {
         List<String> testSerialTags = new ArrayList<>();
 
         if (build != null) {
+            if (build.contains("extra-resources")) {
+                throw new JkBuildParseException("[build].extra-resources is not a setting — a plugin"
+                        + " worker ships its own jk-plugin.toml at the jar root (module-root"
+                        + " jk-plugin.toml is copied there automatically; src/main/resources/"
+                        + "jk-plugin.toml already is). Modules cannot pull files from other modules.");
+            }
             TomlArray arr = build.getArray("order-after");
             if (arr != null) {
                 for (int i = 0; i < arr.size(); i++) {
@@ -372,25 +377,9 @@ public final class ManifestBuild {
                 testSerialTags,
                 platformPolicy,
                 unmappedPolicy,
-                parseExtraResources(build),
                 Map.of());
     }
 
-    /**
-     * {@code [build] extra-resources} — files from outside the module copied onto its classpath
-     * . Each entry is an inline table:
-     *
-     * <pre>
-     * extra-resources = [
-     * { from = "../../plugins/&#42;/jk-plugin.toml", into = "cc/jumpkick/plugin/manifest",
-     * rename = "{1}.jk-plugin.toml" },
-     * ]
-     * </pre>
-     *
-     * {@code from} is a module-relative glob; {@code exclude} narrows it; {@code optional} allows a
-     * pattern to match nothing (by default that is an error, since a typo'd path that silently
-     * contributes no files is indistinguishable from success until runtime).
-     */
     /**
      * {@code [test] env} — environment variables for each forked test JVM.
      *
@@ -424,41 +413,8 @@ public final class ManifestBuild {
         return out;
     }
 
-    static List<JkBuild.ExtraResource> parseExtraResources(TomlTable build) {
-        List<JkBuild.ExtraResource> out = new ArrayList<>();
-        if (build == null) return out;
-        TomlArray arr = build.getArray("extra-resources");
-        if (arr == null) return out;
-        for (int i = 0; i < arr.size(); i++) {
-            if (!(arr.get(i) instanceof TomlTable entry)) {
-                throw new JkBuildParseException("[build].extra-resources entries must be tables, e.g."
-                        + " { from = \"../../plugins/*/jk-plugin.toml\", into = \"pkg/dir\" }");
-            }
-            String from = entry.getString("from");
-            if (from == null || from.isBlank()) {
-                throw new JkBuildParseException("[build].extra-resources entries require a `from` path or glob");
-            }
-            List<String> exclude = new ArrayList<>();
-            TomlArray ex = entry.getArray("exclude");
-            if (ex != null) {
-                for (int j = 0; j < ex.size(); j++) {
-                    Object v = ex.get(j);
-                    if (!(v instanceof String g) || g.isBlank()) {
-                        throw new JkBuildParseException(
-                                "[build].extra-resources `exclude` must be an array of glob strings");
-                    }
-                    exclude.add(g);
-                }
-            }
-            Boolean optional = entry.getBoolean("optional");
-            out.add(new JkBuild.ExtraResource(
-                    from, entry.getString("into"), entry.getString("rename"), exclude, optional != null && optional));
-        }
-        return out;
-    }
-
     /**
-     * {@code [[kotlin-plugins]]}: {@code coordinate} is {@code group:artifact[:version]} (omitted
+     * {@code [[kotlin-plugins]]}: {@code coordinate} is {@code group:artifact[:version]} (omitted)
      * version → project Kotlin version); {@code id} defaults to the artifact.
      */
     static List<JkBuild.KotlinPluginDecl> parseKotlinPlugins(TomlTable root) {

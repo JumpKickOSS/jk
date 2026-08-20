@@ -209,7 +209,6 @@ public final class JkBuildParser {
                     build.testSerialTags(),
                     build.platformPolicy(),
                     build.unmappedPolicy(),
-                    build.extraResources(),
                     build.testEnv());
         }
         // [test] is its own top-level table (test settings are not build inputs), but it folds into
@@ -227,7 +226,6 @@ public final class JkBuildParser {
                     build.testSerialTags(),
                     build.platformPolicy(),
                     build.unmappedPolicy(),
-                    build.extraResources(),
                     testEnv);
         }
         JkBuild.FormatConfig format = ManifestTables.parseFormat(result);

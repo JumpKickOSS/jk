@@ -872,7 +872,7 @@ public record JkBuild(
              * {@code [test] serial-tags}: class-level JUnit tags whose classes never share the
              * sharded worker pool — they run in a single trailing worker while untagged classes
              * shard across {@code workers}. Lets a module keep {@code workers = 0} for its unit
-             * tier while its nested-engine/integration classes stay serial (JK-2184).
+             * tier while its nested-engine/integration classes stay serial.
              */
             List<String> testSerialTags,
             /**
@@ -885,8 +885,6 @@ public record JkBuild(
              * constrained. Default {@link UnmappedPolicy#MEDIATE}.
              */
             UnmappedPolicy unmappedPolicy,
-            /** {@code [build] extra-resources}: files from outside the module, copied onto its classpath. */
-            List<ExtraResource> extraResources,
             /**
              * {@code [test] env} — added to every forked test JVM's environment. Test-scoped like
              * {@code testPluginJars}, hence its home here. Values may use {@code ${target}} and
@@ -905,7 +903,6 @@ public record JkBuild(
                 List.of(),
                 PlatformPolicy.ENFORCED,
                 UnmappedPolicy.MEDIATE,
-                List.of(),
                 Map.of());
 
         public Build {
@@ -918,7 +915,6 @@ public record JkBuild(
             testSerialTags = testSerialTags == null ? List.of() : List.copyOf(testSerialTags);
             platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
             unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
-            extraResources = extraResources == null ? List.of() : List.copyOf(extraResources);
             testEnv = testEnv == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(testEnv));
         }
 
@@ -938,7 +934,6 @@ public record JkBuild(
                     testSerialTags,
                     platformPolicy,
                     unmappedPolicy,
-                    extraResources,
                     testEnv);
         }
 
@@ -954,7 +949,6 @@ public record JkBuild(
                     testSerialTags,
                     policy == null ? PlatformPolicy.ENFORCED : policy,
                     unmappedPolicy,
-                    extraResources,
                     testEnv);
         }
 
@@ -973,28 +967,6 @@ public record JkBuild(
             var all = new LinkedHashSet<>(orderAfter);
             all.addAll(testPluginJars);
             return List.copyOf(all);
-        }
-    }
-
-    /**
-     * One {@code [build] extra-resources} entry: files from outside the module's own resource root,
-     * copied onto the classpath at package time.
-     *
-     * <p>{@code from} is a module-relative {@link cc.jumpkick.glob.GlobSet} pattern (so {@code../}
-     * and wildcards are allowed); {@code into} is the destination directory inside the output;
-     * {@code rename} optionally renames each match, with {@code &#123;1&#125;} substituting the
-     * pattern's wildcard captures. Matched files keep their path relative to the pattern's literal
-     * prefix, so a directory's shape survives the copy.
-     *
-     * <p>Exists because jk-core bakes each plugin's {@code jk-plugin.toml} in as the built-in plugin
-     * registry, and those blueprint files are the single source of truth — copying them into the
-     * module would create a second, drifting copy.
-     */
-    public record ExtraResource(String from, String into, String rename, List<String> exclude, boolean optional) {
-        public ExtraResource {
-            Objects.requireNonNull(from, "from");
-            into = into == null ? "" : into;
-            exclude = exclude == null ? List.of() : List.copyOf(exclude);
         }
     }
 

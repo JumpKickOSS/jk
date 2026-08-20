@@ -36,7 +36,7 @@ import org.tomlj.TomlTable;
  *
  * <h2>Not allowed, and why</h2>
  *
- * Versions, coordinates, source roots, {@code extra-src}, {@code extra-resources}, compiler args,
+ * Versions, coordinates, source roots, {@code extra-src}, compiler args,
  * {@code ksp-options}, toolchain pins — all of them feed a compile or package action key.
  *
  * <p><b>Repository URLs are also excluded</b>, which surprises people: the lockfile records a

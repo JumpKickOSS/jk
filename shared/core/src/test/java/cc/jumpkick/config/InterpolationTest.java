@@ -125,14 +125,14 @@ class InterpolationTest {
     }
 
     @Test
-    void extra_resources_inside_an_array_of_tables_may_not_interpolate() {
+    void array_of_tables_entries_may_not_interpolate() {
         // Array elements are walked too, so a reference cannot hide inside one.
         assertThatThrownBy(() -> parse(PROJECT + """
-                        [build]
-                        extra-resources = [ { from = "${SRC}/x.txt", into = "d" } ]
+                        [[kotlin-plugins]]
+                        coordinate = "org.jetbrains.kotlin:kotlin-noarg:${KOTLIN_VER}"
                         """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("extra-resources");
+                .hasMessageContaining("kotlin-plugins");
     }
 
     @Test
