@@ -17,15 +17,17 @@ public final class McpScaffold {
 
     private McpScaffold() {}
 
-    /** Catalog + local template short names, same index the picker and resolver use. */
+    /** Catalog + local + plugin template short names, same index the picker and resolver use. */
     public static Map<String, Object> templates() {
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (var e : Giter8TemplateIndex.build(Giter8TemplateIndex.searchRoots())) {
+        for (var e : Giter8TemplateIndex.picker(Giter8TemplateIndex.searchRoots())) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("id", e.id());
             row.put("description", e.description());
             row.put("languages", e.languages());
             row.put("layout", e.layout());
+            row.put("plugin", e.plugin());
+            if (!e.kinds().isEmpty()) row.put("kinds", e.kinds());
             rows.add(row);
         }
         Map<String, Object> m = new LinkedHashMap<>();

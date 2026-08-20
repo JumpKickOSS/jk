@@ -609,9 +609,15 @@
           </label>
           <label>
             <span>Template <span class="dim">(optional · {{ newProject.lang }})</span></span>
-            <select v-model="newProject.template">
+            <select v-model="newProject.template" @change="onNewProjectTemplateChange()">
               <option value="">None — blank project from language / layout</option>
               <option v-for="t in templatesForLang" :key="t.id" :value="t.id">{{ t.id }} — {{ t.description }}</option>
+            </select>
+          </label>
+          <label v-if="kindsForSelection.length">
+            <span>Kind <span class="dim">({{ newProject.lang }})</span></span>
+            <select v-model="newProject.kind">
+              <option v-for="k in kindsForSelection" :key="k" :value="k">{{ k }}</option>
             </select>
           </label>
           <!-- Layout + executable only apply to the blank scaffolder. A Giter8 template ships a

@@ -98,6 +98,8 @@ an extra `$name$` directory.
 | `grails-8` | groovy | Grails 8 REST |
 
 Plugin hello-apps: `-t spring-boot`, `-t quarkus`, `-t micronaut`, `-t grails`.
+Plugin kinds (Spring Boot): `-t spring-boot --kind default` (hello app) and
+`-t spring-boot --kind webmvc` (clean-architecture notes: Java/JPA or Kotlin/JOOQ).
 
 ## Non-goals
 

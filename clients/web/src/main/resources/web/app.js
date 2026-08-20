@@ -1008,6 +1008,7 @@ export const appOptions = {
       lang: 'java',
       layout: 'traditional',
       template: '',
+      kind: 'default',
       parentDir: '',
       executable: true,
     },
@@ -1055,6 +1056,15 @@ export const appOptions = {
         if (!Array.isArray(langs) || langs.length === 0) return true;
         return langs.some((l) => String(l).toLowerCase() === lang);
       });
+    },
+
+    kindsForSelection() {
+      const t = (this.templates || []).find((x) => x.id === this.newProject.template);
+      if (!t || !t.kinds) return [];
+      const lang = (this.newProject.lang || 'java').toLowerCase();
+      if (Array.isArray(t.kinds)) return t.kinds;
+      const forLang = t.kinds[lang];
+      return Array.isArray(forLang) ? forLang : [];
     },
 
     // Group the journal into per-project rows for the Projects tab. A computed (not a method) so it
@@ -2394,7 +2404,7 @@ export const appOptions = {
             { id: 'ktor-3', description: 'Ktor service with Koin DI and Exposed/H2', languages: ['kotlin'], layout: 'simple' },
             { id: 'micronaut', description: 'Micronaut HTTP service (compile-time DI, Netty)', languages: ['java', 'kotlin'], layout: 'simple' },
             { id: 'grails-8', description: 'Grails 8 REST app (GORM, H2, Groovy)', languages: ['groovy'], layout: 'custom' },
-            { id: 'spring-boot', description: 'Spring Boot application', languages: ['java', 'kotlin'], layout: 'traditional' },
+            { id: 'spring-boot', description: 'spring-boot plugin templates', languages: ['java', 'kotlin'], layout: 'traditional', plugin: true, kinds: { java: ['default', 'webmvc'], kotlin: ['default', 'webmvc'] } },
           ];
       this.onNewProjectLangChange(); // drop a leftover template that no longer matches Language
       // Focus Name so the user can type the app name immediately; @focus selects any existing value.
@@ -2407,9 +2417,27 @@ export const appOptions = {
     // Language drives the template short-name list; clear a selection that is no longer offered.
     onNewProjectLangChange() {
       const id = this.newProject.template;
-      if (!id) return;
-      const ok = this.templatesForLang.some((t) => t.id === id);
-      if (!ok) this.newProject.template = '';
+      if (id && !this.templatesForLang.some((t) => t.id === id)) {
+        this.newProject.template = '';
+        this.newProject.kind = 'default';
+        return;
+      }
+      this.syncNewProjectKind();
+    },
+
+    onNewProjectTemplateChange() {
+      this.syncNewProjectKind();
+    },
+
+    syncNewProjectKind() {
+      const kinds = this.kindsForSelection;
+      if (!kinds.length) {
+        this.newProject.kind = 'default';
+        return;
+      }
+      if (!kinds.includes(this.newProject.kind)) {
+        this.newProject.kind = kinds.includes('default') ? 'default' : kinds[0];
+      }
     },
 
     selectedTemplateLayout() {
@@ -2440,6 +2468,9 @@ export const appOptions = {
       };
       if (hasTemplate) {
         body.template = this.newProject.template.trim();
+        if (this.kindsForSelection.length && this.newProject.kind) {
+          body.kind = this.newProject.kind;
+        }
       }
       try {
         const res = await post('/api/projects', body);
@@ -2447,6 +2478,7 @@ export const appOptions = {
         this.closeNewProject();
         this.newProject.name = '';
         this.newProject.template = '';
+        this.newProject.kind = 'default';
         // Keep group + parentDir so the next create is one field away from a sibling project.
         if (path) {
           // Route with the durable projectId from the create response (JK-1775) — never the

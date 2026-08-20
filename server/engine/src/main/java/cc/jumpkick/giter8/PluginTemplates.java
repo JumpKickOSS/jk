@@ -11,6 +11,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -22,7 +23,26 @@ import org.jspecify.annotations.Nullable;
  */
 public final class PluginTemplates {
 
+    /** One installed plugin that ships Giter8 trees, keyed the same way as {@code -t}. */
+    public record Installed(String id, String description, List<String> langs, Map<String, List<String>> kindsByLang) {}
+
     private PluginTemplates() {}
+
+    /** Plugins whose jars currently contain {@code templates/<lang>/<kind>/}. */
+    public static List<Installed> installed() {
+        List<Installed> out = new ArrayList<>();
+        for (PluginDescriptor d : PluginTableRegistry.manifests()) {
+            Map<String, List<String>> byLang = new LinkedHashMap<>();
+            for (String lang : List.of("java", "kotlin", "groovy")) {
+                List<String> k = kinds(d.id(), lang);
+                if (!k.isEmpty()) byLang.put(lang, k);
+            }
+            if (byLang.isEmpty()) continue;
+            out.add(new Installed(
+                    d.id(), d.id() + " plugin templates", List.copyOf(byLang.keySet()), Map.copyOf(byLang)));
+        }
+        return List.copyOf(out);
+    }
 
     public static boolean isPluginTemplate(String name) {
         PluginDescriptor d = PluginTableRegistry.byIdOrTable(name);
@@ -78,8 +98,15 @@ public final class PluginTemplates {
             if (!Files.isDirectory(src)) {
                 throw missing(pluginId, l, k);
             }
-            Path dest = Files.createTempDirectory(JkDirs.tmp(), "jk-g8-");
-            copyTree(src, dest);
+            Path tmp = JkDirs.tmp();
+            Files.createDirectories(tmp);
+            Path dest = Files.createTempDirectory(tmp, "jk-g8-");
+            try {
+                copyTree(src, dest);
+            } catch (IOException e) {
+                deleteQuietly(dest);
+                throw new IOException("failed to extract " + prefix + " from " + jar + ": " + e.getMessage(), e);
+            }
             return dest;
         }
     }
@@ -116,14 +143,34 @@ public final class PluginTemplates {
         try (var walk = Files.walk(src)) {
             for (Path p : walk.toList()) {
                 Path rel = src.relativize(p);
-                Path out = dest.resolve(rel.toString().replace('\\', '/'));
+                Path out = dest;
+                String relStr = rel.toString().replace('\\', '/');
+                if (relStr.startsWith("/")) relStr = relStr.substring(1);
+                if (!relStr.isEmpty() && !relStr.equals(".")) {
+                    for (String part : relStr.split("/")) {
+                        if (part.isEmpty() || part.equals(".")) continue;
+                        out = out.resolve(part);
+                    }
+                }
                 if (Files.isDirectory(p)) {
                     Files.createDirectories(out);
                 } else if (Files.isRegularFile(p) && !Files.isSymbolicLink(p)) {
+                    if (out.equals(dest)) continue;
                     Files.createDirectories(out.getParent());
                     Files.copy(p, out);
                 }
             }
+        }
+    }
+
+    private static void deleteQuietly(Path root) {
+        if (root == null || !Files.exists(root)) return;
+        try (var walk = Files.walk(root)) {
+            for (Path f : walk.sorted((a, b) -> b.getNameCount() - a.getNameCount()).toList()) {
+                Files.deleteIfExists(f);
+            }
+        } catch (IOException ignored) {
+            // best-effort cleanup of a failed extract
         }
     }
 }

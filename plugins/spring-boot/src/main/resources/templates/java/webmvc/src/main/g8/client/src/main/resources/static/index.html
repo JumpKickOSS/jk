@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>$name$</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <style>
+      :root {
+        --paper: #f3ecd9;
+        --ink: #1c1914;
+        --rule: #c9b896;
+        --copper: #a84b2f;
+        --muted: #6b6256;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; min-height: 100%; background: var(--paper); color: var(--ink); }
+      body {
+        font: 16px/1.5 "Iowan Old Style", Palatino, "Palatino Linotype", serif;
+        background-image:
+          linear-gradient(90deg, transparent 47px, #e3c8c0 47px, #e3c8c0 48px, transparent 48px),
+          repeating-linear-gradient(transparent, transparent 31px, #eadfc8 31px, #eadfc8 32px);
+      }
+      #app { max-width: 42rem; margin: 0 auto; padding: 2.5rem 1.5rem 4rem 4rem; }
+      header h1 { font-size: 2.1rem; letter-spacing: -0.03em; margin: 0 0 0.25rem; }
+      header p { margin: 0 0 1.75rem; color: var(--muted); font-style: italic; }
+      .gate, .card {
+        background: rgba(255, 252, 245, 0.92);
+        border: 1px solid var(--rule);
+        padding: 1.1rem 1.2rem;
+        margin-bottom: 1rem;
+        box-shadow: 3px 4px 0 rgba(28, 25, 20, 0.08);
+      }
+      label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.75rem; }
+      input, textarea {
+        font: 15px/1.4 ui-monospace, "Cascadia Code", monospace;
+        border: 0; border-bottom: 1px solid var(--rule); background: transparent; color: var(--ink); padding: 0.35rem 0;
+      }
+      input:focus, textarea:focus { outline: none; border-bottom-color: var(--copper); }
+      button {
+        font: 600 0.85rem/1 Palatino, serif;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        background: var(--ink); color: var(--paper);
+        border: 0; padding: 0.55rem 0.9rem; cursor: pointer;
+      }
+      button:hover { background: var(--copper); }
+      .row { display: flex; gap: 0.6rem; align-items: center; }
+      .err { color: var(--copper); font-size: 0.9rem; margin: 0.4rem 0 0; }
+      .note time { display: block; font: 12px ui-monospace, monospace; color: var(--muted); margin-bottom: 0.35rem; }
+      .note p { margin: 0; white-space: pre-wrap; }
+      textarea { width: 100%; min-height: 4.5rem; resize: vertical; margin-bottom: 0.75rem; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>$name$</h1>
+        <p>Notes on paper. Virtual threads underneath.</p>
+      </header>
+      <section v-if="!authed" class="gate">
+        <label>User <input v-model="user" autocomplete="username" /></label>
+        <label>Password <input v-model="pass" type="password" autocomplete="current-password" @keyup.enter="login" /></label>
+        <div class="row">
+          <button type="button" @click="login">Open ledger</button>
+          <span class="err" v-if="error">{{ error }}</span>
+        </div>
+      </section>
+      <template v-else>
+        <form class="card" @submit.prevent="add">
+          <textarea v-model="draft" placeholder="Write a note…" required></textarea>
+          <div class="row">
+            <button type="submit">File it</button>
+            <button type="button" @click="logout">Lock</button>
+            <span class="err" v-if="error">{{ error }}</span>
+          </div>
+        </form>
+        <article class="card note" v-for="n in notes" :key="n.id">
+          <time>{{ n.createdAt }}</time>
+          <p>{{ n.body }}</p>
+        </article>
+      </template>
+    </div>
+    <script>
+      const { createApp } = Vue;
+      createApp({
+        data() {
+          return { user: "user", pass: "password", authed: false, notes: [], draft: "", error: "" };
+        },
+        methods: {
+          headers() {
+            return {
+              Authorization: "Basic " + btoa(this.user + ":" + this.pass),
+              "Content-Type": "application/json",
+            };
+          },
+          async login() {
+            this.error = "";
+            const res = await fetch("/api/notes", { headers: this.headers() });
+            if (!res.ok) {
+              this.error = "That lock does not open.";
+              return;
+            }
+            this.notes = await res.json();
+            this.authed = true;
+          },
+          logout() {
+            this.authed = false;
+            this.notes = [];
+            this.draft = "";
+          },
+          async add() {
+            this.error = "";
+            const res = await fetch("/api/notes", {
+              method: "POST",
+              headers: this.headers(),
+              body: JSON.stringify({ body: this.draft }),
+            });
+            if (!res.ok) {
+              this.error = "Could not file the note.";
+              return;
+            }
+            this.draft = "";
+            this.notes = await (await fetch("/api/notes", { headers: this.headers() })).json();
+          },
+        },
+      }).mount("#app");
+    </script>
+  </body>
+</html>

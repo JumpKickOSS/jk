@@ -216,8 +216,19 @@ public final class NewProjectOps {
             }
             try {
                 Giter8Apply.apply(templateRoot, target, params, Giter8Maven.central(offline));
+            } catch (IOException e) {
+                throw new IOException(
+                        "applying template " + prep.template() + " lang=" + langName + " kind=" + kind + ": "
+                                + e.getMessage(),
+                        e);
             } finally {
-                if (extracted != null) deleteRecursively(extracted);
+                if (extracted != null) {
+                    try {
+                        deleteRecursively(extracted);
+                    } catch (IOException ignored) {
+                        // extract is under JkDirs.tmp(); don't mask the apply error
+                    }
+                }
             }
             if (!Files.isRegularFile(target.resolve("jk.toml"))) {
                 throw new IOException("template did not produce jk.toml: " + prep.template());

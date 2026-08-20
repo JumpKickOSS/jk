@@ -120,18 +120,20 @@ final class HttpProjectApi {
         // Same roots the short-name resolver uses — the picker must never list a
         // template that then resolves differently, or miss one that would resolve.
         var entries =
-                cc.jumpkick.giter8.Giter8TemplateIndex.build(cc.jumpkick.giter8.Giter8TemplateIndex.searchRoots());
+                cc.jumpkick.giter8.Giter8TemplateIndex.picker(cc.jumpkick.giter8.Giter8TemplateIndex.searchRoots());
         var arr = new StringBuilder("[");
         boolean first = true;
         for (var e : entries) {
             if (!first) arr.append(',');
             first = false;
-            arr.append(JsonOut.object()
+            JsonOut row = JsonOut.object()
                     .put("id", e.id())
                     .put("description", e.description())
                     .putStrings("languages", e.languages())
                     .put("layout", e.layout())
-                    .toString());
+                    .put("plugin", e.plugin());
+            if (!e.kinds().isEmpty()) row.putObject("kinds", e.kinds());
+            arr.append(row.toString());
         }
         arr.append(']');
         String json = arr.toString();

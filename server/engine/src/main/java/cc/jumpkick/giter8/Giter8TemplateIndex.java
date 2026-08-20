@@ -43,6 +43,43 @@ public final class Giter8TemplateIndex {
     }
 
     /**
+     * Picker row for HTTP/MCP/dashboard. Catalog entries have empty {@code kinds}; plugin
+     * entries list kinds per language and win on id collision.
+     */
+    public record PickerRow(
+            String id,
+            String description,
+            List<String> languages,
+            String layout,
+            boolean plugin,
+            Map<String, List<String>> kinds) {
+        public PickerRow {
+            languages = languages == null ? List.of() : List.copyOf(languages);
+            kinds = kinds == null || kinds.isEmpty() ? Map.of() : Map.copyOf(kinds);
+        }
+    }
+
+    /** Catalog + local roots + installed plugin jars. */
+    public static List<PickerRow> picker(List<Path> roots) {
+        Map<String, PickerRow> byId = new LinkedHashMap<>();
+        for (Giter8ShortNames.Entry e : build(roots)) {
+            byId.put(e.id(), new PickerRow(e.id(), e.description(), e.languages(), e.layout(), false, Map.of()));
+        }
+        for (PluginTemplates.Installed p : PluginTemplates.installed()) {
+            byId.put(
+                    p.id(),
+                    new PickerRow(
+                            p.id(),
+                            p.description(),
+                            p.langs(),
+                            Giter8ShortNames.LAYOUT_TRADITIONAL,
+                            true,
+                            p.kindsByLang()));
+        }
+        return List.copyOf(byId.values());
+    }
+
+    /**
      * Full picker list: official catalog, then scan each root for {@code *.g8} / bare short-name
      * dirs. Non-existent roots are skipped. Order: catalog order first, then newly discovered ids
      * in scan order.

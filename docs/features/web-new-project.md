@@ -9,7 +9,7 @@
 ## UX
 
 1. Dashboard empty state / “New project”
-2. Fields: name, group, language, optional template short name
+2. Fields: name, group, language, optional template short name, kind (when the template is a plugin with extra kinds)
 3. **Layout (traditional/simple) + Executable** only when Template is “None” (blank scaffold).
    Layout here is only where the scaffolder writes files; there is no `layout` key in `jk.toml`.
    A selected Giter8 template owns its tree (`jk_layout`); the layout control is hidden and a
