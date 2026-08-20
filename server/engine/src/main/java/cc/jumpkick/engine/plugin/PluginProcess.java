@@ -189,7 +189,7 @@ public final class PluginProcess {
                 new java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis());
         Thread watchdog = null;
         if (idleTimeoutMs > 0) {
-            watchdog = new Thread(
+            watchdog = Thread.ofVirtual().name("jk-worker-watchdog").unstarted(
                     () -> {
                         while (process.isAlive()) {
                             long idle = System.currentTimeMillis() - lastLineAt.get();
@@ -203,9 +203,7 @@ public final class PluginProcess {
                                 return; // conversation finished normally
                             }
                         }
-                    },
-                    "jk-worker-watchdog");
-            watchdog.setDaemon(true);
+                    });
             watchdog.start();
         }
         // Bounded like the client socket: a worker emitting an unbounded line must not OOM the

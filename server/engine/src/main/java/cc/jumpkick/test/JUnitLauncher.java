@@ -646,11 +646,12 @@ public final class JUnitLauncher {
             final var last = new java.util.concurrent.atomic.AtomicReference<String>("");
             lastClasses.add(last);
             final int totalWorkers = actualWorkers;
-            var t = new Thread(
-                    () -> exits[idx] = driveWorker(
-                            javaBinary, classpath, workerId, totalWorkers, args, queue, agg, listener, crash, last),
-                    "jk-test-worker-" + workerId);
-            t.start();
+            // Virtual: the thread blocks on the child's stdout for the worker's whole life —
+            // exactly the shape VT is for (JK-2212).
+            Thread t = Thread.ofVirtual()
+                    .name("jk-test-worker-" + workerId)
+                    .start(() -> exits[idx] = driveWorker(
+                            javaBinary, classpath, workerId, totalWorkers, args, queue, agg, listener, crash, last));
             workerThreads.add(t);
         }
         // Each worker thread owns its process (via PluginProcess.converse) and
