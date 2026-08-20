@@ -86,37 +86,6 @@ kind = "resource"
 artifact   = "spring-boot-loader"
 coordinate = "org.springframework.boot:spring-boot-loader:^${config.boot-version}"
 
-# ---- Scaffold — `jk new --grails` renders these engine-side; the client writes the
-# returned payloads. Paths are literal grails-app conventions plus ${package-path}.
-
-[scaffold]
-flag        = "grails"
-description = "Grails application (Groovy)"
-
-[[scaffold.append]]
-template = "scaffold/jk-toml-grails.toml.tmpl"
-
-[[scaffold.file]]
-path     = "grails-app/init/${package-path}/Application.groovy"
-template = "scaffold/Application.groovy.tmpl"
-
-[[scaffold.file]]
-path     = "grails-app/init/${package-path}/BootStrap.groovy"
-template = "scaffold/BootStrap.groovy.tmpl"
-
-[[scaffold.file]]
-path     = "grails-app/domain/${package-path}/Note.groovy"
-template = "scaffold/Note.groovy.tmpl"
-
-[[scaffold.file]]
-path     = "grails-app/controllers/${package-path}/NoteController.groovy"
-template = "scaffold/NoteController.groovy.tmpl"
-
-[[scaffold.file]]
-path          = "grails-app/conf/application.yml"
-template      = "scaffold/application.yml.tmpl"
-keep-existing = true
-
 # ---- Import — jk import's Gradle-plugin mapping: the Grails Gradle plugin id is
 # recognized and consumed (its version is the Grails Gradle tooling line, not the BOM pin —
 # the importer leaves `[grails] version` to the user).

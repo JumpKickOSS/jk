@@ -3,7 +3,7 @@
 **Status:** accepted (design frozen for implementation)  
 **Audience:** implementers, importers, first-party plugins, kanartist tickets (`JK-NNNN`) 
 **Related code:** `LibraryCatalog`, `LibraryRegistryClient`, `JkBuildParser` / `jk-libs.toml`,
-`[platform-dependencies]`, `GradleVersionCatalog` / `GradleImporter`, Boot plugin / `jk new --spring`
+`[platform-dependencies]`, `GradleVersionCatalog` / `GradleImporter`, Boot plugin / `jk new -t spring-boot`
 
 ---
 
@@ -161,7 +161,7 @@ jk’s job:
 
 1. Resolve them as normal dependencies under a platform BOM when versionless.
 2. Expose short names in the catalog where curated.
-3. Scaffold (`jk new --spring`, future Quarkus) and plugins (packaging/dev) for the stack.
+3. Templates (`jk new -t spring-boot`) and plugins (packaging/dev) for the stack.
 4. Import them cleanly from Gradle/Maven.
 
 jk’s job is **not** to maintain a parallel list of “jk starters” that duplicate Boot/Quarkus

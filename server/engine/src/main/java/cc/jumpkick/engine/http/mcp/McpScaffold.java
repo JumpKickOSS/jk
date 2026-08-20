@@ -2,7 +2,7 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.engine.runtime.NewProjectOps;
-import cc.jumpkick.scaffold.Giter8TemplateIndex;
+import cc.jumpkick.giter8.Giter8TemplateIndex;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

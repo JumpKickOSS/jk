@@ -26,6 +26,7 @@ spdx-java = "2.0.3"
 openrewrite = "8.89.2"
 slf4j = "2.0.16"
 spotless = "4.6.2"
+st4 = "4.3.4"
 tomlj = "1.1.1"
 xz = "1.12"
 
@@ -34,6 +35,8 @@ xz = "1.12"
 jspecify               = { module = "org.jspecify:jspecify",                        version.ref = "jspecify" }
 lombok                 = { module = "org.projectlombok:lombok",                     version.ref = "lombok" }
 tomlj                  = { module = "org.tomlj:tomlj",                              version.ref = "tomlj" }
+# Giter8 apply (engine-only; StringTemplate 4 is the Giter8 renderer)
+st4                    = { module = "org.antlr:ST4",                                version.ref = "st4" }
 jackson-databind       = { module = "tools.jackson.core:jackson-databind",          version.ref = "jackson" }
 
 # resolver

@@ -91,11 +91,18 @@ public final class Giter8Git {
         if (cloneRoot == null || shortName == null || shortName.isBlank()) return Optional.empty();
         String name = shortName.strip();
         String dirG8 = name + ".g8";
-        List<Path> candidates = List.of(
+        List<Path> candidates = new ArrayList<>();
+        for (String lang : List.of("java", "kotlin", "groovy")) {
+            candidates.add(cloneRoot.resolve(lang).resolve(dirG8));
+            candidates.add(cloneRoot.resolve("templates").resolve(lang).resolve(dirG8));
+            candidates.add(cloneRoot.resolve(lang).resolve(name));
+            candidates.add(cloneRoot.resolve("templates").resolve(lang).resolve(name));
+        }
+        candidates.addAll(List.of(
                 cloneRoot.resolve(dirG8),
                 cloneRoot.resolve("templates").resolve(dirG8),
                 cloneRoot.resolve(name),
-                cloneRoot.resolve("templates").resolve(name));
+                cloneRoot.resolve("templates").resolve(name)));
         for (Path c : candidates) {
             if (Giter8Catalog.isTemplateRoot(c)) {
                 return Optional.of(c.toAbsolutePath().normalize());

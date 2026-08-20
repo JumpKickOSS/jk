@@ -39,7 +39,7 @@ Until the RPC exists, the UI may deep-link to CLI instructions:
 ```text
 jk new my-app --lang java
 jk new my-app --lang java --layout simple
-jk new --template java-cli my-tool
+jk new -t cli my-tool
 ```
 
 ## Acceptance mapping
@@ -50,5 +50,5 @@ jk new --template java-cli my-tool
 | Template picker | Short names via `GET /api/templates`; local/classpath apply on engine |
 | Errors | 400/409 with `error` message (exists, invalid name, parent outside home) |
 | Shared scaffold path | **Done** — `cc.jumpkick.scaffold.*` used by CLI + engine |
-| Framework scaffolds from web | Deferred — use CLI `jk new --spring` (clear error if attempted) |
+| Framework templates from web | Template picker (`spring-boot`, `quarkus`, …) + language |
 | Remote Giter8 short names | Engine uses local/classpath; full git resolve remains CLI (`Giter8Git`) |

@@ -77,29 +77,13 @@ class PluginTableRegistryTest {
     }
 
     @org.junit.jupiter.api.Test
-    void shipped_manifest_declares_scaffold_and_import_rules() {
+    void shipped_manifest_declares_import_rules() {
         var boot = PluginTableRegistry.manifests().stream()
                 .filter(m -> m.id().equals("spring-boot"))
                 .findFirst()
                 .orElseThrow();
 
-        var scaffold = boot.scaffold();
-        org.assertj.core.api.Assertions.assertThat(scaffold.flag()).isEqualTo("spring");
-        org.assertj.core.api.Assertions.assertThat(scaffold.appends()).hasSize(2);
-        org.assertj.core.api.Assertions.assertThat(scaffold.files())
-                .anyMatch(f -> f.path().contains("Application.java") && "java".equals(f.whenLang()))
-                .anyMatch(f -> f.path().contains("Application.kt") && "kotlin".equals(f.whenLang()))
-                .anyMatch(f -> f.path().endsWith("application.properties") && f.keepExisting());
-        // every referenced template resource resolves
-        for (var a : scaffold.appends()) {
-            org.assertj.core.api.Assertions.assertThat(PluginTableRegistry.resourceText(boot, a.template()))
-                    .contains("[spring-boot]");
-        }
-        for (var f : scaffold.files()) {
-            org.assertj.core.api.Assertions.assertThat(PluginTableRegistry.resourceText(boot, f.template()))
-                    .isNotBlank();
-        }
-
+        org.assertj.core.api.Assertions.assertThat(boot.scaffold()).isNull();
         org.assertj.core.api.Assertions.assertThat(boot.gradleImports())
                 .anyMatch(r -> r.id().equals("org.springframework.boot")
                         && "version".equals(r.versionTo())
@@ -108,7 +92,7 @@ class PluginTableRegistryTest {
     }
 
     @Test
-    void built_in_grails_manifest_loads_with_packaging_roots_and_scaffold() {
+    void built_in_grails_manifest_loads_with_packaging_roots() {
         var grails = PluginTableRegistry.byTable("grails").orElseThrow();
         assertThat(grails.id()).isEqualTo("grails");
         assertThat(grails.schema()).containsKeys("version", "boot-version");
@@ -137,14 +121,7 @@ class PluginTableRegistryTest {
                         "grails-app/i18n",
                         "grails-app/views");
 
-        var scaffold = grails.scaffold();
-        assertThat(scaffold.flag()).isEqualTo("grails");
-        for (var a : scaffold.appends()) {
-            assertThat(PluginTableRegistry.resourceText(grails, a.template())).contains("[grails]");
-        }
-        for (var f : scaffold.files()) {
-            assertThat(PluginTableRegistry.resourceText(grails, f.template())).isNotBlank();
-        }
+        assertThat(grails.scaffold()).isNull();
     }
 
     @Test
@@ -159,7 +136,7 @@ class PluginTableRegistryTest {
                     version = "1"
                     """.getBytes(StandardCharsets.UTF_8));
             out.closeEntry();
-            out.putNextEntry(new JarEntry("scaffold/hello.txt"));
+            out.putNextEntry(new JarEntry("templates/hello.txt"));
             out.write("hi from zip".getBytes(StandardCharsets.UTF_8));
             out.closeEntry();
         }
@@ -171,6 +148,6 @@ class PluginTableRegistryTest {
                 """, "zip-plug.jk-plugin.toml");
         PluginTableRegistry.putBuiltIn(d, jar);
         assertThat(PluginTableRegistry.byTable("zip-plug")).isPresent();
-        assertThat(PluginTableRegistry.resourceText(d, "scaffold/hello.txt")).isEqualTo("hi from zip");
+        assertThat(PluginTableRegistry.resourceText(d, "templates/hello.txt")).isEqualTo("hi from zip");
     }
 }

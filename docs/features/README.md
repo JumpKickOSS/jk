@@ -11,7 +11,7 @@ boundaries so agents and humans stay aligned.
 | [**Project build logic**](project-build-logic.md) | `.jk-build/` convention (+ `[build].logic` override); Mill-style tasks outside TOML |
 | [**Packaging matrix**](packaging.md) | Thin / fat (`jk assemble`) / R8 shrink / Spring Boot / Quarkus / Grails — rules and samples |
 | [**Dynamic surface**](dynamic-surface.md) | Keep rules and reachability metadata from one model: derive → compose → `jk train` → declare; R8 and `native-image` consume |
-| [**Giter8 templates**](giter8-templates.md) | `jk new --template`: local path + short-name catalog (`java-cli`, `quarkus`); remotes later |
+| [**Giter8 templates**](giter8-templates.md) | `jk new -t`: plugin kinds + catalog `<lang>/<kind>.g8` (`cli`, `spring-boot`, `ktor-3`) |
 | [**CLI ↔ web visual alignment**](cli-web-visual-alignment.md) | Color-means-state contract; web CSS ↔ `JkDarkTheme` token map (JK-1081) |
 | [**Exclusive builds + durable in-flight**](exclusive-builds.md) | Same-fingerprint reject (`Build #N already running`); start-time numbers; journal `running` for web refresh (JK-1248–1251) |
 

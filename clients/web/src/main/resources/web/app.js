@@ -2386,16 +2386,15 @@ export const appOptions = {
       this.templates = Array.isArray(templates) && templates.length
         ? templates
         : [
-            { id: 'java-cli', description: 'Simple Java 25 executable (Mill SIMPLE layout)', languages: ['java'], layout: 'simple' },
-            { id: 'kotlin-cli', description: 'Simple Kotlin executable (Mill SIMPLE layout)', languages: ['kotlin'], layout: 'simple' },
-            { id: 'java-cli-native', description: 'Interactive Java CLI with JLine (jk native ready)', languages: ['java'], layout: 'simple' },
-            { id: 'spring-boot-webmvc', description: 'Spring Boot 4.1 WebMVC + JPA/H2 + Actuator', languages: ['java'], layout: 'traditional' },
-            { id: 'spring-boot-webmvc-kotlin', description: 'Kotlin Spring Boot 4.1 WebMVC + JPA/H2 + Actuator', languages: ['kotlin'], layout: 'traditional' },
+            { id: 'cli', description: 'Simple executable (Mill SIMPLE layout)', languages: ['java', 'kotlin'], layout: 'simple' },
+            { id: 'cli-native', description: 'Interactive Java CLI with JLine (jk native ready)', languages: ['java'], layout: 'simple' },
+            { id: 'spring-boot-webmvc', description: 'Spring Boot WebMVC + JPA/H2 + Actuator', languages: ['java', 'kotlin'], layout: 'traditional' },
             { id: 'spring-boot-mcp', description: 'Spring Boot MCP server (Spring AI, @Tool over SSE)', languages: ['java'], layout: 'traditional' },
-            { id: 'quarkus', description: 'Quarkus 3.x REST application ([quarkus] plugin)', languages: ['java'], layout: 'simple' },
-            { id: 'ktor-3', description: 'Ktor 3 service with Koin DI and Exposed/H2', languages: ['kotlin'], layout: 'simple' },
-            { id: 'micronaut', description: 'Micronaut HTTP service (compile-time DI, Netty)', languages: ['java'], layout: 'simple' },
-            { id: 'grails-8', description: 'Grails 8 REST app (GORM, H2, Groovy 5)', languages: ['groovy'], layout: 'custom' },
+            { id: 'quarkus', description: 'Quarkus REST application ([quarkus] plugin)', languages: ['java'], layout: 'simple' },
+            { id: 'ktor-3', description: 'Ktor service with Koin DI and Exposed/H2', languages: ['kotlin'], layout: 'simple' },
+            { id: 'micronaut', description: 'Micronaut HTTP service (compile-time DI, Netty)', languages: ['java', 'kotlin'], layout: 'simple' },
+            { id: 'grails-8', description: 'Grails 8 REST app (GORM, H2, Groovy)', languages: ['groovy'], layout: 'custom' },
+            { id: 'spring-boot', description: 'Spring Boot application', languages: ['java', 'kotlin'], layout: 'traditional' },
           ];
       this.onNewProjectLangChange(); // drop a leftover template that no longer matches Language
       // Focus Name so the user can type the app name immediately; @focus selects any existing value.

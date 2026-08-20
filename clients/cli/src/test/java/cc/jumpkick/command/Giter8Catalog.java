@@ -2,7 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.config.JkTemplatesConfig;
-import cc.jumpkick.scaffold.Giter8LocalApply;
+import cc.jumpkick.giter8.Giter8Apply;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,7 +35,7 @@ public final class Giter8Catalog {
 
     /** Built-in short names for help text (not an exclusive allow-list for resolution). */
     public static Map<String, String> descriptions() {
-        return cc.jumpkick.scaffold.Giter8ShortNames.descriptions();
+        return cc.jumpkick.giter8.Giter8ShortNames.descriptions();
     }
 
     public static boolean isShortName(String ref) {
@@ -68,10 +68,8 @@ public final class Giter8Catalog {
         // 1) $JK_TEMPLATES
         String env = System.getenv("JK_TEMPLATES");
         if (env != null && !env.isBlank()) {
-            Path p = Path.of(env).resolve(dirName);
-            if (isTemplateRoot(p)) return Optional.of(p.toAbsolutePath().normalize());
-            Path bare = Path.of(env).resolve(ref);
-            if (isTemplateRoot(bare)) return Optional.of(bare.toAbsolutePath().normalize());
+            Optional<Path> hit = langKindOrFlat(Path.of(env), ref, dirName);
+            if (hit.isPresent()) return hit;
         }
 
         // 2) ~/.jk/templates/
@@ -83,10 +81,8 @@ public final class Giter8Catalog {
         // 3) Walk-up monorepo dogfood
         Path walk = cwd == null ? null : cwd.toAbsolutePath().normalize();
         for (int i = 0; i < 8 && walk != null; i++) {
-            Path candidate = walk.resolve("templates").resolve(dirName);
-            if (isTemplateRoot(candidate)) {
-                return Optional.of(candidate);
-            }
+            Optional<Path> hit = langKindOrFlat(walk.resolve("templates"), ref, dirName);
+            if (hit.isPresent()) return hit;
             walk = walk.getParent();
         }
 
@@ -132,7 +128,7 @@ public final class Giter8Catalog {
 
     /** True when a single-template clone is the intended target for {@code shortName}. */
     static boolean singleTemplateMatches(Path clone, String gitRef, String shortName) {
-        Optional<String> propName = Giter8LocalApply.defaultName(clone);
+        Optional<String> propName = Giter8Apply.defaultName(clone);
         if (propName.isPresent() && shortName.equalsIgnoreCase(propName.get())) return true;
         String ref = gitRef == null ? "" : gitRef.toLowerCase(java.util.Locale.ROOT);
         String sn = shortName.toLowerCase(java.util.Locale.ROOT);
@@ -151,6 +147,21 @@ public final class Giter8Catalog {
             parts.add("config sources: " + String.join(", ", names));
         }
         return String.join("; ", parts);
+    }
+
+    private static Optional<Path> langKindOrFlat(Path root, String ref, String dirName) {
+        if (root == null || !Files.isDirectory(root)) return Optional.empty();
+        for (String lang : List.of("java", "kotlin", "groovy")) {
+            Path p = root.resolve(lang).resolve(dirName);
+            if (isTemplateRoot(p)) return Optional.of(p.toAbsolutePath().normalize());
+            Path bare = root.resolve(lang).resolve(ref);
+            if (isTemplateRoot(bare)) return Optional.of(bare.toAbsolutePath().normalize());
+        }
+        Path p = root.resolve(dirName);
+        if (isTemplateRoot(p)) return Optional.of(p.toAbsolutePath().normalize());
+        Path bare = root.resolve(ref);
+        if (isTemplateRoot(bare)) return Optional.of(bare.toAbsolutePath().normalize());
+        return Optional.empty();
     }
 
     static boolean isTemplateRoot(Path p) {

@@ -45,9 +45,9 @@ public final class InitCommand implements CliCommand {
         delegate.executable = in.flag("executable").orElse(null);
         delegate.assembly = in.isSet("assembly");
         delegate.nativeImage = in.isSet("native");
-        delegate.spring = in.isSet("spring");
-        delegate.grails = in.isSet("grails");
         delegate.plugin = in.isSet("plugin");
+        delegate.templateRef = in.value("template").orElse(null);
+        delegate.kind = in.value("kind").orElse(null);
         delegate.depsCsv = in.value("deps").orElse(null);
         delegate.layoutFlag = in.value("layout").orElse(null);
         delegate.kotlinModule = in.value("kotlin-module").orElse(null);

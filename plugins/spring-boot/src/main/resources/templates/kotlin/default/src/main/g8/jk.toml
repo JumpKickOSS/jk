@@ -1,0 +1,17 @@
+group = "$organization$"
+name = "$name$"
+version = "0.1.0"
+kotlin = "latest"
+
+[application]
+main = "$package$.ApplicationKt"
+
+[spring-boot]
+version = "latest"
+
+[dependencies]
+starter-webmvc = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc" }
+kotlin-reflect = { group = "org.jetbrains.kotlin" }
+
+[dev-dependencies]
+devtools = { group = "org.springframework.boot", name = "spring-boot-devtools" }

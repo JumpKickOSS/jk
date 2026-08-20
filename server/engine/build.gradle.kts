@@ -37,6 +37,8 @@ dependencies {
     // builds the git fixtures in tests. The native CLI (:cli) does not depend on :engine, so this
     // never enters a native image — only the engine fat jar.
     implementation(libs.jgit)
+    // Giter8 apply. Must not leak onto the native CLI (this module never does).
+    implementation(libs.st4)
     // XZ inflate for release client binaries (`EngineMain --inflate-xz`). The native CLI must
     // not link this — it shells out to the engine jar.
     implementation(libs.tukaani.xz)

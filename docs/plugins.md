@@ -19,9 +19,9 @@ from outside this tree until that lands.
 One jar containing:
 
 ```
-jk-plugin.toml          # declarative layer (required)
-scaffold/…              # optional templates for jk new / import
-<your classes>          # optional code layer (forked process only)
+jk-plugin.toml                      # declarative layer (required)
+templates/<lang>/<kind>/…           # optional Giter8 trees for jk new -t <plugin-id>
+<your classes>                      # optional code layer (forked process only)
 ```
 
 - **Declarative layer** — jk parses `jk-plugin.toml` (data; safe even for untrusted plugins)
@@ -118,12 +118,13 @@ layered-image  = true
 
 Static data consulted by `jk run` / `install` / `image` without forking your code.
 
-### Scaffold and import
+### Templates and import
+
+Bundle Giter8 trees at `src/main/resources/templates/<lang>/<kind>/` (see
+[giter8-templates.md](features/giter8-templates.md)). `jk new -t <plugin-id>` applies
+`templates/<lang>/default` (or `--kind`). No `[scaffold]` table.
 
 ```toml
-[scaffold]
-flag = "spring"               # jk new --spring
-
 [[import.gradle-plugin]]
 id         = "org.springframework.boot"
 version-to = "version"

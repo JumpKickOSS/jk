@@ -518,7 +518,7 @@ not mistaken for “everything is current.” Prefer `jk sync --offline-prepare`
 ### Quarkus notes
 
 ```bash
-jk new --quarkus my-api          # plugin [scaffold]
+jk new -t quarkus my-api
 jk new --template quarkus my-api # Giter8 short name (same single-module shape)
 ```
 
@@ -634,7 +634,7 @@ jk build --aot-cache      # target/aot-cache/ — the app, its jars, and a train
 ```
 
 Trains a JEP 514 AOT cache (JDK 25+; an AppCDS archive below that) from one run of the
-application. Measured on the `jk new --spring` scaffold: **771 ms cold, 325 ms cached**.
+application. Measured on the `jk new -t spring-boot` scaffold: **771 ms cold, 325 ms cached**.
 
 The cache is pinned to three things, and it is worth knowing which, because a mismatch is not an
 error — the JVM silently starts cold:
@@ -686,7 +686,7 @@ restriction is Won't Fix upstream.
 
 ### Grails (`[grails]`)
 
-Grails 8 (Apache, Spring Boot 4) on the Groovy lane — `jk new --grails` scaffolds a
+Grails 8 (Apache, Spring Boot 4) on the Groovy lane — `jk new -t grails` scaffolds a
 minimal REST app (GORM domain, controller, `grails-app/conf/application.yml`):
 
 ```toml

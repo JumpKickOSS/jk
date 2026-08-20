@@ -2,8 +2,9 @@
 package cc.jumpkick.engine.runtime;
 
 import cc.jumpkick.config.JkTemplatesConfig;
-import cc.jumpkick.scaffold.Giter8LocalApply;
-import cc.jumpkick.scaffold.Giter8TemplateIndex;
+import cc.jumpkick.giter8.Giter8Apply;
+import cc.jumpkick.giter8.Giter8Maven;
+import cc.jumpkick.giter8.Giter8TemplateIndex;
 import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.scaffold.NewScaffolder;
 import java.io.IOException;
@@ -23,7 +24,7 @@ import java.util.regex.Pattern;
 
 /**
  * Shared project creation used by {@code POST /api/projects}. Uses the same
- * {@link NewScaffolder} / {@link Giter8LocalApply} path as {@code jk new} — no second scaffolder.
+ * {@link NewScaffolder} / {@link Giter8Apply} path as {@code jk new} — no second scaffolder.
  */
 public final class NewProjectOps {
 
@@ -216,7 +217,6 @@ public final class NewProjectOps {
     private static void scaffoldInto(Prepared prep, Path target) throws IOException {
         Request req = prep.req();
         if (prep.template() != null) {
-            Path templateRoot = resolveTemplate(prep.template(), prep.parent());
             Map<String, String> params = new LinkedHashMap<>();
             if (req.templateParams() != null) params.putAll(req.templateParams());
             params.putIfAbsent("name", prep.name());
@@ -225,16 +225,38 @@ public final class NewProjectOps {
             if (prep.group() != null && !prep.group().isBlank()) {
                 params.putIfAbsent("group", prep.group());
             }
-            Giter8LocalApply.apply(templateRoot, target, params);
+            boolean offline =
+                    cc.jumpkick.config.SessionContext.current().config().offlineOr(false);
+            String kind = params.getOrDefault("jk_kind", "default");
+            Path templateRoot;
+            Path extracted = null;
+            String langName = prep.lang() == null ? null : prep.lang().hoconValue();
+            if (cc.jumpkick.giter8.PluginTemplates.isPluginTemplate(prep.template())) {
+                String lang = cc.jumpkick.giter8.PluginTemplates.resolveLang(prep.template(), langName)
+                        .orElseThrow(() -> cc.jumpkick.giter8.PluginTemplates.missing(
+                                prep.template(), langName == null ? "" : langName, kind));
+                extracted = cc.jumpkick.giter8.PluginTemplates.materialize(prep.template(), lang, kind);
+                templateRoot = extracted;
+            } else {
+                if (kind != null && !kind.isBlank() && !"default".equals(kind)) {
+                    throw new IOException("kind is only valid for plugin templates");
+                }
+                templateRoot = resolveTemplate(prep.template(), langName, prep.parent());
+            }
+            try {
+                Giter8Apply.apply(templateRoot, target, params, Giter8Maven.central(offline));
+            } finally {
+                if (extracted != null) deleteRecursively(extracted);
+            }
             if (!Files.isRegularFile(target.resolve("jk.toml"))) {
                 throw new IOException("template did not produce jk.toml: " + prep.template());
             }
             return;
         }
-        boolean spring = "spring".equalsIgnoreCase(nullToEmpty(req.framework()));
-        boolean grails = "grails".equalsIgnoreCase(nullToEmpty(req.framework()));
-        boolean quarkus = "quarkus".equalsIgnoreCase(nullToEmpty(req.framework()));
-        boolean micronaut = "micronaut".equalsIgnoreCase(nullToEmpty(req.framework()));
+        boolean spring = false;
+        boolean grails = false;
+        boolean quarkus = false;
+        boolean micronaut = false;
         Optional<String> main = Optional.empty();
         if (prep.executable() && !req.plugin()) {
             boolean compact = "simple".equalsIgnoreCase(prep.layout());
@@ -365,6 +387,10 @@ public final class NewProjectOps {
      * freshen from the public {@code JumpKickOSS/jk-templates} repo).
      */
     static Path resolveTemplate(String ref, Path cwd) throws IOException {
+        return resolveTemplate(ref, null, cwd);
+    }
+
+    static Path resolveTemplate(String ref, String lang, Path cwd) throws IOException {
         Path asPath = Path.of(ref);
         if (asPath.isAbsolute() && isTemplateRoot(asPath)) {
             return asPath.normalize();
@@ -376,7 +402,7 @@ public final class NewProjectOps {
 
         if (ref.matches("[a-z][a-z0-9-]*")) {
             // Disk + official monorepo cache (freshen clones if missing / incomplete).
-            Optional<Path> indexed = Giter8TemplateIndex.resolveShortName(ref, cwd);
+            Optional<Path> indexed = Giter8TemplateIndex.resolveShortName(ref, lang, cwd);
             if (indexed.isPresent()) return indexed.get();
 
             JkTemplatesConfig cfg = JkTemplatesConfig.resolve();

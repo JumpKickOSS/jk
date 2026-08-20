@@ -71,7 +71,13 @@ val checkCliNoParseTypes by tasks.registering {
             "PluginTableRegistry",
             "LockFreshness",
             "LockManifestDigest",
-            "PluginContributions")
+            "PluginContributions",
+            "Giter8LocalApply",
+            "Giter8Apply",
+            "Giter8ShortNames",
+            "Giter8TemplateIndex",
+            "org.stringtemplate",
+            "org.antlr.runtime")
         val hits = fileTree(main) { include("**/*.java") }.files.flatMap { f ->
             val text = f.readText()
             banned.filter { text.contains(it) }.map { "${f.name}: $it" }

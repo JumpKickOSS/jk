@@ -109,7 +109,7 @@ final class HttpProjectApi {
     /**
      * {@code GET /api/templates} — short-name catalog for the new-project picker. Official
      * catalog rows are merged with on-disk {@code jk_languages}/{@code jk_layout} from local
-     * template roots (see {@link cc.jumpkick.scaffold.Giter8TemplateIndex}).
+     * template roots (see {@link cc.jumpkick.giter8.Giter8TemplateIndex}).
      */
     void handleTemplates(HttpExchange exchange) throws IOException {
         TemplatesCache cached = templatesCache;
@@ -120,7 +120,7 @@ final class HttpProjectApi {
         // Same roots the short-name resolver uses — the picker must never list a
         // template that then resolves differently, or miss one that would resolve.
         var entries =
-                cc.jumpkick.scaffold.Giter8TemplateIndex.build(cc.jumpkick.scaffold.Giter8TemplateIndex.searchRoots());
+                cc.jumpkick.giter8.Giter8TemplateIndex.build(cc.jumpkick.giter8.Giter8TemplateIndex.searchRoots());
         var arr = new StringBuilder("[");
         boolean first = true;
         for (var e : entries) {

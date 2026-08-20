@@ -195,6 +195,23 @@ public final class NewScaffolder {
 
         Files.writeString(
                 dir.resolve("README.md"), renderPluginReadme(inputs, pluginId, className), StandardCharsets.UTF_8);
+
+        Path g8 = resources.resolve("templates").resolve("java").resolve("default");
+        Files.createDirectories(g8.resolve("src/main/g8"));
+        Files.writeString(g8.resolve("default.properties"), """
+                name=demo
+                organization=com.example
+                package=com.example
+                java=25
+                jk_languages=java
+                jk_layout=traditional
+                """, StandardCharsets.UTF_8);
+        Files.writeString(g8.resolve("src/main/g8/jk.toml"), """
+                group = "$organization$"
+                name = "$name$"
+                version = "0.1.0"
+                java = $java$
+                """, StandardCharsets.UTF_8);
     }
 
     /** CamelCase the plugin id into a class name, appending {@code Plugin} unless it already ends so. */
@@ -229,8 +246,9 @@ public final class NewScaffolder {
         return """
                 # The declarative manifest for the `%1$s` build plugin — pure data jk parses itself
                 # (no plugin code runs in the engine). This file is packaged at the jar root. See
-                # docs/authoring-plugins.md for the full surface: [[contribute.*]] build shaping,
-                # [packaging], [scaffold] (contribute a `jk new --<flag>`), [[import.*]].
+                # docs/plugins.md for the full surface: [[contribute.*]] build shaping,
+                # [packaging], [[import.*]]. Bundle Giter8 trees under
+                # src/main/resources/templates/<lang>/<kind>/.
 
                 [plugin]
                 id        = "%1$s"        # this plugin's identity

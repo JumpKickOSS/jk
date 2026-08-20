@@ -1,0 +1,16 @@
+group = "$organization$"
+name = "$name$"
+version = "0.1.0"
+java = $java$
+
+[application]
+main = "$package$.Application"
+
+[spring-boot]
+version = "latest"
+
+[dependencies]
+starter-webmvc = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc" }
+
+[dev-dependencies]
+devtools = { group = "org.springframework.boot", name = "spring-boot-devtools" }

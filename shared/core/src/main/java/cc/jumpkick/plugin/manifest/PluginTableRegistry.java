@@ -73,8 +73,22 @@ public final class PluginTableRegistry {
 
     private static volatile Map<String, PluginDescriptor> BY_TABLE = loadBuiltIns();
 
-    /** Plugin id → jar that owns {@code jk-plugin.toml} and {@code scaffold/}. */
+    /** Plugin id → jar that owns {@code jk-plugin.toml} and {@code templates/}. */
     private static final Map<String, Path> ARCHIVES = new ConcurrentHashMap<>();
+
+    /** Jar the plugin was installed from, or {@code null} when the manifest is test-classpath only. */
+    public static Path archive(String pluginId) {
+        return pluginId == null ? null : ARCHIVES.get(pluginId);
+    }
+
+    /** Manifest whose {@code id} or {@code table} equals {@code name}. */
+    public static PluginDescriptor byIdOrTable(String name) {
+        if (name == null || name.isBlank()) return null;
+        for (PluginDescriptor m : BY_TABLE.values()) {
+            if (name.equals(m.id()) || name.equals(m.table())) return m;
+        }
+        return null;
+    }
 
     /**
      * Load {@code jk-plugin.toml} from a self-describing plugin jar and {@link #putBuiltIn}.

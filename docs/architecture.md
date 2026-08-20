@@ -27,8 +27,8 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
 
 - **Client** — presentation, shell hooks, JDK install prompts, anything that owns your terminal
   (`jk run` exec, `jk mvn`/`gradle` interactive). Sub-50 ms cold start; no engine code in the
-  native image. The CLI does not interpret plugin schemas — `*.jk-plugin.toml` and scaffold
-  templates are baked into the engine jar only, never `:core` / the native client.
+  native image. The CLI does not interpret plugin schemas — `jk-plugin.toml` and Giter8
+  templates are engine-only, never `:core` / the native client.
 - **Engine** — dependency resolution, task graph / BuildPlan execution, CAS, toolchains,
   compiler/test workers, hosted verbs (`build`, `test`, `lock`, `publish`, …). Default heap ceiling
   **256 MiB** (or **512 MiB** when `CI=1`/`true` and unset) via
