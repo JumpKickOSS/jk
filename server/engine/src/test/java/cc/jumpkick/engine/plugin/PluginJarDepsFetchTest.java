@@ -113,6 +113,29 @@ class PluginJarDepsFetchTest {
     }
 
     @Test
+    void published_checksum_mismatch_rejects_the_jar(@TempDir Path tmp) throws Exception {
+        String rel = PluginJar.PUBLISHER.relativePath();
+        serve("/" + rel, "thin-worker-jar");
+        serve("/" + rel.substring(0, rel.length() - 4) + ".pom", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-publisher</artifactId>
+                  <version>%s</version>
+                </project>
+                """.formatted(JkVersion.VERSION));
+        serve("/" + rel + ".sha256", "0".repeat(64) + "  jk-publisher.jar\n");
+
+        assertThatThrownBy(() -> PluginJar.PUBLISHER.locate(new Cas(tmp.resolve("cache"))))
+                .hasMessageContaining("checksum mismatch");
+        assertThat(tmp.resolve("cache/repos/jumpkick")).satisfiesAnyOf(
+                p -> assertThat(p).doesNotExist(),
+                p -> assertThat(Files.walk(p).filter(Files::isRegularFile)
+                                .filter(f -> f.getFileName().toString().endsWith(".jar")))
+                        .isEmpty());
+    }
+
+    @Test
     void locate_stored_never_fetches(@TempDir Path tmp) throws Exception {
         String rel = PluginJar.PUBLISHER.relativePath();
         serve("/" + rel, "thin-worker-jar");

@@ -159,7 +159,9 @@ public enum PluginJar {
         try {
             jarResp = http.get(jarUri);
         } catch (IOException e) {
-            return null;
+            // A network failure is not "not found" — surfacing it as null made an offline host
+            // report a plain missing plugin with no cause.
+            throw new IOException("official repo unreachable: GET " + jarUri + ": " + e.getMessage(), e);
         }
         if (jarResp.statusCode() == 404) return null;
         if (jarResp.statusCode() < 200 || jarResp.statusCode() >= 300) {
@@ -175,18 +177,23 @@ public enum PluginJar {
         }
         byte[] bytes = jarResp.body();
         String sha = Hashing.sha256Hex(bytes);
+        String published = null;
         try {
             HttpResponse<byte[]> sumResp = http.get(URI.create(jarUri + ".sha256"));
             if (sumResp.statusCode() >= 200 && sumResp.statusCode() < 300) {
-                String published = new String(sumResp.body()).strip().split("\\s+")[0];
-                if (published.length() == 64 && !published.equalsIgnoreCase(sha)) {
-                    throw new IOException(
-                            "checksum mismatch for " + jarUri + " (expected " + published + ", got " + sha + ")");
-                }
-                if (published.length() == 64) sha = published.toLowerCase();
+                published = new String(sumResp.body()).strip().split("\\s+")[0];
             }
         } catch (IOException ignored) {
-            // checksum file optional; we still pin what we hashed
+            // The .sha256 sidecar is optional — an absent or unreachable sidecar keeps the hash
+            // we computed. The mismatch check below must stay OUTSIDE this catch: swallowing it
+            // installed jars whose published checksum disagreed.
+        }
+        if (published != null && published.length() == 64) {
+            if (!published.equalsIgnoreCase(sha)) {
+                throw new IOException(
+                        "checksum mismatch for " + jarUri + " (expected " + published + ", got " + sha + ")");
+            }
+            sha = published.toLowerCase();
         }
         Path casBlob = cas.put(bytes, sha);
         RepoArtifactStore store = RepoArtifactStore.forRepoName(cas.root(), OFFICIAL_REPO);
