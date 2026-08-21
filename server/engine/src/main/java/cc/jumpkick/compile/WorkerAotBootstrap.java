@@ -14,7 +14,7 @@ import java.util.List;
  * host HotSpot JVM so first Java builds map a cache instead of training mid-build.
  *
  * <p><strong>Only java-compiler is pre-trained.</strong> Virtually every jk project compiles Java;
- * the ToolProvider worker classpath is host-stable (no per-project BTA closure). Kotlin, Groovy,
+ * the Zinc worker classpath is host-stable (no per-project BTA closure). Kotlin, Groovy,
  * and other language workers train on-demand on first real use — their classpaths are
  * version-matched to the project and a dedicated bootstrap key would either fail or retrain
  * forever as projects pin different toolchains.

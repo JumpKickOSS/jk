@@ -621,7 +621,7 @@ public final class TestSupport {
                 cacheRoot.resolve("actions").resolve("incremental-java").resolve(cacheTaskId);
 
         // Reweight the bar slice from the real request: a CAS hit is a cheap
-        // restore (3), else a full compile. Same key JavaIncrementalCompile uses.
+        // restore (3), else a full compile. Same key JavaCompile uses.
         if (useCache) {
             try {
                 boolean restores = actionCache

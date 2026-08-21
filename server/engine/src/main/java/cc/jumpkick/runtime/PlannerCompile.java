@@ -162,7 +162,7 @@ public final class PlannerCompile {
                     // Reweight the bar slice now that the real request is known: a CAS
                     // action-cache hit means a cheap hard-link restore (3), not a full
                     // javac (ceil(sources × 0.1)). Uses the exact key
-                    // JavaIncrementalCompile will look up, so the estimate matches what
+                    // JavaCompile will look up, so the estimate matches what
                     // actually happens — no plan-start reconstruction divergence.
                     if (!rerun) {
                         try {

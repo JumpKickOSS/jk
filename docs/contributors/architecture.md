@@ -195,7 +195,7 @@ Bootstrap build: **Java 25 + Gradle** (until self-hosting CI is complete). Runti
 | `shared/` | `jsonl`, `jk-api`, `plugin-sdk`, `core`, `client-io`, `toolchain-jdk`, `wire` | JSONL codec, client-safe contracts, config/lock, CLI I/O, JDK tools, wire |
 | `server/` | `io`, `resolver`, `toolchain`, `engine` | Repo fetch, PubGrub, import/export tools, build plan; `EngineMain` + fat jar packaging (never links CLI) |
 | `clients/` | `cli`, `web` | Slim wire client (native/JVM), dashboard SPA |
-| `plugins/` | `java-compiler`, `kotlin-compiler`, `groovy-compiler`, `test-runner`, `auditor`, `publisher`, `image-builder`, `formatter`, `compat-bridge`, `spring-boot`, `quarkus`, `grails`, `android`, `protobuf`, `minified` | First-party workers / build plugins |
+| `plugins/` | `java-compiler` (Zinc incremental javac), `kotlin-compiler`, `groovy-compiler`, `test-runner`, `auditor`, `publisher`, `image-builder`, `formatter`, `compat-bridge`, `spring-boot`, `quarkus`, `grails`, `android`, `protobuf`, `minified` | First-party workers / build plugins |
 
 **Layering:** `jsonl` → `{plugin-sdk, wire, cli}` ; `jk-api` → `core` → `{client-io, wire, …}` → server `{io, resolver, toolchain}` → `engine` → clients. Plugins depend on `plugin-sdk` (+ transitive `jsonl`), not on engine internals.
 

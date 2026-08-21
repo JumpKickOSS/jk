@@ -25,7 +25,7 @@ import org.junit.jupiter.api.io.TempDir;
  * the <em>same</em> keys a normal build uses — so {@code jk explain} does not report a phantom
  * repackage / retest while {@code jk build} (preflight memo) says fully cached.
  *
- * <p>Compile already had this contract ({@code JavaIncrementalCompile}: rebuild skips restore but
+ * <p>Compile already had this contract ({@code JavaCompile}: rebuild skips restore but
  * still persists). Packaging used to early-return from {@code storePackaged} under rebuild, and
  * run-tests skipped the green marker store when {@code rerun} — both left explain permanently
  * dirty after a successful rebuild.

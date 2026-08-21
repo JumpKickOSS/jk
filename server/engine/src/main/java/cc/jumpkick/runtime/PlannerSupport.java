@@ -314,7 +314,7 @@ public final class PlannerSupport {
      * re-package (this miss path), not to trust the on-disk jar as authoritative.
      *
      * <p>{@code --redo}/{@code --force} skip <em>restore</em> (always re-package) but still
-     * {@link #storePackaged store} — same contract as {@link JavaIncrementalCompile}: the next
+     * {@link #storePackaged store} — same contract as {@link cc.jumpkick.task.JavaCompile}: the next
      * {@code jk explain} / incremental build must see a CACHE_HIT, not a phantom repackage.
      */
     static boolean restorePackaged(Path cacheRoot, String key, Path baseDir) throws IOException {

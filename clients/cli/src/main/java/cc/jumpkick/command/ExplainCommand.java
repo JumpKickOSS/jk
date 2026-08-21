@@ -400,7 +400,7 @@ public final class ExplainCommand implements CliCommand {
         };
     }
 
-    /** {@code "N source(s) changed"} from {@code JavaIncrementalCompile}, digit-guarded. */
+    /** {@code "N source(s) changed"} from {@code JavaCompile}, digit-guarded. */
     private static final java.util.regex.Pattern CHANGED_SOURCES =
             java.util.regex.Pattern.compile("(?<!\\d)(\\d+) sources? changed");
 
