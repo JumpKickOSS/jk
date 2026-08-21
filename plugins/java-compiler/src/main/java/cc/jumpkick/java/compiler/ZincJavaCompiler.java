@@ -1,14 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.java.compiler;
 
+import com.sun.source.util.JavacTask;
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.ServiceLoader;
+import java.util.Set;
 import java.util.function.Supplier;
+import javax.annotation.processing.Processor;
+import javax.tools.DiagnosticCollector;
+import javax.tools.JavaFileObject;
+import javax.tools.StandardJavaFileManager;
+import javax.tools.StandardLocation;
+import javax.tools.ToolProvider;
 import sbt.internal.inc.CompileFailed;
 import sbt.internal.inc.FileAnalysisStore;
 import sbt.internal.inc.FreshCompilerCache;
@@ -53,10 +70,16 @@ public final class ZincJavaCompiler {
 
     private ZincJavaCompiler() {}
 
-    public record Result(boolean success, List<Diag> diagnostics, List<Path> compiledSources) {
+    public record Result(
+            boolean success, List<Diag> diagnostics, List<Path> compiledSources, Map<Path, Set<Path>> generated) {
         public Result {
             diagnostics = List.copyOf(diagnostics);
             compiledSources = List.copyOf(compiledSources);
+            generated = generated == null ? Map.of() : Map.copyOf(generated);
+        }
+
+        public Result(boolean success, List<Diag> diagnostics, List<Path> compiledSources) {
+            this(success, diagnostics, compiledSources, Map.of());
         }
     }
 
@@ -80,10 +103,15 @@ public final class ZincJavaCompiler {
             Files.createDirectories(classOutput);
             Files.createDirectories(workdir);
             if (sourceOutput != null) Files.createDirectories(sourceOutput);
+            if (Files.isRegularFile(workdir.resolve("aggregating"))) {
+                Files.deleteIfExists(workdir.resolve("zinc"));
+            }
 
             IncrementalCompiler zinc = ZincUtil.defaultIncrementalCompiler();
             FileConverter converter = PlainVirtualFileConverter.converter();
-            javac = recordingJavac(converter);
+            ApProvenance provenance = new ApProvenance();
+            List<Processor> processors = loadProcessors(processorPath);
+            javac = recordingJavac(converter, processors, provenance);
             Compilers compilers = javaOnlyCompilers(javac);
 
             VirtualFile[] sourceFiles = virtual(sources, converter);
@@ -121,10 +149,15 @@ public final class ZincJavaCompiler {
             Inputs inputs = Inputs.of(compilers, options, setup, previous);
             CompileResult compiled = zinc.compile(inputs, QuietLogger.INSTANCE);
             if (reporter.hasErrors()) {
-                return new Result(false, reporter.diagnostics(), javac.compiledSources());
+                return new Result(false, reporter.diagnostics(), javac.compiledSources(), provenance.generated);
+            }
+            if (provenance.aggregating()) {
+                Files.writeString(workdir.resolve("aggregating"), "1\n");
+            } else {
+                Files.deleteIfExists(workdir.resolve("aggregating"));
             }
             store.set(AnalysisContents.create(compiled.analysis(), compiled.setup()));
-            return new Result(true, reporter.diagnostics(), javac.compiledSources());
+            return new Result(true, reporter.diagnostics(), javac.compiledSources(), provenance.generated);
         } catch (IOException e) {
             return new Result(false, List.of(new Diag("ERROR", null, 0, 0, e.getMessage())), List.of());
         } catch (CompileFailed failed) {
@@ -162,11 +195,32 @@ public final class ZincJavaCompiler {
         return ZincUtil.compilers(JavaTools.apply(javac, javadoc), scalac);
     }
 
-    private static RecordingJavaCompiler recordingJavac(FileConverter converter) {
-        scala.Option<JavaCompiler> local = sbt.internal.inc.javac.JavaCompiler.local();
-        JavaCompiler javac =
-                local.isDefined() ? local.get() : sbt.internal.inc.javac.JavaCompiler.fork(scala.Option.empty());
+    private static RecordingJavaCompiler recordingJavac(
+            FileConverter converter, List<Processor> processors, ApProvenance provenance) {
+        JavaCompiler javac;
+        if (!processors.isEmpty()) {
+            javac = new ProvenanceJavac(processors, provenance);
+        } else {
+            scala.Option<JavaCompiler> local = sbt.internal.inc.javac.JavaCompiler.local();
+            javac = local.isDefined() ? local.get() : sbt.internal.inc.javac.JavaCompiler.fork(scala.Option.empty());
+        }
         return new RecordingJavaCompiler(javac, converter);
+    }
+
+    private static List<Processor> loadProcessors(List<Path> processorPath) {
+        if (processorPath == null || processorPath.isEmpty()) return List.of();
+        URL[] urls = new URL[processorPath.size()];
+        for (int i = 0; i < processorPath.size(); i++) {
+            try {
+                urls[i] = processorPath.get(i).toUri().toURL();
+            } catch (MalformedURLException e) {
+                throw new IllegalArgumentException("bad processor path entry: " + processorPath.get(i), e);
+            }
+        }
+        URLClassLoader loader = new URLClassLoader(urls, ZincJavaCompiler.class.getClassLoader());
+        List<Processor> processors = new ArrayList<>();
+        for (Processor p : ServiceLoader.load(Processor.class, loader)) processors.add(p);
+        return processors;
     }
 
     private static String[] javacOptions(int release, List<String> extra, Path sourceOutput, List<Path> processorPath) {
@@ -221,6 +275,60 @@ public final class ZincJavaCompiler {
                     case Info -> "NOTE";
                 };
         return new Diag(kind, file, line, 0, p.message());
+    }
+
+    /**
+     * ToolProvider javac that installs wrapped processors so generated-file provenance is recorded.
+     * Used instead of Zinc's {@code JavaCompiler.local} when a processor path is present.
+     */
+    private static final class ProvenanceJavac implements JavaCompiler {
+        private final List<Processor> processors;
+        private final ApProvenance provenance;
+
+        ProvenanceJavac(List<Processor> processors, ApProvenance provenance) {
+            this.processors = processors;
+            this.provenance = provenance;
+        }
+
+        @Override
+        public boolean run(
+                VirtualFile[] sources,
+                String[] options,
+                Output output,
+                IncToolOptions incToolOptions,
+                Reporter reporter,
+                Logger log) {
+            javax.tools.JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+            if (javac == null) throw new IllegalStateException("no system javac (run under a JDK)");
+            DiagnosticCollector<JavaFileObject> diags = new DiagnosticCollector<>();
+            Path classOut = output.getSingleOutputAsPath().orElseThrow();
+            try (StandardJavaFileManager fm =
+                    javac.getStandardFileManager(diags, Locale.ROOT, StandardCharsets.UTF_8)) {
+                Files.createDirectories(classOut);
+                fm.setLocationFromPaths(StandardLocation.CLASS_OUTPUT, List.of(classOut));
+                for (int i = 0; i < options.length - 1; i++) {
+                    if ("-s".equals(options[i])) {
+                        Path srcOut = Path.of(options[i + 1]);
+                        Files.createDirectories(srcOut);
+                        fm.setLocationFromPaths(StandardLocation.SOURCE_OUTPUT, List.of(srcOut));
+                    }
+                }
+                List<Path> srcPaths = new ArrayList<>();
+                for (VirtualFile vf : sources) {
+                    if (vf instanceof xsbti.PathBasedFile pathFile) srcPaths.add(pathFile.toPath());
+                }
+                Iterable<? extends JavaFileObject> units = fm.getJavaFileObjectsFromPaths(srcPaths);
+                JavacTask task = (JavacTask) javac.getTask(null, fm, diags, Arrays.asList(options), null, units);
+                task.setProcessors(provenance.wrap(processors));
+                boolean ok = task.call();
+                sbt.internal.inc.javac.DiagnosticsReporter bridge =
+                        new sbt.internal.inc.javac.DiagnosticsReporter(reporter);
+                for (var d : diags.getDiagnostics()) bridge.report(d);
+                return ok && !bridge.hasErrors();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }
     }
 
     private static final class RecordingJavaCompiler implements JavaCompiler {
