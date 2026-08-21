@@ -337,7 +337,7 @@ Product docs (will be published at [jumpkick.build/documentation](https://jumpki
 | Doc | For |
 |---|---|
 | [**User documentation**](docs/user/README.md) | People and coding agents *using* JumpKick |
-| [**Manual**](docs/user/manual.md) | Short capability map with links into every topic |
+| [**Manual**](docs/user/manual.md) | `jk manual` playbook + website map into every topic |
 | [**Contributor documentation**](docs/contributors/README.md) | People changing JumpKick |
 | [**Contributing**](CONTRIBUTING.md) | Building this repository |
 

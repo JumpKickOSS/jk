@@ -393,6 +393,9 @@ class NewScaffolderTest {
         assertThat(body).contains("target/");
 
         assertThat(body).contains(".jk/");
+        Path agents = tempDir.resolve("AGENTS.md");
+        assertThat(agents).exists();
+        assertThat(Files.readString(agents)).contains("jk manual");
     }
 
     @Test
@@ -426,6 +429,8 @@ class NewScaffolderTest {
         assertThat(mBody).doesNotContain("[scaffold]");
         assertThat(tempDir.resolve("src/main/resources/templates/java/foo/hello.g8/src/main/g8/jk.toml"))
                 .exists();
+        assertThat(tempDir.resolve("src/main/resources/templates/java/foo/hello.g8/src/main/g8/AGENTS.md"))
+                .exists();
 
         // ServiceLoader registration points at the sample class.
         var service = tempDir.resolve("src/main/resources/META-INF/services/cc.jumpkick.plugin.Plugin");
@@ -442,6 +447,8 @@ class NewScaffolderTest {
         assertThat(sBody).contains("PluginCommandSpec.named(\"foo\")");
 
         assertThat(tempDir.resolve("README.md")).exists();
+        assertThat(tempDir.resolve("AGENTS.md")).exists();
+        assertThat(Files.readString(tempDir.resolve("AGENTS.md"))).contains("jk manual");
         // A plugin project has no app sample (no Calc/Main).
         assertThat(tempDir.resolve("src/main/java/com/example/Calc.java")).doesNotExist();
     }

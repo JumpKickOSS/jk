@@ -3,32 +3,40 @@
 How AI coding agents (and scripts) should talk to JumpKick. Humans at a TTY get a terse
 visual CLI; **agents should not scrape it.**
 
+**First:** run `jk manual` (or MCP `jk_manual` / resource `jk://manual`). That is the
+system prompt for JumpKick — models have not been trained on this tool. Projects scaffolded
+by `jk new` include an `AGENTS.md` that says the same thing.
+
 Product stance and event names: [Machine output](machine-output.md). MCP tool reference:
 [MCP](mcp.md). The “fix my failing build” recipe: [Troubleshooting](troubleshooting.md).
 
 ## Default recipe
 
 ```text
+0. Playbook                  jk manual             or MCP jk_manual
 1. Bind the project          MCP jk_bind {dir}     (or just cd and use the CLI)
-2. What happened?            target/jk-results.md  or MCP jk_results
+2. What happened?            target/jk-results.md  (read/grep) or jk results or MCP jk_results
 3. Structured failures       MCP jk_diagnostics    (compiler / test)
-4. Raw step log (optional)   details.jsonl         or MCP jk_details
+4. Raw step log (optional)   jk results --details  or MCP jk_details
 5. Rebuild                   jk build / jk test    or MCP jk_run wait=true
 6. Graph / ETA               jk why / jk explain   or MCP jk_why / jk_explain
 7. Stalled                   jk jobs / jk cancel   or MCP jk_status + jk_job cancel
 ```
 
-Read **`jk-results.md` first**. It is token-cheap and covers compile, test, and package
-outcomes for the whole invocation.
+Read **`target/jk-results.md` first** (same markdown as `jk results`). File tools beat
+shelling out `jk results` when MCP is not connected. The report is token-cheap and covers
+compile, test, and package outcomes for the whole invocation.
 
 ## Channels
 
 | Channel | Use when |
 |---------|----------|
-| **`target/jk-results.md`** | Always, including one-shot CLI agents with no MCP |
-| **MCP tools** | Multi-turn agents; engine already running (`jk engine status` → `mcpUrl`) |
+| **`jk manual`** | Once per session — the JumpKick playbook (MCP `jk_manual` / `jk://manual`) |
+| **`target/jk-results.md`** | Preferred triage when MCP is off: read/grep the file (same markdown as `jk results`) |
+| **`jk results`** | CLI print of that report when you cannot read the file |
+| **MCP `jk_results`** | Multi-turn agents; engine already running (`jk engine status` → `mcpUrl`). Resource: `jk://runs/latest/results` |
 | **`--output json` / `jsonl`** | Live events on stdout (CI, watchers) |
-| **`details.jsonl`** | Exhaustive session log; `tail -F` mid-run |
+| **`jk results --details`** | Full `details.jsonl`. MCP `jk_details` is a budgeted tail (`jk://runs/latest/details`) |
 | **`target/jk-profile.json`** | Timings (Perfetto / `chrome://tracing`), not failure triage |
 
 Do **not** set `TERM=dumb` and scrape wedges. Do **not** use `-v` / `--verbose` as the

@@ -3,23 +3,28 @@
 How to diagnose a failing JumpKick build. This is the page to open when someone says
 **“fix my failing build.”**
 
-## First file: `target/jk-results.md`
+## First look: `jk results`
 
 Every hosted run writes a high-level markdown report of the whole invocation: compile
 errors and warnings, test failures, install / publish / native / image / package outcomes.
 
-```text
-{project}/target/jk-results.md
+```bash
+jk results              # latest jk-results.md
+jk results --details    # that run's details.jsonl
 ```
 
-A copy lives next to that run’s session log:
+On disk:
 
 ```text
+{project}/target/jk-results.md
 ~/.local/state/jk/builds/projects/<key>/runs/<build-number>/jk-results.md
 ```
 
-**Agents:** read `target/jk-results.md` first. Do not scrape the TTY. Do not turn on
-`--verbose` as your primary API.
+The two files are the same report. Prefer the command over `cat` so you do not have to
+know the state-dir path.
+
+**Agents:** run `jk manual` once. Then `target/jk-results.md` (read/grep) or MCP
+`jk_results` first. Do not scrape the TTY. Do not turn on `--verbose` as your primary API.
 
 JUnit XML for CI stays at `target/reports/test-results/`. Failed-test stacks are in
 `jk-results.md` — there is no separate `test-results.md`.
@@ -34,8 +39,8 @@ The engine hosts MCP at `POST {httpUrl}/mcp` (token required). `jk engine status
 Recommended loop:
 
 1. `jk_bind` with the project directory.
-2. `jk_results` (same markdown as `target/jk-results.md`) or `jk_diagnostics` (structured
-   compiler/test failures).
+2. `jk_results` (same markdown as `jk results` / `target/jk-results.md`) or `jk_diagnostics`
+   (structured compiler/test failures).
 3. Edit sources.
 4. `jk_run` with `kind=build` or `kind=test` (`wait` defaults true).
 5. If stalled: `jk_status`, then `jk_job` `cancel`.
@@ -50,7 +55,7 @@ Agent playbook: [Agents](agents.md).
 
 ```bash
 # High-level:
-cat target/jk-results.md
+jk results
 
 # Rebuild / retest:
 jk test

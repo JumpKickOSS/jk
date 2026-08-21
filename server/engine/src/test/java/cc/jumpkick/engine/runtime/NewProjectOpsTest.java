@@ -22,6 +22,8 @@ class NewProjectOpsTest {
         Path root = result.path();
         assertThat(root).isEqualTo(temp.resolve("widget"));
         assertThat(root.resolve("jk.toml")).exists();
+        assertThat(root.resolve("AGENTS.md")).exists();
+        assertThat(Files.readString(root.resolve("AGENTS.md"))).contains("jk manual");
         String toml = Files.readString(root.resolve("jk.toml"));
         assertThat(toml).contains("name     = \"widget\"");
         assertThat(toml).contains("group    = \"com.acme\"");
@@ -146,6 +148,27 @@ class NewProjectOpsTest {
         } finally {
             Files.deleteIfExists(real);
         }
+    }
+
+    @Test
+    void template_apply_seeds_agents_md_when_missing(@TempDir Path temp) throws Exception {
+        Path g8 = temp.resolve("seed-agents.g8");
+        Files.createDirectories(g8.resolve("src/main/g8"));
+        Files.writeString(g8.resolve("default.properties"), "name=demo\n");
+        Files.writeString(g8.resolve("src/main/g8/jk.toml"), "name = \"$name$\"\n");
+        Path parent = temp.resolve("apps");
+        Files.createDirectories(parent);
+        var result = NewProjectOps.create(new NewProjectOps.Request(
+                "widget",
+                parent.toString(),
+                "com.acme",
+                "java",
+                "traditional",
+                g8.toAbsolutePath().toString(),
+                true));
+        assertThat(result.path().resolve("jk.toml")).exists();
+        assertThat(result.path().resolve("AGENTS.md")).exists();
+        assertThat(Files.readString(result.path().resolve("AGENTS.md"))).contains("jk manual");
     }
 
     @Test

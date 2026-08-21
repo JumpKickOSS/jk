@@ -6,26 +6,34 @@ How JumpKick talks to **agents, scripts, and CI**. Humans at a TTY get a terse v
 | Consumer | Default channel |
 |----------|-----------------|
 | Human at a TTY | Terse visual CLI |
-| Human debugging | `target/jk-results.md` first; `-v` / `details.jsonl` if needed |
-| Agents / scripts / CI | **`target/jk-results.md`**, then `--output json`/`jsonl` or `details.jsonl` |
+| Human debugging | `jk results` first; `--details` / `-v` if needed |
+| Agents / scripts / CI | **`jk manual`** once, then **`target/jk-results.md`** / `jk results` (or MCP `jk_results`), then `--output json`/`jsonl` or `jk results --details` |
 | Web dashboard | Engine HTTP + SSE (`/api/events`) |
 | MCP clients | Tools, resources, SSE — same facts, not a second build model |
 
-Playbook: [Agents](agents.md). MCP tools: [MCP](mcp.md). Failures:
-[Troubleshooting](troubleshooting.md).
+JumpKick system prompt: `jk manual` / MCP `jk_manual`. Agent playbook: [Agents](agents.md).
+MCP tools: [MCP](mcp.md). Failures: [Troubleshooting](troubleshooting.md).
 
-## `target/jk-results.md`
+## `jk results`
 
 High-level markdown for the **whole invocation** (compile, test, package, native, image,
 publish). Written so you do not need to tail the TTY.
+
+```bash
+jk results              # print the latest report
+jk results --details    # print that run's details.jsonl
+```
+
+On disk (the command reads the journal copy; `target/` is a latest-copy fallback):
 
 ```text
 target/jk-results.md
 ~/.local/state/jk/builds/projects/<key>/runs/<build-number>/jk-results.md
 ```
 
-The two files are the same report. JUnit XML stays at `target/reports/test-results/`.
-There is no separate `test-results.md`.
+The two markdown files are the same report. JUnit XML stays at `target/reports/test-results/`.
+There is no separate `test-results.md`. MCP: **`jk_results`** and resource
+`jk://runs/latest/results`.
 
 ## Live JSONL
 
@@ -61,7 +69,10 @@ Same event shape as `--output json`. Default **on**; disable with `JK_CLI_DETAIL
 admit, ends with `session-finish`. Includes **jid**, **buildNumber**, and **etaMs** when
 known. Writing is best-effort: a missing project or full disk never fails the user command.
 
-With `-v`, the CLI prints `Details: <path>` and `Results: <target/jk-results.md>`.
+With `-v`, the CLI prints `Details: <path>` and `Results: <target/jk-results.md>` after a
+run. `jk results -v` / `jk results --details -v` print the path on stderr, then the file. MCP
+`jk_details` (resource `jk://runs/latest/details`) is a **budgeted tail**; the CLI flag dumps
+the whole file.
 
 ## Event vocabulary
 

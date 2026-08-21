@@ -15,6 +15,9 @@
       },
       {
         "pattern": "cc/jumpkick/command/wrapper/.*"
+      },
+      {
+        "pattern": "cc/jumpkick/docs/.*"
       }
     ]
   }

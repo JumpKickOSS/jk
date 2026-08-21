@@ -18,10 +18,10 @@ repo), [AGENTS.md](../AGENTS.md) (protocol for agents contributing here).
 
 ## Start here
 
-- **Using JumpKick:** [user/manual.md](user/manual.md) — short product manual with links into
-  every topic. A future `jk` command will print a variant of this page.
+- **Using JumpKick:** `jk manual` (CLI) prints the agent/human playbook. The website map is
+  [user/manual.md](user/manual.md).
 - **Coding agents (one recipe):** [user/troubleshooting.md](user/troubleshooting.md) — fix a
-  failing build (`jk-results.md` or MCP).
+  failing build (`jk results` or MCP `jk_results`).
 - **Contributing to JumpKick:** [contributors/README.md](contributors/README.md).
 
 ## Future HTML
@@ -35,8 +35,9 @@ When these pages are published, keep the markdown filenames as slugs:
 | `docs/user/<topic>.md` | `https://jumpkick.build/documentation/<topic>` |
 | `docs/contributors/<topic>.md` | `https://jumpkick.build/documentation/contributors/<topic>` |
 
-A future `jk` command will print a variant of [user/manual.md](user/manual.md) with the
-same links.
+`jk manual` prints a self-contained playbook (absolute GitHub / jumpkick.build links) so
+coding agents do not have to chase relative paths. [user/manual.md](user/manual.md) is the
+website map into topic pages.
 
 Old paths under `docs/*.md` (for example `docs/guide.md`) are **stubs** that point here, so
 existing `jk://docs/…` ticket links and in-code `docs/architecture.md` citations still resolve.

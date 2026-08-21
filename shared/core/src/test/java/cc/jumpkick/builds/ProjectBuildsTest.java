@@ -59,6 +59,28 @@ class ProjectBuildsTest {
     }
 
     @Test
+    void latestRunFile_skips_newer_runs_missing_the_file(@TempDir Path root) throws Exception {
+        Path proj = Files.createDirectories(root.resolve("proj"));
+        Files.writeString(proj.resolve("jk.toml"), """
+                id = "latest-run-file"
+                group = "g"
+                name = "n"
+                version = "1"
+                """);
+        Path builds = root.resolve("builds");
+        ProjectBuilds.RunDir older = ProjectBuilds.openRun(builds, "g:n", proj);
+        Files.writeString(older.resultsFile(), "older\n");
+        Files.writeString(older.detailsFile(), "{\"type\":\"error\"}\n");
+        ProjectBuilds.RunDir newer = ProjectBuilds.openRun(builds, "g:n", proj);
+        Files.writeString(newer.detailsFile(), "{\"type\":\"task-finish\"}\n");
+        assertThat(ProjectBuilds.latestRunFile(builds, proj, ProjectBuilds.RESULTS))
+                .contains(older.resultsFile());
+        assertThat(ProjectBuilds.latestRunFile(builds, proj, ProjectBuilds.DETAILS))
+                .contains(newer.detailsFile());
+        assertThat(ProjectBuilds.latestRunFile(builds, proj, "../escape")).isEmpty();
+    }
+
+    @Test
     void listRuns_newest_number_first(@TempDir Path root) throws Exception {
         ProjectBuilds.RunDir older = ProjectBuilds.openRun(root, "g:a", root.resolve("a"));
         ProjectBuilds.RunDir newer = ProjectBuilds.openRun(root, "g:a", root.resolve("a"));

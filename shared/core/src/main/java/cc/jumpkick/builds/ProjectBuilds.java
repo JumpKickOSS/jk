@@ -28,6 +28,7 @@ import java.util.stream.Stream;
  *     runs/&lt;build-number&gt;/
  *       record.json
  *       details.jsonl
+ *       jk-results.md
  *       metrics.toml
  * </pre>
  *
@@ -44,6 +45,7 @@ public final class ProjectBuilds {
     public static final String RUNS = "runs";
     public static final String RECORD = "record.json";
     public static final String DETAILS = "details.jsonl";
+    public static final String RESULTS = "jk-results.md";
     public static final String METRICS = "metrics.toml";
 
     private static final ReentrantLock RUN_NUMBER_LOCK = new ReentrantLock();
@@ -374,6 +376,31 @@ public final class ProjectBuilds {
     }
 
     /**
+     * Newest run directory for {@code projectDir} that contains {@code fileName} (e.g. {@link
+     * #RESULTS}, {@link #DETAILS}). Newest-first by build number; in-progress runs without the file
+     * are skipped. {@code fileName} must be a single path segment.
+     */
+    public static Optional<Path> latestRunFile(Path projectDir, String fileName) {
+        return latestRunFile(buildsRoot(), projectDir, fileName);
+    }
+
+    public static Optional<Path> latestRunFile(Path buildsRoot, Path projectDir, String fileName) {
+        if (fileName == null || fileName.isBlank()) return Optional.empty();
+        if (fileName.indexOf('/') >= 0 || fileName.indexOf('\\') >= 0 || fileName.contains("..")) {
+            return Optional.empty();
+        }
+        Path abs = projectDir == null
+                ? Path.of(".").toAbsolutePath().normalize()
+                : projectDir.toAbsolutePath().normalize();
+        Path home = projectHome(buildsRoot, ProjectIdentity.resolve(abs));
+        for (Path run : listRuns(home)) {
+            Path f = run.resolve(fileName);
+            if (Files.isRegularFile(f)) return Optional.of(f);
+        }
+        return Optional.empty();
+    }
+
+    /**
      * Locate {@code runs/<buildNumber>/} under a specific project home.
      */
     public static Optional<Path> findRunDir(Path projectHome, long buildNumber) {
@@ -414,6 +441,10 @@ public final class ProjectBuilds {
     public record RunDir(String key, Path projectHome, Path runDir, long buildNumber, String coord, Path projectPath) {
         public Path detailsFile() {
             return runDir.resolve(DETAILS);
+        }
+
+        public Path resultsFile() {
+            return runDir.resolve(RESULTS);
         }
 
         public Path metricsFile() {

@@ -4,6 +4,7 @@ The resident engine hosts a **Model Context Protocol** server on the same HTTP l
 the [web dashboard](web.md). MCP is **on by default** when HTTP is on.
 
 Agent playbook (when to use which tool): [Agents](agents.md).
+JumpKick system prompt: CLI `jk manual` / MCP **`jk_manual`** / resource **`jk://manual`**.
 Fix a failing build: [Troubleshooting](troubleshooting.md).
 
 ## Connect
@@ -35,6 +36,7 @@ Bind once (`jk_bind`), then omit `dir` on later calls.
 
 | Tool | Role |
 |------|------|
+| **`jk_manual`** | JumpKick playbook (markdown). Same as CLI `jk manual`. Resource: `jk://manual` |
 | **`jk_bind`** | Set default workspace; returns a project card |
 | **`jk_status`** | Engine vitals (pid, version, heap, active jobs) |
 | **`jk_project`** | Project card (coord, java, members, last run) |
@@ -44,7 +46,8 @@ Bind once (`jk_bind`), then omit `dir` on later calls.
 | **`jk_cancel`** | Cancel by **`jid`**, or every live job for a `dir` |
 | **`jk_history`** | Recent runs as **summaries** (filters: dir, projectId, success, kind, limit, next). Avoid `view=full` |
 | **`jk_diagnostics`** | Structured compiler/test failures (`last-fail` default, or a history id) |
-| **`jk_results`** | High-level markdown (`target/jk-results.md`) |
+| **`jk_results`** | High-level markdown (same as CLI `jk results` / `target/jk-results.md`) |
+| **`jk_details`** | Budgeted tail of `details.jsonl` (default last-fail, `error` + `task-finish`, 80 events). CLI `jk results --details` dumps the full file |
 | **`jk_why`** | Why a dependency is on the graph |
 | **`jk_explain`** | Forecast next build |
 | **`jk_outdated`** | Declared deps newer than the lock (read-only) |
@@ -60,7 +63,6 @@ Bind once (`jk_bind`), then omit `dir` on later calls.
 | **`jk_install`** | Install the project into the local Maven repo; `action=list` shows jkx tools (tool installs stay CLI-side) |
 | **`jk_import`** | Import Maven/Gradle into `jk.toml` |
 | **`jk_export`** | Write `maven` \| `gradle` \| `bom` files; IDE files stay `jk ide` |
-| **`jk_details`** | Budgeted tail of `details.jsonl` (default last-fail, `error` + `task-finish`, 80 events) |
 | **`jk_graph`** | Compact module/dep graph (transitive expansion opt-in and budget-capped) |
 
 Start with **`jk_results`** or **`jk_diagnostics`**. Do not dump full journal records.
@@ -69,10 +71,12 @@ Start with **`jk_results`** or **`jk_diagnostics`**. Do not dump full journal re
 
 | URI | Contents |
 |-----|----------|
+| `jk://manual` | JumpKick playbook (same as `jk_manual` / CLI `jk manual`) |
 | `jk://session` | Bound dir + engine status |
 | `jk://project` | Project card (needs `jk_bind`) |
 | `jk://runs/latest` | Latest history summary |
-| `jk://runs/latest/results` | Latest `jk-results.md` |
+| `jk://runs/latest/results` | Latest `jk-results.md` (same as `jk_results`) |
+| `jk://runs/latest/details` | Budgeted tail of latest `details.jsonl` (same as `jk_details`) |
 | `jk://disk` | Cache and store usage |
 | `jk://config` | Effective machine config |
 
@@ -80,6 +84,7 @@ Start with **`jk_results`** or **`jk_diagnostics`**. Do not dump full journal re
 
 | Name | Intent |
 |------|--------|
+| `learn-jumpkick` | `jk_manual` then follow that playbook (not Maven/Gradle) |
 | `fix-failing-build` | `jk_results` → edit → `jk_run kind=build wait=true` |
 | `recover-disk` | `jk_disk usage` then clean/nuke with confirm |
 | `setup-ci` | `jk_config apply_preset=ci` |

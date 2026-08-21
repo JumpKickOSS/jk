@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.runtime;
 
 import cc.jumpkick.config.JkTemplatesConfig;
+import cc.jumpkick.docs.JkManual;
 import cc.jumpkick.giter8.Giter8Apply;
 import cc.jumpkick.giter8.Giter8Maven;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
@@ -185,7 +186,9 @@ public final class NewProjectOps {
             Path extracted = null;
             String langName = prep.lang() == null ? null : prep.lang().hoconValue();
             var spec = resolveIndexed(prep.template(), langName, prep.parent());
-            if (spec.isPresent() && cc.jumpkick.giter8.TemplateSpec.SOURCE_PLUGIN.equals(spec.get().source())) {
+            if (spec.isPresent()
+                    && cc.jumpkick.giter8.TemplateSpec.SOURCE_PLUGIN.equals(
+                            spec.get().source())) {
                 var s = spec.get();
                 extracted = cc.jumpkick.giter8.PluginTemplates.materialize(
                         s.pluginId(), s.language(), s.framework(), s.name());
@@ -216,6 +219,9 @@ public final class NewProjectOps {
             }
             if (!Files.isRegularFile(target.resolve("jk.toml"))) {
                 throw new IOException("template did not produce jk.toml: " + prep.template());
+            }
+            if (req.standalone()) {
+                JkManual.ensureAgentsGuide(target);
             }
             return;
         }
@@ -360,7 +366,8 @@ public final class NewProjectOps {
             if (Files.isDirectory(rel) && isTemplateRoot(rel)) return rel;
         }
 
-        if (ref.matches("[a-z][a-z0-9-]*") || ref.matches("[a-z][a-z0-9-]*/[a-z][a-z0-9-]*")
+        if (ref.matches("[a-z][a-z0-9-]*")
+                || ref.matches("[a-z][a-z0-9-]*/[a-z][a-z0-9-]*")
                 || ref.matches("[a-z]+/[a-z][a-z0-9-]*/[a-z][a-z0-9-]*")) {
             Optional<Path> indexed = indexedRoot(ref, lang, cwd);
             if (indexed.isPresent()) return indexed.get();

@@ -18,7 +18,7 @@ tag excludes. Explicit `--include-tags` / `--exclude-tags` still compose on top.
 Default-suite paths depend on [layout](layout.md) (`src/test/…` vs `test/src/`). Named
 suites are discovered when those directories exist.
 
-When tests fail: read `target/jk-results.md` — [Troubleshooting](troubleshooting.md).
+When tests fail: `jk results` — [Troubleshooting](troubleshooting.md).
 
 ## Tag filters
 

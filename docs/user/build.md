@@ -12,7 +12,7 @@ jk clean --force        # also invalidate this project's action-cache entries
 `jk build` uses [`jk-lock.toml`](lockfile.md) and does **not** re-resolve. Packaging
 shapes: [Packaging](packaging.md). Tests that run as part of build: [Test](test.md).
 
-When something fails, read `target/jk-results.md` — [Troubleshooting](troubleshooting.md).
+When something fails, run `jk results` — [Troubleshooting](troubleshooting.md).
 
 ## What gets skipped
 

@@ -14,10 +14,13 @@ import cc.jumpkick.runtime.BuildMetrics;
 import cc.jumpkick.runtime.CacheBenefit;
 import cc.jumpkick.runtime.ChromeTimeline;
 import cc.jumpkick.runtime.ModuleOutcome;
+import cc.jumpkick.test.MarkdownTestReport;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -127,31 +130,71 @@ public final class JournalWriter {
             a.flushTimeline().ifPresent(path -> {
                 if (writer != null) EngineServer.sendQuiet(writer, ProtoJobs.timeline(path.toString()));
             });
-            if (!historyConfig.enabled()) return;
-            Path dir = Path.of(a.dir());
-            BuildJournal.Snapshot snapshot = new BuildJournal.Snapshot(
-                    dir.resolve("target").resolve("reports").resolve("test-results.md"),
-                    cc.jumpkick.lock.LockPaths.lockFile(dir),
-                    a.diagnosticsText());
+            List<MarkdownTestReport.ModuleRun> tests = takeTests(a.dir());
             if (record.synthetic()) {
-                String jid = a.journalId();
-                if (jid != null && !jid.isBlank()) {
-                    journal.delete(jid, record.coord(), record.dir());
+                if (historyConfig.enabled()) {
+                    String jid = a.journalId();
+                    if (jid != null && !jid.isBlank()) {
+                        journal.delete(jid, record.coord(), record.dir());
+                    }
+                    journal.purgeProject(record.coord(), record.dir());
                 }
-                journal.purgeProject(record.coord(), record.dir());
                 return;
             }
-            String jid = a.journalId();
-            if (jid != null && !jid.isBlank()) {
-                if (!journal.complete(jid, record, snapshot)) {
-                    journal.append(record, snapshot);
+            Path runDir = null;
+            if (historyConfig.enabled()) {
+                Path dir = Path.of(a.dir());
+                BuildJournal.Snapshot snapshot =
+                        new BuildJournal.Snapshot(null, cc.jumpkick.lock.LockPaths.lockFile(dir), a.diagnosticsText());
+                String jid = a.journalId();
+                String locator;
+                if (jid != null && !jid.isBlank()) {
+                    locator = journal.complete(jid, record, snapshot) ? jid : journal.append(record, snapshot);
+                } else {
+                    locator = journal.append(record, snapshot);
                 }
-            } else {
-                journal.append(record, snapshot);
+                if (locator != null && !locator.isBlank()) {
+                    runDir = journal.runDir(locator).orElse(null);
+                }
+            }
+            Path latest = writesProjectTarget(record.kind()) ? latestPath(a.dir()) : null;
+            try {
+                JkResultsMarkdown.write(record, runDir, latest, tests);
+            } catch (IOException | RuntimeException e) {
+                log.accept("jk engine: jk-results.md write failed: " + e);
             }
         } catch (RuntimeException e) {
             log.accept("jk engine: build journal append failed: " + e);
         }
+    }
+
+    static List<MarkdownTestReport.ModuleRun> takeTests(String dir) {
+        if (dir == null || dir.isBlank()) return List.of();
+        try {
+            return MarkdownTestReport.takeUnder(Path.of(dir));
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+    }
+
+    /** {@code target/jk-results.md} at the invocation root. */
+    static @Nullable Path latestPath(String dir) {
+        if (dir == null || dir.isBlank()) return null;
+        try {
+            return Path.of(dir).resolve("target").resolve(JkResultsMarkdown.FILE_NAME);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Maintenance kinds delete {@code target/}; writing the latest report there would recreate the
+     * tree.
+     */
+    static boolean writesProjectTarget(String kind) {
+        if (kind == null || kind.isBlank()) return true;
+        String k = kind.trim().toLowerCase(Locale.ROOT);
+        return !"clean".equals(k) && !"cache".equals(k);
     }
 
     private CacheBenefit.@Nullable Result computeBenefit(BuildAccumulator a, long millis) {

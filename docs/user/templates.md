@@ -14,6 +14,9 @@ jk init -t hello
 `-t` / `--template` is exclusive with `--plugin`. Blank `jk new` (no `-t`) is the wizard /
 flag scaffolder for a plain library or `--executable` app.
 
+Standalone scaffolds write **`AGENTS.md`** (unless the template already shipped one)
+pointing coding agents at `jk manual`. Workspace modules skip it — the root owns the file.
+
 `--lang` defaults to **java**. For a `framework/name` ref, a miss on that language walks
 java → kotlin → groovy until a hit (`jk new -t grails/hello` lands on groovy).
 

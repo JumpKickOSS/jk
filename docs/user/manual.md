@@ -1,15 +1,22 @@
 # JumpKick manual
 
-A short map of the product. Use this page to learn what JumpKick can do, then follow a
-link when you need flags, `jk.toml` keys, or limitations.
+The live playbook is **`jk manual`**. It prints markdown for coding agents and people who
+have never used JumpKick: what the tool is, what not to do (Maven/Gradle habits), everyday
+CLI and MCP recipes, triage via `target/jk-results.md`, and links into the rest of these
+pages.
 
-JumpKick (CLI: **`jk`**) is a lockfile-first build tool for **Java, Kotlin, and Groovy**.
-You declare a project in TOML. JumpKick writes a real lockfile. Builds skip work the cache
-can prove is already done. Coordinates come from Maven Central (and friends) — not a new
-package ecosystem.
+```bash
+jk manual
+```
 
-This page is the intended source for a future `jk` command that prints a high-level manual
-for people and coding agents.
+Same text on the engine MCP server: tool **`jk_manual`**, resource **`jk://manual`**.
+
+New projects (`jk new` / `jk init` / templates) get an `AGENTS.md` that tells the next
+agent to run that command.
+
+This page is the **website map**. The command output is self-contained (absolute links) so
+an agent does not have to chase relative paths. Follow a topic link below for flags,
+`jk.toml` keys, and limitations.
 
 **Full index:** [README](README.md). **First project:** [Getting started](getting-started.md).
 
@@ -19,12 +26,14 @@ for people and coding agents.
 
 Do not scrape the terminal UI. JumpKick writes a high-level report on every hosted run.
 
-1. **Read** `{project}/target/jk-results.md` (compile errors, test failures, package outcomes).
-2. If MCP is configured, prefer **`jk_results`** / **`jk_diagnostics`** over files; bind first
-   with **`jk_bind`**. See [Agents](agents.md) and [MCP](mcp.md).
-3. Rebuild with `jk build` / `jk test`, or MCP `jk_run`.
-4. Need the live event stream? `--output json` / `jsonl`, or `details.jsonl` next to the
-   journal copy of the report. See [Machine output](machine-output.md).
+1. Run **`jk manual`** (or MCP **`jk_manual`**) once per session.
+2. **Read** `target/jk-results.md` with your file/grep tools after a build or test (same
+   markdown as `jk results`). Prefer the file over shelling out.
+3. If MCP is configured, prefer **`jk_results`** / **`jk_diagnostics`** over files; bind
+   first with **`jk_bind`**. See [Agents](agents.md) and [MCP](mcp.md).
+4. Rebuild with `jk build` / `jk test`, or MCP `jk_run`. Format after edits: `jk format`.
+5. Need the live event stream? `--output json` / `jsonl`, or `jk results --details`.
+   See [Machine output](machine-output.md).
 
 **Fix a failing build** is spelled out in [Troubleshooting](troubleshooting.md).
 
@@ -110,6 +119,7 @@ Details: [Migration](migration.md).
 | `jk.toml` | Project or workspace manifest |
 | `jk-lock.toml` | Locked graph + checksums — **commit this** |
 | `jk-libs.toml` | Optional workspace catalog (short name → `group:artifact`) |
+| `AGENTS.md` | Points coding agents at `jk manual` |
 | `target/` | Build outputs (gitignored). Report: `target/jk-results.md` |
 | `.jdk-version` | Optional JDK pin |
 | `~/.config/jk/config.toml` | Machine config |
@@ -121,6 +131,7 @@ Layout details: [Install](install.md), [Projects](projects.md).
 ## Commands (canonical)
 
 ```bash
+jk manual
 jk new | init | add | remove
 jk lock | sync | outdated | update | tree | why
 jk compile | build | test | run | watch | dev | jshell
@@ -129,7 +140,7 @@ jk assemble | native | image | publish | install | verify
 jk audit | deny
 jk jdk … | tool … | library …
 jk import | export | mvn | gradle | ide | bsp
-jk engine status | web | jobs | cancel
+jk engine status | web | jobs | cancel | results
 jk cache … | storage … | clean | doctor
 ```
 

@@ -3,6 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.builds.ProjectBuilds;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -233,17 +234,20 @@ class BuildJournalTest {
 
     @Test
     void snapshot_files_are_copied() throws Exception {
-        Path md = dir.resolve("src-test-results.md");
-        Files.writeString(md, "# Test Results\nall good");
+        Path md = dir.resolve("src-jk-results.md");
+        Files.writeString(md, "# jk results — OK\nall good");
         Path lock = dir.resolve("src-jk-lock.toml");
         Files.writeString(lock, "version = 1");
         BuildJournal j = new BuildJournal(dir);
         String id = j.append(record(1_700_000_000_000L, true, "g:a"), new BuildJournal.Snapshot(md, lock, "boom\n"));
-        assertThat(j.artifact(id, BuildJournal.TEST_RESULTS_MD)).isPresent();
+        assertThat(j.artifact(id, BuildJournal.RESULTS_MD)).isPresent();
         assertThat(j.artifact(id, BuildJournal.LOCKFILE)).isPresent();
         assertThat(j.artifact(id, BuildJournal.DIAGNOSTICS_TXT)).isPresent();
-        assertThat(Files.readString(j.artifact(id, BuildJournal.TEST_RESULTS_MD).get()))
+        assertThat(Files.readString(j.artifact(id, BuildJournal.RESULTS_MD).get()))
                 .contains("all good");
+        Path details = j.runDir(id).orElseThrow().resolve(ProjectBuilds.DETAILS);
+        Files.writeString(details, "{\"type\":\"error\"}\n");
+        assertThat(j.artifact(id, ProjectBuilds.DETAILS)).contains(details);
     }
 
     @Test

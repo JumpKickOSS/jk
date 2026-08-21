@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
@@ -72,6 +73,10 @@ class McpHandlerTest {
         Map<String, Object> caps = (Map<String, Object>) result.get("capabilities");
         assertThat(caps).containsKey("experimental");
         assertThat(String.valueOf(result.get("instructions"))).contains("text/event-stream");
+        assertThat(String.valueOf(result.get("instructions"))).contains("jk_results");
+        assertThat(String.valueOf(result.get("instructions"))).contains("jk results");
+        assertThat(String.valueOf(result.get("instructions"))).contains("jk_manual");
+        assertThat(String.valueOf(result.get("instructions"))).contains("jk manual");
     }
 
     @Test
@@ -298,7 +303,16 @@ class McpHandlerTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> tools = (List<Map<String, Object>>) result.get("tools");
         assertThat(tools.stream().map(t -> t.get("name")).toList())
-                .contains("jk_new", "jk_publish", "jk_install", "jk_import", "jk_export", "jk_details", "jk_graph");
+                .contains(
+                        "jk_manual",
+                        "jk_new",
+                        "jk_publish",
+                        "jk_install",
+                        "jk_import",
+                        "jk_export",
+                        "jk_results",
+                        "jk_details",
+                        "jk_graph");
     }
 
     @Test
@@ -346,6 +360,121 @@ class McpHandlerTest {
                 + "\"params\":{\"name\":\"jk_details\",\"arguments\":{}}}");
         // The fixture history has a finished row but no transcript on disk — still a tool error.
         assertThat(body).contains("no details.jsonl");
+        assertThat(body).contains("\"isError\":true");
+    }
+
+    @Test
+    void results_reads_sibling_markdown(@org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
+        Path run = dir.resolve("runs").resolve("1");
+        Files.createDirectories(run);
+        Files.writeString(run.resolve("jk-results.md"), "# jk results — FAIL\ncompile boom\n");
+        Files.writeString(run.resolve("details.jsonl"), "{}\n");
+        String rec = "{\"id\":\"run-1\",\"kind\":\"build\",\"dir\":\"" + dir
+                + "\",\"success\":false,\"exitCode\":1,\"running\":false}";
+        McpHandler h = new McpHandler(
+                () -> new StatusSnapshot(
+                        "0.12.0",
+                        1L,
+                        System.currentTimeMillis() - 5_000,
+                        0,
+                        0,
+                        1L << 20,
+                        2L << 20,
+                        256L << 20,
+                        -1L,
+                        0,
+                        8,
+                        16L << 30),
+                jobs,
+                d -> Map.of(),
+                () -> List.of(rec),
+                "0.12.0");
+        h.detailsFile(id -> Optional.of(run.resolve("details.jsonl")));
+        String body = h.handleBody("{\"jsonrpc\":\"2.0\",\"id\":28,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_results\",\"arguments\":{}}}");
+        assertThat(body).contains("jk results — FAIL");
+        assertThat(body).contains("compile boom");
+        assertThat(body).contains("\"type\":\"results\"");
+        assertThat(body).doesNotContain("\"isError\":true");
+    }
+
+    @Test
+    void results_and_details_are_advertised_as_read_only() {
+        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":30,\"method\":\"tools/list\"}");
+        assertThat(body).contains("jk_results");
+        assertThat(body).contains("jk_details");
+        assertThat(body).contains("jk_manual");
+        assertThat(body).contains("jk results");
+        assertThat(body).contains("jk results --details");
+        assertThat(body).contains("jk://runs/latest/results");
+        assertThat(body).contains("jk://runs/latest/details");
+        assertThat(body).contains("jk://manual");
+        assertThat(body).contains("readOnlyHint");
+        String resources = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":31,\"method\":\"resources/list\"}");
+        assertThat(resources).contains("jk://runs/latest/results");
+        assertThat(resources).contains("jk://runs/latest/details");
+        assertThat(resources).contains("jk://manual");
+        assertThat(resources).contains("text/markdown");
+    }
+
+    @Test
+    void details_resource_returns_budgeted_json(@org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
+        Path run = dir.resolve("runs").resolve("1");
+        Files.createDirectories(run);
+        Files.writeString(
+                run.resolve("details.jsonl"),
+                "{\"schema\":1,\"type\":\"error\",\"message\":\"boom\"}\n"
+                        + "{\"schema\":1,\"type\":\"task-finish\",\"task\":\"compile\"}\n");
+        String rec = "{\"id\":\"run-1\",\"kind\":\"build\",\"dir\":\"" + dir
+                + "\",\"success\":false,\"exitCode\":1,\"running\":false}";
+        McpHandler h = new McpHandler(
+                () -> new StatusSnapshot(
+                        "0.12.0",
+                        1L,
+                        System.currentTimeMillis() - 5_000,
+                        0,
+                        0,
+                        1L << 20,
+                        2L << 20,
+                        256L << 20,
+                        -1L,
+                        0,
+                        8,
+                        16L << 30),
+                jobs,
+                d -> Map.of(),
+                () -> List.of(rec),
+                "0.12.0");
+        h.detailsFile(id -> Optional.of(run.resolve("details.jsonl")));
+        String body = h.handleBody("{\"jsonrpc\":\"2.0\",\"id\":32,\"method\":\"resources/read\","
+                + "\"params\":{\"uri\":\"jk://runs/latest/details\"}}");
+        assertThat(body).contains("boom");
+        assertThat(body).contains("task-finish");
+        assertThat(body).contains("jk://runs/latest/details");
+        assertThat(body).doesNotContain("-32602");
+    }
+
+    @Test
+    void manual_returns_the_playbook_markdown() {
+        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":32,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_manual\",\"arguments\":{}}}");
+        assertThat(body).contains("JumpKick playbook");
+        assertThat(body).contains("jk.toml");
+        assertThat(body).contains("\"type\":\"manual\"");
+        assertThat(body).contains("jk://manual");
+        assertThat(body).doesNotContain("\"isError\":true");
+        String resource = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":33,\"method\":\"resources/read\","
+                + "\"params\":{\"uri\":\"jk://manual\"}}");
+        assertThat(resource).contains("text/markdown");
+        assertThat(resource).contains("target/jk-results.md");
+        assertThat(resource).contains("jk://manual");
+    }
+
+    @Test
+    void results_with_no_file_is_a_tool_error() {
+        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":29,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_results\",\"arguments\":{}}}");
+        assertThat(body).contains("no jk-results.md");
         assertThat(body).contains("\"isError\":true");
     }
 

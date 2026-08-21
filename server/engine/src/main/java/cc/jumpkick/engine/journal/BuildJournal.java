@@ -29,7 +29,8 @@ import java.util.stream.Stream;
 /**
  * Best-effort build history under
  * {@code ~/.local/state/jk/builds/projects/&lt;key&gt;/runs/&lt;build-number&gt;/} with
- * {@code record.json}, {@code details.jsonl}, {@code metrics.toml}, and optional snapshots.
+ * {@code record.json}, {@code details.jsonl}, {@code jk-results.md}, {@code metrics.toml}, and
+ * optional snapshots.
  *
  * <p>Directory name is the project build number (e.g. {@code 27}). {@link BuildRecord#id()} is a
  * UTC timestamp stamp for the run, not a path key. {@link #begin}/{@link #complete} locators are
@@ -37,6 +38,9 @@ import java.util.stream.Stream;
  */
 public final class BuildJournal {
 
+    public static final String RESULTS_MD = ProjectBuilds.RESULTS;
+
+    /** Whitelist name for journal rows that still carry a test-only markdown snapshot. */
     public static final String TEST_RESULTS_MD = "test-results.md";
 
     public static final String LOCKFILE = "jk-lock.toml";
@@ -85,7 +89,11 @@ public final class BuildJournal {
         return runDir(coord, projectDir, buildNumber).map(d -> d.resolve(ProjectBuilds.DETAILS));
     }
 
-    public record Snapshot(Path testResultsMd, Path lockfile, String diagnosticsText) {
+    /**
+     * Optional files copied into the run dir. {@code resultsMd} is the {@code jk-results.md} source
+     * when the caller already materialised it.
+     */
+    public record Snapshot(Path resultsMd, Path lockfile, String diagnosticsText) {
         public static final Snapshot NONE = new Snapshot(null, null, null);
     }
 
@@ -202,11 +210,9 @@ public final class BuildJournal {
             }
             METRICS_LOCKS.remove(target.toAbsolutePath().normalize());
             if (snapshot != null) {
-                if (snapshot.testResultsMd() != null && Files.isRegularFile(tmp.resolve(TEST_RESULTS_MD))) {
+                if (snapshot.resultsMd() != null && Files.isRegularFile(tmp.resolve(RESULTS_MD))) {
                     Files.move(
-                            tmp.resolve(TEST_RESULTS_MD),
-                            target.resolve(TEST_RESULTS_MD),
-                            StandardCopyOption.REPLACE_EXISTING);
+                            tmp.resolve(RESULTS_MD), target.resolve(RESULTS_MD), StandardCopyOption.REPLACE_EXISTING);
                 }
                 if (snapshot.lockfile() != null && Files.isRegularFile(tmp.resolve(LOCKFILE))) {
                     Files.move(tmp.resolve(LOCKFILE), target.resolve(LOCKFILE), StandardCopyOption.REPLACE_EXISTING);
@@ -486,8 +492,8 @@ public final class BuildJournal {
 
     private static void writeSnapshot(Path dir, Snapshot s) throws IOException {
         if (s == null) return;
-        if (s.testResultsMd() != null && Files.isRegularFile(s.testResultsMd())) {
-            Files.copy(s.testResultsMd(), dir.resolve(TEST_RESULTS_MD), StandardCopyOption.REPLACE_EXISTING);
+        if (s.resultsMd() != null && Files.isRegularFile(s.resultsMd())) {
+            Files.copy(s.resultsMd(), dir.resolve(RESULTS_MD), StandardCopyOption.REPLACE_EXISTING);
         }
         if (s.lockfile() != null && Files.isRegularFile(s.lockfile())) {
             Files.copy(s.lockfile(), dir.resolve(LOCKFILE), StandardCopyOption.REPLACE_EXISTING);
@@ -828,7 +834,11 @@ public final class BuildJournal {
     }
 
     private static boolean isArtifactName(String name) {
-        return TEST_RESULTS_MD.equals(name) || LOCKFILE.equals(name) || DIAGNOSTICS_TXT.equals(name);
+        return RESULTS_MD.equals(name)
+                || TEST_RESULTS_MD.equals(name)
+                || ProjectBuilds.DETAILS.equals(name)
+                || LOCKFILE.equals(name)
+                || DIAGNOSTICS_TXT.equals(name);
     }
 
     private static boolean validLocator(String locator) {

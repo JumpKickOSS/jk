@@ -40,6 +40,7 @@ import cc.jumpkick.command.JdkCommand;
 import cc.jumpkick.command.JshellCommand;
 import cc.jumpkick.command.LibraryCommand;
 import cc.jumpkick.command.LockCommand;
+import cc.jumpkick.command.ManualCommand;
 import cc.jumpkick.command.MvnCommand;
 import cc.jumpkick.command.NativeCommand;
 import cc.jumpkick.command.NewCommand;
@@ -47,6 +48,7 @@ import cc.jumpkick.command.OutdatedCommand;
 import cc.jumpkick.command.PublishCommand;
 import cc.jumpkick.command.RemoveCommand;
 import cc.jumpkick.command.RepoCommand;
+import cc.jumpkick.command.ResultsCommand;
 import cc.jumpkick.command.SelectiveCommand;
 import cc.jumpkick.command.SelfCommand;
 import cc.jumpkick.command.ShellCommand;
@@ -105,6 +107,8 @@ public final class CommandDispatch {
             new WrapperCommand(),
             new HistoryCommand(),
             new ActivityCommand(), // name() = jobs; activity/act aliases
+            new ResultsCommand(),
+            new ManualCommand(),
             new CancelCommand(),
             new StatusCommand(),
             new TreeCommand(),
