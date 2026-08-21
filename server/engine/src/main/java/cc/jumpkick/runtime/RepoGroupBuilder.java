@@ -43,9 +43,12 @@ public final class RepoGroupBuilder {
     /**
      * Built-in remotes when the project declares none (and always appended if missing). JumpKick
      * is first so exclusive groups take effect before Central can confuse first-party coords.
+     * A method, not a constant: the official-repo URL override is read per call so a redirected
+     * deployment or hermetic test governs every resolution path.
      */
-    static final List<RepositorySpec> DEFAULT_REMOTE_REPOS =
-            List.of(RepositorySpec.JUMPKICK, RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN);
+    static List<RepositorySpec> defaultRemoteRepos() {
+        return List.of(RepositorySpec.officialJumpKick(), RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN);
+    }
 
     private RepoGroupBuilder() {}
 
@@ -184,7 +187,7 @@ public final class RepoGroupBuilder {
      */
     static List<RepositorySpec> effectiveRepos(Map<String, RepositorySpec> byName) {
         if (byName.isEmpty()) {
-            return DEFAULT_REMOTE_REPOS;
+            return defaultRemoteRepos();
         }
         List<RepositorySpec> effective = new ArrayList<>();
         // Prefer an explicit project "jumpkick" entry; otherwise prepend the official one so
@@ -192,14 +195,14 @@ public final class RepoGroupBuilder {
         if (byName.containsKey(RepositorySpec.JUMPKICK.name())) {
             effective.add(byName.get(RepositorySpec.JUMPKICK.name()));
         } else {
-            effective.add(RepositorySpec.JUMPKICK);
+            effective.add(RepositorySpec.officialJumpKick());
         }
         for (RepositorySpec s : byName.values()) {
             if (!RepositorySpec.JUMPKICK.name().equals(s.name())) {
                 effective.add(s);
             }
         }
-        for (RepositorySpec builtin : DEFAULT_REMOTE_REPOS) {
+        for (RepositorySpec builtin : defaultRemoteRepos()) {
             if (!byName.containsKey(builtin.name())
                     && !RepositorySpec.JUMPKICK.name().equals(builtin.name())) {
                 effective.add(builtin);

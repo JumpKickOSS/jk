@@ -98,11 +98,17 @@ public final class PomRuntimeClasspath {
         Http http = new Http();
         MavenRepo local =
                 new MavenRepo("local", storeRoot.resolve("repos/local").toUri(), http, cas);
-        MavenRepo jumpkick = new MavenRepo("jumpkick", RepositorySpec.JUMPKICK.url(), http, cas);
+        // Launch-time resolution is overwhelmingly store-resident, but for unclaimed groups the
+        // jumpkick specialist's warm mirror is only consulted at last resort — after central's
+        // network leg. Prepending it as a priority store keeps warm forks off the network
+        // entirely (and hermetic tests hermetic); a true miss still walks the remotes below.
+        MavenRepo jumpkickStore =
+                new MavenRepo("jumpkick", storeRoot.resolve("repos/jumpkick").toUri(), http, cas);
+        MavenRepo jumpkick = new MavenRepo("jumpkick", RepositorySpec.officialUrl(), http, cas);
         MavenRepo central = new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
         RepoGroup remotes =
                 new RepoGroup(List.of(jumpkick, central), List.of(RepositorySpec.JUMPKICK.groups(), List.of()));
-        return remotes.withReposPrepended(List.of(local));
+        return remotes.withReposPrepended(List.of(local, jumpkickStore));
     }
 
     /** File-only {@code local} / {@code jumpkick} / {@code central} under {@code storeRoot}. */
