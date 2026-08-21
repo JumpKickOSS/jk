@@ -328,14 +328,10 @@ public final class BuildLayout {
         return reportsDir().resolve("test-results");
     }
 
-    /**
-     * {@code <workspace>/target/jk-results.md} — latest run report (compile, tests, install,
-     * publish, native, image, …). One file per invocation at the workspace (or standalone project)
-     * root, not per member.
-     */
-    public Path jkResults() {
-        return workspaceRoot.resolve("target").resolve("jk-results.md");
-    }
+    // Note: target/jk-results.md deliberately has no helper here. The real contract is
+    // INVOCATION-root, not workspace-root — the engine writes it at the build request's dir
+    // (JournalWriter.latestPath) and the CLI reads it at its own projectDir — and this class
+    // only knows the workspace root, so a helper here would encode the wrong anchor.
 
     // ---- Final artifacts -------------------------------------------------------
 

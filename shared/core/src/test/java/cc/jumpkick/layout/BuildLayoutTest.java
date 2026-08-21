@@ -54,7 +54,6 @@ class BuildLayoutTest {
         assertThat(layout.generatedSourcesDir("immutables"))
                 .isEqualTo(dir.resolve("target/generated/sources/immutables/main"));
         assertThat(layout.testResultsDir()).isEqualTo(dir.resolve("target/reports/test-results"));
-        assertThat(layout.jkResults()).isEqualTo(dir.resolve("target/jk-results.md"));
     }
 
     @Test
@@ -163,7 +162,6 @@ class BuildLayoutTest {
         // Workspace member → outputs under workspace/target/core/
         assertThat(layout.mainJar()).isEqualTo(workspace.resolve("target/core/lib/core-1.0.0.jar"));
         assertThat(layout.classesDir()).isEqualTo(workspace.resolve("target/core/classes/main"));
-        assertThat(layout.jkResults()).isEqualTo(workspace.resolve("target/jk-results.md"));
     }
 
     @Test
