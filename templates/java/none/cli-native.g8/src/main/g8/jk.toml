@@ -1,0 +1,13 @@
+group = "$organization$"
+name = "$name$"
+version = "0.1.0"
+java = $java$
+
+[application]
+main = "$package$.Main"
+
+[dependencies]
+jline = "latest"
+
+[test-dependencies]
+junit-jupiter = "latest"

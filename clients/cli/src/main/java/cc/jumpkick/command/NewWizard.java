@@ -7,6 +7,7 @@ import cc.jumpkick.cli.tui.Answers;
 import cc.jumpkick.cli.tui.Choice;
 import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.cli.tui.WizardStep;
+import cc.jumpkick.scaffold.NewInputs;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -127,7 +128,7 @@ public final class NewWizard {
                     .orElse(defaultJdkId);
         }
 
-        // Placement only — jk.toml has no layout key; the tree on disk is the convention.
+        // Placement only — scaffolds never write layout=; the tree on disk is the convention.
         var layoutStep = WizardStep.RadioStep.vertical("layout", "Project layout:")
                 .choice("traditional", "Traditional", "(./src/main/java, ./src/test/java, etc.)")
                 .choice("simple", "Simple", "(./src, ./test/src, etc.)")

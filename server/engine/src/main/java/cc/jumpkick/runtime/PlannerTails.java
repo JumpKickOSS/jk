@@ -253,7 +253,7 @@ public final class PlannerTails {
                     Path moduleRoot = layout.moduleRoot();
                     Path sourcesJar = layout.sourcesJar();
                     // Source roots: simple layout uses src/, traditional uses src/main/java + src/main/kotlin.
-                    boolean compact = CompileSupport.isSimpleLayout(moduleRoot);
+                    boolean compact = CompileSupport.isSimpleLayout(project.project(), moduleRoot);
                     List<Path> sourceRoots = compact
                             ? List.of(moduleRoot.resolve("src"))
                             : List.of(moduleRoot.resolve("src/main/java"), moduleRoot.resolve("src/main/kotlin"));

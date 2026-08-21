@@ -12,7 +12,7 @@ import java.util.stream.Stream;
 
 /**
  * Engine JVM entrypoint ({@code:engine}). Plain Java — never a native image. Spawned by the slim
- * client as {@code java -cp jk-engine.jar cc.jumpkick.engine.EngineMain}. Not a client: no CLI
+ * client as {@code java -cp lib/jk-engine/<jar> cc.jumpkick.engine.EngineMain}. Not a client: no CLI
  * command tree, no TUI.
  */
 public final class EngineMain {
@@ -72,8 +72,16 @@ public final class EngineMain {
         TerminalSignals.ignoreInterruptAndHangup();
         try {
             EnginePaths.Paths paths = EnginePaths.current();
+            cc.jumpkick.engine.plugin.BuiltInPluginJars.registerMissingBuiltInFetcher();
             cc.jumpkick.engine.plugin.BuiltInPluginJars.install();
-            cc.jumpkick.engine.plugin.BuiltInPluginJars.installUserConfig();
+            try {
+                cc.jumpkick.engine.plugin.BuiltInPluginJars.installUserConfig();
+            } catch (RuntimeException badConfig) {
+                // A user-config plugin pin (or config parse) error is explicit user intent we
+                // cannot honor — refuse to start with the message, never a raw stack.
+                System.err.println("jk engine: " + badConfig.getMessage());
+                return 1;
+            }
             cc.jumpkick.config.JkEngineConfig config = cc.jumpkick.config.JkEngineConfig.resolve();
             cc.jumpkick.config.JkHttpConfig httpConfig =
                     cc.jumpkick.config.JkHttpConfig.resolve().orElse(null);

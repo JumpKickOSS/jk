@@ -1,5 +1,6 @@
 # Built-in Quarkus build plugin — declarative layer.
-# Worker code (augment + fast-jar packager) lands in the jar; BOM + scaffold are pure data.
+# Worker code (augment + fast-jar packager) lands in the jar; BOM is pure data.
+# Giter8 trees: src/main/resources/templates/<lang>/<framework>/<name>.g8/.
 
 [plugin]
 id        = "quarkus"
@@ -28,7 +29,7 @@ classes-run    = false
 main-scan      = true
 
 [schema]
-version = { type = "string", required = true, example = "3", hint = "major-line floor for quarkus-bom (caret; lock pins exact). Use =3.38.0 to hard-pin" }
+version = { type = "string", required = true, example = "latest", hint = "quarkus-bom selector — latest, a major-line floor (caret; lock pins exact), or =3.38.0 to hard-pin" }
 # fast-jar (default): quarkus-run.jar + lib/ layout. uber-jar: single fat runner jar.
 package = { type = "string", example = "fast-jar", hint = "fast-jar (default) or uber-jar" }
 
@@ -51,61 +52,3 @@ managed-by = "io.quarkus:quarkus-bootstrap-bom:^${config.version}"
 javac  = ["-parameters"]
 kotlin = ["-java-parameters"]
 
-# ---- Scaffold: jk new --quarkus
-# Path variables: ${main-root} ${test-root} ${resources-root} ${test-resources-root} ${package-path}
-
-[scaffold]
-flag        = "quarkus"
-description = "Quarkus 3 application"
-
-[[scaffold.append]]
-template = "scaffold/jk-toml-java.toml.tmpl"
-when     = { lang = "java" }
-
-[[scaffold.append]]
-template = "scaffold/jk-toml-kotlin.toml.tmpl"
-when     = { lang = "kotlin" }
-
-[[scaffold.file]]
-path     = "${main-root}/${package-path}/Application.java"
-template = "scaffold/Application.java.tmpl"
-when     = { lang = "java" }
-
-[[scaffold.file]]
-path     = "${main-root}/${package-path}/GreetingResource.java"
-template = "scaffold/GreetingResource.java.tmpl"
-when     = { lang = "java" }
-
-[[scaffold.file]]
-path     = "${test-root}/${package-path}/GreetingResourceTest.java"
-template = "scaffold/GreetingResourceTest.java.tmpl"
-when     = { lang = "java" }
-
-[[scaffold.file]]
-path     = "${main-root}/${package-path}/Application.kt"
-template = "scaffold/Application.kt.tmpl"
-when     = { lang = "kotlin" }
-
-[[scaffold.file]]
-path     = "${main-root}/${package-path}/GreetingResource.kt"
-template = "scaffold/GreetingResource.kt.tmpl"
-when     = { lang = "kotlin" }
-
-# Kotlin gets the same example test the java scaffold ships — the [test-dependencies]
-# fragment already added quarkus-junit5 + rest-assured for both languages.
-[[scaffold.file]]
-path     = "${test-root}/${package-path}/GreetingResourceTest.kt"
-template = "scaffold/GreetingResourceTest.kt.tmpl"
-when     = { lang = "kotlin" }
-
-[[scaffold.file]]
-path          = "${resources-root}/application.properties"
-template      = "scaffold/application.properties.tmpl"
-keep-existing = true
-
-# Quarkus @QuarkusTest / BootstrapAppModelFactory need Maven project roots.
-# JK still owns resolve via jk-lock.toml; this POM is coordinates for tooling only.
-[[scaffold.file]]
-path          = "pom.xml"
-template      = "scaffold/pom.xml.tmpl"
-keep-existing = true

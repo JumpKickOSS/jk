@@ -230,8 +230,8 @@ fi
 
 # The engine ships as a single fat jar, jk-engine-<version>.jar (see
 # docs/architecture.md "Ship layout" / client+engine split; the engine is a JVM app,
-# not a second native binary). The live copy is $JK_HOME/lib/jk-engine.jar
-# (or <data>/lib/jk-engine.jar) — materialized below for local dists;
+# not a second native binary). The live copy is $JK_HOME/lib/jk-engine/
+# (or <data>/lib/jk-engine/) — materialized below for local dists;
 # download installs self-fetch it on first engine spawn.
 if [ -n "$LOCAL_FILE" ]; then
   SRC_LIB="$(cd "$(dirname "$LOCAL_FILE")" && pwd)/lib"
@@ -240,7 +240,7 @@ fi
 # ---- product-lib engine (docs/architecture.md "Versioning") ----------------
 #
 # Local dist installs (binary + engine jar together) also install
-# jk-engine.jar under the product lib — through the client itself
+# the engine jar under the product lib — through the client itself
 # (`jk self materialize`), which ingests the jar into the CAS first.
 # Download installs skip this: the client self-fetches its engine jar on first
 # spawn and materializes then. Best-effort by design.
@@ -351,7 +351,7 @@ fi
 # Pre-pay the engine's cold-start costs now so the first real build doesn't:
 # `jk engine start` installs the JDK that hosts the engine when none
 # qualifies, and on a download install triggers the client's own engine-jar
-# fetch (which writes $JK_HOME/lib/jk-engine.jar). The engine serves immediately
+# fetch (which writes $JK_HOME/lib/jk-engine/). The engine serves immediately
 # and manages its own AOT training sidecar off to the side
 # (docs/architecture.md), so ONE start is the whole warm-up. Best-effort by
 # design: a failed warm-up never fails the install. Skipped only for a local
@@ -361,7 +361,7 @@ if [ -z "$LOCAL_FILE" ] || [ -n "${ENGINE_JAR:-}" ]; then
   # engine jar. A still-running engine would keep serving the old jar until stop.
   run_jk engine stop --force >/dev/null 2>&1 || true
   # Engine self-heals missing worker AOT + host calibration on idle (and every 12h).
-  # A successful start GCs parked jk.old / jk-engine.jar.old when the drain is done.
+  # A successful start GCs parked jk.old / engine *.jar.old when the drain is done.
   run_jk engine start >/dev/null 2>&1 \
     || note "Engine warm-up skipped; it will start on first build"
 fi

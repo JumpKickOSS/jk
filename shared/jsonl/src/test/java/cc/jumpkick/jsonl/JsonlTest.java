@@ -56,8 +56,8 @@ class JsonlTest {
 
     @Test
     void stringArrayRoundTripsMultilineBracketedValues() {
-        // The exact shape jk new --spring sends: multi-line TOML with [tables], quotes, and tabs,
-        // packed by quote() into an array and read back by strArray().
+        // Multi-line TOML with [tables], quotes, and tabs, packed by quote() into an array
+        // and read back by strArray().
         String toml = "[project]\nname = \"demo\"\n\n[spring-boot]\nversion = \"4.1.0\"\n\tindented";
         String array = "[" + Jsonl.quote(toml) + "," + Jsonl.quote("second") + "]";
         assertThat(Jsonl.strArray("{\"paramValues\":" + array + "}", "paramValues"))

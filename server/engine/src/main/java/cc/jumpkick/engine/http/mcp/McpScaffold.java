@@ -2,7 +2,7 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.engine.runtime.NewProjectOps;
-import cc.jumpkick.scaffold.Giter8TemplateIndex;
+import cc.jumpkick.giter8.Giter8TemplateIndex;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -17,15 +17,19 @@ public final class McpScaffold {
 
     private McpScaffold() {}
 
-    /** Catalog + local template short names, same index the picker and resolver use. */
+    /** Catalog + local + plugin template short names, same index the picker and resolver use. */
     public static Map<String, Object> templates() {
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (var e : Giter8TemplateIndex.build(Giter8TemplateIndex.searchRoots())) {
+        for (var e : Giter8TemplateIndex.picker(Giter8TemplateIndex.searchRoots())) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("id", e.id());
+            row.put("name", e.name());
+            row.put("language", e.language());
+            row.put("framework", e.framework());
             row.put("description", e.description());
-            row.put("languages", e.languages());
-            row.put("layout", e.layout());
+            row.put("layouts", e.layouts());
+            row.put("source", e.source());
+            if (e.pluginId() != null) row.put("pluginId", e.pluginId());
             rows.add(row);
         }
         Map<String, Object> m = new LinkedHashMap<>();

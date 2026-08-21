@@ -356,7 +356,15 @@ public final class CliSessionTranscript {
     public static int finish(CliSessionTranscript session, int exit, boolean verbose) {
         if (session == null) return exit;
         session.finish(exit).ifPresent(p -> {
-            if (verbose) announceWritten(p);
+            if (verbose) {
+                announceWritten(p);
+                Path results = session.projectDir() == null
+                        ? null
+                        : session.projectDir().resolve("target").resolve("jk-results.md");
+                if (results != null && Files.isRegularFile(results)) {
+                    System.err.println("Results: " + results);
+                }
+            }
         });
         return exit;
     }

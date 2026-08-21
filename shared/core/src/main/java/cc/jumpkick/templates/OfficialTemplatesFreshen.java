@@ -98,20 +98,52 @@ public final class OfficialTemplatesFreshen {
         return ref == null || ref.isBlank() ? JkTemplatesConfig.DEFAULT_OFFICIAL : ref;
     }
 
+    /**
+     * Freshen the official catalog plus every {@code [templates.sources]} entry. Each source is
+     * independent: one failing clone (auth, typo, offline mirror) must not block the others, so
+     * the first failure is rethrown only after every ref got its attempt.
+     */
     static void refresh(JkTemplatesConfig config, Consumer<String> log) throws IOException {
         JkTemplatesConfig cfg = config == null ? JkTemplatesConfig.defaults() : config;
-        String ref = officialRef(cfg);
         Path cacheRoot = primaryCacheRoot();
         Files.createDirectories(cacheRoot);
+        List<String> refs = new ArrayList<>();
+        refs.add(officialRef(cfg));
+        for (JkTemplatesConfig.Source source : cfg.sources()) {
+            refs.add(sourceRef(source));
+        }
+        IOException first = null;
+        for (String ref : refs) {
+            try {
+                refreshRef(ref, cacheRoot, log);
+            } catch (IOException e) {
+                if (first == null) first = e;
+            }
+        }
+        if (first != null) throw first;
+    }
+
+    /** {@code url#rev} ref for a configured source (the same shape {@link #parse} reads). */
+    static String sourceRef(JkTemplatesConfig.Source source) {
+        return source.rev()
+                .filter(r -> !r.isBlank())
+                .map(r -> source.url() + "#" + r)
+                .orElse(source.url());
+    }
+
+    static void refreshRef(String ref, Path cacheRoot, Consumer<String> log) throws IOException {
         Parsed p = parse(ref);
         Path dest = cacheRoot.resolve(p.cacheKey());
         // Incomplete clones (e.g. only a .git dir left from a failed private-repo attempt) must be
         // wiped and re-cloned — fetch/reset cannot recover them.
-        if (!Files.isDirectory(dest) || isEmptyDir(dest) || !looksLikeTemplateMonorepo(dest)) {
+        if (!Files.isDirectory(dest)
+                || isEmptyDir(dest)
+                || isLegacyLangKindLayout(dest)
+                || !looksLikeTemplateMonorepo(dest)) {
             if (Files.exists(dest)) deleteRecursively(dest);
             Files.createDirectories(dest.getParent());
             runGit(p.cloneArgs(dest), 120);
-            log.accept("jk engine: cloned official templates (" + dest.getFileName() + ")");
+            log.accept("jk engine: cloned templates source (" + dest.getFileName() + ")");
             return;
         }
         // Existing shallow clone: cheap fetch + hard reset (no merge noise).
@@ -135,25 +167,58 @@ public final class OfficialTemplatesFreshen {
             deleteRecursively(dest);
             Files.createDirectories(dest.getParent());
             runGit(p.cloneArgs(dest), 120);
-            log.accept("jk engine: re-cloned official templates (" + dest.getFileName() + ")");
+            log.accept("jk engine: re-cloned templates source (" + dest.getFileName() + ")");
         }
     }
 
     /**
-     * True when {@code dest} looks like a usable templates monorepo (has at least one {@code *.g8}
-     * tree or a nested {@code templates/} dir). A bare {@code .git} from a failed clone is not.
+     * True when {@code dest} looks like a usable templates monorepo
+     * ({@code <lang>/<framework>/*.g8}). A bare {@code .git} from a failed clone is not.
      */
     static boolean looksLikeTemplateMonorepo(Path dest) {
         if (dest == null || !Files.isDirectory(dest)) return false;
-        try (var stream = Files.list(dest)) {
-            return stream.anyMatch(p -> {
-                String n = p.getFileName().toString();
-                if (n.startsWith(".")) return false;
-                if (n.endsWith(".g8") && Files.isDirectory(p)) return true;
-                if (n.equals("templates") && Files.isDirectory(p)) return true;
-                // Single-template or flat monorepo clone with default.properties at root
-                return Files.isRegularFile(p.resolve("default.properties"));
-            });
+        if (isLegacyLangKindLayout(dest)) return false;
+        for (String lang : List.of("java", "kotlin", "groovy")) {
+            Path langDir = dest.resolve(lang);
+            if (!Files.isDirectory(langDir)) continue;
+            try (var frameworks = Files.list(langDir)) {
+                if (frameworks.anyMatch(fw -> Files.isDirectory(fw)
+                        && !fw.getFileName().toString().startsWith(".")
+                        && !fw.getFileName().toString().endsWith(".g8")
+                        && hasG8Child(fw))) {
+                    return true;
+                }
+            } catch (IOException ignored) {
+                // try next lang
+            }
+        }
+        Path nested = dest.resolve("templates");
+        return Files.isDirectory(nested) && looksLikeTemplateMonorepo(nested);
+    }
+
+    /** Old {@code <lang>/<name>.g8} catalog — wipe and re-clone. */
+    static boolean isLegacyLangKindLayout(Path dest) {
+        if (dest == null || !Files.isDirectory(dest)) return false;
+        for (String lang : List.of("java", "kotlin", "groovy")) {
+            Path langDir = dest.resolve(lang);
+            if (!Files.isDirectory(langDir)) continue;
+            try (var children = Files.list(langDir)) {
+                if (children.anyMatch(
+                        p -> Files.isDirectory(p) && p.getFileName().toString().endsWith(".g8"))) {
+                    return true;
+                }
+            } catch (IOException ignored) {
+                // try next lang
+            }
+        }
+        Path nested = dest.resolve("templates");
+        return Files.isDirectory(nested) && isLegacyLangKindLayout(nested);
+    }
+
+    private static boolean hasG8Child(Path frameworkDir) {
+        try (var tmpls = Files.list(frameworkDir)) {
+            return tmpls.anyMatch(
+                    p -> Files.isDirectory(p) && p.getFileName().toString().endsWith(".g8"));
         } catch (IOException e) {
             return false;
         }

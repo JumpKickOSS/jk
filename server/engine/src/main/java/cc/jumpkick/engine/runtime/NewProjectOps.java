@@ -2,8 +2,10 @@
 package cc.jumpkick.engine.runtime;
 
 import cc.jumpkick.config.JkTemplatesConfig;
-import cc.jumpkick.scaffold.Giter8LocalApply;
-import cc.jumpkick.scaffold.Giter8TemplateIndex;
+import cc.jumpkick.docs.JkManual;
+import cc.jumpkick.giter8.Giter8Apply;
+import cc.jumpkick.giter8.Giter8Maven;
+import cc.jumpkick.giter8.Giter8TemplateIndex;
 import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.scaffold.NewScaffolder;
 import java.io.IOException;
@@ -23,7 +25,7 @@ import java.util.regex.Pattern;
 
 /**
  * Shared project creation used by {@code POST /api/projects}. Uses the same
- * {@link NewScaffolder} / {@link Giter8LocalApply} path as {@code jk new} — no second scaffolder.
+ * {@link NewScaffolder} / {@link Giter8Apply} path as {@code jk new} — no second scaffolder.
  */
 public final class NewProjectOps {
 
@@ -40,7 +42,6 @@ public final class NewProjectOps {
             String layout,
             String template,
             boolean executable,
-            String framework,
             String jdk,
             int javaRelease,
             boolean assembly,
@@ -61,8 +62,7 @@ public final class NewProjectOps {
                 String lang,
                 String layout,
                 String template,
-                boolean executable,
-                String framework) {
+                boolean executable) {
             this(
                     name,
                     parentDir,
@@ -71,7 +71,6 @@ public final class NewProjectOps {
                     layout,
                     template,
                     executable,
-                    framework,
                     null,
                     0,
                     false,
@@ -83,49 +82,6 @@ public final class NewProjectOps {
                     true,
                     Map.of(),
                     false,
-                    null);
-        }
-
-        public Request(
-                String name,
-                String parentDir,
-                String group,
-                String lang,
-                String layout,
-                String template,
-                boolean executable,
-                String framework,
-                String jdk,
-                int javaRelease,
-                boolean assembly,
-                boolean nativeImage,
-                boolean plugin,
-                String kotlinModule,
-                List<String> deps,
-                boolean sample,
-                boolean standalone,
-                Map<String, String> templateParams,
-                boolean relaxParent) {
-            this(
-                    name,
-                    parentDir,
-                    group,
-                    lang,
-                    layout,
-                    template,
-                    executable,
-                    framework,
-                    jdk,
-                    javaRelease,
-                    assembly,
-                    nativeImage,
-                    plugin,
-                    kotlinModule,
-                    deps,
-                    sample,
-                    standalone,
-                    templateParams,
-                    relaxParent,
                     null);
         }
     }
@@ -156,8 +112,33 @@ public final class NewProjectOps {
 
     public static Result create(Request req) throws IOException {
         Prepared prep = prepare(req);
-        scaffoldInto(prep, prep.target());
+        boolean existedBefore = Files.isDirectory(prep.target());
+        try {
+            scaffoldInto(prep, prep.target());
+        } catch (IOException | RuntimeException e) {
+            cleanupFailedTarget(prep.target(), existedBefore);
+            throw e;
+        }
         return new Result(prep.target());
+    }
+
+    /**
+     * A failed scaffold must not block the retry behind a manual {@code rm -rf}: {@link #prepare}
+     * guaranteed the target was absent or empty, so everything under it is ours to remove. A
+     * pre-existing (empty) directory is kept, only emptied; one jk created is removed entirely.
+     */
+    private static void cleanupFailedTarget(Path target, boolean existedBefore) {
+        try {
+            if (!Files.isDirectory(target)) return;
+            try (var children = Files.list(target)) {
+                for (Path child : children.toList()) {
+                    deleteRecursively(child);
+                }
+            }
+            if (!existedBefore) Files.deleteIfExists(target);
+        } catch (IOException ignored) {
+            // cleanup is best-effort; don't mask the scaffold error
+        }
     }
 
     /**
@@ -216,7 +197,6 @@ public final class NewProjectOps {
     private static void scaffoldInto(Prepared prep, Path target) throws IOException {
         Request req = prep.req();
         if (prep.template() != null) {
-            Path templateRoot = resolveTemplate(prep.template(), prep.parent());
             Map<String, String> params = new LinkedHashMap<>();
             if (req.templateParams() != null) params.putAll(req.templateParams());
             params.putIfAbsent("name", prep.name());
@@ -225,16 +205,66 @@ public final class NewProjectOps {
             if (prep.group() != null && !prep.group().isBlank()) {
                 params.putIfAbsent("group", prep.group());
             }
-            Giter8LocalApply.apply(templateRoot, target, params);
+            boolean offline =
+                    cc.jumpkick.config.SessionContext.current().config().offlineOr(false);
+            Path templateRoot;
+            Path extracted = null;
+            // Resolution lang stays null unless the user asked: parseLang's java default is a
+            // scaffolding default, not a search restriction — kotlin-only bare names must hit.
+            String langName = req.lang() == null || req.lang().isBlank()
+                    ? null
+                    : prep.lang().hoconValue();
+            var spec = resolveIndexed(prep.template(), langName, prep.parent());
+            if (spec.isPresent()
+                    && cc.jumpkick.giter8.TemplateSpec.SOURCE_PLUGIN.equals(
+                            spec.get().source())) {
+                var s = spec.get();
+                extracted = cc.jumpkick.giter8.PluginTemplates.materialize(
+                        s.pluginId(), s.language(), s.framework(), s.name());
+                templateRoot = extracted;
+            } else if (spec.isPresent() && spec.get().root() != null) {
+                templateRoot = spec.get().root();
+            } else {
+                templateRoot = resolveTemplate(prep.template(), langName, prep.parent());
+                // resolveTemplate may have freshened the official cache; re-resolve so layout
+                // metadata is honored identically on cold and warm caches.
+                if (spec.isEmpty()) {
+                    spec = resolveIndexed(prep.template(), langName, prep.parent());
+                }
+            }
+            if ("simple".equalsIgnoreCase(prep.layout())) {
+                if (spec.isPresent() && !spec.get().supportsLayout(cc.jumpkick.giter8.Giter8ShortNames.LAYOUT_SIMPLE)) {
+                    throw new IOException(
+                            "template " + prep.template() + " does not support --layout simple" + " (declared layouts: "
+                                    + String.join(", ", spec.get().layouts()) + ")");
+                }
+                // Set for path/remote templates too (no indexed metadata): a dual-layout
+                // template honors it, a single-layout one ignores it — never a silent drop
+                // that renders a different tree than the flag asked for.
+                params.putIfAbsent("simple", "yes");
+            }
+            try {
+                Giter8Apply.apply(templateRoot, target, params, Giter8Maven.central(offline));
+            } catch (IOException e) {
+                throw new IOException(
+                        "applying template " + prep.template() + " lang=" + langName + ": " + e.getMessage(), e);
+            } finally {
+                if (extracted != null) {
+                    try {
+                        deleteRecursively(extracted);
+                    } catch (IOException ignored) {
+                        // extract is under JkDirs.tmp(); don't mask the apply error
+                    }
+                }
+            }
             if (!Files.isRegularFile(target.resolve("jk.toml"))) {
                 throw new IOException("template did not produce jk.toml: " + prep.template());
             }
+            if (req.standalone()) {
+                JkManual.ensureAgentsGuide(target);
+            }
             return;
         }
-        boolean spring = "spring".equalsIgnoreCase(nullToEmpty(req.framework()));
-        boolean grails = "grails".equalsIgnoreCase(nullToEmpty(req.framework()));
-        boolean quarkus = "quarkus".equalsIgnoreCase(nullToEmpty(req.framework()));
-        boolean micronaut = "micronaut".equalsIgnoreCase(nullToEmpty(req.framework()));
         Optional<String> main = Optional.empty();
         if (prep.executable() && !req.plugin()) {
             boolean compact = "simple".equalsIgnoreCase(prep.layout());
@@ -258,10 +288,6 @@ public final class NewProjectOps {
                 main,
                 req.assembly(),
                 req.nativeImage(),
-                spring,
-                grails,
-                quarkus,
-                micronaut,
                 req.plugin(),
                 prep.lang(),
                 prep.layout(),
@@ -271,26 +297,7 @@ public final class NewProjectOps {
                 req.deps() == null ? List.of() : req.deps(),
                 req.sample(),
                 target);
-        NewScaffolder.write(inputs, req.standalone(), NewProjectOps::frameworkScaffold);
-    }
-
-    private static NewScaffolder.ScaffoldFiles frameworkScaffold(NewInputs inputs) throws IOException {
-        var params = new LinkedHashMap<String, String>();
-        params.put("plugin", inputs.frameworkPluginFlag());
-        params.put("lang", inputs.lang().hoconValue());
-        params.put("package", inputs.group());
-        params.put("group", inputs.group());
-        params.put("name", inputs.name());
-        params.put("version", "0.1.0");
-        params.putIfAbsent("quarkus.version", cc.jumpkick.model.ToolDefaults.QUARKUS_PLATFORM_FLOOR);
-        params.put("simpleLayout", String.valueOf(inputs.isSimpleLayout()));
-        params.put("sample", String.valueOf(inputs.sample()));
-        params.put("baseToml", cc.jumpkick.scaffold.NewJkBuildRenderer.render(inputs));
-        var files = cc.jumpkick.runtime.GenerateOps.generate(inputs.directory(), "scaffold", params);
-        if (files.error() != null && !files.error().isBlank()) {
-            throw new IOException(files.error());
-        }
-        return new NewScaffolder.ScaffoldFiles(files.paths(), files.contents());
+        NewScaffolder.write(inputs, req.standalone());
     }
 
     private static Prepared prepare(Request req) throws IOException {
@@ -313,9 +320,7 @@ public final class NewProjectOps {
         String targetRaw = req.targetDir() == null ? "" : req.targetDir().strip();
         if (!targetRaw.isEmpty()) {
             target = cc.jumpkick.util.PathUtil.resolveUserPath(targetRaw).normalize();
-            // targetDir gets the same allowlist gate as parentDir — the old
-            // target.startsWith(target.getParent()) check was a tautology, so a
-            // relaxParent=false wire caller could scaffold anywhere (JK-2166).
+            // targetDir gets the same allowlist gate as parentDir.
             if (!req.relaxParent()) assertAllowedParent(target.getParent() != null ? target.getParent() : target);
         } else {
             target = parent.resolve(name).normalize();
@@ -359,12 +364,40 @@ public final class NewProjectOps {
         }
     }
 
+    private static Optional<cc.jumpkick.giter8.TemplateSpec> resolveIndexed(String ref, String lang, Path cwd) {
+        try {
+            return Giter8TemplateIndex.resolve(ref, lang, Giter8TemplateIndex.searchRoots(cwd));
+        } catch (IllegalArgumentException e) {
+            throw e;
+        }
+    }
+
+    private static Optional<Path> indexedRoot(String ref, String lang, Path cwd) throws IOException {
+        Optional<cc.jumpkick.giter8.TemplateSpec> spec = resolveIndexed(ref, lang, cwd);
+        if (spec.isEmpty()) {
+            try {
+                cc.jumpkick.templates.OfficialTemplatesFreshen.refreshQuiet(s -> {});
+            } catch (Throwable ignored) {
+                // best-effort
+            }
+            Giter8TemplateIndex.invalidate();
+            spec = resolveIndexed(ref, lang, cwd);
+        }
+        if (spec.isEmpty()) return Optional.empty();
+        cc.jumpkick.giter8.TemplateSpec s = spec.get();
+        if (s.root() != null) return Optional.of(s.root());
+        return Optional.empty();
+    }
+
     /**
-     * Resolve a template ref: absolute/relative path, short name via {@link
-     * Giter8TemplateIndex#resolveShortName} (local roots + monorepo dogfood + official cache
-     * freshen from the public {@code JumpKickOSS/jk-templates} repo).
+     * Resolve a template ref: absolute/relative path, catalog/plugin id via {@link
+     * Giter8TemplateIndex} (local roots + monorepo dogfood + official cache freshen).
      */
     static Path resolveTemplate(String ref, Path cwd) throws IOException {
+        return resolveTemplate(ref, null, cwd);
+    }
+
+    static Path resolveTemplate(String ref, String lang, Path cwd) throws IOException {
         Path asPath = Path.of(ref);
         if (asPath.isAbsolute() && isTemplateRoot(asPath)) {
             return asPath.normalize();
@@ -374,20 +407,26 @@ public final class NewProjectOps {
             if (Files.isDirectory(rel) && isTemplateRoot(rel)) return rel;
         }
 
-        if (ref.matches("[a-z][a-z0-9-]*")) {
-            // Disk + official monorepo cache (freshen clones if missing / incomplete).
-            Optional<Path> indexed = Giter8TemplateIndex.resolveShortName(ref, cwd);
+        boolean twoSegments = ref.matches("[a-z][a-z0-9-]*/[a-z][a-z0-9-]*");
+        if (ref.matches("[a-z][a-z0-9-]*") || twoSegments || ref.matches("[a-z]+/[a-z][a-z0-9-]*/[a-z][a-z0-9-]*")) {
+            Optional<Path> indexed = indexedRoot(ref, lang, cwd);
             if (indexed.isPresent()) return indexed.get();
 
+            // A two-segment ref that misses the catalog may be a GitHub owner/repo shorthand —
+            // catalog first (framework/name is the documented meaning), remote clone on miss.
+            if (twoSegments && looksRemoteTemplate(ref)) {
+                return cloneRemoteTemplate(ref);
+            }
             JkTemplatesConfig cfg = JkTemplatesConfig.resolve();
             throw new IllegalArgumentException("template short name not found: "
                     + ref
                     + " (looked under $JK_TEMPLATES, ~/.jk/templates, monorepo templates/,"
                     + " official cache; try `jk new --template "
                     + ref
-                    + "` once to populate the cache, or install under ~/.jk/templates/"
-                    + ref
-                    + ".g8; official="
+                    + "` once to populate the cache, or install under"
+                    + " ~/.jk/templates/<lang>/<framework>/"
+                    + (twoSegments ? ref.substring(ref.indexOf('/') + 1) : ref)
+                    + ".g8 with a .jk-template.toml; official="
                     + cfg.officialUrl()
                     + ")");
         }
@@ -433,7 +472,7 @@ public final class NewProjectOps {
     /**
      * Clone {@code ref} into a per-process staging dir, then rename into place — a concurrent
      * clone from ANOTHER engine process loses the rename instead of failing "destination
-     * exists" mid-clone (JK-2166).
+     * exists" mid-clone.
      */
     private static void cloneInto(String ref, Path cache, String key, Path dest) throws IOException {
         String url = ref;

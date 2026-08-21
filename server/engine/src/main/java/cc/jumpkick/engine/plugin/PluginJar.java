@@ -8,8 +8,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.MavenRepo;
-import cc.jumpkick.repo.Pom;
-import cc.jumpkick.repo.PomParser;
+import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.util.Hashing;
@@ -20,10 +19,8 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * Registry of jk's child-JVM plugin jars. Locates each by Maven coordinate
@@ -100,7 +97,7 @@ public enum PluginJar {
                     "-D" + jarProperty + " is set to '" + override + "' but no file exists there.");
         }
 
-        Path cacheRoot = cas.root(); // cas root is the jk cache directory (e.g. ~/.cache/jk)
+        Path cacheRoot = cas.root();
         String relPath = relativePath();
         String coordinate = "cc.jumpkick:" + artifactId + ":" + JkVersion.VERSION;
         List<Path> checked = new ArrayList<>();
@@ -125,11 +122,31 @@ public enum PluginJar {
     }
 
     /**
+     * As {@link #locate(Cas)} but store-only: honors the {@code -D<jarProperty>} override and the
+     * repo stores, never the network. {@code null} on a miss. Engine startup and lock/publish
+     * enumeration must use this — an eager {@link #locate(Cas)} loop over all values serially
+     * mass-downloads every plugin on a cold store and turns an offline start into sixteen failed
+     * fetches.
+     */
+    public Path locateStored(Cas cas) {
+        String override = System.getProperty(jarProperty);
+        if (override != null && !override.isBlank()) {
+            Path jar = Path.of(override);
+            return Files.isRegularFile(jar) ? jar : null;
+        }
+        for (String repoName : List.of("local", OFFICIAL_REPO, "central")) {
+            var result = new RepoArtifactStore(cas.root(), repoName).locate(relativePath());
+            if (result.isPresent()) return result.get();
+        }
+        return null;
+    }
+
+    /**
      * Download {@code relPath} and its sibling {@code .pom} (+ optional {@code .sha256}) from the
      * official Maven repo into {@code repos/jumpkick/}. Returns the local jar path, {@code null} if
      * the jar 404s, or throws if the jar exists without a POM.
      */
-    static Path fetchOfficial(Cas cas, String relPath) throws IOException, InterruptedException {
+    public static Path fetchOfficial(Cas cas, String relPath) throws IOException, InterruptedException {
         if (!relPath.endsWith(".jar")) {
             throw new IOException("official fetch expected a jar path, got " + relPath);
         }
@@ -142,7 +159,9 @@ public enum PluginJar {
         try {
             jarResp = http.get(jarUri);
         } catch (IOException e) {
-            return null;
+            // A network failure is not "not found" — surfacing it as null made an offline host
+            // report a plain missing plugin with no cause.
+            throw new IOException("official repo unreachable: GET " + jarUri + ": " + e.getMessage(), e);
         }
         if (jarResp.statusCode() == 404) return null;
         if (jarResp.statusCode() < 200 || jarResp.statusCode() >= 300) {
@@ -158,18 +177,23 @@ public enum PluginJar {
         }
         byte[] bytes = jarResp.body();
         String sha = Hashing.sha256Hex(bytes);
+        String published = null;
         try {
             HttpResponse<byte[]> sumResp = http.get(URI.create(jarUri + ".sha256"));
             if (sumResp.statusCode() >= 200 && sumResp.statusCode() < 300) {
-                String published = new String(sumResp.body()).strip().split("\\s+")[0];
-                if (published.length() == 64 && !published.equalsIgnoreCase(sha)) {
-                    throw new IOException(
-                            "checksum mismatch for " + jarUri + " (expected " + published + ", got " + sha + ")");
-                }
-                if (published.length() == 64) sha = published.toLowerCase();
+                published = new String(sumResp.body()).strip().split("\\s+")[0];
             }
         } catch (IOException ignored) {
-            // checksum file optional; we still pin what we hashed
+            // The .sha256 sidecar is optional — an absent or unreachable sidecar keeps the hash
+            // we computed. The mismatch check below must stay OUTSIDE this catch: swallowing it
+            // installed jars whose published checksum disagreed.
+        }
+        if (published != null && published.length() == 64) {
+            if (!published.equalsIgnoreCase(sha)) {
+                throw new IOException(
+                        "checksum mismatch for " + jarUri + " (expected " + published + ", got " + sha + ")");
+            }
+            sha = published.toLowerCase();
         }
         Path casBlob = cas.put(bytes, sha);
         RepoArtifactStore store = RepoArtifactStore.forRepoName(cas.root(), OFFICIAL_REPO);
@@ -177,75 +201,35 @@ public enum PluginJar {
         String pomSha = Hashing.sha256Hex(pomBody);
         store.materialize(pomRel, cas.put(pomBody, pomSha), pomSha);
         Path localJar = store.locate(relPath).orElseThrow();
-        fetchOfficialClosure(cas, http, base, relPath, store);
+        fetchOfficialClosure(cas, http, base, localJar);
         return localJar;
     }
 
     /**
-     * Fetch the worker POM's Maven runtime closure (jar + pom per compile/runtime dependency)
-     * from the official repo, then Maven Central.
+     * Fetch the worker POM's Maven runtime closure (effective POM: parent properties, BOM
+     * imports, {@code dependencyManagement}) from the official repo, then Maven Central.
      */
-    private static void fetchOfficialClosure(Cas cas, Http http, URI base, String jarRel, RepoArtifactStore store)
+    private static void fetchOfficialClosure(Cas cas, Http http, URI base, Path workerJar)
             throws IOException, InterruptedException {
-        String pomRel = jarRel.substring(0, jarRel.length() - 4) + ".pom";
-        Path pomFile = store.locate(pomRel)
-                .orElseThrow(() -> new IOException("official repo POM missing after fetch: " + pomRel));
+        Coordinate coord = PomRuntimeClasspath.coordinateOf(workerJar);
+        if (coord == null) {
+            throw new IOException("cannot parse Maven coordinate of official worker jar " + workerJar);
+        }
         MavenRepo official = new MavenRepo(OFFICIAL_REPO, base, http, cas);
         MavenRepo central = new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
         RepoGroup repos = RepoGroup.of(central).withReposPrepended(List.of(official));
-        walkFetch(pomFile, repos, new HashSet<>());
-    }
-
-    private static void walkFetch(Path pomFile, RepoGroup repos, Set<String> visited)
-            throws IOException, InterruptedException {
-        Pom pom = PomParser.parse(Files.readAllBytes(pomFile));
-        for (Pom.Dep d : pom.dependencies()) {
-            if (!runtimeDep(d)) continue;
-            if (d.version() == null || d.version().isBlank()) continue;
-            String type = d.type() == null || d.type().isBlank() ? "jar" : d.type();
-            if ("pom".equalsIgnoreCase(type)) continue;
-            String classifier = d.classifier() == null || d.classifier().isBlank() ? null : d.classifier();
-            Coordinate coord = new Coordinate(d.groupId(), d.artifactId(), d.version(), classifier, type);
-            String key = coord.group() + ":" + coord.artifact() + ":" + coord.version()
-                    + (classifier != null ? ":" + classifier : "");
-            if (!visited.add(key)) continue;
-            String missing = key;
-            repos.tryFetchArtifact(coord)
-                    .orElseThrow(() ->
-                            new IOException("worker dependency " + missing + " not found in official repo or Central"));
-            Optional<RepoGroup.RepoFetched> depPom = repos.tryFetchPom(coord);
-            if (depPom.isPresent()) {
-                walkFetch(depPom.get().fetched().cachePath(), repos, visited);
-            }
-        }
-    }
-
-    private static boolean runtimeDep(Pom.Dep d) {
-        if (d.optional()) return false;
-        String scope = d.scope();
-        return scope == null
-                || scope.isBlank()
-                || "compile".equalsIgnoreCase(scope)
-                || "runtime".equalsIgnoreCase(scope);
+        PomRuntimeClasspath.fetchRuntimeClosure(coord, repos);
     }
 
     /**
      * System property override for {@link #officialRepoBase()} — used by hermetic tests so
      * {@link #locate(Cas)} cannot soft-succeed via network when the local cache is empty.
      */
-    public static final String OFFICIAL_REPO_URL_PROPERTY = "jk.official.repo.url";
+    public static final String OFFICIAL_REPO_URL_PROPERTY = RepositorySpec.OFFICIAL_REPO_URL_PROPERTY;
 
     /** Base URL ending in {@code /} for the official first-party Maven repo. */
     public static URI officialRepoBase() {
-        String prop = System.getProperty(OFFICIAL_REPO_URL_PROPERTY);
-        if (prop != null && !prop.isBlank()) {
-            return URI.create(prop.endsWith("/") ? prop : prop + "/");
-        }
-        String env = System.getenv("JK_OFFICIAL_REPO_URL");
-        if (env != null && !env.isBlank()) {
-            return URI.create(env.endsWith("/") ? env : env + "/");
-        }
-        return RepositorySpec.JUMPKICK.url();
+        return RepositorySpec.officialUrl();
     }
 
     /** Locate using the default jk CAS ({@code $JK_CACHE_DIR}). */

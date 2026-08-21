@@ -72,6 +72,34 @@ public record RepositorySpec(
             Optional.empty(),
             List.of("cc.jumpkick", "cc.jumpkick.*", "build.jumpkick", "build.jumpkick.*"));
 
+    /**
+     * System property override for the official repo URL ({@code JK_OFFICIAL_REPO_URL} env as a
+     * fallback) — hermetic tests and mirror deployments point it at their own base. Every code
+     * path that contacts the official repo must resolve through {@link #officialUrl()} /
+     * {@link #officialJumpKick()}; a raw {@code JUMPKICK.url()} lets a redirected deployment (or a
+     * test that thinks it is offline) silently reach the public repo.
+     */
+    public static final String OFFICIAL_REPO_URL_PROPERTY = "jk.official.repo.url";
+
+    /** Base URL ending in {@code /} for the official first-party Maven repo, override applied. */
+    public static URI officialUrl() {
+        String prop = System.getProperty(OFFICIAL_REPO_URL_PROPERTY);
+        if (prop == null || prop.isBlank()) {
+            prop = System.getenv("JK_OFFICIAL_REPO_URL");
+        }
+        if (prop == null || prop.isBlank()) {
+            return JUMPKICK.url();
+        }
+        return URI.create(prop.endsWith("/") ? prop : prop + "/");
+    }
+
+    /** {@link #JUMPKICK} with {@link #officialUrl()} applied (same name, groups, and defaults). */
+    public static RepositorySpec officialJumpKick() {
+        URI url = officialUrl();
+        if (url.equals(JUMPKICK.url())) return JUMPKICK;
+        return new RepositorySpec(JUMPKICK.name(), url, Optional.empty(), Optional.empty(), JUMPKICK.groups());
+    }
+
     /** Convenience: a repository with no inline credential, object-store, or exclusive groups. */
     public RepositorySpec(String name, URI url) {
         this(name, url, Optional.empty(), Optional.empty(), List.of());

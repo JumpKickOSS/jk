@@ -44,7 +44,10 @@ public final class UsageGroups {
             new CommandGroup("Toolchain commands:", List.of("jdk", "tool", "trust", "shell", "activate", "deactivate")),
             new CommandGroup("Interop commands:", List.of("import", "mvn", "gradle", "export", "ide", "bsp")),
             new CommandGroup(
-                    "System commands:", List.of("doctor", "cache", "storage", "repo", "env", "jobs", "engine", "web")));
+                    "System commands:",
+                    List.of(
+                            "manual", "doctor", "cache", "storage", "repo", "env", "jobs", "results", "engine",
+                            "web")));
 
     /**
      * Curated subset of commands shown when the user runs bare {@code jk}. BuildPlan: cover the day-to-day
@@ -52,6 +55,7 @@ public final class UsageGroups {
      * {@code --help}.
      */
     public static final List<CommandGroup> SHORT_COMMAND_GROUPS = List.of(
+            new CommandGroup("Getting started:", List.of("manual")),
             new CommandGroup(
                     "Build commands:",
                     List.of("build", "assemble", "run", "clean", "image", "native", "install", "publish")),

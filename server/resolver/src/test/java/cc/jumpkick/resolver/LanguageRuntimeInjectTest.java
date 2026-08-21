@@ -142,4 +142,16 @@ class LanguageRuntimeInjectTest {
         assertThat(deps).hasSize(1);
         assertThat(deps.get(user.packageKey())).isSameAs(user);
     }
+
+    @Test
+    void latest_groovy_overrides_the_bom_and_keeps_the_strip(@TempDir Path dir) throws IOException {
+        Files.createDirectories(dir.resolve("src/main/groovy"));
+        Files.writeString(dir.resolve("src/main/groovy/A.groovy"), "class A {}");
+        JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\ngroovy=\"latest\"\n");
+        LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
+        var skipStrip =
+                LockOrchestrator.injectLanguageRuntimes(p, dir, Map.of("org.apache.groovy:groovy", "5.0.6"), deps);
+        assertThat(deps.get(key(GROOVY)).version()).isInstanceOf(cc.jumpkick.model.VersionSelector.Latest.class);
+        assertThat(skipStrip).isEmpty();
+    }
 }

@@ -1,0 +1,19 @@
+group = "$organization$"
+name = "$name$"
+version = "0.1.0"
+kotlin = "latest"
+
+[application]
+main = "$package$.Application"
+
+[quarkus]
+version = "latest"
+
+[dependencies]
+quarkus-rest = { group = "io.quarkus", name = "quarkus-rest" }
+quarkus-arc = { group = "io.quarkus", name = "quarkus-arc" }
+quarkus-kotlin = { group = "io.quarkus", name = "quarkus-kotlin" }
+
+[test-dependencies]
+quarkus-junit5 = { group = "io.quarkus", name = "quarkus-junit5" }
+rest-assured = { group = "io.rest-assured", name = "rest-assured" }

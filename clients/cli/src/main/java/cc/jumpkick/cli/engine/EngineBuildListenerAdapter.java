@@ -784,7 +784,6 @@ final class EngineBuildListenerAdapter {
                         req.layout(),
                         req.template(),
                         req.executable(),
-                        req.framework(),
                         req.jdk(),
                         req.javaRelease(),
                         req.assembly(),

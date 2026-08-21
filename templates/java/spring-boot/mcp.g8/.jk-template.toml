@@ -1,0 +1,5 @@
+language = "java"
+framework = "spring-boot"
+name = "mcp"
+description = "Spring Boot MCP server (Spring AI, @Tool over SSE)"
+layouts = ["traditional", "simple"]

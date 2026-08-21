@@ -37,6 +37,8 @@ dependencies {
     // builds the git fixtures in tests. The native CLI (:cli) does not depend on :engine, so this
     // never enters a native image — only the engine fat jar.
     implementation(libs.jgit)
+    // Giter8 apply. Must not leak onto the native CLI (this module never does).
+    implementation(libs.st4)
     // XZ inflate for release client binaries (`EngineMain --inflate-xz`). The native CLI must
     // not link this — it shells out to the engine jar.
     implementation(libs.tukaani.xz)
@@ -81,8 +83,8 @@ tasks.shadowJar {
 }
 
 /**
- * Materialize the freshly-built engine fat jar into {@code $JK_HOME/lib/jk-engine.jar} (or
- * {@code ~/.local/share/jk/lib/jk-engine.jar}) and bounce the resident daemon so local dogfood
+ * Materialize the freshly-built engine fat jar into {@code $JK_HOME/lib/jk-engine/} (or
+ * {@code ~/.local/share/jk/lib/jk-engine/}) and bounce the resident daemon so local dogfood
  * picks up engine-side first-party plugin tables without a hand copy.
  *
  * Client resolution (first hit wins): `:cli:installDist` bin, `build/dist/jk`, platform bin dir
@@ -158,6 +160,11 @@ val javaCompilerWorkerJar by configurations.creating {
     isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
 }
 dependencies { javaCompilerWorkerJar(project(":java-compiler")) }
+
+val quarkusPluginJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+dependencies { quarkusPluginJar(project(":quarkus")) }
 fun Test.seedWorkerRepos(vararg projects: String) {
     projects.forEach { dependsOn("$it:stageWorkerRepo") }
     doFirst {
@@ -173,10 +180,16 @@ fun Test.seedWorkerRepos(vararg projects: String) {
 tasks.withType<Test>().configureEach {
     // MemoryProbe's host_statistics64 FFM downcall (macOS memory read).
     jvmArgs("--enable-native-access=ALL-UNNAMED")
-    dependsOn(javaCompilerWorkerJar, testRunnerJarCfg, ":java-compiler:writeWorkerPom", ":test-runner:writeWorkerPom")
+    dependsOn(
+            javaCompilerWorkerJar,
+            testRunnerJarCfg,
+            quarkusPluginJar,
+            ":java-compiler:writeWorkerPom",
+            ":test-runner:writeWorkerPom")
     doFirst {
         systemProperty("jk.java.plugin.jar", javaCompilerWorkerJar.singleFile.absolutePath)
         systemProperty("jk.test.runner.jar", testRunnerJarCfg.singleFile.absolutePath)
+        systemProperty("jk.quarkus.plugin.jar", quarkusPluginJar.singleFile.absolutePath)
     }
 }
 

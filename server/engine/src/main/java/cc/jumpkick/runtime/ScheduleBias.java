@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -108,10 +109,13 @@ public final class ScheduleBias {
 
     private static void write(Path f, Map<String, Double> m) throws IOException {
         Files.createDirectories(f.getParent());
-        StringBuilder sb = new StringBuilder("# schedule-bias — EWMA of actual/simulated wall per project (ScheduleBias)\n");
+        StringBuilder sb =
+                new StringBuilder("# schedule-bias — EWMA of actual/simulated wall per project (ScheduleBias)\n");
         for (Map.Entry<String, Double> e : m.entrySet()) {
-            sb.append('"').append(e.getKey()).append("\" = ")
-                    .append(String.format(java.util.Locale.ROOT, "%.4f", e.getValue()))
+            sb.append('"')
+                    .append(e.getKey())
+                    .append("\" = ")
+                    .append(String.format(Locale.ROOT, "%.4f", e.getValue()))
                     .append('\n');
         }
         AtomicWrites.replace(f, sb.toString());

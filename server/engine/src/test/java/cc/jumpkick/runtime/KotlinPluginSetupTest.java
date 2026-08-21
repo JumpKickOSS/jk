@@ -9,7 +9,10 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.PluginJarNotFoundException;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.repo.RepoArtifactStore;
+import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -62,12 +65,11 @@ class KotlinPluginSetupTest {
         System.clearProperty(KotlinPluginSetup.WORKER_JAR_PROPERTY);
         // A live local 404 — fetchOfficial returns null, locate throws NotFound. A dead
         // loopback URL has the same outcome but waits out Http's full retry backoff (~3.3s).
-        com.sun.net.httpserver.HttpServer notFound;
+        HttpServer notFound;
         try {
-            notFound = com.sun.net.httpserver.HttpServer.create(
-                    new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+            notFound = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         } catch (IOException e) {
-            throw new java.io.UncheckedIOException(e);
+            throw new UncheckedIOException(e);
         }
         notFound.createContext("/", ex -> {
             ex.sendResponseHeaders(404, -1);
@@ -75,7 +77,8 @@ class KotlinPluginSetupTest {
         });
         notFound.start();
         System.setProperty(
-                PluginJar.OFFICIAL_REPO_URL_PROPERTY, "http://127.0.0.1:" + notFound.getAddress().getPort() + "/");
+                PluginJar.OFFICIAL_REPO_URL_PROPERTY,
+                "http://127.0.0.1:" + notFound.getAddress().getPort() + "/");
         try {
             body.run();
         } finally {

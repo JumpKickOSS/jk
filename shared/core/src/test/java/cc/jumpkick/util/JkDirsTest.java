@@ -102,7 +102,8 @@ class JkDirsTest {
         Map<String, String> env = Map.of("JK_HOME", "/opt/jk");
         JkDirs dirs = JkDirs.of(env::get, "/home/me", "Linux");
         assertThat(dirs.homeDir()).isEqualTo(Path.of("/opt/jk"));
-        assertThat(dirs.userConfigFilePath()).isEqualTo(Path.of("/opt/jk/config.toml"));
+        assertThat(dirs.configDir()).isEqualTo(Path.of("/opt/jk/config"));
+        assertThat(dirs.userConfigFilePath()).isEqualTo(Path.of("/opt/jk/config/config.toml"));
         assertThat(dirs.cacheDir()).isEqualTo(Path.of("/opt/jk/cache"));
         assertThat(dirs.stateDir()).isEqualTo(Path.of("/opt/jk/state"));
         assertThat(dirs.dataDir()).isEqualTo(Path.of("/opt/jk/data"));
@@ -113,6 +114,14 @@ class JkDirsTest {
         assertThat(dirs.versionsDir()).isEqualTo(Path.of("/opt/jk/versions"));
         // Shared IntelliJ root — not $JK_HOME/jdks
         assertThat(dirs.jdksDir()).isEqualTo(Path.of("/home/me/.jdks"));
+    }
+
+    @Test
+    void jk_config_dir_wins_over_jk_home_config_segment() {
+        Map<String, String> env = Map.of("JK_HOME", "/opt/jk", "JK_CONFIG_DIR", "/etc/jk-config");
+        JkDirs dirs = JkDirs.of(env::get, "/home/me", "Linux");
+        assertThat(dirs.configDir()).isEqualTo(Path.of("/etc/jk-config"));
+        assertThat(dirs.userConfigFilePath()).isEqualTo(Path.of("/etc/jk-config/config.toml"));
     }
 
     @Test

@@ -32,9 +32,10 @@ import java.util.function.Supplier;
  *       <td>{@code %LOCALAPPDATA%\jk\cache}</td></tr>
  *   <tr><td>state</td><td>{@code $XDG_STATE_HOME/jk} → {@code ~/.local/state/jk}</td>
  *       <td>{@code %LOCALAPPDATA%\jk\state}</td></tr>
- *   <tr><td>config</td><td>{@code $XDG_CONFIG_HOME/jk/config.toml} →
- *       {@code ~/.config/jk/config.toml}</td>
- *       <td>{@code %APPDATA%\jk\config.toml}</td></tr>
+ *   <tr><td>config</td><td>{@code $JK_HOME/config} when set; else
+ *       {@code $XDG_CONFIG_HOME/jk} → {@code ~/.config/jk}
+ *       (global {@code config.toml} + per-app {@code <bin>/config.toml})</td>
+ *       <td>{@code %APPDATA%\jk}</td></tr>
  *   <tr><td>store / product lib</td><td>under <em>data</em> (or {@code $JK_HOME})</td>
  *       <td>under <em>data</em> (or {@code $JK_HOME})</td></tr>
  *   <tr><td>jdks (write root)</td><td>IntelliJ shared root — not under product data
@@ -158,19 +159,25 @@ public final class JkDirs {
     }
 
     /**
-     * User config file. Override via {@code JK_CONFIG_FILE}. Under {@code JK_HOME}:
-     * {@code $JK_HOME/config.toml}. Otherwise platform config dir + {@code config.toml}.
+     * User config file. Override via {@code JK_CONFIG_FILE}. Otherwise
+     * {@link #configDir()}{@code /config.toml} — under {@code JK_HOME} that is
+     * {@code $JK_HOME/config/config.toml}.
      */
     public Path userConfigFilePath() {
         String override = nonBlank(env.apply("JK_CONFIG_FILE"));
         if (override != null) return Path.of(override);
-        if (jkHomeOrNull() != null) return Path.of(jkHomeOrNull()).resolve("config.toml");
         return configDir().resolve("config.toml");
     }
 
-    /** Directory that holds {@code config.toml} (platform config root). */
+    /**
+     * Config root: global {@code config.toml} and per-app {@code <bin>/config.toml}. Override via
+     * {@code JK_CONFIG_DIR}. Under {@code JK_HOME}: {@code $JK_HOME/config}. Otherwise the platform
+     * config dir ({@code ~/.config/jk}, {@code %APPDATA%\\jk}, …).
+     */
     public Path configDir() {
-        if (jkHomeOrNull() != null) return Path.of(jkHomeOrNull());
+        String override = nonBlank(env.apply("JK_CONFIG_DIR"));
+        if (override != null) return Path.of(override);
+        if (jkHomeOrNull() != null) return Path.of(jkHomeOrNull()).resolve("config");
         return platformConfigDir();
     }
 
@@ -247,8 +254,8 @@ public final class JkDirs {
     }
 
     /**
-     * Live engine jar and installed fat/minified app jars: {@code $JK_HOME/lib} when set,
-     * otherwise {@code <data>/lib} ({@code jk-engine.jar} / {@code <exec>/…}). Not {@link #libDir()}.
+     * Live engine and installed fat/minified app jars: {@code $JK_HOME/lib} when set, otherwise
+     * {@code <data>/lib} ({@code jk-engine/<jar>} / {@code <bin>/…}). Not {@link #libDir()}.
      */
     public Path productLibDir() {
         return homeDir().resolve("lib");

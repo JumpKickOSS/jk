@@ -1,0 +1,5 @@
+language = "groovy"
+framework = "grails"
+name = "hello"
+description = "Grails 8 REST app (GORM, H2)"
+layouts = ["custom"]

@@ -186,11 +186,14 @@ public final class JkBuildParser {
                 && nativeConfig.get().enabled() == JkBuild.NativeMode.DISABLED) {
             throw new JkBuildParseException("[application].native = true conflicts with [native] enabled = false");
         }
+        // Cold-store engines install built-ins lazily: fetch owners of referenced tables before
+        // the manifest set below is captured, so this very parse validates their configs.
+        Map<String, String> builtInFetchFailures = ManifestBuild.ensureBuiltInTables(result);
         List<PluginDescriptor> installedManifests = PluginTableRegistry.manifestsFor(moduleDir, plugins);
         Map<String, PluginConfig> pluginConfigs = ManifestTables.parsePluginTables(result, installedManifests);
         // minified = true enables the minified packager without requiring an empty [minified] table.
         pluginConfigs = ManifestTables.ensureMinifiedPluginConfigured(application, pluginConfigs, installedManifests);
-        ManifestBuild.checkUnownedTables(result, moduleDir, plugins, installedManifests);
+        ManifestBuild.checkUnownedTables(result, moduleDir, plugins, installedManifests, builtInFetchFailures);
         boolean nativeDeclared = nativeConfig.isPresent()
                 || application.map(JkBuild.Application::nativeImage).orElse(false);
         deps = ManifestBuild.withPlatformContributions(
@@ -209,7 +212,6 @@ public final class JkBuildParser {
                     build.testSerialTags(),
                     build.platformPolicy(),
                     build.unmappedPolicy(),
-                    build.extraResources(),
                     build.testEnv());
         }
         // [test] is its own top-level table (test settings are not build inputs), but it folds into
@@ -227,7 +229,6 @@ public final class JkBuildParser {
                     build.testSerialTags(),
                     build.platformPolicy(),
                     build.unmappedPolicy(),
-                    build.extraResources(),
                     testEnv);
         }
         JkBuild.FormatConfig format = ManifestTables.parseFormat(result);

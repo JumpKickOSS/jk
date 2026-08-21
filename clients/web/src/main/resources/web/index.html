@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- SPDX-License-Identifier: Apache-2.0 — the jk engine dashboard shell (docs/webclient.md) -->
+<!-- SPDX-License-Identifier: Apache-2.0 — the jk engine dashboard shell (docs/contributors/webclient.md) -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -13,7 +13,7 @@
   <!-- Iconography is inline SVG via <jk-icon> (app.js). Brand: jumpkick-logo.webp in chrome;
        jk-logo.svg monogram as favicon. -->
   <!-- Version-pinned + SRI: a CDN compromise must not be able to script a page that can trigger
-       builds. Update the integrity hash whenever the pin moves (docs/webclient.md). -->
+       builds. Update the integrity hash whenever the pin moves (docs/contributors/webclient.md). -->
   <script src="https://unpkg.com/vue@3.5.39/dist/vue.global.prod.js"
           integrity="sha384-yrrm1s9PCS0I4n39ldjMqQlTorYls89GAS3wXVJooje/BSWnC2vTgky2LIyzRLEo"
           crossorigin="anonymous" defer></script>
@@ -24,7 +24,7 @@
           crossorigin="anonymous" defer></script>
   <!-- Monaco (vs-dark) is the #project/<id>/files viewer; code.js lazy-loads it from the same CDN
        on first open. It must load after these UMD globals — its AMD loader claims window.define
-       (docs/webclient.md). -->
+       (docs/contributors/webclient.md). -->
   <script src="/app.js" type="module"></script>
 </head>
 <body>
@@ -608,24 +608,52 @@
             </select>
           </label>
           <label>
-            <span>Template <span class="dim">(optional · {{ newProject.lang }})</span></span>
-            <select v-model="newProject.template">
-              <option value="">None — blank project from language / layout</option>
-              <option v-for="t in templatesForLang" :key="t.id" :value="t.id">{{ t.id }} — {{ t.description }}</option>
-            </select>
+            <span>Framework <span class="dim">(optional · filter)</span></span>
+            <div class="combo">
+              <input v-model="newProject.frameworkQuery" spellcheck="false" autocomplete="off"
+                     placeholder="All frameworks"
+                     @focus="frameworkOpen = true"
+                     @blur="onFrameworkBlur()"
+                     @input="onFrameworkQueryInput()"
+                     @keydown="onFrameworkKey($event)">
+              <ul v-if="frameworkOpen" class="combo-list">
+                <li :class="{ on: newProject.framework === '' }"
+                    @mousedown.prevent="pickFramework('', 'All frameworks')">All frameworks</li>
+                <li v-for="f in filteredFrameworkChoices" :key="f.value"
+                    :class="{ on: newProject.framework === f.value }"
+                    @mousedown.prevent="pickFramework(f.value, f.label)">{{ f.label }}</li>
+              </ul>
+            </div>
           </label>
-          <!-- Layout + executable only apply to the blank scaffolder. A Giter8 template ships a
-               fixed tree (traditional / simple / custom) — the apply path does not reshape it. -->
-          <label v-if="!newProject.template">
+          <label>
+            <span>Template <span class="dim">(optional · {{ newProject.lang }})</span></span>
+            <div class="combo">
+              <input v-model="newProject.templateQuery" spellcheck="false" autocomplete="off"
+                     placeholder="None — blank project"
+                     @focus="templateOpen = true"
+                     @blur="onTemplateBlur()"
+                     @input="onTemplateQueryInput()"
+                     @keydown="onTemplateKey($event)">
+              <ul v-if="templateOpen" class="combo-list">
+                <li :class="{ on: !newProject.template }"
+                    @mousedown.prevent="pickTemplate('', 'None — blank project')">None — blank project</li>
+                <li v-if="templatesUnavailable" class="dim">Template catalog unavailable — type a template ref (name, framework/name, path, or git URL)</li>
+                <li v-for="c in filteredTemplateChoices" :key="c.value"
+                    :class="{ on: newProject.template === c.value }"
+                    @mousedown.prevent="pickTemplate(c.value, c.label)">{{ c.label }}</li>
+              </ul>
+            </div>
+          </label>
+          <label v-if="showLayoutPicker()">
             <span>Layout</span>
             <select v-model="newProject.layout">
               <option value="traditional">Traditional (Maven-like)</option>
               <option value="simple">Simple (Mill-like)</option>
             </select>
           </label>
-          <p v-else class="template-meta dim small">
-            Template layout: <b>{{ selectedTemplateLayout() }}</b>
-            <span v-if="selectedTemplateLayout() === 'custom'"> (framework tree — not traditional/simple)</span>
+          <p v-else-if="newProject.template" class="template-meta dim small">
+            Template layout: <b>custom</b>
+            <span> (framework tree — not traditional/simple)</span>
           </p>
           <label>
             <span>Parent directory</span>
@@ -673,7 +701,7 @@
           <dt>Load avg (1m)</dt><dd class="mono">{{ loadAverageText() != null ? loadAverageText() : '—' }}</dd>
           <dt>System RAM</dt><dd class="mono">{{ status ? gib(status.totalMemoryBytes) : '—' }}</dd>
           <dt>Available RAM</dt><dd class="mono">{{ status ? gib(status.availableMemoryBytes ?? status.freeMemoryBytes) : '—' }}</dd>
-          <dt>Dashboard docs</dt><dd class="mono">docs/webclient.md</dd>
+          <dt>Dashboard docs</dt><dd class="mono">docs/contributors/webclient.md</dd>
         </dl>
         <div class="modal-foot">
           <span class="dim small">Live build activity streams over SSE. Run <code>jk build</code> in any workspace to see it here.</span>
@@ -681,7 +709,7 @@
       </div>
     </div>
 
-    <!-- Blocking auth gate: missing/invalid token — not dismissible (docs/webclient.md). -->
+    <!-- Blocking auth gate: missing/invalid token — not dismissible (docs/contributors/webclient.md). -->
     <div v-if="authModal" class="modal-bg auth-modal-bg" role="presentation">
       <div class="modal about auth-modal" role="alertdialog" aria-modal="true" aria-labelledby="auth-title" aria-describedby="auth-desc">
         <div class="modal-head">

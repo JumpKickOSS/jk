@@ -22,6 +22,7 @@ import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -71,15 +72,9 @@ public final class NewCommand implements CliCommand {
                         .negate(),
                 Opt.flag("Assembly (fat) jar. Implies --executable.", "--assembly"),
                 Opt.flag("Wire a GraalVM native-image build.", "--native"),
-                Opt.flag("Spring Boot application (implies --executable).", "--spring"),
-                Opt.flag("Grails app (--executable, --lang groovy)", "--grails"),
-                Opt.flag("Quarkus application (implies --executable).", "--quarkus"),
-                Opt.flag("Micronaut application (implies --executable).", "--micronaut"),
                 Opt.flag("Scaffold a jk build-plugin authoring project.", "--plugin"),
-                Opt.value("<ref>", "Giter8 template path, short name, or URL", "--template"),
+                Opt.value("<ref>", "Giter8 path, name, framework/name, or URL", "-t", "--template"),
                 Opt.value("<k=v>", "Template property k=v (repeatable)", "--param")
-                        .repeat(),
-                Opt.value("<url>", "Extra git template source (repeatable)", "--template-source")
                         .repeat(),
                 Opt.value("<deps>", "Curated deps, comma-separated.", "--deps"),
                 Opt.value("<layout>", "Source tree: traditional (default) | simple.", "--layout"),
@@ -101,15 +96,9 @@ public final class NewCommand implements CliCommand {
     Boolean executable;
     boolean assembly;
     boolean nativeImage;
-    boolean spring;
-    boolean grails;
-    boolean quarkus;
-    boolean micronaut;
     boolean plugin;
     String templateRef;
     List<String> templateParams = List.of();
-    /** One-shot third-party git sources for short-name lookup. */
-    List<String> templateSources = List.of();
 
     String depsCsv;
     String layoutFlag;
@@ -226,14 +215,9 @@ public final class NewCommand implements CliCommand {
         this.executable = in.flag("executable").orElse(null);
         this.assembly = in.isSet("assembly");
         this.nativeImage = in.isSet("native");
-        this.spring = in.isSet("spring");
-        this.grails = in.isSet("grails");
-        this.quarkus = in.isSet("quarkus");
-        this.micronaut = in.isSet("micronaut");
         this.plugin = in.isSet("plugin");
         this.templateRef = in.value("template").orElse(null);
         this.templateParams = in.values("param");
-        this.templateSources = in.values("template-source");
         this.depsCsv = in.value("deps").orElse(null);
         this.layoutFlag = in.value("layout").orElse(null);
         this.kotlinModule = in.value("kotlin-module").orElse(null);
@@ -280,10 +264,8 @@ public final class NewCommand implements CliCommand {
      * {@code jk new --template <local-path|short-name|git-uri|owner/repo>}.
      */
     private int runTemplateBuildPlan(Path cwd) {
-        if (spring || grails || quarkus || micronaut || plugin) {
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
-                    "New",
-                    "--template cannot be combined with --spring, --grails, --quarkus, --micronaut, or --plugin");
+        if (plugin) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("New", "--template cannot be combined with --plugin");
             return Exit.USAGE;
         }
         Map<String, String> params = new LinkedHashMap<>();
@@ -306,6 +288,9 @@ public final class NewCommand implements CliCommand {
             params.putIfAbsent("group", group);
             params.putIfAbsent("package", group);
         }
+        // Only an explicit --lang goes on the wire: template resolution searches every language
+        // for a bare name, and hardcoding java here made kotlin-only templates unreachable.
+        String resolvedLang = (lang != null && !lang.isBlank()) ? lang : null;
         Path target = resolveTarget(directory, cwd, resolvedName);
         Path parentDir = target.getParent() == null ? cwd : target.getParent();
         if (officialTemplateShortName(templateRef)) {
@@ -319,11 +304,10 @@ public final class NewCommand implements CliCommand {
                             resolvedName,
                             parentDir.toString(),
                             group,
-                            "java",
-                            "simple",
+                            resolvedLang,
+                            layoutFlag == null || layoutFlag.isBlank() ? "traditional" : layoutFlag,
                             templateRef,
                             false,
-                            null,
                             null,
                             0,
                             false,
@@ -599,10 +583,6 @@ public final class NewCommand implements CliCommand {
                 || executable != null
                 || assembly
                 || nativeImage
-                || spring
-                || grails
-                || quarkus
-                || micronaut
                 || plugin
                 || (templateRef != null && !templateRef.isBlank())
                 || depsCsv != null
@@ -619,7 +599,6 @@ public final class NewCommand implements CliCommand {
     private void scaffoldAndRegister(NewInputs inputs) throws IOException {
         Path target = inputs.directory();
         Path parentDir = target.getParent() == null ? target : target.getParent();
-        String framework = inputs.frameworkScaffold() ? inputs.frameworkPluginFlag() : null;
         var ack = cc.jumpkick.cli.engine.EngineClient.newProject(
                 cc.jumpkick.engine.EnginePaths.current(),
                 new cc.jumpkick.cli.engine.EngineRequests.NewProjectRequest(
@@ -630,7 +609,6 @@ public final class NewCommand implements CliCommand {
                         inputs.layout(),
                         null,
                         inputs.isRunnable(),
-                        framework,
                         inputs.jdk(),
                         inputs.javaRelease(),
                         inputs.assembly(),
@@ -658,17 +636,8 @@ public final class NewCommand implements CliCommand {
     }
 
     private NewInputs fromFlags(Path cwd) {
-        if (plugin && (spring || grails || quarkus || micronaut || nativeImage)) {
-            throw new IllegalArgumentException(
-                    "--plugin scaffolds a build-plugin project and can't be combined with --spring, --grails,"
-                            + " --quarkus, --micronaut, or --native");
-        }
-        int frameworks = (spring ? 1 : 0) + (grails ? 1 : 0) + (quarkus ? 1 : 0) + (micronaut ? 1 : 0);
-        if (frameworks > 1) {
-            throw new IllegalArgumentException("--spring, --grails, --quarkus, and --micronaut are mutually exclusive");
-        }
-        if (grails && lang != null && !lang.isBlank() && !"groovy".equalsIgnoreCase(lang)) {
-            throw new IllegalArgumentException("--grails scaffolds a Groovy application (--lang " + lang + "?)");
+        if (plugin && nativeImage) {
+            throw new IllegalArgumentException("--plugin can't be combined with --native");
         }
         var presetName = wizardPresetName(directory, cwd);
         var resolvedName = (name != null && !name.isBlank()) ? name : presetName.orElse("untitled");
@@ -716,32 +685,20 @@ public final class NewCommand implements CliCommand {
                         + " was requested");
             }
         }
-        var resolvedLang = grails
-                ? NewInputs.Language.GROOVY
-                : (lang != null && !lang.isBlank())
-                        ? parseLanguage(lang)
-                        : (parent != null && parent.kotlin())
-                                ? NewInputs.Language.KOTLIN
-                                : (parent != null && parent.groovy())
-                                        ? NewInputs.Language.GROOVY
-                                        : NewInputs.Language.JAVA;
-        var isExecutable =
-                Boolean.TRUE.equals(executable) || assembly || nativeImage || spring || grails || quarkus || micronaut;
+        var resolvedLang = (lang != null && !lang.isBlank())
+                ? parseLanguage(lang)
+                : (parent != null && parent.kotlin())
+                        ? NewInputs.Language.KOTLIN
+                        : (parent != null && parent.groovy()) ? NewInputs.Language.GROOVY : NewInputs.Language.JAVA;
+        var isExecutable = Boolean.TRUE.equals(executable) || assembly || nativeImage;
         // Traditional (Maven) is the product default. --layout simple opts into the Mill-like tree.
         var resolvedLayout = (layoutFlag != null && !layoutFlag.isBlank()) ? layoutFlag.toLowerCase() : "traditional";
         var resolvedMain = plugin
                 ? Optional.<String>empty()
-                : (spring || grails || quarkus || micronaut)
-                        // Kotlin's top-level main lives on the ApplicationKt facade class.
-                        // Quarkus scaffold uses an object Application with @JvmStatic main → Application.
-                        ? Optional.of(resolvedGroup
-                                + (resolvedLang == NewInputs.Language.KOTLIN && !quarkus
-                                        ? ".ApplicationKt"
-                                        : ".Application"))
-                        : isExecutable
-                                ? Optional.of(deriveMainFqcn(
-                                        resolvedGroup, resolvedLang, "simple".equalsIgnoreCase(resolvedLayout)))
-                                : Optional.<String>empty();
+                : isExecutable
+                        ? Optional.of(
+                                deriveMainFqcn(resolvedGroup, resolvedLang, "simple".equalsIgnoreCase(resolvedLayout)))
+                        : Optional.<String>empty();
         // A plugin's jk-plugin-sdk dependency is emitted by NewJkBuildRenderer, not via curated deps.
         var resolvedDeps = plugin ? List.<String>of() : parseDeps(depsCsv);
         var resolvedKotlinModule = (kotlinModule != null && !kotlinModule.isBlank())
@@ -755,12 +712,8 @@ public final class NewCommand implements CliCommand {
                 resolvedJavaRelease,
                 Optional.<String>empty(), // flag path doesn't resolve to a specific install
                 resolvedMain,
-                assembly, // NewInputs also forces it on for --plugin / --micronaut
+                assembly,
                 nativeImage,
-                spring,
-                grails,
-                quarkus,
-                micronaut,
                 plugin,
                 resolvedLang,
                 resolvedLayout,
@@ -1149,10 +1102,11 @@ public final class NewCommand implements CliCommand {
     static final List<String> CURATED_IDS =
             List.of("jspecify", "kotest", "commons-lang", "commons-io", "guava", "lombok");
 
-    /** Official Giter8 short names (engine catalog). Used only to decide whether to freshen templates. */
+    /** Short-name shaped refs: the engine owns the catalog and freshen. */
     private static boolean officialTemplateShortName(String id) {
-        // Giter8ShortNames is the single canonical table — a hand-copied set here silently
-        // missed newly added templates (JK-2172).
-        return id != null && cc.jumpkick.scaffold.Giter8ShortNames.find(id).isPresent();
+        if (id == null || id.isBlank()) return false;
+        return id.matches("[a-z][a-z0-9-]*")
+                || id.matches("[a-z][a-z0-9-]*/[a-z][a-z0-9-]*")
+                || id.matches("[a-z]+/[a-z][a-z0-9-]*/[a-z][a-z0-9-]*");
     }
 }

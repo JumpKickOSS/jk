@@ -57,9 +57,27 @@ class RepoGroupBuilderTest {
 
     @Test
     void default_remote_repos_includes_jumpkick_first() {
-        assertThat(RepoGroupBuilder.DEFAULT_REMOTE_REPOS)
+        assertThat(RepoGroupBuilder.defaultRemoteRepos())
                 .containsExactly(RepositorySpec.JUMPKICK, RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN);
         assertThat(RepositorySpec.GOOGLE_MAVEN.url().toString()).contains("google");
+    }
+
+    @Test
+    void official_repo_url_override_governs_the_default_remotes() {
+        String prior = System.getProperty(RepositorySpec.OFFICIAL_REPO_URL_PROPERTY);
+        System.setProperty(RepositorySpec.OFFICIAL_REPO_URL_PROPERTY, "http://127.0.0.1:1/mirror");
+        try {
+            RepositorySpec jumpkick = RepoGroupBuilder.defaultRemoteRepos().getFirst();
+            assertThat(jumpkick.name()).isEqualTo("jumpkick");
+            assertThat(jumpkick.url().toString()).isEqualTo("http://127.0.0.1:1/mirror/");
+            assertThat(jumpkick.groups()).isEqualTo(RepositorySpec.JUMPKICK.groups());
+        } finally {
+            if (prior == null) {
+                System.clearProperty(RepositorySpec.OFFICIAL_REPO_URL_PROPERTY);
+            } else {
+                System.setProperty(RepositorySpec.OFFICIAL_REPO_URL_PROPERTY, prior);
+            }
+        }
     }
 
     @Test

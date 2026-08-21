@@ -3,17 +3,22 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
+import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -84,9 +89,35 @@ public final class PluginDescriptorOps {
 
     /** The locked + synced jar for {@code decl}, or empty (remediation: {@code jk sync}). */
     public static Optional<Path> jarFor(Path moduleDir, PluginDeclaration decl, Path cache) {
-        return PluginDescriptorStore.lockEntry(moduleDir, decl)
-                .map(e -> JkStores.cas(cache).pathFor(e.sha256Hex()))
-                .filter(Files::isRegularFile);
+        Optional<Lockfile.PluginEntry> entry = PluginDescriptorStore.lockEntry(moduleDir, decl);
+        if (decl.isPathPin()) {
+            // Path pins have no Maven coordinate or POM; the sha-verified blob is the whole
+            // classpath (WorkerLaunchClasspath recognizes blob paths as self-contained).
+            return entry.map(e -> JkStores.cas(cache).pathFor(e.sha256Hex())).filter(Files::isRegularFile);
+        }
+        return entry.flatMap(e -> pinnedLayoutJar(JkStores.cas(cache), e.coordinate(), e.version(), e.sha256Hex()));
+    }
+
+    /**
+     * The Maven-layout path for a lock-pinned worker jar: the first repo store whose sidecar hash
+     * matches the pin, else materialized into {@code repos/local} from the CAS blob. Forks must get
+     * layout paths, never bare CAS blobs — a blob has no {@code .jar} name and no coordinate, so
+     * {@link cc.jumpkick.repo.PomRuntimeClasspath} cannot reach its POM. Repos live beside the CAS
+     * under {@code cas.root()}.
+     */
+    static Optional<Path> pinnedLayoutJar(Cas cas, String module, String version, String sha256Hex) {
+        String rel = MavenLayout.artifactPath(Coordinate.ofModule(module, version));
+        Path storeRoot = cas.root();
+        for (String repoName : List.of("local", PluginJar.OFFICIAL_REPO, "central")) {
+            Optional<Path> stored =
+                    RepoArtifactStore.forRepoName(storeRoot, repoName).locate(rel, sha256Hex);
+            if (stored.isPresent()) return stored;
+        }
+        Path blob = cas.pathFor(sha256Hex);
+        if (!Files.isRegularFile(blob)) return Optional.empty();
+        RepoArtifactStore local = RepoArtifactStore.forRepoName(storeRoot, "local");
+        local.materialize(rel, blob, sha256Hex);
+        return local.locate(rel, sha256Hex);
     }
 
     /** The declaration whose materialized manifest carries {@code pluginId}, or empty. */

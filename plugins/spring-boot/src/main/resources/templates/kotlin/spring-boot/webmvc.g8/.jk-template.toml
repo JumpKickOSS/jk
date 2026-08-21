@@ -1,0 +1,5 @@
+language = "kotlin"
+framework = "spring-boot"
+name = "webmvc"
+description = "Clean architecture WebMVC (JOOQ, Flyway, Security, Vue)"
+layouts = ["traditional", "simple"]

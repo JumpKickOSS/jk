@@ -18,6 +18,7 @@ asm = "latest"
 asm-tree = "latest"
 asm-commons = "latest"
 jgit = "latest"
+ST4 = { group = "org.antlr", name = "ST4", version = "latest" }
 xz = "latest"
 
 [provided-dependencies]
@@ -31,12 +32,9 @@ assertj-core = "latest"
 junit-jupiter = "latest"
 
 [build]
-# Only the workers engine tests actually fork or verify against. Each entry is a hard
-# build-order edge (the whole plugin plan runs before engine) AND a content hash in the
-# run-tests stamp — a spurious entry makes an unrelated plugin edit re-run this entire
-# suite. publisher/image-builder/compat-bridge/formatter/quarkus were dropped after an
-# import-level audit found zero jar consumers (JK-2190); PluginJar's CAS fallback still
-# covers any incidental locate().
+# Each entry is a hard build-order edge AND a content hash in the run-tests stamp —
+# an unused name makes an unrelated plugin edit re-run this entire suite. Keep this
+# list to workers the engine test JVM actually locates (forks, or BuiltInPluginJars).
 test-plugin-jars = [
   "test-runner",
   "java-compiler",
@@ -48,6 +46,7 @@ test-plugin-jars = [
   "minified",
   "grails",
   "groovy-compiler",
+  "quarkus",
 ]
 
 [test]

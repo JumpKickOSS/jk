@@ -92,6 +92,16 @@ public final class EffectivePomBuilder {
     }
 
     /**
+     * Effective model of an already-parsed POM: parent chain, BOM imports, and
+     * {@code dependencyManagement} applied through this builder's repositories. Used when the POM
+     * is in hand (sibling of a worker jar) rather than fetched by GAV.
+     */
+    public EffectivePom build(Pom raw) throws IOException, InterruptedException {
+        Objects.requireNonNull(raw, "raw");
+        return merge(raw, new HashSet<>(), 0);
+    }
+
+    /**
      * Build (or return cached) effective POM. Concurrent-safe via {@link ConcurrentHashMap} cache;
      * each call uses its own cycle-detection set so sibling BOM imports can expand in parallel.
      */
@@ -170,8 +180,8 @@ public final class EffectivePomBuilder {
             CompletableFuture<EffectivePom> flight)
             throws IOException, InterruptedException {
         RepoGroup.RepoFetched hit = repos.tryFetchPom(coord)
-                .orElseThrow(
-                        () -> new MavenRepo.ArtifactNotFoundException("POM not found in any declared repo: " + coord));
+                .orElseThrow(() ->
+                        new MavenRepo.ArtifactNotFoundException("POM not found in any declared repo: " + coord, coord));
         Pom raw = PomParser.parse(Files.readAllBytes(hit.fetched().cachePath()));
         EffectivePom effective = merge(raw, visiting, depth);
         cache.put(localKey, effective);

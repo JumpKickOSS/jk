@@ -16,6 +16,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
@@ -28,9 +29,9 @@ import org.junit.jupiter.api.Test;
 /**
  * Runs against a per-test {@code JK_HOME}/{@code JK_STATE_DIR} overlay ({@code jk.env.*} seam,
  * same as {@link cc.jumpkick.cli.engine.IsolatedStoreExtension}) — NOT the suite-shared home.
- * These tests genuinely nuke the store and stub {@code lib/jk-engine.jar}; against the shared
- * home that wiped the CAS/worker libs and poisoned every later class's nested engine spawn with
- * a 6-byte jar (mass exit-70s across the integration phase, JK-2204).
+ * These tests genuinely nuke the store and stub a nested engine under {@code lib/jk-engine/};
+ * against the shared home that wiped the CAS/worker libs and poisoned every later class's nested
+ * engine spawn with a stub jar (mass exit-70s across the integration phase).
  */
 class SelfNukeCommandTest {
 
@@ -45,18 +46,34 @@ class SelfNukeCommandTest {
         prevHome = System.getProperty("jk.env.JK_HOME");
         prevState = System.getProperty("jk.env.JK_STATE_DIR");
         System.setProperty("jk.env.JK_HOME", isolatedHome.toString());
-        System.setProperty("jk.env.JK_STATE_DIR", Files.createDirectories(isolatedHome.resolve("state"))
-                .toString());
+        System.setProperty(
+                "jk.env.JK_STATE_DIR",
+                Files.createDirectories(isolatedHome.resolve("state")).toString());
         // self nuke is engine-hosted: give the isolated home a REAL launchable engine by
         // copying the suite home's materialized install (EngineTestExtension ran beforeAll,
         // before this overlay). A stub jar here just reproduces "no build engine" (exit 1).
         String suiteHome = System.getenv("JK_HOME");
         if (suiteHome != null && !suiteHome.isBlank()) {
-            Path from = Path.of(suiteHome).resolve("lib");
-            Path to = Files.createDirectories(isolatedHome.resolve("lib"));
-            for (String f : List.of("jk-engine.jar", "jk-engine.toml")) {
-                if (Files.isRegularFile(from.resolve(f))) {
-                    Files.copy(from.resolve(f), to.resolve(f));
+            Path fromLib = Path.of(suiteHome).resolve("lib").resolve("jk-engine");
+            Path toLib = Files.createDirectories(isolatedHome.resolve("lib").resolve("jk-engine"));
+            if (Files.isDirectory(fromLib)) {
+                try (var stream = Files.list(fromLib)) {
+                    for (Path p : stream.toList()) {
+                        if (Files.isRegularFile(p)) {
+                            Files.copy(p, toLib.resolve(p.getFileName().toString()));
+                        }
+                    }
+                }
+            }
+            Path fromCfg = Path.of(suiteHome).resolve("config").resolve("jk-engine");
+            Path toCfg = Files.createDirectories(isolatedHome.resolve("config").resolve("jk-engine"));
+            if (Files.isDirectory(fromCfg)) {
+                try (var stream = Files.list(fromCfg)) {
+                    for (Path p : stream.toList()) {
+                        if (Files.isRegularFile(p)) {
+                            Files.copy(p, toCfg.resolve(p.getFileName().toString()));
+                        }
+                    }
                 }
             }
         }
@@ -111,11 +128,11 @@ class SelfNukeCommandTest {
         JkDirs dirs = JkDirs.current();
         // The isolated home carries a REAL materialized engine (isolateHome copy) — the hosted
         // nuke needs it to run, and its survival is exactly what this test asserts.
-        Path engineJar = dirs.productLibDir().resolve("jk-engine.jar");
+        Path engineHome = dirs.productLibDir().resolve("jk-engine");
         Path cas = dirs.storeDir().resolve("sha256");
         Path lib = dirs.libDir().resolve("jk-java-compiler");
         Path bin = dirs.binDirectory();
-        Files.createDirectories(engineJar.getParent());
+        Files.createDirectories(engineHome);
         Files.createDirectories(cas.resolve("ab"));
         Files.writeString(cas.resolve("ab/blob"), "cas");
         Files.createDirectories(lib);
@@ -130,7 +147,7 @@ class SelfNukeCommandTest {
         assertThat(cas.resolve("ab/blob")).doesNotExist();
         assertThat(lib.resolve("plugin.jar")).doesNotExist();
         // product-lib engine + PATH are not part of the store
-        assertThat(engineJar).exists();
+        assertThat(engineHome).isDirectory();
         assertThat(foreign).exists();
     }
 
@@ -182,11 +199,12 @@ class SelfNukeCommandTest {
     }
 
     @Test
-    void config_under_jk_home_targets_only_config_file_even_with_outside_bin() throws Exception {
+    void config_under_jk_home_targets_config_dir_not_umbrella_home() throws Exception {
         Path root = Files.createTempDirectory("jk-purge-cfg");
         Path home = root.resolve("home");
         Path outsideBin = root.resolve("outside-bin");
         Files.createDirectories(home.resolve("lib"));
+        Files.createDirectories(home.resolve("config"));
         Files.createDirectories(outsideBin);
         JkDirs dirs = JkDirs.of(
                 env("JK_HOME", home.toString(), "JK_BIN_DIR", outsideBin.toString()),
@@ -194,7 +212,7 @@ class SelfNukeCommandTest {
 
         List<Path> roots = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.CONFIG));
         Path homeAbs = home.toAbsolutePath().normalize();
-        assertThat(roots).containsExactly(homeAbs.resolve("config.toml"));
+        assertThat(roots).containsExactly(homeAbs.resolve("config"));
         assertThat(roots).noneMatch(p -> p.equals(homeAbs));
     }
 
@@ -274,6 +292,33 @@ class SelfNukeCommandTest {
         Map<String, String> map = new HashMap<>();
         for (int i = 0; i < kv.length; i += 2) map.put(kv[i], kv[i + 1]);
         return map::get;
+    }
+
+    @Test
+    void multi_target_settles_cache_then_self_with_blank_gaps() throws Exception {
+        // Cache+state avoids the engine-hosted store wipe (needs suite JK_HOME). Storage→Cache→Self
+        // ordering is covered by run() calling StorageCommand before CacheCommand; this asserts the
+        // blank gaps between back-to-back settles and Cache before Self.
+        JkDirs dirs = JkDirs.current();
+        Path cache = dirs.cacheDir();
+        Path state = dirs.stateDir();
+        Files.createDirectories(cache.resolve("actions"));
+        Files.writeString(cache.resolve("actions/marker"), "cache");
+        Files.createDirectories(state.resolve("aot"));
+        Files.writeString(state.resolve("aot/marker"), "state");
+
+        String out = Capture.stdout(() -> assertThat(Jk.execute("self", "nuke", "--cache", "--state", "-y"))
+                .isZero());
+        String plain = TestAnsi.strip(out);
+        List<String> settles = Arrays.stream(plain.split("\n"))
+                .filter(l -> l.contains("Nuked"))
+                .toList();
+        assertThat(settles).hasSizeGreaterThanOrEqualTo(2);
+        assertThat(settles.get(0)).contains("Cache");
+        assertThat(settles.get(1)).contains("Self");
+        assertThat(plain).containsPattern("(?s)Cache[^\\n]*Nuked[^\\n]*\\n\\s*\\n[^\\n]*Self[^\\n]*Nuked");
+        assertThat(cache.resolve("actions/marker")).doesNotExist();
+        assertThat(state.resolve("aot/marker")).doesNotExist();
     }
 
     @Test

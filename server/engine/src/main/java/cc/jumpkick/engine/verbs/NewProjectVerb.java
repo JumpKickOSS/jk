@@ -57,7 +57,6 @@ public final class NewProjectVerb implements HostedVerb {
                         Jsonl.str(requestLine, "layout"),
                         Jsonl.str(requestLine, "template"),
                         Jsonl.bool(requestLine, "executable", false),
-                        Jsonl.str(requestLine, "framework"),
                         Jsonl.str(requestLine, "jdk"),
                         Jsonl.intValue(requestLine, "javaRelease", 0),
                         Jsonl.bool(requestLine, "assembly", false),

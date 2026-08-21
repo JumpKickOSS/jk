@@ -1,5 +1,6 @@
-# Built-in Micronaut 5.x plugin (JK-1533/1534/1536).
-# Declarative: BOM + scaffold. Worker: micronaut-aot step. Packaging: assembly fat jar.
+# Built-in Micronaut 5.x plugin.
+# Declarative: BOM. Worker: micronaut-aot step. Packaging: assembly fat jar.
+# Giter8 trees: src/main/resources/templates/<lang>/<framework>/<name>.g8/.
 
 [plugin]
 id        = "micronaut"
@@ -12,7 +13,7 @@ worker          = "jk-micronaut"
 protocol-prefix = "##JKMN:"
 
 [schema]
-version     = { type = "string", required = true, example = "5", hint = "major-line floor for micronaut-platform (caret; lock pins exact). Use =5.1.0 to hard-pin" }
+version     = { type = "string", required = true, example = "latest", hint = "micronaut-platform selector — latest, a major-line floor (caret; lock pins exact), or =5.1.0 to hard-pin" }
 aot         = { type = "bool" }  # tri-state: absent = auto (on when [native] is declared)
 aot-runtime = { type = "string", example = "native", hint = "jit or native; unset follows the project — native when [native] is declared, else jit" }
 aot-package = { type = "string", example = "com.example.aot.generated", hint = "Java package for AOT-generated classes; default is project.group + .aot.generated" }
@@ -73,50 +74,3 @@ args = [
   "--initialize-at-build-time=ch.qos.logback,org.slf4j",
 ]
 
-# ---- Scaffold: jk new --micronaut
-[scaffold]
-flag        = "micronaut"
-description = "Micronaut 5 application"
-
-[[scaffold.append]]
-template = "scaffold/jk-toml-java.toml.tmpl"
-when     = { lang = "java" }
-
-[[scaffold.append]]
-template = "scaffold/jk-toml-kotlin.toml.tmpl"
-when     = { lang = "kotlin" }
-
-[[scaffold.file]]
-path     = "${main-root}/${package-path}/Application.java"
-template = "scaffold/Application.java.tmpl"
-when     = { lang = "java" }
-
-[[scaffold.file]]
-path     = "${main-root}/${package-path}/HelloController.java"
-template = "scaffold/HelloController.java.tmpl"
-when     = { lang = "java" }
-
-[[scaffold.file]]
-path     = "${test-root}/${package-path}/HelloControllerTest.java"
-template = "scaffold/HelloControllerTest.java.tmpl"
-when     = { lang = "java" }
-
-[[scaffold.file]]
-path     = "${main-root}/${package-path}/Application.kt"
-template = "scaffold/Application.kt.tmpl"
-when     = { lang = "kotlin" }
-
-[[scaffold.file]]
-path     = "${main-root}/${package-path}/HelloController.kt"
-template = "scaffold/HelloController.kt.tmpl"
-when     = { lang = "kotlin" }
-
-[[scaffold.file]]
-path     = "${test-root}/${package-path}/HelloControllerTest.kt"
-template = "scaffold/HelloControllerTest.kt.tmpl"
-when     = { lang = "kotlin" }
-
-[[scaffold.file]]
-path          = "${resources-root}/application.properties"
-template      = "scaffold/application.properties.tmpl"
-keep-existing = true

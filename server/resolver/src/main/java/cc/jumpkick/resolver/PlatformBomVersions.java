@@ -12,9 +12,9 @@ import java.util.Objects;
 /**
  * Resolve a platform BOM {@link VersionSelector} to a concrete release version.
  *
- * <p>Platform BOMs may use caret/tilde anchors (or exact pins) but not {@code latest}. The managed
- * catalog is loaded from the <em>resolved</em> BOM POM — so {@code version = "4"} must pick the
- * highest stable 4.x before reading {@code dependencyManagement}.
+ * <p>The managed catalog is loaded from the <em>resolved</em> BOM POM — so {@code version = "4"}
+ * must pick the highest stable 4.x, and {@code latest} the highest stable advertised, before
+ * reading {@code dependencyManagement}.
  *
  * <p>Takes a parsed {@link VersionSelector}, never a raw string: whether a <em>bare</em> version
  * means "exact" or "caret floor" is the caller's convention, not this class's. {@code jk.toml}
@@ -31,10 +31,12 @@ public final class PlatformBomVersions {
      *
      * <ul>
      *   <li>{@link VersionSelector.Exact} → that version (no metadata required).
+     *   <li>{@link VersionSelector.Latest} → highest <em>stable</em> version metadata advertises.
+     *   <li>{@link VersionSelector.Snapshot} → highest advertised version, pre-releases included.
      *   <li>{@link VersionSelector.Caret}/{@link VersionSelector.Tilde} → highest <em>stable</em>
      *       version in the selector's range that metadata advertises; falls back to the anchor if
      *       metadata is empty (offline / first-publish) when the anchor itself is in range.
-     *   <li>Other selectors → rejected (same R6b rule as lock).
+     *   <li>Open ranges → rejected.
      * </ul>
      */
     public static String resolve(RepoGroup repos, String group, String artifact, VersionSelector selector)
@@ -48,18 +50,19 @@ public final class PlatformBomVersions {
             return e.version();
         }
 
+        boolean preferPreRelease = selector instanceof VersionSelector.Snapshot;
         String anchor =
                 switch (selector) {
                     case VersionSelector.Caret c -> c.version();
                     case VersionSelector.Tilde t -> t.version();
+                    case VersionSelector.Latest ignored -> null;
+                    case VersionSelector.Snapshot ignored -> null;
                     case VersionSelector.Exact ignored -> throw new IllegalStateException("unreachable");
                     case VersionSelector.Range r -> throw reject(group, artifact, r.raw());
-                    case VersionSelector.Latest l -> throw reject(group, artifact, l.raw());
-                    case VersionSelector.Snapshot s -> throw reject(group, artifact, s.raw());
                 };
 
         VersionSet allowed = VersionSelectors.toVersionSet(selector);
-        Coordinate probe = Coordinate.of(group, artifact, anchor);
+        Coordinate probe = Coordinate.of(group, artifact, anchor != null ? anchor : "0");
         List<String> available = repos.availableVersions(probe);
 
         String bestStable = null;
@@ -70,10 +73,18 @@ public final class PlatformBomVersions {
             if (!Versions.isStable(v)) continue;
             if (bestStable == null || Versions.compare(v, bestStable) > 0) bestStable = v;
         }
+        if (preferPreRelease && bestAny != null) return bestAny;
         if (bestStable != null) return bestStable;
         // Anchor is always preferred over an unstable-only catalog when it is in range.
-        if (allowed.contains(anchor)) return anchor;
-        if (bestAny != null) return bestAny;
+        if (anchor != null && allowed.contains(anchor)) return anchor;
+        if (bestAny != null) {
+            // `latest` promises the highest STABLE; silently serving a milestone/RC when a line
+            // ships none (grails 8.x) breaks that promise. Pin the pre-release deliberately.
+            throw new IllegalStateException("platform dependency `"
+                    + group + ":" + artifact + "` selector `" + selector.raw()
+                    + "` matches no stable version — newest is the pre-release " + bestAny
+                    + "; pin it explicitly (e.g. `" + bestAny + "`) or use a snapshot selector");
+        }
         throw new IllegalStateException("platform dependency `"
                 + group
                 + ":"
@@ -89,9 +100,9 @@ public final class PlatformBomVersions {
                 + group
                 + ":"
                 + artifact
-                + "` must use an exact or caret/tilde version (got `"
+                + "` must use an exact, caret/tilde, latest, or snapshot version (got `"
                 + raw
-                + "`). Floating selectors like `latest` or open ranges are not supported for"
-                + " [platform-dependencies] BOMs — pin e.g. `=3.4.0` or `3.4.0`.");
+                + "`). Open ranges are not supported for [platform-dependencies] BOMs — pin e.g."
+                + " `=3.4.0`, `3.4.0`, or `latest`.");
     }
 }

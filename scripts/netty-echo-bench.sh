@@ -62,4 +62,4 @@ echo "|----------|----------:|------------|"
 
 echo
 echo "Maven/Mill arms: run on the same machine against Netty's pom / Mill thirdparty port;"
-echo "see docs/perf/netty-benchmark.md for methodology."
+echo "methodology: 3 warmup + 5 measured runs per shape; report the median."

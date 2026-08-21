@@ -67,11 +67,33 @@ public final class ManifestBuild {
     }
 
     /**
+     * Before the parse captures its manifest set: give the engine's lazy fetcher one chance to
+     * install the built-in owning each referenced-but-unowned top-level table (cold store, first
+     * use). No-op outside the engine. Returns table → failure detail for fetches that failed, so
+     * {@link #checkUnownedTables} can surface the real cause.
+     */
+    static Map<String, String> ensureBuiltInTables(TomlTable root) {
+        Map<String, String> failures = new LinkedHashMap<>();
+        for (String key : root.keySet()) {
+            if (CORE_TABLES.contains(key) || ManifestProject.PROJECT_KEYS.contains(key)) continue;
+            if (!(root.get(key) instanceof TomlTable) && !(root.get(key) instanceof org.tomlj.TomlArray)) continue;
+            if (PluginTableRegistry.byTable(key).isPresent()) continue;
+            String detail = PluginTableRegistry.tryFetchMissingBuiltIn(key);
+            if (detail != null) failures.put(key, detail);
+        }
+        return failures;
+    }
+
+    /**
      * Error on top-level tables neither core nor owned by an installed plugin. Suppressed while
      * any {@code [plugins]} declaration is still unresolved (unknown ownership pre-lock).
      */
     static void checkUnownedTables(
-            TomlTable root, Path moduleDir, List<PluginDeclaration> plugins, List<PluginDescriptor> installed) {
+            TomlTable root,
+            Path moduleDir,
+            List<PluginDeclaration> plugins,
+            List<PluginDescriptor> installed,
+            Map<String, String> builtInFetchFailures) {
         if (!plugins.isEmpty() && PluginDescriptorStore.hasUnresolved(moduleDir, plugins)) return;
         Set<String> owned = new HashSet<>(CORE_TABLES);
         for (PluginDescriptor m : installed) owned.add(m.table());
@@ -95,8 +117,10 @@ public final class ManifestBuild {
                 throw new JkBuildParseException(
                         "[shrink] was renamed — use a [minified] table (and `assembly = \"minified\"`)");
             }
+            String fetchDetail = builtInFetchFailures.get(key);
             throw new JkBuildParseException("[" + key + "] is not owned by any installed plugin — add it under"
-                    + " [plugins] (plugin tables installed here: " + (known.length() == 0 ? "none" : known) + ")");
+                    + " [plugins] (plugin tables installed here: " + (known.length() == 0 ? "none" : known) + ")"
+                    + (fetchDetail == null ? "" : "; fetching the built-in plugin failed: " + fetchDetail));
         }
     }
 
@@ -269,7 +293,6 @@ public final class ManifestBuild {
                     List.of(),
                     platformPolicy,
                     unmappedPolicy,
-                    List.of(),
                     Map.of());
         }
 
@@ -282,6 +305,12 @@ public final class ManifestBuild {
         List<String> testSerialTags = new ArrayList<>();
 
         if (build != null) {
+            if (build.contains("extra-resources")) {
+                throw new JkBuildParseException("[build].extra-resources is not a setting — a plugin"
+                        + " worker ships its own jk-plugin.toml at the jar root (module-root"
+                        + " jk-plugin.toml is copied there automatically; src/main/resources/"
+                        + "jk-plugin.toml already is). Modules cannot pull files from other modules.");
+            }
             TomlArray arr = build.getArray("order-after");
             if (arr != null) {
                 for (int i = 0; i < arr.size(); i++) {
@@ -372,25 +401,9 @@ public final class ManifestBuild {
                 testSerialTags,
                 platformPolicy,
                 unmappedPolicy,
-                parseExtraResources(build),
                 Map.of());
     }
 
-    /**
-     * {@code [build] extra-resources} — files from outside the module copied onto its classpath
-     * . Each entry is an inline table:
-     *
-     * <pre>
-     * extra-resources = [
-     * { from = "../../plugins/&#42;/jk-plugin.toml", into = "cc/jumpkick/plugin/manifest",
-     * rename = "{1}.jk-plugin.toml" },
-     * ]
-     * </pre>
-     *
-     * {@code from} is a module-relative glob; {@code exclude} narrows it; {@code optional} allows a
-     * pattern to match nothing (by default that is an error, since a typo'd path that silently
-     * contributes no files is indistinguishable from success until runtime).
-     */
     /**
      * {@code [test] env} — environment variables for each forked test JVM.
      *
@@ -424,41 +437,8 @@ public final class ManifestBuild {
         return out;
     }
 
-    static List<JkBuild.ExtraResource> parseExtraResources(TomlTable build) {
-        List<JkBuild.ExtraResource> out = new ArrayList<>();
-        if (build == null) return out;
-        TomlArray arr = build.getArray("extra-resources");
-        if (arr == null) return out;
-        for (int i = 0; i < arr.size(); i++) {
-            if (!(arr.get(i) instanceof TomlTable entry)) {
-                throw new JkBuildParseException("[build].extra-resources entries must be tables, e.g."
-                        + " { from = \"../../plugins/*/jk-plugin.toml\", into = \"pkg/dir\" }");
-            }
-            String from = entry.getString("from");
-            if (from == null || from.isBlank()) {
-                throw new JkBuildParseException("[build].extra-resources entries require a `from` path or glob");
-            }
-            List<String> exclude = new ArrayList<>();
-            TomlArray ex = entry.getArray("exclude");
-            if (ex != null) {
-                for (int j = 0; j < ex.size(); j++) {
-                    Object v = ex.get(j);
-                    if (!(v instanceof String g) || g.isBlank()) {
-                        throw new JkBuildParseException(
-                                "[build].extra-resources `exclude` must be an array of glob strings");
-                    }
-                    exclude.add(g);
-                }
-            }
-            Boolean optional = entry.getBoolean("optional");
-            out.add(new JkBuild.ExtraResource(
-                    from, entry.getString("into"), entry.getString("rename"), exclude, optional != null && optional));
-        }
-        return out;
-    }
-
     /**
-     * {@code [[kotlin-plugins]]}: {@code coordinate} is {@code group:artifact[:version]} (omitted
+     * {@code [[kotlin-plugins]]}: {@code coordinate} is {@code group:artifact[:version]} (omitted)
      * version → project Kotlin version); {@code id} defaults to the artifact.
      */
     static List<JkBuild.KotlinPluginDecl> parseKotlinPlugins(TomlTable root) {

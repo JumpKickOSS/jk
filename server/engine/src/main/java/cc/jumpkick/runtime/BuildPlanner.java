@@ -430,7 +430,7 @@ public final class BuildPlanner {
             if (useKotlin && !useJava && PlannerCompile.hasProcessorDeps(jkBuild)) {
                 useJava = true;
             }
-            compactLayout = CompileSupport.isSimpleLayout(in.dir());
+            compactLayout = CompileSupport.isSimpleLayout(project, in.dir());
             // Workspace root with no source tree: nothing to compile or package.
             if (jkBuild.isWorkspaceRoot() && !CompileSupport.hasSources(in.dir())) {
                 useJava = false;

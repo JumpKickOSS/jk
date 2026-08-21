@@ -44,8 +44,7 @@ public final class RepoCommand extends GroupCommand {
      *
      * <p>jk's mirror is first-write-wins: a stored coordinate keeps serving the bytes it was first
      * fetched with, which matches Maven Central's immutability contract. This is the escape hatch
-     * for the case where upstream genuinely republished different bytes (see
-     * {@code docs/mirror-verification-decision.md}).
+     * for the rare case where upstream genuinely republished different bytes.
      */
     public static final class RepoRefreshCommand implements CliCommand {
         @Override

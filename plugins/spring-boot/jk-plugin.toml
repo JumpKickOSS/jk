@@ -30,7 +30,7 @@ main-scan      = true          # a unique main may be discovered by scanning com
 layered-image  = true          # images split release/snapshot dep layers + exploded classes
 
 [schema]
-version       = { type = "string", required = true, example = "4", hint = "major-line floor for spring-boot-dependencies (caret; lock pins exact). Use =4.1.0 to hard-pin" }
+version       = { type = "string", required = true, example = "latest", hint = "spring-boot-dependencies selector — latest, a major-line floor (caret; lock pins exact), or =4.1.0 to hard-pin" }
 aot           = { type = "bool" }                          # tri-state: absent = auto (on when [native] is declared)
 build-info    = { type = "bool", default = false }
 include-tools = { type = "bool", default = true }
@@ -76,50 +76,7 @@ artifact   = "spring-boot-jarmode-tools"
 coordinate = "org.springframework.boot:spring-boot-jarmode-tools:^${config.version}"
 when       = { config = "include-tools", equals = "true" }
 
-# ---- Scaffold (P4) — pure data (plan row 9). `jk new --spring` renders these engine-side
-# (the thin client ships no plugin content); the client writes the returned payloads.
-# The appends extend the client-rendered base jk.toml; the files are the --sample sources.
-# Path variables: ${main-root} ${test-root} ${resources-root} ${test-resources-root}
-# ${package-path}; template variable: ${package}. SIMPLE maps test-root → test/src.
-
-[scaffold]
-flag        = "spring"
-description = "Spring Boot application"
-
-[[scaffold.append]]
-template = "scaffold/jk-toml-java.toml.tmpl"
-when     = { lang = "java" }
-
-[[scaffold.append]]
-template = "scaffold/jk-toml-kotlin.toml.tmpl"
-when     = { lang = "kotlin" }
-
-[[scaffold.file]]
-path     = "${main-root}/${package-path}/Application.java"
-template = "scaffold/Application.java.tmpl"
-when     = { lang = "java" }
-
-[[scaffold.file]]
-path     = "${test-root}/${package-path}/ApplicationTest.java"
-template = "scaffold/ApplicationTest.java.tmpl"
-when     = { lang = "java" }
-
-[[scaffold.file]]
-path     = "${main-root}/${package-path}/Application.kt"
-template = "scaffold/Application.kt.tmpl"
-when     = { lang = "kotlin" }
-
-[[scaffold.file]]
-path     = "${test-root}/${package-path}/ApplicationTest.kt"
-template = "scaffold/ApplicationTest.kt.tmpl"
-when     = { lang = "kotlin" }
-
-[[scaffold.file]]
-path          = "${resources-root}/application.properties"
-template      = "scaffold/application.properties.tmpl"
-keep-existing = true
-
-# ---- Import (P4) — jk import's Gradle-plugin mappings (plan row 10). The Gradle Boot
+# ---- Import — jk import's Gradle-plugin mappings (plan row 10). The Gradle Boot
 # plugin's declared version IS the Boot version -> the owned table's `version` key (which
 # auto-imports the BOM, so versionless starters survive the translation). The
 # dependency-management plugin is recognized and consumed with no config of its own.

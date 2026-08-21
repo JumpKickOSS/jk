@@ -84,12 +84,38 @@ class PlatformBomVersionsTest {
     }
 
     @Test
-    void latest_is_rejected(@TempDir Path tmp) {
+    void latest_picks_highest_stable(@TempDir Path tmp) throws Exception {
+        serveMetadata("org.example", "bom", List.of("4.0.0", "4.1.0", "4.2.0-RC1", "5.0.0"));
         RepoGroup repos = RepoGroup.of(new MavenRepo("local", base, new Http(), new Cas(tmp.resolve("c"))));
-        assertThatThrownBy(() -> PlatformBomVersions.resolve(
+        String v = PlatformBomVersions.resolve(repos, "org.example", "bom", VersionSelector.parseFloating("latest"));
+        assertThat(v).isEqualTo("5.0.0");
+    }
+
+    @Test
+    void latest_with_no_stable_is_loud_not_a_silent_milestone(@TempDir Path tmp) throws Exception {
+        serveMetadata("org.example", "bom", List.of("8.0.0-M2", "8.0.0-M4"));
+        RepoGroup repos = RepoGroup.of(new MavenRepo("local", base, new Http(), new Cas(tmp.resolve("c"))));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> PlatformBomVersions.resolve(
                         repos, "org.example", "bom", VersionSelector.parseFloating("latest")))
+                .hasMessageContaining("no stable version")
+                .hasMessageContaining("8.0.0-M4");
+    }
+
+    @Test
+    void snapshot_picks_highest_including_pre_release(@TempDir Path tmp) throws Exception {
+        serveMetadata("org.example", "bom", List.of("4.1.0", "5.0.0-M4"));
+        RepoGroup repos = RepoGroup.of(new MavenRepo("local", base, new Http(), new Cas(tmp.resolve("c"))));
+        String v = PlatformBomVersions.resolve(repos, "org.example", "bom", VersionSelector.parseFloating("snapshot"));
+        assertThat(v).isEqualTo("5.0.0-M4");
+    }
+
+    @Test
+    void open_range_is_rejected(@TempDir Path tmp) {
+        RepoGroup repos = RepoGroup.of(new MavenRepo("local", base, new Http(), new Cas(tmp.resolve("c"))));
+        assertThatThrownBy(() ->
+                        PlatformBomVersions.resolve(repos, "org.example", "bom", VersionSelector.parseFloating(">=4")))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("exact or caret/tilde");
+                .hasMessageContaining("exact, caret/tilde, latest, or snapshot");
     }
 
     private void serveMetadata(String group, String artifact, List<String> versions) {

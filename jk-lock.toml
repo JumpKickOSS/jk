@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "a4f0c117369dd3ab71529d204138ca70f0cdbc3136fcc8b273c6a3bfb7df2f7b"
+manifests-sha256 = "a76ca7203ee09c379fb29fefc723021089ff2ebe0afe6e03f04be15e2c0c6c0a"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [[artifact]]
@@ -953,6 +953,23 @@ name     = "net.java.dev.jna:jna:jar:"
 version  = "5.19.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:4fb141dd8ef6b0585ffceea4bc49602fbc6312fa977e2c488794ea3e6aafecae"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "org.antlr:ST4:jar:"
+version  = "4.3.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:f927ac384c46d749f8b5ec68972a53aed21e00313509299616edb73bfa15ff33"
+scopes   = ["main"]
+deps = [
+  "org.antlr:antlr-runtime:jar:@3.5.3",
+]
+
+[[artifact]]
+name     = "org.antlr:antlr-runtime:jar:"
+version  = "3.5.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:68bf9f5a33dfcb34033495c587e6236bef4e37aa6612919f5b1e843b90669fb9"
 scopes   = ["main"]
 
 [[artifact]]

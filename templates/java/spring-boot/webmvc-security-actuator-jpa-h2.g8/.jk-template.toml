@@ -1,0 +1,5 @@
+language = "java"
+framework = "spring-boot"
+name = "webmvc-security-actuator-jpa-h2"
+description = "Spring Boot WebMVC + JPA/H2 + Actuator"
+layouts = ["traditional", "simple"]

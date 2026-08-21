@@ -384,7 +384,7 @@ public final class PlannerSupport {
             } else {
                 // Not a built sibling — self-host by reusing the running jk's plugin
                 // jar (located via its sha resource + CAS, or a -D override).
-                Path located = wj.get().locateOrNull(cc.jumpkick.cache.JkStores.cas(cc.jumpkick.util.JkDirs.cache()));
+                Path located = wj.get().locateStored(cc.jumpkick.cache.JkStores.cas(cc.jumpkick.util.JkDirs.cache()));
                 if (located != null) props.put(wj.get().jarProperty(), located.toString());
             }
         }
@@ -427,7 +427,7 @@ public final class PlannerSupport {
             if (jar != null && Files.isRegularFile(jar)) {
                 props.put(w.jarProperty(), jar.toAbsolutePath().toString());
             } else {
-                Path located = w.locateOrNull(JkStores.cas(cc.jumpkick.util.JkDirs.cache()));
+                Path located = w.locateStored(JkStores.cas(cc.jumpkick.util.JkDirs.cache()));
                 if (located != null) props.put(w.jarProperty(), located.toString());
             }
         }
@@ -631,7 +631,8 @@ public final class PlannerSupport {
         List<String> discovered = cc.jumpkick.layout.TestSuites.discover(dir, compact);
         // Session selection for suite resolution too — --all widens the suite set, and the
         // forecast's source list must cover the same files the live run stamps (JK-2203).
-        var resolved = cc.jumpkick.config.SessionContext.current().testSelection().resolve(discovered);
+        var resolved =
+                cc.jumpkick.config.SessionContext.current().testSelection().resolve(discovered);
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(cc.jumpkick.layout.TestSuites.DEFAULT);
         List<Path> stampSrcs = new ArrayList<>();
         stampSrcs.addAll(cc.jumpkick.layout.TestSuites.collectJavaSources(dir, compact, suites));

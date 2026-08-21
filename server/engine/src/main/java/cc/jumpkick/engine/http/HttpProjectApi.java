@@ -48,13 +48,12 @@ final class HttpProjectApi {
         String lang = cc.jumpkick.jsonl.Jsonl.str(body, "lang");
         String layout = cc.jumpkick.jsonl.Jsonl.str(body, "layout");
         String template = cc.jumpkick.jsonl.Jsonl.str(body, "template");
-        String framework = cc.jumpkick.jsonl.Jsonl.str(body, "framework");
         boolean executable = cc.jumpkick.jsonl.Jsonl.bool(body, "executable", true);
         try {
             // The SPA routes #project/<id> immediately, so identity materializes with creation.
             var result = cc.jumpkick.engine.runtime.NewProjectOps.createWithIdentity(
                     new cc.jumpkick.engine.runtime.NewProjectOps.Request(
-                            name, parentDir, group, lang, layout, template, executable, framework));
+                            name, parentDir, group, lang, layout, template, executable));
             JsonOut created = JsonOut.object()
                     .put("path", result.path().toString())
                     .put("dir", result.path().toString());
@@ -107,9 +106,8 @@ final class HttpProjectApi {
     }
 
     /**
-     * {@code GET /api/templates} — short-name catalog for the new-project picker. Official
-     * catalog rows are merged with on-disk {@code jk_languages}/{@code jk_layout} from local
-     * template roots (see {@link cc.jumpkick.scaffold.Giter8TemplateIndex}).
+     * {@code GET /api/templates} — unified catalog for the new-project picker
+     * ({@link cc.jumpkick.giter8.Giter8TemplateIndex}).
      */
     void handleTemplates(HttpExchange exchange) throws IOException {
         TemplatesCache cached = templatesCache;
@@ -117,21 +115,23 @@ final class HttpProjectApi {
             HttpEngineServer.sendJson(exchange, 200, cached.json());
             return;
         }
-        // Same roots the short-name resolver uses — the picker must never list a
-        // template that then resolves differently, or miss one that would resolve.
         var entries =
-                cc.jumpkick.scaffold.Giter8TemplateIndex.build(cc.jumpkick.scaffold.Giter8TemplateIndex.searchRoots());
+                cc.jumpkick.giter8.Giter8TemplateIndex.picker(cc.jumpkick.giter8.Giter8TemplateIndex.searchRoots());
         var arr = new StringBuilder("[");
         boolean first = true;
         for (var e : entries) {
             if (!first) arr.append(',');
             first = false;
-            arr.append(JsonOut.object()
+            JsonOut row = JsonOut.object()
                     .put("id", e.id())
+                    .put("name", e.name())
+                    .put("language", e.language())
+                    .put("framework", e.framework())
                     .put("description", e.description())
-                    .putStrings("languages", e.languages())
-                    .put("layout", e.layout())
-                    .toString());
+                    .putStrings("layouts", e.layouts())
+                    .put("source", e.source());
+            if (e.pluginId() != null) row.put("pluginId", e.pluginId());
+            arr.append(row.toString());
         }
         arr.append(']');
         String json = arr.toString();

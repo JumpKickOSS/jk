@@ -176,6 +176,7 @@ class McpContractTest {
         assertThat(body).contains("jk_why");
         assertThat(body).contains("jk_config");
         assertThat(body).contains("jk_jdk");
+        assertThat(body).contains("jk_results");
     }
 
     @Test
@@ -211,6 +212,10 @@ class McpContractTest {
                 "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"prompts/get\"," + "\"params\":{\"name\":\"setup-ci\"}}");
         assertThat(body).contains("apply_preset=ci");
         assertThat(body).contains("\"messages\"");
+        String learn = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"prompts/get\","
+                + "\"params\":{\"name\":\"learn-jumpkick\"}}");
+        assertThat(learn).contains("jk_manual");
+        assertThat(learn).contains("\"messages\"");
         String unknown = mcp.handleBody(
                 "{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"prompts/get\"," + "\"params\":{\"name\":\"nope\"}}");
         assertThat(unknown).contains("-32602");
@@ -221,6 +226,9 @@ class McpContractTest {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/list\"}");
         assertThat(body).contains("jk://session");
         assertThat(body).contains("jk://disk");
+        assertThat(body).contains("jk://manual");
+        assertThat(body).contains("jk://runs/latest/results");
+        assertThat(body).contains("jk://runs/latest/details");
     }
 
     @Test

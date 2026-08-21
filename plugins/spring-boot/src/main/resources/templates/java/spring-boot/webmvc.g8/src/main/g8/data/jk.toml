@@ -1,0 +1,8 @@
+name = "data"
+
+[platform-dependencies]
+spring-boot = { group = "org.springframework.boot", name = "spring-boot-dependencies", version = "latest" }
+
+[dependencies]
+starter-data-jpa = { group = "org.springframework.boot", name = "spring-boot-starter-data-jpa" }
+h2 = { group = "com.h2database", name = "h2" }

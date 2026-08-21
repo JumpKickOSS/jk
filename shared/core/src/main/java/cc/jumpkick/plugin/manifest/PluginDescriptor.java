@@ -9,7 +9,8 @@ import java.util.Objects;
 
 /**
  * Declarative plugin manifest ({@code jk-plugin.toml}): owned table, schema, contributions.
- * Evaluated as data — no plugin classes loaded for this layer.
+ * Evaluated as data — no plugin classes loaded for this layer. Giter8 trees for
+ * {@code jk new -t} live at {@code templates/<lang>/<framework>/<name>.g8/} in the jar, not in this file.
  */
 public record PluginDescriptor(
         String id,
@@ -20,7 +21,6 @@ public record PluginDescriptor(
         Contributions contributions,
         Code code,
         Packaging packaging,
-        Scaffold scaffold,
         List<GradleImport> gradleImports,
         Map<String, Map<String, SchemaKey>> subSchemas,
         Map<String, SubTable> subTables) {
@@ -48,24 +48,6 @@ public record PluginDescriptor(
             Objects.requireNonNull(schema, "schema");
         }
     }
-
-    /** {@code [scaffold]} for {@code jk new --<flag>}: jk.toml appends and optional sample files. */
-    public record Scaffold(String flag, String description, List<Append> appends, List<FileTemplate> files) {
-        public Scaffold {
-            Objects.requireNonNull(flag, "flag");
-            appends = appends == null ? List.of() : List.copyOf(appends);
-            files = files == null ? List.of() : List.copyOf(files);
-        }
-    }
-
-    /** One {@code [[scaffold.append]]}: a jk.toml fragment, gated on the project language. */
-    public record Append(String template, String whenLang) {}
-
-    /**
-     * One {@code [[scaffold.file]]}: a sample-source template. {@code keepExisting} skips the
-     * file when the target already exists (seed files like {@code application.properties}).
-     */
-    public record FileTemplate(String path, String template, String whenLang, boolean keepExisting) {}
 
     /**
      * One {@code [[import.gradle-plugin]]} rule (plan row 10): a Gradle plugin id this plugin's

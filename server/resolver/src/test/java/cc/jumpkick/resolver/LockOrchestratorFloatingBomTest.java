@@ -19,20 +19,19 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** R6b: floating platform BOM selectors must fail loudly. */
+/** Open-range platform BOM selectors must fail loudly. */
 class LockOrchestratorFloatingBomTest {
 
     @Test
-    void latest_platform_bom_is_rejected(@TempDir Path tempDir) {
-        JkBuild project = jkBuild(Map.of(
-                Scope.PLATFORM, List.of(Dependency.of("bom", "org.example:bom", VersionSelector.parse("latest")))));
+    void open_range_platform_bom_is_rejected(@TempDir Path tempDir) {
+        JkBuild project = jkBuild(
+                Map.of(Scope.PLATFORM, List.of(Dependency.of("bom", "org.example:bom", VersionSelector.parse(">=4")))));
         LockOrchestrator orchestrator = new LockOrchestrator(RepoGroup.of(
                 new MavenRepo("local", URI.create("http://127.0.0.1:1"), new Http(), new Cas(tempDir.resolve("c")))));
         assertThatThrownBy(() -> orchestrator.lock(project, "test"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("platform dependency")
-                .hasMessageContaining("latest")
-                .hasMessageContaining("exact or caret/tilde");
+                .hasMessageContaining("exact, caret/tilde, latest, or snapshot");
     }
 
     private static JkBuild jkBuild(Map<Scope, List<Dependency>> byScope) {

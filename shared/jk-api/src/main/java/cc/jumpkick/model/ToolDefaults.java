@@ -25,7 +25,7 @@ public final class ToolDefaults {
      */
     public static final String QUARKUS_TOOLING_BOM_VERSION = "3.38.0";
 
-    /** Default Kotlin compiler version for scaffolds ({@code kotlin}). Keep in sync with KotlinResolver.DEFAULT_VERSION. */
+    /** Fallback Kotlin compiler version when the lock has no pin. Keep in sync with KotlinResolver.DEFAULT_VERSION. */
     public static final String KOTLIN_DEFAULT_VERSION = "2.4.0";
 
     /** Default Groovy compiler version for scaffolds ({@code groovy}). Keep in sync with GroovyResolver.DEFAULT_VERSION. */

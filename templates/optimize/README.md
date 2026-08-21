@@ -4,4 +4,4 @@ Tiny Mill-style projects once used for install-time language calibration. The en
 self-heals **java-compiler** AOT and host calibration without these fixtures — Kotlin trains
 on-demand (see `docs/install-optimize.md`). Kept for manual smoke and regression.
 
-Pins **Java 25** + **Kotlin 2.4.10**. Groovy is not pre-trained.
+Java 25 language level; Kotlin compiler is `"latest"`. Groovy is not pre-trained.

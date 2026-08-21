@@ -8,8 +8,3 @@ jk-dynamic-surface.workspace = true
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"
-
-[build]
-extra-resources = [
-  { from = "jk-plugin.toml", into = "" },
-]

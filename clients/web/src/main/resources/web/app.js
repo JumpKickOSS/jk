@@ -965,6 +965,7 @@ function fmtMillis(millis) {
   return Math.floor(totalSec / 60) + 'm ' + String(totalSec % 60).padStart(2, '0') + 's';
 }
 
+
 // Exported for the headless harness (app.test.mjs); the browser block below mounts it.
 export const appOptions = {
   data: () => ({
@@ -981,6 +982,7 @@ export const appOptions = {
     // JK-1542: Dependencies panel on the Project page — closed by default; graph fetch + echarts
     // only when opened (ModuleDepGraph mounts lazily).
     projectGraphOpen: false,
+    templatesUnavailable: false, // /api/templates failed — picker shows a notice, manual refs still work
     connection: 'connecting', // 'connecting' | 'live' | 'offline' | 'unauthorized'
     status: null, // the /api/status payload
     metrics: null, // the /api/metrics payload (running build aggregates), shown on the Status view
@@ -1007,10 +1009,15 @@ export const appOptions = {
       group: '',
       lang: 'java',
       layout: 'traditional',
+      framework: '',
+      frameworkQuery: '',
       template: '',
+      templateQuery: '',
       parentDir: '',
       executable: true,
     },
+    frameworkOpen: false,
+    templateOpen: false,
     templates: [],
     now: Date.now(), // 1s tick driving elapsed counters and "ago" stamps
     // JK-1500: single-flight keys → in-flight Promise; offline status poll backoff (ms).
@@ -1046,15 +1053,54 @@ export const appOptions = {
   },
 
   computed: {
-    // Template short names compatible with the New-project Language field. Entries without a
-    // languages list are treated as universal (legacy / fallback payloads).
     templatesForLang() {
       const lang = (this.newProject?.lang || 'java').toLowerCase();
-      return (this.templates || []).filter((t) => {
-        const langs = t.languages;
-        if (!Array.isArray(langs) || langs.length === 0) return true;
-        return langs.some((l) => String(l).toLowerCase() === lang);
+      return (this.templates || []).filter((t) => String(t.language || '').toLowerCase() === lang);
+    },
+
+    frameworkChoices() {
+      const seen = new Set();
+      const out = [{ value: 'none', label: 'none (unframed)' }];
+      seen.add('none');
+      for (const t of this.templatesForLang) {
+        const fw = (t.framework || 'none').toLowerCase();
+        if (seen.has(fw)) continue;
+        seen.add(fw);
+        out.push({ value: fw, label: fw });
+      }
+      return out;
+    },
+
+    filteredFrameworkChoices() {
+      const q = (this.newProject.frameworkQuery || '').trim().toLowerCase();
+      if (!q || q === 'all frameworks') return this.frameworkChoices;
+      return this.frameworkChoices.filter((f) => f.label.toLowerCase().includes(q) || f.value.includes(q));
+    },
+
+    templatesForFilters() {
+      const fw = (this.newProject.framework || '').toLowerCase();
+      return this.templatesForLang.filter((t) => {
+        if (!fw) return true;
+        return String(t.framework || 'none').toLowerCase() === fw;
       });
+    },
+
+    templateChoices() {
+      const allFw = !(this.newProject.framework || '');
+      return this.templatesForFilters.map((t) => {
+        const desc = (t.description || '').trim();
+        const suffix = allFw && t.framework && t.framework !== 'none' ? ' · ' + t.framework : '';
+        return {
+          value: t.id,
+          label: desc ? t.name + suffix + ' — ' + desc : t.name + suffix,
+        };
+      });
+    },
+
+    filteredTemplateChoices() {
+      const q = (this.newProject.templateQuery || '').trim().toLowerCase();
+      if (!q || q.startsWith('none')) return this.templateChoices;
+      return this.templateChoices.filter((c) => c.label.toLowerCase().includes(q) || c.value.toLowerCase().includes(q));
     },
 
     // Group the journal into per-project rows for the Projects tab. A computed (not a method) so it
@@ -2381,23 +2427,12 @@ export const appOptions = {
         }
       }
       if (!this.newProject.group) this.newProject.group = 'com.example';
-      // Offline fallback: mirror of the full Giter8ShortNames catalog (order + metadata) so a
-      // tokenless/errored /api/templates still offers every first-party short name (JK-1458).
-      this.templates = Array.isArray(templates) && templates.length
-        ? templates
-        : [
-            { id: 'java-cli', description: 'Simple Java 25 executable (Mill SIMPLE layout)', languages: ['java'], layout: 'simple' },
-            { id: 'kotlin-cli', description: 'Simple Kotlin executable (Mill SIMPLE layout)', languages: ['kotlin'], layout: 'simple' },
-            { id: 'java-cli-native', description: 'Interactive Java CLI with JLine (jk native ready)', languages: ['java'], layout: 'simple' },
-            { id: 'spring-boot-webmvc', description: 'Spring Boot 4.1 WebMVC + JPA/H2 + Actuator', languages: ['java'], layout: 'traditional' },
-            { id: 'spring-boot-webmvc-kotlin', description: 'Kotlin Spring Boot 4.1 WebMVC + JPA/H2 + Actuator', languages: ['kotlin'], layout: 'traditional' },
-            { id: 'spring-boot-mcp', description: 'Spring Boot MCP server (Spring AI, @Tool over SSE)', languages: ['java'], layout: 'traditional' },
-            { id: 'quarkus', description: 'Quarkus 3.x REST application ([quarkus] plugin)', languages: ['java'], layout: 'simple' },
-            { id: 'ktor-3', description: 'Ktor 3 service with Koin DI and Exposed/H2', languages: ['kotlin'], layout: 'simple' },
-            { id: 'micronaut', description: 'Micronaut HTTP service (compile-time DI, Netty)', languages: ['java'], layout: 'simple' },
-            { id: 'grails-8', description: 'Grails 8 REST app (GORM, H2, Groovy 5)', languages: ['groovy'], layout: 'custom' },
-          ];
-      this.onNewProjectLangChange(); // drop a leftover template that no longer matches Language
+      // No hand-maintained fallback copy of the catalog: stale data is worse than an honest
+      // "catalog unavailable" state (the input still accepts any template ref typed directly).
+      const live = Array.isArray(templates) && templates.length ? templates : null;
+      this.templates = live || [];
+      this.templatesUnavailable = !live;
+      this.onNewProjectLangChange();
       // Focus Name so the user can type the app name immediately; @focus selects any existing value.
       this.$nextTick(() => {
         const el = this.$refs.nameInput;
@@ -2405,19 +2440,76 @@ export const appOptions = {
       });
     },
 
-    // Language drives the template short-name list; clear a selection that is no longer offered.
     onNewProjectLangChange() {
-      const id = this.newProject.template;
-      if (!id) return;
-      const ok = this.templatesForLang.some((t) => t.id === id);
-      if (!ok) this.newProject.template = '';
+      const fws = this.frameworkChoices.map((f) => f.value);
+      if (this.newProject.framework && !fws.includes(this.newProject.framework)) {
+        this.pickFramework('', 'All frameworks');
+      }
+      if (this.newProject.template && !this.templateChoices.some((c) => c.value === this.newProject.template)) {
+        this.pickTemplate('', 'None — blank project');
+      }
     },
 
-    selectedTemplateLayout() {
+    onFrameworkQueryInput() {
+      this.frameworkOpen = true;
+    },
+
+    onFrameworkBlur() {
+      setTimeout(() => { this.frameworkOpen = false; }, 120);
+    },
+
+    onFrameworkKey(ev) {
+      if (ev.key === 'Escape') { this.frameworkOpen = false; ev.target.blur(); }
+      if (ev.key === 'Enter' && this.filteredFrameworkChoices.length) {
+        const f = this.filteredFrameworkChoices[0];
+        this.pickFramework(f.value, f.label);
+        ev.preventDefault();
+      }
+    },
+
+    pickFramework(value, label) {
+      this.newProject.framework = value || '';
+      this.newProject.frameworkQuery = value ? label : '';
+      this.frameworkOpen = false;
+      if (this.newProject.template && !this.templateChoices.some((c) => c.value === this.newProject.template)) {
+        this.pickTemplate('', 'None — blank project');
+      }
+    },
+
+    onTemplateQueryInput() {
+      this.templateOpen = true;
+    },
+
+    onTemplateBlur() {
+      setTimeout(() => { this.templateOpen = false; }, 120);
+    },
+
+    onTemplateKey(ev) {
+      if (ev.key === 'Escape') { this.templateOpen = false; ev.target.blur(); }
+      if (ev.key === 'Enter' && this.filteredTemplateChoices.length) {
+        const c = this.filteredTemplateChoices[0];
+        this.pickTemplate(c.value, c.label);
+        ev.preventDefault();
+      }
+    },
+
+    pickTemplate(value, label) {
+      this.newProject.template = value || '';
+      this.newProject.templateQuery = value ? label : '';
+      this.templateOpen = false;
+    },
+
+    selectedTemplate() {
       const id = this.newProject.template;
-      if (!id) return '';
-      const t = (this.templates || []).find((x) => x.id === id);
-      return (t && t.layout) || 'traditional';
+      if (!id) return null;
+      return (this.templates || []).find((x) => x.id === id) || null;
+    },
+
+    showLayoutPicker() {
+      const t = this.selectedTemplate();
+      if (!t) return true;
+      const lays = t.layouts || [];
+      return lays.includes('traditional') && lays.includes('simple');
     },
 
     closeNewProject() {
@@ -2429,25 +2521,25 @@ export const appOptions = {
     async submitNewProject() {
       this.newProjectError = null;
       this.newProjectBusy = true;
-      const hasTemplate = !!(this.newProject.template && this.newProject.template.trim());
+      const hasTemplate = !!this.newProject.template;
       const body = {
         name: this.newProject.name.trim(),
         group: this.newProject.group.trim() || 'com.example',
         lang: this.newProject.lang,
-        // Layout + executable only affect the blank scaffolder; omit noise when a template applies.
-        layout: hasTemplate ? 'traditional' : this.newProject.layout,
+        layout: this.newProject.layout,
         parentDir: this.newProject.parentDir.trim(),
         executable: hasTemplate ? false : !!this.newProject.executable,
       };
-      if (hasTemplate) {
-        body.template = this.newProject.template.trim();
-      }
+      if (hasTemplate) body.template = this.newProject.template;
       try {
         const res = await post('/api/projects', body);
         const path = res.path || res.dir;
         this.closeNewProject();
         this.newProject.name = '';
         this.newProject.template = '';
+        this.newProject.templateQuery = '';
+        this.newProject.framework = '';
+        this.newProject.frameworkQuery = '';
         // Keep group + parentDir so the next create is one field away from a sibling project.
         if (path) {
           // Route with the durable projectId from the create response (JK-1775) — never the

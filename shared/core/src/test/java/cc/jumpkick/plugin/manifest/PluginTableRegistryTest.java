@@ -11,11 +11,33 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.tomlj.Toml;
 
 class PluginTableRegistryTest {
+
+    @Test
+    void put_built_in_replaces_on_id_or_table() {
+        String base = """
+                [plugin]
+                id      = "zz-replace"
+                table   = "%s"
+                version = "1.0.0"
+
+                [schema]
+                enabled = { type = "bool", default = true }
+                """;
+        PluginTableRegistry.putBuiltIn(PluginDescriptors.parse(base.formatted("zz-replace-a"), "test"), null);
+        PluginTableRegistry.putBuiltIn(PluginDescriptors.parse(base.formatted("zz-replace-b"), "test"), null);
+
+        org.assertj.core.api.Assertions.assertThat(PluginTableRegistry.byTable("zz-replace-a"))
+                .as("an override with the same id but a new table must evict the old table")
+                .isEmpty();
+        org.assertj.core.api.Assertions.assertThat(PluginTableRegistry.byTable("zz-replace-b"))
+                .isPresent();
+    }
 
     @Test
     void built_in_spring_boot_manifest_loads_and_owns_its_table() {
@@ -74,31 +96,24 @@ class PluginTableRegistryTest {
         assertThatThrownBy(() -> PluginDescriptors.parse(
                         "[plugin]\nid = \"x\"\ntable = \"x\"\n[schema]\nk = { type = \"nope\" }", "p.toml"))
                 .hasMessageContaining("unknown schema type");
+        assertThatThrownBy(() -> PluginDescriptors.parse("""
+                        [plugin]
+                        id = "x"
+                        table = "x"
+                        [scaffold]
+                        flag = "spring"
+                        """, "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[scaffold]")
+                .hasMessageContaining("templates/<lang>/<framework>/<name>.g8/");
     }
 
     @org.junit.jupiter.api.Test
-    void shipped_manifest_declares_scaffold_and_import_rules() {
+    void shipped_manifest_declares_import_rules() {
         var boot = PluginTableRegistry.manifests().stream()
                 .filter(m -> m.id().equals("spring-boot"))
                 .findFirst()
                 .orElseThrow();
-
-        var scaffold = boot.scaffold();
-        org.assertj.core.api.Assertions.assertThat(scaffold.flag()).isEqualTo("spring");
-        org.assertj.core.api.Assertions.assertThat(scaffold.appends()).hasSize(2);
-        org.assertj.core.api.Assertions.assertThat(scaffold.files())
-                .anyMatch(f -> f.path().contains("Application.java") && "java".equals(f.whenLang()))
-                .anyMatch(f -> f.path().contains("Application.kt") && "kotlin".equals(f.whenLang()))
-                .anyMatch(f -> f.path().endsWith("application.properties") && f.keepExisting());
-        // every referenced template resource resolves
-        for (var a : scaffold.appends()) {
-            org.assertj.core.api.Assertions.assertThat(PluginTableRegistry.resourceText(boot, a.template()))
-                    .contains("[spring-boot]");
-        }
-        for (var f : scaffold.files()) {
-            org.assertj.core.api.Assertions.assertThat(PluginTableRegistry.resourceText(boot, f.template()))
-                    .isNotBlank();
-        }
 
         org.assertj.core.api.Assertions.assertThat(boot.gradleImports())
                 .anyMatch(r -> r.id().equals("org.springframework.boot")
@@ -108,7 +123,55 @@ class PluginTableRegistryTest {
     }
 
     @Test
-    void built_in_grails_manifest_loads_with_packaging_roots_and_scaffold() {
+    void workspace_plugin_sources_include_gradle_import_rules() {
+        Path root = PluginTableRegistry.discoverTestWorkspaceRoot();
+        Assumptions.assumeTrue(root != null && Files.isRegularFile(root.resolve("plugins/spring-boot/jk-plugin.toml")));
+        var loaded = PluginTableRegistry.loadFromWorkspacePluginSources(root);
+        assertThat(loaded.get("spring-boot").gradleImports())
+                .anyMatch(r -> r.id().equals("org.springframework.boot")
+                        && "version".equals(r.versionTo())
+                        && r.missingVersionWarning() != null)
+                .anyMatch(r -> r.id().equals("io.spring.dependency-management") && r.versionTo() == null);
+        assertThat(loaded.keySet())
+                .contains("spring-boot", "grails", "quarkus", "android", "protobuf", "minified", "micronaut");
+    }
+
+    @Test
+    void empty_workspace_plugin_tree_is_not_this_catalog(@TempDir Path dir) {
+        assertThat(PluginTableRegistry.loadFromWorkspacePluginSources(dir)).isEmpty();
+        assertThat(PluginTableRegistry.loadFromWorkspacePluginSources(null)).isEmpty();
+    }
+
+    @Test
+    void stale_scaffold_fixture_is_not_a_built_in() {
+        assertThat(PluginTableRegistry.tryParseBuiltIn("""
+                        [plugin]
+                        id = "spring-boot"
+                        table = "spring-boot"
+                        version = "1"
+                        [scaffold]
+                        flag = "spring"
+                        """, "spring-boot.jk-plugin.toml"))
+                .isNull();
+    }
+
+    @Test
+    void incomplete_workspace_plugin_tree_fails_closed(@TempDir Path dir) throws Exception {
+        Path boot = dir.resolve("plugins/spring-boot");
+        Files.createDirectories(boot);
+        Files.writeString(boot.resolve("jk-plugin.toml"), """
+                [plugin]
+                id = "spring-boot"
+                table = "spring-boot"
+                version = "1"
+                """);
+        assertThatThrownBy(() -> PluginTableRegistry.loadFromWorkspacePluginSources(dir))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("missing built-in plugin manifest sources");
+    }
+
+    @Test
+    void built_in_grails_manifest_loads_with_packaging_roots() {
         var grails = PluginTableRegistry.byTable("grails").orElseThrow();
         assertThat(grails.id()).isEqualTo("grails");
         assertThat(grails.schema()).containsKeys("version", "boot-version");
@@ -136,19 +199,10 @@ class PluginTableRegistryTest {
                         "grails-app/conf",
                         "grails-app/i18n",
                         "grails-app/views");
-
-        var scaffold = grails.scaffold();
-        assertThat(scaffold.flag()).isEqualTo("grails");
-        for (var a : scaffold.appends()) {
-            assertThat(PluginTableRegistry.resourceText(grails, a.template())).contains("[grails]");
-        }
-        for (var f : scaffold.files()) {
-            assertThat(PluginTableRegistry.resourceText(grails, f.template())).isNotBlank();
-        }
     }
 
     @Test
-    void resourceText_reads_scaffold_from_self_describing_jar(@TempDir Path dir) throws Exception {
+    void resourceText_reads_from_self_describing_jar(@TempDir Path dir) throws Exception {
         Path jar = dir.resolve("plug.jar");
         try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
             out.putNextEntry(new JarEntry("jk-plugin.toml"));
@@ -159,7 +213,7 @@ class PluginTableRegistryTest {
                     version = "1"
                     """.getBytes(StandardCharsets.UTF_8));
             out.closeEntry();
-            out.putNextEntry(new JarEntry("scaffold/hello.txt"));
+            out.putNextEntry(new JarEntry("templates/hello.txt"));
             out.write("hi from zip".getBytes(StandardCharsets.UTF_8));
             out.closeEntry();
         }
@@ -171,6 +225,6 @@ class PluginTableRegistryTest {
                 """, "zip-plug.jk-plugin.toml");
         PluginTableRegistry.putBuiltIn(d, jar);
         assertThat(PluginTableRegistry.byTable("zip-plug")).isPresent();
-        assertThat(PluginTableRegistry.resourceText(d, "scaffold/hello.txt")).isEqualTo("hi from zip");
+        assertThat(PluginTableRegistry.resourceText(d, "templates/hello.txt")).isEqualTo("hi from zip");
     }
 }

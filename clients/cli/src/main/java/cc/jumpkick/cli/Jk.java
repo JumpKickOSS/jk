@@ -25,7 +25,7 @@ public final class Jk {
 
     /**
      * Hidden command aliases for ergonomic migration from other build tools. Documented in {@code
-     * docs/aliases.md}. Keys are alias names; values are the canonical command path (one or more
+     * docs/user/aliases.md}. Keys are alias names; values are the canonical command path (one or more
      * positionals). These are not registered commands (they stay out of {@code --help} and
      * shell completion); instead we rewrite the first positional arg before parsing — possibly
      * expanding it into multiple positionals.
@@ -50,10 +50,10 @@ public final class Jk {
         // one mental model.
         args = rewriteForProgramName(args, Argv0.programName());
         // : the slim client never hosts the engine. Spawning uses
-        // jk-engine.jar / JK_ENGINE_EXE only — no --engine-server monolyth path.
+        // lib/jk-engine/<jar> / JK_ENGINE_EXE only — no --engine-server monolyth path.
         if (args.length > 0 && "--engine-server".equals(args[0])) {
             System.err.println("jk: this binary does not include the engine (wire-only client)."
-                    + " Materialize jk-engine.jar (`./install.sh`, `jk self materialize`,"
+                    + " Materialize the engine (`./install.sh`, `jk self materialize`,"
                     + " or `jk self update`), or set JK_ENGINE_EXE.");
             System.exit(70);
             return;

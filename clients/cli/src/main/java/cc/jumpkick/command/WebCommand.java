@@ -25,7 +25,7 @@ import org.jline.utils.AttributedStyle;
  * {@code jk web} — ensure the engine is up, print the authenticated dashboard URL (OSC-8 clickable
  * link), and open it in the default browser ({@code $BROWSER}, else {@code open}/{@code start}/
  * {@code xdg-open}). The URL carries {@code #t=<token>} when the owner-only token file is readable
- * so the SPA can bootstrap auth (see docs/webclient.md).
+ * so the SPA can bootstrap auth (see docs/contributors/webclient.md).
  */
 public final class WebCommand implements CliCommand {
 

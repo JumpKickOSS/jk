@@ -328,13 +328,10 @@ public final class BuildLayout {
         return reportsDir().resolve("test-results");
     }
 
-    /**
-     * {@code target/reports/test-results.md} — human-readable markdown test results, written
-     * alongside the XML files in {@code target/reports/}.
-     */
-    public Path markdownTestResults() {
-        return reportsDir().resolve("test-results.md");
-    }
+    // Note: target/jk-results.md deliberately has no helper here. The real contract is
+    // INVOCATION-root, not workspace-root — the engine writes it at the build request's dir
+    // (JournalWriter.latestPath) and the CLI reads it at its own projectDir — and this class
+    // only knows the workspace root, so a helper here would encode the wrong anchor.
 
     // ---- Final artifacts -------------------------------------------------------
 

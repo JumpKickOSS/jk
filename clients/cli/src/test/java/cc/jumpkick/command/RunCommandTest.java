@@ -152,8 +152,7 @@ class RunCommandTest {
         // install-from-[application] rework, a declared table without main is a PARSE error
         // ("[application].main is required") and the run never reaches the scan. The
         // ambiguous-scan contract under test needs no table at all.
-        Files.writeString(
-                toml, Files.readString(toml).replaceAll("(?ms)^\\[application\\].*?(?=^\\[|\\z)", ""));
+        Files.writeString(toml, Files.readString(toml).replaceAll("(?ms)^\\[application\\].*?(?=^\\[|\\z)", ""));
         Path srcDir = tempDir.resolve("src/main/java/com/example");
         Files.createDirectories(srcDir);
         Files.writeString(srcDir.resolve("Main.java"), """

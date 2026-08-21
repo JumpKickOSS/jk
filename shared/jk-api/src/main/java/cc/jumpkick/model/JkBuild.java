@@ -163,7 +163,7 @@ public record JkBuild(
      * {@code JkBuildParser.ensureShrinkForMinified}).
      */
     public JkBuild withArtifacts(boolean assembly, boolean minified) {
-        Application app = application.orElse(new Application(null, false, false, false));
+        Application app = application.orElse(new Application(null, false, false, false, null));
         if (app.assembly() == (assembly || minified) && app.minified() == minified) return this;
         return new JkBuild(
                 project,
@@ -174,7 +174,7 @@ public record JkBuild(
                 workspace,
                 manifest,
                 plugins,
-                Optional.of(new Application(app.main(), assembly, minified, app.nativeImage())),
+                Optional.of(new Application(app.main(), assembly, minified, app.nativeImage(), app.config())),
                 nativeConfig,
                 pluginConfigs,
                 build,
@@ -467,12 +467,36 @@ public record JkBuild(
     }
 
     /**
-     * Resolved source-tree convention for exporters (Maven vs Mill-like). Not a {@code jk.toml}
-     * field — {@code src/main/{java,kotlin,scala,groovy,resources}} decides at the module dir.
+     * Source layout: {@code simple} (Mill-like), {@code traditional} (Maven), or {@code auto}
+     * (infer from the tree; default when the key is omitted). Prefer omitting the key — set it
+     * only to override ambiguous trees.
      */
     public enum Layout {
         SIMPLE,
-        TRADITIONAL
+        TRADITIONAL,
+        AUTO;
+
+        /** Parse from a jk.toml string value; null or blank → AUTO. */
+        public static Layout parse(String raw) {
+            if (raw == null || raw.isBlank()) return AUTO;
+            return switch (raw.trim().toLowerCase()) {
+                case "simple" -> SIMPLE;
+                case "traditional" -> TRADITIONAL;
+                case "auto" -> AUTO;
+                default ->
+                    throw new IllegalArgumentException(
+                            "layout must be \"simple\", \"traditional\", or \"auto\" (got: " + raw + ")");
+            };
+        }
+
+        /** The string written to jk.toml, or null for AUTO (omitted). */
+        public String tomlValue() {
+            return switch (this) {
+                case SIMPLE -> "simple";
+                case TRADITIONAL -> "traditional";
+                case AUTO -> null;
+            };
+        }
     }
 
     /**
@@ -529,7 +553,8 @@ public record JkBuild(
         GROOVY,
         SOURCES,
         DESCRIPTION,
-        M2INSTALL
+        M2INSTALL,
+        LAYOUT
     }
 
     public record Project(
@@ -543,6 +568,7 @@ public record JkBuild(
             SourcesMode sourcesMode,
             String description,
             boolean m2install,
+            Layout layout,
             Set<ProjectInherit> workspaceInherits) {
 
         public Project {
@@ -557,6 +583,7 @@ public record JkBuild(
             }
             if (jdk != null && jdk.isBlank()) jdk = null;
             if (sourcesMode == null) sourcesMode = SourcesMode.DISABLED;
+            if (layout == null) layout = Layout.AUTO;
             if (description != null && description.isBlank()) description = null;
             workspaceInherits =
                     workspaceInherits == null || workspaceInherits.isEmpty() ? Set.of() : Set.copyOf(workspaceInherits);
@@ -573,8 +600,48 @@ public record JkBuild(
                 VersionSelector groovy,
                 SourcesMode sourcesMode,
                 String description,
+                boolean m2install,
+                Layout layout) {
+            this(
+                    group,
+                    name,
+                    version,
+                    jdk,
+                    java,
+                    kotlin,
+                    groovy,
+                    sourcesMode,
+                    description,
+                    m2install,
+                    layout,
+                    Set.of());
+        }
+
+        /** Back-compat: AUTO layout, no workspace inheritance flags. */
+        public Project(
+                String group,
+                String name,
+                String version,
+                String jdk,
+                int java,
+                VersionSelector kotlin,
+                VersionSelector groovy,
+                SourcesMode sourcesMode,
+                String description,
                 boolean m2install) {
-            this(group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, Set.of());
+            this(
+                    group,
+                    name,
+                    version,
+                    jdk,
+                    java,
+                    kotlin,
+                    groovy,
+                    sourcesMode,
+                    description,
+                    m2install,
+                    Layout.AUTO,
+                    Set.of());
         }
 
         /** True when any project identity field still needs workspace-root resolution. */
@@ -612,9 +679,10 @@ public record JkBuild(
             next.remove(ProjectInherit.SOURCES);
             next.remove(ProjectInherit.DESCRIPTION);
             next.remove(ProjectInherit.M2INSTALL);
+            next.remove(ProjectInherit.LAYOUT);
             if (next.equals(workspaceInherits)) return this;
             return new Project(
-                    group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, next);
+                    group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, layout, next);
         }
 
         /** True when this project declared {@code version.workspace = true} and is not yet resolved. */
@@ -644,7 +712,8 @@ public record JkBuild(
             SourcesMode src = inherits(ProjectInherit.SOURCES) ? root.sourcesMode() : sourcesMode;
             String desc = inherits(ProjectInherit.DESCRIPTION) ? root.description() : description;
             boolean m2 = inherits(ProjectInherit.M2INSTALL) ? root.m2install() : m2install;
-            return new Project(g, name, v, j, ja, kt, gr, src, desc, m2, Set.of());
+            Layout lay = inherits(ProjectInherit.LAYOUT) ? root.layout() : layout;
+            return new Project(g, name, v, j, ja, kt, gr, src, desc, m2, lay, Set.of());
         }
 
         private static String requireRoot(String value, String field) {
@@ -665,12 +734,23 @@ public record JkBuild(
                     : EnumSet.copyOf(workspaceInherits);
             next.remove(ProjectInherit.VERSION);
             return new Project(
-                    group, name, newVersion, jdk, java, kotlin, groovy, sourcesMode, description, m2install, next);
+                    group,
+                    name,
+                    newVersion,
+                    jdk,
+                    java,
+                    kotlin,
+                    groovy,
+                    sourcesMode,
+                    description,
+                    m2install,
+                    layout,
+                    next);
         }
 
         /** Library project — bare-major {@code jdk} (0 → unset). */
         public Project(String group, String name, String version, int jdk) {
-            this(group, name, version, majorSpec(jdk), jdk, null, null, null, null, false, Set.of());
+            this(group, name, version, majorSpec(jdk), jdk, null, null, null, null, false, Layout.AUTO, Set.of());
         }
 
         /** A bare-major int as a jdk spec string ({@code 25} → {@code "25"}); 0/negative → unset. */
@@ -695,6 +775,7 @@ public record JkBuild(
             private SourcesMode sourcesMode = SourcesMode.DISABLED;
             private String description;
             private boolean m2install;
+            private Layout layout = Layout.AUTO;
 
             private Builder(String group, String name, String version) {
                 this.group = group;
@@ -745,9 +826,14 @@ public record JkBuild(
                 return this;
             }
 
+            public Builder layout(Layout layout) {
+                this.layout = layout;
+                return this;
+            }
+
             public Project build() {
                 return new Project(
-                        group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install);
+                        group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, layout);
             }
         }
 
@@ -811,25 +897,33 @@ public record JkBuild(
      * @param minified build an R8-minified {@code -min.jar}; implies {@code assembly}
      * @param nativeImage {@code native = true}: native-image on {@code jk build} and {@code jk
      *     install}
+     * @param config optional module-relative template copied to
+     *     {@code $JK_CONFIG_DIR/<bin>/config.toml} on {@code jk install}
      */
-    public record Application(String main, boolean assembly, boolean minified, boolean nativeImage) {
+    public record Application(String main, boolean assembly, boolean minified, boolean nativeImage, String config) {
 
         public Application {
             if (main != null && main.isBlank()) main = null;
+            if (config != null && config.isBlank()) config = null;
             // Artifacts are additive and a minified jar is built from the fat one, so asking for
             // -min.jar always yields -all.jar beside it. That is also what makes the pair
             // A/B-testable without a config change.
             if (minified) assembly = true;
         }
 
-        /** Convenience for importers: no minified artifact, no native image. */
+        /** Convenience for importers: no minified artifact, no native image, no config template. */
         public Application(String main, boolean assembly) {
-            this(main, assembly, false, false);
+            this(main, assembly, false, false, null);
         }
 
-        /** Convenience: no native image. */
+        /** Convenience: no native image, no config template. */
         public Application(String main, boolean assembly, boolean minified) {
-            this(main, assembly, minified, false);
+            this(main, assembly, minified, false, null);
+        }
+
+        /** Convenience: no config template. */
+        public Application(String main, boolean assembly, boolean minified, boolean nativeImage) {
+            this(main, assembly, minified, nativeImage, null);
         }
     }
 
@@ -872,7 +966,7 @@ public record JkBuild(
              * {@code [test] serial-tags}: class-level JUnit tags whose classes never share the
              * sharded worker pool — they run in a single trailing worker while untagged classes
              * shard across {@code workers}. Lets a module keep {@code workers = 0} for its unit
-             * tier while its nested-engine/integration classes stay serial (JK-2184).
+             * tier while its nested-engine/integration classes stay serial.
              */
             List<String> testSerialTags,
             /**
@@ -885,8 +979,6 @@ public record JkBuild(
              * constrained. Default {@link UnmappedPolicy#MEDIATE}.
              */
             UnmappedPolicy unmappedPolicy,
-            /** {@code [build] extra-resources}: files from outside the module, copied onto its classpath. */
-            List<ExtraResource> extraResources,
             /**
              * {@code [test] env} — added to every forked test JVM's environment. Test-scoped like
              * {@code testPluginJars}, hence its home here. Values may use {@code ${target}} and
@@ -905,7 +997,6 @@ public record JkBuild(
                 List.of(),
                 PlatformPolicy.ENFORCED,
                 UnmappedPolicy.MEDIATE,
-                List.of(),
                 Map.of());
 
         public Build {
@@ -918,7 +1009,6 @@ public record JkBuild(
             testSerialTags = testSerialTags == null ? List.of() : List.copyOf(testSerialTags);
             platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
             unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
-            extraResources = extraResources == null ? List.of() : List.copyOf(extraResources);
             testEnv = testEnv == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(testEnv));
         }
 
@@ -938,7 +1028,6 @@ public record JkBuild(
                     testSerialTags,
                     platformPolicy,
                     unmappedPolicy,
-                    extraResources,
                     testEnv);
         }
 
@@ -954,7 +1043,6 @@ public record JkBuild(
                     testSerialTags,
                     policy == null ? PlatformPolicy.ENFORCED : policy,
                     unmappedPolicy,
-                    extraResources,
                     testEnv);
         }
 
@@ -973,28 +1061,6 @@ public record JkBuild(
             var all = new LinkedHashSet<>(orderAfter);
             all.addAll(testPluginJars);
             return List.copyOf(all);
-        }
-    }
-
-    /**
-     * One {@code [build] extra-resources} entry: files from outside the module's own resource root,
-     * copied onto the classpath at package time.
-     *
-     * <p>{@code from} is a module-relative {@link cc.jumpkick.glob.GlobSet} pattern (so {@code../}
-     * and wildcards are allowed); {@code into} is the destination directory inside the output;
-     * {@code rename} optionally renames each match, with {@code &#123;1&#125;} substituting the
-     * pattern's wildcard captures. Matched files keep their path relative to the pattern's literal
-     * prefix, so a directory's shape survives the copy.
-     *
-     * <p>Exists because jk-core bakes each plugin's {@code jk-plugin.toml} in as the built-in plugin
-     * registry, and those blueprint files are the single source of truth — copying them into the
-     * module would create a second, drifting copy.
-     */
-    public record ExtraResource(String from, String into, String rename, List<String> exclude, boolean optional) {
-        public ExtraResource {
-            Objects.requireNonNull(from, "from");
-            into = into == null ? "" : into;
-            exclude = exclude == null ? List.of() : List.copyOf(exclude);
         }
     }
 

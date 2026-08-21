@@ -1,0 +1,9 @@
+name = "data"
+
+[platform-dependencies]
+spring-boot = { group = "org.springframework.boot", name = "spring-boot-dependencies", version = "latest" }
+
+[dependencies]
+starter-jooq = { group = "org.springframework.boot", name = "spring-boot-starter-jooq" }
+h2 = { group = "com.h2database", name = "h2" }
+kotlin-reflect = { group = "org.jetbrains.kotlin" }

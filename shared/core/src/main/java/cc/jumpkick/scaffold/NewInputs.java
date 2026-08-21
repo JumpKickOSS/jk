@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Scaffold answers for {@link NewScaffolder} from flags or the interactive wizard. */
+/** Answers for {@link NewScaffolder} from flags or the interactive wizard. */
 public record NewInputs(
         String group,
         String name,
@@ -17,10 +17,6 @@ public record NewInputs(
         Optional<String> main,
         boolean assembly,
         boolean nativeImage,
-        boolean spring,
-        boolean grails,
-        boolean quarkus,
-        boolean micronaut,
         boolean plugin,
         Language lang,
         String layout,
@@ -39,13 +35,9 @@ public record NewInputs(
         Objects.requireNonNull(kotlinModuleName, "kotlinModuleName");
         Objects.requireNonNull(directory, "directory");
         deps = List.copyOf(deps);
-        // Micronaut apps ship a fat jar (Maven shade parity). Plugin workers do not use
-        // [application]; PluginMain is implied by jk-plugin.toml. A scaffold fragment cannot
-        // open a second [application] table, so the Micronaut assembly flag lives here.
-        assembly = assembly || micronaut;
     }
 
-    /** Back-compat constructor: no framework scaffold or plugin project. */
+    /** Blank project (not a plugin-authoring tree). */
     public NewInputs(
             String group,
             String name,
@@ -73,10 +65,6 @@ public record NewInputs(
                 assembly,
                 nativeImage,
                 false,
-                false,
-                false,
-                false,
-                false,
                 lang,
                 layout,
                 kotlinModuleName,
@@ -85,92 +73,7 @@ public record NewInputs(
                 directory);
     }
 
-    /** Back-compat constructor: spring/plugin flags, no Grails/Quarkus. */
-    public NewInputs(
-            String group,
-            String name,
-            String jdk,
-            int jdkMajor,
-            int javaRelease,
-            Optional<String> jdkIdentifier,
-            Optional<String> main,
-            boolean assembly,
-            boolean nativeImage,
-            boolean spring,
-            boolean plugin,
-            Language lang,
-            String layout,
-            Optional<String> kotlinModuleName,
-            List<String> deps,
-            boolean sample,
-            Path directory) {
-        this(
-                group,
-                name,
-                jdk,
-                jdkMajor,
-                javaRelease,
-                jdkIdentifier,
-                main,
-                assembly,
-                nativeImage,
-                spring,
-                false,
-                false,
-                false,
-                plugin,
-                lang,
-                layout,
-                kotlinModuleName,
-                deps,
-                sample,
-                directory);
-    }
-
-    /** Back-compat constructor: spring/grails/plugin, no Quarkus. */
-    public NewInputs(
-            String group,
-            String name,
-            String jdk,
-            int jdkMajor,
-            int javaRelease,
-            Optional<String> jdkIdentifier,
-            Optional<String> main,
-            boolean assembly,
-            boolean nativeImage,
-            boolean spring,
-            boolean grails,
-            boolean plugin,
-            Language lang,
-            String layout,
-            Optional<String> kotlinModuleName,
-            List<String> deps,
-            boolean sample,
-            Path directory) {
-        this(
-                group,
-                name,
-                jdk,
-                jdkMajor,
-                javaRelease,
-                jdkIdentifier,
-                main,
-                assembly,
-                nativeImage,
-                spring,
-                grails,
-                false,
-                false,
-                plugin,
-                lang,
-                layout,
-                kotlinModuleName,
-                deps,
-                sample,
-                directory);
-    }
-
-    /** Back-compat constructor: {@code javaRelease} defaults to {@code jdkMajor}. */
+    /** Blank project (not a plugin-authoring tree). {@code javaRelease} is {@code jdkMajor}. */
     public NewInputs(
             String group,
             String name,
@@ -196,10 +99,6 @@ public record NewInputs(
                 main,
                 assembly,
                 nativeImage,
-                false,
-                false,
-                false,
-                false,
                 false,
                 lang,
                 layout,
@@ -238,19 +137,5 @@ public record NewInputs(
 
     public boolean isRunnable() {
         return main.isPresent();
-    }
-
-    /** True when any framework plugin scaffold flag is set. */
-    public boolean frameworkScaffold() {
-        return spring || grails || quarkus || micronaut;
-    }
-
-    /** Scaffold flag name for the engine ({@code spring} / {@code grails} / {@code quarkus}). */
-    public String frameworkPluginFlag() {
-        if (grails) return "grails";
-        if (quarkus) return "quarkus";
-        if (micronaut) return "micronaut";
-        if (spring) return "spring";
-        throw new IllegalStateException("no framework scaffold flag set");
     }
 }

@@ -6,6 +6,8 @@ import cc.jumpkick.run.SessionCancel;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -167,7 +169,7 @@ public final class WorkspaceScheduler {
         // Stable sort keeps declaration order among equals.
         List<U> notStarted = new ArrayList<>(units);
         Map<Path, Integer> height = dependentChainHeight(units, dirOf, edges, unitDirs);
-        notStarted.sort(java.util.Comparator.comparingInt((U u) -> -height.getOrDefault(dirOf.apply(u), 0)));
+        notStarted.sort(Comparator.comparingInt((U u) -> -height.getOrDefault(dirOf.apply(u), 0)));
         // Events: a Done per completed unit, or a Path per artifact-publish. Admission keys on
         // artifactsReady (JK-2210), so a dependent starts while its prereq's tests still run;
         // completion accounting (sink, fail-fast, the concurrency cap) stays on Done.
@@ -254,7 +256,7 @@ public final class WorkspaceScheduler {
      */
     static <U> Map<Path, Integer> dependentChainHeight(
             List<U> units, Function<U, Path> dirOf, Map<Path, Set<Path>> edges, Set<Path> unitDirs) {
-        Map<Path, List<Path>> dependents = new java.util.HashMap<>();
+        Map<Path, List<Path>> dependents = new HashMap<>();
         for (U u : units) {
             Path dir = dirOf.apply(u);
             for (Path dep : edges.getOrDefault(dir, Set.of())) {
@@ -263,7 +265,7 @@ public final class WorkspaceScheduler {
                 }
             }
         }
-        Map<Path, Integer> memo = new java.util.HashMap<>();
+        Map<Path, Integer> memo = new HashMap<>();
         for (U u : units) heightOf(dirOf.apply(u), dependents, memo, new HashSet<>());
         return memo;
     }

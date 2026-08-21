@@ -2,11 +2,13 @@
 package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.JkBuildParseException;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.model.PluginConfig;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -18,6 +20,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import org.tomlj.TomlArray;
@@ -29,10 +32,16 @@ import org.tomlj.TomlTable;
  *
  * <p>Production built-ins come from self-describing plugin jars ({@code jk-plugin.toml} at the
  * zip root). The engine installs them via {@link #putBuiltIn}. {@code :core} main and the native
- * CLI see an empty set. Unit tests may still load the same files from
- * {@code cc/jumpkick/plugin/manifest/} on the <em>test</em> classpath.
+ * CLI see an empty set. Tests load the same files from {@code cc/jumpkick/plugin/manifest/} on
+ * the test classpath, or — when that tree is absent — from {@code -Djk.<id>.plugin.jar} and
+ * {@code plugins/<id>/jk-plugin.toml} in the enclosing workspace. The workspace walk runs only
+ * when this class was loaded from jk-core (or the test-runner host) so a resident engine or
+ * native CLI started from this repo does not pick up source manifests.
  */
 public final class PluginTableRegistry {
+
+    private static final String TEST_RUNNER_PLUGIN_CLASS = "cc.jumpkick.testrunner.TestRunner";
+    private static final String BUILT_IN_SUFFIX = ".jk-plugin.toml";
 
     private static final List<String> BUILT_IN = List.of(
             "spring-boot.jk-plugin.toml",
@@ -71,10 +80,24 @@ public final class PluginTableRegistry {
         }
     }
 
+    /** Plugin id → jar that owns {@code jk-plugin.toml} and {@code templates/}. */
+    private static final Map<String, Path> ARCHIVES = new ConcurrentHashMap<>();
+
     private static volatile Map<String, PluginDescriptor> BY_TABLE = loadBuiltIns();
 
-    /** Plugin id → jar that owns {@code jk-plugin.toml} and {@code scaffold/}. */
-    private static final Map<String, Path> ARCHIVES = new ConcurrentHashMap<>();
+    /** Jar the plugin was installed from, or {@code null} when the manifest is test-classpath only. */
+    public static Path archive(String pluginId) {
+        return pluginId == null ? null : ARCHIVES.get(pluginId);
+    }
+
+    /** Manifest whose {@code id} or {@code table} equals {@code name}. */
+    public static PluginDescriptor byIdOrTable(String name) {
+        if (name == null || name.isBlank()) return null;
+        for (PluginDescriptor m : BY_TABLE.values()) {
+            if (name.equals(m.id()) || name.equals(m.table())) return m;
+        }
+        return null;
+    }
 
     /**
      * Load {@code jk-plugin.toml} from a self-describing plugin jar and {@link #putBuiltIn}.
@@ -94,12 +117,17 @@ public final class PluginTableRegistry {
 
     /**
      * Register or replace a built-in manifest loaded from a self-describing plugin jar.
-     * {@code archive} is the zip {@link #resourceText} reads scaffold templates from.
+     * {@code archive} is the zip {@link #resourceText} reads plugin resources from.
      */
     public static void putBuiltIn(PluginDescriptor manifest, Path archive) {
         Objects.requireNonNull(manifest, "manifest");
         synchronized (PluginTableRegistry.class) {
             Map<String, PluginDescriptor> next = new LinkedHashMap<>(BY_TABLE);
+            // Replace on id OR table, matching manifestsFor: an override whose table differs
+            // from the built-in's must not leave both manifests installed under one id.
+            next.values()
+                    .removeIf(existing -> existing.id().equals(manifest.id())
+                            || existing.table().equals(manifest.table()));
             next.put(manifest.table(), manifest);
             BY_TABLE = Map.copyOf(next);
         }
@@ -107,6 +135,27 @@ public final class PluginTableRegistry {
     }
 
     private PluginTableRegistry() {}
+
+    /**
+     * Engine-registered hook: given an unowned table name, fetch + install the built-in plugin
+     * that owns it (network allowed), returning {@code null} on success or irrelevance and a
+     * human-readable failure detail otherwise. Unset outside the engine (CLI, plain tests), where
+     * parses must never reach the network.
+     */
+    private static volatile UnaryOperator<String> MISSING_BUILT_IN_FETCHER;
+
+    public static void missingBuiltInFetcher(UnaryOperator<String> fetcher) {
+        MISSING_BUILT_IN_FETCHER = fetcher;
+    }
+
+    /**
+     * One chance to lazily install the built-in owning {@code table} before the unowned-table
+     * error: returns a failure detail to surface, or {@code null} (caller rechecks the registry).
+     */
+    public static String tryFetchMissingBuiltIn(String table) {
+        UnaryOperator<String> fetcher = MISSING_BUILT_IN_FETCHER;
+        return fetcher == null ? null : fetcher.apply(table);
+    }
 
     /** Every installed manifest, in registration order. */
     public static List<PluginDescriptor> manifests() {
@@ -338,33 +387,190 @@ public final class PluginTableRegistry {
 
     private static Map<String, PluginDescriptor> loadBuiltIns() {
         Map<String, PluginDescriptor> byTable = new LinkedHashMap<>();
-        int missing = 0;
         for (String resource : BUILT_IN) {
             try (InputStream in = openBuiltIn(resource)) {
-                if (in == null) {
-                    missing++;
-                    continue;
-                }
+                if (in == null) continue;
                 PluginDescriptor manifest =
-                        PluginDescriptors.parse(new String(in.readAllBytes(), StandardCharsets.UTF_8), resource);
-                if (manifest.code() != null && manifest.code().worker() == null) {
-                    throw new IllegalStateException("built-in plugin manifest " + resource
-                            + " must name its registered worker jar ([code] worker)");
-                }
+                        tryParseBuiltIn(new String(in.readAllBytes(), StandardCharsets.UTF_8), resource);
+                if (manifest != null) byTable.put(manifest.table(), manifest);
+            } catch (IOException e) {
+                throw new UncheckedIOException("failed to load built-in plugin manifest " + resource, e);
+            }
+        }
+        // Native CLI / :core main have no classpath fixtures. Tests may bake them; the engine
+        // installs from self-describing jars via putBuiltIn. A test JVM loading this class from
+        // jk-core (classes dir or jk-core-*.jar) overlays workspace sources and -Djk.<id>.plugin.jar
+        // so leftover flattened copies on another module's classes dir cannot poison class init.
+        if (shouldLoadWorkspacePluginSources()) {
+            byTable.putAll(loadFromWorkspacePluginSources(discoverTestWorkspaceRoot()));
+        }
+        byTable.putAll(loadFromPluginJarProperties());
+        if (byTable.size() == BUILT_IN.size()) return Map.copyOf(byTable);
+        if (byTable.isEmpty()) return Map.of();
+        throw new IllegalStateException("missing built-in plugin manifest resources ("
+                + (BUILT_IN.size() - byTable.size())
+                + "/"
+                + BUILT_IN.size()
+                + "; first-party manifests live on plugin jars and the test classpath, not :core)");
+    }
+
+    /**
+     * Parse one built-in manifest; {@code null} when the bytes are not a current catalog (stale
+     * {@code [scaffold]} copies, truncated fixtures). Class init must not die on leftovers.
+     */
+    static PluginDescriptor tryParseBuiltIn(String toml, String displayPath) {
+        try {
+            return parseBuiltIn(toml, displayPath);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static PluginDescriptor parseBuiltIn(String toml, String displayPath) {
+        PluginDescriptor manifest = PluginDescriptors.parse(toml, displayPath);
+        if (manifest.code() != null && manifest.code().worker() == null) {
+            throw new IllegalStateException(
+                    "built-in plugin manifest " + displayPath + " must name its registered worker jar ([code] worker)");
+        }
+        return manifest;
+    }
+
+    /**
+     * Workspace sources are a test-classpath substitute, not a production catalog. Load them
+     * when this class came from jk-core's classes dir / {@code jk-core-*.jar} (unit tests) or
+     * the test-runner host set {@code jk.plugin.class}. Skip the native CLI and the engine fat
+     * jar — those stay empty until {@link #putBuiltIn}.
+     */
+    private static boolean shouldLoadWorkspacePluginSources() {
+        if (TEST_RUNNER_PLUGIN_CLASS.equals(System.getProperty("jk.plugin.class"))) return true;
+        try {
+            var src = PluginTableRegistry.class.getProtectionDomain().getCodeSource();
+            if (src == null || src.getLocation() == null) return false;
+            Path loc = Path.of(src.getLocation().toURI()).toAbsolutePath().normalize();
+            if (Files.isDirectory(loc)) {
+                return "main".equals(pathFileName(loc));
+            }
+            String name = pathFileName(loc);
+            return name.startsWith("jk-core-") && name.endsWith(".jar");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static String pathFileName(Path path) {
+        Path name = path.getFileName();
+        return name == null ? "" : name.toString();
+    }
+
+    private static String builtInId(String resource) {
+        return resource.endsWith(BUILT_IN_SUFFIX)
+                ? resource.substring(0, resource.length() - BUILT_IN_SUFFIX.length())
+                : resource;
+    }
+
+    /**
+     * Manifests from {@code -Djk.<id>.plugin.jar} (the same props {@code [build] test-plugin-jars}
+     * hands the test JVM). Missing properties are skipped so a module can name only the workers
+     * its tests fork.
+     */
+    static Map<String, PluginDescriptor> loadFromPluginJarProperties() {
+        Map<String, PluginDescriptor> byTable = new LinkedHashMap<>();
+        for (String resource : BUILT_IN) {
+            String id = builtInId(resource);
+            String override = System.getProperty("jk." + id + ".plugin.jar");
+            if (override == null || override.isBlank()) continue;
+            Path jar = Path.of(override);
+            if (!Files.isRegularFile(jar)) continue;
+            try {
+                String toml = zipEntryText(jar, "jk-plugin.toml");
+                if (toml == null || toml.isBlank()) continue;
+                PluginDescriptor manifest = parseBuiltIn(toml, jar + "!jk-plugin.toml");
+                byTable.put(manifest.table(), manifest);
+                ARCHIVES.put(manifest.id(), jar);
+            } catch (IOException e) {
+                throw new UncheckedIOException("failed to load plugin manifest from " + jar, e);
+            }
+        }
+        return byTable;
+    }
+
+    /**
+     * First-party {@code plugins/<id>/jk-plugin.toml} under {@code root}. Empty when {@code root}
+     * is null or none of the files exist; incomplete trees (some present, some not) fail closed.
+     */
+    static Map<String, PluginDescriptor> loadFromWorkspacePluginSources(Path root) {
+        if (root == null) return Map.of();
+        Map<String, PluginDescriptor> byTable = new LinkedHashMap<>();
+        int missing = 0;
+        for (String resource : BUILT_IN) {
+            Path toml = root.resolve("plugins").resolve(builtInId(resource)).resolve("jk-plugin.toml");
+            if (!Files.isRegularFile(toml)) {
+                missing++;
+                continue;
+            }
+            try {
+                PluginDescriptor manifest = parseBuiltIn(Files.readString(toml, StandardCharsets.UTF_8), resource);
                 byTable.put(manifest.table(), manifest);
             } catch (IOException e) {
                 throw new UncheckedIOException("failed to load built-in plugin manifest " + resource, e);
             }
         }
-        // Native CLI / :core main have no classpath fixtures. Tests bake them; the engine
-        // installs from self-describing jars via putBuiltIn.
-        if (missing == 0) return byTable;
         if (missing == BUILT_IN.size()) return Map.of();
-        throw new IllegalStateException("missing built-in plugin manifest resources ("
-                + missing
-                + "/"
-                + BUILT_IN.size()
-                + "; first-party manifests live on plugin jars and the test classpath, not :core)");
+        if (missing > 0) {
+            throw new IllegalStateException("missing built-in plugin manifest sources ("
+                    + missing
+                    + "/"
+                    + BUILT_IN.size()
+                    + "; first-party manifests live under plugins/<id>/jk-plugin.toml)");
+        }
+        return byTable;
+    }
+
+    /**
+     * Workspace root that owns the running tests. {@code user.dir} is tried first (module root
+     * when the launcher sets it); otherwise walk from this class's code source — jk's test
+     * classes live at {@code target/<module-rel>/classes/test}, so {@code user.dir} inference
+     * from {@code …/target/classes/test} does not apply, but core's classes dir still sits under
+     * the checkout.
+     */
+    static Path discoverTestWorkspaceRoot() {
+        Path fromCwd = workspaceRootOwning(
+                Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize());
+        if (fromCwd != null) return fromCwd;
+        return workspaceRootFromCodeSource();
+    }
+
+    private static Path workspaceRootOwning(Path dir) {
+        if (dir == null) return null;
+        var owned = WorkspaceScan.findRoot(dir);
+        if (owned.isPresent() && isFirstPartyPluginCheckout(owned.get())) return owned.get();
+        if (WorkspaceScan.isWorkspaceRoot(dir) && isFirstPartyPluginCheckout(dir)) return dir;
+        var enclosing = WorkspaceScan.findEnclosingWorkspace(dir);
+        if (enclosing.isPresent() && isFirstPartyPluginCheckout(enclosing.get())) return enclosing.get();
+        return null;
+    }
+
+    private static Path workspaceRootFromCodeSource() {
+        try {
+            var src = PluginTableRegistry.class.getProtectionDomain().getCodeSource();
+            if (src == null || src.getLocation() == null) return null;
+            Path loc = Path.of(src.getLocation().toURI()).toAbsolutePath().normalize();
+            if (Files.isRegularFile(loc)) loc = loc.getParent();
+            for (int i = 0; i < 10 && loc != null; i++, loc = loc.getParent()) {
+                if (isFirstPartyPluginCheckout(loc)) return loc;
+            }
+        } catch (Exception ignored) {
+            // not a filesystem class location
+        }
+        return null;
+    }
+
+    /** True when {@code dir} is a jk checkout that ships first-party {@code plugins/<id>/jk-plugin.toml}. */
+    private static boolean isFirstPartyPluginCheckout(Path dir) {
+        return Files.isRegularFile(dir.resolve("jk.toml"))
+                && Files.isRegularFile(dir.resolve("plugins")
+                        .resolve(builtInId(BUILT_IN.getFirst()))
+                        .resolve("jk-plugin.toml"));
     }
 
     private static String zipEntryText(Path jar, String entry) throws IOException {

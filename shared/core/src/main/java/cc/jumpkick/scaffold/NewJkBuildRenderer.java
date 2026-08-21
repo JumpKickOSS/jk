@@ -2,7 +2,6 @@
 package cc.jumpkick.scaffold;
 
 import cc.jumpkick.library.LibraryCatalog;
-import cc.jumpkick.model.ToolDefaults;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,22 +9,8 @@ import java.util.Map;
 /** Renders a starter {@code jk.toml} from {@link NewInputs} (name-as-key dependency tables). */
 public final class NewJkBuildRenderer {
 
-    /**
-     * Default Kotlin compiler version selector when language=kotlin. Floating (caret) so {@code jk
-     * lock} pins it to the latest compatible release.
-     */
-    private static final String DEFAULT_KOTLIN_VERSION = ToolDefaults.KOTLIN_DEFAULT_VERSION;
-
-    /** Default Groovy compiler version selector when language=groovy. */
-    private static final String DEFAULT_GROOVY_VERSION = ToolDefaults.GROOVY_DEFAULT_VERSION;
-
-    /**
-     * Groovy for {@code --grails} scaffoldsGrails 8.0.0-M4's own members require a
-     * groovy NEWER than grails-bom manages (core declares 5.0.7, the bom pins 5.0.6), so the
-     * scaffold pins the working version explicitly — the exact pin overrides the platform.
-     * Bump together with the grails plugin's default boot line.
-     */
-    private static final String GRAILS_GROOVY_VERSION = "5.0.7";
+    /** Compiler version selector: first {@code jk lock} pins the current stable. */
+    private static final String LATEST = "latest";
 
     private NewJkBuildRenderer() {}
 
@@ -37,12 +22,8 @@ public final class NewJkBuildRenderer {
         sb.append("jdk      = \"").append(inputs.jdk()).append("\"\n");
         switch (inputs.lang()) {
             case JAVA -> sb.append("java     = ").append(inputs.javaRelease()).append('\n');
-            case KOTLIN ->
-                sb.append("kotlin   = \"").append(DEFAULT_KOTLIN_VERSION).append("\"\n");
-            case GROOVY ->
-                sb.append("groovy   = \"")
-                        .append(inputs.grails() ? GRAILS_GROOVY_VERSION : DEFAULT_GROOVY_VERSION)
-                        .append("\"\n");
+            case KOTLIN -> sb.append("kotlin   = \"").append(LATEST).append("\"\n");
+            case GROOVY -> sb.append("groovy   = \"").append(LATEST).append("\"\n");
         }
         inputs.kotlinModuleName()
                 .ifPresent(m -> sb.append("module   = \"").append(m).append("\"\n"));
@@ -69,9 +50,6 @@ public final class NewJkBuildRenderer {
             sb.append("jk-plugin-sdk = { group = \"cc.jumpkick\", version = \"0.1.0\" }\n");
             return sb.toString();
         }
-
-        // Plugin scaffolds (--spring) append their own tables engine-side (the plugin's
-        // [scaffold] fragments) — this renderer emits only jk-core content.
 
         var picks = resolvePicks(inputs.deps());
         if (picks.isEmpty()) return sb.toString();

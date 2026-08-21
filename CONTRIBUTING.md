@@ -27,7 +27,7 @@ foojay resolver on first use.
 `jk build`, `jk test`, `jk native`, and workspace `jk image` share **one** engine
 orchestrator (`WorkspaceExecute`). Do not add a new per-verb cascade (dirty set, ETA,
 prepare, schedule). Add a `WorkspaceTarget` + module filter. See
-[docs/features/build-plan.md](docs/features/build-plan.md#one-orchestrator-invariant).
+[docs/contributors/architecture.md](docs/contributors/architecture.md).
 
 ## Building
 
@@ -59,13 +59,13 @@ format job — `jk format --check` is the local gate (required before every comm
 ### Code as Art
 
 How we write Java (size budgets, Typed Envelope, JSpecify, fluent Lombok, pre-1.0 breakage):
-**[docs/code-as-art.md](docs/code-as-art.md)**. Comments and Javadoc state the current type only
+**[docs/contributors/code-as-art.md](docs/contributors/code-as-art.md)**. Comments and Javadoc state the current type only
 (no ticket ids, no historical essays) — **[AGENTS.md](AGENTS.md#comments-and-javadoc)**.
 Campaign epic JK-1923 preempts other work until it closes.
 
 ### Self-host (phase 2+) — workspace modules + thin workers with jk
 
-Long-form dogfood (Gradle + pure-jk in this same repo): **[docs/self-host.md](docs/self-host.md)**.
+Long-form dogfood (Gradle + pure-jk in this same repo): **[docs/contributors/self-host.md](docs/contributors/self-host.md)**.
 Bootstrap helper: `./scripts/bootstrap-from-gradle.sh`.
 
 Catalog short names resolve through the **system catalog** (downloaded global registry +
@@ -113,11 +113,11 @@ jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/en
 ```
 
 The client never embeds the engine. Spawning uses
-`~/.local/share/jk/lib/jk-engine.jar` (or `$JK_HOME/lib/jk-engine.jar`) or `JK_ENGINE_EXE`.
+`~/.local/share/jk/lib/jk-engine/` (or `$JK_HOME/lib/jk-engine/`) or `JK_ENGINE_EXE`.
 
 | Still Gradle | Why |
 |---|---|
-| `./gradlew test` (unit tier) / `integrationTest` / `checkAll` | CI: unit on every push/PR (`ci.yml`); integration on Linux nightly (`ci-nightly.yml`). Local pre-merge bar is still `checkAll` when you touch wire/engine/CLI — see [docs/perf/test-suite-tiers.md](docs/perf/test-suite-tiers.md) |
+| `./gradlew test` (unit tier) / `integrationTest` / `checkAll` | CI: unit on every push/PR (`ci.yml`); integration on Linux nightly (`ci-nightly.yml`). Local pre-merge bar is still `checkAll` when you touch wire/engine/CLI — see [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md) |
 | `./gradlew dist` / `nativeCompile` | Bootstrap / ship layout (`build/dist/jk`); Gradle still for native release matrix |
 | `./gradlew installLocal` | Workers + **engine materialize/bounce**; or `jk install` after `jk build` for workers only |
 
@@ -164,7 +164,7 @@ the pure unit tier (TUI/args/jsonl) with no shadowJar or worker-jar dependency.
 (1042/1055). TempDir cleanup uses `JkTempDirDeletionStrategy` (stop engine only when delete
 fails). Use module filters mid-ticket; the pre-merge bar is `./gradlew checkAll` (unit +
 integration) before merge to `main`. Tier model:
-[docs/perf/test-suite-tiers.md](docs/perf/test-suite-tiers.md). Shared dep cache:
+[docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md). Shared dep cache:
 `jk.test.cache.dir` under `clients/cli/build/test-shared-cache`.
 
 Prefer `jk build --skip-tests` plus `jk test --modules 'shared/*,server/…,plugins/*'`
@@ -175,7 +175,7 @@ Refresh locks after dependency changes: `jk lock` (commit the workspace-root `jk
 ### Showcase monorepo smoke (ticket-1038)
 
 Multi-module sample under
-[`docs/features/examples/workspace-showcase/`](docs/features/examples/workspace-showcase/):
+[`docs/user/examples/workspace-showcase/`](docs/user/examples/workspace-showcase/):
 
 ```bash
 ./gradlew :cli:installDist :engine:shadowJar installLocal --no-daemon
@@ -184,7 +184,7 @@ ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
 "$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
 export PATH="$PWD/clients/cli/build/install/jk/bin:$PATH"
 
-cd docs/features/examples/workspace-showcase
+cd docs/user/examples/workspace-showcase
 jk lock && jk build && jk test --modules app
 # optional: jk build --modules app
 ```
@@ -213,13 +213,16 @@ with a clear message. Use a separate worktree for true parallel builds.
 
 Requires `jk` on PATH. No engine jars in the IDE process. See `clients/vscode/README.md` and
 `clients/intellij/README.md`.
-See [docs/architecture.md](docs/architecture.md) for layering and process model, and
-[docs/guide.md](docs/guide.md) for product behavior. CLI human chrome rules (CommandWedge,
-blank envelope, script-mode allowlist, nerd/ansi/plain): [docs/tui.md](docs/tui.md).
+See [docs/contributors/architecture.md](docs/contributors/architecture.md) for layering and
+process model, and [docs/user/](docs/user/README.md) for product behavior. CLI human chrome
+rules (CommandWedge, blank envelope, script-mode allowlist, nerd/ansi/plain):
+[docs/contributors/tui.md](docs/contributors/tui.md).
 
 ## Docs and planning
 
-- Public docs live under [`docs/`](docs/README.md) (keep the set small and accurate).
+- Product docs: [`docs/user/`](docs/user/README.md) (using JumpKick) and
+  [`docs/contributors/`](docs/contributors/README.md) (this codebase). Internal PRDs and
+  benches live in KanArtist `projects/jk/docs/`.
 - Engineering board: **[kanartist](https://github.com/JumpKickOSS/kanartist)** project `jk` (`JK-NNNN`). Claim/work rules and Done criteria: root [`AGENTS.md`](AGENTS.md).
 
 ## Commit authorship

@@ -134,8 +134,8 @@ class CacheCommandTest {
             // Backdate the stale entry by 60 days.
             Files.setLastModifiedTime(stale, FileTime.from(Instant.now().minus(60, ChronoUnit.DAYS)));
 
-            String stdout = Capture.stdout(
-                    () -> run("cache", "clean", "--cache-dir", cache.toString(), "--older-than", "30"));
+            String stdout =
+                    Capture.stdout(() -> run("cache", "clean", "--cache-dir", cache.toString(), "--older-than", "30"));
 
             assertThat(Files.exists(stale)).isFalse();
             assertThat(Files.exists(fresh)).isTrue();

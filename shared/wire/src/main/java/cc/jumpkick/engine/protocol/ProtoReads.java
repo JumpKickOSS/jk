@@ -236,7 +236,6 @@ public final class ProtoReads {
             String layout,
             String template,
             boolean executable,
-            String framework,
             String jdk,
             int javaRelease,
             boolean assembly,
@@ -257,7 +256,6 @@ public final class ProtoReads {
                 + ",\"layout\":" + Jsonl.quote(layout)
                 + ",\"template\":" + Jsonl.quote(template)
                 + ",\"executable\":" + executable
-                + ",\"framework\":" + Jsonl.quote(framework)
                 + ",\"jdk\":" + Jsonl.quote(jdk)
                 + ",\"javaRelease\":" + javaRelease
                 + ",\"assembly\":" + assembly

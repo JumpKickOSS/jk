@@ -2,39 +2,49 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.jsonl.Jsonl;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Thread-safe accumulator that writes {@code test-results.md} (summary, failures, package table).
- * Companion to {@link XmlTestReport}; call {@link #writeAll} once after workers join.
+ * Thread-safe per-launch accumulator of JUnit method results. After workers join, {@link
+ * #publish} folds the entries into a process-wide store keyed by module path; the journal drains
+ * that store into {@code jk-results.md}. Companion to {@link XmlTestReport} (JUnit XML under
+ * {@code target/reports/test-results/}).
  */
 public final class MarkdownTestReport {
 
-    private record Entry(
+    public record Entry(
             String className,
             String displayName,
             long durationMs,
             String failureMessage,
             String failureStack,
             String skipReason) {
-        boolean isFail() {
+        public boolean isFail() {
             return failureMessage != null || failureStack != null;
         }
 
-        boolean isSkip() {
+        public boolean isSkip() {
             return skipReason != null;
         }
 
-        boolean isPass() {
+        public boolean isPass() {
             return !isFail() && !isSkip();
         }
     }
+
+    /** One module's tests, published after that module's workers join. */
+    public record ModuleRun(String scopeKey, String label, List<Entry> entries) {
+        public ModuleRun {
+            entries = entries == null ? List.of() : List.copyOf(entries);
+            if (scopeKey == null) scopeKey = "";
+            if (label == null) label = "";
+        }
+    }
+
+    private static final ConcurrentHashMap<String, ModuleRun> PUBLISHED = new ConcurrentHashMap<>();
 
     private final List<Entry> entries = new ArrayList<>();
 
@@ -65,103 +75,49 @@ public final class MarkdownTestReport {
     }
 
     /**
-     * Write {@code test-results.md} into {@code dir}, creating it if needed. No-ops when no test
-     * events were recorded.
+     * Fold this launch's entries into the process-wide store under {@code scopeKey} (module path).
+     * No-op when nothing was recorded. Concurrent launches of the same key merge.
      */
-    public synchronized void writeAll(Path dir) throws IOException {
+    public synchronized void publish(String scopeKey, String label) {
         if (entries.isEmpty()) return;
-        Files.createDirectories(dir);
-        Files.writeString(dir.resolve("test-results.md"), buildMarkdown());
+        String k = scopeKey == null || scopeKey.isBlank() ? "_" : scopeKey;
+        String lab = label == null ? "" : label;
+        ModuleRun add = new ModuleRun(k, lab, List.copyOf(entries));
+        PUBLISHED.merge(k, add, (a, b) -> {
+            List<Entry> merged =
+                    new ArrayList<>(a.entries().size() + b.entries().size());
+            merged.addAll(a.entries());
+            merged.addAll(b.entries());
+            String keep = !a.label().isBlank() ? a.label() : b.label();
+            return new ModuleRun(k, keep, merged);
+        });
     }
 
-    private String buildMarkdown() {
-        long failures = entries.stream().filter(Entry::isFail).count();
-        long total = entries.size();
-        long totalMs = entries.stream().mapToLong(Entry::durationMs).sum();
-
-        var sb = new StringBuilder();
-        int passRate = total == 0 ? 100 : (int) Math.round((double) (total - failures) / total * 100);
-
-        // ── Header + Summary ─────────────────────────────────────────────────
-        sb.append("# Test Results\n\n");
-        sb.append("## Summary\n");
-        sb.append("#### **").append(passRate).append("%** Pass Rate · ");
-        if (failures == 0) {
-            sb.append("No failures for **").append(total).append("** ").append(total == 1 ? "test" : "tests");
-        } else if (total == 1) {
-            sb.append("**1 failure** out of **1** test");
-        } else {
-            sb.append("**")
-                    .append(failures)
-                    .append(failures == 1 ? " failure**" : " failures**")
-                    .append(" out of **")
-                    .append(total)
-                    .append("** tests");
+    /**
+     * Drain every published run whose scope is {@code projectDir} or a path under it. Used at
+     * journal-write so a concurrent build of a different checkout is not stolen.
+     */
+    public static List<ModuleRun> takeUnder(Path projectDir) {
+        if (projectDir == null) return List.of();
+        Path root;
+        try {
+            root = projectDir.toAbsolutePath().normalize();
+        } catch (RuntimeException e) {
+            return List.of();
         }
-        sb.append(" · _took ").append(fmtDuration(totalMs)).append("_\n\n");
-
-        // ── Package table ─────────────────────────────────────────────────────
-        Map<String, long[]> byPkg = new LinkedHashMap<>();
-        for (Entry e : entries) {
-            long[] c = byPkg.computeIfAbsent(packageOf(e.className()), k -> new long[4]);
-            c[3]++;
-            if (e.isFail()) c[0]++;
-            else if (e.isSkip()) c[1]++;
-            else c[2]++;
-        }
-        sb.append("| Package | Fail | Skip | Pass | Total |\n");
-        sb.append("|---|---|---|---|---|\n");
-        for (var kv : byPkg.entrySet()) {
-            long[] c = kv.getValue();
-            sb.append("| ")
-                    .append(kv.getKey())
-                    .append(" | ")
-                    .append(c[0])
-                    .append(" | ")
-                    .append(c[1])
-                    .append(" | ")
-                    .append(c[2])
-                    .append(" | ")
-                    .append(c[3])
-                    .append(" |\n");
-        }
-
-        // ── Failed Tests ─────────────────────────────────────────────────────
-        if (failures > 0) {
-            sb.append("\n## Failed Tests\n");
-            Map<String, List<Entry>> byClass = new LinkedHashMap<>();
-            for (Entry e : entries) {
-                if (e.isFail()) {
-                    byClass.computeIfAbsent(e.className(), k -> new ArrayList<>())
-                            .add(e);
-                }
+        List<ModuleRun> out = new ArrayList<>();
+        for (String key : List.copyOf(PUBLISHED.keySet())) {
+            Path p;
+            try {
+                p = Path.of(key).toAbsolutePath().normalize();
+            } catch (RuntimeException e) {
+                continue;
             }
-            for (var kv : byClass.entrySet()) {
-                sb.append("### ").append(kv.getKey()).append("\n");
-                for (Entry e : kv.getValue()) {
-                    sb.append("#### `")
-                            .append(e.displayName())
-                            .append("`")
-                            .append(" — _took ")
-                            .append(fmtDuration(e.durationMs()))
-                            .append("_\n");
-                    String detail = e.failureStack() != null
-                                    && !e.failureStack().isBlank()
-                            ? e.failureStack().trim()
-                            : (e.failureMessage() != null ? e.failureMessage().trim() : "");
-                    if (!detail.isEmpty()) {
-                        sb.append("```\n").append(detail).append("\n```\n\n");
-                    }
-                }
-            }
+            if (!p.equals(root) && !p.startsWith(root)) continue;
+            ModuleRun run = PUBLISHED.remove(key);
+            if (run != null && !run.entries().isEmpty()) out.add(run);
         }
-
-        return sb.toString();
-    }
-
-    private static String packageOf(String fqcn) {
-        int dot = fqcn.lastIndexOf('.');
-        return dot < 0 ? fqcn : fqcn.substring(0, dot);
+        return out;
     }
 
     /** Extract the FQCN from a JUnit Platform uniqueId. */
@@ -171,10 +127,5 @@ public final class MarkdownTestReport {
         int e = uniqueId.indexOf(']', s);
         if (e < 0) return uniqueId;
         return uniqueId.substring(s + 7, e);
-    }
-
-    private static String fmtDuration(long ms) {
-        if (ms < 1000) return ms + "ms";
-        return String.format("%.1fs", ms / 1000.0);
     }
 }

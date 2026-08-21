@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Java](https://img.shields.io/badge/Java-25-orange.svg)](https://openjdk.org/projects/jdk/25/)
 [![GraalVM](https://img.shields.io/badge/native--image-GraalVM%2025-yellow.svg)](https://www.graalvm.org/)
-[![Status](https://img.shields.io/badge/status-alpha-red.svg)](docs/architecture.md)
+[![Status](https://img.shields.io/badge/status-alpha-red.svg)](docs/user/README.md)
 
 **JumpKick** (CLI: **`jk`**) is an elegant, powerful build system for the JVM — Java, Kotlin, and
 Groovy. A fast native binary. One simple TOML build definition. A real version lockfile. Dependency
@@ -109,7 +109,7 @@ jk build        # still fully reproducible from that lock
 - `jk explain` — forecast what will run before it does
 - Variants, profiles, features (product / how / optional deps — deliberately separate)
 - First-party: Spring Boot, **Quarkus**, **Grails**, Android, protobuf, R8 shrink, tests, format, native-image, OCI images
-- `jk new --template` Giter8 short names (`java-cli`, `quarkus`) + local `.g8` paths
+- `jk new -t` Giter8 templates (`cli`, `spring-boot/hello`, `ktor-3`) + local `.g8` paths
 
 ### Toolchain & tools
 - **JDK install / pin / discover** (Temurin, GraalVM, and neighbors: IntelliJ, SDKMAN, mise, …)
@@ -126,7 +126,7 @@ jk build        # still fully reproducible from that lock
 - `jk mvn …` / `jk gradle …` — real Maven/Gradle, wrapper-aware
 - `jk import pom.xml` / `build.gradle.kts` · `jk export maven` / IDE files
 
-More detail: **[User guide](docs/guide.md)** · **[Architecture](docs/architecture.md)** · **[Plugins](docs/plugins.md)**
+More detail: **[User docs](docs/user/README.md)** · **[Manual](docs/user/manual.md)** · **[Architecture](docs/contributors/architecture.md)**
 
 ---
 
@@ -195,7 +195,7 @@ jk engine status
 jk engine stop
 ```
 
-→ [Architecture: client + engine](docs/architecture.md)
+→ [Architecture: client + engine](docs/contributors/architecture.md)
 
 ---
 
@@ -332,11 +332,13 @@ multi-module and variant power — without making your build a second programmin
 
 ## Documentation
 
+Product docs (will be published at [jumpkick.build/documentation](https://jumpkick.build/documentation)):
+
 | Doc | For |
 |---|---|
-| [**User guide**](docs/guide.md) | Manifest, lockfile, workspaces, JDK, migration, full command surface |
-| [**Architecture**](docs/architecture.md) | Client/engine split, modules, resolver, caching |
-| [**Plugins**](docs/plugins.md) | Writing build plugins (`jk-plugin.toml` + optional worker) |
+| [**User documentation**](docs/user/README.md) | People and coding agents *using* JumpKick |
+| [**Manual**](docs/user/manual.md) | `jk manual` playbook + website map into every topic |
+| [**Contributor documentation**](docs/contributors/README.md) | People changing JumpKick |
 | [**Contributing**](CONTRIBUTING.md) | Building this repository |
 
 ---

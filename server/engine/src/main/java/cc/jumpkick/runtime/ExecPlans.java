@@ -189,13 +189,17 @@ public final class ExecPlans {
                     build.project().groovy() == null
                             ? ""
                             : build.project().groovy().raw(),
-                    SourceLayout.isSimpleLayout(dir),
+                    SourceLayout.isSimpleLayout(build.project(), dir),
                     build.isWorkspaceRoot(),
                     workspaceRootDir,
                     moduleDirs,
                     build.isApplication(),
                     build.mainClass() == null ? "" : build.mainClass(),
                     build.assembly(),
+                    build.application()
+                            .map(cc.jumpkick.model.JkBuild.Application::config)
+                            .filter(c -> c != null && !c.isBlank())
+                            .orElse(""),
                     build.nativeMode().name(),
                     orEmpty(build.graal()),
                     build.isSpringBoot(),
@@ -287,6 +291,7 @@ public final class ExecPlans {
                     p.sourcesMode(),
                     p.description(),
                     p.m2install(),
+                    p.layout(),
                     Set.of());
             return build.withProject(resolved);
         } catch (Exception e) {

@@ -428,7 +428,7 @@ public final class RepoArtifactStore {
      *
      * <p>The escape hatch for jk's first-write-wins mirror contract: a mirror hit otherwise serves
      * the bytes first stored for a coordinate forever, which is wrong in the rare case where
-     * upstream really did republish (see {@code docs/mirror-verification-decision.md}).
+     * upstream really did republish.
      * Removing the sidecar first keeps the "sidecar present ⇒ fully stored" invariant true at every
      * instant, so a concurrent reader sees a miss rather than a half-evicted entry.
      *

@@ -1,0 +1,26 @@
+group = "$organization$"
+name = "$name$"
+version = "0.1.0"
+java = $java$
+kotlin = "latest"
+
+[application]
+main = "$package$.ApplicationKt"
+
+[spring-boot]
+version = "latest"
+
+[dependencies]
+starter-webmvc = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc" }
+starter-validation = { group = "org.springframework.boot", name = "spring-boot-starter-validation" }
+starter-actuator = { group = "org.springframework.boot", name = "spring-boot-starter-actuator" }
+starter-data-jpa = { group = "org.springframework.boot", name = "spring-boot-starter-data-jpa" }
+h2 = { group = "com.h2database", name = "h2" }
+kotlin-reflect = "latest"
+jackson-kotlin = { group = "com.fasterxml.jackson.module", name = "jackson-module-kotlin" }
+
+[dev-dependencies]
+devtools = { group = "org.springframework.boot", name = "spring-boot-devtools" }
+
+[test-dependencies]
+starter-test = { group = "org.springframework.boot", name = "spring-boot-starter-test" }

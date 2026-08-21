@@ -35,15 +35,16 @@ class ForecastSelectionStampTest {
                 """);
         JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
 
-        List<String> unit = SessionContext.where(
-                Session.defaults(), () -> PlannerSupport.testStampExtras(dir, project));
+        List<String> unit =
+                SessionContext.where(Session.defaults(), () -> PlannerSupport.testStampExtras(dir, project));
         TestSelection widened = TestSelection.of(List.of(), true, List.of(), List.of(), true);
         List<String> all = SessionContext.where(
-                Session.defaults().withTestSelection(widened),
-                () -> PlannerSupport.testStampExtras(dir, project));
+                Session.defaults().withTestSelection(widened), () -> PlannerSupport.testStampExtras(dir, project));
 
-        String unitSel = unit.stream().filter(e -> e.startsWith("sel:")).findFirst().orElseThrow();
-        String allSel = all.stream().filter(e -> e.startsWith("sel:")).findFirst().orElseThrow();
+        String unitSel =
+                unit.stream().filter(e -> e.startsWith("sel:")).findFirst().orElseThrow();
+        String allSel =
+                all.stream().filter(e -> e.startsWith("sel:")).findFirst().orElseThrow();
         assertThat(allSel).isNotEqualTo(unitSel);
         // And the default-session extras still fold the module's own [test] excludes.
         assertThat(unitSel).contains("integration");

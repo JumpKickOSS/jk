@@ -62,8 +62,8 @@ VS Code extension  ──spawn──►  jk CLI  ──wire (UDS/TCP)──►  
        └── no engine jars        └── jk bsp serve (stdio BSP for import clients)
 ```
 
-See the JumpKick repo docs: `docs/architecture.md` (IDE sequence) and `docs/guide.md` (IDE
-section). Online: https://github.com/JumpKickOSS/jk
+See the JumpKick repo docs: [IDE](../../docs/user/ide.md) and
+[architecture](../../docs/contributors/architecture.md) (BSP sequence).
 
 ## Open questions (resolved for this MVP)
 

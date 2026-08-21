@@ -216,7 +216,7 @@ public final class EngineSpawn {
 
     /** Resolve everything the spawn/mode decision needs, self-healing a missing/skewed engine jar. */
     private static EngineTarget resolveEngineTarget(EnginePaths.Paths paths, String clientVersion) throws IOException {
-        // Engine spawn is java -cp jk-engine.jar EngineMain (or JK_ENGINE_EXE). The client binary
+        // Engine spawn is java -cp lib/jk-engine/<jar> EngineMain (or JK_ENGINE_EXE). The client binary
         // path is only needed for cache-prune re-invocation elsewhere — not for the daemon spawn.
         Optional<EngineArtifact> resolved = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
         // Self-heal a missing jar: the slim client never hosts the engine; download when allowed.
@@ -385,8 +385,8 @@ public final class EngineSpawn {
 
     /**
      * Which engine artifact a spawn chose. {@code EXE}: {@code path} is an executable whose {@code
-     * main} IS the engine loop. {@code JAR}: {@code path} is the engine's fat jar ({@code
-     * $JK_HOME/lib/jk-engine.jar} or {@code <data>/lib/jk-engine.jar}), launched as {@code
+     * main} IS the engine loop. {@code JAR}: {@code path} is the engine's fat jar under {@code
+     * $JK_HOME/lib/jk-engine/} (or {@code <data>/lib/jk-engine/}), launched as {@code
      * <managed-jdk>/bin/java … -cp <path> cc.jumpkick.engine.EngineMain} — the engine is a plain JVM
      * app, never a native image. There is no client-binary FALLBACK: the slim client never hosts the
      * engine.
@@ -400,8 +400,8 @@ public final class EngineSpawn {
 
     /**
      * Engine artifact resolution: (a) {@code JK_ENGINE_EXE}; (b) the product-lib jar paired with
-     * this client version (live {@code jk-engine.jar}, or {@code jk-engine.jar.old} during drain).
-     * Empty when neither is available (caller may download / materialize, then retry).
+     * this client version (live under {@code lib/jk-engine/}, or a parked {@code *.jar.old} during
+     * drain). Empty when neither is available (caller may download / materialize, then retry).
      */
     static Optional<EngineArtifact> resolveEngineArtifact(String envOverride, String version) {
         return resolveEngineArtifact(envOverride, version, cc.jumpkick.cache.EngineInstall.current());

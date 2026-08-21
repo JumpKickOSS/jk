@@ -297,7 +297,7 @@ public final class TaskForecaster {
         try {
             Lockfile lock = LockfileReader.read(lockFile);
             ClasspathResolver resolver = new ClasspathResolver(cas);
-            boolean compact = CompileSupport.isSimpleLayout(dir);
+            boolean compact = CompileSupport.isSimpleLayout(project.project(), dir);
             BuildLayout layout = BuildLayout.of(dir, project);
             int release = project.project().javaRelease();
             // Same contributed-args evaluation as the real compile step, against the same
@@ -560,15 +560,13 @@ public final class TaskForecaster {
             // in between — a copy-resources step for a tree that no longer drifts, with the
             // package token projected from yet another read.
             boolean mainResourceDrift = false;
-            boolean extraOnlyResourceDrift = false;
             boolean testResourceDrift = false;
             Boolean knownResourceDrift = null;
             if (!compileDirty && Files.isDirectory(layout.classesDir())) {
                 boolean mainOut = resourcesOutOfSync(
                         cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), layout.classesDir());
-                boolean extraOut = !mainOut && extraResourcesOutOfSync(project, dir, layout.classesDir());
-                mainResourceDrift = mainOut || extraOut;
-                extraOnlyResourceDrift = extraOut;
+                boolean pluginManifestOut = !mainOut && pluginManifestOutOfSync(dir, layout.classesDir());
+                mainResourceDrift = mainOut || pluginManifestOut;
                 knownResourceDrift = mainResourceDrift;
                 if (haveTests && !skipTests && !testDirty && Files.isDirectory(layout.testClassesDir())) {
                     Path resTest = cc.jumpkick.layout.ModuleLayout.testResourcesDir(dir, compact);
@@ -729,14 +727,10 @@ public final class TaskForecaster {
             }
 
             // ---- emit resource-drift steps (detected before package) ----
-            // Main/extra resource drift schedules the module so the jar ships fresh bytes.
+            // Main resource drift schedules the module so the jar ships fresh bytes.
             // Cascade to compile consumers is owned by package-jar above, not by these steps.
             if (mainResourceDrift) {
-                steps.add(new TaskForecast.Task(
-                        "copy-resources",
-                        TaskForecast.Status.RUN,
-                        extraOnlyResourceDrift ? "extra resources changed" : "resources changed",
-                        null));
+                steps.add(new TaskForecast.Task("copy-resources", TaskForecast.Status.RUN, "resources changed", null));
             }
             if (testResourceDrift) {
                 // Distinct name: test-resource drift schedules the module (material) but
@@ -758,7 +752,7 @@ public final class TaskForecaster {
                     outputsAbsent = !Files.isRegularFile(layout.mainJar())
                             || !classesDirHasContent(layout.classesDir())
                             || (project.assembly() && !Files.isRegularFile(layout.assemblyJar()));
-                } else if (!packageResourceRoots(dir, compact, project).isEmpty()) {
+                } else if (!packageResourceRoots(dir, compact).isEmpty()) {
                     // Resources-only module: its classes tree (copied resources) is consumed
                     // straight off sibling classpaths, so an empty tree is a missing output too.
                     outputsAbsent = !classesDirHasContent(layout.classesDir());
@@ -814,9 +808,8 @@ public final class TaskForecaster {
         if (classesDirHasContent(classesDir)) {
             // Reuse the forecast's single drift detection when it ran — a re-walk here
             // could disagree with it and project the token from a different tree state.
-            boolean drifted = knownResourceDrift != null
-                    ? knownResourceDrift
-                    : mainResourcesOutOfSync(dir, compact, project, classesDir);
+            boolean drifted =
+                    knownResourceDrift != null ? knownResourceDrift : mainResourcesOutOfSync(dir, compact, classesDir);
             if (drifted) {
                 return classesTokenProjectedAfterResourceCopy(dir, compact, layout, project);
             }
@@ -828,19 +821,19 @@ public final class TaskForecaster {
                         .lookup(compileMainKey)
                         .map(ActionCache.ActionRecord::outputs)
                         .orElse(Map.of());
-        List<Path> resRoots = packageResourceRoots(dir, compact, project);
+        List<Path> resRoots = packageResourceRoots(dir, compact);
         if (compileOut.isEmpty() && resRoots.isEmpty()) {
             return ClasspathFingerprint.entry(classesDir); // missing:… — package key will miss
         }
         return ClasspathFingerprint.entryFromCompileAndResources(compileOut, resRoots);
     }
 
-    /** Main or extra resource roots differ from their copies under {@code classesDir}. */
-    static boolean mainResourcesOutOfSync(Path dir, boolean compact, JkBuild project, Path classesDir) {
+    /** Main resource roots (or a module-root {@code jk-plugin.toml}) differ from copies under {@code classesDir}. */
+    static boolean mainResourcesOutOfSync(Path dir, boolean compact, Path classesDir) {
         if (resourcesOutOfSync(cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), classesDir)) {
             return true;
         }
-        return extraResourcesOutOfSync(project, dir, classesDir);
+        return pluginManifestOutOfSync(dir, classesDir);
     }
 
     /**
@@ -852,11 +845,11 @@ public final class TaskForecaster {
     static String classesTokenProjectedAfterResourceCopy(Path dir, boolean compact, BuildLayout layout, JkBuild project)
             throws IOException {
         return ClasspathFingerprint.entryProjectedAfterResourceCopy(
-                layout.classesDir(), packageResourceRoots(dir, compact, project));
+                layout.classesDir(), packageResourceRoots(dir, compact));
     }
 
-    /** Resource roots that {@code copy-resources} merges into {@code classes/} (main + plugin + extra). */
-    static List<Path> packageResourceRoots(Path dir, boolean compact, JkBuild project) {
+    /** Resource roots that {@code copy-resources} merges into {@code classes/} (main + plugin). */
+    static List<Path> packageResourceRoots(Path dir, boolean compact) {
         List<Path> resDirs = new ArrayList<>();
         Path resMain = cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact);
         if (Files.isDirectory(resMain)) resDirs.add(resMain);
@@ -865,9 +858,6 @@ public final class TaskForecaster {
             Path r = dir.resolve(root.relative());
             if (Files.isDirectory(r)) resDirs.add(r);
         }
-        // extra-resources are individual files — fold via a synthetic walk is awkward; ExtraResources
-        // are checked separately when classes exist. After clean, compile+main-resources covers the
-        // common monorepo case; extras still re-copy on the live path when the module runs.
         return resDirs;
     }
 
@@ -903,7 +893,7 @@ public final class TaskForecaster {
         Path assemblyJar = layout.assemblyJar();
         String classesTok = classesTokenForPackage(
                 dir,
-                CompileSupport.isSimpleLayout(dir),
+                CompileSupport.isSimpleLayout(project.project(), dir),
                 layout,
                 project,
                 actionCache,
@@ -973,25 +963,23 @@ public final class TaskForecaster {
         return ClasspathFingerprint.entry(jar); // missing:…
     }
 
-    /** True when any {@code [build] extra-resources} file differs from its copy under {@code outDir}. */
-    static boolean extraResourcesOutOfSync(cc.jumpkick.model.JkBuild project, Path dir, Path outDir) {
+    /** True when a module-root {@code jk-plugin.toml} differs from its copy at the classes root. */
+    static boolean pluginManifestOutOfSync(Path dir, Path outDir) {
+        Path src = dir.resolve("jk-plugin.toml");
+        Path copy = outDir.resolve("jk-plugin.toml");
+        // A deleted (or renamed-away) manifest with a copy still in classes/ is the JK-2174
+        // orphan: the jar stays "self-describing" with an obsolete manifest until a clean build.
+        if (!Files.isRegularFile(src)) return Files.isRegularFile(copy);
         try {
-            List<ExtraResources.Copy> declared = ExtraResources.resolve(project, dir);
-            for (ExtraResources.Copy c : declared) {
-                Path copy = outDir.resolve(c.destination());
-                if (!Files.isRegularFile(copy)) return true;
-                if (Files.size(copy) != Files.size(c.source())) return true;
-                if (Files.getLastModifiedTime(c.source()).compareTo(Files.getLastModifiedTime(copy)) > 0
-                        && Files.mismatch(c.source(), copy) >= 0) {
-                    return true;
-                }
+            if (!Files.isRegularFile(copy)) return true;
+            if (Files.size(copy) != Files.size(src)) return true;
+            if (Files.getLastModifiedTime(src).compareTo(Files.getLastModifiedTime(copy)) > 0
+                    && Files.mismatch(src, copy) >= 0) {
+                return true;
             }
-            // A destination copied by a previous run but no longer declared is an orphan the
-            // copy step must run to delete — a shrunk config otherwise forecasts "cached" and
-            // ships stale files forever (JK-2174).
-            return PlannerResources.hasOrphanedExtraResources(dir, declared);
-        } catch (IOException | RuntimeException e) {
-            return true; // unreadable or unresolvable ⇒ treat as dirty
+            return false;
+        } catch (IOException e) {
+            return true;
         }
     }
 

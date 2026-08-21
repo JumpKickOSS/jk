@@ -19,6 +19,7 @@ class ProjectInfoRoundTripTest {
                 + ",\"workspaceRoot\":true,\"workspaceRootDir\":\"/ws\""
                 + ",\"modules\":{\"/ws/libs/a\":\"lib-a\",\"/ws/app\":\"app\"}"
                 + ",\"mainClass\":\"com.example.Main\",\"application\":true"
+                + ",\"assembly\":true,\"applicationConfig\":\"config/install.toml\""
                 + ",\"nativeMode\":\"ALWAYS\",\"graal\":\"graalvm-25\""
                 + ",\"hasLock\":true,\"lockJdk\":\"temurin-25.0.4\""
                 + ",\"mainJarPath\":\"/ws/target/app-1.2.3.jar\""
@@ -47,5 +48,7 @@ class ProjectInfoRoundTripTest {
         assertThat(first.lockJdk()).isEqualTo("temurin-25.0.4");
         assertThat(first.nativeExplicitlyDisabled()).isTrue();
         assertThat(first.kotlinClassesDir()).isEqualTo("/ws/target/classes/kotlin");
+        assertThat(first.applicationConfig()).isEqualTo("config/install.toml");
+        assertThat(first.assembly()).isTrue();
     }
 }

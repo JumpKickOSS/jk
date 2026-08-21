@@ -1,0 +1,24 @@
+group = "$organization$"
+name = "$name$"
+version = "0.1.0"
+java = $java$
+kotlin = "latest"
+
+[application]
+main = "$package$.MainKt"
+
+# "latest" floats to the current stable; first `jk lock` pins exact versions.
+[dependencies]
+ktor-server-core = "latest"
+ktor-server-netty = { group = "io.ktor", name = "ktor-server-netty", version = "latest" }
+ktor-server-content-negotiation = { group = "io.ktor", name = "ktor-server-content-negotiation", version = "latest" }
+ktor-serialization-jackson = { group = "io.ktor", name = "ktor-serialization-jackson", version = "latest" }
+koin-ktor = { group = "io.insert-koin", name = "koin-ktor", version = "latest" }
+exposed-core = { group = "org.jetbrains.exposed", name = "exposed-core", version = "latest" }
+exposed-jdbc = { group = "org.jetbrains.exposed", name = "exposed-jdbc", version = "latest" }
+h2 = { group = "com.h2database", name = "h2", version = "latest" }
+logback-classic = "latest"
+
+[test-dependencies]
+ktor-server-test-host = { group = "io.ktor", name = "ktor-server-test-host", version = "latest" }
+junit-jupiter = "latest"

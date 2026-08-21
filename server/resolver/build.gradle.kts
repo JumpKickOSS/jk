@@ -10,10 +10,3 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":io"))
 }
-
-// :resolver tests exercise the built-in registry (QuarkusPlatformContribTest), so
-// bake fixtures onto the test classpath only — mirroring :core.
-tasks.processTestResources {
-    duplicatesStrategy = DuplicatesStrategy.INCLUDE
-    pluginManifestResources(rootProject)
-}

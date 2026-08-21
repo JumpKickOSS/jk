@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.docs.JkManual;
 import cc.jumpkick.engine.http.mcp.McpDiagnostics;
 import cc.jumpkick.engine.http.mcp.McpEnvelope;
 import cc.jumpkick.engine.http.mcp.McpHistoryViews;
@@ -13,6 +14,8 @@ import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.util.PathUtil;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -26,6 +29,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import java.util.function.LongFunction;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Thin MCP (Model Context Protocol) JSON-RPC surface for agents. Hosted on the engine
@@ -90,11 +94,16 @@ public final class McpHandler {
     /** Hard cap on a single wait; agents re-issue {@code jk_job action=wait} to keep waiting. */
     static final int MAX_WAIT_S = 3600;
 
-    static final String INSTRUCTIONS = "Bind first: jk_bind {dir}. "
-            + "Failing build / where is it failing → jk_diagnostics; raw transcript → jk_details. "
+    static final String INSTRUCTIONS = "Playbook: jk_manual (CLI `jk manual`; resource jk://manual). "
+            + "JumpKick is not Maven or Gradle — read the playbook before inventing pom.xml / Gradle. "
+            + "Bind first: jk_bind {dir}. "
+            + "What happened → jk_results (markdown; same as CLI `jk results` / target/jk-results.md) "
+            + "or jk_diagnostics. Prefer reading target/jk-results.md with file tools when MCP is off. "
+            + "Raw transcript → jk_details (budgeted; CLI `jk results --details` "
+            + "dumps the full details.jsonl). "
             + "Why dep X → jk_why. Module/dep DAG → jk_graph. Slow / next-build ETA → jk_explain. "
             + "Frozen / kill → jk_status then jk_job cancel. "
-            + "Run / test / lock / publish (dry-run) / install / import → jk_run (wait defaults true). "
+            + "Run / test / lock / format / publish (dry-run) / install / import → jk_run (wait defaults true). "
             + "Scaffold → jk_new (preview first). Export maven/gradle/bom → jk_export. "
             + "Add/remove deps → jk_deps. Git/path as workspace member → jk_workspace. "
             + "java= → jk_manifest. Heap / nerd-font / CI → jk_config. "
@@ -292,6 +301,12 @@ public final class McpHandler {
     private Map<String, Object> toolsList() {
         List<Map<String, Object>> tools = new ArrayList<>();
         tools.add(tool(
+                "jk_manual",
+                "JumpKick playbook (markdown) for coding agents. Same as CLI `jk manual`. "
+                        + "Read this before using Maven or Gradle patterns. Resource: jk://manual.",
+                objectSchema(Map.of()),
+                READ_ONLY));
+        tools.add(tool(
                 "jk_status",
                 "Engine vitals (pid, version, heap, active jobs). Same facts as GET /api/status and "
                         + "jk engine status --output json.",
@@ -401,6 +416,41 @@ public final class McpHandler {
                         Map.of("type", "integer", "description", "Max rows (default 20)"),
                         "next",
                         Map.of("type", "integer", "description", "Skip this many unique rows")))));
+        tools.add(tool(
+                "jk_results",
+                "High-level markdown report for the last run (or a history id): compile, tests, "
+                        + "install, publish, native, image. Same as CLI `jk results` and "
+                        + "target/jk-results.md. Prefer this over tailing the build or --verbose. "
+                        + "Resource: jk://runs/latest/results.",
+                objectSchema(Map.of(
+                        "run",
+                        Map.of("type", "string", "description", "last (default) or history id"),
+                        "dir",
+                        Map.of("type", "string", "description", "Checkout filter (default: bound dir)"))),
+                READ_ONLY));
+        tools.add(tool(
+                "jk_details",
+                "Budgeted tail of a run's details.jsonl transcript (default: last-fail, error + "
+                        + "task-finish, 80 events). Same facts as CLI `jk results --details`, which "
+                        + "prints the full file. Start with jk_results. Resource: jk://runs/latest/details.",
+                objectSchema(Map.of(
+                        "run",
+                        Map.of("type", "string", "description", "last-fail (default) or history id"),
+                        "tail",
+                        Map.of("type", "integer", "description", "Max events (default 80, max 400)"),
+                        "types",
+                        Map.of(
+                                "type",
+                                "array",
+                                "items",
+                                Map.of("type", "string"),
+                                "description",
+                                "Event types (default error, task-finish)"),
+                        "next",
+                        Map.of("type", "integer", "description", "Cursor from a prior truncated call"),
+                        "dir",
+                        Map.of("type", "string", "description", "Checkout filter (default: bound dir)"))),
+                READ_ONLY));
         tools.add(tool(
                 "jk_run",
                 "Start a job (build|test|lock|update|format|native|image|assemble|compile|clean|publish|install|import; publish is always a dry-run — credentialed uploads are CLI-only). "
@@ -547,7 +597,11 @@ public final class McpHandler {
                                 "description",
                                 "traditional (default) | simple — where to place sources, not a jk.toml key"),
                         "template",
-                        Map.of("type", "string", "description", "Giter8 short name or path (see action=templates)"),
+                        Map.of(
+                                "type",
+                                "string",
+                                "description",
+                                "Giter8 id (java/spring-boot/hello), framework/name, or name under none"),
                         "preview",
                         Map.of("type", "boolean", "description", "List files without writing")))));
         tools.add(tool(
@@ -591,27 +645,6 @@ public final class McpHandler {
                                 Map.of("type", "string", "description", "Project root (default: bound dir)")),
                         List.of("format"))));
         tools.add(tool(
-                "jk_details",
-                "Budgeted tail of a run's details.jsonl transcript (default: last-fail, error + "
-                        + "task-finish, 80 events). jk_diagnostics is the first-line failure tool.",
-                objectSchema(Map.of(
-                        "run",
-                        Map.of("type", "string", "description", "last-fail (default) or history id"),
-                        "tail",
-                        Map.of("type", "integer", "description", "Max events (default 80, max 400)"),
-                        "types",
-                        Map.of(
-                                "type",
-                                "array",
-                                "items",
-                                Map.of("type", "string"),
-                                "description",
-                                "Event types (default error, task-finish)"),
-                        "next",
-                        Map.of("type", "integer", "description", "Cursor from a prior truncated call"),
-                        "dir",
-                        Map.of("type", "string", "description", "Checkout filter (default: bound dir)")))));
-        tools.add(tool(
                 "jk_graph",
                 "Compact module/dep graph (same model as the dashboard graph). Default: workspace "
                         + "members + declared deps. transitive=true is opt-in and budget-capped. "
@@ -635,6 +668,7 @@ public final class McpHandler {
         String progressToken = progressTokenOf(params);
 
         return switch (name) {
+            case "jk_manual" -> manualResult();
             case "jk_status" -> {
                 Map<String, Object> st = statusPayload();
                 yield ok(st, statusSummary(st));
@@ -650,6 +684,7 @@ public final class McpHandler {
             case "jk_project" -> projectResult(args);
             case "jk_history" -> historyResult(args);
             case "jk_diagnostics" -> diagnosticsResult(args);
+            case "jk_results" -> resultsResult(args);
             case "jk_run" -> runResult(args, progressToken);
             case "jk_job" -> jobResult(args);
             case "jk_why" -> whyResult(args);
@@ -711,8 +746,7 @@ public final class McpHandler {
                 string(args.get("lang")),
                 string(args.get("layout")),
                 string(args.get("template")),
-                !Boolean.FALSE.equals(McpHistoryViews.parseBool(args.get("executable"))),
-                string(args.get("framework")));
+                !Boolean.FALSE.equals(McpHistoryViews.parseBool(args.get("executable"))));
         boolean preview = "preview".equalsIgnoreCase(action)
                 || Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("preview")));
         try {
@@ -772,8 +806,23 @@ public final class McpHandler {
                         fields,
                         truncated,
                         next,
-                        "jk_diagnostics is the first-line failure tool; this is the raw transcript"),
+                        "jk_results is the high-level report; this is the raw transcript"),
                 "details " + fields.getOrDefault("run", ""));
+    }
+
+    private Map<String, Object> resultsResult(Map<String, Object> args) {
+        String run = string(args.get("run"));
+        String dir = resolveDir(args, false);
+        Map<String, Object> rec;
+        if (run == null || run.isBlank() || "last".equalsIgnoreCase(run) || "latest".equalsIgnoreCase(run)) {
+            rec = McpDiagnostics.findNewest(historyRaw.get(), dir);
+        } else {
+            rec = McpDiagnostics.findRun(historyRaw.get(), run, dir);
+        }
+        Map<String, Object> fields = cc.jumpkick.engine.http.mcp.McpResults.read(rec, detailsFileResolver);
+        String md = fields.get("markdown") instanceof String s ? s : "";
+        String summary = !md.isBlank() ? md : String.valueOf(fields.getOrDefault("error", "results"));
+        return ok(McpEnvelope.of("results", fields, false, null, "details.jsonl for step-by-step"), summary);
     }
 
     private Map<String, Object> ok(Map<String, Object> envelope, String summary) {
@@ -1339,9 +1388,18 @@ public final class McpHandler {
 
     private static Map<String, Object> resourcesList() {
         List<Map<String, Object>> rs = new ArrayList<>();
+        rs.add(resource("jk://manual", "JumpKick playbook (same as CLI jk manual / tool jk_manual)", "text/markdown"));
         rs.add(resource("jk://session", "Bound dir + engine status"));
         rs.add(resource("jk://project", "Project card"));
         rs.add(resource("jk://runs/latest", "Latest history summary"));
+        rs.add(resource(
+                "jk://runs/latest/results",
+                "Latest run markdown (jk-results.md; same as jk_results / CLI jk results)",
+                "text/markdown"));
+        rs.add(resource(
+                "jk://runs/latest/details",
+                "Budgeted tail of latest details.jsonl (same as jk_details; CLI jk results --details dumps the full file)",
+                "application/json"));
         rs.add(resource("jk://disk", "Cache and store usage"));
         rs.add(resource("jk://config", "Effective machine config"));
         return Map.of("resources", rs);
@@ -1350,6 +1408,9 @@ public final class McpHandler {
     private Map<String, Object> resourcesRead(Map<String, Object> params) {
         String uri = string(params.get("uri"));
         if (uri == null) throw new McpError(-32602, "resources/read requires uri");
+        if ("jk://manual".equals(uri)) return manualResource();
+        if ("jk://runs/latest/results".equals(uri)) return resultsResource();
+        if ("jk://runs/latest/details".equals(uri)) return detailsResource();
         Map<String, Object> payload =
                 switch (uri) {
                     case "jk://session" -> statusPayload();
@@ -1377,12 +1438,59 @@ public final class McpHandler {
         return Map.of("contents", List.of(text));
     }
 
+    private Map<String, Object> manualResult() {
+        String md = JkManual.markdown();
+        return ok(McpEnvelope.of("manual", Map.of("resource", "jk://manual")), md);
+    }
+
+    private static Map<String, Object> manualResource() {
+        Map<String, Object> text = new LinkedHashMap<>();
+        text.put("uri", "jk://manual");
+        text.put("mimeType", "text/markdown");
+        text.put("text", JkManual.markdown());
+        return Map.of("contents", List.of(text));
+    }
+
+    private Map<String, Object> resultsResource() {
+        Map<String, Object> rec = McpDiagnostics.findNewest(historyRaw.get(), session.dir());
+        String id = rec == null ? null : McpHistoryViews.str(rec, "id");
+        Path file = cc.jumpkick.engine.http.mcp.McpResults.locate(rec, id, detailsFileResolver);
+        Map<String, Object> text = new LinkedHashMap<>();
+        text.put("uri", "jk://runs/latest/results");
+        if (file != null && Files.isRegularFile(file)) {
+            text.put("mimeType", "text/markdown");
+            try {
+                text.put("text", Files.readString(file, StandardCharsets.UTF_8));
+            } catch (IOException e) {
+                text.put("mimeType", "application/json");
+                String msg = e.getMessage() == null ? "read failed" : e.getMessage();
+                text.put("text", MiniJson.write(Map.of("error", msg)));
+            }
+        } else {
+            text.put("mimeType", "application/json");
+            text.put("text", MiniJson.write(Map.of("error", "no jk-results.md")));
+        }
+        return Map.of("contents", List.of(text));
+    }
+
+    private Map<String, Object> detailsResource() {
+        Map<String, Object> rec = McpDiagnostics.findNewest(historyRaw.get(), session.dir());
+        Map<String, Object> fields = cc.jumpkick.engine.http.mcp.McpDetails.tail(
+                rec, detailsFileResolver, List.of(), cc.jumpkick.engine.http.mcp.McpDetails.DEFAULT_TAIL, 0);
+        Map<String, Object> text = new LinkedHashMap<>();
+        text.put("uri", "jk://runs/latest/details");
+        text.put("mimeType", "application/json");
+        text.put("text", MiniJson.write(fields));
+        return Map.of("contents", List.of(text));
+    }
+
     /** Prompt name → one-line playbook; drives both {@code prompts/list} and {@code prompts/get}. */
     private static final Map<String, String> PROMPTS = promptCatalog();
 
     private static Map<String, String> promptCatalog() {
         Map<String, String> m = new LinkedHashMap<>();
-        m.put("fix-failing-build", "jk_diagnostics then edit then jk_run kind=build wait=true");
+        m.put("learn-jumpkick", "jk_manual then follow that playbook (not Maven/Gradle)");
+        m.put("fix-failing-build", "jk_results then edit then jk_run kind=build wait=true");
         m.put("recover-disk", "jk_disk usage then clean or nuke with confirm");
         m.put("setup-ci", "jk_config apply_preset=ci");
         m.put("upgrade-deps", "jk_outdated then jk_run kind=lock");
@@ -1416,11 +1524,15 @@ public final class McpHandler {
     }
 
     private static Map<String, Object> resource(String uri, String description) {
+        return resource(uri, description, "application/json");
+    }
+
+    private static Map<String, Object> resource(String uri, String description, String mimeType) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("uri", uri);
         m.put("name", uri);
         m.put("description", description);
-        m.put("mimeType", "application/json");
+        m.put("mimeType", mimeType);
         return m;
     }
 
@@ -1470,11 +1582,24 @@ public final class McpHandler {
         return n;
     }
 
+    /** Read-only tools agents should prefer for diagnosis (jk_results / jk_details). */
+    private static final Map<String, Object> READ_ONLY =
+            Map.of("readOnlyHint", true, "idempotentHint", true, "openWorldHint", false);
+
     private static Map<String, Object> tool(String name, String description, Map<String, Object> inputSchema) {
+        return tool(name, description, inputSchema, null);
+    }
+
+    private static Map<String, Object> tool(
+            String name,
+            String description,
+            Map<String, Object> inputSchema,
+            @Nullable Map<String, Object> annotations) {
         Map<String, Object> t = new LinkedHashMap<>();
         t.put("name", name);
         t.put("description", description);
         t.put("inputSchema", inputSchema);
+        if (annotations != null && !annotations.isEmpty()) t.put("annotations", annotations);
         return t;
     }
 

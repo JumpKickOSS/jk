@@ -393,6 +393,9 @@ class NewScaffolderTest {
         assertThat(body).contains("target/");
 
         assertThat(body).contains(".jk/");
+        Path agents = tempDir.resolve("AGENTS.md");
+        assertThat(agents).exists();
+        assertThat(Files.readString(agents)).contains("jk manual");
     }
 
     @Test
@@ -405,39 +408,6 @@ class NewScaffolderTest {
 
         // jk doesn't overwrite an existing .gitignore — user customization wins.
         assertThat(Files.readString(gitignore)).isEqualTo("# pre-existing content\nnode_modules/\n");
-    }
-
-    @Test
-    void spring_java_scaffold_comes_from_the_plugin(@TempDir Path tempDir) throws IOException {
-        NewScaffolder.write(spring(tempDir, NewInputs.Language.JAVA));
-
-        // jk.toml = the client-rendered base + the plugin's [scaffold] fragments (engine-side).
-        var toml = Files.readString(tempDir.resolve("jk.toml"));
-        assertThat(toml).contains("[spring-boot]");
-        assertThat(toml).contains("version = \"");
-        assertThat(toml).contains("starter-webmvc = { group = \"org.springframework.boot\"");
-        assertThat(toml).contains("[dev-dependencies]");
-        assertThat(toml).contains("devtools = { group = \"org.springframework.boot\"");
-        assertThat(toml).doesNotContain("kotlin-reflect");
-
-        var app = tempDir.resolve("src/main/java/com/example/Application.java");
-        assertThat(app).exists();
-        assertThat(Files.readString(app)).contains("package com.example;");
-        assertThat(Files.readString(app)).contains("@SpringBootApplication");
-        assertThat(tempDir.resolve("src/test/java/com/example/ApplicationTest.java"))
-                .exists();
-        assertThat(tempDir.resolve("src/main/resources/application.properties")).exists();
-    }
-
-    @Test
-    void spring_kotlin_scaffold_adds_reflect_and_kt_sources(@TempDir Path tempDir) throws IOException {
-        NewScaffolder.write(spring(tempDir, NewInputs.Language.KOTLIN));
-
-        var toml = Files.readString(tempDir.resolve("jk.toml"));
-        assertThat(toml).contains("kotlin-reflect = { group = \"org.jetbrains.kotlin\" }");
-        var app = tempDir.resolve("src/main/kotlin/com/example/Application.kt");
-        assertThat(app).exists();
-        assertThat(Files.readString(app)).contains("runApplication<Application>");
     }
 
     @Test
@@ -456,6 +426,11 @@ class NewScaffolderTest {
         var mBody = Files.readString(manifest);
         assertThat(mBody).contains("id        = \"foo\"").contains("table     = \"foo\"");
         assertThat(mBody).contains("protocol-prefix = \"##FOO:\"");
+        assertThat(mBody).doesNotContain("[scaffold]");
+        assertThat(tempDir.resolve("src/main/resources/templates/java/foo/hello.g8/src/main/g8/jk.toml"))
+                .exists();
+        assertThat(tempDir.resolve("src/main/resources/templates/java/foo/hello.g8/src/main/g8/AGENTS.md"))
+                .exists();
 
         // ServiceLoader registration points at the sample class.
         var service = tempDir.resolve("src/main/resources/META-INF/services/cc.jumpkick.plugin.Plugin");
@@ -472,6 +447,8 @@ class NewScaffolderTest {
         assertThat(sBody).contains("PluginCommandSpec.named(\"foo\")");
 
         assertThat(tempDir.resolve("README.md")).exists();
+        assertThat(tempDir.resolve("AGENTS.md")).exists();
+        assertThat(Files.readString(tempDir.resolve("AGENTS.md"))).contains("jk manual");
         // A plugin project has no app sample (no Calc/Main).
         assertThat(tempDir.resolve("src/main/java/com/example/Calc.java")).doesNotExist();
     }
@@ -495,30 +472,8 @@ class NewScaffolderTest {
                 Optional.empty(),
                 Optional.empty(),
                 false,
-                false, // native
-                false, // spring
-                true, // plugin
-                lang,
-                "traditional",
-                Optional.empty(),
-                List.of(),
-                true,
-                dir);
-    }
-
-    private static NewInputs spring(Path dir, NewInputs.Language lang) {
-        return new NewInputs(
-                "com.example",
-                "widget",
-                "25",
-                25,
-                25,
-                Optional.empty(),
-                Optional.of("com.example.Application"),
-                false,
                 false,
                 true,
-                false,
                 lang,
                 "traditional",
                 Optional.empty(),

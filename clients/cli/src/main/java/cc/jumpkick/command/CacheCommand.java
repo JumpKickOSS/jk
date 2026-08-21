@@ -632,19 +632,13 @@ public final class CacheCommand extends GroupCommand {
          * Cache-tier footprint the purge will delete: {@code actions/}, {@code format-stamps/}, and
          * cache {@code sha256/} (mirrors {@code CachePlans.purgeActionCache}). Collocated
          * {@code repos/} and {@code runs/} are excluded — artifact store stays under {@code
-         * JK_STORE_DIR}.
+         * JK_STORE_DIR}. Byte sizes are exclusive across those trees (unique inode / fileKey) so
+         * hard links are not counted twice.
          */
         static Stats actionCacheStats(Path root) throws IOException {
-            long files = 0;
-            long bytes = 0;
-            for (String tree : new String[] {"actions", "format-stamps", "sha256"}) {
-                Path dir = root.resolve(tree);
-                if (!Files.isDirectory(dir)) continue;
-                Stats s = statsOf(dir);
-                files += s.files;
-                bytes += s.bytes;
-            }
-            return new Stats(files, bytes);
+            DiskUsage.Stats[] parts =
+                    DiskUsage.exclusive(root.resolve("actions"), root.resolve("format-stamps"), root.resolve("sha256"));
+            return new Stats(DiskUsage.totalFiles(parts), DiskUsage.totalBytes(parts));
         }
 
         /** Stern, default-to-no confirmation before wiping the cache tier. */

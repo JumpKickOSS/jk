@@ -1,0 +1,5 @@
+language = "kotlin"
+framework = "micronaut"
+name = "hello"
+description = "Micronaut HTTP service"
+layouts = ["traditional", "simple"]

@@ -1,0 +1,24 @@
+name = "server"
+
+[application]
+main = "$package$.server.Application"
+
+[spring-boot]
+version = "latest"
+
+[dependencies]
+starter-webmvc = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc" }
+starter-validation = { group = "org.springframework.boot", name = "spring-boot-starter-validation" }
+starter-security = { group = "org.springframework.boot", name = "spring-boot-starter-security" }
+starter-actuator = { group = "org.springframework.boot", name = "spring-boot-starter-actuator" }
+starter-flyway = { group = "org.springframework.boot", name = "spring-boot-starter-flyway" }
+data = { workspace = true }
+client = { workspace = true }
+
+[dev-dependencies]
+devtools = { group = "org.springframework.boot", name = "spring-boot-devtools" }
+
+[test-dependencies]
+starter-test = { group = "org.springframework.boot", name = "spring-boot-starter-test" }
+starter-webmvc-test = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc-test" }
+spring-security-test = { group = "org.springframework.security", name = "spring-security-test" }

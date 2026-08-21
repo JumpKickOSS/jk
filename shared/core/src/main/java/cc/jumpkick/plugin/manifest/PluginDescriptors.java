@@ -86,10 +86,14 @@ public final class PluginDescriptors {
             }
         }
 
+        if (result.getTable("scaffold") != null) {
+            throw new JkBuildParseException(displayPath
+                    + ": [scaffold] is not supported; ship Giter8 trees under templates/<lang>/<framework>/<name>.g8/");
+        }
+
         PluginDescriptor.Contributions contributions = parseContributions(result, schema.keySet(), displayPath);
         PluginDescriptor.Code code = parseCode(result, displayPath);
         PluginDescriptor.Packaging packaging = parsePackaging(result, displayPath);
-        PluginDescriptor.Scaffold scaffold = parseScaffold(result, displayPath);
         List<PluginDescriptor.GradleImport> gradleImports = parseGradleImports(result, displayPath);
         return new PluginDescriptor(
                 id,
@@ -100,7 +104,6 @@ public final class PluginDescriptors {
                 contributions,
                 code,
                 packaging,
-                scaffold,
                 gradleImports,
                 subSchemas,
                 subTables);
@@ -134,49 +137,6 @@ public final class PluginDescriptors {
                             Boolean.TRUE.equals(spec.getBoolean("secret"))));
         }
         return schema;
-    }
-
-    /** The {@code [scaffold]} section — {@code jk new --<flag>} templates (P4, pure data). */
-    private static PluginDescriptor.Scaffold parseScaffold(TomlParseResult result, String displayPath) {
-        TomlTable scaffold = result.getTable("scaffold");
-        if (scaffold == null) return null;
-        String flag = scaffold.getString("flag");
-        if (flag == null || flag.isBlank()) {
-            throw new JkBuildParseException(displayPath + ".scaffold.flag is required (the jk new --<flag> name)");
-        }
-        List<PluginDescriptor.Append> appends = new ArrayList<>();
-        for (TomlTable t : tableArray(scaffold, "append", displayPath)) {
-            appends.add(new PluginDescriptor.Append(
-                    requireString(t, "template", displayPath + ".scaffold.append"),
-                    scaffoldLang(t, displayPath + ".scaffold.append")));
-        }
-        List<PluginDescriptor.FileTemplate> files = new ArrayList<>();
-        for (TomlTable t : tableArray(scaffold, "file", displayPath)) {
-            files.add(new PluginDescriptor.FileTemplate(
-                    requireString(t, "path", displayPath + ".scaffold.file"),
-                    requireString(t, "template", displayPath + ".scaffold.file"),
-                    scaffoldLang(t, displayPath + ".scaffold.file"),
-                    Boolean.TRUE.equals(t.getBoolean("keep-existing"))));
-        }
-        return new PluginDescriptor.Scaffold(flag, scaffold.getString("description"), appends, files);
-    }
-
-    /**
-     * A scaffold entry's {@code when} — the scaffold-local closed set is {@code lang} only
-     * (java|kotlin); anything richer belongs in a code hook, same anti-DSL-creep rule as the
-     * build conditions.
-     */
-    private static String scaffoldLang(TomlTable entry, String where) {
-        TomlTable when = entry.getTable("when");
-        if (when == null) return null;
-        if (when.keySet().size() != 1 || !when.keySet().contains("lang")) {
-            throw new JkBuildParseException(where + ".when supports exactly one predicate: lang = \"java|kotlin\"");
-        }
-        String lang = when.getString("lang");
-        if (!List.of("java", "kotlin").contains(String.valueOf(lang))) {
-            throw new JkBuildParseException(where + ".when.lang must be java or kotlin — got: " + lang);
-        }
-        return lang;
     }
 
     /** The {@code [[import.gradle-plugin]]} rules — jk import's plugin-id mappings (P4). */

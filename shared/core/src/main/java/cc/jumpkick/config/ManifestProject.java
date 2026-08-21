@@ -32,6 +32,7 @@ public final class ManifestProject {
             "sources",
             "description",
             "m2install",
+            "layout",
             "id",
             "module");
 
@@ -141,13 +142,23 @@ public final class ManifestProject {
             m2install = Boolean.TRUE.equals(root.getBoolean("m2install"));
         }
 
-        if (root.contains("layout")) {
-            throw new JkBuildParseException("layout is not a jk.toml key — source trees are detected from "
-                    + "src/main/{java,kotlin,scala,groovy,resources}");
+        JkBuild.Layout layout;
+        if (isWorkspaceInherit(root, "layout") || (!workspaceRoot && !root.contains("layout"))) {
+            inherits.add(JkBuild.ProjectInherit.LAYOUT);
+            layout = JkBuild.Layout.AUTO;
+        } else if (root.contains("layout")) {
+            String layoutRaw = root.getString("layout");
+            try {
+                layout = JkBuild.Layout.parse(layoutRaw);
+            } catch (IllegalArgumentException e) {
+                throw new JkBuildParseException(e.getMessage());
+            }
+        } else {
+            layout = JkBuild.Layout.AUTO;
         }
 
         return new JkBuild.Project(
-                group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, inherits);
+                group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, layout, inherits);
     }
 
     /**

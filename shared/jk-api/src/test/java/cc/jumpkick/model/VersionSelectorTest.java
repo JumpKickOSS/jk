@@ -84,4 +84,13 @@ class VersionSelectorTest {
         assertThat(VersionSelector.parseFloating(">=2.18,<3")).isInstanceOf(VersionSelector.Range.class);
         assertThat(VersionSelector.parseFloating("latest")).isInstanceOf(VersionSelector.Latest.class);
     }
+
+    @Test
+    void caret_or_tilde_of_latest_is_latest() {
+        // Plugin packager coords are `^${config.version}`; when the table is `latest` that
+        // interpolates to `^latest`, which must mean latest, not a caret of the word.
+        assertThat(VersionSelector.parse("^latest")).isInstanceOf(VersionSelector.Latest.class);
+        assertThat(VersionSelector.parse("~latest")).isInstanceOf(VersionSelector.Latest.class);
+        assertThat(VersionSelector.parse("^snapshot")).isInstanceOf(VersionSelector.Snapshot.class);
+    }
 }

@@ -39,13 +39,16 @@ class JdkCommandTest {
                         "release", "JAVA_VERSION=21.0.5\n"));
         maven.served().put("/archives/jdk.tar.gz", archive);
 
-        maven.served().put(
-                "/feed/jdks.json",
-                feedJson(
-                                archive.length,
-                                Hashing.sha256Hex(archive),
-                                maven.base().resolve("/archives/jdk.tar.gz").toString())
-                        .getBytes(StandardCharsets.UTF_8));
+        maven.served()
+                .put(
+                        "/feed/jdks.json",
+                        feedJson(
+                                        archive.length,
+                                        Hashing.sha256Hex(archive),
+                                        maven.base()
+                                                .resolve("/archives/jdk.tar.gz")
+                                                .toString())
+                                .getBytes(StandardCharsets.UTF_8));
 
         int exit = run(
                 "jdk",
@@ -71,13 +74,16 @@ class JdkCommandTest {
                         "bin/javac", "#!/fake/java",
                         "release", "JAVA_VERSION=25\nIMPLEMENTOR=\"Oracle Corporation\"\nGRAALVM_VERSION=\"25\"\n"));
         maven.served().put("/archives/graal.tar.gz", archive);
-        maven.served().put(
-                "/feed/jdks.json",
-                graalFeedJson(
-                                archive.length,
-                                Hashing.sha256Hex(archive),
-                                maven.base().resolve("/archives/graal.tar.gz").toString())
-                        .getBytes(StandardCharsets.UTF_8));
+        maven.served()
+                .put(
+                        "/feed/jdks.json",
+                        graalFeedJson(
+                                        archive.length,
+                                        Hashing.sha256Hex(archive),
+                                        maven.base()
+                                                .resolve("/archives/graal.tar.gz")
+                                                .toString())
+                                .getBytes(StandardCharsets.UTF_8));
 
         int exit = run(
                 "jdk",
@@ -126,10 +132,14 @@ class JdkCommandTest {
         makeJdkInstall(jdks.resolve("temurin-21.0.5"));
 
         byte[] dummyArchive = "stub".getBytes(StandardCharsets.UTF_8);
-        maven.served().put(
-                "/feed/jdks.json",
-                multiEntryFeedJson(dummyArchive.length, Hashing.sha256Hex(dummyArchive), maven.base().toString())
-                        .getBytes(StandardCharsets.UTF_8));
+        maven.served()
+                .put(
+                        "/feed/jdks.json",
+                        multiEntryFeedJson(
+                                        dummyArchive.length,
+                                        Hashing.sha256Hex(dummyArchive),
+                                        maven.base().toString())
+                                .getBytes(StandardCharsets.UTF_8));
 
         String stdout = Capture.stdout(() -> run(
                 "jdk",
@@ -158,10 +168,14 @@ class JdkCommandTest {
         // Default list consults the feed for outdated! markers but never prints
         // available-only download rows (those require --all).
         byte[] dummyArchive = "stub".getBytes(StandardCharsets.UTF_8);
-        maven.served().put(
-                "/feed/jdks.json",
-                multiEntryFeedJson(dummyArchive.length, Hashing.sha256Hex(dummyArchive), maven.base().toString())
-                        .getBytes(StandardCharsets.UTF_8));
+        maven.served()
+                .put(
+                        "/feed/jdks.json",
+                        multiEntryFeedJson(
+                                        dummyArchive.length,
+                                        Hashing.sha256Hex(dummyArchive),
+                                        maven.base().toString())
+                                .getBytes(StandardCharsets.UTF_8));
 
         String stdout = Capture.stdout(() -> run(
                 "jdk",
@@ -183,10 +197,14 @@ class JdkCommandTest {
 
         byte[] dummyArchive = "stub".getBytes(StandardCharsets.UTF_8);
         // Feed has 21.0.5 (newer) plus sentinel 99 for a never-installed major.
-        maven.served().put(
-                "/feed/jdks.json",
-                multiEntryFeedJson(dummyArchive.length, Hashing.sha256Hex(dummyArchive), maven.base().toString())
-                        .getBytes(StandardCharsets.UTF_8));
+        maven.served()
+                .put(
+                        "/feed/jdks.json",
+                        multiEntryFeedJson(
+                                        dummyArchive.length,
+                                        Hashing.sha256Hex(dummyArchive),
+                                        maven.base().toString())
+                                .getBytes(StandardCharsets.UTF_8));
 
         String stdout = Capture.stdout(() -> run(
                 "jdk",
@@ -210,10 +228,14 @@ class JdkCommandTest {
         makeJdkInstall(jdks.resolve("temurin-21.0.4"));
 
         byte[] dummyArchive = "stub".getBytes(StandardCharsets.UTF_8);
-        maven.served().put(
-                "/feed/jdks.json",
-                multiEntryFeedJson(dummyArchive.length, Hashing.sha256Hex(dummyArchive), maven.base().toString())
-                        .getBytes(StandardCharsets.UTF_8));
+        maven.served()
+                .put(
+                        "/feed/jdks.json",
+                        multiEntryFeedJson(
+                                        dummyArchive.length,
+                                        Hashing.sha256Hex(dummyArchive),
+                                        maven.base().toString())
+                                .getBytes(StandardCharsets.UTF_8));
 
         String stdout = Capture.stdout(() -> run(
                 "jdk",

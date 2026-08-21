@@ -6,7 +6,6 @@ import static cc.jumpkick.cli.testing.MockMavenServer.mavenPath;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.MockMavenServer;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -252,7 +251,12 @@ class ToolRunCommandTest {
                 """.getBytes(StandardCharsets.UTF_8));
 
         Path state = tempDir.resolve("home");
-        assertThat(run("trust", "add", "--state-dir", state.toString(), maven.base().toString() + "/"))
+        assertThat(run(
+                        "trust",
+                        "add",
+                        "--state-dir",
+                        state.toString(),
+                        maven.base().toString() + "/"))
                 .isEqualTo(0);
         int exit = run(
                 "tool",

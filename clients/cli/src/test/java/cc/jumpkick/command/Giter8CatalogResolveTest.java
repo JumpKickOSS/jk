@@ -16,11 +16,11 @@ class Giter8CatalogResolveTest {
     @Test
     void find_named_template_in_monorepo_layout(@TempDir Path tmp) throws Exception {
         Path mono = tmp.resolve("mono");
-        Path g8 = mono.resolve("java-cli.g8");
+        Path g8 = mono.resolve("java").resolve("none").resolve("cli.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve("default.properties"), "name=hello\n");
-        assertThat(Giter8Git.findNamedTemplate(mono, "java-cli")).isPresent();
-        assertThat(Giter8Git.findNamedTemplate(mono, "java-cli").get())
+        assertThat(Giter8Git.findNamedTemplate(mono, "cli")).isPresent();
+        assertThat(Giter8Git.findNamedTemplate(mono, "cli").get())
                 .isEqualTo(g8.toAbsolutePath().normalize());
         assertThat(Giter8Git.findNamedTemplate(mono, "missing")).isEmpty();
     }
@@ -28,17 +28,17 @@ class Giter8CatalogResolveTest {
     @Test
     void find_named_under_templates_subdir(@TempDir Path tmp) throws Exception {
         Path mono = tmp.resolve("mono");
-        Path g8 = mono.resolve("templates").resolve("kotlin-cli.g8");
+        Path g8 = mono.resolve("templates").resolve("kotlin").resolve("none").resolve("cli.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve("default.properties"), "name=kt\n");
-        assertThat(Giter8Git.findNamedTemplate(mono, "kotlin-cli"))
+        assertThat(Giter8Git.findNamedTemplate(mono, "cli"))
                 .contains(g8.toAbsolutePath().normalize());
     }
 
     @Test
     void resolve_short_name_from_walk_up_before_git(@TempDir Path tmp) throws Exception {
         Path root = tmp.resolve("checkout");
-        Path g8 = root.resolve("templates/quarkus.g8");
+        Path g8 = root.resolve("templates/java/none/cli.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve("default.properties"), "name=q\n");
         Path cwd = root.resolve("examples/demo");
@@ -46,7 +46,7 @@ class Giter8CatalogResolveTest {
         Path extract = tmp.resolve("extract");
         // No network: offline config with bogus official URL
         var cfg = new JkTemplatesConfig("https://example.invalid/nope", List.of());
-        Optional<Path> hit = Giter8Catalog.resolveShortName("quarkus", cwd, extract, cfg, List.of());
+        Optional<Path> hit = Giter8Catalog.resolveShortName("cli", cwd, extract, cfg, List.of());
         assertThat(hit).isPresent();
         assertThat(hit.get()).isEqualTo(g8.toAbsolutePath().normalize());
     }
@@ -65,6 +65,6 @@ class Giter8CatalogResolveTest {
                 JkTemplatesConfig.DEFAULT_OFFICIAL,
                 List.of(new JkTemplatesConfig.Source("acme", "https://github.com/acme/t", Optional.empty())));
         String h = Giter8Catalog.helpKnown(cfg);
-        assertThat(h).contains("java-cli").contains("jk-templates").contains("acme");
+        assertThat(h).contains("cli").contains("jk-templates").contains("acme");
     }
 }

@@ -32,6 +32,7 @@ public record ProjectInfo(
         boolean application,
         String mainClass,
         boolean assembly,
+        String applicationConfig,
         String nativeMode,
         String graal,
         boolean springBoot,
@@ -89,6 +90,7 @@ public record ProjectInfo(
                 false,
                 "",
                 false,
+                "",
                 "DISABLED",
                 "",
                 false,
@@ -142,6 +144,7 @@ public record ProjectInfo(
                 + ",\"application\":" + application
                 + ",\"mainClass\":" + Jsonl.quote(mainClass)
                 + ",\"assembly\":" + assembly
+                + ",\"applicationConfig\":" + Jsonl.quote(applicationConfig)
                 + ",\"nativeMode\":" + Jsonl.quote(nativeMode)
                 + ",\"graal\":" + Jsonl.quote(graal)
                 + ",\"springBoot\":" + springBoot
@@ -196,6 +199,7 @@ public record ProjectInfo(
                 Jsonl.bool(line, "application", false),
                 orEmpty(Jsonl.str(line, "mainClass")),
                 Jsonl.bool(line, "assembly", false),
+                orEmpty(Jsonl.str(line, "applicationConfig")),
                 orEmpty(Jsonl.str(line, "nativeMode")),
                 orEmpty(Jsonl.str(line, "graal")),
                 Jsonl.bool(line, "springBoot", false),

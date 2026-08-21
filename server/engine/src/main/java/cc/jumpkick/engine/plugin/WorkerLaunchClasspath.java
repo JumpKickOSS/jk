@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import java.nio.file.Path;
 import java.util.List;
@@ -15,6 +16,10 @@ public final class WorkerLaunchClasspath {
     private WorkerLaunchClasspath() {}
 
     public static List<Path> paths(Path workerJar) {
+        // A CAS blob can only reach a fork as a path-pinned plugin jar — coordinate pins and
+        // first-party workers resolve to Maven-layout paths. Path pins carry no POM by design,
+        // so the sha-verified jar is the whole classpath.
+        if (Cas.isBlobPath(workerJar)) return List.of(workerJar);
         return PomRuntimeClasspath.resolve(workerJar);
     }
 

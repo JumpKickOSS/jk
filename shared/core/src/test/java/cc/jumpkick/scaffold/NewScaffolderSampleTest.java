@@ -22,6 +22,41 @@ class NewScaffolderSampleTest {
         assertThat(calc).contains("public record Calc(int value)");
         assertThat(calc).doesNotContain("lombok").doesNotContain("@Data");
         assertThat(dir.resolve("src/main/java/com/example/package-info.java")).doesNotExist();
+        assertThat(dir.resolve("AGENTS.md")).exists();
+        assertThat(Files.readString(dir.resolve("AGENTS.md"))).contains("jk manual");
+    }
+
+    @Test
+    void workspace_module_skips_agents_and_gitignore(@TempDir Path dir) throws IOException {
+        NewScaffolder.write(library(dir, List.of()), false);
+        assertThat(dir.resolve("jk.toml")).exists();
+        assertThat(dir.resolve("AGENTS.md")).doesNotExist();
+        assertThat(dir.resolve(".gitignore")).doesNotExist();
+    }
+
+    @Test
+    void plugin_project_writes_agents_guide(@TempDir Path dir) throws IOException {
+        NewInputs inputs = new NewInputs(
+                "com.example",
+                "foo",
+                "25",
+                25,
+                25,
+                Optional.empty(),
+                Optional.empty(),
+                false,
+                false,
+                true,
+                NewInputs.Language.JAVA,
+                "traditional",
+                Optional.empty(),
+                List.of(),
+                true,
+                dir);
+        NewScaffolder.write(inputs, true);
+        assertThat(dir.resolve("AGENTS.md")).exists();
+        assertThat(dir.resolve("src/main/resources/templates/java/foo/hello.g8/src/main/g8/AGENTS.md"))
+                .exists();
     }
 
     @Test
