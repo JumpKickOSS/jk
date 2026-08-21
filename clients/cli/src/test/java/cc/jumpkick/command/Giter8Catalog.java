@@ -35,7 +35,10 @@ public final class Giter8Catalog {
 
     /** Built-in short names for help text (not an exclusive allow-list for resolution). */
     public static Map<String, String> descriptions() {
-        return cc.jumpkick.giter8.Giter8ShortNames.descriptions();
+        return Map.of(
+                "cli", "Simple executable",
+                "cli-native", "Interactive Java CLI with JLine",
+                "ktor-3", "Ktor service with Koin DI and Exposed/H2");
     }
 
     public static boolean isShortName(String ref) {
@@ -152,21 +155,29 @@ public final class Giter8Catalog {
     private static Optional<Path> langKindOrFlat(Path root, String ref, String dirName) {
         if (root == null || !Files.isDirectory(root)) return Optional.empty();
         for (String lang : List.of("java", "kotlin", "groovy")) {
-            Path p = root.resolve(lang).resolve(dirName);
-            if (isTemplateRoot(p)) return Optional.of(p.toAbsolutePath().normalize());
-            Path bare = root.resolve(lang).resolve(ref);
-            if (isTemplateRoot(bare)) return Optional.of(bare.toAbsolutePath().normalize());
+            Path none = root.resolve(lang).resolve("none").resolve(dirName);
+            if (isTemplateRoot(none)) return Optional.of(none.toAbsolutePath().normalize());
+            Path langDir = root.resolve(lang);
+            if (!Files.isDirectory(langDir)) continue;
+            try (var fws = Files.list(langDir)) {
+                for (Path fw : fws.toList()) {
+                    if (!Files.isDirectory(fw)) continue;
+                    Path p = fw.resolve(dirName);
+                    if (isTemplateRoot(p)) return Optional.of(p.toAbsolutePath().normalize());
+                    Path bare = fw.resolve(ref);
+                    if (isTemplateRoot(bare)) return Optional.of(bare.toAbsolutePath().normalize());
+                }
+            } catch (IOException ignored) {
+                // try next lang
+            }
         }
-        Path p = root.resolve(dirName);
-        if (isTemplateRoot(p)) return Optional.of(p.toAbsolutePath().normalize());
-        Path bare = root.resolve(ref);
-        if (isTemplateRoot(bare)) return Optional.of(bare.toAbsolutePath().normalize());
         return Optional.empty();
     }
 
     static boolean isTemplateRoot(Path p) {
         if (p == null || !Files.isDirectory(p)) return false;
         if (Files.isRegularFile(p.resolve("default.properties"))) return true;
+        if (Files.isRegularFile(p.resolve(".jk-template.toml"))) return true;
         Path g8 = p.resolve("src/main/g8");
         return Files.isDirectory(g8)
                 && (Files.isRegularFile(g8.resolve("default.properties"))

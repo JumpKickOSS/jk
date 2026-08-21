@@ -1,0 +1,5 @@
+language = "kotlin"
+framework = "quarkus"
+name = "hello"
+description = "Quarkus REST application"
+layouts = ["traditional", "simple"]

@@ -2,123 +2,91 @@
 package cc.jumpkick.giter8;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class Giter8TemplateIndexTest {
 
     @Test
-    void catalog_only_has_layout_and_languages() {
-        var entries = Giter8TemplateIndex.catalogOnly();
-        assertThat(entries).isNotEmpty();
-        assertThat(Giter8ShortNames.find("ktor-3")).get().satisfies(e -> {
-            assertThat(e.layout()).isEqualTo(Giter8ShortNames.LAYOUT_SIMPLE);
-            assertThat(e.supports("kotlin")).isTrue();
-        });
-        assertThat(Giter8ShortNames.find("spring-boot-webmvc")).get().satisfies(e -> {
-            assertThat(e.layout()).isEqualTo(Giter8ShortNames.LAYOUT_TRADITIONAL);
-            assertThat(e.supports("java")).isTrue();
-        });
-        assertThat(Giter8ShortNames.find("grails-8")).get().satisfies(e -> {
-            assertThat(e.layout()).isEqualTo(Giter8ShortNames.LAYOUT_CUSTOM);
-            assertThat(e.supports("groovy")).isTrue();
-        });
-    }
+    void scans_lang_framework_name_and_resolves(@TempDir Path temp) throws Exception {
+        writeTemplate(temp, "java", "none", "hello", "Hello app", "\"simple\"");
+        writeTemplate(temp, "kotlin", "none", "hello", "Hello app", "\"simple\"");
+        writeTemplate(temp, "java", "spring-boot", "hello", "Boot hello", "\"traditional\"");
+        writeTemplate(temp, "groovy", "grails", "hello", "Grails hello", "\"custom\"");
 
-    @Test
-    void disk_props_overlay_catalog(@TempDir Path temp) throws Exception {
-        Path g8 = temp.resolve("ktor-3.g8");
-        Files.createDirectories(g8);
-        Files.writeString(g8.resolve("default.properties"), """
-                name=my-ktor
-                jk_languages=kotlin
-                jk_layout=simple
-                """);
-        var list = Giter8TemplateIndex.build(List.of(temp));
-        var ktor =
-                list.stream().filter(e -> e.id().equals("ktor-3")).findFirst().orElseThrow();
-        assertThat(ktor.languages()).containsExactly("kotlin");
-        assertThat(ktor.layout()).isEqualTo(Giter8ShortNames.LAYOUT_SIMPLE);
-    }
+        var list = Giter8TemplateIndex.picker(List.of(temp));
+        assertThat(list.stream().map(TemplateSpec::id))
+                .contains(
+                        "java/none/hello",
+                        "kotlin/none/hello",
+                        "java/spring-boot/hello",
+                        "groovy/grails/hello");
 
-    @Test
-    void unknown_short_name_from_disk_is_appended(@TempDir Path temp) throws Exception {
-        Path g8 = temp.resolve("acme-lib.g8");
-        Files.createDirectories(g8.resolve("src/main/g8"));
-        Files.writeString(g8.resolve("default.properties"), """
-                name=Acme Lib
-                jk_languages=java
-                jk_layout=traditional
-                """);
-        var list = Giter8TemplateIndex.build(List.of(temp));
-        assertThat(list.stream().map(Giter8ShortNames.Entry::id)).contains("acme-lib");
-        var e = list.stream().filter(x -> x.id().equals("acme-lib")).findFirst().orElseThrow();
-        assertThat(e.layout()).isEqualTo(Giter8ShortNames.LAYOUT_TRADITIONAL);
-        assertThat(e.supports("java")).isTrue();
-    }
-
-    @Test
-    void infer_layout_from_tree(@TempDir Path temp) throws Exception {
-        Path simple = temp.resolve("simple.g8");
-        Files.createDirectories(simple.resolve("src/main/g8/src"));
-        Files.writeString(simple.resolve("default.properties"), "name=s\n");
-        assertThat(Giter8TemplateIndex.inferLayout(simple)).isEqualTo(Giter8ShortNames.LAYOUT_SIMPLE);
-
-        Path trad = temp.resolve("trad.g8");
-        Files.createDirectories(trad.resolve("src/main/g8/src/main/java"));
-        Files.writeString(trad.resolve("default.properties"), "name=t\n");
-        assertThat(Giter8TemplateIndex.inferLayout(trad)).isEqualTo(Giter8ShortNames.LAYOUT_TRADITIONAL);
-
-        Path grails = temp.resolve("g.g8");
-        Files.createDirectories(grails.resolve("src/main/g8/grails-app"));
-        Files.writeString(grails.resolve("default.properties"), "name=g\n");
-        assertThat(Giter8TemplateIndex.inferLayout(grails)).isEqualTo(Giter8ShortNames.LAYOUT_CUSTOM);
-    }
-
-    @Test
-    void layout_from_properties() {
-        assertThat(Giter8ShortNames.layoutFromProperties(Map.of("jk_layout", "traditional")))
-                .contains(Giter8ShortNames.LAYOUT_TRADITIONAL);
-        assertThat(Giter8ShortNames.layoutFromProperties(Map.of("layout", "simple")))
-                .contains(Giter8ShortNames.LAYOUT_SIMPLE);
-        assertThat(Giter8ShortNames.layoutFromProperties(Map.of())).isEmpty();
-    }
-
-    @Test
-    void pass_two_probe_skips_ids_already_overlaid_in_pass_one(@TempDir Path temp) throws Exception {
-        // The pass-2 deep DFS must only run for ids pass 1 did not overlay.
-        Path g8 = temp.resolve("ktor-3.g8");
-        Files.createDirectories(g8);
-        Files.writeString(g8.resolve("default.properties"), "jk_languages=kotlin\njk_layout=simple\n");
-        var byId = new LinkedHashMap<String, Giter8ShortNames.Entry>();
-        for (var e : Giter8ShortNames.entries()) byId.put(e.id(), e);
-        var overlaid = new HashSet<String>();
-        Giter8TemplateIndex.scanRoot(temp, byId, overlaid);
-        assertThat(overlaid).containsExactly("ktor-3");
-        var probe = Giter8TemplateIndex.idsNeedingProbe(byId.values(), overlaid);
-        assertThat(probe).doesNotContain("ktor-3").contains("cli", "quarkus");
-    }
-
-    @Test
-    void resolve_short_name_finds_lang_kind_dogfood(@TempDir Path temp) throws Exception {
-        Path g8 = temp.resolve("templates").resolve("java").resolve("spring-boot-webmvc.g8");
-        Files.createDirectories(g8.resolve("src/main/g8"));
-        Files.writeString(g8.resolve("default.properties"), "name=demo\njk_languages=java\njk_layout=traditional\n");
-        Path parent = temp.resolve("apps");
-        Files.createDirectories(parent);
-        assertThat(Giter8TemplateIndex.resolveShortName("spring-boot-webmvc", parent))
-                .isPresent()
+        assertThat(Giter8TemplateIndex.resolve("hello", "java", List.of(temp)))
                 .get()
-                .satisfies(p -> assertThat(p.getFileName().toString()).isEqualTo("spring-boot-webmvc.g8"));
-        assertThat(Giter8TemplateIndex.resolveShortName("spring-boot-webmvc", "java", parent))
-                .isPresent();
+                .extracting(TemplateSpec::id)
+                .isEqualTo("java/none/hello");
+        assertThat(Giter8TemplateIndex.resolve("hello", "kotlin", List.of(temp)))
+                .get()
+                .extracting(TemplateSpec::id)
+                .isEqualTo("kotlin/none/hello");
+        assertThat(Giter8TemplateIndex.resolve("spring-boot/hello", "java", List.of(temp)))
+                .get()
+                .extracting(TemplateSpec::id)
+                .isEqualTo("java/spring-boot/hello");
+        assertThat(Giter8TemplateIndex.resolve("grails/hello", "java", List.of(temp)))
+                .get()
+                .extracting(TemplateSpec::id)
+                .isEqualTo("groovy/grails/hello");
+        assertThat(Giter8TemplateIndex.resolve("java/spring-boot/hello", null, List.of(temp)))
+                .get()
+                .extracting(TemplateSpec::id)
+                .isEqualTo("java/spring-boot/hello");
+    }
+
+    @Test
+    void bare_framework_name_lists_templates(@TempDir Path temp) throws Exception {
+        writeTemplate(temp, "java", "spring-boot", "hello", "h", "\"traditional\"");
+        writeTemplate(temp, "java", "spring-boot", "webmvc", "w", "\"traditional\"");
+        assertThatThrownBy(() -> Giter8TemplateIndex.resolve("spring-boot", "java", List.of(temp)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("is a framework")
+                .hasMessageContaining("hello")
+                .hasMessageContaining("webmvc");
+    }
+
+    @Test
+    void metadata_mismatch_is_skipped(@TempDir Path temp) throws Exception {
+        Path g8 = temp.resolve("java/none/hello.g8");
+        Files.createDirectories(g8.resolve("src/main/g8"));
+        Files.writeString(g8.resolve(".jk-template.toml"), """
+                language = "kotlin"
+                framework = "none"
+                name = "hello"
+                description = "wrong lang"
+                """);
+        Files.writeString(g8.resolve("default.properties"), "name=x\n");
+        var list = Giter8TemplateIndex.picker(List.of(temp));
+        assertThat(list.stream().map(TemplateSpec::id)).doesNotContain("java/none/hello");
+    }
+
+    @Test
+    void ignores_legacy_lang_name_g8(@TempDir Path temp) throws Exception {
+        Path g8 = temp.resolve("java/cli.g8");
+        Files.createDirectories(g8.resolve("src/main/g8"));
+        Files.writeString(g8.resolve("default.properties"), "name=cli\n");
+        Files.writeString(g8.resolve(".jk-template.toml"), """
+                language = "java"
+                framework = "none"
+                name = "cli"
+                description = "legacy path"
+                """);
+        assertThat(Giter8TemplateIndex.picker(List.of(temp))).isEmpty();
     }
 
     @Test
@@ -128,5 +96,20 @@ class Giter8TemplateIndexTest {
         assertThat(Giter8ShortNames.defaultLang(List.of("groovy", "kotlin"))).contains("kotlin");
         assertThat(Giter8ShortNames.defaultLang(List.of("groovy"))).contains("groovy");
         assertThat(Giter8ShortNames.defaultLang(List.of())).isEmpty();
+    }
+
+    private static void writeTemplate(Path root, String lang, String fw, String name, String desc, String layouts)
+            throws Exception {
+        Path g8 = root.resolve(lang).resolve(fw).resolve(name + ".g8");
+        Files.createDirectories(g8.resolve("src/main/g8"));
+        Files.writeString(g8.resolve(".jk-template.toml"), """
+                language = "%s"
+                framework = "%s"
+                name = "%s"
+                description = "%s"
+                layouts = [%s]
+                """.formatted(lang, fw, name, desc, layouts));
+        Files.writeString(g8.resolve("default.properties"), "name=" + name + "\n");
+        Files.writeString(g8.resolve("src/main/g8/jk.toml"), "name = \"$name$\"\n");
     }
 }

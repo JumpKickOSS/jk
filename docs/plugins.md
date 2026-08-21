@@ -20,7 +20,7 @@ One jar containing:
 
 ```
 jk-plugin.toml                      # declarative layer (required)
-templates/<lang>/<kind>/…           # optional Giter8 trees for jk new -t <plugin-id>
+templates/<lang>/<framework>/<name>.g8/  # optional Giter8 trees for jk new -t <framework>/<name>
 <your classes>                      # optional code layer (forked process only)
 ```
 
@@ -120,9 +120,9 @@ Static data consulted by `jk run` / `install` / `image` without forking your cod
 
 ### Templates and import
 
-Bundle Giter8 trees at `src/main/resources/templates/<lang>/<kind>/` (see
-[giter8-templates.md](features/giter8-templates.md)). `jk new -t <plugin-id>` applies
-`templates/<lang>/default` (or `--kind`).
+Bundle Giter8 trees at `src/main/resources/templates/<lang>/<framework>/<name>.g8/` (see
+[giter8-templates.md](features/giter8-templates.md)). `jk new -t <framework>/<name>` applies
+that tree (`jk new -t spring-boot/hello`).
 
 ```toml
 [[import.gradle-plugin]]

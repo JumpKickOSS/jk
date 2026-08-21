@@ -124,6 +124,7 @@ public final class Giter8Apply {
         }
         interpolateProps(props);
         if (overrides != null) props.putAll(overrides);
+        props.putIfAbsent("simple", "no");
         interpolateProps(props);
         if (props.containsKey("name")) {
             props.putIfAbsent("name_normalized", Giter8Formats.normalize(props.get("name")));

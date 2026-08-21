@@ -23,11 +23,13 @@ public final class McpScaffold {
         for (var e : Giter8TemplateIndex.picker(Giter8TemplateIndex.searchRoots())) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("id", e.id());
+            row.put("name", e.name());
+            row.put("language", e.language());
+            row.put("framework", e.framework());
             row.put("description", e.description());
-            row.put("languages", e.languages());
-            row.put("layout", e.layout());
-            row.put("plugin", e.plugin());
-            if (!e.kinds().isEmpty()) row.put("kinds", e.kinds());
+            row.put("layouts", e.layouts());
+            row.put("source", e.source());
+            if (e.pluginId() != null) row.put("pluginId", e.pluginId());
             rows.add(row);
         }
         Map<String, Object> m = new LinkedHashMap<>();

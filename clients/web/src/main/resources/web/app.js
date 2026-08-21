@@ -965,20 +965,21 @@ function fmtMillis(millis) {
   return Math.floor(totalSec / 60) + 'm ' + String(totalSec % 60).padStart(2, '0') + 's';
 }
 
-function kindsForTemplate(t, lang) {
-  if (!t || !t.kinds) return [];
-  if (Array.isArray(t.kinds)) return t.kinds;
-  const forLang = t.kinds[lang];
-  return Array.isArray(forLang) ? forLang : [];
-}
-
-function parseTemplateChoice(choice) {
-  const raw = (choice || '').trim();
-  if (!raw) return { template: '', kind: 'default' };
-  const i = raw.indexOf('::');
-  if (i <= 0) return { template: raw, kind: 'default' };
-  const kind = raw.slice(i + 2).trim();
-  return { template: raw.slice(0, i), kind: kind || 'default' };
+function fallbackTemplates() {
+  return [
+    { id: 'java/none/cli', name: 'cli', language: 'java', framework: 'none', description: 'Simple executable (Mill SIMPLE layout)', layouts: ['simple'], source: 'catalog' },
+    { id: 'kotlin/none/cli', name: 'cli', language: 'kotlin', framework: 'none', description: 'Simple executable (Mill SIMPLE layout)', layouts: ['simple'], source: 'catalog' },
+    { id: 'java/none/cli-native', name: 'cli-native', language: 'java', framework: 'none', description: 'Interactive Java CLI with JLine (jk native ready)', layouts: ['simple'], source: 'catalog' },
+    { id: 'java/spring-boot/hello', name: 'hello', language: 'java', framework: 'spring-boot', description: 'Minimal Spring Boot application', layouts: ['traditional'], source: 'plugin', pluginId: 'spring-boot' },
+    { id: 'kotlin/spring-boot/hello', name: 'hello', language: 'kotlin', framework: 'spring-boot', description: 'Minimal Spring Boot application', layouts: ['traditional'], source: 'plugin', pluginId: 'spring-boot' },
+    { id: 'java/spring-boot/webmvc', name: 'webmvc', language: 'java', framework: 'spring-boot', description: 'Clean architecture WebMVC', layouts: ['traditional'], source: 'plugin', pluginId: 'spring-boot' },
+    { id: 'kotlin/spring-boot/webmvc', name: 'webmvc', language: 'kotlin', framework: 'spring-boot', description: 'Clean architecture WebMVC', layouts: ['traditional'], source: 'plugin', pluginId: 'spring-boot' },
+    { id: 'java/spring-boot/mcp', name: 'mcp', language: 'java', framework: 'spring-boot', description: 'Spring Boot MCP server', layouts: ['traditional'], source: 'catalog' },
+    { id: 'java/quarkus/hello', name: 'hello', language: 'java', framework: 'quarkus', description: 'Quarkus REST application', layouts: ['simple'], source: 'plugin', pluginId: 'quarkus' },
+    { id: 'kotlin/none/ktor-3', name: 'ktor-3', language: 'kotlin', framework: 'none', description: 'Ktor service with Koin DI and Exposed/H2', layouts: ['simple'], source: 'catalog' },
+    { id: 'java/micronaut/hello', name: 'hello', language: 'java', framework: 'micronaut', description: 'Micronaut HTTP service', layouts: ['simple'], source: 'plugin', pluginId: 'micronaut' },
+    { id: 'groovy/grails/hello', name: 'hello', language: 'groovy', framework: 'grails', description: 'Grails 8 REST app', layouts: ['custom'], source: 'plugin', pluginId: 'grails' },
+  ];
 }
 
 // Exported for the headless harness (app.test.mjs); the browser block below mounts it.
@@ -1023,12 +1024,15 @@ export const appOptions = {
       group: '',
       lang: 'java',
       layout: 'traditional',
+      framework: '',
+      frameworkQuery: '',
       template: '',
-      templateChoice: '',
-      kind: 'default',
+      templateQuery: '',
       parentDir: '',
       executable: true,
     },
+    frameworkOpen: false,
+    templateOpen: false,
     templates: [],
     now: Date.now(), // 1s tick driving elapsed counters and "ago" stamps
     // JK-1500: single-flight keys → in-flight Promise; offline status poll backoff (ms).
@@ -1064,50 +1068,54 @@ export const appOptions = {
   },
 
   computed: {
-    // Template short names compatible with the New-project Language field. Entries without a
-    // languages list are treated as universal (legacy / fallback payloads).
     templatesForLang() {
       const lang = (this.newProject?.lang || 'java').toLowerCase();
-      return (this.templates || []).filter((t) => {
-        const langs = t.languages;
-        if (!Array.isArray(langs) || langs.length === 0) return true;
-        return langs.some((l) => String(l).toLowerCase() === lang);
+      return (this.templates || []).filter((t) => String(t.language || '').toLowerCase() === lang);
+    },
+
+    frameworkChoices() {
+      const seen = new Set();
+      const out = [{ value: 'none', label: 'none (unframed)' }];
+      seen.add('none');
+      for (const t of this.templatesForLang) {
+        const fw = (t.framework || 'none').toLowerCase();
+        if (seen.has(fw)) continue;
+        seen.add(fw);
+        out.push({ value: fw, label: fw });
+      }
+      return out;
+    },
+
+    filteredFrameworkChoices() {
+      const q = (this.newProject.frameworkQuery || '').trim().toLowerCase();
+      if (!q || q === 'all frameworks') return this.frameworkChoices;
+      return this.frameworkChoices.filter((f) => f.label.toLowerCase().includes(q) || f.value.includes(q));
+    },
+
+    templatesForFilters() {
+      const fw = (this.newProject.framework || '').toLowerCase();
+      return this.templatesForLang.filter((t) => {
+        if (!fw) return true;
+        return String(t.framework || 'none').toLowerCase() === fw;
       });
     },
 
-    kindsForSelection() {
-      const parsed = this.parsedTemplateChoice();
-      const t = (this.templates || []).find((x) => x.id === parsed.template);
-      if (!t || !t.kinds) return [];
-      const lang = (this.newProject.lang || 'java').toLowerCase();
-      if (Array.isArray(t.kinds)) return t.kinds;
-      const forLang = t.kinds[lang];
-      return Array.isArray(forLang) ? forLang : [];
+    templateChoices() {
+      const allFw = !(this.newProject.framework || '');
+      return this.templatesForFilters.map((t) => {
+        const desc = (t.description || '').trim();
+        const suffix = allFw && t.framework && t.framework !== 'none' ? ' · ' + t.framework : '';
+        return {
+          value: t.id,
+          label: desc ? t.name + suffix + ' — ' + desc : t.name + suffix,
+        };
+      });
     },
 
-    // Plugin kinds are first-class rows (`spring-boot / webmvc`) so they are visible without a
-    // second dropdown that only appears after picking a plugin id.
-    templateChoices() {
-      const lang = (this.newProject?.lang || 'java').toLowerCase();
-      const out = [];
-      for (const t of this.templatesForLang) {
-        const kinds = kindsForTemplate(t, lang);
-        if (kinds.length) {
-          for (const k of kinds) {
-            const desc = (t.description || '').trim();
-            out.push({
-              value: t.id + '::' + k,
-              label: desc ? t.id + ' / ' + k + ' — ' + desc : t.id + ' / ' + k,
-            });
-          }
-        } else {
-          out.push({
-            value: t.id,
-            label: t.description ? t.id + ' — ' + t.description : t.id,
-          });
-        }
-      }
-      return out;
+    filteredTemplateChoices() {
+      const q = (this.newProject.templateQuery || '').trim().toLowerCase();
+      if (!q || q.startsWith('none')) return this.templateChoices;
+      return this.templateChoices.filter((c) => c.label.toLowerCase().includes(q) || c.value.toLowerCase().includes(q));
     },
 
     // Group the journal into per-project rows for the Projects tab. A computed (not a method) so it
@@ -2434,22 +2442,8 @@ export const appOptions = {
         }
       }
       if (!this.newProject.group) this.newProject.group = 'com.example';
-      // Offline fallback: mirror of the full Giter8ShortNames catalog (order + metadata) so a
-      // tokenless/errored /api/templates still offers every first-party short name (JK-1458).
-      this.templates = Array.isArray(templates) && templates.length
-        ? templates
-        : [
-            { id: 'spring-boot', description: 'Spring Boot plugin', languages: ['java', 'kotlin'], layout: 'traditional', plugin: true, kinds: { java: ['default', 'webmvc'], kotlin: ['default', 'webmvc'] } },
-            { id: 'cli', description: 'Simple executable (Mill SIMPLE layout)', languages: ['java', 'kotlin'], layout: 'simple' },
-            { id: 'cli-native', description: 'Interactive Java CLI with JLine (jk native ready)', languages: ['java'], layout: 'simple' },
-            { id: 'spring-boot-webmvc', description: 'Spring Boot WebMVC + JPA/H2 + Actuator', languages: ['java', 'kotlin'], layout: 'traditional' },
-            { id: 'spring-boot-mcp', description: 'Spring Boot MCP server (Spring AI, @Tool over SSE)', languages: ['java'], layout: 'traditional' },
-            { id: 'quarkus', description: 'Quarkus REST application ([quarkus] plugin)', languages: ['java'], layout: 'simple' },
-            { id: 'ktor-3', description: 'Ktor service with Koin DI and Exposed/H2', languages: ['kotlin'], layout: 'simple' },
-            { id: 'micronaut', description: 'Micronaut HTTP service (compile-time DI, Netty)', languages: ['java', 'kotlin'], layout: 'simple' },
-            { id: 'grails-8', description: 'Grails 8 REST app (GORM, H2, Groovy)', languages: ['groovy'], layout: 'custom' },
-          ];
-      this.onNewProjectLangChange(); // drop a leftover template that no longer matches Language
+      this.templates = Array.isArray(templates) && templates.length ? templates : fallbackTemplates();
+      this.onNewProjectLangChange();
       // Focus Name so the user can type the app name immediately; @focus selects any existing value.
       this.$nextTick(() => {
         const el = this.$refs.nameInput;
@@ -2457,37 +2451,76 @@ export const appOptions = {
       });
     },
 
-    parsedTemplateChoice() {
-      return parseTemplateChoice(this.newProject.templateChoice);
-    },
-
-    // Language drives the template short-name list; clear a selection that is no longer offered.
     onNewProjectLangChange() {
-      const choice = this.newProject.templateChoice;
-      if (choice && !this.templateChoices.some((c) => c.value === choice)) {
-        this.newProject.templateChoice = '';
-        this.newProject.template = '';
-        this.newProject.kind = 'default';
-        return;
+      const fws = this.frameworkChoices.map((f) => f.value);
+      if (this.newProject.framework && !fws.includes(this.newProject.framework)) {
+        this.pickFramework('', 'All frameworks');
       }
-      this.syncNewProjectKind();
+      if (this.newProject.template && !this.templateChoices.some((c) => c.value === this.newProject.template)) {
+        this.pickTemplate('', 'None — blank project');
+      }
     },
 
-    onNewProjectTemplateChange() {
-      this.syncNewProjectKind();
+    onFrameworkQueryInput() {
+      this.frameworkOpen = true;
     },
 
-    syncNewProjectKind() {
-      const parsed = this.parsedTemplateChoice();
-      this.newProject.template = parsed.template;
-      this.newProject.kind = parsed.kind;
+    onFrameworkBlur() {
+      setTimeout(() => { this.frameworkOpen = false; }, 120);
     },
 
-    selectedTemplateLayout() {
-      const id = this.parsedTemplateChoice().template;
-      if (!id) return '';
-      const t = (this.templates || []).find((x) => x.id === id);
-      return (t && t.layout) || 'traditional';
+    onFrameworkKey(ev) {
+      if (ev.key === 'Escape') { this.frameworkOpen = false; ev.target.blur(); }
+      if (ev.key === 'Enter' && this.filteredFrameworkChoices.length) {
+        const f = this.filteredFrameworkChoices[0];
+        this.pickFramework(f.value, f.label);
+        ev.preventDefault();
+      }
+    },
+
+    pickFramework(value, label) {
+      this.newProject.framework = value || '';
+      this.newProject.frameworkQuery = value ? label : '';
+      this.frameworkOpen = false;
+      if (this.newProject.template && !this.templateChoices.some((c) => c.value === this.newProject.template)) {
+        this.pickTemplate('', 'None — blank project');
+      }
+    },
+
+    onTemplateQueryInput() {
+      this.templateOpen = true;
+    },
+
+    onTemplateBlur() {
+      setTimeout(() => { this.templateOpen = false; }, 120);
+    },
+
+    onTemplateKey(ev) {
+      if (ev.key === 'Escape') { this.templateOpen = false; ev.target.blur(); }
+      if (ev.key === 'Enter' && this.filteredTemplateChoices.length) {
+        const c = this.filteredTemplateChoices[0];
+        this.pickTemplate(c.value, c.label);
+        ev.preventDefault();
+      }
+    },
+
+    pickTemplate(value, label) {
+      this.newProject.template = value || '';
+      this.newProject.templateQuery = value ? label : '';
+      this.templateOpen = false;
+    },
+
+    selectedTemplate() {
+      const id = this.newProject.template;
+      if (!id) return null;
+      return (this.templates || []).find((x) => x.id === id) || null;
+    },
+
+    showLayoutPicker() {
+      const t = this.selectedTemplate();
+      if (!t) return true;
+      const lays = t.layouts || [];
+      return lays.includes('traditional') && lays.includes('simple');
     },
 
     closeNewProject() {
@@ -2499,30 +2532,25 @@ export const appOptions = {
     async submitNewProject() {
       this.newProjectError = null;
       this.newProjectBusy = true;
-      const parsed = this.parsedTemplateChoice();
-      const hasTemplate = !!parsed.template;
+      const hasTemplate = !!this.newProject.template;
       const body = {
         name: this.newProject.name.trim(),
         group: this.newProject.group.trim() || 'com.example',
         lang: this.newProject.lang,
-        // Layout + executable only affect the blank scaffolder; omit noise when a template applies.
-        layout: hasTemplate ? 'traditional' : this.newProject.layout,
+        layout: this.newProject.layout,
         parentDir: this.newProject.parentDir.trim(),
         executable: hasTemplate ? false : !!this.newProject.executable,
       };
-      if (hasTemplate) {
-        body.template = parsed.template;
-        if (parsed.kind && parsed.kind !== 'default') body.kind = parsed.kind;
-        else if (this.kindsForSelection.length) body.kind = parsed.kind;
-      }
+      if (hasTemplate) body.template = this.newProject.template;
       try {
         const res = await post('/api/projects', body);
         const path = res.path || res.dir;
         this.closeNewProject();
         this.newProject.name = '';
         this.newProject.template = '';
-        this.newProject.templateChoice = '';
-        this.newProject.kind = 'default';
+        this.newProject.templateQuery = '';
+        this.newProject.framework = '';
+        this.newProject.frameworkQuery = '';
         // Keep group + parentDir so the next create is one field away from a sibling project.
         if (path) {
           // Route with the durable projectId from the create response (JK-1775) — never the

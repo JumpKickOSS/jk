@@ -6,97 +6,106 @@ import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Giter8 trees bundled in a plugin jar at {@code templates/<lang>/<kind>/}.
+ * Giter8 trees bundled in a plugin jar at {@code templates/<lang>/<framework>/<name>.g8/}.
  */
 public final class PluginTemplates {
 
-    /** One installed plugin that ships Giter8 trees, keyed the same way as {@code -t}. */
-    public record Installed(String id, String description, List<String> langs, Map<String, List<String>> kindsByLang) {}
-
     private PluginTemplates() {}
 
-    /** Plugins whose jars currently contain {@code templates/<lang>/<kind>/}. */
-    public static List<Installed> installed() {
-        List<Installed> out = new ArrayList<>();
+    /** Every plugin-bundled template as a picker row ({@code root} unset until materialize). */
+    public static List<TemplateSpec> list() {
+        List<TemplateSpec> out = new ArrayList<>();
         for (PluginDescriptor d : PluginTableRegistry.manifests()) {
-            Map<String, List<String>> byLang = new LinkedHashMap<>();
-            for (String lang : List.of("java", "kotlin", "groovy")) {
-                List<String> k = kinds(d.id(), lang);
-                if (!k.isEmpty()) byLang.put(lang, k);
-            }
-            if (byLang.isEmpty()) continue;
-            out.add(new Installed(
-                    d.id(), d.id() + " plugin", List.copyOf(byLang.keySet()), Map.copyOf(byLang)));
+            Path jar = PluginTableRegistry.archive(d.id());
+            if (jar == null || !Files.isRegularFile(jar)) continue;
+            out.addAll(scanJar(d.id(), jar));
         }
+        out.sort(Comparator.comparing(TemplateSpec::id));
         return List.copyOf(out);
     }
 
-    public static boolean isPluginTemplate(String name) {
-        PluginDescriptor d = PluginTableRegistry.byIdOrTable(name);
-        if (d == null) return false;
-        Path jar = PluginTableRegistry.archive(d.id());
-        if (jar == null || !Files.isRegularFile(jar)) return false;
-        return !langs(d.id()).isEmpty();
-    }
-
-    public static List<String> langs(String pluginId) {
-        List<String> out = new ArrayList<>();
-        for (String lang : List.of("java", "kotlin", "groovy")) {
-            if (!kinds(pluginId, lang).isEmpty()) out.add(lang);
-        }
-        return List.copyOf(out);
-    }
-
-    public static List<String> kinds(String pluginId, String lang) {
-        Path jar = jarOf(pluginId);
-        if (jar == null) return List.of();
-        String prefix = "templates/" + lang + "/";
-        List<String> out = new ArrayList<>();
+    static List<TemplateSpec> scanJar(String pluginId, Path jar) {
+        List<TemplateSpec> out = new ArrayList<>();
         try (FileSystem fs = zipfs(jar)) {
-            Path dir = fs.getPath(prefix);
-            if (!Files.isDirectory(dir)) return List.of();
-            try (var stream = Files.list(dir)) {
-                stream.filter(Files::isDirectory)
-                        .map(p -> p.getFileName().toString())
-                        .filter(n -> !n.startsWith("."))
-                        .sorted()
-                        .forEach(out::add);
+            Path templates = fs.getPath("templates");
+            if (!Files.isDirectory(templates)) return List.of();
+            for (String lang : List.of("java", "kotlin", "groovy")) {
+                Path langDir = templates.resolve(lang);
+                if (!Files.isDirectory(langDir)) continue;
+                try (var frameworks = Files.list(langDir)) {
+                    for (Path frameworkDir : frameworks.toList()) {
+                        if (!Files.isDirectory(frameworkDir)) continue;
+                        String framework = frameworkDir.getFileName().toString();
+                        if (framework.startsWith(".") || !JkTemplateToml.isKebab(framework)) continue;
+                        try (var tmpls = Files.list(frameworkDir)) {
+                            for (Path tmpl : tmpls.toList()) {
+                                TemplateSpec spec = specFromRoot(pluginId, lang, framework, tmpl);
+                                if (spec != null) out.add(spec);
+                            }
+                        }
+                    }
+                }
             }
         } catch (IOException e) {
             return List.of();
         }
-        return List.copyOf(out);
+        return out;
+    }
+
+    static @Nullable TemplateSpec specFromRoot(String pluginId, String lang, String framework, Path tmpl) {
+        if (!Files.isDirectory(tmpl)) return null;
+        String name = JkTemplateToml.nameFromDir(tmpl.getFileName().toString());
+        if (name == null) return null;
+        Path metaFile = tmpl.resolve(JkTemplateToml.FILE_NAME);
+        if (!Files.isRegularFile(metaFile)) return null;
+        JkTemplateToml.Meta meta;
+        try {
+            meta = JkTemplateToml.parse(Files.readString(metaFile, StandardCharsets.UTF_8), metaFile.toString());
+        } catch (IOException | IllegalArgumentException e) {
+            return null;
+        }
+        if (JkTemplateToml.matching(meta, lang, framework, name).isEmpty()) return null;
+        return new TemplateSpec(
+                TemplateSpec.idOf(lang, framework, name),
+                name,
+                lang,
+                framework,
+                meta.description(),
+                meta.layouts(),
+                TemplateSpec.SOURCE_PLUGIN,
+                pluginId,
+                null);
     }
 
     /**
-     * Extract {@code templates/<lang>/<kind>} to a temp dir (ZipFileSystem paths are awkward to
-     * walk after the fs is closed). Caller owns cleanup of the parent tmp tree.
+     * Extract {@code templates/<lang>/<framework>/<name>.g8} to a temp dir. Caller owns cleanup.
      */
-    public static Path materialize(String pluginId, String lang, String kind) throws IOException {
+    public static Path materialize(String pluginId, String lang, String framework, String name) throws IOException {
         Path jar = jarOf(pluginId);
         if (jar == null) {
             throw new IOException("plugin is not an installed jar: " + pluginId);
         }
         String l = lang.strip().toLowerCase(Locale.ROOT);
-        String k = kind.strip();
-        String prefix = "templates/" + l + "/" + k + "/";
+        String fw = framework.strip().toLowerCase(Locale.ROOT);
+        String n = name.strip().toLowerCase(Locale.ROOT);
+        String prefix = "templates/" + l + "/" + fw + "/" + n + ".g8";
         try (FileSystem fs = zipfs(jar)) {
             Path src = fs.getPath(prefix);
             if (!Files.isDirectory(src)) {
-                throw missing(pluginId, l, k);
+                throw missing(pluginId, l, fw, n);
             }
             Path tmp = JkDirs.tmp();
             Files.createDirectories(tmp);
@@ -111,21 +120,15 @@ public final class PluginTemplates {
         }
     }
 
-    public static Optional<String> resolveLang(String pluginId, @Nullable String requested) {
-        List<String> available = langs(pluginId);
-        if (requested != null && !requested.isBlank()) {
-            String l = requested.strip().toLowerCase(Locale.ROOT);
-            if (available.contains(l)) return Optional.of(l);
-            return Optional.empty();
-        }
-        return Giter8ShortNames.defaultLang(available);
-    }
-
-    public static IOException missing(String pluginId, String lang, String kind) {
-        List<String> langs = langs(pluginId);
-        List<String> kinds = kinds(pluginId, lang);
-        return new IOException("plugin template not found: " + pluginId + " lang=" + lang + " kind=" + kind + " (langs="
-                + langs + " kinds=" + kinds + ")");
+    public static IOException missing(String pluginId, String lang, String framework, String name) {
+        return new IOException("plugin template not found: "
+                + pluginId
+                + " lang="
+                + lang
+                + " framework="
+                + framework
+                + " name="
+                + name);
     }
 
     private static @Nullable Path jarOf(String pluginId) {

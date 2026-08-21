@@ -205,7 +205,7 @@ Bind once, then omit `dir` on later calls.
 | **`jk_disk`** | Cache/store usage; `clean`/`nuke` require `confirm=true` |
 | **`jk_jdk`** | List / install / uninstall JDKs (`confirm=true` for uninstall) |
 | **`jk_doctor`** | Host health snapshot (config + disk) |
-| **`jk_new`** | Scaffold a project (same scaffolder as `jk new`); `action=templates` lists short names; `preview=true` returns the exact file set without writing |
+| **`jk_new`** | Scaffold a project (same scaffolder as `jk new`); `action=templates` lists `{id,name,language,framework,…}`; `preview=true` returns the exact file set without writing |
 | **`jk_publish`** | Validate the publish bundle — **always a dry-run**; real uploads stay `jk publish` (credentials never enter the engine) |
 | **`jk_install`** | Install the project app into the local Maven repo; `action=list` shows installed jkx tools (tool installs stay CLI-side — trust gates) |
 | **`jk_import`** | Import a Maven/Gradle build into `jk.toml` (auto-detects the build file) |

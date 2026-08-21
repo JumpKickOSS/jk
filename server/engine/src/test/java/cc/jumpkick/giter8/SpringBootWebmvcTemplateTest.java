@@ -44,6 +44,32 @@ class SpringBootWebmvcTemplateTest {
     }
 
     @Test
+    void java_webmvc_simple_layout(@TempDir Path dir) throws Exception {
+        Path tmpl = repoTemplate("java");
+        assumeTrue(tmpl != null && Files.isDirectory(tmpl), "spring-boot java/webmvc template on disk");
+        Path dest = dir.resolve("notes");
+        Giter8Apply.apply(
+                tmpl,
+                dest,
+                Map.of(
+                        "name",
+                        "notes",
+                        "organization",
+                        "com.acme",
+                        "package",
+                        "com.acme.notes",
+                        "java",
+                        "26",
+                        "simple",
+                        "yes"));
+        assertThat(dest.resolve("data/src/com/acme/notes/data/note/Note.java")).exists();
+        assertThat(dest.resolve("data/resources/db/migration/V1__notes.sql")).exists();
+        assertThat(dest.resolve("server/src/com/acme/notes/server/Application.java")).exists();
+        assertThat(dest.resolve("server/test/src/com/acme/notes/server/NoteApiTest.java")).exists();
+        assertThat(dest.resolve("data/src/main/java")).doesNotExist();
+    }
+
+    @Test
     void kotlin_webmvc_applies_jooq_tree(@TempDir Path dir) throws Exception {
         Path tmpl = repoTemplate("kotlin");
         assumeTrue(tmpl != null && Files.isDirectory(tmpl), "spring-boot kotlin/webmvc template on disk");
@@ -75,7 +101,7 @@ class SpringBootWebmvcTemplateTest {
                 version = "1"
                 """, "spring-boot.toml");
         PluginTableRegistry.putBuiltIn(d, jar);
-        Path extracted = PluginTemplates.materialize("spring-boot", "java", "webmvc");
+        Path extracted = PluginTemplates.materialize("spring-boot", "java", "spring-boot", "webmvc");
         assertThat(extracted.resolve("default.properties")).exists();
         assertThat(extracted.resolve("src/main/g8/jk.toml")).exists();
         Path dest = dir.resolve("out");
@@ -102,7 +128,8 @@ class SpringBootWebmvcTemplateTest {
         for (int i = 0; i < 8 && p != null; i++) {
             Path t = p.resolve("plugins/spring-boot/src/main/resources/templates")
                     .resolve(lang)
-                    .resolve("webmvc");
+                    .resolve("spring-boot")
+                    .resolve("webmvc.g8");
             if (Files.isDirectory(t.resolve("src/main/g8"))) return t;
             p = p.getParent();
         }

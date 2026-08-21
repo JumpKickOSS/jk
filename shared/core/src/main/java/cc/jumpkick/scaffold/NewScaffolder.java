@@ -124,15 +124,26 @@ public final class NewScaffolder {
         Files.writeString(
                 dir.resolve("README.md"), renderPluginReadme(inputs, pluginId, className), StandardCharsets.UTF_8);
 
-        Path g8 = resources.resolve("templates").resolve("java").resolve("default");
+        Path g8 = resources.resolve("templates")
+                .resolve("java")
+                .resolve(pluginId)
+                .resolve("hello.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
+        Files.writeString(
+                g8.resolve(".jk-template.toml"),
+                """
+                language = "java"
+                framework = "%s"
+                name = "hello"
+                description = "Minimal %s application"
+                layouts = ["traditional", "simple"]
+                """.formatted(pluginId, pluginId),
+                StandardCharsets.UTF_8);
         Files.writeString(g8.resolve("default.properties"), """
                 name=demo
                 organization=com.example
                 package=com.example
                 java=25
-                jk_languages=java
-                jk_layout=traditional
                 """, StandardCharsets.UTF_8);
         Files.writeString(g8.resolve("src/main/g8/jk.toml"), """
                 group = "$organization$"
@@ -176,7 +187,7 @@ public final class NewScaffolder {
                 # (no plugin code runs in the engine). This file is packaged at the jar root. See
                 # docs/plugins.md for the full surface: [[contribute.*]] build shaping,
                 # [packaging], [[import.*]]. Bundle Giter8 trees under
-                # src/main/resources/templates/<lang>/<kind>/.
+                # src/main/resources/templates/<lang>/<framework>/<name>.g8/.
 
                 [plugin]
                 id        = "%1$s"        # this plugin's identity
@@ -300,7 +311,7 @@ public final class NewScaffolder {
                   the declarative manifest jk reads: the `[%1$s]` schema and the code hook.
                 - `%2$s` — the code layer: implements the SDK's `Plugin` + `BuildPlugin`, registered
                   via `META-INF/services/cc.jumpkick.plugin.Plugin`.
-                - `src/main/resources/templates/<lang>/<kind>/` — Giter8 trees for `jk new -t %1$s`.
+                - `src/main/resources/templates/<lang>/<framework>/<name>.g8/` — Giter8 trees for `jk new -t %1$s/hello`.
                 - `jk.toml` — depends on `cc.jumpkick:jk-plugin-sdk`. No `[application]` table:
                   `jk-plugin.toml` implies the SDK's `PluginMain` worker host.
 

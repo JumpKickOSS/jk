@@ -547,13 +547,11 @@ public final class McpHandler {
                                 "description",
                                 "traditional (default) | simple — where to place sources, not a jk.toml key"),
                         "template",
-                        Map.of("type", "string", "description", "Giter8 short name or path (see action=templates)"),
-                        "kind",
                         Map.of(
                                 "type",
                                 "string",
                                 "description",
-                                "Plugin template kind (default: default; plugin templates only)"),
+                                "Giter8 id (java/spring-boot/hello), framework/name, or name under none"),
                         "preview",
                         Map.of("type", "boolean", "description", "List files without writing")))));
         tools.add(tool(
@@ -717,7 +715,6 @@ public final class McpHandler {
                 string(args.get("lang")),
                 string(args.get("layout")),
                 string(args.get("template")),
-                string(args.get("kind")),
                 !Boolean.FALSE.equals(McpHistoryViews.parseBool(args.get("executable"))));
         boolean preview = "preview".equalsIgnoreCase(action)
                 || Boolean.TRUE.equals(McpHistoryViews.parseBool(args.get("preview")));

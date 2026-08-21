@@ -83,7 +83,7 @@ class PluginTableRegistryTest {
                         """, "p.toml"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[scaffold]")
-                .hasMessageContaining("templates/<lang>/<kind>/");
+                .hasMessageContaining("templates/<lang>/<framework>/<name>.g8/");
     }
 
     @org.junit.jupiter.api.Test

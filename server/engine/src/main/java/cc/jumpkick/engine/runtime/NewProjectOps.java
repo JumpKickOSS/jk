@@ -40,7 +40,6 @@ public final class NewProjectOps {
             String lang,
             String layout,
             String template,
-            String kind,
             boolean executable,
             String jdk,
             int javaRelease,
@@ -63,19 +62,6 @@ public final class NewProjectOps {
                 String layout,
                 String template,
                 boolean executable) {
-            this(name, parentDir, group, lang, layout, template, null, executable);
-        }
-
-        /** HTTP/MCP compact shape with an explicit plugin kind. */
-        public Request(
-                String name,
-                String parentDir,
-                String group,
-                String lang,
-                String layout,
-                String template,
-                String kind,
-                boolean executable) {
             this(
                     name,
                     parentDir,
@@ -83,7 +69,6 @@ public final class NewProjectOps {
                     lang,
                     layout,
                     template,
-                    kind,
                     executable,
                     null,
                     0,
@@ -196,31 +181,30 @@ public final class NewProjectOps {
             }
             boolean offline =
                     cc.jumpkick.config.SessionContext.current().config().offlineOr(false);
-            String kind = req.kind() == null || req.kind().isBlank()
-                    ? "default"
-                    : req.kind().strip();
             Path templateRoot;
             Path extracted = null;
             String langName = prep.lang() == null ? null : prep.lang().hoconValue();
-            if (cc.jumpkick.giter8.PluginTemplates.isPluginTemplate(prep.template())) {
-                String lang = cc.jumpkick.giter8.PluginTemplates.resolveLang(prep.template(), langName)
-                        .orElseThrow(() -> cc.jumpkick.giter8.PluginTemplates.missing(
-                                prep.template(), langName == null ? "" : langName, kind));
-                extracted = cc.jumpkick.giter8.PluginTemplates.materialize(prep.template(), lang, kind);
+            var spec = resolveIndexed(prep.template(), langName, prep.parent());
+            if (spec.isPresent() && cc.jumpkick.giter8.TemplateSpec.SOURCE_PLUGIN.equals(spec.get().source())) {
+                var s = spec.get();
+                extracted = cc.jumpkick.giter8.PluginTemplates.materialize(
+                        s.pluginId(), s.language(), s.framework(), s.name());
                 templateRoot = extracted;
+            } else if (spec.isPresent() && spec.get().root() != null) {
+                templateRoot = spec.get().root();
             } else {
-                if (kind != null && !kind.isBlank() && !"default".equals(kind)) {
-                    throw new IOException("kind is only valid for plugin templates");
-                }
                 templateRoot = resolveTemplate(prep.template(), langName, prep.parent());
+            }
+            if (spec.isPresent()
+                    && "simple".equalsIgnoreCase(prep.layout())
+                    && spec.get().supportsLayout(cc.jumpkick.giter8.Giter8ShortNames.LAYOUT_SIMPLE)) {
+                params.putIfAbsent("simple", "yes");
             }
             try {
                 Giter8Apply.apply(templateRoot, target, params, Giter8Maven.central(offline));
             } catch (IOException e) {
                 throw new IOException(
-                        "applying template " + prep.template() + " lang=" + langName + " kind=" + kind + ": "
-                                + e.getMessage(),
-                        e);
+                        "applying template " + prep.template() + " lang=" + langName + ": " + e.getMessage(), e);
             } finally {
                 if (extracted != null) {
                     try {
@@ -334,10 +318,33 @@ public final class NewProjectOps {
         }
     }
 
+    private static Optional<cc.jumpkick.giter8.TemplateSpec> resolveIndexed(String ref, String lang, Path cwd) {
+        try {
+            return Giter8TemplateIndex.resolve(ref, lang, Giter8TemplateIndex.searchRoots(cwd));
+        } catch (IllegalArgumentException e) {
+            throw e;
+        }
+    }
+
+    private static Optional<Path> indexedRoot(String ref, String lang, Path cwd) throws IOException {
+        Optional<cc.jumpkick.giter8.TemplateSpec> spec = resolveIndexed(ref, lang, cwd);
+        if (spec.isEmpty()) {
+            try {
+                cc.jumpkick.templates.OfficialTemplatesFreshen.refreshQuiet(s -> {});
+            } catch (Throwable ignored) {
+                // best-effort
+            }
+            spec = resolveIndexed(ref, lang, cwd);
+        }
+        if (spec.isEmpty()) return Optional.empty();
+        cc.jumpkick.giter8.TemplateSpec s = spec.get();
+        if (s.root() != null) return Optional.of(s.root());
+        return Optional.empty();
+    }
+
     /**
-     * Resolve a template ref: absolute/relative path, short name via {@link
-     * Giter8TemplateIndex#resolveShortName} (local roots + monorepo dogfood + official cache
-     * freshen from the public {@code JumpKickOSS/jk-templates} repo).
+     * Resolve a template ref: absolute/relative path, catalog/plugin id via {@link
+     * Giter8TemplateIndex} (local roots + monorepo dogfood + official cache freshen).
      */
     static Path resolveTemplate(String ref, Path cwd) throws IOException {
         return resolveTemplate(ref, null, cwd);
@@ -353,9 +360,9 @@ public final class NewProjectOps {
             if (Files.isDirectory(rel) && isTemplateRoot(rel)) return rel;
         }
 
-        if (ref.matches("[a-z][a-z0-9-]*")) {
-            // Disk + official monorepo cache (freshen clones if missing / incomplete).
-            Optional<Path> indexed = Giter8TemplateIndex.resolveShortName(ref, lang, cwd);
+        if (ref.matches("[a-z][a-z0-9-]*") || ref.matches("[a-z][a-z0-9-]*/[a-z][a-z0-9-]*")
+                || ref.matches("[a-z]+/[a-z][a-z0-9-]*/[a-z][a-z0-9-]*")) {
+            Optional<Path> indexed = indexedRoot(ref, lang, cwd);
             if (indexed.isPresent()) return indexed.get();
 
             JkTemplatesConfig cfg = JkTemplatesConfig.resolve();

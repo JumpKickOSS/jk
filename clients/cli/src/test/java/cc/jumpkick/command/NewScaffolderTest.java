@@ -424,7 +424,7 @@ class NewScaffolderTest {
         assertThat(mBody).contains("id        = \"foo\"").contains("table     = \"foo\"");
         assertThat(mBody).contains("protocol-prefix = \"##FOO:\"");
         assertThat(mBody).doesNotContain("[scaffold]");
-        assertThat(tempDir.resolve("src/main/resources/templates/java/default/src/main/g8/jk.toml"))
+        assertThat(tempDir.resolve("src/main/resources/templates/java/foo/hello.g8/src/main/g8/jk.toml"))
                 .exists();
 
         // ServiceLoader registration points at the sample class.

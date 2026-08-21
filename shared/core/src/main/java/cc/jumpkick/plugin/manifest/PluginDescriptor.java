@@ -10,7 +10,7 @@ import java.util.Objects;
 /**
  * Declarative plugin manifest ({@code jk-plugin.toml}): owned table, schema, contributions.
  * Evaluated as data — no plugin classes loaded for this layer. Giter8 trees for
- * {@code jk new -t} live at {@code templates/<lang>/<kind>/} in the jar, not in this file.
+ * {@code jk new -t} live at {@code templates/<lang>/<framework>/<name>.g8/} in the jar, not in this file.
  */
 public record PluginDescriptor(
         String id,

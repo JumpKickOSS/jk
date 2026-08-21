@@ -56,7 +56,6 @@ class NewProjectOpsTest {
                 "java",
                 "simple",
                 null,
-                null,
                 true,
                 null,
                 0,
@@ -83,7 +82,6 @@ class NewProjectOpsTest {
                         "com.example",
                         "java",
                         "simple",
-                        null,
                         null,
                         true,
                         null,
@@ -154,9 +152,16 @@ class NewProjectOpsTest {
     void resolve_template_finds_dogfood_short_name(@TempDir Path temp) throws Exception {
         // Unique short name so the official cache cannot steal the hit.
         Path templates = temp.resolve("templates");
-        Path g8 = templates.resolve("acme-demo.g8");
+        Path g8 = templates.resolve("java").resolve("none").resolve("acme-demo.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
-        Files.writeString(g8.resolve("default.properties"), "name=demo\njk_languages=java\njk_layout=traditional\n");
+        Files.writeString(g8.resolve(".jk-template.toml"), """
+                language = "java"
+                framework = "none"
+                name = "acme-demo"
+                description = "demo"
+                layouts = ["traditional"]
+                """);
+        Files.writeString(g8.resolve("default.properties"), "name=demo\n");
         Files.writeString(g8.resolve("src/main/g8/jk.toml"), "name=demo\n");
         Path parent = temp.resolve("apps");
         Files.createDirectories(parent);

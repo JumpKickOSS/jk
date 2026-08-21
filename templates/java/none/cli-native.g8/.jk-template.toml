@@ -1,0 +1,5 @@
+language = "java"
+framework = "none"
+name = "cli-native"
+description = "Interactive Java CLI with JLine (jk native ready)"
+layouts = ["traditional", "simple"]

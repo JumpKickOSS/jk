@@ -73,8 +73,7 @@ public final class NewCommand implements CliCommand {
                 Opt.flag("Assembly (fat) jar. Implies --executable.", "--assembly"),
                 Opt.flag("Wire a GraalVM native-image build.", "--native"),
                 Opt.flag("Scaffold a jk build-plugin authoring project.", "--plugin"),
-                Opt.value("<ref>", "Giter8 template path, short name, or URL", "-t", "--template"),
-                Opt.value("<kind>", "Plugin template kind (default: default).", "--kind"),
+                Opt.value("<ref>", "Giter8 path, name, framework/name, or URL", "-t", "--template"),
                 Opt.value("<k=v>", "Template property k=v (repeatable)", "--param")
                         .repeat(),
                 Opt.value("<url>", "Extra git template source (repeatable)", "--template-source")
@@ -101,7 +100,6 @@ public final class NewCommand implements CliCommand {
     boolean nativeImage;
     boolean plugin;
     String templateRef;
-    String kind;
     List<String> templateParams = List.of();
     /** One-shot third-party git sources for short-name lookup. */
     List<String> templateSources = List.of();
@@ -223,7 +221,6 @@ public final class NewCommand implements CliCommand {
         this.nativeImage = in.isSet("native");
         this.plugin = in.isSet("plugin");
         this.templateRef = in.value("template").orElse(null);
-        this.kind = in.value("kind").orElse(null);
         this.templateParams = in.values("param");
         this.templateSources = in.values("template-source");
         this.depsCsv = in.value("deps").orElse(null);
@@ -311,9 +308,8 @@ public final class NewCommand implements CliCommand {
                             parentDir.toString(),
                             group,
                             resolvedLang,
-                            "simple",
+                            layoutFlag == null || layoutFlag.isBlank() ? "traditional" : layoutFlag,
                             templateRef,
-                            kind,
                             false,
                             null,
                             0,
@@ -591,7 +587,6 @@ public final class NewCommand implements CliCommand {
                 || assembly
                 || nativeImage
                 || plugin
-                || (kind != null && !kind.isBlank())
                 || (templateRef != null && !templateRef.isBlank())
                 || depsCsv != null
                 || layoutFlag != null
@@ -615,7 +610,6 @@ public final class NewCommand implements CliCommand {
                         inputs.group(),
                         inputs.lang().hoconValue(),
                         inputs.layout(),
-                        null,
                         null,
                         inputs.isRunnable(),
                         inputs.jdk(),
@@ -1113,6 +1107,9 @@ public final class NewCommand implements CliCommand {
 
     /** Short-name shaped refs: the engine owns the catalog and freshen. */
     private static boolean officialTemplateShortName(String id) {
-        return id != null && id.matches("[a-z][a-z0-9-]*");
+        if (id == null || id.isBlank()) return false;
+        return id.matches("[a-z][a-z0-9-]*")
+                || id.matches("[a-z][a-z0-9-]*/[a-z][a-z0-9-]*")
+                || id.matches("[a-z]+/[a-z][a-z0-9-]*/[a-z][a-z0-9-]*");
     }
 }

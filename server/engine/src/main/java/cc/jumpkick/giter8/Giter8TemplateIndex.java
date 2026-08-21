@@ -2,129 +2,119 @@
 package cc.jumpkick.giter8;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
-import java.util.Set;
+import java.util.TreeSet;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Builds the template picker list: official {@link Giter8ShortNames} catalog, then overlays / adds
- * entries discovered under local template roots by reading {@code default.properties} ({@code
- * jk_languages}, {@code jk_layout}, {@code name}).
- *
- * <p>Merge rules for a short name:
- *
- * <ol>
- *   <li>Start from the catalog row when the id is first-party
- *   <li>On-disk {@code jk_languages} / {@code jk_layout} win when present
- *   <li>Unknown short names from disk are appended (description from {@code name} or the id)
- *   <li>When layout is still unknown, infer from the template tree ({@link #inferLayout(Path)})
- * </ol>
+ * Unified template picker and resolver. Scans {@code <lang>/<framework>/<name>.g8} trees that
+ * carry {@code .jk-template.toml}. Plugin jar trees overlay disk on id collision.
  */
 public final class Giter8TemplateIndex {
 
+    private static final List<String> LANGS = List.of("java", "kotlin", "groovy");
+
     private Giter8TemplateIndex() {}
 
-    /**
-     * Catalog-only index (no disk scan) — useful for tests and offline help text.
-     */
-    public static List<Giter8ShortNames.Entry> catalogOnly() {
-        return Giter8ShortNames.entries();
-    }
-
-    /**
-     * Picker row for HTTP/MCP/dashboard. Catalog entries have empty {@code kinds}; plugin
-     * entries list kinds per language and win on id collision.
-     */
-    public record PickerRow(
-            String id,
-            String description,
-            List<String> languages,
-            String layout,
-            boolean plugin,
-            Map<String, List<String>> kinds) {
-        public PickerRow {
-            languages = languages == null ? List.of() : List.copyOf(languages);
-            kinds = kinds == null || kinds.isEmpty() ? Map.of() : Map.copyOf(kinds);
-        }
-    }
-
-    /** Installed plugin jars first (they win on id collision), then catalog + local roots. */
-    public static List<PickerRow> picker(List<Path> roots) {
-        Map<String, PickerRow> byId = new LinkedHashMap<>();
-        for (PluginTemplates.Installed p : PluginTemplates.installed()) {
-            byId.put(
-                    p.id(),
-                    new PickerRow(
-                            p.id(),
-                            p.description(),
-                            p.langs(),
-                            Giter8ShortNames.LAYOUT_TRADITIONAL,
-                            true,
-                            p.kindsByLang()));
-        }
-        for (Giter8ShortNames.Entry e : build(roots)) {
-            byId.putIfAbsent(
-                    e.id(),
-                    new PickerRow(e.id(), e.description(), e.languages(), e.layout(), false, Map.of()));
-        }
-        return List.copyOf(byId.values());
-    }
-
-    /**
-     * Full picker list: official catalog, then scan each root for {@code *.g8} / bare short-name
-     * dirs. Non-existent roots are skipped. Order: catalog order first, then newly discovered ids
-     * in scan order.
-     */
-    public static List<Giter8ShortNames.Entry> build(List<Path> roots) {
-        Map<String, Giter8ShortNames.Entry> byId = new LinkedHashMap<>();
-        for (Giter8ShortNames.Entry e : Giter8ShortNames.entries()) {
-            byId.put(e.id(), e);
-        }
-        Set<String> overlaid = new HashSet<>();
+    /** Plugin rows first (overlay), then catalog / local roots. */
+    public static List<TemplateSpec> picker(List<Path> roots) {
+        Map<String, TemplateSpec> byId = new LinkedHashMap<>();
         if (roots != null) {
             for (Path root : roots) {
                 if (root == null) continue;
-                scanRoot(root.toAbsolutePath().normalize(), byId, overlaid);
+                scanRoot(root.toAbsolutePath().normalize(), byId, TemplateSpec.SOURCE_CATALOG);
             }
         }
-        // Second pass: only ids pass 1 did NOT overlay get the (expensive) deep probe — the DFS
-        // walks every root to depth 5, so re-probing already-merged ids is pure rework.
-        if (roots != null && !roots.isEmpty()) {
-            for (String id : idsNeedingProbe(byId.values(), overlaid)) {
-                Path found = findTemplateDir(roots, id);
-                if (found != null) {
-                    byId.put(id, mergeFromDisk(byId.get(id), found));
-                }
-            }
+        for (TemplateSpec p : PluginTemplates.list()) {
+            byId.put(p.id(), p);
         }
         return List.copyOf(byId.values());
     }
 
-    /** Ids still catalog-only after pass 1 — the only ones worth a pass-2 deep probe. */
-    static List<String> idsNeedingProbe(Collection<Giter8ShortNames.Entry> entries, Set<String> overlaid) {
-        List<String> out = new ArrayList<>();
-        for (Giter8ShortNames.Entry e : entries) {
-            if (!overlaid.contains(e.id())) out.add(e.id());
+    /**
+     * Resolve {@code ref} to a spec in {@code picker(roots)}.
+     *
+     * <ul>
+     *   <li>{@code lang/framework/name} — exact
+     *   <li>{@code framework/name} — requested lang first, then java → kotlin → groovy
+     *   <li>bare {@code name} — framework {@code none}; requested lang only when set, else walk
+     * </ul>
+     *
+     * @throws IllegalArgumentException when {@code ref} names a framework rather than a template
+     */
+    public static Optional<TemplateSpec> resolve(String ref, @Nullable String lang, List<Path> roots) {
+        if (ref == null || ref.isBlank()) return Optional.empty();
+        String r = ref.strip();
+        if (r.contains("\\") || r.startsWith(".") || r.startsWith("/")) return Optional.empty();
+        List<TemplateSpec> all = picker(roots);
+        Map<String, TemplateSpec> byId = new LinkedHashMap<>();
+        for (TemplateSpec s : all) byId.put(s.id(), s);
+
+        String[] parts = r.split("/");
+        if (parts.length == 3) {
+            return Optional.ofNullable(byId.get(TemplateSpec.idOf(parts[0], parts[1], parts[2])));
         }
-        return out;
+        if (parts.length == 2) {
+            String framework = parts[0].toLowerCase(Locale.ROOT);
+            String name = parts[1].toLowerCase(Locale.ROOT);
+            if (!JkTemplateToml.isKebab(framework) || !JkTemplateToml.isKebab(name)) return Optional.empty();
+            Optional<TemplateSpec> hit = walkLangs(byId, lang, framework, name);
+            if (hit.isPresent()) return hit;
+            return Optional.empty();
+        }
+        if (parts.length != 1) return Optional.empty();
+        String name = parts[0].toLowerCase(Locale.ROOT);
+        if (!JkTemplateToml.isKebab(name)) return Optional.empty();
+        Optional<TemplateSpec> none = lang == null || lang.isBlank()
+                ? walkLangs(byId, null, TemplateSpec.FRAMEWORK_NONE, name)
+                : Optional.ofNullable(byId.get(TemplateSpec.idOf(lang, TemplateSpec.FRAMEWORK_NONE, name)));
+        if (none.isPresent()) return none;
+        List<String> under = templatesUnderFramework(all, name);
+        if (!under.isEmpty()) {
+            throw new IllegalArgumentException(name
+                    + " is a framework; pick a template: "
+                    + String.join(", ", under)
+                    + " (e.g. "
+                    + name
+                    + "/"
+                    + under.getFirst()
+                    + ")");
+        }
+        return Optional.empty();
     }
 
-    /**
-     * Default roots the engine / dashboard should scan (best-effort, no network):
-     * {@code $JK_TEMPLATES}, {@code ~/.jk/templates}, official cache clones under {@code
-     * ~/.jk/cache/templates}, and optional extra paths (e.g. monorepo {@code templates/}).
-     */
+    static Optional<TemplateSpec> walkLangs(
+            Map<String, TemplateSpec> byId, @Nullable String requested, String framework, String name) {
+        List<String> order = new ArrayList<>();
+        if (requested != null && !requested.isBlank()) {
+            order.add(requested.strip().toLowerCase(Locale.ROOT));
+        }
+        for (String l : LANGS) {
+            if (!order.contains(l)) order.add(l);
+        }
+        for (String l : order) {
+            TemplateSpec hit = byId.get(TemplateSpec.idOf(l, framework, name));
+            if (hit != null) return Optional.of(hit);
+        }
+        return Optional.empty();
+    }
+
+    static List<String> templatesUnderFramework(List<TemplateSpec> all, String framework) {
+        TreeSet<String> names = new TreeSet<>();
+        for (TemplateSpec s : all) {
+            if (s.framework().equals(framework)) names.add(s.name());
+        }
+        return List.copyOf(names);
+    }
+
     public static List<Path> defaultSearchRoots(Path home, List<Path> extras) {
         List<Path> roots = new ArrayList<>();
         String env = System.getenv("JK_TEMPLATES");
@@ -132,7 +122,6 @@ public final class Giter8TemplateIndex {
         if (home != null) {
             roots.add(home.resolve(".jk").resolve("templates"));
             roots.add(home.resolve(".jk").resolve("cache").resolve("templates"));
-            // XDG-style secondary cache
             String xdg = System.getenv("XDG_CACHE_HOME");
             if (xdg != null && !xdg.isBlank()) {
                 roots.add(Path.of(xdg).resolve("jk").resolve("templates"));
@@ -146,26 +135,18 @@ public final class Giter8TemplateIndex {
         return roots;
     }
 
-    static void scanRoot(Path root, Map<String, Giter8ShortNames.Entry> byId, Set<String> overlaid) {
+    static void scanRoot(Path root, Map<String, TemplateSpec> byId, String source) {
         if (!Files.isDirectory(root)) return;
+        if (scanCatalogLayout(root, byId, source)) return;
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(root)) {
             for (Path child : stream) {
                 if (!Files.isDirectory(child)) continue;
                 String fileName = child.getFileName().toString();
                 if (fileName.startsWith(".")) continue;
-                if (isLangDir(fileName)) {
-                    scanLangDir(child, fileName, byId, overlaid);
-                    continue;
-                }
-                if (isTemplateRoot(child)) {
-                    String id = shortNameOf(fileName);
-                    if (id != null) mergeInto(byId, overlaid, id, child, null);
-                    continue;
-                }
                 if (fileName.contains("jk-templates")
                         || fileName.contains("github.com")
                         || fileName.equals("templates")) {
-                    scanNestedG8(child, byId, overlaid, 0);
+                    scanNested(child, byId, source, 0);
                 }
             }
         } catch (IOException ignored) {
@@ -173,179 +154,102 @@ public final class Giter8TemplateIndex {
         }
     }
 
-    private static boolean isLangDir(String name) {
-        return "java".equals(name) || "kotlin".equals(name) || "groovy".equals(name);
-    }
-
-    private static void scanLangDir(
-            Path langDir, String lang, Map<String, Giter8ShortNames.Entry> byId, Set<String> overlaid) {
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(langDir)) {
-            for (Path child : stream) {
-                if (!Files.isDirectory(child)) continue;
-                String name = child.getFileName().toString();
-                if (name.startsWith(".")) continue;
-                if (isTemplateRoot(child)) {
-                    String id = shortNameOf(name);
-                    if (id != null) mergeInto(byId, overlaid, id, child, lang);
-                }
-            }
-        } catch (IOException ignored) {
-            // best-effort
-        }
-    }
-
-    private static void scanNestedG8(
-            Path dir, Map<String, Giter8ShortNames.Entry> byId, Set<String> overlaid, int depth) {
+    private static void scanNested(Path dir, Map<String, TemplateSpec> byId, String source, int depth) {
         if (depth > 4 || !Files.isDirectory(dir)) return;
+        if (scanCatalogLayout(dir, byId, source)) return;
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
             for (Path child : stream) {
                 if (!Files.isDirectory(child)) continue;
                 String name = child.getFileName().toString();
                 if (name.startsWith(".")) continue;
-                if (name.endsWith(".g8") && isTemplateRoot(child)) {
-                    String parent =
-                            dir.getFileName() == null ? "" : dir.getFileName().toString();
-                    mergeInto(byId, overlaid, shortNameOf(name), child, isLangDir(parent) ? parent : null);
-                } else if (depth < 4) {
-                    scanNestedG8(child, byId, overlaid, depth + 1);
-                }
+                scanNested(child, byId, source, depth + 1);
             }
         } catch (IOException ignored) {
             // best-effort
         }
     }
 
-    private static void mergeInto(
-            Map<String, Giter8ShortNames.Entry> byId, Set<String> overlaid, String id, Path templateRoot, String lang) {
-        if (id == null || id.isBlank()) return;
-        Giter8ShortNames.Entry base = byId.getOrDefault(
-                id, new Giter8ShortNames.Entry(id, id, List.of(), Giter8ShortNames.LAYOUT_TRADITIONAL));
-        Giter8ShortNames.Entry merged = mergeFromDisk(base, templateRoot);
-        if (lang != null && !lang.isBlank()) {
-            List<String> langs = new ArrayList<>(merged.languages());
-            if (!langs.contains(lang)) {
-                langs.add(lang);
-                merged = merged.withLanguages(langs);
+    /** @return true when {@code dir} itself is a {@code <lang>/<framework>/} catalog root */
+    static boolean scanCatalogLayout(Path dir, Map<String, TemplateSpec> byId, String source) {
+        boolean any = false;
+        for (String lang : LANGS) {
+            Path langDir = dir.resolve(lang);
+            if (!Files.isDirectory(langDir)) continue;
+            try (DirectoryStream<Path> frameworks = Files.newDirectoryStream(langDir)) {
+                for (Path frameworkDir : frameworks) {
+                    if (!Files.isDirectory(frameworkDir)) continue;
+                    String framework = frameworkDir.getFileName().toString();
+                    if (framework.startsWith(".") || framework.endsWith(".g8")) continue;
+                    if (!JkTemplateToml.isKebab(framework)) continue;
+                    any |= scanFrameworkDir(lang, framework, frameworkDir, byId, source);
+                }
+            } catch (IOException ignored) {
+                // best-effort
             }
         }
-        byId.put(id, merged);
-        overlaid.add(id);
+        return any;
     }
 
-    /** Overlay languages/layout/description from {@code default.properties} (+ layout inference). */
-    public static Giter8ShortNames.Entry mergeFromDisk(Giter8ShortNames.Entry base, Path templateRoot) {
-        Map<String, String> props = readDefaultProperties(templateRoot);
-        List<String> langs = Giter8ShortNames.languagesFromProperties(props);
-        if (langs.isEmpty()) langs = base.languages();
-        Optional<String> lay = Giter8ShortNames.layoutFromProperties(props);
-        String layout = lay.orElseGet(() -> {
-            String inferred = inferLayout(templateRoot);
-            return inferred != null ? inferred : base.layout();
-        });
-        String desc = base.description();
-        // Prefer catalog description; for unknown short names use props name.
-        if ((desc == null || desc.isBlank() || desc.equals(base.id())) && props.containsKey("name")) {
-            String n = props.get("name");
-            if (n != null && !n.isBlank()) desc = n.strip();
-        }
-        return new Giter8ShortNames.Entry(base.id(), desc, langs, layout);
-    }
-
-    /**
-     * Infer layout from the applied content tree under {@code src/main/g8} (or the template root).
-     * Returns null when ambiguous.
-     */
-    public static String inferLayout(Path templateRoot) {
-        if (templateRoot == null || !Files.isDirectory(templateRoot)) return null;
-        Path g8 = templateRoot.resolve("src/main/g8");
-        Path content = Files.isDirectory(g8) ? g8 : templateRoot;
-        if (Files.isDirectory(content.resolve("grails-app"))) return Giter8ShortNames.LAYOUT_CUSTOM;
-        if (Files.isDirectory(content.resolve("src/main/java"))
-                || Files.isDirectory(content.resolve("src/main/kotlin"))
-                || Files.isDirectory(content.resolve("src/main/groovy"))) {
-            return Giter8ShortNames.LAYOUT_TRADITIONAL;
-        }
-        if (Files.isDirectory(content.resolve("src")) || Files.isDirectory(content.resolve("test"))) {
-            return Giter8ShortNames.LAYOUT_SIMPLE;
-        }
-        return null;
-    }
-
-    public static Map<String, String> readDefaultProperties(Path templateRoot) {
-        Map<String, String> out = new LinkedHashMap<>();
-        if (templateRoot == null) return out;
-        Path g8 = templateRoot.resolve("src/main/g8");
-        Path contentRoot = Files.isDirectory(g8) ? g8 : templateRoot;
-        for (Path propsFile :
-                new Path[] {templateRoot.resolve("default.properties"), contentRoot.resolve("default.properties")}) {
-            if (!Files.isRegularFile(propsFile)) continue;
-            Properties p = new Properties();
-            try (InputStream in = Files.newInputStream(propsFile)) {
-                p.load(in);
-            } catch (IOException e) {
-                continue;
+    private static boolean scanFrameworkDir(
+            String lang, String framework, Path frameworkDir, Map<String, TemplateSpec> byId, String source) {
+        boolean any = false;
+        try (DirectoryStream<Path> tmpls = Files.newDirectoryStream(frameworkDir)) {
+            for (Path tmpl : tmpls) {
+                TemplateSpec spec = specFromDisk(lang, framework, tmpl, source);
+                if (spec != null) {
+                    byId.putIfAbsent(spec.id(), spec);
+                    any = true;
+                }
             }
-            for (String name : p.stringPropertyNames()) {
-                out.putIfAbsent(name, p.getProperty(name));
-            }
+        } catch (IOException ignored) {
+            // best-effort
         }
-        return out;
+        return any;
     }
 
-    static boolean isTemplateRoot(Path p) {
+    static @Nullable TemplateSpec specFromDisk(
+            String lang, String framework, Path tmpl, String source) {
+        if (!Files.isDirectory(tmpl)) return null;
+        String name = JkTemplateToml.nameFromDir(tmpl.getFileName().toString());
+        if (name == null) return null;
+        Optional<JkTemplateToml.Meta> meta = JkTemplateToml.tryRead(tmpl);
+        if (meta.isEmpty()) return null;
+        if (JkTemplateToml.matching(meta.get(), lang, framework, name).isEmpty()) return null;
+        JkTemplateToml.Meta m = meta.get();
+        String src = source;
+        if (TemplateSpec.SOURCE_CATALOG.equals(source) && isLocalRoot(tmpl)) src = TemplateSpec.SOURCE_LOCAL;
+        return new TemplateSpec(
+                TemplateSpec.idOf(lang, framework, name),
+                name,
+                lang,
+                framework,
+                m.description(),
+                m.layouts(),
+                src,
+                null,
+                tmpl.toAbsolutePath().normalize());
+    }
+
+    private static boolean isLocalRoot(Path tmpl) {
+        String env = System.getenv("JK_TEMPLATES");
+        if (env != null && !env.isBlank()) {
+            Path envRoot = Path.of(env).toAbsolutePath().normalize();
+            if (tmpl.startsWith(envRoot)) return true;
+        }
+        Path home = Path.of(System.getProperty("user.home", "")).resolve(".jk").resolve("templates");
+        return tmpl.startsWith(home.toAbsolutePath().normalize());
+    }
+
+    public static boolean isTemplateRoot(Path p) {
         if (p == null || !Files.isDirectory(p)) return false;
-        if (Files.isRegularFile(p.resolve("default.properties"))) return true;
-        Path g8 = p.resolve("src/main/g8");
-        return Files.isDirectory(g8)
-                && (Files.isRegularFile(g8.resolve("default.properties"))
-                        || Files.isRegularFile(p.resolve("default.properties")));
+        return Files.isRegularFile(p.resolve(JkTemplateToml.FILE_NAME));
     }
 
-    static String shortNameOf(String fileName) {
-        if (fileName == null || fileName.isBlank()) return null;
-        String n = fileName;
-        if (n.endsWith(".g8")) n = n.substring(0, n.length() - 3);
-        n = n.toLowerCase(Locale.ROOT);
-        if (!n.matches("[a-z][a-z0-9-]*")) return null;
-        return n;
-    }
-
-    /**
-     * Resolve a short name to a template root directory, searching the same roots the picker uses
-     * plus monorepo dogfood near {@code hints} / the process cwd / this class's code source. When
-     * nothing is local, best-effort freshen of the official monorepo cache, then search again.
-     *
-     * @return absolute template root, or empty when the short name cannot be found
-     */
-    public static Optional<Path> resolveShortName(String shortName, Path... hints) {
-        return resolveShortName(shortName, null, hints);
-    }
-
-    public static Optional<Path> resolveShortName(String shortName, String lang, Path... hints) {
-        if (shortName == null || !shortName.matches("[a-z][a-z0-9-]*")) return Optional.empty();
-        Path found = findTemplateDir(searchRoots(hints), shortName, lang);
-        if (found != null) return Optional.of(found.toAbsolutePath().normalize());
-
-        // First-party short names often live only in the official monorepo; clone/fetch it once.
-        if (Giter8ShortNames.find(shortName).isPresent()) {
-            try {
-                cc.jumpkick.templates.OfficialTemplatesFreshen.refreshQuiet(s -> {});
-            } catch (Throwable ignored) {
-                // freshen is best-effort
-            }
-            found = findTemplateDir(searchRoots(hints), shortName, lang);
-            if (found != null) return Optional.of(found.toAbsolutePath().normalize());
-        }
-        return Optional.empty();
-    }
-
-    /** All roots used for short-name resolution (deduped, existing dirs preferred first). */
     public static List<Path> searchRoots(Path... hints) {
         Path home = Optional.ofNullable(System.getProperty("user.home"))
                 .map(Path::of)
                 .orElse(null);
         List<Path> extras = new ArrayList<>();
-        // Monorepo dogfood: walk ancestors of hints + user.dir for a templates/ directory.
         if (hints != null) {
             for (Path h : hints) {
                 if (h != null) collectDogfood(h, extras);
@@ -353,7 +257,6 @@ public final class Giter8TemplateIndex {
         }
         String userDir = System.getProperty("user.dir");
         if (userDir != null && !userDir.isBlank()) collectDogfood(Path.of(userDir), extras);
-        // Development: engine/classes jar lives under …/jk/… — walk up for templates/
         try {
             var loc = Giter8TemplateIndex.class.getProtectionDomain().getCodeSource();
             if (loc != null && loc.getLocation() != null) {
@@ -377,66 +280,5 @@ public final class Giter8TemplateIndex {
             }
             walk = walk.getParent();
         }
-    }
-
-    static Path findTemplateDir(List<Path> roots, String id) {
-        return findTemplateDir(roots, id, null);
-    }
-
-    static Path findTemplateDir(List<Path> roots, String id, String lang) {
-        if (id == null || id.isBlank() || roots == null) return null;
-        String dirName = id + ".g8";
-        for (Path root : roots) {
-            if (root == null || !Files.isDirectory(root)) continue;
-            Path hit = findNamedUnder(root, id, dirName, lang, 0);
-            if (hit != null) return hit;
-        }
-        return null;
-    }
-
-    /** DFS for {@code <lang>/id.g8}, {@code id.g8}, or bare {@code id}, depth-capped. */
-    private static Path findNamedUnder(Path dir, String id, String dirName, String lang, int depth) {
-        if (depth > 5 || dir == null || !Files.isDirectory(dir)) return null;
-        Path langHit = langDirTemplate(dir, id, dirName, lang);
-        if (langHit != null) return langHit;
-        Path a = dir.resolve(dirName);
-        if (isTemplateRoot(a)) return a.toAbsolutePath().normalize();
-        Path b = dir.resolve(id);
-        if (isTemplateRoot(b)) return b.toAbsolutePath().normalize();
-        if (depth == 5) return null;
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
-            for (Path child : stream) {
-                if (!Files.isDirectory(child)) continue;
-                String name = child.getFileName().toString();
-                if (name.startsWith(".")) continue;
-                if (name.equals("templates")
-                        || name.endsWith(".g8")
-                        || isLangDir(name)
-                        || name.contains("jk-templates")
-                        || name.contains("github.com")
-                        || depth == 0) {
-                    Path hit = findNamedUnder(child, id, dirName, lang, depth + 1);
-                    if (hit != null) return hit;
-                }
-            }
-        } catch (IOException ignored) {
-            // continue
-        }
-        return null;
-    }
-
-    private static Path langDirTemplate(Path dir, String id, String dirName, String lang) {
-        List<String> order = new ArrayList<>();
-        if (lang != null && !lang.isBlank()) order.add(lang.strip().toLowerCase(Locale.ROOT));
-        for (String l : List.of("java", "kotlin", "groovy")) {
-            if (!order.contains(l)) order.add(l);
-        }
-        for (String l : order) {
-            Path p = dir.resolve(l).resolve(dirName);
-            if (isTemplateRoot(p)) return p.toAbsolutePath().normalize();
-            Path q = dir.resolve(l).resolve(id);
-            if (isTemplateRoot(q)) return q.toAbsolutePath().normalize();
-        }
-        return null;
     }
 }

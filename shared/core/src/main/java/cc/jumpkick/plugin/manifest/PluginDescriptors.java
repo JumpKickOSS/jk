@@ -88,7 +88,8 @@ public final class PluginDescriptors {
 
         if (result.getTable("scaffold") != null) {
             throw new JkBuildParseException(
-                    displayPath + ": [scaffold] is not supported; ship Giter8 trees under templates/<lang>/<kind>/");
+                    displayPath
+                            + ": [scaffold] is not supported; ship Giter8 trees under templates/<lang>/<framework>/<name>.g8/");
         }
 
         PluginDescriptor.Contributions contributions = parseContributions(result, schema.keySet(), displayPath);

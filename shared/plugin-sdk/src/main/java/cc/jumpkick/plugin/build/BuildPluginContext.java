@@ -33,6 +33,6 @@ public interface BuildPluginContext {
     // run()/nativeImage() shaping is a LATER step (jk dev's hot-reload hooks) — the hooks and
     // their shape records land WITH the feature; a published method that always throws is
     // a lie in the contract. Import is manifest data ({@code [[import.gradle-plugin]]}).
-    // Giter8 templates live under {@code templates/<lang>/<kind>/} in the plugin jar.
+    // Giter8 templates live under {@code templates/<lang>/<framework>/<name>.g8/} in the plugin jar.
 
 }

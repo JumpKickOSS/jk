@@ -184,6 +184,34 @@ class Giter8ApplyTest {
     }
 
     @Test
+    void dual_layout_simple_vs_traditional(@TempDir Path tmp) throws Exception {
+        Path template = g8(tmp, "name=demo\npackage=com.demo\n");
+        Path g8 = template.resolve("src/main/g8");
+        String src = "src/$if(simple.truthy)$.$else$main$endif$/$if(simple.truthy)$.$else$java$endif$/$package$";
+        Files.createDirectories(g8.resolve(src));
+        Files.writeString(g8.resolve(src + "/Main.java"), "package $package$;\n");
+        String res = "$if(simple.truthy)$resources$else$src/main/resources$endif$";
+        Files.createDirectories(g8.resolve(res));
+        Files.writeString(g8.resolve(res + "/app.txt"), "ok\n");
+        String test = "$if(simple.truthy)$test/src$else$src/test/java$endif$/$package$";
+        Files.createDirectories(g8.resolve(test));
+        Files.writeString(g8.resolve(test + "/MainTest.java"), "package $package$;\n");
+
+        Path trad = tmp.resolve("trad");
+        Giter8Apply.apply(template, trad, Map.of());
+        assertThat(trad.resolve("src/main/java/com/demo/Main.java")).exists();
+        assertThat(trad.resolve("src/main/resources/app.txt")).exists();
+        assertThat(trad.resolve("src/test/java/com/demo/MainTest.java")).exists();
+
+        Path simple = tmp.resolve("simple");
+        Giter8Apply.apply(template, simple, Map.of("simple", "yes"));
+        assertThat(simple.resolve("src/com/demo/Main.java")).exists();
+        assertThat(simple.resolve("resources/app.txt")).exists();
+        assertThat(simple.resolve("test/src/com/demo/MainTest.java")).exists();
+        assertThat(simple.resolve("src/main/java")).doesNotExist();
+    }
+
+    @Test
     void does_not_nest_name_directory(@TempDir Path tmp) throws Exception {
         Path template = g8(tmp, "name=My App\n");
         Path g8 = template.resolve("src/main/g8");

@@ -1,6 +1,6 @@
 # Built-in Micronaut 5.x plugin.
 # Declarative: BOM. Worker: micronaut-aot step. Packaging: assembly fat jar.
-# Giter8 trees: src/main/resources/templates/<lang>/<kind>/.
+# Giter8 trees: src/main/resources/templates/<lang>/<framework>/<name>.g8/.
 
 [plugin]
 id        = "micronaut"

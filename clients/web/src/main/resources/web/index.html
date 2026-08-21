@@ -608,24 +608,51 @@
             </select>
           </label>
           <label>
-            <span>Template / kind <span class="dim">(optional · {{ newProject.lang }})</span></span>
-            <select v-model="newProject.templateChoice" @change="onNewProjectTemplateChange()">
-              <option value="">None — blank project from language / layout</option>
-              <option v-for="c in templateChoices" :key="c.value" :value="c.value">{{ c.label }}</option>
-            </select>
+            <span>Framework <span class="dim">(optional · filter)</span></span>
+            <div class="combo">
+              <input v-model="newProject.frameworkQuery" spellcheck="false" autocomplete="off"
+                     placeholder="All frameworks"
+                     @focus="frameworkOpen = true"
+                     @blur="onFrameworkBlur()"
+                     @input="onFrameworkQueryInput()"
+                     @keydown="onFrameworkKey($event)">
+              <ul v-if="frameworkOpen" class="combo-list">
+                <li :class="{ on: newProject.framework === '' }"
+                    @mousedown.prevent="pickFramework('', 'All frameworks')">All frameworks</li>
+                <li v-for="f in filteredFrameworkChoices" :key="f.value"
+                    :class="{ on: newProject.framework === f.value }"
+                    @mousedown.prevent="pickFramework(f.value, f.label)">{{ f.label }}</li>
+              </ul>
+            </div>
           </label>
-          <!-- Layout + executable only apply to the blank scaffolder. A Giter8 template ships a
-               fixed tree (traditional / simple / custom) — the apply path does not reshape it. -->
-          <label v-if="!parsedTemplateChoice().template">
+          <label>
+            <span>Template <span class="dim">(optional · {{ newProject.lang }})</span></span>
+            <div class="combo">
+              <input v-model="newProject.templateQuery" spellcheck="false" autocomplete="off"
+                     placeholder="None — blank project"
+                     @focus="templateOpen = true"
+                     @blur="onTemplateBlur()"
+                     @input="onTemplateQueryInput()"
+                     @keydown="onTemplateKey($event)">
+              <ul v-if="templateOpen" class="combo-list">
+                <li :class="{ on: !newProject.template }"
+                    @mousedown.prevent="pickTemplate('', 'None — blank project')">None — blank project</li>
+                <li v-for="c in filteredTemplateChoices" :key="c.value"
+                    :class="{ on: newProject.template === c.value }"
+                    @mousedown.prevent="pickTemplate(c.value, c.label)">{{ c.label }}</li>
+              </ul>
+            </div>
+          </label>
+          <label v-if="showLayoutPicker()">
             <span>Layout</span>
             <select v-model="newProject.layout">
               <option value="traditional">Traditional (Maven-like)</option>
               <option value="simple">Simple (Mill-like)</option>
             </select>
           </label>
-          <p v-else class="template-meta dim small">
-            Template layout: <b>{{ selectedTemplateLayout() }}</b>
-            <span v-if="selectedTemplateLayout() === 'custom'"> (framework tree — not traditional/simple)</span>
+          <p v-else-if="newProject.template" class="template-meta dim small">
+            Template layout: <b>custom</b>
+            <span> (framework tree — not traditional/simple)</span>
           </p>
           <label>
             <span>Parent directory</span>
@@ -636,7 +663,7 @@
                       data-tip="Browse for a parent directory"><jk-icon name="folder-open"></jk-icon></button>
             </div>
           </label>
-          <label v-if="!parsedTemplateChoice().template" class="check">
+          <label v-if="!newProject.template" class="check">
             <input type="checkbox" v-model="newProject.executable">
             <span class="check-box" aria-hidden="true"></span>
             <span>Executable (with main)</span>

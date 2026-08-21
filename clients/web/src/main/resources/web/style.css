@@ -1870,6 +1870,39 @@ button.browse:hover::before {
   background: rgba(var(--cn-rgb), 0.22);
   color: var(--bright);
 }
+.new-project-form .combo {
+  position: relative;
+}
+.new-project-form .combo-list {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  max-height: 220px;
+  overflow: auto;
+  background: var(--s2);
+  border: 1px solid var(--bd);
+  border-radius: var(--r-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.new-project-form .combo-list li {
+  padding: 7px 10px;
+  font: 12.5px/1.4 var(--mono);
+  color: var(--tx);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  cursor: pointer;
+}
+.new-project-form .combo-list li:hover,
+.new-project-form .combo-list li.on {
+  background: rgba(var(--cn-rgb), 0.22);
+  color: var(--bright);
+}
 .new-project-form .parent-row {
   display: flex;
   align-items: stretch;

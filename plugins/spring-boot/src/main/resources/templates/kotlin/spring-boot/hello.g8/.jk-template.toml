@@ -1,0 +1,5 @@
+language = "kotlin"
+framework = "spring-boot"
+name = "hello"
+description = "Minimal Spring Boot application"
+layouts = ["traditional", "simple"]
