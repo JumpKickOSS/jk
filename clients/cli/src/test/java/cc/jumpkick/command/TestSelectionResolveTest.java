@@ -69,6 +69,30 @@ class TestSelectionResolveTest {
     }
 
     @Test
+    void explicit_include_overrides_a_baseline_exclude_of_the_same_tag(@TempDir Path dir) throws Exception {
+        writeToml(dir, """
+                [test]
+                exclude-tags = ["integration", "slow", "bench"]
+                """);
+        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--include-tags", "slow"));
+        assertThat(sel.includeTags()).containsExactly("slow");
+        assertThat(sel.excludeTags())
+                .as("include ∧ exclude of one tag selects nothing — the explicit include wins")
+                .containsExactly("integration", "bench");
+    }
+
+    @Test
+    void explicit_exclude_still_beats_an_explicit_include(@TempDir Path dir) throws Exception {
+        writeToml(dir, """
+                [test]
+                exclude-tags = ["slow"]
+                """);
+        var sel = TestCommand.resolveTestSelection(
+                parse("-C", dir.toString(), "--include-tags", "slow", "--exclude-tags", "slow"));
+        assertThat(sel.excludeTags()).containsExactly("slow");
+    }
+
+    @Test
     void baseline_tags_are_final(@TempDir Path dir) throws Exception {
         writeToml(dir, """
                 [test]

@@ -693,6 +693,12 @@ public final class TestCommand implements CliCommand {
         }
         if (cliInclude) {
             include = new ArrayList<>(in.values("include-tags"));
+            // An explicit --include-tags overrides a baseline/profile exclude of the same tag:
+            // composing them hands JUnit include ∧ exclude of one tag, which selects nothing —
+            // and the run still exited 0 (JK-2274). An explicit --exclude-tags below still wins
+            // over the include (it replaces the exclude list after this).
+            List<String> included = include.stream().map(String::trim).toList();
+            exclude.removeIf(e -> included.contains(e.trim()));
             spoke = true;
         }
         if (cliExclude) {
