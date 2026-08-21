@@ -76,8 +76,6 @@ public final class NewCommand implements CliCommand {
                 Opt.value("<ref>", "Giter8 path, name, framework/name, or URL", "-t", "--template"),
                 Opt.value("<k=v>", "Template property k=v (repeatable)", "--param")
                         .repeat(),
-                Opt.value("<url>", "Extra git template source (repeatable)", "--template-source")
-                        .repeat(),
                 Opt.value("<deps>", "Curated deps, comma-separated.", "--deps"),
                 Opt.value("<layout>", "Source tree: traditional (default) | simple.", "--layout"),
                 Opt.value("<module>", "Kotlin module name (-> project.module).", "--kotlin-module"),
@@ -101,8 +99,6 @@ public final class NewCommand implements CliCommand {
     boolean plugin;
     String templateRef;
     List<String> templateParams = List.of();
-    /** One-shot third-party git sources for short-name lookup. */
-    List<String> templateSources = List.of();
 
     String depsCsv;
     String layoutFlag;
@@ -222,7 +218,6 @@ public final class NewCommand implements CliCommand {
         this.plugin = in.isSet("plugin");
         this.templateRef = in.value("template").orElse(null);
         this.templateParams = in.values("param");
-        this.templateSources = in.values("template-source");
         this.depsCsv = in.value("deps").orElse(null);
         this.layoutFlag = in.value("layout").orElse(null);
         this.kotlinModule = in.value("kotlin-module").orElse(null);

@@ -46,6 +46,19 @@ class Giter8TemplateIndexTest {
     }
 
     @Test
+    void source_clones_with_arbitrary_cache_keys_are_scanned(@TempDir Path temp) throws Exception {
+        // [templates.sources] clones land under the cache root named by their cache key; a
+        // non-GitHub host produces keys like this, which a name allowlist would have skipped.
+        Path clone = temp.resolve("git.example_corp_starters_main");
+        writeTemplate(clone, "java", "none", "corp-starter", "Corp starter", "\"traditional\"");
+
+        assertThat(Giter8TemplateIndex.resolve("corp-starter", "java", List.of(temp)))
+                .get()
+                .extracting(TemplateSpec::id)
+                .isEqualTo("java/none/corp-starter");
+    }
+
+    @Test
     void bare_framework_name_lists_templates(@TempDir Path temp) throws Exception {
         writeTemplate(temp, "java", "spring-boot", "hello", "h", "\"traditional\"");
         writeTemplate(temp, "java", "spring-boot", "webmvc", "w", "\"traditional\"");

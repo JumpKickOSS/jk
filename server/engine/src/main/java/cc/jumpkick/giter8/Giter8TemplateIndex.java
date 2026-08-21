@@ -143,11 +143,10 @@ public final class Giter8TemplateIndex {
                 if (!Files.isDirectory(child)) continue;
                 String fileName = child.getFileName().toString();
                 if (fileName.startsWith(".")) continue;
-                if (fileName.contains("jk-templates")
-                        || fileName.contains("github.com")
-                        || fileName.equals("templates")) {
-                    scanNested(child, byId, source, 0);
-                }
+                // Every child gets scanned (depth-capped): the templates cache holds one clone
+                // per configured source, and non-GitHub source URLs produce cache keys a
+                // name-allowlist would skip — [templates.sources] catalogs must be visible.
+                scanNested(child, byId, source, 0);
             }
         } catch (IOException ignored) {
             // best-effort

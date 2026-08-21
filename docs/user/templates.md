@@ -57,9 +57,10 @@ acme = "https://github.com/acme/jk-g8"
 corp = { url = "https://git.example/corp/jk-templates.git", rev = "main" }
 ```
 
-```bash
-jk new -t my-starter --template-source https://github.com/acme/jk-g8
-```
+Configured sources are cloned into the templates cache alongside the official
+catalog and refreshed the same way; their short names resolve in `jk new -t`
+and appear in the picker. For a one-off template that isn't in a configured
+catalog, pass its git/HTTPS URL (or a local path) directly to `-t`.
 
 Third-party monorepos must use `<lang>/<framework>/<name>.g8`.
 

@@ -98,11 +98,37 @@ public final class OfficialTemplatesFreshen {
         return ref == null || ref.isBlank() ? JkTemplatesConfig.DEFAULT_OFFICIAL : ref;
     }
 
+    /**
+     * Freshen the official catalog plus every {@code [templates.sources]} entry. Each source is
+     * independent: one failing clone (auth, typo, offline mirror) must not block the others, so
+     * the first failure is rethrown only after every ref got its attempt.
+     */
     static void refresh(JkTemplatesConfig config, Consumer<String> log) throws IOException {
         JkTemplatesConfig cfg = config == null ? JkTemplatesConfig.defaults() : config;
-        String ref = officialRef(cfg);
         Path cacheRoot = primaryCacheRoot();
         Files.createDirectories(cacheRoot);
+        List<String> refs = new ArrayList<>();
+        refs.add(officialRef(cfg));
+        for (JkTemplatesConfig.Source source : cfg.sources()) {
+            refs.add(sourceRef(source));
+        }
+        IOException first = null;
+        for (String ref : refs) {
+            try {
+                refreshRef(ref, cacheRoot, log);
+            } catch (IOException e) {
+                if (first == null) first = e;
+            }
+        }
+        if (first != null) throw first;
+    }
+
+    /** {@code url#rev} ref for a configured source (the same shape {@link #parse} reads). */
+    static String sourceRef(JkTemplatesConfig.Source source) {
+        return source.rev().filter(r -> !r.isBlank()).map(r -> source.url() + "#" + r).orElse(source.url());
+    }
+
+    static void refreshRef(String ref, Path cacheRoot, Consumer<String> log) throws IOException {
         Parsed p = parse(ref);
         Path dest = cacheRoot.resolve(p.cacheKey());
         // Incomplete clones (e.g. only a .git dir left from a failed private-repo attempt) must be
@@ -114,7 +140,7 @@ public final class OfficialTemplatesFreshen {
             if (Files.exists(dest)) deleteRecursively(dest);
             Files.createDirectories(dest.getParent());
             runGit(p.cloneArgs(dest), 120);
-            log.accept("jk engine: cloned official templates (" + dest.getFileName() + ")");
+            log.accept("jk engine: cloned templates source (" + dest.getFileName() + ")");
             return;
         }
         // Existing shallow clone: cheap fetch + hard reset (no merge noise).
@@ -138,7 +164,7 @@ public final class OfficialTemplatesFreshen {
             deleteRecursively(dest);
             Files.createDirectories(dest.getParent());
             runGit(p.cloneArgs(dest), 120);
-            log.accept("jk engine: re-cloned official templates (" + dest.getFileName() + ")");
+            log.accept("jk engine: re-cloned templates source (" + dest.getFileName() + ")");
         }
     }
 
