@@ -306,8 +306,12 @@ public final class PomRuntimeClasspath {
         Optional<RepoGroup.RepoFetched> art = repos.tryFetchArtifact(coord);
         if (art.isEmpty()) {
             if (optional) return;
-            throw new IllegalStateException("worker runtime dependency " + key
-                    + " is not in repos/local, repos/jumpkick, or repos/central; run `jk install`");
+            String names = repos.repos().stream()
+                    .map(MavenRepo::name)
+                    .distinct()
+                    .collect(java.util.stream.Collectors.joining(", "));
+            throw new IllegalStateException(
+                    "worker runtime dependency " + key + " was not found in the " + names + " repos");
         }
         out.add(art.get().fetched().cachePath().toAbsolutePath().normalize());
         EffectivePom child;
