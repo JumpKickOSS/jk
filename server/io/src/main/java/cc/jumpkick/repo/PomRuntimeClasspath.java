@@ -35,6 +35,24 @@ public final class PomRuntimeClasspath {
     private PomRuntimeClasspath() {}
 
     /**
+     * Process-lifetime memo of {@link #resolve(Path)}: every fork re-resolved the full effective
+     * POM walk (worker POM + every transitive POM, XML parses, possible network) in the resident
+     * engine. Keyed on the jar and POM identity (path, size, mtime) plus the repo-group identity;
+     * a hit is re-validated with one stat per entry so a swept store falls back to a real
+     * resolve. Only successes are cached — a store that gains the missing artifact later must be
+     * able to succeed.
+     */
+    private static final java.util.concurrent.ConcurrentHashMap<String, List<Path>> RESOLVE_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static final int RESOLVE_CACHE_MAX = 256;
+
+    static void clearResolveCacheForTests() {
+        RESOLVE_CACHE.clear();
+        STORE_REPOS.clear();
+    }
+
+    /**
      * Worker jar plus located compile/runtime jars. The POM is the sibling of the jar, or the
      * installed POM for the jar's Maven coordinate in the artifact store.
      *
@@ -45,7 +63,37 @@ public final class PomRuntimeClasspath {
             throw new IllegalStateException("worker jar is missing: " + workerJar);
         }
         Path worker = workerJar.toAbsolutePath().normalize();
-        return resolve(worker, storeRepos(storeRootOf(worker)));
+        Path pom = pomFor(worker);
+        String key = pom == null ? null : resolveCacheKey(worker, pom);
+        if (key != null) {
+            List<Path> hit = RESOLVE_CACHE.get(key);
+            if (hit != null) {
+                boolean intact = true;
+                for (Path p : hit) {
+                    if (!Files.isRegularFile(p)) {
+                        intact = false;
+                        break;
+                    }
+                }
+                if (intact) return hit;
+                RESOLVE_CACHE.remove(key);
+            }
+        }
+        List<Path> resolved = List.copyOf(resolve(worker, storeRepos(storeRootOf(worker))));
+        if (key != null && RESOLVE_CACHE.size() < RESOLVE_CACHE_MAX) {
+            RESOLVE_CACHE.put(key, resolved);
+        }
+        return resolved;
+    }
+
+    private static String resolveCacheKey(Path worker, Path pom) {
+        try {
+            return worker + "|" + Files.size(worker) + "|" + Files.getLastModifiedTime(worker).toMillis()
+                    + "|" + pom + "|" + Files.size(pom) + "|" + Files.getLastModifiedTime(pom).toMillis()
+                    + "|" + RepositorySpec.officialUrl();
+        } catch (IOException e) {
+            return null; // unstatable — resolve uncached and let the real walk surface the error
+        }
     }
 
     /**
@@ -92,10 +140,32 @@ public final class PomRuntimeClasspath {
     }
 
     /**
+     * One {@link RepoGroup} per (store root, official URL): each build allocated a fresh
+     * {@link Http} whose {@code java.net.http.HttpClient} (selector thread + buffers) was never
+     * closed — a leak per fork in the heap-disciplined engine. RepoGroups are immutable, so
+     * sharing is safe; the URL is in the key because tests repoint the official override.
+     */
+    private static final java.util.concurrent.ConcurrentHashMap<String, RepoGroup> STORE_REPOS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static final int STORE_REPOS_MAX = 32;
+
+    /**
      * {@code repos/local} plus JumpKick and Central HTTP remotes, CAS-rooted at {@code storeRoot}.
      * Local is a priority repo so {@code installLocal} artifacts outrank exclusive remote bindings.
      */
     static RepoGroup storeRepos(Path storeRoot) {
+        String key = storeRoot.toAbsolutePath().normalize() + "|" + RepositorySpec.officialUrl();
+        RepoGroup cached = STORE_REPOS.get(key);
+        if (cached != null) return cached;
+        RepoGroup built = buildStoreRepos(storeRoot);
+        if (STORE_REPOS.size() < STORE_REPOS_MAX) {
+            STORE_REPOS.putIfAbsent(key, built);
+        }
+        return built;
+    }
+
+    private static RepoGroup buildStoreRepos(Path storeRoot) {
         Cas cas = new Cas(storeRoot);
         Http http = new Http();
         MavenRepo local =

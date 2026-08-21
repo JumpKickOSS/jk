@@ -20,6 +20,32 @@ class PomRuntimeClasspathTest {
     void clearCaches() {
         EffectivePomBuilder.clearProcessCache();
         RepoGroup.clearProcessFetchCache();
+        PomRuntimeClasspath.clearResolveCacheForTests();
+    }
+
+    @Test
+    void single_arg_resolve_memoizes_until_the_jar_or_pom_changes(@TempDir Path tmp) throws Exception {
+        Path store = tmp.resolve("store");
+        Coordinate worker = Coordinate.of("cc.jumpkick", "jk-test-runner", "0.12.0");
+        Path workerJar = putJar(store, "local", worker, "worker-bytes");
+        putPom(store, "local", worker, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-test-runner</artifactId>
+                  <version>0.12.0</version>
+                </project>
+                """);
+
+        List<Path> first = PomRuntimeClasspath.resolve(workerJar);
+        assertThat(PomRuntimeClasspath.resolve(workerJar)).isSameAs(first);
+
+        // A republished POM (new mtime) must invalidate the memo.
+        Path pomPath = store.resolve("repos/local").resolve(MavenLayout.pomPath(worker));
+        java.nio.file.attribute.FileTime bumped = java.nio.file.attribute.FileTime.fromMillis(
+                Files.getLastModifiedTime(pomPath).toMillis() + 5_000);
+        Files.setLastModifiedTime(pomPath, bumped);
+        assertThat(PomRuntimeClasspath.resolve(workerJar)).isNotSameAs(first).isEqualTo(first);
     }
 
     @Test
