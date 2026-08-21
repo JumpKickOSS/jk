@@ -6,6 +6,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -41,7 +42,13 @@ public final class Giter8TemplateIndex {
         PICKER_MEMO = null;
     }
 
-    /** Catalog / local roots first ({@code putIfAbsent} precedence), plugin rows overlay by id. */
+    /**
+     * Disk always wins on id collision — {@code putIfAbsent} in root order ($JK_TEMPLATES,
+     * ~/.jk/templates, cache clones, dogfood), plugin-bundled rows last. One uniform local-wins
+     * rule: a user's copy of {@code java/spring-boot/hello} overrides the plugin's bundled one.
+     * The returned list is sorted by id (language/framework/name) so every surface — CLI picker,
+     * HTTP, MCP, web — lists templates in the same order on every filesystem.
+     */
     public static List<TemplateSpec> picker(List<Path> roots) {
         List<Path> key = roots == null ? List.of() : List.copyOf(roots);
         PickerMemo memo = PICKER_MEMO;
@@ -55,9 +62,11 @@ public final class Giter8TemplateIndex {
             scanRoot(root.toAbsolutePath().normalize(), byId, TemplateSpec.SOURCE_CATALOG);
         }
         for (TemplateSpec p : PluginTemplates.list()) {
-            byId.put(p.id(), p);
+            byId.putIfAbsent(p.id(), p);
         }
-        List<TemplateSpec> specs = List.copyOf(byId.values());
+        List<TemplateSpec> specs = byId.values().stream()
+                .sorted(Comparator.comparing(TemplateSpec::id))
+                .toList();
         PICKER_MEMO = new PickerMemo(key, now, specs);
         return specs;
     }

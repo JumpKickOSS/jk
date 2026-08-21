@@ -59,6 +59,21 @@ class Giter8TemplateIndexTest {
     }
 
     @Test
+    void picker_is_sorted_by_id_and_disk_beats_plugins(@TempDir Path temp) throws Exception {
+        writeTemplate(temp, "kotlin", "none", "zeta", "Z", "\"traditional\"");
+        writeTemplate(temp, "java", "spring-boot", "alpha", "A", "\"traditional\"");
+        writeTemplate(temp, "java", "none", "midway", "M", "\"traditional\"");
+
+        var ids = Giter8TemplateIndex.picker(List.of(temp)).stream()
+                .map(TemplateSpec::id)
+                .toList();
+        assertThat(ids)
+                .as("deterministic id order on every filesystem")
+                .isSorted()
+                .contains("java/none/midway", "java/spring-boot/alpha", "kotlin/none/zeta");
+    }
+
+    @Test
     void bare_name_resolves_across_languages_and_frameworks(@TempDir Path temp) throws Exception {
         writeTemplate(temp, "kotlin", "none", "ktor-3", "Ktor", "\"traditional\"");
         writeTemplate(temp, "java", "spring-boot", "webmvc", "WebMVC", "\"traditional\"");
