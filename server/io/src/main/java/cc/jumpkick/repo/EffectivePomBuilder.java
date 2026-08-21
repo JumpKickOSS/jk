@@ -92,6 +92,16 @@ public final class EffectivePomBuilder {
     }
 
     /**
+     * Effective model of an already-parsed POM: parent chain, BOM imports, and
+     * {@code dependencyManagement} applied through this builder's repositories. Used when the POM
+     * is in hand (sibling of a worker jar) rather than fetched by GAV.
+     */
+    public EffectivePom build(Pom raw) throws IOException, InterruptedException {
+        Objects.requireNonNull(raw, "raw");
+        return merge(raw, new HashSet<>(), 0);
+    }
+
+    /**
      * Build (or return cached) effective POM. Concurrent-safe via {@link ConcurrentHashMap} cache;
      * each call uses its own cycle-detection set so sibling BOM imports can expand in parallel.
      */

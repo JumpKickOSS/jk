@@ -32,6 +32,7 @@ class ModuleOutputRestoreTest {
         Files.createDirectories(classes.resolve("cc/jumpkick/only/dirs"));
         Files.writeString(classes.resolve("cc/jumpkick/only/dirs/notes.txt"), "not a class");
         assertThat(ModuleOutputRestore.classesDirHasContent(classes)).isFalse();
-        assertThat(ModuleOutputRestore.classesDirHasContent(dir.resolve("absent"))).isFalse();
+        assertThat(ModuleOutputRestore.classesDirHasContent(dir.resolve("absent")))
+                .isFalse();
     }
 }

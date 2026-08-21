@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -185,25 +186,23 @@ public final class PluginProcess {
             long idleTimeoutMs)
             throws IOException, InterruptedException {
         Process process = cc.jumpkick.engine.JobWorkers.start(pb);
-        final java.util.concurrent.atomic.AtomicLong lastLineAt =
-                new java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis());
+        final AtomicLong lastLineAt = new AtomicLong(System.currentTimeMillis());
         Thread watchdog = null;
         if (idleTimeoutMs > 0) {
-            watchdog = Thread.ofVirtual().name("jk-worker-watchdog").unstarted(
-                    () -> {
-                        while (process.isAlive()) {
-                            long idle = System.currentTimeMillis() - lastLineAt.get();
-                            if (idle >= idleTimeoutMs) {
-                                process.destroyForcibly();
-                                return;
-                            }
-                            try {
-                                Thread.sleep(Math.min(idleTimeoutMs - idle + 50, 5_000));
-                            } catch (InterruptedException e) {
-                                return; // conversation finished normally
-                            }
-                        }
-                    });
+            watchdog = Thread.ofVirtual().name("jk-worker-watchdog").unstarted(() -> {
+                while (process.isAlive()) {
+                    long idle = System.currentTimeMillis() - lastLineAt.get();
+                    if (idle >= idleTimeoutMs) {
+                        process.destroyForcibly();
+                        return;
+                    }
+                    try {
+                        Thread.sleep(Math.min(idleTimeoutMs - idle + 50, 5_000));
+                    } catch (InterruptedException e) {
+                        return; // conversation finished normally
+                    }
+                }
+            });
             watchdog.start();
         }
         // Bounded like the client socket: a worker emitting an unbounded line must not OOM the

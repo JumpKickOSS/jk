@@ -8,6 +8,7 @@ import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
@@ -54,8 +55,7 @@ class PluginTemplatesTest {
                 """, "demo-plug.toml");
         PluginTableRegistry.putBuiltIn(d, jar);
         var listed = PluginTemplates.list();
-        assertThat(listed.stream().map(TemplateSpec::id))
-                .contains("java/demo-plug/hello", "kotlin/demo-plug/hello");
+        assertThat(listed.stream().map(TemplateSpec::id)).contains("java/demo-plug/hello", "kotlin/demo-plug/hello");
         Path extracted = PluginTemplates.materialize("demo-plug", "java", "demo-plug", "hello");
         Path dest = dir.resolve("out");
         Giter8Apply.apply(extracted, dest, Map.of("name", "widget"));
@@ -88,10 +88,12 @@ class PluginTemplatesTest {
                 version = "1"
                 """, "kind-plug.toml");
         PluginTableRegistry.putBuiltIn(d, jar);
-        var picker = Giter8TemplateIndex.picker(java.util.List.of());
+        var picker = Giter8TemplateIndex.picker(List.of());
         assertThat(picker.stream().map(TemplateSpec::id))
                 .contains("java/kind-plug/hello", "java/kind-plug/webmvc", "kotlin/kind-plug/webmvc");
-        assertThat(picker.stream().filter(s -> s.id().equals("java/kind-plug/webmvc")).findFirst())
+        assertThat(picker.stream()
+                        .filter(s -> s.id().equals("java/kind-plug/webmvc"))
+                        .findFirst())
                 .get()
                 .extracting(TemplateSpec::source)
                 .isEqualTo(TemplateSpec.SOURCE_PLUGIN);

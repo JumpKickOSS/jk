@@ -169,7 +169,8 @@ public final class PluginTemplates {
     private static void deleteQuietly(Path root) {
         if (root == null || !Files.exists(root)) return;
         try (var walk = Files.walk(root)) {
-            for (Path f : walk.sorted((a, b) -> b.getNameCount() - a.getNameCount()).toList()) {
+            for (Path f :
+                    walk.sorted((a, b) -> b.getNameCount() - a.getNameCount()).toList()) {
                 Files.deleteIfExists(f);
             }
         } catch (IOException ignored) {

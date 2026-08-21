@@ -8,8 +8,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.MavenRepo;
-import cc.jumpkick.repo.Pom;
-import cc.jumpkick.repo.PomParser;
+import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.util.Hashing;
@@ -20,10 +19,8 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * Registry of jk's child-JVM plugin jars. Locates each by Maven coordinate
@@ -100,7 +97,7 @@ public enum PluginJar {
                     "-D" + jarProperty + " is set to '" + override + "' but no file exists there.");
         }
 
-        Path cacheRoot = cas.root(); // cas root is the jk cache directory (e.g. ~/.cache/jk)
+        Path cacheRoot = cas.root();
         String relPath = relativePath();
         String coordinate = "cc.jumpkick:" + artifactId + ":" + JkVersion.VERSION;
         List<Path> checked = new ArrayList<>();
@@ -177,56 +174,24 @@ public enum PluginJar {
         String pomSha = Hashing.sha256Hex(pomBody);
         store.materialize(pomRel, cas.put(pomBody, pomSha), pomSha);
         Path localJar = store.locate(relPath).orElseThrow();
-        fetchOfficialClosure(cas, http, base, relPath, store);
+        fetchOfficialClosure(cas, http, base, localJar);
         return localJar;
     }
 
     /**
-     * Fetch the worker POM's Maven runtime closure (jar + pom per compile/runtime dependency)
-     * from the official repo, then Maven Central.
+     * Fetch the worker POM's Maven runtime closure (effective POM: parent properties, BOM
+     * imports, {@code dependencyManagement}) from the official repo, then Maven Central.
      */
-    private static void fetchOfficialClosure(Cas cas, Http http, URI base, String jarRel, RepoArtifactStore store)
+    private static void fetchOfficialClosure(Cas cas, Http http, URI base, Path workerJar)
             throws IOException, InterruptedException {
-        String pomRel = jarRel.substring(0, jarRel.length() - 4) + ".pom";
-        Path pomFile = store.locate(pomRel)
-                .orElseThrow(() -> new IOException("official repo POM missing after fetch: " + pomRel));
+        Coordinate coord = PomRuntimeClasspath.coordinateOf(workerJar);
+        if (coord == null) {
+            throw new IOException("cannot parse Maven coordinate of official worker jar " + workerJar);
+        }
         MavenRepo official = new MavenRepo(OFFICIAL_REPO, base, http, cas);
         MavenRepo central = new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
         RepoGroup repos = RepoGroup.of(central).withReposPrepended(List.of(official));
-        walkFetch(pomFile, repos, new HashSet<>());
-    }
-
-    private static void walkFetch(Path pomFile, RepoGroup repos, Set<String> visited)
-            throws IOException, InterruptedException {
-        Pom pom = PomParser.parse(Files.readAllBytes(pomFile));
-        for (Pom.Dep d : pom.dependencies()) {
-            if (!runtimeDep(d)) continue;
-            if (d.version() == null || d.version().isBlank()) continue;
-            String type = d.type() == null || d.type().isBlank() ? "jar" : d.type();
-            if ("pom".equalsIgnoreCase(type)) continue;
-            String classifier = d.classifier() == null || d.classifier().isBlank() ? null : d.classifier();
-            Coordinate coord = new Coordinate(d.groupId(), d.artifactId(), d.version(), classifier, type);
-            String key = coord.group() + ":" + coord.artifact() + ":" + coord.version()
-                    + (classifier != null ? ":" + classifier : "");
-            if (!visited.add(key)) continue;
-            String missing = key;
-            repos.tryFetchArtifact(coord)
-                    .orElseThrow(() ->
-                            new IOException("worker dependency " + missing + " not found in official repo or Central"));
-            Optional<RepoGroup.RepoFetched> depPom = repos.tryFetchPom(coord);
-            if (depPom.isPresent()) {
-                walkFetch(depPom.get().fetched().cachePath(), repos, visited);
-            }
-        }
-    }
-
-    private static boolean runtimeDep(Pom.Dep d) {
-        if (d.optional()) return false;
-        String scope = d.scope();
-        return scope == null
-                || scope.isBlank()
-                || "compile".equalsIgnoreCase(scope)
-                || "runtime".equalsIgnoreCase(scope);
+        PomRuntimeClasspath.fetchRuntimeClosure(coord, repos);
     }
 
     /**

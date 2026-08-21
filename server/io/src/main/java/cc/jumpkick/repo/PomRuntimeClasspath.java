@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.cache.Cas;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -16,9 +19,11 @@ import java.util.regex.Pattern;
 /**
  * Runtime classpath for a thin jar from its Maven POM and the local repo layout.
  *
- * <p>Walks {@code compile} / {@code runtime} dependencies (transitives included; {@code provided}
- * / {@code test} / {@code optional} transitives skipped) and locates each artifact under {@code
- * repos/local}, {@code repos/jumpkick}, then {@code repos/central}.
+ * <p>Walks the <em>effective</em> POM ({@link EffectivePomBuilder}: parent-chain properties, BOM
+ * imports, {@code dependencyManagement} version/scope defaults) and follows compile/runtime
+ * dependencies (transitives included; {@code provided} / {@code test} / {@code optional}
+ * transitives skipped). Artifacts are taken from {@code repos/local}, {@code repos/jumpkick}, then
+ * {@code repos/central}, fetching a miss from the HTTP remotes when the session is online.
  */
 public final class PomRuntimeClasspath {
 
@@ -38,22 +43,78 @@ public final class PomRuntimeClasspath {
             throw new IllegalStateException("worker jar is missing: " + workerJar);
         }
         Path worker = workerJar.toAbsolutePath().normalize();
+        return resolve(worker, storeRepos(storeRootOf(worker)));
+    }
+
+    /**
+     * As {@link #resolve(Path)} using {@code repos} for parent/BOM/artifact lookup. Tests pass a
+     * file-only {@link RepoGroup} so the walk never touches the network.
+     */
+    public static List<Path> resolve(Path workerJar, RepoGroup repos) {
+        if (workerJar == null || !Files.isRegularFile(workerJar)) {
+            throw new IllegalStateException("worker jar is missing: " + workerJar);
+        }
+        Path worker = workerJar.toAbsolutePath().normalize();
         Path pom = pomFor(worker);
         if (pom == null) {
             throw new IllegalStateException(
                     "worker " + worker + " has no Maven POM; run `jk install` to publish jar+pom to repos/local");
         }
-        Path storeRoot = storeRootOf(worker);
         List<Path> out = new ArrayList<>();
         out.add(worker);
         try {
-            walk(pom, new HashSet<>(), Set.of(), out, storeRoot, true);
+            EffectivePomBuilder builder = new EffectivePomBuilder(repos);
+            Pom raw = PomParser.parse(Files.readAllBytes(pom));
+            EffectivePom effective = builder.build(raw);
+            walkEffective(effective, coordinateOf(worker), builder, repos, new HashSet<>(), Set.of(), out, true);
         } catch (IllegalStateException e) {
             throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("failed reading worker POM " + pom + ": " + e.getMessage(), e);
         } catch (RuntimeException | IOException e) {
             throw new IllegalStateException("failed reading worker POM " + pom + ": " + e.getMessage(), e);
         }
         return out;
+    }
+
+    /**
+     * Fetch the runtime closure of {@code root} (jar + POM per compile/runtime dependency, parents
+     * and BOM imports included) into {@code repos}. Official plugin install uses this so a thin
+     * published POM is enough to materialize the worker classpath.
+     */
+    public static void fetchRuntimeClosure(Coordinate root, RepoGroup repos) throws IOException, InterruptedException {
+        EffectivePomBuilder builder = new EffectivePomBuilder(repos);
+        EffectivePom pom = builder.build(root);
+        walkEffective(pom, root, builder, repos, new HashSet<>(), Set.of(), new ArrayList<>(), true);
+    }
+
+    /**
+     * {@code repos/local} plus JumpKick and Central HTTP remotes, CAS-rooted at {@code storeRoot}.
+     * Local is a priority repo so {@code installLocal} artifacts outrank exclusive remote bindings.
+     */
+    static RepoGroup storeRepos(Path storeRoot) {
+        Cas cas = new Cas(storeRoot);
+        Http http = new Http();
+        MavenRepo local =
+                new MavenRepo("local", storeRoot.resolve("repos/local").toUri(), http, cas);
+        MavenRepo jumpkick = new MavenRepo("jumpkick", RepositorySpec.JUMPKICK.url(), http, cas);
+        MavenRepo central = new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
+        RepoGroup remotes =
+                new RepoGroup(List.of(jumpkick, central), List.of(RepositorySpec.JUMPKICK.groups(), List.of()));
+        return remotes.withReposPrepended(List.of(local));
+    }
+
+    /** File-only {@code local} / {@code jumpkick} / {@code central} under {@code storeRoot}. */
+    static RepoGroup localRepos(Path storeRoot) {
+        Cas cas = new Cas(storeRoot);
+        Http http = new Http();
+        List<MavenRepo> repos = new ArrayList<>(REPOS.size());
+        for (String name : REPOS) {
+            Path dir = storeRoot.resolve("repos").resolve(name);
+            repos.add(new MavenRepo(name, dir.toUri(), http, cas));
+        }
+        return new RepoGroup(repos);
     }
 
     static Path siblingPom(Path jar) {
@@ -84,7 +145,7 @@ public final class PomRuntimeClasspath {
         return JkDirs.store();
     }
 
-    static Coordinate coordinateOf(Path jar) {
+    public static Coordinate coordinateOf(Path jar) {
         Path abs = jar.toAbsolutePath().normalize();
         Path verDir = abs.getParent();
         Path artDir = verDir == null ? null : verDir.getParent();
@@ -129,16 +190,44 @@ public final class PomRuntimeClasspath {
         return p.getFileName() == null ? "" : p.getFileName().toString();
     }
 
-    private static void walk(
-            Path pomFile, Set<String> visited, Set<String> exclusions, List<Path> out, Path storeRoot, boolean rootPom)
-            throws IOException {
-        Pom pom = PomParser.parse(Files.readAllBytes(pomFile));
+    private static void walkEffective(
+            EffectivePom pom,
+            Coordinate self,
+            EffectivePomBuilder builder,
+            RepoGroup repos,
+            Set<String> visited,
+            Set<String> exclusions,
+            List<Path> out,
+            boolean rootPom)
+            throws IOException, InterruptedException {
+        if (self != null && pom.relocation() != null && pom.relocation().redirects(self)) {
+            addAndWalk(pom.relocation().applyTo(self), builder, repos, visited, exclusions, out, false);
+            return;
+        }
         for (Pom.Dep d : pom.dependencies()) {
             if (!runtimeDep(d, rootPom)) continue;
             if (d.version() == null || d.version().isBlank()) continue;
+            if (isUnresolvedProperty(d.version())) {
+                throw new IllegalStateException("worker POM "
+                        + pom.groupId()
+                        + ":"
+                        + pom.artifactId()
+                        + ":"
+                        + pom.version()
+                        + " dependency "
+                        + d.groupId()
+                        + ":"
+                        + d.artifactId()
+                        + " has unresolved version "
+                        + d.version());
+            }
             if (isFloating(d.version())) {
-                throw new IllegalStateException(
-                        "worker POM " + pomFile + " has floating version for " + d.groupId() + ":" + d.artifactId());
+                throw new IllegalStateException("worker POM "
+                        + pom.artifactId()
+                        + " has floating version for "
+                        + d.groupId()
+                        + ":"
+                        + d.artifactId());
             }
             String ga = d.groupId() + ":" + d.artifactId();
             if (exclusions.contains(ga)) continue;
@@ -146,29 +235,41 @@ public final class PomRuntimeClasspath {
             if ("pom".equalsIgnoreCase(type)) continue;
             String classifier = d.classifier() == null || d.classifier().isBlank() ? null : d.classifier();
             Coordinate coord = new Coordinate(d.groupId(), d.artifactId(), d.version(), classifier, type);
-            String key = coord.group() + ":" + coord.artifact() + ":" + coord.version();
-            if (classifier != null) key = key + ":" + classifier;
-            if (!visited.add(key)) continue;
-            Optional<Path> jar = locate(storeRoot, MavenLayout.artifactPath(coord));
-            if (jar.isEmpty()) {
-                if (d.optional()) continue;
-                throw new IllegalStateException("worker runtime dependency " + key
-                        + " is not in repos/local, repos/jumpkick, or repos/central; run `jk install`");
-            }
-            Path abs = jar.get().toAbsolutePath().normalize();
-            if (!out.contains(abs)) out.add(abs);
-            Optional<Path> depPom = locate(storeRoot, MavenLayout.pomPath(coord));
-            if (depPom.isEmpty()) {
-                Path sibling = siblingPom(abs);
-                if (sibling != null && Files.isRegularFile(sibling)) depPom = Optional.of(sibling);
-            }
-            if (depPom.isEmpty()) continue;
             Set<String> childExcl = new HashSet<>(exclusions);
             for (Pom.Dep.Exclusion ex : d.exclusions()) {
                 childExcl.add(ex.groupId() + ":" + ex.artifactId());
             }
-            walk(depPom.get(), visited, childExcl, out, storeRoot, false);
+            addAndWalk(coord, builder, repos, visited, childExcl, out, d.optional());
         }
+    }
+
+    private static void addAndWalk(
+            Coordinate coord,
+            EffectivePomBuilder builder,
+            RepoGroup repos,
+            Set<String> visited,
+            Set<String> exclusions,
+            List<Path> out,
+            boolean optional)
+            throws IOException, InterruptedException {
+        String key = coord.group() + ":" + coord.artifact() + ":" + coord.version();
+        if (coord.classifier() != null) key = key + ":" + coord.classifier();
+        if (!visited.add(key)) return;
+        Optional<RepoGroup.RepoFetched> art = repos.tryFetchArtifact(coord);
+        if (art.isEmpty()) {
+            if (optional) return;
+            throw new IllegalStateException("worker runtime dependency " + key
+                    + " is not in repos/local, repos/jumpkick, or repos/central; run `jk install`");
+        }
+        Path abs = art.get().fetched().cachePath().toAbsolutePath().normalize();
+        if (!out.contains(abs)) out.add(abs);
+        EffectivePom child;
+        try {
+            child = builder.build(coord);
+        } catch (MavenRepo.ArtifactNotFoundException e) {
+            return;
+        }
+        walkEffective(child, coord, builder, repos, visited, exclusions, out, false);
     }
 
     private static boolean runtimeDep(Pom.Dep d, boolean rootPom) {
@@ -182,6 +283,10 @@ public final class PomRuntimeClasspath {
 
     private static boolean isFloating(String version) {
         return "LATEST".equalsIgnoreCase(version) || "RELEASE".equalsIgnoreCase(version);
+    }
+
+    private static boolean isUnresolvedProperty(String version) {
+        return version.contains("${");
     }
 
     private static Optional<Path> locate(Path storeRoot, String relativePath) {

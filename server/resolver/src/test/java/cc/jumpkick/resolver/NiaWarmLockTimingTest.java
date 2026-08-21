@@ -19,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Tag;
@@ -48,7 +49,7 @@ class NiaWarmLockTimingTest {
         // The overlay lives in jk-examples, not this repo — when its jk.toml lags a manifest
         // format change, that is fixture bit-rot, not a resolver regression: skip, don't fail.
         JkBuild root;
-        java.util.Map<Path, JkBuild> modules;
+        Map<Path, JkBuild> modules;
         JkBuild project;
         try {
             root = JkBuildParser.parse(nia.resolve("jk.toml"));

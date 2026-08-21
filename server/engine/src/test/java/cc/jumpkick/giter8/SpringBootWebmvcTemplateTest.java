@@ -64,8 +64,10 @@ class SpringBootWebmvcTemplateTest {
                         "yes"));
         assertThat(dest.resolve("data/src/com/acme/notes/data/note/Note.java")).exists();
         assertThat(dest.resolve("data/resources/db/migration/V1__notes.sql")).exists();
-        assertThat(dest.resolve("server/src/com/acme/notes/server/Application.java")).exists();
-        assertThat(dest.resolve("server/test/src/com/acme/notes/server/NoteApiTest.java")).exists();
+        assertThat(dest.resolve("server/src/com/acme/notes/server/Application.java"))
+                .exists();
+        assertThat(dest.resolve("server/test/src/com/acme/notes/server/NoteApiTest.java"))
+                .exists();
         assertThat(dest.resolve("data/src/main/java")).doesNotExist();
     }
 

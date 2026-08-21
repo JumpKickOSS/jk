@@ -207,8 +207,7 @@ public final class Giter8TemplateIndex {
         return any;
     }
 
-    static @Nullable TemplateSpec specFromDisk(
-            String lang, String framework, Path tmpl, String source) {
+    static @Nullable TemplateSpec specFromDisk(String lang, String framework, Path tmpl, String source) {
         if (!Files.isDirectory(tmpl)) return null;
         String name = JkTemplateToml.nameFromDir(tmpl.getFileName().toString());
         if (name == null) return null;

@@ -329,11 +329,12 @@ public final class BuildLayout {
     }
 
     /**
-     * {@code target/reports/test-results.md} — human-readable markdown test results, written
-     * alongside the XML files in {@code target/reports/}.
+     * {@code <workspace>/target/jk-results.md} — latest run report (compile, tests, install,
+     * publish, native, image, …). One file per invocation at the workspace (or standalone project)
+     * root, not per member.
      */
-    public Path markdownTestResults() {
-        return reportsDir().resolve("test-results.md");
+    public Path jkResults() {
+        return workspaceRoot.resolve("target").resolve("jk-results.md");
     }
 
     // ---- Final artifacts -------------------------------------------------------

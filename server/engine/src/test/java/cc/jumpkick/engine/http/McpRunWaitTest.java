@@ -48,8 +48,8 @@ class McpRunWaitTest {
     private static Supplier<List<HttpLive.Run>> liveOnce() {
         AtomicInteger polls = new AtomicInteger();
         long now = System.currentTimeMillis();
-        HttpLive.Run run =
-                new HttpLive.Run(JID, 9, "build", "/ws", "g:a", now, now, 0.5, "r9", -1, -1, 0, 0, List.of(), List.of());
+        HttpLive.Run run = new HttpLive.Run(
+                JID, 9, "build", "/ws", "g:a", now, now, 0.5, "r9", -1, -1, 0, 0, List.of(), List.of());
         return () -> polls.getAndIncrement() == 0 ? List.of(run) : List.of();
     }
 

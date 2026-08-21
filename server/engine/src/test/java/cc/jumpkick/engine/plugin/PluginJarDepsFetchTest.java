@@ -6,7 +6,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.PomRuntimeClasspath;
+import cc.jumpkick.repo.RepoGroup;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -35,6 +37,8 @@ class PluginJarDepsFetchTest {
 
     @BeforeEach
     void start() throws IOException {
+        EffectivePomBuilder.clearProcessCache();
+        RepoGroup.clearProcessFetchCache();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
             byte[] body = served.get(exchange.getRequestURI().getPath());
@@ -106,6 +110,137 @@ class PluginJarDepsFetchTest {
         Path dep = tmp.resolve("cache/repos/jumpkick/com/foo/lib/1.0/lib-1.0.jar");
         assertThat(cp).contains(dep.toAbsolutePath().normalize());
         assertThat(Files.readString(dep)).isEqualTo("dep-bytes");
+    }
+
+    @Test
+    void official_fetch_interpolates_parent_property_versions(@TempDir Path tmp) throws Exception {
+        String rel = PluginJar.PUBLISHER.relativePath();
+        String pomRel = rel.substring(0, rel.length() - 4) + ".pom";
+        String ver = JkVersion.VERSION;
+        serve("/" + rel, "thin-worker-jar");
+        serve("/" + pomRel, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-publisher</artifactId>
+                  <version>%s</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.example</groupId>
+                      <artifactId>databind</artifactId>
+                      <version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """.formatted(ver));
+        serve("/org/example/parent/1.0/parent-1.0.pom", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <properties>
+                    <jackson.version.annotations>2.21</jackson.version.annotations>
+                  </properties>
+                </project>
+                """);
+        serve("/org/example/databind/1.0/databind-1.0.jar", "databind-bytes");
+        serve("/org/example/databind/1.0/databind-1.0.pom", """
+                <project>
+                  <parent>
+                    <groupId>org.example</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>1.0</version>
+                  </parent>
+                  <artifactId>databind</artifactId>
+                  <version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.example</groupId>
+                      <artifactId>annotations</artifactId>
+                      <version>${jackson.version.annotations}</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        serve("/org/example/annotations/2.21/annotations-2.21.jar", "annotations-bytes");
+        serve("/org/example/annotations/2.21/annotations-2.21.pom", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>annotations</artifactId>
+                  <version>2.21</version>
+                </project>
+                """);
+
+        Path jar = PluginJar.PUBLISHER.locate(new Cas(tmp.resolve("cache")));
+        List<Path> cp = PomRuntimeClasspath.resolve(jar);
+        Path annotations = tmp.resolve("cache/repos/jumpkick/org/example/annotations/2.21/annotations-2.21.jar");
+        assertThat(cp).contains(annotations.toAbsolutePath().normalize());
+        assertThat(Files.readString(annotations)).isEqualTo("annotations-bytes");
+    }
+
+    @Test
+    void official_fetch_fills_bom_managed_versions(@TempDir Path tmp) throws Exception {
+        String rel = PluginJar.PUBLISHER.relativePath();
+        String pomRel = rel.substring(0, rel.length() - 4) + ".pom";
+        String ver = JkVersion.VERSION;
+        serve("/" + rel, "thin-worker-jar");
+        serve("/" + pomRel, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-publisher</artifactId>
+                  <version>%s</version>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.example</groupId>
+                        <artifactId>bom</artifactId>
+                        <version>1.0</version>
+                        <type>pom</type>
+                        <scope>import</scope>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.example</groupId>
+                      <artifactId>lib</artifactId>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """.formatted(ver));
+        serve("/org/example/bom/1.0/bom-1.0.pom", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>bom</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.example</groupId>
+                        <artifactId>lib</artifactId>
+                        <version>9.9.9</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        serve("/org/example/lib/9.9.9/lib-9.9.9.jar", "lib-bytes");
+        serve("/org/example/lib/9.9.9/lib-9.9.9.pom", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>lib</artifactId>
+                  <version>9.9.9</version>
+                </project>
+                """);
+
+        Path jar = PluginJar.PUBLISHER.locate(new Cas(tmp.resolve("cache")));
+        List<Path> cp = PomRuntimeClasspath.resolve(jar);
+        Path lib = tmp.resolve("cache/repos/jumpkick/org/example/lib/9.9.9/lib-9.9.9.jar");
+        assertThat(cp).contains(lib.toAbsolutePath().normalize());
+        assertThat(Files.readString(lib)).isEqualTo("lib-bytes");
     }
 
     @Test

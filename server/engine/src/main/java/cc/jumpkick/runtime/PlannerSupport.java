@@ -631,7 +631,8 @@ public final class PlannerSupport {
         List<String> discovered = cc.jumpkick.layout.TestSuites.discover(dir, compact);
         // Session selection for suite resolution too — --all widens the suite set, and the
         // forecast's source list must cover the same files the live run stamps (JK-2203).
-        var resolved = cc.jumpkick.config.SessionContext.current().testSelection().resolve(discovered);
+        var resolved =
+                cc.jumpkick.config.SessionContext.current().testSelection().resolve(discovered);
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(cc.jumpkick.layout.TestSuites.DEFAULT);
         List<Path> stampSrcs = new ArrayList<>();
         stampSrcs.addAll(cc.jumpkick.layout.TestSuites.collectJavaSources(dir, compact, suites));

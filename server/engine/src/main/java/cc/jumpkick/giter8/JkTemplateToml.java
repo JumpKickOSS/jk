@@ -22,8 +22,7 @@ public final class JkTemplateToml {
 
     public static final String FILE_NAME = ".jk-template.toml";
 
-    public record Meta(
-            String language, String framework, String name, String description, List<String> layouts) {
+    public record Meta(String language, String framework, String name, String description, List<String> layouts) {
 
         public Meta {
             language = language.strip().toLowerCase(Locale.ROOT);

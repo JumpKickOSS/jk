@@ -165,7 +165,8 @@ public final class Giter8Catalog {
                     Path p = fw.resolve(dirName);
                     if (isTemplateRoot(p)) return Optional.of(p.toAbsolutePath().normalize());
                     Path bare = fw.resolve(ref);
-                    if (isTemplateRoot(bare)) return Optional.of(bare.toAbsolutePath().normalize());
+                    if (isTemplateRoot(bare))
+                        return Optional.of(bare.toAbsolutePath().normalize());
                 }
             } catch (IOException ignored) {
                 // try next lang

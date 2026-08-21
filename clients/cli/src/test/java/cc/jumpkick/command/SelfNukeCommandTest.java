@@ -45,8 +45,9 @@ class SelfNukeCommandTest {
         prevHome = System.getProperty("jk.env.JK_HOME");
         prevState = System.getProperty("jk.env.JK_STATE_DIR");
         System.setProperty("jk.env.JK_HOME", isolatedHome.toString());
-        System.setProperty("jk.env.JK_STATE_DIR", Files.createDirectories(isolatedHome.resolve("state"))
-                .toString());
+        System.setProperty(
+                "jk.env.JK_STATE_DIR",
+                Files.createDirectories(isolatedHome.resolve("state")).toString());
         // self nuke is engine-hosted: give the isolated home a REAL launchable engine by
         // copying the suite home's materialized install (EngineTestExtension ran beforeAll,
         // before this overlay). A stub jar here just reproduces "no build engine" (exit 1).

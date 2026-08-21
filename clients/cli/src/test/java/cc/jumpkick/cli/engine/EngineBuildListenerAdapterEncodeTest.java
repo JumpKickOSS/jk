@@ -38,8 +38,8 @@ class EngineBuildListenerAdapterEncodeTest {
     void the_single_build_request_carries_a_selection_too() {
         TestSelection widened = TestSelection.of(List.of(), true, List.of(), List.of(), true);
 
-        String json = ProtoJobs.singleBuildRequest(
-                "/proj", "/cache", null, 0, null, false, false, false, false, widened);
+        String json =
+                ProtoJobs.singleBuildRequest("/proj", "/cache", null, 0, null, false, false, false, false, widened);
 
         assertThat(ProtoJobs.testSelectionOf(json)).isEqualTo(widened);
         assertThat(ProtoJobs.singleBuildRequest("/proj", "/cache", null, 0, null, false, false, false, false))

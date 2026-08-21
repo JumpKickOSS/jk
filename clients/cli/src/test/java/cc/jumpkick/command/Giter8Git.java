@@ -94,7 +94,8 @@ public final class Giter8Git {
         List<Path> candidates = new ArrayList<>();
         for (String lang : List.of("java", "kotlin", "groovy")) {
             candidates.add(cloneRoot.resolve(lang).resolve("none").resolve(dirG8));
-            candidates.add(cloneRoot.resolve("templates").resolve(lang).resolve("none").resolve(dirG8));
+            candidates.add(
+                    cloneRoot.resolve("templates").resolve(lang).resolve("none").resolve(dirG8));
             candidates.add(cloneRoot.resolve(lang).resolve(dirG8));
             candidates.add(cloneRoot.resolve("templates").resolve(lang).resolve(dirG8));
             candidates.add(cloneRoot.resolve(lang).resolve(name));

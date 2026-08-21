@@ -227,9 +227,8 @@ class WorkspaceSchedulerTest {
     @Test
     void dependent_chain_height_scores_the_spine() {
         List<String> units = diamondUnits();
-        Map<Path, Integer> h =
-                WorkspaceScheduler.dependentChainHeight(units, WorkspaceSchedulerTest::p, diamondEdges(), Set.of(
-                        p("a"), p("b"), p("c"), p("d")));
+        Map<Path, Integer> h = WorkspaceScheduler.dependentChainHeight(
+                units, WorkspaceSchedulerTest::p, diamondEdges(), Set.of(p("a"), p("b"), p("c"), p("d")));
         assertThat(h.get(p("a"))).isEqualTo(2);
         assertThat(h.get(p("b"))).isEqualTo(1);
         assertThat(h.get(p("c"))).isEqualTo(1);
