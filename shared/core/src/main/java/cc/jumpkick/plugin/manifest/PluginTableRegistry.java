@@ -122,6 +122,11 @@ public final class PluginTableRegistry {
         Objects.requireNonNull(manifest, "manifest");
         synchronized (PluginTableRegistry.class) {
             Map<String, PluginDescriptor> next = new LinkedHashMap<>(BY_TABLE);
+            // Replace on id OR table, matching manifestsFor: an override whose table differs
+            // from the built-in's must not leave both manifests installed under one id.
+            next.values()
+                    .removeIf(existing ->
+                            existing.id().equals(manifest.id()) || existing.table().equals(manifest.table()));
             next.put(manifest.table(), manifest);
             BY_TABLE = Map.copyOf(next);
         }

@@ -19,6 +19,27 @@ import org.tomlj.Toml;
 class PluginTableRegistryTest {
 
     @Test
+    void put_built_in_replaces_on_id_or_table() {
+        String base = """
+                [plugin]
+                id      = "zz-replace"
+                table   = "%s"
+                version = "1.0.0"
+
+                [schema]
+                enabled = { type = "bool", default = true }
+                """;
+        PluginTableRegistry.putBuiltIn(PluginDescriptors.parse(base.formatted("zz-replace-a"), "test"), null);
+        PluginTableRegistry.putBuiltIn(PluginDescriptors.parse(base.formatted("zz-replace-b"), "test"), null);
+
+        org.assertj.core.api.Assertions.assertThat(PluginTableRegistry.byTable("zz-replace-a"))
+                .as("an override with the same id but a new table must evict the old table")
+                .isEmpty();
+        org.assertj.core.api.Assertions.assertThat(PluginTableRegistry.byTable("zz-replace-b"))
+                .isPresent();
+    }
+
+    @Test
     void built_in_spring_boot_manifest_loads_and_owns_its_table() {
         var manifest = PluginTableRegistry.byTable("spring-boot").orElseThrow();
         assertThat(manifest.id()).isEqualTo("spring-boot");

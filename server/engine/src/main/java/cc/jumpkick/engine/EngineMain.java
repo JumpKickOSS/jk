@@ -74,7 +74,14 @@ public final class EngineMain {
             EnginePaths.Paths paths = EnginePaths.current();
             cc.jumpkick.engine.plugin.BuiltInPluginJars.registerMissingBuiltInFetcher();
             cc.jumpkick.engine.plugin.BuiltInPluginJars.install();
-            cc.jumpkick.engine.plugin.BuiltInPluginJars.installUserConfig();
+            try {
+                cc.jumpkick.engine.plugin.BuiltInPluginJars.installUserConfig();
+            } catch (RuntimeException badConfig) {
+                // A user-config plugin pin (or config parse) error is explicit user intent we
+                // cannot honor — refuse to start with the message, never a raw stack.
+                System.err.println("jk engine: " + badConfig.getMessage());
+                return 1;
+            }
             cc.jumpkick.config.JkEngineConfig config = cc.jumpkick.config.JkEngineConfig.resolve();
             cc.jumpkick.config.JkHttpConfig httpConfig =
                     cc.jumpkick.config.JkHttpConfig.resolve().orElse(null);

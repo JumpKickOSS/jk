@@ -33,10 +33,17 @@ public final class BuiltInPluginJars {
      */
     public static void install() {
         for (Located located : locatedTablePlugins()) {
-            PluginTableRegistry.putBuiltIn(
-                    cc.jumpkick.plugin.manifest.PluginDescriptors.parse(
-                            located.manifestToml(), located.path() + "!jk-plugin.toml"),
-                    located.path());
+            try {
+                PluginTableRegistry.putBuiltIn(
+                        cc.jumpkick.plugin.manifest.PluginDescriptors.parse(
+                                located.manifestToml(), located.path() + "!jk-plugin.toml"),
+                        located.path());
+            } catch (RuntimeException e) {
+                // Store jars are managed artifacts: one garbled or version-incompatible manifest
+                // must not kill the engine machine-wide. Skip it loudly — a build referencing
+                // its table retries through the lazy fetcher and surfaces this cause there.
+                System.err.println("jk engine: skipping plugin jar " + located.path() + ": " + e.getMessage());
+            }
         }
     }
 
@@ -63,7 +70,10 @@ public final class BuiltInPluginJars {
 
     /**
      * Overlay {@code ~/.config/jk/config.toml [plugins]} path pins onto the registry. Maven pins
-     * wait for {@code jk lock} (project lock is law).
+     * wait for {@code jk lock} (project lock is law). A pin that cannot be honored — missing
+     * file, unreadable jar, hash mismatch — throws: the pin is explicit user intent, and
+     * silently running the shipped plugin instead is wrong code with no diagnostic. This matches
+     * the project-pin posture ({@code jk lock} errors naming both digests).
      */
     public static void installUserConfig() {
         Path config = JkDirs.userConfigFile();
@@ -72,11 +82,21 @@ public final class BuiltInPluginJars {
             if (!decl.isPathPin()) continue;
             Path jar = Path.of(decl.path());
             if (!jar.isAbsolute()) jar = base.resolve(jar).normalize();
-            if (!Files.isRegularFile(jar)) continue;
+            if (!Files.isRegularFile(jar)) {
+                throw new IllegalStateException(config + " [plugins] pins " + decl.path()
+                        + " but no file exists at " + jar + " — fix or remove the pin");
+            }
+            String actual;
             try {
-                if (!Hashing.sha256Hex(jar).equals(decl.sha256())) continue;
+                actual = Hashing.sha256Hex(jar);
             } catch (IOException e) {
-                continue;
+                throw new IllegalStateException(
+                        config + " [plugins] pin " + jar + " is unreadable: " + e.getMessage(), e);
+            }
+            if (!actual.equals(decl.sha256())) {
+                throw new IllegalStateException(config + " [plugins] pin " + jar
+                        + " hash mismatch: declared sha256 " + decl.sha256() + ", file is " + actual
+                        + " — update the pin after rebuilding the jar");
             }
             PluginTableRegistry.installFromJar(jar);
         }
