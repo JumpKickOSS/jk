@@ -25,16 +25,44 @@ public final class PluginTemplates {
 
     private PluginTemplates() {}
 
+    /**
+     * Per-jar scan memo, keyed by path with the (size, mtime) stamp in the value: mounting every
+     * plugin jar as a zip filesystem and parsing each {@code .jk-template.toml} on every picker /
+     * resolve call is engine-request-path work that only changes when a jar does.
+     */
+    private static final java.util.concurrent.ConcurrentHashMap<Path, JarScan> SCAN_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private record JarScan(long size, java.nio.file.attribute.FileTime modified, List<TemplateSpec> specs) {}
+
     /** Every plugin-bundled template as a picker row ({@code root} unset until materialize). */
     public static List<TemplateSpec> list() {
         List<TemplateSpec> out = new ArrayList<>();
         for (PluginDescriptor d : PluginTableRegistry.manifests()) {
             Path jar = PluginTableRegistry.archive(d.id());
             if (jar == null || !Files.isRegularFile(jar)) continue;
-            out.addAll(scanJar(d.id(), jar));
+            out.addAll(scanJarCached(d.id(), jar));
         }
         out.sort(Comparator.comparing(TemplateSpec::id));
         return List.copyOf(out);
+    }
+
+    private static List<TemplateSpec> scanJarCached(String pluginId, Path jar) {
+        long size;
+        java.nio.file.attribute.FileTime modified;
+        try {
+            size = Files.size(jar);
+            modified = Files.getLastModifiedTime(jar);
+        } catch (IOException unstatable) {
+            return scanJar(pluginId, jar);
+        }
+        JarScan hit = SCAN_CACHE.get(jar);
+        if (hit != null && hit.size() == size && hit.modified().equals(modified)) {
+            return hit.specs();
+        }
+        List<TemplateSpec> specs = List.copyOf(scanJar(pluginId, jar));
+        SCAN_CACHE.put(jar, new JarScan(size, modified, specs));
+        return specs;
     }
 
     static List<TemplateSpec> scanJar(String pluginId, Path jar) {

@@ -51,7 +51,10 @@ public final class FreshenCatalogVerb implements HostedVerb {
             try {
                 switch (String.valueOf(catalog)) {
                     case "templates" -> {
-                        if (!offline) cc.jumpkick.templates.OfficialTemplatesFreshen.refreshNow(msg -> {});
+                        if (!offline) {
+                            cc.jumpkick.templates.OfficialTemplatesFreshen.refreshNow(msg -> {});
+                            cc.jumpkick.giter8.Giter8TemplateIndex.invalidate();
+                        }
                     }
                     case "libraries" -> {
                         URI src = url != null ? URI.create(url) : cc.jumpkick.repo.LibraryRegistryClient.DEFAULT_SOURCE;

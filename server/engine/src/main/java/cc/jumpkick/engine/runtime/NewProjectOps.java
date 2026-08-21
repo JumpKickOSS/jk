@@ -380,6 +380,7 @@ public final class NewProjectOps {
             } catch (Throwable ignored) {
                 // best-effort
             }
+            Giter8TemplateIndex.invalidate();
             spec = resolveIndexed(ref, lang, cwd);
         }
         if (spec.isEmpty()) return Optional.empty();

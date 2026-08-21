@@ -24,19 +24,42 @@ public final class Giter8TemplateIndex {
 
     private Giter8TemplateIndex() {}
 
-    /** Plugin rows first (overlay), then catalog / local roots. */
+    /**
+     * Short-TTL memo of the assembled index: MCP {@code templates} and every {@code jk new}
+     * resolution re-scanned all disk roots and plugin jars per call — a cold-cache scaffold ran
+     * up to three full scans. Five seconds bounds staleness for concurrent edits;
+     * {@link #invalidate()} drops it eagerly after a catalog freshen.
+     */
+    private static volatile PickerMemo PICKER_MEMO;
+
+    private static final long PICKER_TTL_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+
+    private record PickerMemo(List<Path> roots, long atNanos, List<TemplateSpec> specs) {}
+
+    /** Drop the index memo — a freshen just changed what the cache roots hold. */
+    public static void invalidate() {
+        PICKER_MEMO = null;
+    }
+
+    /** Catalog / local roots first ({@code putIfAbsent} precedence), plugin rows overlay by id. */
     public static List<TemplateSpec> picker(List<Path> roots) {
+        List<Path> key = roots == null ? List.of() : List.copyOf(roots);
+        PickerMemo memo = PICKER_MEMO;
+        long now = System.nanoTime();
+        if (memo != null && memo.roots().equals(key) && now - memo.atNanos() < PICKER_TTL_NANOS) {
+            return memo.specs();
+        }
         Map<String, TemplateSpec> byId = new LinkedHashMap<>();
-        if (roots != null) {
-            for (Path root : roots) {
-                if (root == null) continue;
-                scanRoot(root.toAbsolutePath().normalize(), byId, TemplateSpec.SOURCE_CATALOG);
-            }
+        for (Path root : key) {
+            if (root == null) continue;
+            scanRoot(root.toAbsolutePath().normalize(), byId, TemplateSpec.SOURCE_CATALOG);
         }
         for (TemplateSpec p : PluginTemplates.list()) {
             byId.put(p.id(), p);
         }
-        return List.copyOf(byId.values());
+        List<TemplateSpec> specs = List.copyOf(byId.values());
+        PICKER_MEMO = new PickerMemo(key, now, specs);
+        return specs;
     }
 
     /**
