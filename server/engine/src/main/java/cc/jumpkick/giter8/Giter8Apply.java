@@ -75,10 +75,10 @@ public final class Giter8Apply {
                 Files.createDirectories(out.getParent());
                 requireInside(destReal, out.getParent().toRealPath().resolve(out.getFileName()), renderedRel);
                 byte[] raw = Files.readAllBytes(file);
-                if (isBinary(raw) || matchesVerbatim(rel, file.getFileName().toString(), verbatim)) {
+                String text = matchesVerbatim(rel, file.getFileName().toString(), verbatim) ? null : decodeText(raw);
+                if (text == null) {
                     Files.write(out, raw);
                 } else {
-                    String text = new String(raw, StandardCharsets.UTF_8);
                     Files.writeString(out, Giter8Render.content(text, props), StandardCharsets.UTF_8);
                 }
                 count[0]++;
@@ -161,11 +161,25 @@ public final class Giter8Apply {
         }
     }
 
-    private static boolean isBinary(byte[] raw) {
+    /**
+     * The file as text iff it is valid UTF-8 with no NUL — anything else copies through
+     * byte-for-byte. A lossy decode here silently corrupted non-UTF-8 text (ISO-8859-1 READMEs)
+     * with replacement characters in every generated project.
+     */
+    private static @Nullable String decodeText(byte[] raw) {
         for (byte b : raw) {
-            if (b == 0) return true;
+            if (b == 0) return null;
         }
-        return false;
+        try {
+            return StandardCharsets.UTF_8
+                    .newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                    .decode(java.nio.ByteBuffer.wrap(raw))
+                    .toString();
+        } catch (java.nio.charset.CharacterCodingException notUtf8) {
+            return null;
+        }
     }
 
     private static List<Pattern> verbatimPatterns(@Nullable String verbatim) {

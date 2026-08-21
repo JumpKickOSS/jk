@@ -31,6 +31,25 @@ class Giter8ApplyTest {
     }
 
     @Test
+    void binary_and_non_utf8_files_pass_through_byte_for_byte(@TempDir Path tmp) throws Exception {
+        Path template = g8(tmp, "name=demo\n");
+        Path g8 = template.resolve("src/main/g8");
+        Files.createDirectories(g8);
+        Files.writeString(g8.resolve("jk.toml"), "name = \"$name$\"\n");
+        byte[] binary = {0x50, 0x4B, 0x00, 0x01, (byte) 0xFF};
+        Files.write(g8.resolve("logo.bin"), binary);
+        // ISO-8859-1 "café $name$" — invalid UTF-8; a lossy decode would corrupt é AND render $name$.
+        byte[] latin1 = "café $name$\n".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+        Files.write(g8.resolve("README"), latin1);
+
+        Path dest = tmp.resolve("out");
+        Giter8Apply.apply(template, dest, Map.of());
+
+        assertThat(Files.readAllBytes(dest.resolve("logo.bin"))).isEqualTo(binary);
+        assertThat(Files.readAllBytes(dest.resolve("README"))).isEqualTo(latin1);
+    }
+
+    @Test
     void root_layout_template_excludes_git_and_metadata(@TempDir Path tmp) throws Exception {
         // A cloned root-as-content template: .git (with ST-hostile content) and .jk-template.toml
         // are template plumbing, never project content.
