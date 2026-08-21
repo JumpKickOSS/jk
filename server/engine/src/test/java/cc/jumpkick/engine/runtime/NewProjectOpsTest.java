@@ -172,6 +172,25 @@ class NewProjectOpsTest {
     }
 
     @Test
+    void failed_template_apply_cleans_the_target_so_retry_works(@TempDir Path temp) throws Exception {
+        Path g8 = temp.resolve("no-jktoml.g8");
+        Files.createDirectories(g8.resolve("src/main/g8"));
+        Files.writeString(g8.resolve("default.properties"), "name=demo\n");
+        Files.writeString(g8.resolve("src/main/g8/README.md"), "# $name$\n");
+        Path parent = temp.resolve("apps");
+        Files.createDirectories(parent);
+        var request = new NewProjectOps.Request(
+                "widget", parent.toString(), "com.acme", "java", "traditional", g8.toAbsolutePath().toString(), true);
+
+        assertThatThrownBy(() -> NewProjectOps.create(request)).hasMessageContaining("did not produce jk.toml");
+        assertThat(parent.resolve("widget")).as("failed scaffold must not leave a half-written target").doesNotExist();
+
+        // Fixing the template makes the same request succeed — no manual rm -rf in between.
+        Files.writeString(g8.resolve("src/main/g8/jk.toml"), "name = \"$name$\"\n");
+        assertThat(NewProjectOps.create(request).path().resolve("jk.toml")).exists();
+    }
+
+    @Test
     void resolve_template_finds_dogfood_short_name(@TempDir Path temp) throws Exception {
         // Unique short name so the official cache cannot steal the hit.
         Path templates = temp.resolve("templates");

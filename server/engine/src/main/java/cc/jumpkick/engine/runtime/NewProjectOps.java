@@ -112,8 +112,33 @@ public final class NewProjectOps {
 
     public static Result create(Request req) throws IOException {
         Prepared prep = prepare(req);
-        scaffoldInto(prep, prep.target());
+        boolean existedBefore = Files.isDirectory(prep.target());
+        try {
+            scaffoldInto(prep, prep.target());
+        } catch (IOException | RuntimeException e) {
+            cleanupFailedTarget(prep.target(), existedBefore);
+            throw e;
+        }
         return new Result(prep.target());
+    }
+
+    /**
+     * A failed scaffold must not block the retry behind a manual {@code rm -rf}: {@link #prepare}
+     * guaranteed the target was absent or empty, so everything under it is ours to remove. A
+     * pre-existing (empty) directory is kept, only emptied; one jk created is removed entirely.
+     */
+    private static void cleanupFailedTarget(Path target, boolean existedBefore) {
+        try {
+            if (!Files.isDirectory(target)) return;
+            try (var children = Files.list(target)) {
+                for (Path child : children.toList()) {
+                    deleteRecursively(child);
+                }
+            }
+            if (!existedBefore) Files.deleteIfExists(target);
+        } catch (IOException ignored) {
+            // cleanup is best-effort; don't mask the scaffold error
+        }
     }
 
     /**
