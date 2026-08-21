@@ -84,7 +84,9 @@ public final class PlannerTest {
                             cc.jumpkick.layout.TestSuites.collectKotlinSources(in.dir(), compact, suiteNames);
                     List<Path> gvTest =
                             cc.jumpkick.layout.TestSuites.collectGroovySources(in.dir(), compact, suiteNames);
-                    if (javaTest.isEmpty() && ktTest.isEmpty() && gvTest.isEmpty()) {
+                    List<Path> scTest =
+                            cc.jumpkick.layout.TestSuites.collectScalaSources(in.dir(), compact, suiteNames);
+                    if (javaTest.isEmpty() && ktTest.isEmpty() && gvTest.isEmpty() && scTest.isEmpty()) {
                         ctx.label("no test sources");
                         ctx.put(NO_TEST_SOURCES, true);
                         ctx.cached(); // SKIPPED — nothing to compile
@@ -96,6 +98,7 @@ public final class PlannerTest {
                     allTestSources.addAll(javaTest);
                     allTestSources.addAll(ktTest);
                     allTestSources.addAll(gvTest);
+                    allTestSources.addAll(scTest);
                     ctx.put(TEST_SOURCES, allTestSources);
                     @SuppressWarnings("unchecked")
                     List<Path> compileCp = (List<Path>) ctx.require(COMPILE_TEST_CP);
@@ -186,8 +189,8 @@ public final class PlannerTest {
                         }
                     }
 
-                    // Java test sources, against the Kotlin/Groovy test output in a mixed module.
-                    if (!javaTest.isEmpty()) {
+                    // Java/Scala test sources, against the Kotlin/Groovy test output in a mixed module.
+                    if (!javaTest.isEmpty() || !scTest.isEmpty()) {
                         Path javaTestOut = testClasses; // javac always writes to java/test/
                         List<Path> javaCp = baseCp;
                         if (mixedTest || mixedTestGv) {
@@ -205,6 +208,16 @@ public final class PlannerTest {
                                 (List<Path>) ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
                         Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations", "test");
                         Files.createDirectories(genDir);
+                        String scalaVersion = null;
+                        List<Path> compilerCp = List.of();
+                        if (!scTest.isEmpty()) {
+                            ScalaCompile.Setup setup =
+                                    ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas);
+                            scalaVersion = setup.version();
+                            compilerCp = setup.compilerClasspath();
+                            javaCp = new ArrayList<>(javaCp);
+                            javaCp.add(setup.libraryJar());
+                        }
                         boolean ok = TestSupport.compileWithCache(
                                 ctx,
                                 TaskNames.COMPILE_TEST,
@@ -217,7 +230,10 @@ public final class PlannerTest {
                                 ctx.require(JAVA_HOME),
                                 genDir,
                                 cas,
-                                in.cache());
+                                in.cache(),
+                                scTest,
+                                scalaVersion,
+                                compilerCp);
                         if (!ok) throw new RuntimeException("test compile failed");
                     }
 

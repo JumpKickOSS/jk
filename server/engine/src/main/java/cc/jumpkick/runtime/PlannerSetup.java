@@ -245,13 +245,21 @@ public final class PlannerSetup {
                     for (var root : cc.jumpkick.plugin.manifest.PluginContributions.sourceRoots(project, in.dir())) {
                         if (!root.resource()) extraSrcDirs.add(in.dir().resolve(root.dir()));
                     }
+                    List<Path> scalaMainSrcs = CompileSupport.collectScalaSources(in.dir(), compact);
                     if (!extraSrcDirs.isEmpty()) {
                         javaMainSrcs = CompileSupport.withExtraSources(javaMainSrcs, extraSrcDirs, ".java");
                         kotlinMainSrcs = CompileSupport.withExtraSources(kotlinMainSrcs, extraSrcDirs, ".kt");
                         groovyMainSrcs = CompileSupport.withExtraSources(groovyMainSrcs, extraSrcDirs, ".groovy");
+                        scalaMainSrcs = CompileSupport.withExtraSources(scalaMainSrcs, extraSrcDirs, ".scala");
                         javaMainSrcRef.set(javaMainSrcs);
                         kotlinMainSrcRef.set(kotlinMainSrcs);
                         groovyMainSrcRef.set(groovyMainSrcs);
+                    }
+                    if (!scalaMainSrcs.isEmpty()) {
+                        List<Path> withScala = new ArrayList<>(javaMainSrcs);
+                        withScala.addAll(scalaMainSrcs);
+                        javaMainSrcs = withScala;
+                        javaMainSrcRef.set(javaMainSrcs);
                     }
                     ctx.put(JAVA_SOURCES, javaMainSrcs);
                     ctx.put(KOTLIN_SOURCES, kotlinMainSrcs);

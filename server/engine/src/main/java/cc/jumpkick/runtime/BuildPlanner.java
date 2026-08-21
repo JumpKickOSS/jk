@@ -422,7 +422,7 @@ public final class BuildPlanner {
             parsedBuild = jkBuild;
             var project = jkBuild.project();
             cc.jumpkick.layout.Languages langs = CompileSupport.resolveLanguages(project, in.dir());
-            useJava = langs.java();
+            useJava = langs.java() || langs.scala();
             useKotlin = langs.kotlin();
             useGroovy = langs.groovy();
             // [processor-dependencies] on a Kotlin module can generate Java sources (Hilt's

@@ -118,7 +118,9 @@ public final class JavaCompile {
                     gen,
                     request.release(),
                     request.extraOptions(),
-                    stateDir));
+                    stateDir,
+                    request.scalaVersion(),
+                    request.compilerClasspath()));
         } finally {
             outputs = prewriter.finish();
         }

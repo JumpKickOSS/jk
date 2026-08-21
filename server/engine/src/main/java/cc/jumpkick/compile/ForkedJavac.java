@@ -60,7 +60,35 @@ public final class ForkedJavac {
             Path sourceOutput,
             int release,
             List<String> extraArgs,
-            Path workdir) {
+            Path workdir,
+            String scalaVersion,
+            List<Path> compilerClasspath) {
+        public Request(
+                Path javaHome,
+                Path workerJar,
+                List<Path> sources,
+                List<Path> classpath,
+                List<Path> processorPath,
+                Path classOutput,
+                Path sourceOutput,
+                int release,
+                List<String> extraArgs,
+                Path workdir) {
+            this(
+                    javaHome,
+                    workerJar,
+                    sources,
+                    classpath,
+                    processorPath,
+                    classOutput,
+                    sourceOutput,
+                    release,
+                    extraArgs,
+                    workdir,
+                    null,
+                    List.of());
+        }
+
         public Request(
                 Path javaHome,
                 Path workerJar,
@@ -114,7 +142,7 @@ public final class ForkedJavac {
             Path hostJavaHome = cc.jumpkick.jdk.JavaHomes.runningJavaHome();
             Path javaExe = hostJavaHome.resolve("bin").resolve(win ? "java.exe" : "java");
             // Thin worker + Maven runtime closure from its POM.
-            String workerCp = cc.jumpkick.engine.plugin.WorkerLaunchClasspath.resolve(req.workerJar());
+            String workerCp = workerClasspath(req);
             // AOT for this *java* process (ToolProvider host) — not bare `javac` launcher AOT.
             List<String> jvmFlags = new ArrayList<>(cc.jumpkick.engine.plugin.PluginAot.javaCompilerFlags(
                     hostJavaHome,
@@ -164,9 +192,15 @@ public final class ForkedJavac {
                 .op(PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
                 .configInt("release", req.release())
                 .layout(layout);
+        if (req.scalaVersion() != null && !req.scalaVersion().isBlank()) {
+            sw.configString("scalaVersion", req.scalaVersion());
+        }
         for (Path s : req.sources()) sw.source(s);
         for (Path c : req.classpath()) sw.cp(c, PluginProtocol.ROLE_COMPILE);
         for (Path p : req.processorPath()) sw.cp(p, PluginProtocol.ROLE_PROCESSOR);
+        if (req.compilerClasspath() != null) {
+            for (Path p : req.compilerClasspath()) sw.cp(p, PluginProtocol.ROLE_COMPILER);
+        }
         for (String a : req.extraArgs()) sw.arg(a);
         Path spec = Files.createTempFile("jk-javac-", ".spec");
         Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
@@ -224,5 +258,20 @@ public final class ForkedJavac {
         // thin worker jar alone would CNFE on PluginMain, silently never training.
         return cc.jumpkick.engine.plugin.PluginLoader.command(
                 javaExe, workerCp, jvmFlags, List.of("@" + trainSpec.toAbsolutePath()));
+    }
+
+    /**
+     * Java-only: thin worker + Zinc POM closure. Mixed Scala: that plus the project-matched
+     * compiler + bridge (AOT keys stay Zinc-only when compilerClasspath is empty).
+     */
+    static String workerClasspath(Request req) {
+        String workerCp = cc.jumpkick.engine.plugin.WorkerLaunchClasspath.resolve(req.workerJar());
+        if (req.compilerClasspath() == null || req.compilerClasspath().isEmpty()) return workerCp;
+        String sep = System.getProperty("path.separator", ":");
+        StringBuilder sb = new StringBuilder(workerCp);
+        for (Path p : req.compilerClasspath()) {
+            sb.append(sep).append(p.toAbsolutePath());
+        }
+        return sb.toString();
     }
 }

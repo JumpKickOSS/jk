@@ -74,6 +74,18 @@ public final class PlannerCompile {
                     // so it cannot prune Java's output; the assembler merges both.
                     Path javaOut = classes;
                     List<Path> sources = javaSources(ctx);
+                    List<Path> scalaSrcs;
+                    try {
+                        scalaSrcs = CompileSupport.collectScalaSources(in.dir(), compact);
+                    } catch (Exception e) {
+                        scalaSrcs = List.of();
+                    }
+                    if (!scalaSrcs.isEmpty()) {
+                        sources = new ArrayList<>(sources);
+                        for (Path p : scalaSrcs) {
+                            if (!sources.contains(p)) sources.add(p);
+                        }
+                    }
                     List<Path> generated = pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".java");
                     List<Path> kspGenerated = kspGeneratedSources(ctx.require(LAYOUT), ".java");
                     List<Path> logicGenerated = BuildLogicSupport.generatedSources(ctx.require(LAYOUT), ".java");
@@ -145,15 +157,24 @@ public final class PlannerCompile {
                             javacArgs.add(stubs.toAbsolutePath().toString());
                         }
                     }
-                    CompileRequest request = CompileRequest.builder()
+                    ScalaCompile.Setup scalaSetup = null;
+                    if (!scalaSrcs.isEmpty()) {
+                        scalaSetup = ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas);
+                        classpath = new ArrayList<>(classpath);
+                        classpath.add(scalaSetup.libraryJar());
+                    }
+                    CompileRequest.CompileRequestBuilder req = CompileRequest.builder()
                             .sources(sources)
                             .classpath(classpath)
                             .outputDir(javaOut)
                             .release(ctx.require(RELEASE))
                             .extraOptions(javacArgs)
                             .javaHome(ctx.require(JAVA_HOME))
-                            .processorPath(processorCp)
-                            .build();
+                            .processorPath(processorCp);
+                    if (scalaSetup != null) {
+                        req.scalaVersion(scalaSetup.version()).compilerClasspath(scalaSetup.compilerClasspath());
+                    }
+                    CompileRequest request = req.build();
                     String taskId = ActionKey.qualifiedTaskId("compile-main", javaOut);
                     Path javaStateDir = in.cache()
                             .resolve("actions")

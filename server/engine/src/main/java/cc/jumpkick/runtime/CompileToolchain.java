@@ -74,6 +74,29 @@ public final class CompileToolchain {
     }
 
     /**
+     * Pick the Scala 3 compiler version: lock pin first, else the locked {@code scala3-library_3}
+     * artifact, else an exact {@code scala} pin, else {@code null} (bundled default).
+     */
+    public static String scalaVersionFor(cc.jumpkick.lock.Lockfile lock, JkBuild project) {
+        if (lock != null && lock.scala() != null && !lock.scala().isBlank()) {
+            return lock.scala();
+        }
+        if (lock != null) {
+            for (cc.jumpkick.lock.Lockfile.Artifact a : lock.artifacts()) {
+                String name = a.name();
+                if (name.equals("org.scala-lang:scala3-library_3")
+                        || name.startsWith("org.scala-lang:scala3-library_3:")) {
+                    return a.version();
+                }
+            }
+        }
+        if (project != null && project.project().scala() instanceof cc.jumpkick.model.VersionSelector.Exact exact) {
+            return exact.version();
+        }
+        return null;
+    }
+
+    /**
      * Resolve a Kotlin installation pinned to a specific version (e.g. from a script's {@code
      * //KOTLIN 2.1.0} directive). Passes {@code null} to fall back to the bundled default
      * distribution.

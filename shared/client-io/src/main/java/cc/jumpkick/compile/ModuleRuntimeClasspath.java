@@ -83,6 +83,7 @@ public final class ModuleRuntimeClasspath {
         Languages langs = Languages.resolve(project.project(), moduleDir);
         if (langs.groovy()) roots.add("org.apache.groovy:groovy");
         if (langs.kotlin()) roots.add("org.jetbrains.kotlin:kotlin-stdlib");
+        if (langs.scala()) roots.add("org.scala-lang:scala3-library_3");
     }
 
     static List<JkBuild> siblingBuilds(Path moduleDir, JkBuild project, List<String> siblingCoords) throws IOException {

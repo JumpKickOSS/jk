@@ -273,6 +273,7 @@ public final class NewProjectOps {
                         case JAVA -> prep.group() + ".Main";
                         case KOTLIN -> compact ? "MainKt" : prep.group() + ".MainKt";
                         case GROOVY -> compact ? "Main" : prep.group() + ".Main";
+                        case SCALA -> compact ? "Main" : prep.group() + ".Main";
                     });
         }
         int hostMajor = Runtime.version().feature();
@@ -590,7 +591,8 @@ public final class NewProjectOps {
             case "java" -> NewInputs.Language.JAVA;
             case "kotlin" -> NewInputs.Language.KOTLIN;
             case "groovy" -> NewInputs.Language.GROOVY;
-            default -> throw new IllegalArgumentException("lang must be java|kotlin|groovy");
+            case "scala" -> NewInputs.Language.SCALA;
+            default -> throw new IllegalArgumentException("lang must be java|kotlin|groovy|scala");
         };
     }
 

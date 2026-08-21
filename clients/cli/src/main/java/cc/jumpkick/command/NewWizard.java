@@ -64,9 +64,10 @@ public final class NewWizard {
             case "java" -> NewInputs.Language.JAVA;
             case "kotlin", "kt" -> NewInputs.Language.KOTLIN;
             case "groovy" -> NewInputs.Language.GROOVY;
+            case "scala" -> NewInputs.Language.SCALA;
             default ->
                 throw new IllegalArgumentException(
-                        "jk new: --lang must be 'java', 'kotlin', or 'groovy', got: " + value);
+                        "jk new: --lang must be 'java', 'kotlin', 'groovy', or 'scala', got: " + value);
         };
     }
 
@@ -96,6 +97,7 @@ public final class NewWizard {
             case JAVA -> group + ".Main";
             case KOTLIN -> compact ? "MainKt" : group + ".MainKt";
             case GROOVY -> compact ? "Main" : group + ".Main";
+            case SCALA -> compact ? "Main" : group + ".Main";
         };
     }
 

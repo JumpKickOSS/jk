@@ -43,7 +43,7 @@ public final class TestSupport {
         try (Stream<Path> walk = Files.walk(testSrcDir)) {
             for (Path file : (Iterable<Path>) walk.filter(Files::isRegularFile).filter(p -> {
                 String n = p.getFileName().toString();
-                return n.endsWith(".java") || n.endsWith(".kt") || n.endsWith(".groovy");
+                return n.endsWith(".java") || n.endsWith(".kt") || n.endsWith(".groovy") || n.endsWith(".scala");
             })::iterator) {
                 try {
                     String content = Files.readString(file);
@@ -70,6 +70,7 @@ public final class TestSupport {
             roots.addAll(cc.jumpkick.layout.TestSuites.javaRoots(moduleDir, compact, suite));
             roots.addAll(cc.jumpkick.layout.TestSuites.kotlinRoots(moduleDir, compact, suite));
             roots.addAll(cc.jumpkick.layout.TestSuites.groovyRoots(moduleDir, compact, suite));
+            roots.addAll(cc.jumpkick.layout.TestSuites.scalaRoots(moduleDir, compact, suite));
         }
         for (Path r : roots) total += estimateTestCount(r);
         return total;
@@ -94,6 +95,7 @@ public final class TestSupport {
             roots.addAll(cc.jumpkick.layout.TestSuites.javaRoots(moduleDir, compact, suite));
             roots.addAll(cc.jumpkick.layout.TestSuites.kotlinRoots(moduleDir, compact, suite));
             roots.addAll(cc.jumpkick.layout.TestSuites.groovyRoots(moduleDir, compact, suite));
+            roots.addAll(cc.jumpkick.layout.TestSuites.scalaRoots(moduleDir, compact, suite));
         }
         for (Path r : roots) total += estimateTestCount(r);
         return total;
@@ -110,6 +112,7 @@ public final class TestSupport {
             roots.addAll(cc.jumpkick.layout.TestSuites.javaRoots(moduleDir, compact, suite));
             roots.addAll(cc.jumpkick.layout.TestSuites.kotlinRoots(moduleDir, compact, suite));
             roots.addAll(cc.jumpkick.layout.TestSuites.groovyRoots(moduleDir, compact, suite));
+            roots.addAll(cc.jumpkick.layout.TestSuites.scalaRoots(moduleDir, compact, suite));
         }
         for (Path r : roots) total += estimateTestClassCount(r);
         return total;
@@ -122,7 +125,7 @@ public final class TestSupport {
         try (Stream<Path> walk = Files.walk(testSrcDir)) {
             for (Path file : (Iterable<Path>) walk.filter(Files::isRegularFile).filter(p -> {
                 String n = p.getFileName().toString();
-                return n.endsWith(".java") || n.endsWith(".kt") || n.endsWith(".groovy");
+                return n.endsWith(".java") || n.endsWith(".kt") || n.endsWith(".groovy") || n.endsWith(".scala");
             })::iterator) {
                 try {
                     String content = Files.readString(file);
@@ -148,6 +151,7 @@ public final class TestSupport {
         out.addAll(cc.jumpkick.layout.TestSuites.collectJavaSources(moduleDir, compact, suites));
         out.addAll(cc.jumpkick.layout.TestSuites.collectKotlinSources(moduleDir, compact, suites));
         out.addAll(cc.jumpkick.layout.TestSuites.collectGroovySources(moduleDir, compact, suites));
+        out.addAll(cc.jumpkick.layout.TestSuites.collectScalaSources(moduleDir, compact, suites));
         return new java.util.ArrayList<>(out);
     }
 
@@ -595,8 +599,48 @@ public final class TestSupport {
             Cas cas,
             Path cacheRoot)
             throws IOException {
+        return compileWithCache(
+                ctx,
+                taskId,
+                srcDir,
+                outputDir,
+                classpath,
+                processorPath,
+                release,
+                javacArgs,
+                javaHome,
+                generatedSourceDir,
+                cas,
+                cacheRoot,
+                List.of(),
+                null,
+                List.of());
+    }
 
-        List<Path> sources = CompileSupport.collectJavaSources(srcDir);
+    public static boolean compileWithCache(
+            TaskContext ctx,
+            String taskId,
+            Path srcDir,
+            Path outputDir,
+            List<Path> classpath,
+            List<Path> processorPath,
+            int release,
+            List<String> javacArgs,
+            Path javaHome,
+            Path generatedSourceDir,
+            Cas cas,
+            Path cacheRoot,
+            List<Path> extraSources,
+            String scalaVersion,
+            List<Path> compilerClasspath)
+            throws IOException {
+
+        List<Path> sources = new ArrayList<>(CompileSupport.collectJavaSources(srcDir));
+        if (extraSources != null) {
+            for (Path p : extraSources) {
+                if (!sources.contains(p)) sources.add(p);
+            }
+        }
         if (sources.isEmpty()) {
             Files.createDirectories(outputDir);
             return true;
@@ -605,15 +649,18 @@ public final class TestSupport {
         // Project-qualify so the `tasks/<taskId>` pointer is unique per module
         // (display labels keep the plain base name).
         String cacheTaskId = ActionKey.qualifiedTaskId(taskId, outputDir);
-        CompileRequest request = CompileRequest.builder()
+        CompileRequest.CompileRequestBuilder req = CompileRequest.builder()
                 .sources(sources)
                 .classpath(classpath)
                 .outputDir(outputDir)
                 .release(release)
                 .extraOptions(javacArgs)
                 .javaHome(javaHome)
-                .processorPath(processorPath)
-                .build();
+                .processorPath(processorPath);
+        if (scalaVersion != null && compilerClasspath != null && !compilerClasspath.isEmpty()) {
+            req.scalaVersion(scalaVersion).compilerClasspath(compilerClasspath);
+        }
+        CompileRequest request = req.build();
         // Action payloads live in the cache CAS; callers may pass the artifact CAS for classpath.
         ActionCache actionCache = new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
         boolean useCache = !cc.jumpkick.config.SessionContext.current().config().rebuildOr(false);

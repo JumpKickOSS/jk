@@ -1056,6 +1056,9 @@ public final class LockOrchestrator {
         if (langs.kotlin() && hasLangSources(projectDir, ".kt")) {
             addRuntime(bomConstraints, mainDeduped, added, "org.jetbrains.kotlin:kotlin-stdlib", p.kotlin(), "2");
         }
+        if (langs.scala() && hasLangSources(projectDir, ".scala")) {
+            addRuntime(bomConstraints, mainDeduped, added, "org.scala-lang:scala3-library_3", p.scala(), "3");
+        }
         return added;
     }
 

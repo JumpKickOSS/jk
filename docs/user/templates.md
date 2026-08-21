@@ -18,7 +18,9 @@ Standalone scaffolds write **`AGENTS.md`** (unless the template already shipped 
 pointing coding agents at `jk manual`. Workspace modules skip it — the root owns the file.
 
 `--lang` defaults to **java**. For a `framework/name` ref, a miss on that language walks
-java → kotlin → groovy until a hit (`jk new -t grails/hello` lands on groovy).
+java → kotlin → groovy → scala until a hit (`jk new -t grails/hello` lands on groovy).
+`jk new --lang scala` scaffolds a Scala 3 app (mixed Java+Scala compiles in one Zinc
+session).
 
 Layout (`traditional` vs `simple`) is **file placement**, not a `jk.toml` key —
 [Layout](layout.md). `--layout simple` sets Giter8 `simple=yes` when the template’s

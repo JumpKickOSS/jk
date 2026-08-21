@@ -139,6 +139,20 @@ class NewScaffolderTest {
     }
 
     @Test
+    void library_scala_writes_calc_and_test(@TempDir Path tempDir) throws IOException {
+        NewScaffolder.write(library(tempDir, NewInputs.Language.SCALA, true, 25));
+
+        var calc = tempDir.resolve("src/main/scala/com/example/Calc.scala");
+        var test = tempDir.resolve("src/test/scala/com/example/CalcTest.scala");
+        assertThat(calc).exists();
+        assertThat(Files.readString(calc)).contains("package com.example");
+        assertThat(test).exists();
+        assertThat(Files.readString(test)).contains("class CalcTest");
+        assertThat(tempDir.resolve("src/main/scala/com/example/Main.scala")).doesNotExist();
+        assertThat(Files.readString(tempDir.resolve("jk.toml"))).contains("scala    = \"");
+    }
+
+    @Test
     void runnable_groovy_compact_writes_unpackaged_main_under_src(@TempDir Path tempDir) throws IOException {
         NewScaffolder.write(runnable(tempDir, NewInputs.Language.GROOVY, "Main", 25, true));
 

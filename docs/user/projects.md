@@ -32,11 +32,12 @@ junit = "5.11.0"
 | `jdk` | Specific JDK *install* (rare) |
 | `kotlin` | Kotlin compiler version (Kotlin modules) |
 | `groovy` | Groovy compiler version — **5+** (Groovy modules) |
+| `scala` | Scala 3 compiler version (Scala modules; mixed Java+Scala compile in one Zinc session) |
 | `description` | Optional; does **not** auto-inherit in workspaces unless you set it or `description.workspace = true` |
 
-**Language mix:** Java is the default. A module may mix Java with Kotlin **or** Java with
-Groovy (cross-references resolve both directions). **Kotlin + Groovy in one module is
-rejected.** Scaffold with `jk new --lang kotlin` or `--lang groovy`.
+**Language mix:** Java is the default. A module may mix Java with Kotlin, Groovy, **or**
+Scala 3 (Java↔Scala circular refs compile in one Zinc session). **Kotlin + Groovy in one
+module is rejected.** Scaffold with `jk new --lang kotlin`, `--lang groovy`, or `--lang scala`.
 
 ## Version strings
 

@@ -62,6 +62,15 @@ public final class ActionKey {
             appendCpToken(sb, "pp:", entry);
         }
 
+        if (request.mixedScala()) {
+            sb.append("scala:").append(request.scalaVersion()).append('\n');
+            List<Path> scp = new ArrayList<>(request.compilerClasspath());
+            scp.sort(Comparator.comparing(Path::toString));
+            for (Path entry : scp) {
+                appendCpToken(sb, "sc:", entry);
+            }
+        }
+
         return Hashing.sha256Hex(sb.toString());
     }
 
