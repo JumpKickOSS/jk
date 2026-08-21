@@ -147,6 +147,15 @@ class LockfileRoundTripTest {
     }
 
     @Test
+    void scala_compiler_pin_round_trips() {
+        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT").withScala("3.8.4");
+        String rendered = LockfileWriter.render(original);
+        assertThat(rendered).contains("scala = \"3.8.4\"");
+        assertThat(LockfileReader.parse(rendered).scala()).isEqualTo("3.8.4");
+        assertThat(LockfileWriter.render(Lockfile.empty("0.1.0-SNAPSHOT"))).doesNotContain("scala =");
+    }
+
+    @Test
     void module_entries_round_trip() {
         Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT")
                 .withModules(List.of(

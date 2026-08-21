@@ -93,6 +93,7 @@ public final class LockfileReader {
         }
         if (jkMin != null && jkMin.isBlank()) jkMin = null;
         String kotlin = result.getString("kotlin"); // optional, resolved Kotlin compiler version
+        String scala = result.getString("scala"); // optional, resolved Scala 3 compiler version
 
         List<Lockfile.Artifact> artifacts = new ArrayList<>();
         TomlArray artifactArray = result.getArray("artifact");
@@ -171,6 +172,7 @@ public final class LockfileReader {
                 resolutionAlgorithm,
                 jdk,
                 kotlin,
+                scala,
                 artifacts,
                 plugins,
                 sdk,

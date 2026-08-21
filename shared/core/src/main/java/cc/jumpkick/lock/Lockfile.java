@@ -12,8 +12,8 @@ import java.util.Set;
 
 /**
  * In-memory {@code jk-lock.toml} (schema {@code version = 1}). Optional fields ({@code jdk},
- * {@code kotlin}, plugins, SDK, modules, toolchain, {@code manifests-sha256}) may be null/empty for
- * older lockfiles. Additive only — schema stays at 1 until 1.0.
+ * {@code kotlin}, {@code scala}, plugins, SDK, modules, toolchain, {@code manifests-sha256}) may be
+ * null/empty for older lockfiles. Additive only — schema stays at 1 until 1.0.
  */
 public record Lockfile(
         int version,
@@ -21,6 +21,7 @@ public record Lockfile(
         String resolutionAlgorithm,
         String jdk,
         String kotlin,
+        String scala,
         List<Artifact> artifacts,
         List<PluginEntry> plugins,
         List<SdkEntry> sdk,
@@ -90,7 +91,37 @@ public record Lockfile(
         modules = modules == null ? List.of() : List.copyOf(modules);
     }
 
-    /** Back-compat constructor without the jk floor. */
+    /** Unset Scala compiler pin. */
+    public Lockfile(
+            int version,
+            String generatedBy,
+            String resolutionAlgorithm,
+            String jdk,
+            String kotlin,
+            List<Artifact> artifacts,
+            List<PluginEntry> plugins,
+            List<SdkEntry> sdk,
+            List<ModuleEntry> modules,
+            String jkMin,
+            String manifestsSha256,
+            String projectId) {
+        this(
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                kotlin,
+                null,
+                artifacts,
+                plugins,
+                sdk,
+                modules,
+                jkMin,
+                manifestsSha256,
+                projectId);
+    }
+
+    /** Constructor without the jk floor. */
     public Lockfile(
             int version,
             String generatedBy,
@@ -115,7 +146,7 @@ public record Lockfile(
                 null);
     }
 
-    /** Back-compat constructor with the jk floor but no module pins. */
+    /** Constructor with the jk floor but no module pins. */
     public Lockfile(
             int version,
             String generatedBy,
@@ -141,7 +172,7 @@ public record Lockfile(
                 null);
     }
 
-    /** Back-compat constructor with modules + the jk floor, no manifests digest. */
+    /** Constructor with modules + the jk floor, no manifests digest. */
     public Lockfile(
             int version,
             String generatedBy,
@@ -176,6 +207,7 @@ public record Lockfile(
                 resolutionAlgorithm,
                 jdk,
                 kotlin,
+                scala,
                 artifacts,
                 plugins,
                 sdk,
@@ -193,6 +225,7 @@ public record Lockfile(
                 resolutionAlgorithm,
                 jdk,
                 kotlin,
+                scala,
                 artifacts,
                 plugins,
                 sdk,
@@ -210,6 +243,7 @@ public record Lockfile(
                 resolutionAlgorithm,
                 jdk,
                 kotlin,
+                scala,
                 artifacts,
                 plugins,
                 sdk,
@@ -219,7 +253,7 @@ public record Lockfile(
                 id);
     }
 
-    /** Back-compat constructor without SDK entries. */
+    /** Constructor without SDK entries. */
     public Lockfile(
             int version,
             String generatedBy,
@@ -231,7 +265,7 @@ public record Lockfile(
         this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, List.of());
     }
 
-    /** Back-compat constructor without plugin entries. */
+    /** Constructor without plugin entries. */
     public Lockfile(
             int version,
             String generatedBy,
@@ -242,12 +276,12 @@ public record Lockfile(
         this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, List.of());
     }
 
-    /** Back-compat constructor for callers that stamp a JDK but no Kotlin version. */
+    /** Constructor that stamps a JDK but no Kotlin version. */
     public Lockfile(int version, String generatedBy, String resolutionAlgorithm, String jdk, List<Artifact> artifacts) {
         this(version, generatedBy, resolutionAlgorithm, jdk, null, artifacts, List.of());
     }
 
-    /** Back-compat constructor for callers that don't yet stamp a JDK. */
+    /** Constructor that does not stamp a JDK. */
     public Lockfile(int version, String generatedBy, String resolutionAlgorithm, List<Artifact> artifacts) {
         this(version, generatedBy, resolutionAlgorithm, null, null, artifacts, List.of());
     }
@@ -260,6 +294,25 @@ public record Lockfile(
                 resolutionAlgorithm,
                 jdk,
                 kotlinVersion,
+                scala,
+                artifacts,
+                plugins,
+                sdk,
+                modules,
+                jkMin,
+                manifestsSha256,
+                projectId);
+    }
+
+    /** Return a copy with the resolved Scala 3 compiler version stamped in. */
+    public Lockfile withScala(String scalaVersion) {
+        return new Lockfile(
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                kotlin,
+                scalaVersion,
                 artifacts,
                 plugins,
                 sdk,
@@ -277,6 +330,7 @@ public record Lockfile(
                 resolutionAlgorithm,
                 jdk,
                 kotlin,
+                scala,
                 artifacts,
                 newPlugins,
                 sdk,
@@ -294,6 +348,7 @@ public record Lockfile(
                 resolutionAlgorithm,
                 jdk,
                 kotlin,
+                scala,
                 artifacts,
                 plugins,
                 newSdk,
@@ -311,6 +366,7 @@ public record Lockfile(
                 resolutionAlgorithm,
                 jdk,
                 kotlin,
+                scala,
                 artifacts,
                 plugins,
                 sdk,

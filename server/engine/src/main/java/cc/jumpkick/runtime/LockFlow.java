@@ -247,11 +247,18 @@ public final class LockFlow {
         if (existing != null && lock.kotlin() == null && existing.kotlin() != null) {
             lock = lock.withKotlin(existing.kotlin());
         }
+        if (existing != null && lock.scala() == null && existing.scala() != null) {
+            lock = lock.withScala(existing.scala());
+        }
         // First lock of a Kotlin project (nothing to carry): resolve the pin like lockBuildPlan
         // does — a lock written without it loses compiler provisioning.
         if (lock.kotlin() == null) {
             String kotlinVersion = LockPlans.resolveKotlinVersion(effective, pathPrep.repos());
             if (kotlinVersion != null) lock = lock.withKotlin(kotlinVersion);
+        }
+        if (lock.scala() == null) {
+            String scalaVersion = LockPlans.resolveScalaVersion(effective, pathPrep.repos());
+            if (scalaVersion != null) lock = lock.withScala(scalaVersion);
         }
         // Freeze resolved first-party project identity (incl. workspace-inherited fields).
         lock = cc.jumpkick.lock.LockfileModules.stamp(lock, lockDir);

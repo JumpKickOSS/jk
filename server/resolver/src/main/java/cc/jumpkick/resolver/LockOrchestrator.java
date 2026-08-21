@@ -1177,11 +1177,14 @@ public final class LockOrchestrator {
                 lock.resolutionAlgorithm(),
                 lock.jdk(),
                 lock.kotlin(),
+                lock.scala(),
                 updated,
                 lock.plugins(),
                 lock.sdk(),
                 lock.modules(),
-                lock.jkMin());
+                lock.jkMin(),
+                lock.manifestsSha256(),
+                lock.projectId());
     }
 
     /** BFS through the resolved graph starting from {@code roots}. */

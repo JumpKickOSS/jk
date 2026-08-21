@@ -274,6 +274,13 @@ public final class LockPlans {
                             ctx.label("resolved kotlin " + kotlinVersion);
                             lock = lock.withKotlin(kotlinVersion);
                         }
+                        String scalaVersion = keepPins && existing.scala() != null
+                                ? existing.scala()
+                                : resolveScalaVersion(eff, repos);
+                        if (scalaVersion != null) {
+                            ctx.label("resolved scala " + scalaVersion);
+                            lock = lock.withScala(scalaVersion);
+                        }
                         ctx.put(LOCKFILE, lock);
                         if (profile) {
                             cc.jumpkick.resolve.ResolveProfile.phasePost(System.nanoTime() - postT0);
@@ -512,6 +519,11 @@ public final class LockPlans {
                             ctx.label("resolved kotlin " + kotlinVersion);
                             lock = lock.withKotlin(kotlinVersion);
                         }
+                        String scalaVersion = resolveScalaVersion(eff, pathPrep.repos());
+                        if (scalaVersion != null) {
+                            ctx.label("resolved scala " + scalaVersion);
+                            lock = lock.withScala(scalaVersion);
+                        }
                         ctx.put(LOCKFILE, lock);
                     } catch (Exception e) {
                         ctx.error(TaskNames.RESOLVE_DEPS, e.getMessage());
@@ -660,17 +672,21 @@ public final class LockPlans {
             Lockfile.Artifact old = oldByName.get(a.name());
             spliced.add(old != null ? old : a);
         }
+        String scalaPin = newLock.scala() != null ? newLock.scala() : (oldLock != null ? oldLock.scala() : null);
         Lockfile finalLock = new Lockfile(
                 newLock.version(),
                 newLock.generatedBy(),
                 newLock.resolutionAlgorithm(),
                 newLock.jdk(),
                 newLock.kotlin(),
+                scalaPin,
                 spliced,
                 oldLock != null ? oldLock.plugins() : newLock.plugins(),
                 oldLock != null ? oldLock.sdk() : newLock.sdk(),
                 List.of(),
-                newLock.jkMin());
+                newLock.jkMin(),
+                newLock.manifestsSha256(),
+                newLock.projectId());
         finalLock = cc.jumpkick.lock.LockfileModules.stamp(finalLock, dir);
         LockfileWriter.write(finalLock, lockFile, manifestsSha);
         return refreshed;
@@ -827,6 +843,40 @@ public final class LockPlans {
             Thread.currentThread().interrupt();
             return null;
         }
+        return available.stream()
+                .filter(set::contains)
+                .filter(Versions::isStable)
+                .max(Versions::compare)
+                .or(() -> available.stream().filter(set::contains).max(Versions::compare))
+                .orElse(null);
+    }
+
+    /**
+     * Resolve the project's {@code scala} version selector to a concrete Scala 3 compiler release.
+     * Returns {@code null} for a non-Scala project or when resolution can't complete.
+     */
+    static String resolveScalaVersion(JkBuild effective, RepoGroup repos) {
+        if (!effective.project().isScala()) return null;
+        VersionSelector selector = effective.project().scala();
+        if (selector instanceof VersionSelector.Exact exact) {
+            return exact.version();
+        }
+        VersionSet set = VersionSelectors.toVersionSet(selector);
+        Coordinate coord = Coordinate.of("org.scala-lang", "scala3-compiler_3", "any");
+        List<String> available;
+        try {
+            available = repos.availableVersions(coord);
+        } catch (IOException e) {
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
+        return pickScalaVersion(set, available);
+    }
+
+    /** Highest stable match in {@code available}; falls back to any matching version. */
+    static String pickScalaVersion(VersionSet set, List<String> available) {
         return available.stream()
                 .filter(set::contains)
                 .filter(Versions::isStable)

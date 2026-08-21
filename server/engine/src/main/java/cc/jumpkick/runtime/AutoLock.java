@@ -142,6 +142,9 @@ public final class AutoLock {
             if (updated.kotlin() == null && existing.kotlin() != null) {
                 updated = updated.withKotlin(existing.kotlin());
             }
+            if (updated.scala() == null && existing.scala() != null) {
+                updated = updated.withScala(existing.scala());
+            }
 
             // Auto-relock fires precisely when jk.toml is newer than the lock — i.e. right
             // after identity edits. lockConservative carries the OLD lock's [[module]] pins

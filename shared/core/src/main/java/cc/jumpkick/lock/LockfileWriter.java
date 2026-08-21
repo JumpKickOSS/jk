@@ -92,6 +92,9 @@ public final class LockfileWriter {
         if (lockfile.kotlin() != null) {
             out.append("kotlin = ").append(quote(lockfile.kotlin())).append('\n');
         }
+        if (lockfile.scala() != null) {
+            out.append("scala = ").append(quote(lockfile.scala())).append('\n');
+        }
         // The jk floor is preserved, never auto-bumped; a floor-less lock gets the format floor.
         String jkMin = lockfile.jkMin() != null && !lockfile.jkMin().isBlank() ? lockfile.jkMin() : FORMAT_FLOOR;
         out.append("jk-min = ").append(quote(jkMin)).append('\n');
