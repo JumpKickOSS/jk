@@ -77,7 +77,14 @@ public final class PlatformBomVersions {
         if (bestStable != null) return bestStable;
         // Anchor is always preferred over an unstable-only catalog when it is in range.
         if (anchor != null && allowed.contains(anchor)) return anchor;
-        if (bestAny != null) return bestAny;
+        if (bestAny != null) {
+            // `latest` promises the highest STABLE; silently serving a milestone/RC when a line
+            // ships none (grails 8.x) breaks that promise. Pin the pre-release deliberately.
+            throw new IllegalStateException("platform dependency `"
+                    + group + ":" + artifact + "` selector `" + selector.raw()
+                    + "` matches no stable version — newest is the pre-release " + bestAny
+                    + "; pin it explicitly (e.g. `" + bestAny + "`) or use a snapshot selector");
+        }
         throw new IllegalStateException("platform dependency `"
                 + group
                 + ":"

@@ -92,6 +92,16 @@ class PlatformBomVersionsTest {
     }
 
     @Test
+    void latest_with_no_stable_is_loud_not_a_silent_milestone(@TempDir Path tmp) throws Exception {
+        serveMetadata("org.example", "bom", List.of("8.0.0-M2", "8.0.0-M4"));
+        RepoGroup repos = RepoGroup.of(new MavenRepo("local", base, new Http(), new Cas(tmp.resolve("c"))));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> PlatformBomVersions.resolve(
+                        repos, "org.example", "bom", VersionSelector.parseFloating("latest")))
+                .hasMessageContaining("no stable version")
+                .hasMessageContaining("8.0.0-M4");
+    }
+
+    @Test
     void snapshot_picks_highest_including_pre_release(@TempDir Path tmp) throws Exception {
         serveMetadata("org.example", "bom", List.of("4.1.0", "5.0.0-M4"));
         RepoGroup repos = RepoGroup.of(new MavenRepo("local", base, new Http(), new Cas(tmp.resolve("c"))));
