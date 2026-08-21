@@ -518,8 +518,8 @@ not mistaken for “everything is current.” Prefer `jk sync --offline-prepare`
 ### Quarkus notes
 
 ```bash
-jk new -t quarkus my-api
-jk new --template quarkus my-api # Giter8 short name (same single-module shape)
+jk new -t quarkus/hello my-api
+jk new --template quarkus/hello my-api # Giter8 template (same single-module shape)
 ```
 
 - Use `[quarkus] version = "latest"` (first `jk lock` pins the current stable BOM). A major-line
@@ -634,7 +634,7 @@ jk build --aot-cache      # target/aot-cache/ — the app, its jars, and a train
 ```
 
 Trains a JEP 514 AOT cache (JDK 25+; an AppCDS archive below that) from one run of the
-application. Measured on the `jk new -t spring-boot` scaffold: **771 ms cold, 325 ms cached**.
+application. Measured on the `jk new -t spring-boot/hello` scaffold: **771 ms cold, 325 ms cached**.
 
 The cache is pinned to three things, and it is worth knowing which, because a mismatch is not an
 error — the JVM silently starts cold:
@@ -686,7 +686,7 @@ restriction is Won't Fix upstream.
 
 ### Grails (`[grails]`)
 
-Grails 8 (Apache, Spring Boot 4) on the Groovy lane — `jk new -t grails` scaffolds a
+Grails 8 (Apache, Spring Boot 4) on the Groovy lane — `jk new -t grails/hello` scaffolds a
 minimal REST app (GORM domain, controller, `grails-app/conf/application.yml`):
 
 ```toml
@@ -728,7 +728,7 @@ jk publish                   # optional --sign / --sigstore / --slsa / --sbom
 jk image                     # OCI (daemonless)
 jk native                    # GraalVM native-image ([native] enabled; else unique main)
 jk verify                    # rebuild in a scratch dir and compare hashes
-jk new --template quarkus x  # Giter8 short name (or local path)
+jk new --template quarkus/hello x  # Giter8 template (or local path)
 jk jobs                      # running + recent engine jobs (jid, build #); alias: builds
 jk cancel                    # cancel this project's running job(s); alias: kill
 jk cancel 42                 # cancel by jid (from `jk jobs` / job-start)

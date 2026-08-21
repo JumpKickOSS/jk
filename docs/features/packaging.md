@@ -245,8 +245,8 @@ version = "3.38.0"
 **Workspace / path deps:** sibling module jars are installed into the augment model so they
 appear under `lib/main` (multi-module dogfood: `jk-examples` `java/quarkus-petshop`).
 
-**Giter8:** `jk new -t quarkus`
-(short-name catalog). Keep `quarkus-junit5` on `[test-dependencies]` only.
+**Giter8:** `jk new -t quarkus/hello`
+(catalog / plugin template). Keep `quarkus-junit5` on `[test-dependencies]` only.
 
 Cold first-lock of the Quarkus platform still materializes a large jar set; subsequent
 locks are cache-hit heavy. See [docs/perf/resolve-io.md](../perf/resolve-io.md).

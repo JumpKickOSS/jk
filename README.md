@@ -109,7 +109,7 @@ jk build        # still fully reproducible from that lock
 - `jk explain` — forecast what will run before it does
 - Variants, profiles, features (product / how / optional deps — deliberately separate)
 - First-party: Spring Boot, **Quarkus**, **Grails**, Android, protobuf, R8 shrink, tests, format, native-image, OCI images
-- `jk new -t` Giter8 short names (`cli`, `spring-boot`, `ktor-3`) + local `.g8` paths
+- `jk new -t` Giter8 templates (`cli`, `spring-boot/hello`, `ktor-3`) + local `.g8` paths
 
 ### Toolchain & tools
 - **JDK install / pin / discover** (Temurin, GraalVM, and neighbors: IntelliJ, SDKMAN, mise, …)
