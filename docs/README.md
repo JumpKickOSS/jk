@@ -1,30 +1,49 @@
-# jk documentation
+# JumpKick documentation
 
-Public docs for [jk](../README.md) — a modern build tool for Java, Kotlin, and Groovy.
+This tree is **product documentation**. It will be converted to HTML and published at
+[https://jumpkick.build/documentation](https://jumpkick.build/documentation). Pages are
+written so they can be indexed and searched independently: a high-level page introduces a
+capability and links to a deeper page for flags, configuration, and limitations.
 
-| Doc | Audience |
-|---|---|
-| [**User guide**](guide.md) | Day-to-day use: projects, deps, lockfile, platforms, packaging, plugins, JDK, workspaces |
-| [**Why JumpKick**](why-jumpkick.md) | Product thesis: Maven still leads, Gradle is #2 not the successor, JumpKick’s bet |
-| [**TUI style guide**](tui.md) | CommandWedge, blank envelope, script-mode allowlist, nerd/ansi/plain glyphs |
-| [**Machine / agent output**](machine-output.md) | JSONL events, web SSE, verbose, MCP tools/resources, agent recipe |
-| [**Architecture**](architecture.md) | How jk is built: client/engine split, modules, resolution, caching |
-| [**Plugins**](plugins.md) | Authoring first-party-style build plugins (Spring Boot, Quarkus, Grails, …) |
-| [**Feature PRDs**](features/README.md) | Design freezes (catalogs, BOMs, packaging, Giter8, …) |
-| [**Releases**](releases.md) | Versioning, install layout, Ed25519 signing, tag CI (JK-1066) |
-| [**Host warmup**](install-optimize.md) | Engine self-heal: worker AOT + host calibration (idle / 12 h) |
-| [**Hosting & CDN**](hosting.md) | Firebase Hosting + GCS releases, DNS for jumpkick.build |
-| [**Maven repo**](maven-repo.md) | Official first-party repo (`/repo/…`); exclusive routing for `cc`/`build.jumpkick` |
-| [**Mirror verification**](mirror-verification-decision.md) | Decision: store-hit checksum policy, first-write-wins, `jk repo refresh` (JK-1451) |
+Two audiences, two directories. Do not mix them.
 
-Project planning (not product docs): [kanartist](https://github.com/JumpKickOSS/kanartist) project `jk` (`JK-NNNN`).
+| Directory | Audience | Question it answers |
+|-----------|----------|---------------------|
+| **[user/](user/README.md)** | People installing JumpKick, and AI coding agents that have never seen it | How do I *use* `jk`? What can it do? How do I accomplish a goal? |
+| **[contributors/](contributors/README.md)** | People and agents working *on* the JumpKick codebase | How is JumpKick built? How do I change it? |
 
-**Black-box scenarios & adopter examples** (separate repo): [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) — real projects used for end-to-end validation, benchmarking, and teaching.
+Root files that stay at the repository root (GitHub convention, not this tree):
+[README.md](../README.md) (pitch), [CONTRIBUTING.md](../CONTRIBUTING.md) (how to build this
+repo), [AGENTS.md](../AGENTS.md) (protocol for agents contributing here).
 
-Competitive notes (maintainers): [mill-comparison.md](mill-comparison.md) — adversarial gap analysis vs Mill.
+## Start here
 
-How we write the tree (maintainers): [code-as-art.md](code-as-art.md) — size budgets, Typed Envelope, JSpecify, fluent Lombok.
+- **Using JumpKick:** [user/manual.md](user/manual.md) — short product manual with links into
+  every topic. A future `jk` command will print a variant of this page.
+- **Coding agents (one recipe):** [user/troubleshooting.md](user/troubleshooting.md) — fix a
+  failing build (`jk-results.md` or MCP).
+- **Contributing to JumpKick:** [contributors/README.md](contributors/README.md).
 
-Engine integration surfaces (maintainer / agent brief): [engine-refactor.md](engine-refactor.md) — design review prompt for consolidating wire, HTTP/SSE, and MCP; the verdict and executed design live in [engine-refactor-implementation.md](engine-refactor-implementation.md).
+## Future HTML
 
-Contributing and build instructions: [../CONTRIBUTING.md](../CONTRIBUTING.md).
+When these pages are published, keep the markdown filenames as slugs:
+
+| Markdown | URL |
+|----------|-----|
+| `docs/user/README.md` | `https://jumpkick.build/documentation` |
+| `docs/user/manual.md` | `https://jumpkick.build/documentation/manual` |
+| `docs/user/<topic>.md` | `https://jumpkick.build/documentation/<topic>` |
+| `docs/contributors/<topic>.md` | `https://jumpkick.build/documentation/contributors/<topic>` |
+
+A future `jk` command will print a variant of [user/manual.md](user/manual.md) with the
+same links.
+
+Old paths under `docs/*.md` (for example `docs/guide.md`) are **stubs** that point here, so
+existing `jk://docs/…` ticket links and in-code `docs/architecture.md` citations still resolve.
+
+## What does *not* live here
+
+Internal design records, PRDs, benches, and ticket-linked decision essays live in the
+[KanArtist](https://github.com/JumpKickOSS/kanartist) project `jk` under
+`projects/jk/docs/` — not in this repository. Black-box adopter scenarios live in
+[JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples).

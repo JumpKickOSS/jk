@@ -6,7 +6,7 @@ Guidance for anyone (human or agent) working in this repository.
 
 **JumpKick** (CLI / shorthand: **`jk`**) is a modern, lockfile-first build tool for **Java, Kotlin, and Groovy**: a slim native CLI, a memory-capped resident JVM engine, PubGrub dependency resolution, a content-addressed action cache, and Maven Central–compatible coordinates. Think Cargo/uv ergonomics on the JVM without inventing a new package ecosystem.
 
-Product docs: [README.md](README.md), [docs/guide.md](docs/guide.md), [docs/architecture.md](docs/architecture.md), [docs/features/](docs/features/) (packaging, Giter8, BOMs). Build/layout: [CONTRIBUTING.md](CONTRIBUTING.md).
+Product docs: [README.md](README.md), [docs/user/](docs/user/README.md) (end users + coding agents), [docs/contributors/](docs/contributors/README.md) (this codebase). Build/layout: [CONTRIBUTING.md](CONTRIBUTING.md). Internal design records live in [kanartist](https://github.com/JumpKickOSS/kanartist) `projects/jk/docs/`, not here.
 
 **Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for `./gradlew test` — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
 
@@ -55,12 +55,12 @@ pin behavior (`JdkFloorTest`, `FirstBuildJdkTest`, …). Elsewhere prefer `java 
 - Do not turn `jk.toml` into a scripting language or a Gradle-style configuration graph.
 - Do not re-resolve in `jk build` when a valid `jk-lock.toml` exists.
 - Do not write per-module lockfiles — one `jk-lock.toml` at the workspace root (or standalone project root).
-- Do not grow unbounded product docs — keep the public set small ([docs/README.md](docs/README.md)).
+- Product docs are part of the product: [docs/user/](docs/user/README.md) for people and agents *using* `jk`, [docs/contributors/](docs/contributors/README.md) for this codebase. Do not dump PRDs, benches, or decision essays into this repo — those belong in KanArtist (`projects/jk/docs/`).
 - Do not expand infinite ecosystem long tail (full KMP multiplatform, AGP parity, plugin marketplace, RBE) without an explicit ticket that says so.
 - Do not leave historical essays, ticket ids, or decision records in code comments — see [Comments and Javadoc](#comments-and-javadoc).
 - **Do not bump schema/protocol versions before 1.0** — stay on version **1** for `jk-lock.toml`, wire
   `proto`, JSONL/`details.jsonl` `schema`, REST/SSE, MCP, etc. Additive fields only; no version
-  churn noise without public users. See [docs/architecture.md](docs/architecture.md#schema-freeze-until-10).
+  churn noise without public users. See [docs/contributors/architecture.md](docs/contributors/architecture.md#schema-freeze-until-10).
 
 ## Tech stack
 
@@ -114,7 +114,7 @@ Needs a GraalVM-capable JDK for `dist` (see [CONTRIBUTING.md](CONTRIBUTING.md) /
 - Tickets: `projects/jk/tickets/JK-NNNN-*.md` (status lives on the ticket file; board views are generated).
 - Sibling checkout assumed: `../kanartist` next to this repo (or set `KANARTIST_WORKSPACE_ROOT`).
 - **Preempt:** JK-1923 (Code as Art / Typed Envelope) and its children are **P0**. Do not
-  claim unrelated tickets until that epic is `done`. Spec: [docs/code-as-art.md](docs/code-as-art.md).
+  claim unrelated tickets until that epic is `done`. Spec: [docs/contributors/code-as-art.md](docs/contributors/code-as-art.md).
   Baseline tag: `pre-code-as-art`.
 
 ### Claim and ship a ticket
@@ -133,7 +133,7 @@ Prefer a small WIP limit (a few claimed tickets). If blocked: `ka set-status JK-
 
 ### Done criteria
 
-**Two-tier tests** (keep the default loop under ~5 minutes; details: [docs/perf/test-suite-tiers.md](docs/perf/test-suite-tiers.md)):
+**Two-tier tests** (keep the default loop under ~5 minutes; details: [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md)):
 
 | Command | What runs | When |
 |---------|-----------|------|
@@ -179,7 +179,8 @@ or agents.
 
 **Where history goes**
 
-KanArtist, the commit / PR body, or (last resort) `docs/`. Never the main source tree.
+KanArtist (`projects/jk/docs/` or the ticket), the commit / PR body, or (last resort)
+`docs/contributors/`. Never dump decision essays into `docs/user/`. Never the main source tree.
 
 **When you touch a file**
 

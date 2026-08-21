@@ -25,7 +25,7 @@ public final class Jk {
 
     /**
      * Hidden command aliases for ergonomic migration from other build tools. Documented in {@code
-     * docs/aliases.md}. Keys are alias names; values are the canonical command path (one or more
+     * docs/user/aliases.md}. Keys are alias names; values are the canonical command path (one or more
      * positionals). These are not registered commands (they stay out of {@code --help} and
      * shell completion); instead we rewrite the first positional arg before parsing — possibly
      * expanding it into multiple positionals.

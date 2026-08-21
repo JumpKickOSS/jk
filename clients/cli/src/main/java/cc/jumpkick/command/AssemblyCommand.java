@@ -113,7 +113,7 @@ public final class AssemblyCommand implements CliCommand {
                             assembly = true      # -all.jar, every dependency bundled
                             # minified = true    # -min.jar via R8, built beside -all.jar
 
-                        Then re-run `jk assemble` (or `jk build`). See docs/features/packaging.md.
+                        Then re-run `jk assemble` (or `jk build`). See docs/user/packaging.md.
                         """.stripIndent());
                 return Exit.CONFIG;
             }

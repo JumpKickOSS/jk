@@ -52,7 +52,7 @@ public final class JupiterParallelDetect {
                 + workers
                 + " with junit.jupiter.execution.parallel.enabled — double parallelism may thrash "
                 + "CPU/RAM or hide races. Prefer -w1 with Jupiter parallel, or disable Jupiter "
-                + "parallel when using multi-worker -w (docs/perf/junit-parallel-vs-jk-workers.md).";
+                + "parallel when using multi-worker -w (docs/user/test.md).";
     }
 
     private static boolean dirHasEnabled(Path dir) throws IOException {
