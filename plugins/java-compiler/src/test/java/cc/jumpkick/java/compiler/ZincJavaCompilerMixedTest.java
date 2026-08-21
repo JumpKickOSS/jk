@@ -34,6 +34,23 @@ class ZincJavaCompilerMixedTest {
     }
 
     @Test
+    void hash_named_classpath_jars_are_visible_to_scalac(@TempDir Path dir) throws Exception {
+        Path hashed = dir.resolve("555d6cf20fa1710884dd01b86cc5785397ba73e21ada2d4b784f5f1a14dcafc4");
+        Files.copy(junitJupiterApiJar(), hashed);
+        Project p = new Project(dir);
+        p.write("T.scala", """
+                import org.junit.jupiter.api.Test
+                class T:
+                  @Test def ok(): Unit = ()
+                """);
+        List<Path> cp = new ArrayList<>(p.compileCp);
+        cp.add(hashed);
+        ZincJavaCompiler.Result r = p.compileMixed(cp);
+        assertThat(r.success()).as(r.diagnostics().toString()).isTrue();
+        assertThat(p.classFile("T.class")).isRegularFile();
+    }
+
+    @Test
     void circular_java_and_scala_compile_together(@TempDir Path dir) throws Exception {
         Project p = new Project(dir);
         p.write("A.scala", """
@@ -184,6 +201,16 @@ class ZincJavaCompilerMixedTest {
             }
         }
         return out;
+    }
+
+    static Path junitJupiterApiJar() {
+        for (String e : System.getProperty("java.class.path").split(File.pathSeparator)) {
+            Path p = Path.of(e);
+            if (!Files.isRegularFile(p)) continue;
+            String n = p.getFileName().toString();
+            if (n.startsWith("junit-jupiter-api-") && n.endsWith(".jar")) return p;
+        }
+        throw new IllegalStateException("junit-jupiter-api not on the test classpath");
     }
 
     static List<Path> scalaLibraryJars(List<Path> compilerCp) {

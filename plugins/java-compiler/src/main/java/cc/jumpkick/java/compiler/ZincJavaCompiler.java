@@ -11,6 +11,7 @@ import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -206,6 +207,9 @@ public final class ZincJavaCompiler {
                     Path p = lib.toPath();
                     if (!cp.contains(p)) cp.add(p);
                 }
+                // Scalac only opens files whose names end in .jar/.zip. The engine's CAS
+                // stores blobs under the content hash, so give those entries a named copy.
+                cp = namedJarsForScalac(cp, workdir);
             }
             cp.add(classOutput);
             VirtualFile[] cpFiles = virtual(cp, converter);
@@ -329,6 +333,44 @@ public final class ZincJavaCompiler {
         if (out.isEmpty() && mixed.libraryJar() != null)
             out.add(mixed.libraryJar().toFile());
         return out.toArray(File[]::new);
+    }
+
+    /**
+     * Scalac's classpath scanner skips files that are not directories and do not end in
+     * {@code .jar}/{@code .zip}. Content-addressed blobs have hash filenames — copy them
+     * under {@code workdir/cp-jars} with a {@code .jar} suffix.
+     */
+    private static List<Path> namedJarsForScalac(List<Path> classpath, Path workdir) throws IOException {
+        Path jarsDir = workdir.resolve("cp-jars");
+        boolean any = false;
+        List<Path> out = new ArrayList<>(classpath.size());
+        int n = 0;
+        for (Path p : classpath) {
+            if (p == null) continue;
+            if (Files.isDirectory(p) || hasJarName(p)) {
+                out.add(p);
+                continue;
+            }
+            if (!Files.isRegularFile(p)) {
+                out.add(p);
+                continue;
+            }
+            if (!any) {
+                Files.createDirectories(jarsDir);
+                any = true;
+            }
+            Path named = jarsDir.resolve(n++ + ".jar");
+            if (!Files.isRegularFile(named) || Files.size(named) != Files.size(p)) {
+                Files.copy(p, named, StandardCopyOption.REPLACE_EXISTING);
+            }
+            out.add(named);
+        }
+        return out;
+    }
+
+    private static boolean hasJarName(Path p) {
+        String n = p.getFileName().toString();
+        return n.endsWith(".jar") || n.endsWith(".zip") || n.endsWith(".jmod");
     }
 
     private static File firstJar(Path extra, File[] allJars, String artifactPrefix) {

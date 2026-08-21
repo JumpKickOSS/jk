@@ -24,6 +24,7 @@ class ScalaBuildE2eTest {
             central = "https://repo.maven.apache.org/maven2/"
 
             [test-dependencies]
+            junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "latest" }
             junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.1" }
             """;
 
@@ -91,6 +92,53 @@ class ScalaBuildE2eTest {
         assertThat(project.resolve("target/classes/main/B.class")).exists();
     }
 
+    @Test
+    void scala_junit_test_compiles(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("stest"));
+        Path cache = cache();
+        Files.writeString(project.resolve("jk.toml"), """
+                name    = "stest"
+                group   = "com.example"
+                version = "1.0.0"
+                java    = 25
+                scala   = "3.8.4"
+
+                """ + REPOS);
+        Path src = Files.createDirectories(project.resolve("src/main/scala/com/example"));
+        Files.writeString(src.resolve("Calc.scala"), """
+                package com.example
+
+                class Calc:
+                  def doubleValue(value: Int): Int = value * 2
+                """);
+        Path test = Files.createDirectories(project.resolve("src/test/scala/com/example"));
+        Files.writeString(test.resolve("CalcTest.scala"), """
+                package com.example
+
+                import org.junit.jupiter.api.Assertions.assertEquals
+                import org.junit.jupiter.api.Test
+
+                class CalcTest:
+                  @Test
+                  def doubleValueReturnsTwiceTheInput(): Unit =
+                    assertEquals(10, Calc().doubleValue(5))
+                """);
+
+        BuildPlanResult result = build(project, cache);
+        List<String> underTarget = List.of();
+        Path target = project.resolve("target");
+        if (Files.isDirectory(target)) {
+            try (var walk = Files.walk(target)) {
+                underTarget = walk.filter(Files::isRegularFile)
+                        .map(p -> project.relativize(p).toString())
+                        .toList();
+            }
+        }
+        assertThat(result.errors()).as("errors target=%s", underTarget).isEmpty();
+        assertThat(result.success()).isTrue();
+        assertThat(underTarget).as("compiled outputs").anyMatch(s -> s.endsWith("CalcTest.class"));
+    }
+
     private static Path cache() {
         return Path.of(System.getProperty("user.dir"), "build", "scala-e2e-cache");
     }
@@ -112,7 +160,7 @@ class ScalaBuildE2eTest {
                 0,
                 null,
                 null,
-                true,
+                false,
                 false,
                 false,
                 false,
