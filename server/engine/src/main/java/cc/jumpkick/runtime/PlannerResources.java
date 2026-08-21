@@ -61,6 +61,12 @@ public final class PlannerResources {
                     }
                     Path pluginManifest = in.dir().resolve("jk-plugin.toml");
                     boolean ownManifest = Files.isRegularFile(pluginManifest);
+                    // Orphan reconciliation: a manifest deleted (or renamed away) at the module
+                    // root must also leave the classes tree, or the jar keeps describing a
+                    // plugin that no longer exists.
+                    if (!ownManifest) {
+                        Files.deleteIfExists(classes.resolve("jk-plugin.toml"));
+                    }
                     boolean copied = false;
                     if (!resDirs.isEmpty() || ownManifest) {
                         ctx.label("copy resources");

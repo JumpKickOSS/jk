@@ -966,8 +966,10 @@ public final class TaskForecaster {
     /** True when a module-root {@code jk-plugin.toml} differs from its copy at the classes root. */
     static boolean pluginManifestOutOfSync(Path dir, Path outDir) {
         Path src = dir.resolve("jk-plugin.toml");
-        if (!Files.isRegularFile(src)) return false;
         Path copy = outDir.resolve("jk-plugin.toml");
+        // A deleted (or renamed-away) manifest with a copy still in classes/ is the JK-2174
+        // orphan: the jar stays "self-describing" with an obsolete manifest until a clean build.
+        if (!Files.isRegularFile(src)) return Files.isRegularFile(copy);
         try {
             if (!Files.isRegularFile(copy)) return true;
             if (Files.size(copy) != Files.size(src)) return true;
