@@ -839,8 +839,7 @@ public final class LockPlans {
      * Extra diagnosis for the offline miss above: when the mirror <em>does</em> hold this
      * coordinate but under different bytes than the lock pins, "isn't cached" is misleading — the
      * artifact is right there, it simply is not the one the lockfile named. Say so and name the
-     * escape hatch, since `jk sync` alone will not resolve a first-write-wins mirror entry
-     * (see docs/mirror-verification-decision.md).
+     * escape hatch, since `jk sync` alone will not resolve a first-write-wins mirror entry.
      *
      * @return a clause to append to the message, or "" when the mirror has nothing to say
      */

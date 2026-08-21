@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- SPDX-License-Identifier: Apache-2.0 — the jk engine dashboard shell (docs/webclient.md) -->
+<!-- SPDX-License-Identifier: Apache-2.0 — the jk engine dashboard shell (docs/contributors/webclient.md) -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -13,7 +13,7 @@
   <!-- Iconography is inline SVG via <jk-icon> (app.js). Brand: jumpkick-logo.webp in chrome;
        jk-logo.svg monogram as favicon. -->
   <!-- Version-pinned + SRI: a CDN compromise must not be able to script a page that can trigger
-       builds. Update the integrity hash whenever the pin moves (docs/webclient.md). -->
+       builds. Update the integrity hash whenever the pin moves (docs/contributors/webclient.md). -->
   <script src="https://unpkg.com/vue@3.5.39/dist/vue.global.prod.js"
           integrity="sha384-yrrm1s9PCS0I4n39ldjMqQlTorYls89GAS3wXVJooje/BSWnC2vTgky2LIyzRLEo"
           crossorigin="anonymous" defer></script>
@@ -24,7 +24,7 @@
           crossorigin="anonymous" defer></script>
   <!-- Monaco (vs-dark) is the #project/<id>/files viewer; code.js lazy-loads it from the same CDN
        on first open. It must load after these UMD globals — its AMD loader claims window.define
-       (docs/webclient.md). -->
+       (docs/contributors/webclient.md). -->
   <script src="/app.js" type="module"></script>
 </head>
 <body>
@@ -700,7 +700,7 @@
           <dt>Load avg (1m)</dt><dd class="mono">{{ loadAverageText() != null ? loadAverageText() : '—' }}</dd>
           <dt>System RAM</dt><dd class="mono">{{ status ? gib(status.totalMemoryBytes) : '—' }}</dd>
           <dt>Available RAM</dt><dd class="mono">{{ status ? gib(status.availableMemoryBytes ?? status.freeMemoryBytes) : '—' }}</dd>
-          <dt>Dashboard docs</dt><dd class="mono">docs/webclient.md</dd>
+          <dt>Dashboard docs</dt><dd class="mono">docs/contributors/webclient.md</dd>
         </dl>
         <div class="modal-foot">
           <span class="dim small">Live build activity streams over SSE. Run <code>jk build</code> in any workspace to see it here.</span>
@@ -708,7 +708,7 @@
       </div>
     </div>
 
-    <!-- Blocking auth gate: missing/invalid token — not dismissible (docs/webclient.md). -->
+    <!-- Blocking auth gate: missing/invalid token — not dismissible (docs/contributors/webclient.md). -->
     <div v-if="authModal" class="modal-bg auth-modal-bg" role="presentation">
       <div class="modal about auth-modal" role="alertdialog" aria-modal="true" aria-labelledby="auth-title" aria-describedby="auth-desc">
         <div class="modal-head">

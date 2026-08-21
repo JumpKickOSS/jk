@@ -185,7 +185,7 @@ public final class NewScaffolder {
         return """
                 # The declarative manifest for the `%1$s` build plugin — pure data jk parses itself
                 # (no plugin code runs in the engine). This file is packaged at the jar root. See
-                # docs/plugins.md for the full surface: [[contribute.*]] build shaping,
+                # docs/contributors/plugins.md for the full surface: [[contribute.*]] build shaping,
                 # [packaging], [[import.*]]. Bundle Giter8 trees under
                 # src/main/resources/templates/<lang>/<framework>/<name>.g8/.
 

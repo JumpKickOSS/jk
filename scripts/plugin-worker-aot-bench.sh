@@ -53,7 +53,7 @@ echo "runs: $RUNS"
 echo
 
 # Prefer Temurin for engine process. Intentionally frozen at 25.0.3-tem: the published
-# baselines in docs/perf/warm-pool-bench.md were measured on it — bump both together.
+# baselines below were measured on this JDK — re-measure when bumping it.
 export JAVA_HOME="${JAVA_HOME:-$HOME/.sdkman/candidates/java/25.0.3-tem}"
 if [[ ! -x "$JAVA_HOME/bin/java" ]]; then
   echo "warn: JAVA_HOME=$JAVA_HOME missing; engine may run on Graal (AOT ineligible)" >&2
