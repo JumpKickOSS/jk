@@ -47,8 +47,19 @@ public final class Giter8Apply {
         int[] count = {0};
         Files.walkFileTree(contentRoot, new SimpleFileVisitor<>() {
             @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                // Root-as-content templates (no src/main/g8): the clone's .git object tree and
+                // template metadata are not project content — .git text files would even be
+                // ST-rendered, aborting the apply on any stray '$' in a packed ref.
+                String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
+                if (".git".equals(name)) return FileVisitResult.SKIP_SUBTREE;
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                if (file.getFileName().toString().equals("default.properties")) {
+                String fileName = file.getFileName().toString();
+                if (fileName.equals("default.properties") || fileName.equals(JkTemplateToml.FILE_NAME)) {
                     return FileVisitResult.CONTINUE;
                 }
                 if (!attrs.isRegularFile() || Files.isSymbolicLink(file)) {

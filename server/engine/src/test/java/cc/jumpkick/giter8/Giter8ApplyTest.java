@@ -31,6 +31,28 @@ class Giter8ApplyTest {
     }
 
     @Test
+    void root_layout_template_excludes_git_and_metadata(@TempDir Path tmp) throws Exception {
+        // A cloned root-as-content template: .git (with ST-hostile content) and .jk-template.toml
+        // are template plumbing, never project content.
+        Path template = tmp.resolve("root.g8");
+        Files.createDirectories(template.resolve(".git/refs"));
+        Files.writeString(template.resolve(".git/packed-refs"), "ref: $broken\n");
+        Files.writeString(template.resolve(".git/HEAD"), "ref: refs/heads/main\n");
+        Files.createDirectories(template);
+        Files.writeString(template.resolve("default.properties"), "name=demo\n");
+        Files.writeString(template.resolve(".jk-template.toml"), "language = \"java\"\n");
+        Files.writeString(template.resolve("jk.toml"), "name = \"$name$\"\n");
+
+        Path dest = tmp.resolve("out");
+        int n = Giter8Apply.apply(template, dest, Map.of("name", "widget"));
+
+        assertThat(n).isEqualTo(1);
+        assertThat(dest.resolve("jk.toml")).content().contains("widget");
+        assertThat(dest.resolve(".git")).doesNotExist();
+        assertThat(dest.resolve(".jk-template.toml")).doesNotExist();
+    }
+
+    @Test
     void overrides_apply_before_derived_properties_expand(@TempDir Path tmp) throws Exception {
         // Canonical Giter8 idiom: package derives from organization+name. The user's overrides
         // must feed the derivation — expanding defaults first freezes package to com.example.*.
