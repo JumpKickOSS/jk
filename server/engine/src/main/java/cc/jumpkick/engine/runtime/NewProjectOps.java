@@ -209,7 +209,11 @@ public final class NewProjectOps {
                     cc.jumpkick.config.SessionContext.current().config().offlineOr(false);
             Path templateRoot;
             Path extracted = null;
-            String langName = prep.lang() == null ? null : prep.lang().hoconValue();
+            // Resolution lang stays null unless the user asked: parseLang's java default is a
+            // scaffolding default, not a search restriction — kotlin-only bare names must hit.
+            String langName = req.lang() == null || req.lang().isBlank()
+                    ? null
+                    : prep.lang().hoconValue();
             var spec = resolveIndexed(prep.template(), langName, prep.parent());
             if (spec.isPresent()
                     && cc.jumpkick.giter8.TemplateSpec.SOURCE_PLUGIN.equals(
@@ -402,21 +406,28 @@ public final class NewProjectOps {
             if (Files.isDirectory(rel) && isTemplateRoot(rel)) return rel;
         }
 
+        boolean twoSegments = ref.matches("[a-z][a-z0-9-]*/[a-z][a-z0-9-]*");
         if (ref.matches("[a-z][a-z0-9-]*")
-                || ref.matches("[a-z][a-z0-9-]*/[a-z][a-z0-9-]*")
+                || twoSegments
                 || ref.matches("[a-z]+/[a-z][a-z0-9-]*/[a-z][a-z0-9-]*")) {
             Optional<Path> indexed = indexedRoot(ref, lang, cwd);
             if (indexed.isPresent()) return indexed.get();
 
+            // A two-segment ref that misses the catalog may be a GitHub owner/repo shorthand —
+            // catalog first (framework/name is the documented meaning), remote clone on miss.
+            if (twoSegments && looksRemoteTemplate(ref)) {
+                return cloneRemoteTemplate(ref);
+            }
             JkTemplatesConfig cfg = JkTemplatesConfig.resolve();
             throw new IllegalArgumentException("template short name not found: "
                     + ref
                     + " (looked under $JK_TEMPLATES, ~/.jk/templates, monorepo templates/,"
                     + " official cache; try `jk new --template "
                     + ref
-                    + "` once to populate the cache, or install under ~/.jk/templates/"
-                    + ref
-                    + ".g8; official="
+                    + "` once to populate the cache, or install under"
+                    + " ~/.jk/templates/<lang>/<framework>/"
+                    + (twoSegments ? ref.substring(ref.indexOf('/') + 1) : ref)
+                    + ".g8 with a .jk-template.toml; official="
                     + cfg.officialUrl()
                     + ")");
         }

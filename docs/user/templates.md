@@ -2,7 +2,7 @@
 
 ```bash
 jk new my-app
-jk new -t hello my-app
+jk new -t cli my-app
 jk new -t spring-boot/hello my-api
 jk new -t quarkus/hello my-api
 jk new -t grails/hello my-svc

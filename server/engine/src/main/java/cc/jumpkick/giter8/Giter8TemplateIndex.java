@@ -88,6 +88,22 @@ public final class Giter8TemplateIndex {
                     + under.getFirst()
                     + ")");
         }
+        // Bare name living under frameworks: unambiguous resolves, ambiguity names candidates.
+        List<TemplateSpec> named = new ArrayList<>();
+        for (TemplateSpec s : all) {
+            if (!s.name().equals(name)) continue;
+            if (lang != null && !lang.isBlank() && !s.language().equals(lang.strip().toLowerCase(Locale.ROOT))) {
+                continue;
+            }
+            named.add(s);
+        }
+        if (named.size() == 1) return Optional.of(named.getFirst());
+        if (named.size() > 1) {
+            TreeSet<String> ids = new TreeSet<>();
+            for (TemplateSpec s : named) ids.add(s.id());
+            throw new IllegalArgumentException(
+                    name + " is ambiguous; pick one of: " + String.join(", ", ids));
+        }
         return Optional.empty();
     }
 

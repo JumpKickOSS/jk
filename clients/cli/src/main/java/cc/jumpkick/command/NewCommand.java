@@ -288,7 +288,9 @@ public final class NewCommand implements CliCommand {
             params.putIfAbsent("group", group);
             params.putIfAbsent("package", group);
         }
-        String resolvedLang = (lang != null && !lang.isBlank()) ? lang : "java";
+        // Only an explicit --lang goes on the wire: template resolution searches every language
+        // for a bare name, and hardcoding java here made kotlin-only templates unreachable.
+        String resolvedLang = (lang != null && !lang.isBlank()) ? lang : null;
         Path target = resolveTarget(directory, cwd, resolvedName);
         Path parentDir = target.getParent() == null ? cwd : target.getParent();
         if (officialTemplateShortName(templateRef)) {

@@ -59,6 +59,30 @@ class Giter8TemplateIndexTest {
     }
 
     @Test
+    void bare_name_resolves_across_languages_and_frameworks(@TempDir Path temp) throws Exception {
+        writeTemplate(temp, "kotlin", "none", "ktor-3", "Ktor", "\"traditional\"");
+        writeTemplate(temp, "java", "spring-boot", "webmvc", "WebMVC", "\"traditional\"");
+        writeTemplate(temp, "kotlin", "spring-boot", "webmvc", "WebMVC", "\"traditional\"");
+
+        // Kotlin-only bare name, no --lang: must not be invisible behind a java default.
+        assertThat(Giter8TemplateIndex.resolve("ktor-3", null, List.of(temp)))
+                .get()
+                .extracting(TemplateSpec::id)
+                .isEqualTo("kotlin/none/ktor-3");
+        // Bare name under one framework, restricted by lang → unambiguous.
+        assertThat(Giter8TemplateIndex.resolve("webmvc", "java", List.of(temp)))
+                .get()
+                .extracting(TemplateSpec::id)
+                .isEqualTo("java/spring-boot/webmvc");
+        // Two candidates without a lang → sorted candidates, not a generic not-found.
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> Giter8TemplateIndex.resolve("webmvc", null, List.of(temp)))
+                .hasMessageContaining("ambiguous")
+                .hasMessageContaining("java/spring-boot/webmvc")
+                .hasMessageContaining("kotlin/spring-boot/webmvc");
+    }
+
+    @Test
     void bare_framework_name_lists_templates(@TempDir Path temp) throws Exception {
         writeTemplate(temp, "java", "spring-boot", "hello", "h", "\"traditional\"");
         writeTemplate(temp, "java", "spring-boot", "webmvc", "w", "\"traditional\"");
