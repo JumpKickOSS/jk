@@ -637,6 +637,7 @@
               <ul v-if="templateOpen" class="combo-list">
                 <li :class="{ on: !newProject.template }"
                     @mousedown.prevent="pickTemplate('', 'None — blank project')">None — blank project</li>
+                <li v-if="templatesUnavailable" class="dim">Template catalog unavailable — type a template ref (name, framework/name, path, or git URL)</li>
                 <li v-for="c in filteredTemplateChoices" :key="c.value"
                     :class="{ on: newProject.template === c.value }"
                     @mousedown.prevent="pickTemplate(c.value, c.label)">{{ c.label }}</li>

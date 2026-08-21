@@ -965,22 +965,6 @@ function fmtMillis(millis) {
   return Math.floor(totalSec / 60) + 'm ' + String(totalSec % 60).padStart(2, '0') + 's';
 }
 
-function fallbackTemplates() {
-  return [
-    { id: 'java/none/cli', name: 'cli', language: 'java', framework: 'none', description: 'Simple executable (Mill SIMPLE layout)', layouts: ['simple'], source: 'catalog' },
-    { id: 'kotlin/none/cli', name: 'cli', language: 'kotlin', framework: 'none', description: 'Simple executable (Mill SIMPLE layout)', layouts: ['simple'], source: 'catalog' },
-    { id: 'java/none/cli-native', name: 'cli-native', language: 'java', framework: 'none', description: 'Interactive Java CLI with JLine (jk native ready)', layouts: ['simple'], source: 'catalog' },
-    { id: 'java/spring-boot/hello', name: 'hello', language: 'java', framework: 'spring-boot', description: 'Minimal Spring Boot application', layouts: ['traditional'], source: 'plugin', pluginId: 'spring-boot' },
-    { id: 'kotlin/spring-boot/hello', name: 'hello', language: 'kotlin', framework: 'spring-boot', description: 'Minimal Spring Boot application', layouts: ['traditional'], source: 'plugin', pluginId: 'spring-boot' },
-    { id: 'java/spring-boot/webmvc', name: 'webmvc', language: 'java', framework: 'spring-boot', description: 'Clean architecture WebMVC', layouts: ['traditional'], source: 'plugin', pluginId: 'spring-boot' },
-    { id: 'kotlin/spring-boot/webmvc', name: 'webmvc', language: 'kotlin', framework: 'spring-boot', description: 'Clean architecture WebMVC', layouts: ['traditional'], source: 'plugin', pluginId: 'spring-boot' },
-    { id: 'java/spring-boot/mcp', name: 'mcp', language: 'java', framework: 'spring-boot', description: 'Spring Boot MCP server', layouts: ['traditional'], source: 'catalog' },
-    { id: 'java/quarkus/hello', name: 'hello', language: 'java', framework: 'quarkus', description: 'Quarkus REST application', layouts: ['simple'], source: 'plugin', pluginId: 'quarkus' },
-    { id: 'kotlin/none/ktor-3', name: 'ktor-3', language: 'kotlin', framework: 'none', description: 'Ktor service with Koin DI and Exposed/H2', layouts: ['simple'], source: 'catalog' },
-    { id: 'java/micronaut/hello', name: 'hello', language: 'java', framework: 'micronaut', description: 'Micronaut HTTP service', layouts: ['simple'], source: 'plugin', pluginId: 'micronaut' },
-    { id: 'groovy/grails/hello', name: 'hello', language: 'groovy', framework: 'grails', description: 'Grails 8 REST app', layouts: ['custom'], source: 'plugin', pluginId: 'grails' },
-  ];
-}
 
 // Exported for the headless harness (app.test.mjs); the browser block below mounts it.
 export const appOptions = {
@@ -998,6 +982,7 @@ export const appOptions = {
     // JK-1542: Dependencies panel on the Project page — closed by default; graph fetch + echarts
     // only when opened (ModuleDepGraph mounts lazily).
     projectGraphOpen: false,
+    templatesUnavailable: false, // /api/templates failed — picker shows a notice, manual refs still work
     connection: 'connecting', // 'connecting' | 'live' | 'offline' | 'unauthorized'
     status: null, // the /api/status payload
     metrics: null, // the /api/metrics payload (running build aggregates), shown on the Status view
@@ -2442,7 +2427,11 @@ export const appOptions = {
         }
       }
       if (!this.newProject.group) this.newProject.group = 'com.example';
-      this.templates = Array.isArray(templates) && templates.length ? templates : fallbackTemplates();
+      // No hand-maintained fallback copy of the catalog: stale data is worse than an honest
+      // "catalog unavailable" state (the input still accepts any template ref typed directly).
+      const live = Array.isArray(templates) && templates.length ? templates : null;
+      this.templates = live || [];
+      this.templatesUnavailable = !live;
       this.onNewProjectLangChange();
       // Focus Name so the user can type the app name immediately; @focus selects any existing value.
       this.$nextTick(() => {
