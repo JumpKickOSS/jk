@@ -11,6 +11,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
@@ -18,8 +19,8 @@ import java.util.Set;
 import javax.annotation.processing.Processor;
 
 /**
- * Child-JVM {@link InProcessJavac} worker: runs under the project JDK and streams diagnostics,
- * AP provenance, and status as JSONL.
+ * Child-JVM Java compile worker: Zinc incremental when the spec carries a {@code workdir}, else
+ * in-process javac with AP provenance. Streams diagnostics and status as JSONL.
  */
 public final class JavaIncrementalCompiler implements Plugin {
 
@@ -42,6 +43,9 @@ public final class JavaIncrementalCompiler implements Plugin {
     /** Run a compile from {@code specFile}, emitting JSONL to {@code out}; returns the exit code. */
     static int compileSpec(Path specFile, ProtocolWriter out) throws Exception {
         PluginSpec spec = PluginSpec.read(specFile);
+        if (spec.workdir() != null) {
+            return compileZinc(spec, out);
+        }
         List<Processor> processors = loadProcessors(spec.processorClasspath());
 
         InProcessJavac.Result r = InProcessJavac.compile(
@@ -62,6 +66,30 @@ public final class JavaIncrementalCompiler implements Plugin {
                     e.getValue().stream().map(Path::toString).toList()));
         }
         out.emit(PluginReply.result(Map.of("status", r.success() ? "OK" : "ERROR")));
+        return r.success() ? 0 : 1;
+    }
+
+    private static int compileZinc(PluginSpec spec, ProtocolWriter out) {
+        ZincJavaCompiler.Result r = ZincJavaCompiler.compileJava(
+                spec.sources(),
+                spec.compileClasspath(),
+                spec.classesDir(),
+                spec.workdir(),
+                spec.sourceOutput(),
+                (int) spec.config().intValue("release", 0),
+                spec.args(),
+                spec.processorClasspath());
+        for (ZincJavaCompiler.Diag d : r.diagnostics()) {
+            out.emit(PluginReply.diagnostic(d.kind(), d.file(), (int) d.line(), (int) d.col(), d.message()));
+        }
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("status", r.success() ? "OK" : "ERROR");
+        fields.put(
+                "compiled",
+                r.compiledSources().stream()
+                        .map(p -> p.toAbsolutePath().normalize().toString())
+                        .toList());
+        out.emit(PluginReply.result(fields));
         return r.success() ? 0 : 1;
     }
 
