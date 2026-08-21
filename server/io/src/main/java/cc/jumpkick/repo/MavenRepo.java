@@ -581,8 +581,21 @@ public final class MavenRepo {
 
     /** Thrown when the requested artifact returns 404 from this repo. */
     public static final class ArtifactNotFoundException extends IOException {
+        /** The GAV that was missing, when the thrower knows it; lets callers that walk a POM
+         * chain tell "this dep's own POM is absent" from "an ancestor/BOM of it is absent". */
+        private final transient Coordinate coordinate;
+
         public ArtifactNotFoundException(String message) {
+            this(message, null);
+        }
+
+        public ArtifactNotFoundException(String message, Coordinate coordinate) {
             super(message);
+            this.coordinate = coordinate;
+        }
+
+        public Coordinate coordinate() {
+            return coordinate;
         }
     }
 

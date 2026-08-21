@@ -212,33 +212,36 @@ public final class PomRuntimeClasspath {
         }
         for (Pom.Dep d : pom.dependencies()) {
             if (!runtimeDep(d, rootPom)) continue;
-            if (d.version() == null || d.version().isBlank()) continue;
-            if (isUnresolvedProperty(d.version())) {
-                throw new IllegalStateException("worker POM "
-                        + pom.groupId()
-                        + ":"
-                        + pom.artifactId()
-                        + ":"
-                        + pom.version()
-                        + " dependency "
-                        + d.groupId()
-                        + ":"
-                        + d.artifactId()
-                        + " has unresolved version "
-                        + d.version());
-            }
-            if (isFloating(d.version())) {
-                throw new IllegalStateException("worker POM "
-                        + pom.artifactId()
-                        + " has floating version for "
-                        + d.groupId()
-                        + ":"
-                        + d.artifactId());
-            }
+            // Prune before any version policing: a dep an ancestor excluded (or a pom-type
+            // aggregate) must never abort the walk over a version we would not have used.
             String ga = d.groupId() + ":" + d.artifactId();
             if (exclusions.contains(ga)) continue;
             String type = d.type() == null || d.type().isBlank() ? "jar" : d.type();
             if ("pom".equalsIgnoreCase(type)) continue;
+            // Version policy for deps that survive pruning: one posture, loud. A blank version
+            // (no dependencyManagement governs it), an unresolved ${…}, and a floating selector
+            // all mean "we cannot know which jar belongs on the classpath" — dropping the dep
+            // silently trades a resolution-time error for NoClassDefFoundError in the worker.
+            // Optional deps are the exception: absent-if-unresolvable mirrors their fetch policy.
+            if (d.version() == null || d.version().isBlank()) {
+                if (d.optional()) continue;
+                throw new IllegalStateException("worker POM "
+                        + pom.groupId() + ":" + pom.artifactId() + ":" + pom.version()
+                        + " dependency " + ga
+                        + " has no version (no dependencyManagement entry governs it)");
+            }
+            if (isUnresolvedProperty(d.version())) {
+                if (d.optional()) continue;
+                throw new IllegalStateException("worker POM "
+                        + pom.groupId() + ":" + pom.artifactId() + ":" + pom.version()
+                        + " dependency " + ga
+                        + " has unresolved version " + d.version());
+            }
+            if (isFloating(d.version())) {
+                if (d.optional()) continue;
+                throw new IllegalStateException(
+                        "worker POM " + pom.artifactId() + " has floating version for " + ga);
+            }
             String classifier = d.classifier() == null || d.classifier().isBlank() ? null : d.classifier();
             Coordinate coord = new Coordinate(d.groupId(), d.artifactId(), d.version(), classifier, type);
             Set<String> childExcl = new HashSet<>(exclusions);
@@ -273,7 +276,13 @@ public final class PomRuntimeClasspath {
         try {
             child = builder.build(coord);
         } catch (MavenRepo.ArtifactNotFoundException e) {
-            return;
+            // Only the dep's OWN missing POM makes it a jar-only leaf. A missing parent or
+            // imported BOM anywhere in its chain must stay loud — swallowing it silently
+            // prunes the dep's whole transitive subtree and the worker dies later with
+            // NoClassDefFoundError instead of a resolution-time error naming the gap.
+            if (coord.equals(e.coordinate())) return;
+            throw new IllegalStateException(
+                    "worker dependency " + key + " has an incomplete POM chain: " + e.getMessage(), e);
         }
         walkEffective(child, coord, builder, repos, visited, exclusions, out, false);
     }

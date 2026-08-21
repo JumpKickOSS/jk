@@ -308,6 +308,139 @@ class PomRuntimeClasspathTest {
                 .hasMessageNotContaining("run `jk install`");
     }
 
+    @Test
+    void excluded_dep_with_unresolved_version_is_pruned_before_policing(@TempDir Path tmp) throws Exception {
+        Path store = tmp.resolve("store");
+        Coordinate worker = Coordinate.of("cc.jumpkick", "jk-test-runner", "0.12.0");
+        Coordinate lib = Coordinate.of("com.foo", "lib", "1.0");
+        Path workerJar = putJar(store, "local", worker, "worker-bytes");
+        putPom(store, "local", worker, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-test-runner</artifactId>
+                  <version>0.12.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId>
+                      <artifactId>lib</artifactId>
+                      <version>1.0</version>
+                      <exclusions>
+                        <exclusion><groupId>com.bad</groupId><artifactId>broken</artifactId></exclusion>
+                      </exclusions>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        putJar(store, "local", lib, "lib-bytes");
+        putPom(store, "local", lib, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.foo</groupId>
+                  <artifactId>lib</artifactId>
+                  <version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.bad</groupId>
+                      <artifactId>broken</artifactId>
+                      <version>${never.defined}</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        List<Path> cp = resolve(store, workerJar);
+        assertThat(cp.stream().map(Path::getFileName).map(Path::toString)).contains("lib-1.0.jar");
+    }
+
+    @Test
+    void missing_parent_pom_is_loud_not_a_silent_prune(@TempDir Path tmp) throws Exception {
+        Path store = tmp.resolve("store");
+        Coordinate worker = Coordinate.of("cc.jumpkick", "jk-test-runner", "0.12.0");
+        Coordinate lib = Coordinate.of("com.foo", "lib", "1.0");
+        Path workerJar = putJar(store, "local", worker, "worker-bytes");
+        putPom(store, "local", worker, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-test-runner</artifactId>
+                  <version>0.12.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>lib</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        putJar(store, "local", lib, "lib-bytes");
+        putPom(store, "local", lib, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>com.foo</groupId><artifactId>parent</artifactId><version>9</version>
+                  </parent>
+                  <groupId>com.foo</groupId>
+                  <artifactId>lib</artifactId>
+                  <version>1.0</version>
+                </project>
+                """);
+
+        assertThatThrownBy(() -> resolve(store, workerJar))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("incomplete POM chain")
+                .hasMessageContaining("com.foo:parent:9");
+    }
+
+    @Test
+    void dep_without_its_own_pom_is_a_jar_only_leaf(@TempDir Path tmp) throws Exception {
+        Path store = tmp.resolve("store");
+        Coordinate worker = Coordinate.of("cc.jumpkick", "jk-test-runner", "0.12.0");
+        Coordinate fat = Coordinate.of("com.foo", "fat", "1.0");
+        Path workerJar = putJar(store, "local", worker, "worker-bytes");
+        putPom(store, "local", worker, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-test-runner</artifactId>
+                  <version>0.12.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>fat</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        putJar(store, "local", fat, "fat-bytes");
+
+        List<Path> cp = resolve(store, workerJar);
+        assertThat(cp.stream().map(Path::getFileName).map(Path::toString)).contains("fat-1.0.jar");
+    }
+
+    @Test
+    void blank_version_after_effective_pom_is_loud(@TempDir Path tmp) throws Exception {
+        Path store = tmp.resolve("store");
+        Coordinate worker = Coordinate.of("cc.jumpkick", "jk-test-runner", "0.12.0");
+        Path workerJar = putJar(store, "local", worker, "worker-bytes");
+        putPom(store, "local", worker, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-test-runner</artifactId>
+                  <version>0.12.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>ungoverned</artifactId>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        assertThatThrownBy(() -> resolve(store, workerJar))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("com.foo:ungoverned")
+                .hasMessageContaining("has no version");
+    }
+
     private static List<Path> resolve(Path store, Path workerJar) {
         return PomRuntimeClasspath.resolve(workerJar, PomRuntimeClasspath.localRepos(store));
     }

@@ -180,8 +180,8 @@ public final class EffectivePomBuilder {
             CompletableFuture<EffectivePom> flight)
             throws IOException, InterruptedException {
         RepoGroup.RepoFetched hit = repos.tryFetchPom(coord)
-                .orElseThrow(
-                        () -> new MavenRepo.ArtifactNotFoundException("POM not found in any declared repo: " + coord));
+                .orElseThrow(() ->
+                        new MavenRepo.ArtifactNotFoundException("POM not found in any declared repo: " + coord, coord));
         Pom raw = PomParser.parse(Files.readAllBytes(hit.fetched().cachePath()));
         EffectivePom effective = merge(raw, visiting, depth);
         cache.put(localKey, effective);
