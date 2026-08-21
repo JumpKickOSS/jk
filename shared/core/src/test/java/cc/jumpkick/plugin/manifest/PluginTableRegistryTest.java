@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.tomlj.Toml;
@@ -98,6 +99,54 @@ class PluginTableRegistryTest {
                         && "version".equals(r.versionTo())
                         && r.missingVersionWarning() != null)
                 .anyMatch(r -> r.id().equals("io.spring.dependency-management") && r.versionTo() == null);
+    }
+
+    @Test
+    void workspace_plugin_sources_include_gradle_import_rules() {
+        Path root = PluginTableRegistry.discoverTestWorkspaceRoot();
+        Assumptions.assumeTrue(root != null && Files.isRegularFile(root.resolve("plugins/spring-boot/jk-plugin.toml")));
+        var loaded = PluginTableRegistry.loadFromWorkspacePluginSources(root);
+        assertThat(loaded.get("spring-boot").gradleImports())
+                .anyMatch(r -> r.id().equals("org.springframework.boot")
+                        && "version".equals(r.versionTo())
+                        && r.missingVersionWarning() != null)
+                .anyMatch(r -> r.id().equals("io.spring.dependency-management") && r.versionTo() == null);
+        assertThat(loaded.keySet())
+                .contains("spring-boot", "grails", "quarkus", "android", "protobuf", "minified", "micronaut");
+    }
+
+    @Test
+    void empty_workspace_plugin_tree_is_not_this_catalog(@TempDir Path dir) {
+        assertThat(PluginTableRegistry.loadFromWorkspacePluginSources(dir)).isEmpty();
+        assertThat(PluginTableRegistry.loadFromWorkspacePluginSources(null)).isEmpty();
+    }
+
+    @Test
+    void stale_scaffold_fixture_is_not_a_built_in() {
+        assertThat(PluginTableRegistry.tryParseBuiltIn("""
+                        [plugin]
+                        id = "spring-boot"
+                        table = "spring-boot"
+                        version = "1"
+                        [scaffold]
+                        flag = "spring"
+                        """, "spring-boot.jk-plugin.toml"))
+                .isNull();
+    }
+
+    @Test
+    void incomplete_workspace_plugin_tree_fails_closed(@TempDir Path dir) throws Exception {
+        Path boot = dir.resolve("plugins/spring-boot");
+        Files.createDirectories(boot);
+        Files.writeString(boot.resolve("jk-plugin.toml"), """
+                [plugin]
+                id = "spring-boot"
+                table = "spring-boot"
+                version = "1"
+                """);
+        assertThatThrownBy(() -> PluginTableRegistry.loadFromWorkspacePluginSources(dir))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("missing built-in plugin manifest sources");
     }
 
     @Test

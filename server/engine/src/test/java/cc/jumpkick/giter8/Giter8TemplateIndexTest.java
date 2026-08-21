@@ -21,11 +21,7 @@ class Giter8TemplateIndexTest {
 
         var list = Giter8TemplateIndex.picker(List.of(temp));
         assertThat(list.stream().map(TemplateSpec::id))
-                .contains(
-                        "java/none/hello",
-                        "kotlin/none/hello",
-                        "java/spring-boot/hello",
-                        "groovy/grails/hello");
+                .contains("java/none/hello", "kotlin/none/hello", "java/spring-boot/hello", "groovy/grails/hello");
 
         assertThat(Giter8TemplateIndex.resolve("hello", "java", List.of(temp)))
                 .get()
@@ -86,7 +82,8 @@ class Giter8TemplateIndexTest {
                 name = "cli"
                 description = "legacy path"
                 """);
-        assertThat(Giter8TemplateIndex.picker(List.of(temp))).isEmpty();
+        assertThat(Giter8TemplateIndex.picker(List.of(temp)))
+                .noneMatch(s -> TemplateSpec.SOURCE_CATALOG.equals(s.source()));
     }
 
     @Test
