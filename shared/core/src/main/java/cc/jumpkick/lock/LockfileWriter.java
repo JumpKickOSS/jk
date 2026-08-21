@@ -195,6 +195,9 @@ public final class LockfileWriter {
             if (m.groovy() != null && !m.groovy().isBlank()) {
                 out.append("groovy  = ").append(quote(m.groovy())).append('\n');
             }
+            if (m.scala() != null && !m.scala().isBlank()) {
+                out.append("scala   = ").append(quote(m.scala())).append('\n');
+            }
             if (m.description() != null && !m.description().isBlank()) {
                 out.append("description = ").append(quote(m.description())).append('\n');
             }

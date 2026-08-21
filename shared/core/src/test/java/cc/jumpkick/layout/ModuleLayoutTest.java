@@ -67,6 +67,13 @@ class ModuleLayoutTest {
                 .contains("integration/src", "integration/resources");
     }
 
+    @Test
+    void traditional_main_scala_roots(@TempDir Path tmp) {
+        assertThat(ModuleLayout.mainScalaRoots(tmp, false))
+                .containsExactly(tmp.resolve("src/main/scala"), tmp.resolve("src/main/java"));
+        assertThat(ModuleLayout.mainScalaRoots(tmp, true)).containsExactly(tmp.resolve("src"));
+    }
+
     private static void writeToml(Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
                 group = "t"

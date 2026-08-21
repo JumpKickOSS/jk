@@ -63,6 +63,9 @@ public final class JkBuildRenderer {
         } else if (p.java() > 0) {
             sb.append("java     = ").append(p.java()).append('\n');
         }
+        if (p.isScala()) {
+            sb.append("scala    = ").append(quote(versionLiteral(p.scala()))).append('\n');
+        }
         if (p.m2install()) sb.append("m2install = true\n");
     }
 

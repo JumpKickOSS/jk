@@ -87,6 +87,7 @@ class JkBuildParserTest {
         assertThat(parsed.project().java()).isEqualTo(25);
         assertThat(parsed.project().isKotlin()).isFalse();
         assertThat(parsed.project().isGroovy()).isFalse();
+        assertThat(parsed.project().isScala()).isFalse();
         assertThat(parsed.mainClass()).isNull();
         assertThat(parsed.isApplication()).isFalse();
         assertThat(parsed.assembly()).isFalse();
@@ -124,6 +125,37 @@ class JkBuildParserTest {
         JkBuild parsed = JkBuildParser.parse(PROJECT.replace("java     = 25", "groovy   = \"\""));
         assertThat(parsed.project().isGroovy()).isFalse();
         assertThat(parsed.project().groovy()).isNull();
+        assertThat(parsed.project().languageName()).isEqualTo("java");
+    }
+
+    @Test
+    void parses_scala_version_pin() {
+        JkBuild parsed = JkBuildParser.parse("""
+                group    = "com.example"
+                name     = "widget"
+                version  = "1.0.0"
+                jdk      = 25
+                scala    = "=3.8.4"
+                """);
+        assertThat(parsed.project().isScala()).isTrue();
+        assertThat(parsed.project().languageName()).isEqualTo("scala");
+        assertThat(parsed.project().scala()).isInstanceOf(VersionSelector.Exact.class);
+        assertThat(((VersionSelector.Exact) parsed.project().scala()).version()).isEqualTo("3.8.4");
+    }
+
+    @Test
+    void bare_scala_version_floats_like_a_dependency() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT.replace("java     = 25", "scala    = \"3\""));
+        assertThat(parsed.project().isScala()).isTrue();
+        assertThat(parsed.project().scala()).isInstanceOf(VersionSelector.Caret.class);
+        assertThat(parsed.project().languageName()).isEqualTo("scala");
+    }
+
+    @Test
+    void blank_scala_version_means_not_a_scala_project() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT.replace("java     = 25", "scala    = \"\""));
+        assertThat(parsed.project().isScala()).isFalse();
+        assertThat(parsed.project().scala()).isNull();
         assertThat(parsed.project().languageName()).isEqualTo("java");
     }
 

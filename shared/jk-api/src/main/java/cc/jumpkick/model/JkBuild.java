@@ -551,6 +551,7 @@ public record JkBuild(
         JAVA,
         KOTLIN,
         GROOVY,
+        SCALA,
         SOURCES,
         DESCRIPTION,
         M2INSTALL,
@@ -565,6 +566,7 @@ public record JkBuild(
             int java,
             VersionSelector kotlin,
             VersionSelector groovy,
+            VersionSelector scala,
             SourcesMode sourcesMode,
             String description,
             boolean m2install,
@@ -589,7 +591,37 @@ public record JkBuild(
                     workspaceInherits == null || workspaceInherits.isEmpty() ? Set.of() : Set.copyOf(workspaceInherits);
         }
 
-        /** Back-compat: no workspace inheritance flags. */
+        /** Unset Scala pin; {@code workspaceInherits} as given. */
+        public Project(
+                String group,
+                String name,
+                String version,
+                String jdk,
+                int java,
+                VersionSelector kotlin,
+                VersionSelector groovy,
+                SourcesMode sourcesMode,
+                String description,
+                boolean m2install,
+                Layout layout,
+                Set<ProjectInherit> workspaceInherits) {
+            this(
+                    group,
+                    name,
+                    version,
+                    jdk,
+                    java,
+                    kotlin,
+                    groovy,
+                    null,
+                    sourcesMode,
+                    description,
+                    m2install,
+                    layout,
+                    workspaceInherits);
+        }
+
+        /** Unset Scala pin and no workspace inheritance flags. */
         public Project(
                 String group,
                 String name,
@@ -610,6 +642,7 @@ public record JkBuild(
                     java,
                     kotlin,
                     groovy,
+                    null,
                     sourcesMode,
                     description,
                     m2install,
@@ -617,7 +650,7 @@ public record JkBuild(
                     Set.of());
         }
 
-        /** Back-compat: AUTO layout, no workspace inheritance flags. */
+        /** AUTO layout, no workspace inheritance flags. */
         public Project(
                 String group,
                 String name,
@@ -637,6 +670,7 @@ public record JkBuild(
                     java,
                     kotlin,
                     groovy,
+                    null,
                     sourcesMode,
                     description,
                     m2install,
@@ -676,13 +710,26 @@ public record JkBuild(
             next.remove(ProjectInherit.JAVA);
             next.remove(ProjectInherit.KOTLIN);
             next.remove(ProjectInherit.GROOVY);
+            next.remove(ProjectInherit.SCALA);
             next.remove(ProjectInherit.SOURCES);
             next.remove(ProjectInherit.DESCRIPTION);
             next.remove(ProjectInherit.M2INSTALL);
             next.remove(ProjectInherit.LAYOUT);
             if (next.equals(workspaceInherits)) return this;
             return new Project(
-                    group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, layout, next);
+                    group,
+                    name,
+                    version,
+                    jdk,
+                    java,
+                    kotlin,
+                    groovy,
+                    scala,
+                    sourcesMode,
+                    description,
+                    m2install,
+                    layout,
+                    next);
         }
 
         /** True when this project declared {@code version.workspace = true} and is not yet resolved. */
@@ -709,11 +756,12 @@ public record JkBuild(
             int ja = inherits(ProjectInherit.JAVA) ? root.java() : java;
             VersionSelector kt = inherits(ProjectInherit.KOTLIN) ? root.kotlin() : kotlin;
             VersionSelector gr = inherits(ProjectInherit.GROOVY) ? root.groovy() : groovy;
+            VersionSelector sc = inherits(ProjectInherit.SCALA) ? root.scala() : scala;
             SourcesMode src = inherits(ProjectInherit.SOURCES) ? root.sourcesMode() : sourcesMode;
             String desc = inherits(ProjectInherit.DESCRIPTION) ? root.description() : description;
             boolean m2 = inherits(ProjectInherit.M2INSTALL) ? root.m2install() : m2install;
             Layout lay = inherits(ProjectInherit.LAYOUT) ? root.layout() : layout;
-            return new Project(g, name, v, j, ja, kt, gr, src, desc, m2, lay, Set.of());
+            return new Project(g, name, v, j, ja, kt, gr, sc, src, desc, m2, lay, Set.of());
         }
 
         private static String requireRoot(String value, String field) {
@@ -741,6 +789,7 @@ public record JkBuild(
                     java,
                     kotlin,
                     groovy,
+                    scala,
                     sourcesMode,
                     description,
                     m2install,
@@ -750,7 +799,7 @@ public record JkBuild(
 
         /** Library project — bare-major {@code jdk} (0 → unset). */
         public Project(String group, String name, String version, int jdk) {
-            this(group, name, version, majorSpec(jdk), jdk, null, null, null, null, false, Layout.AUTO, Set.of());
+            this(group, name, version, majorSpec(jdk), jdk, null, null, null, null, null, false, Layout.AUTO, Set.of());
         }
 
         /** A bare-major int as a jdk spec string ({@code 25} → {@code "25"}); 0/negative → unset. */
@@ -772,6 +821,7 @@ public record JkBuild(
             private int java;
             private VersionSelector kotlin;
             private VersionSelector groovy;
+            private VersionSelector scala;
             private SourcesMode sourcesMode = SourcesMode.DISABLED;
             private String description;
             private boolean m2install;
@@ -811,6 +861,11 @@ public record JkBuild(
                 return this;
             }
 
+            public Builder scala(VersionSelector scala) {
+                this.scala = scala;
+                return this;
+            }
+
             public Builder sourcesMode(SourcesMode sourcesMode) {
                 this.sourcesMode = sourcesMode;
                 return this;
@@ -833,7 +888,19 @@ public record JkBuild(
 
             public Project build() {
                 return new Project(
-                        group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, layout);
+                        group,
+                        name,
+                        version,
+                        jdk,
+                        java,
+                        kotlin,
+                        groovy,
+                        scala,
+                        sourcesMode,
+                        description,
+                        m2install,
+                        layout,
+                        Set.of());
             }
         }
 
@@ -845,6 +912,11 @@ public record JkBuild(
         /** True when this is a Groovy project (i.e. a {@code groovy} version is set). */
         public boolean isGroovy() {
             return groovy != null;
+        }
+
+        /** True when this is a Scala project (i.e. a {@code scala} version is set). */
+        public boolean isScala() {
+            return scala != null;
         }
 
         /** {@code java} release, or {@code jdk} major when {@code java} is unset. */
@@ -883,9 +955,9 @@ public record JkBuild(
             return false;
         }
 
-        /** {@code "java"} / {@code "kotlin"} / {@code "groovy"} — derived from which compiler field is set. */
+        /** {@code "java"} / {@code "kotlin"} / {@code "groovy"} / {@code "scala"} — derived from which compiler field is set. */
         public String languageName() {
-            return isKotlin() ? "kotlin" : isGroovy() ? "groovy" : "java";
+            return isKotlin() ? "kotlin" : isGroovy() ? "groovy" : isScala() ? "scala" : "java";
         }
     }
 

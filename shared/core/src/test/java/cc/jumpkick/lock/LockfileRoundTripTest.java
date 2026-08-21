@@ -199,4 +199,26 @@ class LockfileRoundTripTest {
         assertThat(parsed.modules().get(1).kotlin()).isEqualTo("2.4.0");
         assertThat(parsed.modules().get(1).m2install()).isTrue();
     }
+
+    @Test
+    void module_scala_pin_round_trips() {
+        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT")
+                .withModules(List.of(new Lockfile.ModuleEntry(
+                        ".",
+                        "com.example",
+                        "app",
+                        "1.0.0",
+                        "temurin-25",
+                        25,
+                        null,
+                        null,
+                        "3",
+                        null,
+                        null,
+                        null,
+                        null)));
+        String rendered = LockfileWriter.render(original);
+        assertThat(rendered).contains("scala   = \"3\"");
+        assertThat(LockfileReader.parse(rendered).modules().getFirst().scala()).isEqualTo("3");
+    }
 }

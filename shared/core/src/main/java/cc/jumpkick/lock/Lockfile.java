@@ -46,6 +46,7 @@ public record Lockfile(
             Integer java,
             String kotlin,
             String groovy,
+            String scala,
             String description,
             String sources,
             Boolean m2install,
@@ -55,6 +56,23 @@ public record Lockfile(
             Objects.requireNonNull(group, "group");
             Objects.requireNonNull(name, "name");
             Objects.requireNonNull(version, "version");
+        }
+
+        /** Unset Scala pin. */
+        public ModuleEntry(
+                String path,
+                String group,
+                String name,
+                String version,
+                String jdk,
+                Integer java,
+                String kotlin,
+                String groovy,
+                String description,
+                String sources,
+                Boolean m2install,
+                String layout) {
+            this(path, group, name, version, jdk, java, kotlin, groovy, null, description, sources, m2install, layout);
         }
     }
 

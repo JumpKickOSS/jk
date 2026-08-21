@@ -1045,7 +1045,7 @@ public final class LockOrchestrator {
         // NoClassDefFoundError: groovy/lang/GroovyObject.
         cc.jumpkick.layout.Languages langs = projectDir != null
                 ? cc.jumpkick.layout.Languages.resolve(p, projectDir)
-                : new cc.jumpkick.layout.Languages(true, p.isKotlin(), p.isGroovy());
+                : new cc.jumpkick.layout.Languages(true, p.isKotlin(), p.isGroovy(), p.isScala());
         // Only when the language has actual sources (src/ or plugin-contributed roots like
         // grails-app/): a bare `kotlin = "2.1.0"` pin on a sourceless module pins the COMPILER
         // (lock.kotlin) but produces no classes — injecting its runtime made such locks fail

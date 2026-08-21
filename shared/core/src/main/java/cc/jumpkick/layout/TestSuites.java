@@ -18,7 +18,7 @@ import java.util.stream.Stream;
  *
  * <ul>
  * <li>Simple layout: {@code test/src/} (sources by extension)
- * <li>Traditional: {@code src/test/java} + {@code src/test/kotlin} + {@code src/test/groovy}
+ * <li>Traditional: {@code src/test/java} + {@code src/test/kotlin} + {@code src/test/groovy} + {@code src/test/scala}
  * </ul>
  *
  * <p>Additional suites are sibling module dirs (e.g. {@code integration}):
@@ -28,8 +28,8 @@ import java.util.stream.Stream;
  * <li>Traditional: {@code src/<name>/java} + {@code src/<name>/kotlin}
  * </ul>
  *
- * <p>A suite is "present" when at least one {@code.java}/{@code.kt}/{@code.groovy} file exists
- * under its roots.
+ * <p>A suite is "present" when at least one {@code.java}/{@code.kt}/{@code.groovy}/{@code.scala}
+ * file exists under its roots.
  */
 public final class TestSuites {
 
@@ -67,7 +67,8 @@ public final class TestSuites {
         if (hasSources(
                 javaRoots(projectDir, compact, DEFAULT),
                 kotlinRoots(projectDir, compact, DEFAULT),
-                groovyRoots(projectDir, compact, DEFAULT))) {
+                groovyRoots(projectDir, compact, DEFAULT),
+                scalaRoots(projectDir, compact, DEFAULT))) {
             names.add(DEFAULT);
         }
         if (compact) {
@@ -82,7 +83,8 @@ public final class TestSuites {
                             if (hasSources(
                                     javaRoots(projectDir, true, n),
                                     kotlinRoots(projectDir, true, n),
-                                    groovyRoots(projectDir, true, n))) {
+                                    groovyRoots(projectDir, true, n),
+                                    scalaRoots(projectDir, true, n))) {
                                 names.add(n);
                             }
                         });
@@ -102,7 +104,8 @@ public final class TestSuites {
                                 if (hasSources(
                                         javaRoots(projectDir, false, n),
                                         kotlinRoots(projectDir, false, n),
-                                        groovyRoots(projectDir, false, n))) {
+                                        groovyRoots(projectDir, false, n),
+                                        scalaRoots(projectDir, false, n))) {
                                     names.add(n);
                                 }
                             });
@@ -175,6 +178,16 @@ public final class TestSuites {
         return List.of(base.resolve("groovy"), base.resolve("java"));
     }
 
+    /** Scala source roots for one suite (may not exist). */
+    public static List<Path> scalaRoots(Path projectDir, boolean compact, String suite) {
+        String s = suite == null || suite.isBlank() ? DEFAULT : suite;
+        if (compact) {
+            return List.of(simpleSuiteSrc(projectDir, s));
+        }
+        Path base = projectDir.resolve("src").resolve(s);
+        return List.of(base.resolve("scala"), base.resolve("java"));
+    }
+
     /** Collect {@code .java} under the selected suites (deduped, stable order). */
     public static List<Path> collectJavaSources(Path projectDir, boolean compact, List<String> suites)
             throws IOException {
@@ -211,6 +224,18 @@ public final class TestSuites {
         return new ArrayList<>(out);
     }
 
+    /** Collect {@code .scala} under the selected suites (deduped, stable order). */
+    public static List<Path> collectScalaSources(Path projectDir, boolean compact, List<String> suites)
+            throws IOException {
+        LinkedHashSet<Path> out = new LinkedHashSet<>();
+        for (String suite : effectiveSuites(suites)) {
+            for (Path root : scalaRoots(projectDir, compact, suite)) {
+                out.addAll(collectExt(root, ".scala"));
+            }
+        }
+        return new ArrayList<>(out);
+    }
+
     /** Primary Java root used for incremental compile task identity (first selected suite). */
     public static Path primaryJavaRoot(Path projectDir, boolean compact, List<String> suites) {
         List<String> eff = effectiveSuites(suites);
@@ -232,6 +257,7 @@ public final class TestSuites {
                 if (!collectExt(r, ".java").isEmpty()) return true;
                 if (!collectExt(r, ".kt").isEmpty()) return true;
                 if (!collectExt(r, ".groovy").isEmpty()) return true;
+                if (!collectExt(r, ".scala").isEmpty()) return true;
             }
         } catch (IOException e) {
             return false;

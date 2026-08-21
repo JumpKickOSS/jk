@@ -29,6 +29,7 @@ public final class ManifestProject {
             "java",
             "kotlin",
             "groovy",
+            "scala",
             "sources",
             "description",
             "m2install",
@@ -107,6 +108,14 @@ public final class ManifestProject {
             groovy = parseGroovyVersion(root);
         }
 
+        VersionSelector scala;
+        if (isWorkspaceInherit(root, "scala") || (!workspaceRoot && !root.contains("scala"))) {
+            inherits.add(JkBuild.ProjectInherit.SCALA);
+            scala = null;
+        } else {
+            scala = parseScalaVersion(root);
+        }
+
         // sources = true → PUBLISH; sources = "always" → ALWAYS; absent/false → DISABLED
         // description is special: omit stays null (no auto-inherit). Explicit description.workspace = true ok.
         JkBuild.SourcesMode sourcesMode;
@@ -158,7 +167,19 @@ public final class ManifestProject {
         }
 
         return new JkBuild.Project(
-                group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, layout, inherits);
+                group,
+                name,
+                version,
+                jdk,
+                java,
+                kotlin,
+                groovy,
+                scala,
+                sourcesMode,
+                description,
+                m2install,
+                layout,
+                inherits);
     }
 
     /**
@@ -337,6 +358,21 @@ public final class ManifestProject {
         String raw = root.getString("groovy");
         if (raw == null) {
             throw new JkBuildParseException("groovy must be a version string, e.g. \"5.0.4\"");
+        }
+        if (raw.isBlank()) return null;
+        return VersionSelector.parseFloating(raw);
+    }
+
+    /**
+     * {@code scala} is a Scala compiler version selector (string), parsed the same way as a
+     * floating dependency version: bare {@code 3} → caret, {@code =3.8.4} pins. Absent →
+     * {@code null} (not a Scala project).
+     */
+    static VersionSelector parseScalaVersion(TomlTable root) {
+        if (!root.contains("scala")) return null;
+        String raw = root.getString("scala");
+        if (raw == null) {
+            throw new JkBuildParseException("scala must be a version string, e.g. \"3\"");
         }
         if (raw.isBlank()) return null;
         return VersionSelector.parseFloating(raw);

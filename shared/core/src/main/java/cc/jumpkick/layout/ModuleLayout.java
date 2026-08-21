@@ -21,7 +21,7 @@ import java.util.List;
  * </ul>
  *
  * <p><b>TRADITIONAL (Maven import):</b> {@code src/main/{java,kotlin,groovy,resources}},
- * {@code src/test/…}, {@code src/<suite>/{java,kotlin,resources}}.
+ * {@code src/test/…}, {@code src/<suite>/{java,kotlin,scala,groovy,resources}}.
  *
  * <p>Language is by file extension inside each source dir. Outputs remain under {@code target/}.
  * Flat-siblings ({@code test/} as source root, top-level {@code test-resources/}, {@code
@@ -77,6 +77,16 @@ public final class ModuleLayout {
     public static List<Path> mainGroovyRoots(Path moduleDir, boolean compact) {
         if (compact) return List.of(moduleDir.resolve("src"));
         return List.of(moduleDir.resolve("src/main/groovy"), moduleDir.resolve("src/main/java"));
+    }
+
+    /**
+     * Main Scala source roots. SIMPLE shares {@code src/} by extension; TRADITIONAL is
+     * {@code src/main/scala} plus {@code src/main/java} (stray {@code.scala} under the Java
+     * root compiles too, mirroring Kotlin and Groovy).
+     */
+    public static List<Path> mainScalaRoots(Path moduleDir, boolean compact) {
+        if (compact) return List.of(moduleDir.resolve("src"));
+        return List.of(moduleDir.resolve("src/main/scala"), moduleDir.resolve("src/main/java"));
     }
 
     /** Main resources directory (SIMPLE: {@code resources/}; TRADITIONAL: {@code src/main/resources}). */
@@ -136,6 +146,7 @@ public final class ModuleLayout {
             addIfDir(out, seen, moduleDir, "src/main/java", Kind.SOURCE);
             addIfDir(out, seen, moduleDir, "src/main/kotlin", Kind.SOURCE);
             addIfDir(out, seen, moduleDir, "src/main/groovy", Kind.SOURCE);
+            addIfDir(out, seen, moduleDir, "src/main/scala", Kind.SOURCE);
             addIfDir(out, seen, moduleDir, "src/main/resources", Kind.RESOURCE);
         }
         appendSuiteRoots(moduleDir, compact, seen, out);
@@ -167,6 +178,9 @@ public final class ModuleLayout {
             for (Path root : TestSuites.groovyRoots(moduleDir, compact, suite)) {
                 addAbs(out, seen, moduleDir, root, Kind.TEST);
             }
+            for (Path root : TestSuites.scalaRoots(moduleDir, compact, suite)) {
+                addAbs(out, seen, moduleDir, root, Kind.TEST);
+            }
             addAbs(out, seen, moduleDir, suiteResourcesDir(moduleDir, compact, suite), Kind.TEST_RESOURCE);
         }
     }
@@ -192,6 +206,7 @@ public final class ModuleLayout {
                     for (Path r : TestSuites.javaRoots(moduleDir, true, suite)) addDir(dirs, r);
                     for (Path r : TestSuites.kotlinRoots(moduleDir, true, suite)) addDir(dirs, r);
                     for (Path r : TestSuites.groovyRoots(moduleDir, true, suite)) addDir(dirs, r);
+                    for (Path r : TestSuites.scalaRoots(moduleDir, true, suite)) addDir(dirs, r);
                     addDir(dirs, suiteResourcesDir(moduleDir, true, suite));
                     // Also walk the suite module dir so new files under test/ are noticed even
                     // when only resources exist (test/resources).
@@ -219,6 +234,9 @@ public final class ModuleLayout {
             if (Files.isDirectory(r)) return true;
         }
         for (Path r : TestSuites.groovyRoots(moduleDir, compact, TestSuites.DEFAULT)) {
+            if (Files.isDirectory(r)) return true;
+        }
+        for (Path r : TestSuites.scalaRoots(moduleDir, compact, TestSuites.DEFAULT)) {
             if (Files.isDirectory(r)) return true;
         }
         return false;

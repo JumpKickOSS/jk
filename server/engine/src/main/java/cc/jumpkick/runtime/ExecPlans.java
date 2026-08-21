@@ -288,6 +288,7 @@ public final class ExecPlans {
                     javaRelease,
                     p.kotlin(),
                     p.groovy(),
+                    p.scala(),
                     p.sourcesMode(),
                     p.description(),
                     p.m2install(),

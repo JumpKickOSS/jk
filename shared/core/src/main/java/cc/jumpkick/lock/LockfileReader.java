@@ -154,6 +154,7 @@ public final class LockfileReader {
                         java,
                         t.getString("kotlin"),
                         t.getString("groovy"),
+                        t.getString("scala"),
                         t.getString("description"),
                         t.getString("sources"),
                         m2,
