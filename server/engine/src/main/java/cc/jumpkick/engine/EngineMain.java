@@ -72,6 +72,7 @@ public final class EngineMain {
         TerminalSignals.ignoreInterruptAndHangup();
         try {
             EnginePaths.Paths paths = EnginePaths.current();
+            cc.jumpkick.engine.plugin.BuiltInPluginJars.registerMissingBuiltInFetcher();
             cc.jumpkick.engine.plugin.BuiltInPluginJars.install();
             cc.jumpkick.engine.plugin.BuiltInPluginJars.installUserConfig();
             cc.jumpkick.config.JkEngineConfig config = cc.jumpkick.config.JkEngineConfig.resolve();

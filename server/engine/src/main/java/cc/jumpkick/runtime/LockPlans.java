@@ -364,7 +364,7 @@ public final class LockPlans {
                             entries.add(new Lockfile.PluginEntry(coord, ver, "sha256:" + hex));
                         }
                         try {
-                            String toml = cc.jumpkick.engine.plugin.BuiltInPluginJars.manifestToml(jar);
+                            String toml = located.manifestToml();
                             if (toml != null && !toml.isBlank()) {
                                 var d = cc.jumpkick.plugin.manifest.PluginDescriptors.parse(
                                         toml, jar.toString(), false);

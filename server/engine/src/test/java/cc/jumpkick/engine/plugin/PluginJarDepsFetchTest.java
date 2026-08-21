@@ -113,6 +113,27 @@ class PluginJarDepsFetchTest {
     }
 
     @Test
+    void locate_stored_never_fetches(@TempDir Path tmp) throws Exception {
+        String rel = PluginJar.PUBLISHER.relativePath();
+        serve("/" + rel, "thin-worker-jar");
+        serve("/" + rel.substring(0, rel.length() - 4) + ".pom", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-publisher</artifactId>
+                  <version>%s</version>
+                </project>
+                """.formatted(JkVersion.VERSION));
+        Cas cas = new Cas(tmp.resolve("cache"));
+
+        // Cold store: the stub would serve, but the store-only probe must not ask it.
+        assertThat(PluginJar.PUBLISHER.locateStored(cas)).isNull();
+
+        Path fetched = PluginJar.PUBLISHER.locate(cas);
+        assertThat(PluginJar.PUBLISHER.locateStored(cas)).isEqualTo(fetched);
+    }
+
+    @Test
     void official_fetch_interpolates_parent_property_versions(@TempDir Path tmp) throws Exception {
         String rel = PluginJar.PUBLISHER.relativePath();
         String pomRel = rel.substring(0, rel.length() - 4) + ".pom";

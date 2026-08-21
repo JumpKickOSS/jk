@@ -67,11 +67,33 @@ public final class ManifestBuild {
     }
 
     /**
+     * Before the parse captures its manifest set: give the engine's lazy fetcher one chance to
+     * install the built-in owning each referenced-but-unowned top-level table (cold store, first
+     * use). No-op outside the engine. Returns table → failure detail for fetches that failed, so
+     * {@link #checkUnownedTables} can surface the real cause.
+     */
+    static Map<String, String> ensureBuiltInTables(TomlTable root) {
+        Map<String, String> failures = new LinkedHashMap<>();
+        for (String key : root.keySet()) {
+            if (CORE_TABLES.contains(key) || ManifestProject.PROJECT_KEYS.contains(key)) continue;
+            if (!(root.get(key) instanceof TomlTable) && !(root.get(key) instanceof org.tomlj.TomlArray)) continue;
+            if (PluginTableRegistry.byTable(key).isPresent()) continue;
+            String detail = PluginTableRegistry.tryFetchMissingBuiltIn(key);
+            if (detail != null) failures.put(key, detail);
+        }
+        return failures;
+    }
+
+    /**
      * Error on top-level tables neither core nor owned by an installed plugin. Suppressed while
      * any {@code [plugins]} declaration is still unresolved (unknown ownership pre-lock).
      */
     static void checkUnownedTables(
-            TomlTable root, Path moduleDir, List<PluginDeclaration> plugins, List<PluginDescriptor> installed) {
+            TomlTable root,
+            Path moduleDir,
+            List<PluginDeclaration> plugins,
+            List<PluginDescriptor> installed,
+            Map<String, String> builtInFetchFailures) {
         if (!plugins.isEmpty() && PluginDescriptorStore.hasUnresolved(moduleDir, plugins)) return;
         Set<String> owned = new HashSet<>(CORE_TABLES);
         for (PluginDescriptor m : installed) owned.add(m.table());
@@ -95,8 +117,10 @@ public final class ManifestBuild {
                 throw new JkBuildParseException(
                         "[shrink] was renamed — use a [minified] table (and `assembly = \"minified\"`)");
             }
+            String fetchDetail = builtInFetchFailures.get(key);
             throw new JkBuildParseException("[" + key + "] is not owned by any installed plugin — add it under"
-                    + " [plugins] (plugin tables installed here: " + (known.length() == 0 ? "none" : known) + ")");
+                    + " [plugins] (plugin tables installed here: " + (known.length() == 0 ? "none" : known) + ")"
+                    + (fetchDetail == null ? "" : "; fetching the built-in plugin failed: " + fetchDetail));
         }
     }
 

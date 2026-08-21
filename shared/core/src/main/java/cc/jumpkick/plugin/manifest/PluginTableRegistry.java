@@ -130,6 +130,27 @@ public final class PluginTableRegistry {
 
     private PluginTableRegistry() {}
 
+    /**
+     * Engine-registered hook: given an unowned table name, fetch + install the built-in plugin
+     * that owns it (network allowed), returning {@code null} on success or irrelevance and a
+     * human-readable failure detail otherwise. Unset outside the engine (CLI, plain tests), where
+     * parses must never reach the network.
+     */
+    private static volatile java.util.function.UnaryOperator<String> MISSING_BUILT_IN_FETCHER;
+
+    public static void missingBuiltInFetcher(java.util.function.UnaryOperator<String> fetcher) {
+        MISSING_BUILT_IN_FETCHER = fetcher;
+    }
+
+    /**
+     * One chance to lazily install the built-in owning {@code table} before the unowned-table
+     * error: returns a failure detail to surface, or {@code null} (caller rechecks the registry).
+     */
+    public static String tryFetchMissingBuiltIn(String table) {
+        java.util.function.UnaryOperator<String> fetcher = MISSING_BUILT_IN_FETCHER;
+        return fetcher == null ? null : fetcher.apply(table);
+    }
+
     /** Every installed manifest, in registration order. */
     public static List<PluginDescriptor> manifests() {
         return List.copyOf(BY_TABLE.values());

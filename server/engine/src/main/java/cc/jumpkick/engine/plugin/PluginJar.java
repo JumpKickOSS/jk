@@ -122,6 +122,26 @@ public enum PluginJar {
     }
 
     /**
+     * As {@link #locate(Cas)} but store-only: honors the {@code -D<jarProperty>} override and the
+     * repo stores, never the network. {@code null} on a miss. Engine startup and lock/publish
+     * enumeration must use this — an eager {@link #locate(Cas)} loop over all values serially
+     * mass-downloads every plugin on a cold store and turns an offline start into sixteen failed
+     * fetches.
+     */
+    public Path locateStored(Cas cas) {
+        String override = System.getProperty(jarProperty);
+        if (override != null && !override.isBlank()) {
+            Path jar = Path.of(override);
+            return Files.isRegularFile(jar) ? jar : null;
+        }
+        for (String repoName : List.of("local", OFFICIAL_REPO, "central")) {
+            var result = new RepoArtifactStore(cas.root(), repoName).locate(relativePath());
+            if (result.isPresent()) return result.get();
+        }
+        return null;
+    }
+
+    /**
      * Download {@code relPath} and its sibling {@code .pom} (+ optional {@code .sha256}) from the
      * official Maven repo into {@code repos/jumpkick/}. Returns the local jar path, {@code null} if
      * the jar 404s, or throws if the jar exists without a POM.
