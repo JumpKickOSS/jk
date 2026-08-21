@@ -57,8 +57,11 @@ class SourceLayoutTest {
     }
 
     @Test
-    void src_test_java_alone_is_not_traditional(@TempDir Path tmp) throws Exception {
+    void src_test_java_alone_is_traditional(@TempDir Path tmp) throws Exception {
+        // A test-only module (integration-test workspace members). Classified simple, its tests
+        // would compile as MAIN sources (simple main root = src/, recursive) without the test
+        // classpath — the exact failure the src/test probes exist to prevent.
         Files.createDirectories(tmp.resolve("src/test/java"));
-        assertThat(SourceLayout.isSimpleLayout(tmp)).isTrue();
+        assertThat(SourceLayout.isSimpleLayout(tmp)).isFalse();
     }
 }

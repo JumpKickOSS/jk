@@ -19,21 +19,27 @@ public final class SourceLayout {
 
     /**
      * True for the Mill-like tree ({@code src/} + {@code test/src/}): no {@code
-     * src/main/{java,kotlin,scala,groovy,resources}} directory.
+     * src/main/*} or {@code src/test/*} marker directory.
      */
     public static boolean isSimpleLayout(Path projectDir) {
         return !looksTraditional(projectDir);
     }
 
     /**
-     * True when {@code src/main/java}, {@code src/main/kotlin}, {@code src/main/scala}, {@code
-     * src/main/groovy}, or {@code src/main/resources} exists as a directory.
+     * True when a Maven marker directory exists: {@code src/main/<lang|resources>} or {@code
+     * src/test/<lang|resources>}. The test roots matter for test-only modules (a workspace
+     * member holding just {@code src/test/java}): classified simple, its tests would compile as
+     * MAIN sources — the simple main root is {@code src/}, walked recursively — without the test
+     * classpath, and stop being discovered as tests.
      */
     public static boolean looksTraditional(Path projectDir) {
         if (projectDir == null) return false;
-        Path main = projectDir.resolve("src").resolve("main");
-        for (String name : TRADITIONAL_MAIN_DIRS) {
-            if (Files.isDirectory(main.resolve(name))) return true;
+        Path src = projectDir.resolve("src");
+        for (String parent : List.of("main", "test")) {
+            Path root = src.resolve(parent);
+            for (String name : TRADITIONAL_MAIN_DIRS) {
+                if (Files.isDirectory(root.resolve(name))) return true;
+            }
         }
         return false;
     }
