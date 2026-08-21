@@ -35,7 +35,7 @@ class ScalaBuildE2eTest {
                 name    = "sapp"
                 group   = "com.example"
                 version = "1.0.0"
-                jdk     = 25
+                java    = 25
                 scala   = "3.8.4"
 
                 """ + REPOS);

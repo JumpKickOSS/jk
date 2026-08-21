@@ -613,8 +613,7 @@ public final class TestSupport {
                 cas,
                 cacheRoot,
                 List.of(),
-                null,
-                List.of());
+                null);
     }
 
     public static boolean compileWithCache(
@@ -631,8 +630,7 @@ public final class TestSupport {
             Cas cas,
             Path cacheRoot,
             List<Path> extraSources,
-            String scalaVersion,
-            List<Path> compilerClasspath)
+            ScalaCompile.Setup scala)
             throws IOException {
 
         List<Path> sources = new ArrayList<>(CompileSupport.collectJavaSources(srcDir));
@@ -657,8 +655,12 @@ public final class TestSupport {
                 .extraOptions(javacArgs)
                 .javaHome(javaHome)
                 .processorPath(processorPath);
-        if (scalaVersion != null && compilerClasspath != null && !compilerClasspath.isEmpty()) {
-            req.scalaVersion(scalaVersion).compilerClasspath(compilerClasspath);
+        if (scala != null) {
+            req.scalaVersion(scala.version())
+                    .compilerClasspath(scala.compilerClasspath())
+                    .scalaLibraryJar(scala.libraryJar())
+                    .scalaCompilerJar(scala.compilerJar())
+                    .scalaBridgeJar(scala.bridgeJar());
         }
         CompileRequest request = req.build();
         // Action payloads live in the cache CAS; callers may pass the artifact CAS for classpath.

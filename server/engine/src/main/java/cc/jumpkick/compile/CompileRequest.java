@@ -21,7 +21,10 @@ public record CompileRequest(
         Path javaHome,
         List<Path> processorPath,
         String scalaVersion,
-        List<Path> compilerClasspath) {
+        List<Path> compilerClasspath,
+        Path scalaLibraryJar,
+        Path scalaCompilerJar,
+        Path scalaBridgeJar) {
 
     public CompileRequest {
         Objects.requireNonNull(sources, "sources");
@@ -57,7 +60,19 @@ public record CompileRequest(
             List<String> extraOptions,
             Path javaHome,
             List<Path> processorPath) {
-        this(sources, classpath, outputDir, release, extraOptions, javaHome, processorPath, null, List.of());
+        this(
+                sources,
+                classpath,
+                outputDir,
+                release,
+                extraOptions,
+                javaHome,
+                processorPath,
+                null,
+                List.of(),
+                null,
+                null,
+                null);
     }
 
     /** True when this request is a mixed Java+Scala Zinc session. */

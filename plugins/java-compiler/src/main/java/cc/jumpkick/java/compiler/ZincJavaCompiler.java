@@ -63,8 +63,9 @@ import xsbti.compile.PreviousResult;
 import xsbti.compile.Setup;
 
 /**
- * Zinc Java-only incremental compile (Mill's dummy-scalac recipe). {@link #compileMixed} is a
- * reserved seam for a later Scala mode of this same worker — not a sibling plugin.
+ * Zinc incremental compile. Java-only uses a dummy scalac; {@link #compileMixed} is the same
+ * worker with a real Scala 3 compiler + published sbt bridge (one session for circular
+ * Java↔Scala).
  */
 public final class ZincJavaCompiler {
 
@@ -99,17 +100,7 @@ public final class ZincJavaCompiler {
             List<String> extraOptions,
             List<Path> processorPath) {
         return compile(
-                sources,
-                classpath,
-                classOutput,
-                workdir,
-                sourceOutput,
-                release,
-                extraOptions,
-                processorPath,
-                null,
-                List.of(),
-                null);
+                sources, classpath, classOutput, workdir, sourceOutput, release, extraOptions, processorPath, null);
     }
 
     /**
@@ -128,6 +119,36 @@ public final class ZincJavaCompiler {
             String scalaVersion,
             List<Path> compilerClasspath,
             Path bridgeJar) {
+        return compileMixed(
+                sources,
+                classpath,
+                classOutput,
+                workdir,
+                sourceOutput,
+                release,
+                extraOptions,
+                processorPath,
+                scalaVersion,
+                compilerClasspath,
+                bridgeJar,
+                null,
+                null);
+    }
+
+    public static Result compileMixed(
+            List<Path> sources,
+            List<Path> classpath,
+            Path classOutput,
+            Path workdir,
+            Path sourceOutput,
+            int release,
+            List<String> extraOptions,
+            List<Path> processorPath,
+            String scalaVersion,
+            List<Path> compilerClasspath,
+            Path bridgeJar,
+            Path libraryJar,
+            Path compilerJar) {
         if (scalaVersion == null || scalaVersion.isBlank()) {
             throw new IllegalArgumentException("compileMixed requires scalaVersion");
         }
@@ -143,10 +164,11 @@ public final class ZincJavaCompiler {
                 release,
                 extraOptions,
                 processorPath,
-                scalaVersion,
-                compilerClasspath,
-                bridgeJar);
+                new MixedScala(scalaVersion, compilerClasspath, bridgeJar, libraryJar, compilerJar));
     }
+
+    private record MixedScala(
+            String version, List<Path> compilerClasspath, Path bridgeJar, Path libraryJar, Path compilerJar) {}
 
     private static Result compile(
             List<Path> sources,
@@ -157,9 +179,7 @@ public final class ZincJavaCompiler {
             int release,
             List<String> extraOptions,
             List<Path> processorPath,
-            String scalaVersion,
-            List<Path> compilerClasspath,
-            Path bridgeJar) {
+            MixedScala mixed) {
         RecordingJavaCompiler javac = null;
         try {
             Files.createDirectories(classOutput);
@@ -174,12 +194,19 @@ public final class ZincJavaCompiler {
             ApProvenance provenance = new ApProvenance();
             List<Processor> processors = loadProcessors(processorPath);
             javac = recordingJavac(converter, processors, provenance);
-            Compilers compilers = scalaVersion != null
-                    ? mixedCompilers(javac, scalaVersion, compilerClasspath, bridgeJar)
-                    : javaOnlyCompilers(javac);
+            Compilers compilers = mixed != null ? mixedCompilers(javac, mixed) : javaOnlyCompilers(javac);
 
             VirtualFile[] sourceFiles = virtual(sources, converter);
             List<Path> cp = new ArrayList<>(classpath);
+            // Scala 3.8+ ships the stdlib as scala-library (same version as the compiler);
+            // scala3-library_3 is an empty stub. Zinc's ClasspathOptions only move a library
+            // already on this list onto scalac's bootclasspath — they do not invent it.
+            if (mixed != null) {
+                for (File lib : stdlibJars(mixed)) {
+                    Path p = lib.toPath();
+                    if (!cp.contains(p)) cp.add(p);
+                }
+            }
             cp.add(classOutput);
             VirtualFile[] cpFiles = virtual(cp, converter);
 
@@ -199,7 +226,7 @@ public final class ZincJavaCompiler {
                     .withClasspath(cpFiles)
                     .withSources(sourceFiles)
                     .withClassesDirectory(classOutput)
-                    .withScalacOptions(scalacOptions(scalaVersion, release))
+                    .withScalacOptions(scalacOptions(mixed != null ? mixed.version() : null, release))
                     .withJavacOptions(javacOptions(release, extraOptions, sourceOutput, processorPath))
                     .withOrder(CompileOrder.Mixed)
                     .withConverter(converter)
@@ -251,37 +278,63 @@ public final class ZincJavaCompiler {
         return ZincUtil.compilers(JavaTools.apply(javac, javadoc), scalac);
     }
 
-    private static Compilers mixedCompilers(
-            JavaCompiler javac, String scalaVersion, List<Path> compilerClasspath, Path bridgeJar) {
-        File[] allJars = compilerClasspath.stream().map(Path::toFile).toArray(File[]::new);
-        File libraryJar = findJar(allJars, "scala3-library_3");
-        File compilerJar = findJar(allJars, "scala3-compiler_3");
-        File bridge = bridgeJar != null ? bridgeJar.toFile() : findJar(allJars, "scala3-sbt-bridge");
-        if (libraryJar == null || compilerJar == null || bridge == null) {
+    private static Compilers mixedCompilers(JavaCompiler javac, MixedScala mixed) {
+        File[] allJars = mixed.compilerClasspath().stream().map(Path::toFile).toArray(File[]::new);
+        File[] libraryJars = stdlibJars(mixed);
+        File compilerJar = firstJar(mixed.compilerJar(), allJars, "scala3-compiler_3");
+        File bridge = firstJar(mixed.bridgeJar(), allJars, "scala3-sbt-bridge");
+        if (libraryJars.length == 0 || compilerJar == null || bridge == null) {
             throw new IllegalArgumentException(
-                    "Scala compiler classpath must include scala3-library_3, scala3-compiler_3, and scala3-sbt-bridge");
+                    "Scala compiler classpath must include scala-library, scala3-compiler_3, and scala3-sbt-bridge");
         }
-        File[] libraryJars = jarsNamed(allJars, "scala3-library_3", "scala-library");
+        if (findJar(allJars, "scala-library") == null && findJar(libraryJars, "scala-library") == null) {
+            throw new IllegalArgumentException(
+                    "Scala compiler classpath must include org.scala-lang:scala-library (the stdlib)");
+        }
+        String scalaVersion = mixed.version();
         URL[] allUrls = urls(allJars);
         URL[] libraryUrls = urls(libraryJars);
         ClassLoader parent = ZincJavaCompiler.class.getClassLoader();
-        ClassLoader loader = new URLClassLoader(allUrls, parent);
-        ClassLoader compilerLoader = new URLClassLoader(allUrls, parent);
         ClassLoader libraryLoader = new URLClassLoader(libraryUrls, parent);
+        ClassLoader compilerLoader = new URLClassLoader(allUrls, parent);
         ScalaInstance instance = new ScalaInstance(
                 scalaVersion,
-                loader,
+                compilerLoader,
                 compilerLoader,
                 libraryLoader,
                 libraryJars,
                 allJars,
                 allJars,
                 scala.Option.apply(scalaVersion));
-        ClasspathOptions cpOpts = ClasspathOptions.of(false, false, false, false, false);
+        // bootLibrary + autoBoot: Zinc appends libraryJars when the compile CP already has
+        // the stdlib. filterLibrary stays off so JDK 9+ (no -bootclasspath) cannot drop it.
+        ClasspathOptions cpOpts = ClasspathOptions.of(true, false, false, true, false);
         xsbti.compile.ScalaCompiler scalac = ZincUtil.scalaCompiler(instance, bridge, cpOpts);
         xsbti.compile.Javadoc javadoc =
                 Javadoc.local().isDefined() ? Javadoc.local().get() : Javadoc.fork(scala.Option.empty());
         return ZincUtil.compilers(JavaTools.apply(javac, javadoc), scalac);
+    }
+
+    /**
+     * Real stdlib jars for scalac: {@code scala-library} (2.13 or 3.8+) plus the
+     * {@code scala3-library_3} stub when present. Artifact filenames matter.
+     */
+    private static File[] stdlibJars(MixedScala mixed) {
+        File[] allJars = mixed.compilerClasspath().stream().map(Path::toFile).toArray(File[]::new);
+        List<File> out = new ArrayList<>();
+        File sl = findJar(allJars, "scala-library");
+        File s3 = findJar(allJars, "scala3-library_3");
+        if (sl != null) out.add(sl);
+        if (s3 != null && !out.contains(s3)) out.add(s3);
+        if (out.isEmpty() && mixed.libraryJar() != null)
+            out.add(mixed.libraryJar().toFile());
+        return out.toArray(File[]::new);
+    }
+
+    private static File firstJar(Path extra, File[] allJars, String artifactPrefix) {
+        File named = findJar(allJars, artifactPrefix);
+        if (named != null) return named;
+        return extra != null ? extra.toFile() : null;
     }
 
     private static File findJar(File[] jars, String artifactPrefix) {
@@ -290,15 +343,6 @@ public final class ZincJavaCompiler {
             if (n.startsWith(artifactPrefix + "-") || n.startsWith(artifactPrefix + ".")) return f;
         }
         return null;
-    }
-
-    private static File[] jarsNamed(File[] jars, String... prefixes) {
-        List<File> out = new ArrayList<>();
-        for (String prefix : prefixes) {
-            File hit = findJar(jars, prefix);
-            if (hit != null && !out.contains(hit)) out.add(hit);
-        }
-        return out.toArray(File[]::new);
     }
 
     private static URL[] urls(File[] files) {

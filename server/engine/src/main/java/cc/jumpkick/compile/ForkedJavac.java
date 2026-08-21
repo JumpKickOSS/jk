@@ -62,7 +62,10 @@ public final class ForkedJavac {
             List<String> extraArgs,
             Path workdir,
             String scalaVersion,
-            List<Path> compilerClasspath) {
+            List<Path> compilerClasspath,
+            Path scalaLibraryJar,
+            Path scalaCompilerJar,
+            Path scalaBridgeJar) {
         public Request(
                 Path javaHome,
                 Path workerJar,
@@ -86,7 +89,10 @@ public final class ForkedJavac {
                     extraArgs,
                     workdir,
                     null,
-                    List.of());
+                    List.of(),
+                    null,
+                    null,
+                    null);
         }
 
         public Request(
@@ -201,6 +207,9 @@ public final class ForkedJavac {
         if (req.compilerClasspath() != null) {
             for (Path p : req.compilerClasspath()) sw.cp(p, PluginProtocol.ROLE_COMPILER);
         }
+        if (req.scalaLibraryJar() != null) sw.extra("scala-library", req.scalaLibraryJar());
+        if (req.scalaCompilerJar() != null) sw.extra("scala-compiler", req.scalaCompilerJar());
+        if (req.scalaBridgeJar() != null) sw.extra("scala-bridge", req.scalaBridgeJar());
         for (String a : req.extraArgs()) sw.arg(a);
         Path spec = Files.createTempFile("jk-javac-", ".spec");
         Files.write(spec, sw.lines(), StandardCharsets.UTF_8);

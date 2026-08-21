@@ -41,6 +41,17 @@ class ScalaToolResolverTest {
     }
 
     @Test
+    void library_jars_prefer_scala_library_over_the_scala3_stub() {
+        List<Path> cp = List.of(
+                Path.of("scala3-compiler_3-3.8.4.jar"),
+                Path.of("scala3-library_3-3.8.4.jar"),
+                Path.of("scala-library-3.8.4.jar"));
+        assertThat(ScalaToolResolver.libraryJars(cp))
+                .extracting(p -> p.getFileName().toString())
+                .containsExactly("scala-library-3.8.4.jar", "scala3-library_3-3.8.4.jar");
+    }
+
+    @Test
     void rejects_scala_2() {
         assertThatThrownBy(() -> ScalaToolResolver.requireSupportedVersion("2.13.16"))
                 .isInstanceOf(IllegalArgumentException.class)

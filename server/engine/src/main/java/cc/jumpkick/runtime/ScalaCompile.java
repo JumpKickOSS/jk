@@ -12,12 +12,18 @@ import java.util.List;
 
 /**
  * Resolves the Scala 3 compiler closure for a mixed Java+Scala {@code compile-java} (or test)
- * session: worker extra CP plus the version-matched {@code scala3-library_3} jar for the project
- * compile classpath.
+ * session: worker extra CP plus the version-matched stdlib jars for the project compile
+ * classpath ({@code scala-library}, and {@code scala3-library_3} when present).
  */
 public final class ScalaCompile {
 
-    public record Setup(String version, List<Path> compilerClasspath, Path libraryJar) {}
+    public record Setup(
+            String version, List<Path> compilerClasspath, List<Path> libraryJars, Path compilerJar, Path bridgeJar) {
+        /** Preferred stdlib jar ({@code scala-library} on 3.8+, else {@code scala3-library_3}). */
+        public Path libraryJar() {
+            return libraryJars == null || libraryJars.isEmpty() ? null : libraryJars.getFirst();
+        }
+    }
 
     private ScalaCompile() {}
 
@@ -27,17 +33,16 @@ public final class ScalaCompile {
         try {
             RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
             List<Path> compilerCp = ScalaToolResolver.resolveClasspath(repos, cas, version);
-            Path library = null;
-            for (Path p : compilerCp) {
-                if (p.getFileName().toString().startsWith("scala3-library_3-")) {
-                    library = p;
-                    break;
-                }
+            List<Path> libraryJars = ScalaToolResolver.libraryJars(compilerCp);
+            if (libraryJars.isEmpty()) {
+                throw new IOException("Scala compiler closure for " + version + " is missing scala-library");
             }
-            if (library == null) {
-                throw new IOException("scala3-library_3:" + version + " missing from the compiler closure");
-            }
-            return new Setup(version, compilerCp, library);
+            return new Setup(
+                    version,
+                    compilerCp,
+                    libraryJars,
+                    ScalaToolResolver.requiredJar(compilerCp, "scala3-compiler_3"),
+                    ScalaToolResolver.requiredJar(compilerCp, "scala3-sbt-bridge"));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException("interrupted resolving the Scala compiler", e);

@@ -161,7 +161,9 @@ public final class PlannerCompile {
                     if (!scalaSrcs.isEmpty()) {
                         scalaSetup = ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas);
                         classpath = new ArrayList<>(classpath);
-                        classpath.add(scalaSetup.libraryJar());
+                        for (Path lib : scalaSetup.libraryJars()) {
+                            if (!classpath.contains(lib)) classpath.add(lib);
+                        }
                     }
                     CompileRequest.CompileRequestBuilder req = CompileRequest.builder()
                             .sources(sources)
@@ -172,7 +174,11 @@ public final class PlannerCompile {
                             .javaHome(ctx.require(JAVA_HOME))
                             .processorPath(processorCp);
                     if (scalaSetup != null) {
-                        req.scalaVersion(scalaSetup.version()).compilerClasspath(scalaSetup.compilerClasspath());
+                        req.scalaVersion(scalaSetup.version())
+                                .compilerClasspath(scalaSetup.compilerClasspath())
+                                .scalaLibraryJar(scalaSetup.libraryJar())
+                                .scalaCompilerJar(scalaSetup.compilerJar())
+                                .scalaBridgeJar(scalaSetup.bridgeJar());
                     }
                     CompileRequest request = req.build();
                     String taskId = ActionKey.qualifiedTaskId("compile-main", javaOut);

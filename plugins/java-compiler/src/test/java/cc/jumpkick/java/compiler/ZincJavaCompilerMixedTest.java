@@ -25,6 +25,15 @@ class ZincJavaCompilerMixedTest {
     }
 
     @Test
+    void stdlib_comes_from_the_compiler_closure_when_compile_cp_is_empty(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir);
+        p.write("Hello.scala", "object Hello { def greet: String = \"hi\" }\n");
+        ZincJavaCompiler.Result r = p.compileMixed(List.of());
+        assertThat(r.success()).as(r.diagnostics().toString()).isTrue();
+        assertThat(p.classFile("Hello.class")).isRegularFile();
+    }
+
+    @Test
     void circular_java_and_scala_compile_together(@TempDir Path dir) throws Exception {
         Project p = new Project(dir);
         p.write("A.scala", """
@@ -131,6 +140,10 @@ class ZincJavaCompilerMixedTest {
         }
 
         ZincJavaCompiler.Result compileMixed() throws IOException {
+            return compileMixed(compileCp);
+        }
+
+        ZincJavaCompiler.Result compileMixed(List<Path> compileClasspath) throws IOException {
             List<Path> sources;
             try (var walk = Files.walk(src)) {
                 sources = walk.filter(Files::isRegularFile)
@@ -141,7 +154,17 @@ class ZincJavaCompilerMixedTest {
                         .toList();
             }
             return ZincJavaCompiler.compileMixed(
-                    sources, compileCp, classes, workdir, null, 25, List.of(), List.of(), "3.8.4", compilerCp, null);
+                    sources,
+                    compileClasspath,
+                    classes,
+                    workdir,
+                    null,
+                    25,
+                    List.of(),
+                    List.of(),
+                    "3.8.4",
+                    compilerCp,
+                    null);
         }
     }
 

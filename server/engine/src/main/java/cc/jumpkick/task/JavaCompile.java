@@ -120,7 +120,10 @@ public final class JavaCompile {
                     request.extraOptions(),
                     stateDir,
                     request.scalaVersion(),
-                    request.compilerClasspath()));
+                    request.compilerClasspath(),
+                    request.scalaLibraryJar(),
+                    request.scalaCompilerJar(),
+                    request.scalaBridgeJar()));
         } finally {
             outputs = prewriter.finish();
         }

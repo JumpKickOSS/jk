@@ -208,15 +208,13 @@ public final class PlannerTest {
                                 (List<Path>) ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
                         Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations", "test");
                         Files.createDirectories(genDir);
-                        String scalaVersion = null;
-                        List<Path> compilerCp = List.of();
+                        ScalaCompile.Setup scalaSetup = null;
                         if (!scTest.isEmpty()) {
-                            ScalaCompile.Setup setup =
-                                    ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas);
-                            scalaVersion = setup.version();
-                            compilerCp = setup.compilerClasspath();
+                            scalaSetup = ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas);
                             javaCp = new ArrayList<>(javaCp);
-                            javaCp.add(setup.libraryJar());
+                            for (Path lib : scalaSetup.libraryJars()) {
+                                if (!javaCp.contains(lib)) javaCp.add(lib);
+                            }
                         }
                         boolean ok = TestSupport.compileWithCache(
                                 ctx,
@@ -232,8 +230,7 @@ public final class PlannerTest {
                                 cas,
                                 in.cache(),
                                 scTest,
-                                scalaVersion,
-                                compilerCp);
+                                scalaSetup);
                         if (!ok) throw new RuntimeException("test compile failed");
                     }
 

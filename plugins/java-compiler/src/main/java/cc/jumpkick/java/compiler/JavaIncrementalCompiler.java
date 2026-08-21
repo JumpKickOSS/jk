@@ -57,7 +57,9 @@ public final class JavaIncrementalCompiler implements Plugin {
                                     spec.processorClasspath(),
                                     scalaVersion,
                                     spec.compilerClasspath(),
-                                    null)
+                                    spec.extra("scala-bridge").orElse(null),
+                                    spec.extra("scala-library").orElse(null),
+                                    spec.extra("scala-compiler").orElse(null))
                             : ZincJavaCompiler.compileJava(
                                     spec.sources(),
                                     spec.compileClasspath(),
