@@ -98,6 +98,68 @@ public final class ZincJavaCompiler {
             int release,
             List<String> extraOptions,
             List<Path> processorPath) {
+        return compile(
+                sources,
+                classpath,
+                classOutput,
+                workdir,
+                sourceOutput,
+                release,
+                extraOptions,
+                processorPath,
+                null,
+                List.of(),
+                null);
+    }
+
+    /**
+     * Joint Java+Scala incremental compile with a real Scala 3 compiler + published sbt bridge.
+     * {@code compilerClasspath} is the worker compiler closure (not the project compile CP).
+     */
+    public static Result compileMixed(
+            List<Path> sources,
+            List<Path> classpath,
+            Path classOutput,
+            Path workdir,
+            Path sourceOutput,
+            int release,
+            List<String> extraOptions,
+            List<Path> processorPath,
+            String scalaVersion,
+            List<Path> compilerClasspath,
+            Path bridgeJar) {
+        if (scalaVersion == null || scalaVersion.isBlank()) {
+            throw new IllegalArgumentException("compileMixed requires scalaVersion");
+        }
+        if (compilerClasspath == null || compilerClasspath.isEmpty()) {
+            throw new IllegalArgumentException("compileMixed requires a Scala compiler classpath");
+        }
+        return compile(
+                sources,
+                classpath,
+                classOutput,
+                workdir,
+                sourceOutput,
+                release,
+                extraOptions,
+                processorPath,
+                scalaVersion,
+                compilerClasspath,
+                bridgeJar);
+    }
+
+    private static Result compile(
+            List<Path> sources,
+            List<Path> classpath,
+            Path classOutput,
+            Path workdir,
+            Path sourceOutput,
+            int release,
+            List<String> extraOptions,
+            List<Path> processorPath,
+            String scalaVersion,
+            List<Path> compilerClasspath,
+            Path bridgeJar) {
         RecordingJavaCompiler javac = null;
         try {
             Files.createDirectories(classOutput);
@@ -112,7 +174,9 @@ public final class ZincJavaCompiler {
             ApProvenance provenance = new ApProvenance();
             List<Processor> processors = loadProcessors(processorPath);
             javac = recordingJavac(converter, processors, provenance);
-            Compilers compilers = javaOnlyCompilers(javac);
+            Compilers compilers = scalaVersion != null
+                    ? mixedCompilers(javac, scalaVersion, compilerClasspath, bridgeJar)
+                    : javaOnlyCompilers(javac);
 
             VirtualFile[] sourceFiles = virtual(sources, converter);
             List<Path> cp = new ArrayList<>(classpath);
@@ -135,7 +199,7 @@ public final class ZincJavaCompiler {
                     .withClasspath(cpFiles)
                     .withSources(sourceFiles)
                     .withClassesDirectory(classOutput)
-                    .withScalacOptions(new String[0])
+                    .withScalacOptions(scalacOptions(scalaVersion, release))
                     .withJavacOptions(javacOptions(release, extraOptions, sourceOutput, processorPath))
                     .withOrder(CompileOrder.Mixed)
                     .withConverter(converter)
@@ -176,14 +240,6 @@ public final class ZincJavaCompiler {
         }
     }
 
-    /**
-     * Joint Java+Scala compile. Requires a real Scala compiler classpath; Java-only uses {@link
-     * #compileJava}.
-     */
-    public static Result compileMixed(List<Path> sources, List<Path> classpath, Path classOutput, Path workdir) {
-        throw new UnsupportedOperationException("compileMixed requires a Scala compiler classpath");
-    }
-
     private static Compilers javaOnlyCompilers(JavaCompiler javac) {
         File dummy = new File("");
         ScalaInstance dummyScala = new ScalaInstance(
@@ -193,6 +249,73 @@ public final class ZincJavaCompiler {
         xsbti.compile.Javadoc javadoc =
                 Javadoc.local().isDefined() ? Javadoc.local().get() : Javadoc.fork(scala.Option.empty());
         return ZincUtil.compilers(JavaTools.apply(javac, javadoc), scalac);
+    }
+
+    private static Compilers mixedCompilers(
+            JavaCompiler javac, String scalaVersion, List<Path> compilerClasspath, Path bridgeJar) {
+        File[] allJars = compilerClasspath.stream().map(Path::toFile).toArray(File[]::new);
+        File libraryJar = findJar(allJars, "scala3-library_3");
+        File compilerJar = findJar(allJars, "scala3-compiler_3");
+        File bridge = bridgeJar != null ? bridgeJar.toFile() : findJar(allJars, "scala3-sbt-bridge");
+        if (libraryJar == null || compilerJar == null || bridge == null) {
+            throw new IllegalArgumentException(
+                    "Scala compiler classpath must include scala3-library_3, scala3-compiler_3, and scala3-sbt-bridge");
+        }
+        File[] libraryJars = jarsNamed(allJars, "scala3-library_3", "scala-library");
+        URL[] allUrls = urls(allJars);
+        URL[] libraryUrls = urls(libraryJars);
+        ClassLoader parent = ZincJavaCompiler.class.getClassLoader();
+        ClassLoader loader = new URLClassLoader(allUrls, parent);
+        ClassLoader compilerLoader = new URLClassLoader(allUrls, parent);
+        ClassLoader libraryLoader = new URLClassLoader(libraryUrls, parent);
+        ScalaInstance instance = new ScalaInstance(
+                scalaVersion,
+                loader,
+                compilerLoader,
+                libraryLoader,
+                libraryJars,
+                allJars,
+                allJars,
+                scala.Option.apply(scalaVersion));
+        ClasspathOptions cpOpts = ClasspathOptions.of(false, false, false, false, false);
+        xsbti.compile.ScalaCompiler scalac = ZincUtil.scalaCompiler(instance, bridge, cpOpts);
+        xsbti.compile.Javadoc javadoc =
+                Javadoc.local().isDefined() ? Javadoc.local().get() : Javadoc.fork(scala.Option.empty());
+        return ZincUtil.compilers(JavaTools.apply(javac, javadoc), scalac);
+    }
+
+    private static File findJar(File[] jars, String artifactPrefix) {
+        for (File f : jars) {
+            String n = f.getName();
+            if (n.startsWith(artifactPrefix + "-") || n.startsWith(artifactPrefix + ".")) return f;
+        }
+        return null;
+    }
+
+    private static File[] jarsNamed(File[] jars, String... prefixes) {
+        List<File> out = new ArrayList<>();
+        for (String prefix : prefixes) {
+            File hit = findJar(jars, prefix);
+            if (hit != null && !out.contains(hit)) out.add(hit);
+        }
+        return out.toArray(File[]::new);
+    }
+
+    private static URL[] urls(File[] files) {
+        URL[] out = new URL[files.length];
+        for (int i = 0; i < files.length; i++) {
+            try {
+                out[i] = files[i].toURI().toURL();
+            } catch (MalformedURLException e) {
+                throw new IllegalArgumentException("bad classpath entry: " + files[i], e);
+            }
+        }
+        return out;
+    }
+
+    private static String[] scalacOptions(String scalaVersion, int release) {
+        if (scalaVersion == null || release <= 0) return new String[0];
+        return new String[] {"-java-output-version", Integer.toString(release)};
     }
 
     private static RecordingJavaCompiler recordingJavac(

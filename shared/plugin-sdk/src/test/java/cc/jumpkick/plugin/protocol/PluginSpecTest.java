@@ -40,6 +40,7 @@ class PluginSpecTest {
                 .cp(dir.resolve("dep.jar"), PluginProtocol.ROLE_COMPILE)
                 .cp(dir.resolve("proc.jar"), PluginProtocol.ROLE_PROCESSOR)
                 .cp(dir.resolve("friend.jar"), PluginProtocol.ROLE_FRIEND)
+                .cp(dir.resolve("scala3-compiler.jar"), PluginProtocol.ROLE_COMPILER)
                 .entry("dep-1.0.jar", dir.resolve("dep.jar"), false, null)
                 .entry("snap-2.0.jar", dir.resolve("snap.jar"), true, null)
                 .source(dir.resolve("Main.java"))
@@ -82,6 +83,8 @@ class PluginSpecTest {
         assertThat(s.processorClasspath())
                 .containsExactly(dir.resolve("proc.jar").toAbsolutePath());
         assertThat(s.friendPaths()).containsExactly(dir.resolve("friend.jar").toAbsolutePath());
+        assertThat(s.compilerClasspath())
+                .containsExactly(dir.resolve("scala3-compiler.jar").toAbsolutePath());
 
         assertThat(s.entries())
                 .extracting(PackageIo.RuntimeEntry::fileName)

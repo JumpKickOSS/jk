@@ -42,15 +42,31 @@ public final class JavaIncrementalCompiler implements Plugin {
         boolean tempWork = workdir == null;
         if (tempWork) workdir = Files.createTempDirectory("jk-zinc-");
         try {
-            ZincJavaCompiler.Result r = ZincJavaCompiler.compileJava(
-                    spec.sources(),
-                    spec.compileClasspath(),
-                    spec.classesDir(),
-                    workdir,
-                    spec.sourceOutput(),
-                    (int) spec.config().intValue("release", 0),
-                    spec.args(),
-                    spec.processorClasspath());
+            int release = (int) spec.config().intValue("release", 0);
+            String scalaVersion = spec.config().stringOpt("scalaVersion").orElse(null);
+            ZincJavaCompiler.Result r =
+                    (scalaVersion != null && !spec.compilerClasspath().isEmpty())
+                            ? ZincJavaCompiler.compileMixed(
+                                    spec.sources(),
+                                    spec.compileClasspath(),
+                                    spec.classesDir(),
+                                    workdir,
+                                    spec.sourceOutput(),
+                                    release,
+                                    spec.args(),
+                                    spec.processorClasspath(),
+                                    scalaVersion,
+                                    spec.compilerClasspath(),
+                                    null)
+                            : ZincJavaCompiler.compileJava(
+                                    spec.sources(),
+                                    spec.compileClasspath(),
+                                    spec.classesDir(),
+                                    workdir,
+                                    spec.sourceOutput(),
+                                    release,
+                                    spec.args(),
+                                    spec.processorClasspath());
             for (ZincJavaCompiler.Diag d : r.diagnostics()) {
                 out.emit(PluginReply.diagnostic(d.kind(), d.file(), (int) d.line(), (int) d.col(), d.message()));
             }

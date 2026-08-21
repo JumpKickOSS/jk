@@ -22,6 +22,9 @@ dependencies {
     bundledCodec(project(":jsonl"))
     implementation(libs.zinc)
     testImplementation(project(":plugin-sdk"))
+    // Mixed compile tests load a real Scala 3 compiler; the worker's production -cp stays Zinc-only.
+    testImplementation("org.scala-lang:scala3-compiler_3:3.8.4")
+    testImplementation("org.scala-lang:scala3-sbt-bridge:3.8.4")
 }
 
 tasks.jar {

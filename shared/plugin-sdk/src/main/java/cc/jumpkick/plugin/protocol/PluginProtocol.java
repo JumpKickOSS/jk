@@ -76,6 +76,9 @@ public final class PluginProtocol {
     public static final String ROLE_PROCESSOR = "processor";
     public static final String ROLE_FRIEND = "friend";
     public static final String ROLE_RUNTIME = "runtime";
+    /** Scala 3 compiler + bridge jars for mixed Java+Scala Zinc (not the project compile CP). */
+    public static final String ROLE_COMPILER = "compiler";
+
     public static final String FILE_NAME = "file";
     public static final String SNAPSHOT = "snapshot";
     public static final String CONTAINER = "container";
