@@ -46,6 +46,30 @@ public final class Cas {
     }
 
     /**
+     * True when {@code path} fits the {@code …/sha256/AB/CD/<60-hex>} object layout of any store,
+     * without knowing the store root. Blob paths are content-addressed names, not artifacts: they
+     * carry no {@code .jar} suffix and no Maven coordinate, so callers that need artifact
+     * semantics (classpath resolution, POM lookup) must treat them specially.
+     */
+    public static boolean isBlobPath(Path path) {
+        if (path == null || path.getNameCount() < 4) return false;
+        int n = path.getNameCount();
+        return "sha256".equals(path.getName(n - 4).toString())
+                && isHex(path.getName(n - 3).toString(), 2)
+                && isHex(path.getName(n - 2).toString(), 2)
+                && isHex(path.getName(n - 1).toString(), 60);
+    }
+
+    private static boolean isHex(String s, int length) {
+        if (s.length() != length) return false;
+        for (int i = 0; i < length; i++) {
+            char c = s.charAt(i);
+            if ((c < '0' || c > '9') && (c < 'a' || c > 'f')) return false;
+        }
+        return true;
+    }
+
+    /**
      * Inverse of {@link #pathFor}: extract the hex hash from a path that looks like a CAS object
      * location, or {@link java.util.Optional#empty} if it doesn't fit the layout. Used by the sweep
      * when scanning tool env JSONs and action records — any absolute path under {@code

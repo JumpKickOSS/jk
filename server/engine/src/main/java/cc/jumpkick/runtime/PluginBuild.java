@@ -746,8 +746,9 @@ public final class PluginBuild {
             String coord = "cc.jumpkick:" + workerArtifact;
             for (var e : cc.jumpkick.lock.LockfileReader.read(lockFile).plugins()) {
                 if (!coord.equals(e.coordinate())) continue;
-                Path pinned = JkStores.cas(cache).pathFor(e.sha256Hex());
-                if (Files.isRegularFile(pinned)) return pinned;
+                return PluginDescriptorOps.pinnedLayoutJar(
+                                JkStores.cas(cache), e.coordinate(), e.version(), e.sha256Hex())
+                        .orElse(null);
             }
         } catch (Exception ignored) {
             return null;
