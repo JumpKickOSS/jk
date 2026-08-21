@@ -13,6 +13,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeSet;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -33,7 +34,7 @@ public final class Giter8TemplateIndex {
      */
     private static volatile PickerMemo PICKER_MEMO;
 
-    private static final long PICKER_TTL_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+    private static final long PICKER_TTL_NANOS = TimeUnit.SECONDS.toNanos(5);
 
     private record PickerMemo(List<Path> roots, long atNanos, List<TemplateSpec> specs) {}
 
@@ -124,7 +125,9 @@ public final class Giter8TemplateIndex {
         List<TemplateSpec> named = new ArrayList<>();
         for (TemplateSpec s : all) {
             if (!s.name().equals(name)) continue;
-            if (lang != null && !lang.isBlank() && !s.language().equals(lang.strip().toLowerCase(Locale.ROOT))) {
+            if (lang != null
+                    && !lang.isBlank()
+                    && !s.language().equals(lang.strip().toLowerCase(Locale.ROOT))) {
                 continue;
             }
             named.add(s);
@@ -133,8 +136,7 @@ public final class Giter8TemplateIndex {
         if (named.size() > 1) {
             TreeSet<String> ids = new TreeSet<>();
             for (TemplateSpec s : named) ids.add(s.id());
-            throw new IllegalArgumentException(
-                    name + " is ambiguous; pick one of: " + String.join(", ", ids));
+            throw new IllegalArgumentException(name + " is ambiguous; pick one of: " + String.join(", ", ids));
         }
         return Optional.empty();
     }

@@ -9,6 +9,7 @@ import cc.jumpkick.util.Hashing;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,8 +43,7 @@ class PomRuntimeClasspathTest {
 
         // A republished POM (new mtime) must invalidate the memo.
         Path pomPath = store.resolve("repos/local").resolve(MavenLayout.pomPath(worker));
-        java.nio.file.attribute.FileTime bumped = java.nio.file.attribute.FileTime.fromMillis(
-                Files.getLastModifiedTime(pomPath).toMillis() + 5_000);
+        FileTime bumped = FileTime.fromMillis(Files.getLastModifiedTime(pomPath).toMillis() + 5_000);
         Files.setLastModifiedTime(pomPath, bumped);
         assertThat(PomRuntimeClasspath.resolve(workerJar)).isNotSameAs(first).isEqualTo(first);
     }

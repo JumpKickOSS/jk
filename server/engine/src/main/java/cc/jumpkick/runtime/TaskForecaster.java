@@ -297,7 +297,7 @@ public final class TaskForecaster {
         try {
             Lockfile lock = LockfileReader.read(lockFile);
             ClasspathResolver resolver = new ClasspathResolver(cas);
-            boolean compact = CompileSupport.isSimpleLayout(dir);
+            boolean compact = CompileSupport.isSimpleLayout(project.project(), dir);
             BuildLayout layout = BuildLayout.of(dir, project);
             int release = project.project().javaRelease();
             // Same contributed-args evaluation as the real compile step, against the same
@@ -893,7 +893,7 @@ public final class TaskForecaster {
         Path assemblyJar = layout.assemblyJar();
         String classesTok = classesTokenForPackage(
                 dir,
-                CompileSupport.isSimpleLayout(dir),
+                CompileSupport.isSimpleLayout(project.project(), dir),
                 layout,
                 project,
                 actionCache,

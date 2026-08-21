@@ -16,7 +16,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Runtime classpath for a thin jar from its Maven POM and the local repo layout.
@@ -42,8 +44,7 @@ public final class PomRuntimeClasspath {
      * resolve. Only successes are cached — a store that gains the missing artifact later must be
      * able to succeed.
      */
-    private static final java.util.concurrent.ConcurrentHashMap<String, List<Path>> RESOLVE_CACHE =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, List<Path>> RESOLVE_CACHE = new ConcurrentHashMap<>();
 
     private static final int RESOLVE_CACHE_MAX = 256;
 
@@ -88,8 +89,10 @@ public final class PomRuntimeClasspath {
 
     private static String resolveCacheKey(Path worker, Path pom) {
         try {
-            return worker + "|" + Files.size(worker) + "|" + Files.getLastModifiedTime(worker).toMillis()
-                    + "|" + pom + "|" + Files.size(pom) + "|" + Files.getLastModifiedTime(pom).toMillis()
+            return worker + "|" + Files.size(worker) + "|"
+                    + Files.getLastModifiedTime(worker).toMillis()
+                    + "|" + pom + "|" + Files.size(pom) + "|"
+                    + Files.getLastModifiedTime(pom).toMillis()
                     + "|" + RepositorySpec.officialUrl();
         } catch (IOException e) {
             return null; // unstatable — resolve uncached and let the real walk surface the error
@@ -145,8 +148,7 @@ public final class PomRuntimeClasspath {
      * closed — a leak per fork in the heap-disciplined engine. RepoGroups are immutable, so
      * sharing is safe; the URL is in the key because tests repoint the official override.
      */
-    private static final java.util.concurrent.ConcurrentHashMap<String, RepoGroup> STORE_REPOS =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, RepoGroup> STORE_REPOS = new ConcurrentHashMap<>();
 
     private static final int STORE_REPOS_MAX = 32;
 
@@ -329,8 +331,7 @@ public final class PomRuntimeClasspath {
      * silently trades a resolution-time error for NoClassDefFoundError in the worker. Optional
      * deps are the exception: absent-if-unresolvable mirrors their fetch policy.
      */
-    private static Coordinate runtimeCoordinate(
-            EffectivePom pom, Pom.Dep d, boolean rootPom, Set<String> exclusions) {
+    private static Coordinate runtimeCoordinate(EffectivePom pom, Pom.Dep d, boolean rootPom, Set<String> exclusions) {
         if (!runtimeDep(d, rootPom)) return null;
         String ga = d.groupId() + ":" + d.artifactId();
         if (exclusions.contains(ga)) return null;
@@ -376,10 +377,8 @@ public final class PomRuntimeClasspath {
         Optional<RepoGroup.RepoFetched> art = repos.tryFetchArtifact(coord);
         if (art.isEmpty()) {
             if (optional) return;
-            String names = repos.repos().stream()
-                    .map(MavenRepo::name)
-                    .distinct()
-                    .collect(java.util.stream.Collectors.joining(", "));
+            String names =
+                    repos.repos().stream().map(MavenRepo::name).distinct().collect(Collectors.joining(", "));
             throw new IllegalStateException(
                     "worker runtime dependency " + key + " was not found in the " + names + " repos");
         }

@@ -233,10 +233,10 @@ public final class NewProjectOps {
                 }
             }
             if ("simple".equalsIgnoreCase(prep.layout())) {
-                if (spec.isPresent()
-                        && !spec.get().supportsLayout(cc.jumpkick.giter8.Giter8ShortNames.LAYOUT_SIMPLE)) {
-                    throw new IOException("template " + prep.template() + " does not support --layout simple"
-                            + " (declared layouts: " + String.join(", ", spec.get().layouts()) + ")");
+                if (spec.isPresent() && !spec.get().supportsLayout(cc.jumpkick.giter8.Giter8ShortNames.LAYOUT_SIMPLE)) {
+                    throw new IOException(
+                            "template " + prep.template() + " does not support --layout simple" + " (declared layouts: "
+                                    + String.join(", ", spec.get().layouts()) + ")");
                 }
                 // Set for path/remote templates too (no indexed metadata): a dual-layout
                 // template honors it, a single-layout one ignores it — never a silent drop
@@ -408,9 +408,7 @@ public final class NewProjectOps {
         }
 
         boolean twoSegments = ref.matches("[a-z][a-z0-9-]*/[a-z][a-z0-9-]*");
-        if (ref.matches("[a-z][a-z0-9-]*")
-                || twoSegments
-                || ref.matches("[a-z]+/[a-z][a-z0-9-]*/[a-z][a-z0-9-]*")) {
+        if (ref.matches("[a-z][a-z0-9-]*") || twoSegments || ref.matches("[a-z]+/[a-z][a-z0-9-]*/[a-z][a-z0-9-]*")) {
             Optional<Path> indexed = indexedRoot(ref, lang, cwd);
             if (indexed.isPresent()) return indexed.get();
 

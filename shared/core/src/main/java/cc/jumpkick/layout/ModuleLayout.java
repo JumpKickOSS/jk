@@ -49,9 +49,20 @@ public final class ModuleLayout {
 
     private ModuleLayout() {}
 
-    /** Compact/SIMPLE layout: no {@code src/main/{java,kotlin,scala,groovy,resources}} directory. */
+    /**
+     * Compact/SIMPLE layout. Honors an explicit {@code layout =} in {@code jk.toml} when present;
+     * otherwise probes the tree.
+     */
     public static boolean isCompact(Path moduleDir) {
-        return SourceLayout.isSimpleLayout(moduleDir);
+        Path toml = moduleDir.resolve("jk.toml");
+        if (Files.isRegularFile(toml)) {
+            String layout = cc.jumpkick.config.TomlScan.scan(toml, "layout").get("layout");
+            if (layout != null) {
+                if ("traditional".equalsIgnoreCase(layout)) return false;
+                if ("simple".equalsIgnoreCase(layout)) return true;
+            }
+        }
+        return !SourceLayout.looksTraditional(moduleDir);
     }
 
     static boolean hasTraditionalDirs(Path moduleDir) {

@@ -128,9 +128,9 @@ class PluginJarDepsFetchTest {
 
         assertThatThrownBy(() -> PluginJar.PUBLISHER.locate(new Cas(tmp.resolve("cache"))))
                 .hasMessageContaining("checksum mismatch");
-        assertThat(tmp.resolve("cache/repos/jumpkick")).satisfiesAnyOf(
-                p -> assertThat(p).doesNotExist(),
-                p -> assertThat(Files.walk(p).filter(Files::isRegularFile)
+        assertThat(tmp.resolve("cache/repos/jumpkick"))
+                .satisfiesAnyOf(p -> assertThat(p).doesNotExist(), p -> assertThat(Files.walk(p)
+                                .filter(Files::isRegularFile)
                                 .filter(f -> f.getFileName().toString().endsWith(".jar")))
                         .isEmpty());
     }

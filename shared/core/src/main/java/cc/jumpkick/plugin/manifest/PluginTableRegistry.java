@@ -20,6 +20,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import org.tomlj.TomlArray;
@@ -125,8 +126,8 @@ public final class PluginTableRegistry {
             // Replace on id OR table, matching manifestsFor: an override whose table differs
             // from the built-in's must not leave both manifests installed under one id.
             next.values()
-                    .removeIf(existing ->
-                            existing.id().equals(manifest.id()) || existing.table().equals(manifest.table()));
+                    .removeIf(existing -> existing.id().equals(manifest.id())
+                            || existing.table().equals(manifest.table()));
             next.put(manifest.table(), manifest);
             BY_TABLE = Map.copyOf(next);
         }
@@ -141,9 +142,9 @@ public final class PluginTableRegistry {
      * human-readable failure detail otherwise. Unset outside the engine (CLI, plain tests), where
      * parses must never reach the network.
      */
-    private static volatile java.util.function.UnaryOperator<String> MISSING_BUILT_IN_FETCHER;
+    private static volatile UnaryOperator<String> MISSING_BUILT_IN_FETCHER;
 
-    public static void missingBuiltInFetcher(java.util.function.UnaryOperator<String> fetcher) {
+    public static void missingBuiltInFetcher(UnaryOperator<String> fetcher) {
         MISSING_BUILT_IN_FETCHER = fetcher;
     }
 
@@ -152,7 +153,7 @@ public final class PluginTableRegistry {
      * error: returns a failure detail to surface, or {@code null} (caller rechecks the registry).
      */
     public static String tryFetchMissingBuiltIn(String table) {
-        java.util.function.UnaryOperator<String> fetcher = MISSING_BUILT_IN_FETCHER;
+        UnaryOperator<String> fetcher = MISSING_BUILT_IN_FETCHER;
         return fetcher == null ? null : fetcher.apply(table);
     }
 

@@ -1895,10 +1895,27 @@ class JkBuildParserTest {
     }
 
     @Test
-    void layout_key_is_rejected() {
-        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "layout = \"simple\"\n"))
+    void layout_defaults_to_auto_and_accepts_override() {
+        assertThat(JkBuildParser.parse(PROJECT).project().layout()).isEqualTo(JkBuild.Layout.AUTO);
+        assertThat(JkBuildParser.parse(PROJECT + "layout = \"simple\"\n")
+                        .project()
+                        .layout())
+                .isEqualTo(JkBuild.Layout.SIMPLE);
+        assertThat(JkBuildParser.parse(PROJECT + "layout = \"traditional\"\n")
+                        .project()
+                        .layout())
+                .isEqualTo(JkBuild.Layout.TRADITIONAL);
+        assertThat(JkBuildParser.parse(PROJECT + "layout = \"auto\"\n")
+                        .project()
+                        .layout())
+                .isEqualTo(JkBuild.Layout.AUTO);
+    }
+
+    @Test
+    void layout_rejects_unknown_value() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "layout = \"mill\"\n"))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("layout is not a jk.toml key");
+                .hasMessageContaining("layout must be");
     }
 
     @Test

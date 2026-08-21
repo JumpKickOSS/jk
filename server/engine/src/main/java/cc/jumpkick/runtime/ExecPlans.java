@@ -189,7 +189,7 @@ public final class ExecPlans {
                     build.project().groovy() == null
                             ? ""
                             : build.project().groovy().raw(),
-                    SourceLayout.isSimpleLayout(dir),
+                    SourceLayout.isSimpleLayout(build.project(), dir),
                     build.isWorkspaceRoot(),
                     workspaceRootDir,
                     moduleDirs,
@@ -287,6 +287,7 @@ public final class ExecPlans {
                     p.sourcesMode(),
                     p.description(),
                     p.m2install(),
+                    p.layout(),
                     Set.of());
             return build.withProject(resolved);
         } catch (Exception e) {

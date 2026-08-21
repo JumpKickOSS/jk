@@ -2,6 +2,9 @@
 package cc.jumpkick.giter8;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -173,11 +176,11 @@ public final class Giter8Apply {
         try {
             return StandardCharsets.UTF_8
                     .newDecoder()
-                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
-                    .decode(java.nio.ByteBuffer.wrap(raw))
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(raw))
                     .toString();
-        } catch (java.nio.charset.CharacterCodingException notUtf8) {
+        } catch (CharacterCodingException notUtf8) {
             return null;
         }
     }

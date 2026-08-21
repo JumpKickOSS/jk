@@ -180,10 +180,18 @@ class NewProjectOpsTest {
         Path parent = temp.resolve("apps");
         Files.createDirectories(parent);
         var request = new NewProjectOps.Request(
-                "widget", parent.toString(), "com.acme", "java", "traditional", g8.toAbsolutePath().toString(), true);
+                "widget",
+                parent.toString(),
+                "com.acme",
+                "java",
+                "traditional",
+                g8.toAbsolutePath().toString(),
+                true);
 
         assertThatThrownBy(() -> NewProjectOps.create(request)).hasMessageContaining("did not produce jk.toml");
-        assertThat(parent.resolve("widget")).as("failed scaffold must not leave a half-written target").doesNotExist();
+        assertThat(parent.resolve("widget"))
+                .as("failed scaffold must not leave a half-written target")
+                .doesNotExist();
 
         // Fixing the template makes the same request succeed — no manual rm -rf in between.
         Files.writeString(g8.resolve("src/main/g8/jk.toml"), "name = \"$name$\"\n");
@@ -203,7 +211,13 @@ class NewProjectOpsTest {
         Files.createDirectories(parent);
 
         var result = NewProjectOps.create(new NewProjectOps.Request(
-                "widget", parent.toString(), "com.acme", "java", "simple", g8.toAbsolutePath().toString(), true));
+                "widget",
+                parent.toString(),
+                "com.acme",
+                "java",
+                "simple",
+                g8.toAbsolutePath().toString(),
+                true));
 
         assertThat(result.path().resolve("src/Main.java")).exists();
         assertThat(result.path().resolve("src/main/java")).doesNotExist();

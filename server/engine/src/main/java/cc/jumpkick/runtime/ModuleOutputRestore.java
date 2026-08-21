@@ -164,7 +164,7 @@ public final class ModuleOutputRestore {
 
     private static boolean hasMainSources(Path moduleDir, JkBuild build) {
         try {
-            boolean compact = CompileSupport.isSimpleLayout(moduleDir);
+            boolean compact = CompileSupport.isSimpleLayout(build.project(), moduleDir);
             Path javaRoot = compact ? moduleDir.resolve("src") : moduleDir.resolve("src/main/java");
             return !CompileSupport.collectJavaSources(javaRoot).isEmpty()
                     || !CompileSupport.collectKotlinSources(moduleDir, compact).isEmpty()

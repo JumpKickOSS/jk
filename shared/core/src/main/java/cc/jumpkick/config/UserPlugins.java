@@ -6,8 +6,10 @@ import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import org.tomlj.Toml;
 import org.tomlj.TomlParseResult;
 
@@ -26,10 +28,9 @@ public final class UserPlugins {
      * call sites, per-module hot paths); without this the resident engine re-ran a full tomlj
      * parse of the user config hundreds of times per build.
      */
-    private static final java.util.concurrent.ConcurrentHashMap<Path, Cached> CACHE =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Path, Cached> CACHE = new ConcurrentHashMap<>();
 
-    private record Cached(long size, java.nio.file.attribute.FileTime modified, List<PluginDeclaration> decls) {}
+    private record Cached(long size, FileTime modified, List<PluginDeclaration> decls) {}
 
     public static List<PluginDeclaration> fromConfig() {
         return fromConfig(JkDirs.userConfigFile());
@@ -40,7 +41,7 @@ public final class UserPlugins {
         if (file == null) return List.of();
         Path abs = file.toAbsolutePath().normalize();
         long size;
-        java.nio.file.attribute.FileTime modified;
+        FileTime modified;
         try {
             size = Files.size(abs);
             modified = Files.getLastModifiedTime(abs);

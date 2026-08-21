@@ -109,7 +109,8 @@ public final class PluginDescriptorOps {
         String rel = MavenLayout.artifactPath(Coordinate.ofModule(module, version));
         Path storeRoot = cas.root();
         for (String repoName : List.of("local", PluginJar.OFFICIAL_REPO, "central")) {
-            Optional<Path> stored = RepoArtifactStore.forRepoName(storeRoot, repoName).locate(rel, sha256Hex);
+            Optional<Path> stored =
+                    RepoArtifactStore.forRepoName(storeRoot, repoName).locate(rel, sha256Hex);
             if (stored.isPresent()) return stored;
         }
         Path blob = cas.pathFor(sha256Hex);

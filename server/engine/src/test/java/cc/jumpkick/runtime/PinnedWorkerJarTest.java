@@ -7,9 +7,11 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.util.Hashing;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
@@ -34,7 +36,8 @@ class PinnedWorkerJarTest {
         String hex = Hashing.sha256Hex(jar);
         Path blob = new Cas(cache).putFile(jar, hex);
 
-        Path resolved = PluginDescriptorOps.pinnedLayoutJar(new Cas(cache), MODULE, VERSION, hex).orElseThrow();
+        Path resolved = PluginDescriptorOps.pinnedLayoutJar(new Cas(cache), MODULE, VERSION, hex)
+                .orElseThrow();
 
         assertThat(resolved).isEqualTo(cache.resolve("repos/local").resolve(REL));
         assertThat(resolved).isRegularFile();
@@ -52,7 +55,8 @@ class PinnedWorkerJarTest {
         Path blob = new Cas(cache).putFile(jar, hex);
         RepoArtifactStore.forRepoName(cache, "jumpkick").materialize(REL, blob, hex);
 
-        Path resolved = PluginDescriptorOps.pinnedLayoutJar(new Cas(cache), MODULE, VERSION, hex).orElseThrow();
+        Path resolved = PluginDescriptorOps.pinnedLayoutJar(new Cas(cache), MODULE, VERSION, hex)
+                .orElseThrow();
 
         assertThat(resolved).isEqualTo(cache.resolve("repos/jumpkick").resolve(REL));
         assertThat(cache.resolve("repos/local").resolve(REL)).doesNotExist();
@@ -82,10 +86,9 @@ class PinnedWorkerJarTest {
         Path jar = writeJar(tmp.resolve("acme-rules.jar"));
         String hex = Hashing.sha256Hex(jar);
         Path blob = new Cas(cache).putFile(jar, hex);
-        Path resolved = PluginDescriptorOps.pinnedLayoutJar(new Cas(cache), MODULE, VERSION, hex).orElseThrow();
-        Files.writeString(
-                resolved.resolveSibling("acme-rules-1.0.0.pom"),
-                """
+        Path resolved = PluginDescriptorOps.pinnedLayoutJar(new Cas(cache), MODULE, VERSION, hex)
+                .orElseThrow();
+        Files.writeString(resolved.resolveSibling("acme-rules-1.0.0.pom"), """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>com.acme</groupId>
@@ -107,8 +110,8 @@ class PinnedWorkerJarTest {
                         cc.jumpkick.lock.Lockfile.RESOLUTION_ALGORITHM,
                         null,
                         null,
-                        java.util.List.of(),
-                        java.util.List.of(new cc.jumpkick.lock.Lockfile.PluginEntry(
+                        List.of(),
+                        List.of(new cc.jumpkick.lock.Lockfile.PluginEntry(
                                 "cc.jumpkick:jk-spring-boot", "0.0.1", "sha256:" + "ee".repeat(32)))),
                 tmp.resolve("jk-lock.toml"));
         String prior = System.getProperty("jk.official.repo.url");
@@ -116,7 +119,7 @@ class PinnedWorkerJarTest {
         try {
             org.assertj.core.api.Assertions.assertThatThrownBy(
                             () -> PluginBuild.lockedFirstPartyJar(tmp, "jk-spring-boot", tmp.resolve("cache")))
-                    .isInstanceOf(java.io.IOException.class)
+                    .isInstanceOf(IOException.class)
                     .hasMessageContaining("pins cc.jumpkick:jk-spring-boot:0.0.1")
                     .hasMessageContaining("run `jk lock` to re-pin");
         } finally {
@@ -137,8 +140,8 @@ class PinnedWorkerJarTest {
                         cc.jumpkick.lock.Lockfile.RESOLUTION_ALGORITHM,
                         null,
                         null,
-                        java.util.List.of(),
-                        java.util.List.of()),
+                        List.of(),
+                        List.of()),
                 tmp.resolve("jk-lock.toml"));
 
         assertThat(PluginBuild.lockedFirstPartyJar(tmp, "jk-spring-boot", tmp.resolve("cache")))

@@ -83,8 +83,8 @@ public final class BuiltInPluginJars {
             Path jar = Path.of(decl.path());
             if (!jar.isAbsolute()) jar = base.resolve(jar).normalize();
             if (!Files.isRegularFile(jar)) {
-                throw new IllegalStateException(config + " [plugins] pins " + decl.path()
-                        + " but no file exists at " + jar + " — fix or remove the pin");
+                throw new IllegalStateException(config + " [plugins] pins " + decl.path() + " but no file exists at "
+                        + jar + " — fix or remove the pin");
             }
             String actual;
             try {

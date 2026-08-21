@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -58,19 +59,19 @@ class OfficialTemplatesFreshenTest {
     @Test
     void sourceRefEncodesUrlAndRev() {
         var plain = new cc.jumpkick.config.JkTemplatesConfig.Source(
-                "acme", "https://github.com/acme/jk-g8", java.util.Optional.empty());
+                "acme", "https://github.com/acme/jk-g8", Optional.empty());
         var pinned = new cc.jumpkick.config.JkTemplatesConfig.Source(
-                "corp", "https://git.example/corp/jk-templates.git", java.util.Optional.of("main"));
+                "corp", "https://git.example/corp/jk-templates.git", Optional.of("main"));
         org.assertj.core.api.Assertions.assertThat(OfficialTemplatesFreshen.sourceRef(plain))
                 .isEqualTo("https://github.com/acme/jk-g8");
         org.assertj.core.api.Assertions.assertThat(OfficialTemplatesFreshen.sourceRef(pinned))
                 .isEqualTo("https://git.example/corp/jk-templates.git#main");
         // Distinct cache dirs per source — a rev pin never shadows the unpinned clone.
         org.assertj.core.api.Assertions.assertThat(
-                        OfficialTemplatesFreshen.parse(OfficialTemplatesFreshen.sourceRef(pinned)).cacheKey())
+                        OfficialTemplatesFreshen.parse(OfficialTemplatesFreshen.sourceRef(pinned))
+                                .cacheKey())
                 .isEqualTo("git.example_corp_jk-templates_main")
-                .isNotEqualTo(OfficialTemplatesFreshen.parse(
-                                OfficialTemplatesFreshen.sourceRef(plain))
+                .isNotEqualTo(OfficialTemplatesFreshen.parse(OfficialTemplatesFreshen.sourceRef(plain))
                         .cacheKey());
     }
 

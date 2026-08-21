@@ -53,7 +53,8 @@ public final class GenerateOps {
         List<String> contents = new ArrayList<>();
         List<String> notes = new ArrayList<>();
 
-        PomExporter.Result rootResult = PomExporter.export(loaded.root(), resolveLayout(dir), loaded.locked());
+        PomExporter.Result rootResult =
+                PomExporter.export(loaded.root(), resolveLayout(dir, loaded.root()), loaded.locked());
         paths.add(dir.resolve("pom.xml").toString());
         contents.add(rootResult.xml());
         addNotes(notes, rootResult.report());
@@ -61,7 +62,9 @@ public final class GenerateOps {
         for (Map.Entry<Path, JkBuild> e : loaded.modules().entrySet()) {
             Map<String, String> moduleLocked = lockedVersions(e.getKey());
             PomExporter.Result r = PomExporter.export(
-                    e.getValue(), resolveLayout(e.getKey()), moduleLocked.isEmpty() ? loaded.locked() : moduleLocked);
+                    e.getValue(),
+                    resolveLayout(e.getKey(), e.getValue()),
+                    moduleLocked.isEmpty() ? loaded.locked() : moduleLocked);
             paths.add(e.getKey().resolve("pom.xml").toString());
             contents.add(r.xml());
             addNotes(notes, r.report());
@@ -105,12 +108,12 @@ public final class GenerateOps {
 
         Map<String, JkBuild> byRel = new LinkedHashMap<>();
         Map<String, JkBuild.Layout> layoutByRel = new LinkedHashMap<>();
-        layoutByRel.put("", resolveLayout(dir));
+        layoutByRel.put("", resolveLayout(dir, loaded.root()));
         for (Map.Entry<Path, JkBuild> e : loaded.modules().entrySet()) {
             String rel = dir.relativize(e.getKey()).toString().replace('\\', '/');
             if (rel.isBlank()) continue;
             byRel.put(rel, e.getValue());
-            layoutByRel.put(rel, resolveLayout(e.getKey()));
+            layoutByRel.put(rel, resolveLayout(e.getKey(), e.getValue()));
         }
         GradleExporter.Result result = GradleExporter.export(loaded.root(), byRel, layoutByRel, loaded.locked());
 
@@ -159,8 +162,8 @@ public final class GenerateOps {
         }
     }
 
-    private static JkBuild.Layout resolveLayout(Path dir) {
-        return SourceLayout.isSimpleLayout(dir) ? JkBuild.Layout.SIMPLE : JkBuild.Layout.TRADITIONAL;
+    private static JkBuild.Layout resolveLayout(Path dir, JkBuild build) {
+        return SourceLayout.isSimpleLayout(build.project(), dir) ? JkBuild.Layout.SIMPLE : JkBuild.Layout.TRADITIONAL;
     }
 
     private static void addNotes(List<String> notes, ImportReport report) {

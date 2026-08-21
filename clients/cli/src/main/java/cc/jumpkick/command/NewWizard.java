@@ -128,7 +128,7 @@ public final class NewWizard {
                     .orElse(defaultJdkId);
         }
 
-        // Placement only — jk.toml has no layout key; the tree on disk is the convention.
+        // Placement only — scaffolds never write layout=; the tree on disk is the convention.
         var layoutStep = WizardStep.RadioStep.vertical("layout", "Project layout:")
                 .choice("traditional", "Traditional", "(./src/main/java, ./src/test/java, etc.)")
                 .choice("simple", "Simple", "(./src, ./test/src, etc.)")

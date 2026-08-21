@@ -1,16 +1,22 @@
 # Source layout
 
-JumpKick honors **either** source tree. There is no `jk.toml` switch. If
-`src/main/java`, `src/main/kotlin`, `src/main/scala`, `src/main/groovy`, or
-`src/main/resources` exists as a **directory**, the module is **traditional** (Maven).
-Otherwise it is **simple** (Mill-like).
+JumpKick honors **either** source tree. Detection is from the directories on disk:
+if `src/main/{java,kotlin,scala,groovy,resources}` or
+`src/test/{java,kotlin,scala,groovy,resources}` exists as a **directory**, the
+module is **traditional** (Maven). Otherwise it is **simple** (Mill-like).
 
 Language is by **file extension**. `.java` / `.kt` / `.groovy` may share a directory.
 `jk new` still asks which tree to scaffold; that only **places files**.
 `jk new --layout simple` scaffolds the Mill-like columns.
 
-`--layout` is file placement, not a `jk.toml` key. Web “Layout” does the same for
-templates that declare both layouts — [Templates](templates.md).
+`--layout` on `jk new` is file placement only. Prefer shaping the tree so detection
+is unambiguous. An optional `layout = "simple"` or `layout = "traditional"` in
+`jk.toml` exists as an escape hatch when a tree is mixed (for example a Mill-like
+module that still contains a vendored `src/main/resources`); omit it unless you need
+that override.
+
+Web “Layout” does the same for templates that declare both layouts —
+[Templates](templates.md).
 
 ## Trees
 

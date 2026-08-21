@@ -467,12 +467,36 @@ public record JkBuild(
     }
 
     /**
-     * Resolved source-tree convention for exporters (Maven vs Mill-like). Not a {@code jk.toml}
-     * field — {@code src/main/{java,kotlin,scala,groovy,resources}} decides at the module dir.
+     * Source layout: {@code simple} (Mill-like), {@code traditional} (Maven), or {@code auto}
+     * (infer from the tree; default when the key is omitted). Prefer omitting the key — set it
+     * only to override ambiguous trees.
      */
     public enum Layout {
         SIMPLE,
-        TRADITIONAL
+        TRADITIONAL,
+        AUTO;
+
+        /** Parse from a jk.toml string value; null or blank → AUTO. */
+        public static Layout parse(String raw) {
+            if (raw == null || raw.isBlank()) return AUTO;
+            return switch (raw.trim().toLowerCase()) {
+                case "simple" -> SIMPLE;
+                case "traditional" -> TRADITIONAL;
+                case "auto" -> AUTO;
+                default ->
+                    throw new IllegalArgumentException(
+                            "layout must be \"simple\", \"traditional\", or \"auto\" (got: " + raw + ")");
+            };
+        }
+
+        /** The string written to jk.toml, or null for AUTO (omitted). */
+        public String tomlValue() {
+            return switch (this) {
+                case SIMPLE -> "simple";
+                case TRADITIONAL -> "traditional";
+                case AUTO -> null;
+            };
+        }
     }
 
     /**
@@ -529,7 +553,8 @@ public record JkBuild(
         GROOVY,
         SOURCES,
         DESCRIPTION,
-        M2INSTALL
+        M2INSTALL,
+        LAYOUT
     }
 
     public record Project(
@@ -543,6 +568,7 @@ public record JkBuild(
             SourcesMode sourcesMode,
             String description,
             boolean m2install,
+            Layout layout,
             Set<ProjectInherit> workspaceInherits) {
 
         public Project {
@@ -557,6 +583,7 @@ public record JkBuild(
             }
             if (jdk != null && jdk.isBlank()) jdk = null;
             if (sourcesMode == null) sourcesMode = SourcesMode.DISABLED;
+            if (layout == null) layout = Layout.AUTO;
             if (description != null && description.isBlank()) description = null;
             workspaceInherits =
                     workspaceInherits == null || workspaceInherits.isEmpty() ? Set.of() : Set.copyOf(workspaceInherits);
@@ -573,8 +600,48 @@ public record JkBuild(
                 VersionSelector groovy,
                 SourcesMode sourcesMode,
                 String description,
+                boolean m2install,
+                Layout layout) {
+            this(
+                    group,
+                    name,
+                    version,
+                    jdk,
+                    java,
+                    kotlin,
+                    groovy,
+                    sourcesMode,
+                    description,
+                    m2install,
+                    layout,
+                    Set.of());
+        }
+
+        /** Back-compat: AUTO layout, no workspace inheritance flags. */
+        public Project(
+                String group,
+                String name,
+                String version,
+                String jdk,
+                int java,
+                VersionSelector kotlin,
+                VersionSelector groovy,
+                SourcesMode sourcesMode,
+                String description,
                 boolean m2install) {
-            this(group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, Set.of());
+            this(
+                    group,
+                    name,
+                    version,
+                    jdk,
+                    java,
+                    kotlin,
+                    groovy,
+                    sourcesMode,
+                    description,
+                    m2install,
+                    Layout.AUTO,
+                    Set.of());
         }
 
         /** True when any project identity field still needs workspace-root resolution. */
@@ -612,9 +679,10 @@ public record JkBuild(
             next.remove(ProjectInherit.SOURCES);
             next.remove(ProjectInherit.DESCRIPTION);
             next.remove(ProjectInherit.M2INSTALL);
+            next.remove(ProjectInherit.LAYOUT);
             if (next.equals(workspaceInherits)) return this;
             return new Project(
-                    group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, next);
+                    group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, layout, next);
         }
 
         /** True when this project declared {@code version.workspace = true} and is not yet resolved. */
@@ -644,7 +712,8 @@ public record JkBuild(
             SourcesMode src = inherits(ProjectInherit.SOURCES) ? root.sourcesMode() : sourcesMode;
             String desc = inherits(ProjectInherit.DESCRIPTION) ? root.description() : description;
             boolean m2 = inherits(ProjectInherit.M2INSTALL) ? root.m2install() : m2install;
-            return new Project(g, name, v, j, ja, kt, gr, src, desc, m2, Set.of());
+            Layout lay = inherits(ProjectInherit.LAYOUT) ? root.layout() : layout;
+            return new Project(g, name, v, j, ja, kt, gr, src, desc, m2, lay, Set.of());
         }
 
         private static String requireRoot(String value, String field) {
@@ -665,12 +734,23 @@ public record JkBuild(
                     : EnumSet.copyOf(workspaceInherits);
             next.remove(ProjectInherit.VERSION);
             return new Project(
-                    group, name, newVersion, jdk, java, kotlin, groovy, sourcesMode, description, m2install, next);
+                    group,
+                    name,
+                    newVersion,
+                    jdk,
+                    java,
+                    kotlin,
+                    groovy,
+                    sourcesMode,
+                    description,
+                    m2install,
+                    layout,
+                    next);
         }
 
         /** Library project — bare-major {@code jdk} (0 → unset). */
         public Project(String group, String name, String version, int jdk) {
-            this(group, name, version, majorSpec(jdk), jdk, null, null, null, null, false, Set.of());
+            this(group, name, version, majorSpec(jdk), jdk, null, null, null, null, false, Layout.AUTO, Set.of());
         }
 
         /** A bare-major int as a jdk spec string ({@code 25} → {@code "25"}); 0/negative → unset. */
@@ -695,6 +775,7 @@ public record JkBuild(
             private SourcesMode sourcesMode = SourcesMode.DISABLED;
             private String description;
             private boolean m2install;
+            private Layout layout = Layout.AUTO;
 
             private Builder(String group, String name, String version) {
                 this.group = group;
@@ -745,9 +826,14 @@ public record JkBuild(
                 return this;
             }
 
+            public Builder layout(Layout layout) {
+                this.layout = layout;
+                return this;
+            }
+
             public Project build() {
                 return new Project(
-                        group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install);
+                        group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, layout);
             }
         }
 

@@ -125,7 +125,10 @@ public final class OfficialTemplatesFreshen {
 
     /** {@code url#rev} ref for a configured source (the same shape {@link #parse} reads). */
     static String sourceRef(JkTemplatesConfig.Source source) {
-        return source.rev().filter(r -> !r.isBlank()).map(r -> source.url() + "#" + r).orElse(source.url());
+        return source.rev()
+                .filter(r -> !r.isBlank())
+                .map(r -> source.url() + "#" + r)
+                .orElse(source.url());
     }
 
     static void refreshRef(String ref, Path cacheRoot, Consumer<String> log) throws IOException {
