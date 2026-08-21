@@ -117,14 +117,16 @@ public final class Giter8Apply {
                 props.put(name, p.getProperty(name));
             }
         }
+        // Giter8 semantics: user input replaces defaults BEFORE derived properties expand, so
+        // `package=$organization$.$name$`-style defaults derive from the overridden values. An
+        // interpolation pass ahead of the overrides would freeze derivations to shipped defaults.
+        if (overrides != null) props.putAll(overrides);
+        props.putIfAbsent("simple", "no");
         for (Map.Entry<String, String> e : new ArrayList<>(props.entrySet())) {
             if (Giter8Maven.isMavenExpr(e.getValue())) {
                 props.put(e.getKey(), Giter8Maven.resolveExpr(e.getValue(), maven));
             }
         }
-        interpolateProps(props);
-        if (overrides != null) props.putAll(overrides);
-        props.putIfAbsent("simple", "no");
         interpolateProps(props);
         if (props.containsKey("name")) {
             props.putIfAbsent("name_normalized", Giter8Formats.normalize(props.get("name")));

@@ -31,6 +31,22 @@ class Giter8ApplyTest {
     }
 
     @Test
+    void overrides_apply_before_derived_properties_expand(@TempDir Path tmp) throws Exception {
+        // Canonical Giter8 idiom: package derives from organization+name. The user's overrides
+        // must feed the derivation — expanding defaults first freezes package to com.example.*.
+        Path template = g8(tmp, "name=demo\norganization=com.example\npackage=$organization$.$name$\n");
+        Path g8 = template.resolve("src/main/g8");
+        Files.createDirectories(g8);
+        Files.writeString(g8.resolve("jk.toml"), "name = \"$name$\"\n");
+        Files.writeString(g8.resolve("App.java"), "package $package$;\n");
+
+        Path dest = tmp.resolve("out");
+        Giter8Apply.apply(template, dest, Map.of("name", "widget", "organization", "org.acme"));
+
+        assertThat(dest.resolve("App.java")).content().contains("package org.acme.widget;");
+    }
+
+    @Test
     void template_property_cannot_escape_the_destination(@TempDir Path tmp) throws Exception {
         Path template = g8(tmp, "name=demo\nevil=../../../pwned\n");
         Path g8 = template.resolve("src/main/g8");
