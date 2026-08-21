@@ -196,6 +196,10 @@ public final class ExecPlans {
                     build.isApplication(),
                     build.mainClass() == null ? "" : build.mainClass(),
                     build.assembly(),
+                    build.application()
+                            .map(cc.jumpkick.model.JkBuild.Application::config)
+                            .filter(c -> c != null && !c.isBlank())
+                            .orElse(""),
                     build.nativeMode().name(),
                     orEmpty(build.graal()),
                     build.isSpringBoot(),

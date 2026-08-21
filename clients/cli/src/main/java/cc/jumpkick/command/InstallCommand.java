@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
@@ -20,6 +21,7 @@ import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.tool.ToolLauncher;
 import cc.jumpkick.util.AppInstallConfig;
 import cc.jumpkick.util.GitUrl;
+import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -458,7 +460,9 @@ public final class InstallCommand {
     /**
      * Persist {@code $JK_CONFIG_DIR/<bin>/config.toml} for fat/minified installs (jar under
      * {@code productLib/<bin>/}). Honors {@code [application].config} templates and {@code
-     * jk-config.*} system properties.
+     * jk-config.*} system properties. For {@code jk-engine}, always refreshes {@code engine-sha256}
+     * to the installed jar bytes so a self-host reinstall cannot leave a stale digest beside a
+     * new {@code jar =} name.
      */
     private void writeAppInstallConfig(Path projectDir, cc.jumpkick.engine.protocol.ExecPlan plan) throws IOException {
         if (plan.linkDests().isEmpty()) return;
@@ -468,26 +472,21 @@ public final class InstallCommand {
         String bin = parent.getFileName().toString();
         if (bin.isBlank()) return;
         Map<String, String> keys = new LinkedHashMap<>(AppInstallConfig.jkConfigProperties());
-        keys.put("jar", dest.getFileName().toString());
+        putInstalledJarKeys(keys, dest, bin);
         keys.putIfAbsent("name", bin);
+        String templateRel = "";
         try {
             var info = projectInfo(projectDir);
             if (info.version() != null && !info.version().isBlank()) {
                 keys.putIfAbsent("version", info.version());
             }
+            if (info.applicationConfig() != null && !info.applicationConfig().isBlank()) {
+                templateRel = info.applicationConfig();
+            }
         } catch (IOException ignored) {
-            // version is best-effort
+            // version / template path are best-effort
         }
-        String templateRel = null;
-        try {
-            var build = cc.jumpkick.config.JkBuildParser.parse(projectDir);
-            templateRel = build.application()
-                    .map(cc.jumpkick.model.JkBuild.Application::config)
-                    .orElse(null);
-        } catch (RuntimeException ignored) {
-            // no template
-        }
-        if (templateRel != null && !templateRel.isBlank()) {
+        if (!templateRel.isBlank()) {
             Path templateFile = projectDir.resolve(templateRel);
             if (Files.isRegularFile(templateFile)) {
                 AppInstallConfig.writeTemplate(JkDirs.current(), bin, Files.readString(templateFile), keys);
@@ -495,6 +494,17 @@ public final class InstallCommand {
             }
         }
         AppInstallConfig.write(JkDirs.current(), bin, keys);
+    }
+
+    /**
+     * Record the installed jar basename, and for the engine also the content digest the client
+     * pairs with that jar.
+     */
+    static void putInstalledJarKeys(Map<String, String> keys, Path installedJar, String bin) throws IOException {
+        keys.put("jar", installedJar.getFileName().toString());
+        if (EngineInstall.BIN_NAME.equals(bin)) {
+            keys.put("engine-sha256", Hashing.sha256Hex(installedJar));
+        }
     }
 
     private static void markExecutable(Path file) {
