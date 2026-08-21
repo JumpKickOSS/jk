@@ -352,6 +352,18 @@ public final class LockPlans {
                     for (var e : entries) seen.add(e.coordinate() + ":" + e.version());
                     for (var located : cc.jumpkick.engine.plugin.BuiltInPluginJars.locatedTablePlugins()) {
                         Path jar = located.path();
+                        cc.jumpkick.plugin.manifest.PluginDescriptor d;
+                        try {
+                            d = cc.jumpkick.plugin.manifest.PluginDescriptors.parse(
+                                    located.manifestToml(), jar.toString(), false);
+                        } catch (Exception unparseable) {
+                            continue; // engine install already skipped this jar loudly
+                        }
+                        // Pin only plugins this project configures. Pinning every located
+                        // plugin churned each project's lock on every jk version bump and
+                        // ping-ponged between developers on different jk versions, for
+                        // plugins the project never forks.
+                        if (effective.pluginConfig(d.table()).isEmpty()) continue;
                         String hex;
                         try {
                             hex = cc.jumpkick.util.Hashing.sha256Hex(jar);
@@ -363,18 +375,8 @@ public final class LockPlans {
                         if (seen.add(coord + ":" + ver)) {
                             entries.add(new Lockfile.PluginEntry(coord, ver, "sha256:" + hex));
                         }
-                        try {
-                            String toml = located.manifestToml();
-                            if (toml != null && !toml.isBlank()) {
-                                var d = cc.jumpkick.plugin.manifest.PluginDescriptors.parse(
-                                        toml, jar.toString(), false);
-                                floor = cc.jumpkick.plugin.manifest.PluginDescriptors.maxFloor(
-                                        floor,
-                                        cc.jumpkick.plugin.manifest.PluginDescriptors.jkCompatFloor(d.jkCompat()));
-                            }
-                        } catch (Exception ignored) {
-                            // still lock the jar
-                        }
+                        floor = cc.jumpkick.plugin.manifest.PluginDescriptors.maxFloor(
+                                floor, cc.jumpkick.plugin.manifest.PluginDescriptors.jkCompatFloor(d.jkCompat()));
                     }
                     ctx.put(LOCKFILE, ctx.require(LOCKFILE).withPlugins(entries).withJkMin(floor));
                 })

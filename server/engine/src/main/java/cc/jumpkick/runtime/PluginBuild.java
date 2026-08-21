@@ -739,19 +739,49 @@ public final class PluginBuild {
                 + " has no matching [plugins] declaration — declare it (or run `jk sync`)");
     }
 
-    private static Path lockedFirstPartyJar(Path moduleDir, String workerArtifact, Path cache) {
+    /**
+     * The jar the lock pinned for {@code workerArtifact}, or {@code null} when the lock has no
+     * pin for it (newer-always-wins locate applies). A pin is law in both directions: a pin
+     * whose bytes are nowhere is fetched at exactly the pinned version, and a pin that still
+     * cannot be honored is a loud error — never a silent fall-through to whatever
+     * {@code locate()} finds, which would run different bytes than the lock recorded.
+     */
+    static Path lockedFirstPartyJar(Path moduleDir, String workerArtifact, Path cache) throws IOException {
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
+        if (!Files.isRegularFile(lockFile)) return null;
+        cc.jumpkick.lock.Lockfile lock;
         try {
-            Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
-            if (!Files.isRegularFile(lockFile)) return null;
-            String coord = "cc.jumpkick:" + workerArtifact;
-            for (var e : cc.jumpkick.lock.LockfileReader.read(lockFile).plugins()) {
-                if (!coord.equals(e.coordinate())) continue;
-                return PluginDescriptorOps.pinnedLayoutJar(
-                                JkStores.cas(cache), e.coordinate(), e.version(), e.sha256Hex())
-                        .orElse(null);
+            lock = cc.jumpkick.lock.LockfileReader.read(lockFile);
+        } catch (Exception e) {
+            throw new IOException("cannot read " + lockFile + ": " + e.getMessage(), e);
+        }
+        String coord = "cc.jumpkick:" + workerArtifact;
+        for (var e : lock.plugins()) {
+            if (!coord.equals(e.coordinate())) continue;
+            var pinned = PluginDescriptorOps.pinnedLayoutJar(
+                    JkStores.cas(cache), e.coordinate(), e.version(), e.sha256Hex());
+            if (pinned.isPresent()) return pinned.get();
+            String fetchFailure = null;
+            try {
+                cc.jumpkick.engine.plugin.PluginJar.fetchOfficial(
+                        JkStores.cas(cache),
+                        cc.jumpkick.repo.MavenLayout.artifactPath(
+                                cc.jumpkick.model.Coordinate.ofModule(e.coordinate(), e.version())));
+                pinned = PluginDescriptorOps.pinnedLayoutJar(
+                        JkStores.cas(cache), e.coordinate(), e.version(), e.sha256Hex());
+                if (pinned.isPresent()) return pinned.get();
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                fetchFailure = "interrupted";
+            } catch (Exception fetchEx) {
+                fetchFailure = fetchEx.getMessage();
             }
-        } catch (Exception ignored) {
-            return null;
+            throw new IOException("jk-lock.toml pins " + coord + ":" + e.version()
+                    + " (sha256 " + e.sha256Hex() + ") but no matching jar exists in the store"
+                    + (fetchFailure != null
+                            ? " and the official fetch failed: " + fetchFailure
+                            : " and the official repo serves different bytes")
+                    + " — run `jk lock` to re-pin against this jk");
         }
         return null;
     }

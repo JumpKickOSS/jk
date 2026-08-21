@@ -98,6 +98,53 @@ class PinnedWorkerJarTest {
         assertThat(WorkerLaunchClasspath.paths(resolved)).containsExactly(resolved);
     }
 
+    @Test
+    void unsatisfiable_lock_pin_is_loud_not_a_silent_fallback(@TempDir Path tmp) throws Exception {
+        cc.jumpkick.lock.LockfileWriter.write(
+                new cc.jumpkick.lock.Lockfile(
+                        cc.jumpkick.lock.Lockfile.CURRENT_VERSION,
+                        "test",
+                        cc.jumpkick.lock.Lockfile.RESOLUTION_ALGORITHM,
+                        null,
+                        null,
+                        java.util.List.of(),
+                        java.util.List.of(new cc.jumpkick.lock.Lockfile.PluginEntry(
+                                "cc.jumpkick:jk-spring-boot", "0.0.1", "sha256:" + "ee".repeat(32)))),
+                tmp.resolve("jk-lock.toml"));
+        String prior = System.getProperty("jk.official.repo.url");
+        System.setProperty("jk.official.repo.url", "http://127.0.0.1:1/");
+        try {
+            org.assertj.core.api.Assertions.assertThatThrownBy(
+                            () -> PluginBuild.lockedFirstPartyJar(tmp, "jk-spring-boot", tmp.resolve("cache")))
+                    .isInstanceOf(java.io.IOException.class)
+                    .hasMessageContaining("pins cc.jumpkick:jk-spring-boot:0.0.1")
+                    .hasMessageContaining("run `jk lock` to re-pin");
+        } finally {
+            if (prior == null) {
+                System.clearProperty("jk.official.repo.url");
+            } else {
+                System.setProperty("jk.official.repo.url", prior);
+            }
+        }
+    }
+
+    @Test
+    void worker_without_a_pin_returns_null_for_locate_fallback(@TempDir Path tmp) throws Exception {
+        cc.jumpkick.lock.LockfileWriter.write(
+                new cc.jumpkick.lock.Lockfile(
+                        cc.jumpkick.lock.Lockfile.CURRENT_VERSION,
+                        "test",
+                        cc.jumpkick.lock.Lockfile.RESOLUTION_ALGORITHM,
+                        null,
+                        null,
+                        java.util.List.of(),
+                        java.util.List.of()),
+                tmp.resolve("jk-lock.toml"));
+
+        assertThat(PluginBuild.lockedFirstPartyJar(tmp, "jk-spring-boot", tmp.resolve("cache")))
+                .isNull();
+    }
+
     private static Path writeJar(Path target) throws Exception {
         Manifest manifest = new Manifest();
         manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");

@@ -146,7 +146,7 @@ public enum PluginJar {
      * official Maven repo into {@code repos/jumpkick/}. Returns the local jar path, {@code null} if
      * the jar 404s, or throws if the jar exists without a POM.
      */
-    static Path fetchOfficial(Cas cas, String relPath) throws IOException, InterruptedException {
+    public static Path fetchOfficial(Cas cas, String relPath) throws IOException, InterruptedException {
         if (!relPath.endsWith(".jar")) {
             throw new IOException("official fetch expected a jar path, got " + relPath);
         }
