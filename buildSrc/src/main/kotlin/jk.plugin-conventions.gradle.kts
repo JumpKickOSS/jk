@@ -129,7 +129,12 @@ fun sha256Hex(bytes: ByteArray): String {
 
 fun sha256Hex(file: File): String = sha256Hex(file.readBytes())
 
-data class WorkerGav(val group: String, val artifact: String, val version: String, val file: File)
+data class WorkerGav(
+        val group: String,
+        val artifact: String,
+        val version: String,
+        val classifier: String?,
+        val file: File)
 
 /** Resolved runtime jars with Maven coordinates. First-party projects publish as {@code jk-<name>}. */
 fun runtimeGavs(): List<WorkerGav> {
@@ -147,11 +152,14 @@ fun runtimeGavs(): List<WorkerGav> {
                     val artifactId = publishedArtifactId(proj?.name ?: id.name)
                     val raw = proj?.version?.toString() ?: id.version
                     val ver = if (raw.isBlank() || raw == "unspecified") project.version.toString() else raw
-                    WorkerGav("cc.jumpkick", artifactId, ver, f)
+                    WorkerGav("cc.jumpkick", artifactId, ver, null, f)
                 } else {
-                    WorkerGav(id.group, id.name, id.version, f)
+                    // Classifier is part of the artifact identity: dropping it either lost the
+                    // dep (netty natives, protoc binaries) or overwrote the unclassified jar's
+                    // store entry with the wrong bytes, iteration-order dependent.
+                    WorkerGav(id.group, id.name, id.version, art.classifier?.takeIf { it.isNotBlank() }, f)
                 }
-        out.putIfAbsent("${gav.group}:${gav.artifact}:${gav.version}", gav)
+        out.putIfAbsent("${gav.group}:${gav.artifact}:${gav.version}:${gav.classifier.orEmpty()}", gav)
     }
     return out.values.toList()
 }
@@ -176,6 +184,9 @@ fun workerPomXml(): String {
         sb.appendLine("      <groupId>${xmlEsc(g.group)}</groupId>")
         sb.appendLine("      <artifactId>${xmlEsc(g.artifact)}</artifactId>")
         sb.appendLine("      <version>${xmlEsc(g.version)}</version>")
+        if (g.classifier != null) {
+            sb.appendLine("      <classifier>${xmlEsc(g.classifier)}</classifier>")
+        }
         sb.appendLine("    </dependency>")
     }
     sb.appendLine("  </dependencies>")
@@ -186,10 +197,17 @@ fun workerPomXml(): String {
 fun mavenLocalDir(storeRoot: File, group: String, artifact: String, version: String): File =
         storeRoot.resolve("repos/local/${group.replace('.', '/')}/$artifact/$version")
 
-fun installJar(storeRoot: File, group: String, artifact: String, version: String, jar: File) {
+fun installJar(
+        storeRoot: File,
+        group: String,
+        artifact: String,
+        version: String,
+        jar: File,
+        classifier: String? = null) {
     val dir = mavenLocalDir(storeRoot, group, artifact, version)
     dir.mkdirs()
-    val dest = dir.resolve("$artifact-$version.jar")
+    val suffix = classifier?.let { "-$it" }.orEmpty()
+    val dest = dir.resolve("$artifact-$version$suffix.jar")
     copyReplacing(jar, dest)
     File(dest.path + ".sha256").writeText(sha256Hex(jar))
     File(dest.path + ".classpath").delete()
@@ -209,7 +227,7 @@ fun stageWorkerMavenRepo(storeRoot: File, jar: File, pomXml: String) {
     val ver = project.version.toString()
     installJar(storeRoot, "cc.jumpkick", workerArtifact, ver, jar)
     installPom(storeRoot, "cc.jumpkick", workerArtifact, ver, pomXml)
-    runtimeGavs().forEach { g -> installJar(storeRoot, g.group, g.artifact, g.version, g.file) }
+    runtimeGavs().forEach { g -> installJar(storeRoot, g.group, g.artifact, g.version, g.file, g.classifier) }
 }
 
 fun deleteStaleSidecars(vararg files: File) {
