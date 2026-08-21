@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cache;
 
+import cc.jumpkick.util.AppInstallConfig;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.JkDirs;
@@ -14,160 +15,184 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 /**
- * The live JumpKick engine install: {@code <product-home>/lib/jk-engine.jar} plus a sidecar
- * {@code jk-engine.toml} (version + content hash). The PATH {@code jk} is paired with this jar at
- * install/update time.
+ * The live JumpKick engine install: jar under {@code <product-lib>/jk-engine/} and metadata in
+ * {@code <config>/jk-engine/config.toml} ({@link AppInstallConfig}). The PATH {@code jk} is paired
+ * with this jar at install/update time.
  *
- * <p>An upgrade parks the previous jar as {@code jk-engine.jar.old} so a draining engine can keep
- * its mapped bytes for a few minutes. {@link #gc} deletes parked files, leftover versioned
- * {@code jk-engine-*.jar} names, a leftover {@code versions/} tree, and parked PATH binaries
- * ({@code jk.old} / {@code jk.exe.old}). A file still mapped on Windows is left for a later cycle.
+ * <p>An upgrade parks the previous jar as {@code <name>.jar.old} (and {@code config.toml.old}) so a
+ * draining engine can keep its mapped bytes for a few minutes. {@link #gc} deletes parked files and
+ * parked PATH binaries ({@code jk.old} / {@code jk.exe.old}).
  */
 public final class EngineInstall {
 
-    public static final String ENGINE_JAR = "jk-engine.jar";
-    public static final String ENGINE_JAR_OLD = "jk-engine.jar.old";
-    public static final String MANIFEST = "jk-engine.toml";
-    public static final String MANIFEST_OLD = "jk-engine.toml.old";
+    public static final String BIN_NAME = "jk-engine";
+    public static final String LOCK_NAME = ".jk-engine.lock";
 
-    private static final String LOCK_NAME = ".jk-engine.lock";
-
-    private final Path libDir;
+    private final Path productLib;
+    private final JkDirs dirs;
 
     public EngineInstall(Path productLibDir) {
-        this.libDir = productLibDir;
+        this(productLibDir, JkDirs.current());
     }
 
-    /** Rooted at {@code $JK_HOME/lib} (or {@code <data>/lib}); migrates a leftover {@code versions/} tree. */
+    public EngineInstall(Path productLibDir, JkDirs dirs) {
+        this.productLib = productLibDir;
+        this.dirs = dirs;
+    }
+
+    /** Rooted at {@code $JK_HOME/lib} (or {@code <data>/lib}). */
     public static EngineInstall current() {
-        EngineInstall install = new EngineInstall(JkDirs.productLib());
-        install.tryMigrate(JkDirs.versions());
-        return install;
+        return new EngineInstall(JkDirs.productLib(), JkDirs.current());
     }
 
-    /** One usable engine on disk. */
+    /** One usable engine on disk. {@code root} is the engine home ({@code …/lib/jk-engine}). */
     public record Materialized(String version, Path root, Path engineJar, String engineSha) {}
 
+    /** Product lib root ({@code …/lib}). */
     public Path libDir() {
-        return libDir;
+        return productLib;
     }
 
+    /** {@code <product-lib>/jk-engine}. */
+    public Path engineHome() {
+        return productLib.resolve(BIN_NAME);
+    }
+
+    public Path configFile() {
+        return AppInstallConfig.path(dirs, BIN_NAME);
+    }
+
+    public Path configFileOld() {
+        return parkedName(configFile());
+    }
+
+    /**
+     * Live jar path from config ({@code jar =}) or inferred under the engine home. May not exist
+     * when the install is incomplete.
+     */
     public Path engineJarPath() {
-        return libDir.resolve(ENGINE_JAR);
+        return resolveLiveJarPath().orElse(engineHome().resolve("jk-engine.jar"));
     }
 
+    /** Parked previous live jar, if any (drain window). */
     public Path engineJarOldPath() {
-        return libDir.resolve(ENGINE_JAR_OLD);
+        Optional<Materialized> parked = readParked();
+        if (parked.isPresent()) return parked.get().engineJar();
+        return engineHome().resolve("jk-engine.jar.old");
     }
 
-    /** The live engine when complete on disk (jar + toml). */
+    /** The live engine when config + jar are present. */
     public Optional<Materialized> currentInstall() {
-        return read(engineJarPath(), libDir.resolve(MANIFEST));
+        return readLive();
     }
 
     /**
      * The engine paired with product version {@code v}: the live jar when it is that version, else
-     * the parked {@code .old} jar when that is {@code v} (drain window for a just-replaced client).
+     * the parked jar when that is {@code v} (drain window for a just-replaced client).
      */
     public Optional<Materialized> resolve(String v) {
         Optional<Materialized> live = currentInstall();
         if (live.isPresent() && live.get().version().equals(v)) return live;
-        Optional<Materialized> parked = read(engineJarOldPath(), libDir.resolve(MANIFEST_OLD));
+        Optional<Materialized> parked = readParked();
         if (parked.isPresent() && parked.get().version().equals(v)) return parked;
         return Optional.empty();
     }
 
-    /** Live install; empty when none is complete. */
     public Optional<Materialized> newest() {
         return currentInstall();
     }
 
-    /**
-     * Recorded {@code engine-sha256} for {@code version} (live or parked). Empty when that version
-     * is not installed — spawn then has no SNAPSHOT identity to compare.
-     */
     public Optional<String> engineSha(String version) {
         return resolve(version).map(Materialized::engineSha).filter(s -> !s.isBlank());
     }
 
     /**
-     * Best-effort removal of displaced install files: parked engine jar, leftover versioned jar
-     * names, a leftover {@code versions/} tree, parked PATH binaries ({@code jk.old} /
-     * {@code jk.exe.old}), and AOT caches that are not for the live product version. A file still
-     * mapped by a draining engine is left for a later cycle. Never throws.
-     *
-     * @return paths successfully removed
+     * Best-effort removal of parked engine jar/config, parked PATH binaries, and AOT caches that
+     * are not for the live product version. Never throws.
      */
     public List<Path> gc() {
-        return gc(JkDirs.binDir(), JkDirs.versions(), JkDirs.state());
+        return gc(JkDirs.binDir(), JkDirs.state());
     }
 
     /**
      * @param binDir PATH install directory ({@code jk.old} / {@code jk.exe.old}); {@code null} skips
-     * @param legacyVersions leftover {@code versions/} tree; {@code null} skips
-     * @param stateDir engine state (legacy {@code state/engine/<v>/} + AOT); {@code null} skips AOT
+     * @param stateDir engine state (+ AOT); {@code null} skips AOT
      */
-    public List<Path> gc(Path binDir, Path legacyVersions, Path stateDir) {
+    public List<Path> gc(Path binDir, Path stateDir) {
         List<Path> removed = new ArrayList<>();
         tryDelete(engineJarOldPath(), removed);
-        tryDelete(libDir.resolve(MANIFEST_OLD), removed);
-        sweepProductLibCruft(removed);
-        sweepLegacyVersions(legacyVersions, stateDir, removed);
+        tryDelete(configFileOld(), removed);
+        sweepParkedJarsInEngineHome(removed);
         sweepParkedClients(binDir, removed);
         sweepSupersededAot(stateDir, removed);
         return removed;
     }
 
+    /** @deprecated use {@link #gc(Path, Path)}; legacyVersions is ignored. */
+    @Deprecated
+    public List<Path> gc(Path binDir, Path legacyVersions, Path stateDir) {
+        return gc(binDir, stateDir);
+    }
+
     /**
-     * Install {@code version}'s engine jar from CAS. Parks a different live jar as {@code .old}.
-     * Identical bytes are a no-op. Refuses to replace a <em>newer</em> live install with an older
-     * version (newer always wins).
+     * Install {@code version}'s engine jar from CAS using the default release basename
+     * {@code jk-engine-<version>.jar}.
      */
     public Materialized materialize(String version, Cas cas, String engineJarSha) throws IOException {
+        return materialize(version, cas, engineJarSha, "jk-engine-" + version + ".jar");
+    }
+
+    /**
+     * Install {@code version}'s engine jar from CAS as {@code jarFileName} under the engine home.
+     * Parks a different live jar as {@code .old}. Identical bytes are a no-op. Refuses to replace a
+     * <em>newer</em> live install with an older version.
+     */
+    public Materialized materialize(String version, Cas cas, String engineJarSha, String jarFileName)
+            throws IOException {
         Optional<Materialized> existing = currentInstall();
         if (existing.isPresent()
                 && existing.get().version().equals(version)
-                && hasContent(existing.get(), engineJarSha)) {
+                && hasContent(existing.get(), engineJarSha)
+                && existing.get().engineJar().getFileName().toString().equals(jarFileName)) {
             return existing.get();
         }
 
-        Files.createDirectories(libDir);
-        Path lockPath = libDir.resolve(LOCK_NAME);
+        Files.createDirectories(engineHome());
+        Path lockPath = engineHome().resolve(LOCK_NAME);
         try (FileChannel lockCh = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
                 FileLock lock = lockCh.lock()) {
             Optional<Materialized> raced = currentInstall();
-            if (raced.isPresent() && raced.get().version().equals(version) && hasContent(raced.get(), engineJarSha)) {
+            if (raced.isPresent()
+                    && raced.get().version().equals(version)
+                    && hasContent(raced.get(), engineJarSha)
+                    && raced.get().engineJar().getFileName().toString().equals(jarFileName)) {
                 return raced.get();
             }
             if (raced.isPresent() && compare(raced.get().version(), version) > 0) {
                 throw new IOException(
                         "refusing to replace jk-engine " + raced.get().version() + " with older " + version);
             }
-            return materializeLocked(version, cas, engineJarSha);
+            return materializeLocked(version, cas, engineJarSha, jarFileName);
         }
     }
 
     /**
-     * Ingest {@code engineJar} into the CAS, then {@link #materialize}. The CAS stays the verified
-     * byte store; the launchable copy is {@link #engineJarPath()}.
+     * Ingest {@code engineJar} into the CAS, then materialize using the source file's basename.
      */
     public Materialized materializeFromFiles(String version, Cas cas, Path engineJar) throws IOException {
         String engineSha = Hashing.sha256Hex(engineJar);
         cas.putFile(engineJar, engineSha);
-        return materialize(version, cas, engineSha);
+        String jarName = engineJar.getFileName().toString();
+        return materialize(version, cas, engineSha, jarName);
     }
 
-    /**
-     * Park {@code live} as {@code <name>.old} so the original name is free. Tries to delete an
-     * existing parked file first; if that fails, parks beside it with a unique suffix.
-     *
-     * @return the path the file moved to, or empty when {@code live} did not exist
-     */
     public static Optional<Path> displaceToOld(Path live) throws IOException {
         if (live == null || !Files.exists(live)) return Optional.empty();
         Path old = parkedName(live);
@@ -186,15 +211,10 @@ public final class EngineInstall {
         }
     }
 
-    /** {@code jk} → {@code jk.old}; {@code jk.exe} → {@code jk.exe.old}. */
     public static Path parkedName(Path live) {
         return live.resolveSibling(live.getFileName() + ".old");
     }
 
-    /**
-     * Park the live PATH client (and {@code jkx}) and install {@code clientSource} as the new
-     * {@code jk} / {@code jk.exe}. {@code jkx} is a hard link when the filesystem allows it.
-     */
     public static void installBinaries(Path clientSource, Path binDir) throws IOException {
         installBinaries(clientSource, binDir, windowsOs());
     }
@@ -224,29 +244,10 @@ public final class EngineInstall {
         makeExecutable(jkx);
     }
 
-    /**
-     * Drop AOT artifacts that do not belong to the live product version when a generation becomes
-     * primary. Names are {@code engine-<ver>-<key>.aot} and {@code <tool>-<ver>-<key>.aot}; anything
-     * without {@code -<keepVersion>-} before a 16-hex key is deleted (including legacy unversioned
-     * worker names). The live version's caches are kept so a respawn does not throw away a
-     * just-trained engine/worker AOT.
-     *
-     * <p>Displaced engines must not retrain ({@link cc.jumpkick.util.AotSettings#suppressTraining()}).
-     * Best-effort; never throws. Called from primary claim, install materialize, and {@link #gc}.
-     *
-     * @return number of primary {@code *.aot} cache files removed
-     */
     public static int deleteSupersededEngineAot(Path aotDir, String keepVersion) {
         return wipeAotDirectory(aotDir, keepVersion);
     }
 
-    /**
-     * Delete AOT artifacts under {@code aotDir} that are not for {@code keepVersion}. When
-     * {@code keepVersion} is null/blank, deletes everything (install without a version pin).
-     * Leaves the directory and any {@code *.lock} files.
-     *
-     * @return number of primary {@code *.aot} cache files removed
-     */
     public static int wipeAotDirectory(Path aotDir) {
         return wipeAotDirectory(aotDir, null);
     }
@@ -297,11 +298,6 @@ public final class EngineInstall {
         return aotFiles;
     }
 
-    /**
-     * True when {@code name} is an AOT artifact for product version {@code ver}: a 16-hex key
-     * immediately after {@code -}<ver>{@code -}. Does not match a longer qualifier (e.g. keep
-     * {@code 0.12.0} does not match {@code engine-0.12.0-SNAPSHOT-…}).
-     */
     static boolean belongsToProductVersion(String name, String ver) {
         if (name == null || ver == null || ver.isBlank()) return false;
         String needle = "-" + ver + "-";
@@ -320,7 +316,6 @@ public final class EngineInstall {
         return false;
     }
 
-    /** Primary cache: ends with {@code .aot} — not {@code .aot.noaot} or {@code .aot.config}. */
     static boolean isPrimaryAotCacheName(String name) {
         return name != null && name.endsWith(".aot") && name.length() > 4 && !name.contains(".aot.");
     }
@@ -334,11 +329,6 @@ public final class EngineInstall {
                 || name.contains(".tmp-");
     }
 
-    /**
-     * Version ordering: dotted numeric segments compare numerically; a qualifier
-     * ({@code -SNAPSHOT}, {@code -rc1}, …) sorts BELOW its release; qualifiers compare
-     * lexicographically among themselves.
-     */
     public static int compare(String a, String b) {
         String[] an = a.split("-", 2);
         String[] bn = b.split("-", 2);
@@ -356,170 +346,6 @@ public final class EngineInstall {
         return an[1].compareTo(bn[1]);
     }
 
-    // ---- internals -------------------------------------------------------
-
-    private Materialized materializeLocked(String version, Cas cas, String engineJarSha) throws IOException {
-        Optional<Materialized> live = currentInstall();
-        if (live.isPresent()) {
-            displaceToOld(engineJarPath());
-            displaceToOld(libDir.resolve(MANIFEST));
-        } else {
-            // Torn live files (jar without toml, or the reverse) are not launchable.
-            try {
-                Files.deleteIfExists(engineJarPath());
-                Files.deleteIfExists(libDir.resolve(MANIFEST));
-            } catch (IOException ignored) {
-                displaceToOld(engineJarPath());
-                displaceToOld(libDir.resolve(MANIFEST));
-            }
-        }
-        Path jarTmp = Files.createTempFile(libDir, ".jk-engine-", ".tmp");
-        try {
-            Files.copy(cas.pathFor(engineJarSha), jarTmp, StandardCopyOption.REPLACE_EXISTING);
-            AtomicWrites.moveInto(jarTmp, engineJarPath());
-        } finally {
-            Files.deleteIfExists(jarTmp);
-        }
-        AtomicWrites.replace(
-                libDir.resolve(MANIFEST),
-                "version = \"" + version + "\"\n" + "engine-sha256 = \"" + engineJarSha + "\"\n" + "protocol = 1\n");
-        return currentInstall()
-                .orElseThrow(() -> new IOException("materialization of " + version + " left no engine jar"));
-    }
-
-    /**
-     * Copy the newest complete leftover {@code versions/<v>/} engine into the product lib when the
-     * product lib is empty. Leaves the old tree for {@link #gc} (a draining engine may still map it).
-     */
-    void tryMigrate(Path versionsDir) {
-        if (currentInstall().isPresent()) return;
-        if (versionsDir == null || !Files.isDirectory(versionsDir)) return;
-        Optional<Legacy> newest = newestLegacy(versionsDir);
-        if (newest.isEmpty()) return;
-        try {
-            Files.createDirectories(libDir);
-            Files.copy(newest.get().jar, engineJarPath(), StandardCopyOption.REPLACE_EXISTING);
-            String sha = parseField(newest.get().manifest, "engine-sha256");
-            if (sha == null || sha.isBlank()) sha = Hashing.sha256Hex(newest.get().jar);
-            AtomicWrites.replace(
-                    libDir.resolve(MANIFEST),
-                    "version = \"" + newest.get().version + "\"\n"
-                            + "engine-sha256 = \"" + sha + "\"\n"
-                            + "protocol = 1\n");
-        } catch (IOException ignored) {
-            // leave product lib empty; spawn will fetch / materialize
-        }
-    }
-
-    private record Legacy(String version, Path jar, Path manifest) {}
-
-    private static Optional<Legacy> newestLegacy(Path versionsDir) {
-        List<Legacy> found = new ArrayList<>();
-        try (DirectoryStream<Path> entries = Files.newDirectoryStream(versionsDir)) {
-            for (Path p : entries) {
-                if (!Files.isDirectory(p)) continue;
-                Path jar = p.resolve("lib").resolve(ENGINE_JAR);
-                Path manifest = p.resolve("manifest.toml");
-                if (!Files.isRegularFile(jar) || !Files.isRegularFile(manifest)) continue;
-                String v = parseField(manifest, "version");
-                if (v == null || v.isBlank()) v = p.getFileName().toString();
-                found.add(new Legacy(v, jar, manifest));
-            }
-        } catch (IOException e) {
-            return Optional.empty();
-        }
-        return found.stream().max((a, b) -> compare(a.version, b.version));
-    }
-
-    private static Optional<Materialized> read(Path jar, Path manifest) {
-        if (!Files.isRegularFile(jar) || !Files.isRegularFile(manifest)) return Optional.empty();
-        String version = parseField(manifest, "version");
-        if (version == null || version.isBlank()) return Optional.empty();
-        String sha = parseField(manifest, "engine-sha256");
-        Path root = jar.getParent();
-        return Optional.of(new Materialized(version, root, jar, sha == null ? "" : sha));
-    }
-
-    private static boolean hasContent(Materialized m, String engineJarSha) {
-        return engineJarSha != null && engineJarSha.equalsIgnoreCase(m.engineSha());
-    }
-
-    private static String parseField(Path toml, String key) {
-        try {
-            String prefix = key + " = \"";
-            for (String line : Files.readAllLines(toml)) {
-                String trimmed = line.trim();
-                if (trimmed.startsWith(prefix)) {
-                    String v = trimmed.substring(prefix.length());
-                    int q = v.indexOf('"');
-                    if (q > 0) return v.substring(0, q);
-                }
-            }
-        } catch (IOException ignored) {
-            // unreadable
-        }
-        return null;
-    }
-
-    private void sweepProductLibCruft(List<Path> removed) {
-        if (!Files.isDirectory(libDir)) return;
-        try (DirectoryStream<Path> entries = Files.newDirectoryStream(libDir)) {
-            for (Path p : entries) {
-                if (!Files.isRegularFile(p)) continue;
-                String name = p.getFileName().toString();
-                if (ENGINE_JAR.equals(name) || MANIFEST.equals(name) || LOCK_NAME.equals(name)) continue;
-                if (isEngineCruftName(name)) tryDelete(p, removed);
-            }
-        } catch (IOException ignored) {
-            // best-effort
-        }
-    }
-
-    static boolean isEngineCruftName(String name) {
-        if (name == null || name.isBlank()) return false;
-        if (name.equals(ENGINE_JAR_OLD) || name.equals(MANIFEST_OLD)) return true;
-        if (name.startsWith(ENGINE_JAR + ".old") || name.startsWith(MANIFEST + ".old")) return true;
-        // leftover dist / side-by-side names: jk-engine-0.12.0.jar
-        return name.startsWith("jk-engine-") && name.endsWith(".jar");
-    }
-
-    private void sweepLegacyVersions(Path versionsDir, Path stateDir, List<Path> removed) {
-        if (versionsDir == null || !Files.exists(versionsDir)) return;
-        // The leftover tree is the only copy until product-lib materialize/migrate succeeds.
-        if (currentInstall().isEmpty()) return;
-        Path aot = stateDir == null ? null : stateDir.resolve("aot");
-        if (Files.isDirectory(versionsDir)) {
-            try (DirectoryStream<Path> entries = Files.newDirectoryStream(versionsDir)) {
-                for (Path p : entries) {
-                    if (!Files.isDirectory(p)) continue;
-                    String v = p.getFileName().toString();
-                    if (stateDir != null) {
-                        deleteRecursively(stateDir.resolve("engine").resolve(v));
-                        deleteEngineAotFiles(aot, v);
-                    }
-                    deleteRecursively(p);
-                    if (!Files.exists(p)) removed.add(p);
-                }
-            } catch (IOException ignored) {
-                // best-effort
-            }
-        }
-        deleteRecursively(versionsDir);
-        if (!Files.exists(versionsDir)) removed.add(versionsDir);
-    }
-
-    private static void sweepParkedClients(Path binDir, List<Path> removed) {
-        if (binDir == null || !Files.isDirectory(binDir)) return;
-        try (DirectoryStream<Path> entries = Files.newDirectoryStream(binDir)) {
-            for (Path p : entries) {
-                if (!Files.isRegularFile(p) && !Files.isSymbolicLink(p)) continue;
-                if (isParkedClientName(p.getFileName().toString())) tryDelete(p, removed);
-            }
-        } catch (IOException ignored) {
-            // best-effort
-        }
-    }
-
     static boolean isParkedClientName(String name) {
         if (name == null || name.isBlank()) return false;
         String n = name.toLowerCase(Locale.ROOT);
@@ -535,6 +361,146 @@ public final class EngineInstall {
                 || n.startsWith("jkx.cmd.old");
     }
 
+    // ---- internals -------------------------------------------------------
+
+    private Materialized materializeLocked(String version, Cas cas, String engineJarSha, String jarFileName)
+            throws IOException {
+        Optional<Materialized> live = currentInstall();
+        if (live.isPresent()) {
+            displaceToOld(live.get().engineJar());
+            displaceToOld(configFile());
+        } else {
+            try {
+                Path incomplete = resolveLiveJarPath().orElse(null);
+                if (incomplete != null) Files.deleteIfExists(incomplete);
+                Files.deleteIfExists(configFile());
+            } catch (IOException e) {
+                Path incomplete = resolveLiveJarPath().orElse(null);
+                if (incomplete != null) displaceToOld(incomplete);
+                displaceToOld(configFile());
+            }
+        }
+        Path dest = engineHome().resolve(jarFileName);
+        Path jarTmp = Files.createTempFile(engineHome(), ".jk-engine-", ".tmp");
+        try {
+            Files.copy(cas.pathFor(engineJarSha), jarTmp, StandardCopyOption.REPLACE_EXISTING);
+            AtomicWrites.moveInto(jarTmp, dest);
+        } finally {
+            Files.deleteIfExists(jarTmp);
+        }
+        writeConfig(version, engineJarSha, jarFileName);
+        return currentInstall()
+                .orElseThrow(() -> new IOException("materialization of " + version + " left no engine jar"));
+    }
+
+    private void writeConfig(String version, String engineJarSha, String jarFileName) throws IOException {
+        Map<String, String> keys = new LinkedHashMap<>();
+        keys.put("version", version);
+        keys.put("engine-sha256", engineJarSha);
+        keys.put("protocol", "1");
+        keys.put("jar", jarFileName);
+        keys.putAll(AppInstallConfig.jkConfigProperties());
+        AppInstallConfig.write(dirs, BIN_NAME, keys);
+    }
+
+    private Optional<Materialized> readLive() {
+        Map<String, String> cfg = AppInstallConfig.read(dirs, BIN_NAME);
+        return materializeFromConfig(cfg, false);
+    }
+
+    private Optional<Materialized> readParked() {
+        Path oldCfg = configFileOld();
+        if (!Files.isRegularFile(oldCfg)) return Optional.empty();
+        try {
+            Map<String, String> cfg = AppInstallConfig.parse(Files.readString(oldCfg));
+            return materializeFromConfig(cfg, true);
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+    }
+
+    private Optional<Materialized> materializeFromConfig(Map<String, String> cfg, boolean parked) {
+        String version = cfg.get("version");
+        if (version == null || version.isBlank()) return Optional.empty();
+        String sha = cfg.getOrDefault("engine-sha256", "");
+        String jarName = cfg.get("jar");
+        Path jar;
+        if (jarName != null && !jarName.isBlank()) {
+            jar = engineHome().resolve(jarName);
+            if (parked) jar = parkedName(jar);
+        } else {
+            jar = inferJar(parked).orElse(null);
+            if (jar == null) return Optional.empty();
+        }
+        if (!Files.isRegularFile(jar)) return Optional.empty();
+        return Optional.of(new Materialized(version, engineHome(), jar, sha));
+    }
+
+    private Optional<Path> resolveLiveJarPath() {
+        Map<String, String> cfg = AppInstallConfig.read(dirs, BIN_NAME);
+        String jarName = cfg.get("jar");
+        if (jarName != null && !jarName.isBlank())
+            return Optional.of(engineHome().resolve(jarName));
+        return inferJar(false);
+    }
+
+    private Optional<Path> inferJar(boolean parked) {
+        Path home = engineHome();
+        if (!Files.isDirectory(home)) return Optional.empty();
+        try (DirectoryStream<Path> entries = Files.newDirectoryStream(home, "*.jar")) {
+            List<Path> hits = new ArrayList<>();
+            for (Path p : entries) {
+                String name = p.getFileName().toString();
+                boolean isOld = name.endsWith(".old") || name.contains(".old-");
+                if (parked == isOld) hits.add(p);
+            }
+            if (hits.size() == 1) return Optional.of(hits.get(0));
+            return hits.stream()
+                    .filter(p -> p.getFileName().toString().startsWith("jk-engine-"))
+                    .max((a, b) ->
+                            Long.compare(a.toFile().lastModified(), b.toFile().lastModified()));
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+    }
+
+    private boolean hasContent(Materialized m, String engineJarSha) {
+        return engineJarSha != null && engineJarSha.equalsIgnoreCase(m.engineSha());
+    }
+
+    private void sweepParkedJarsInEngineHome(List<Path> removed) {
+        Path home = engineHome();
+        if (!Files.isDirectory(home)) return;
+        String liveName = currentInstall()
+                .map(m -> m.engineJar().getFileName().toString())
+                .orElse(null);
+        try (DirectoryStream<Path> entries = Files.newDirectoryStream(home)) {
+            for (Path p : entries) {
+                if (!Files.isRegularFile(p)) continue;
+                String name = p.getFileName().toString();
+                if (LOCK_NAME.equals(name)) continue;
+                if (liveName != null && liveName.equals(name)) continue;
+                if (name.endsWith(".old") || name.contains(".old-") || name.endsWith(".tmp")) {
+                    tryDelete(p, removed);
+                }
+            }
+        } catch (IOException ignored) {
+            // best-effort
+        }
+    }
+
+    private static void sweepParkedClients(Path binDir, List<Path> removed) {
+        if (binDir == null || !Files.isDirectory(binDir)) return;
+        try (DirectoryStream<Path> entries = Files.newDirectoryStream(binDir)) {
+            for (Path p : entries) {
+                if (!Files.isRegularFile(p) && !Files.isSymbolicLink(p)) continue;
+                if (isParkedClientName(p.getFileName().toString())) tryDelete(p, removed);
+            }
+        } catch (IOException ignored) {
+            // best-effort
+        }
+    }
+
     private static boolean tryDelete(Path p, List<Path> removed) {
         if (p == null) return false;
         try {
@@ -544,12 +510,10 @@ public final class EngineInstall {
             if (removed != null) removed.add(p);
             return true;
         } catch (IOException ignored) {
-            // mapped by a draining process — retry on a later GC
             return false;
         }
     }
 
-    /** Drop AOT caches that are not for the live product version. No-op without a live install. */
     private void sweepSupersededAot(Path stateDir, List<Path> removed) {
         if (stateDir == null) return;
         String keep = currentInstall().map(Materialized::version).orElse(null);
@@ -562,36 +526,6 @@ public final class EngineInstall {
             return stream.map(p -> p.getFileName().toString()).anyMatch(EngineInstall::isPrimaryAotCacheName);
         } catch (IOException e) {
             return false;
-        }
-    }
-
-    /**
-     * Delete version {@code v}'s engine AOT artifacts ({@code engine-<v>-<16-hex-key>.*}) from the
-     * shared {@code state/aot/} dir. The key-shape check keeps a version whose name extends this
-     * one ({@code 0.10.0} vs {@code 0.10.1}) out of the blast radius.
-     */
-    static void deleteEngineAotFiles(Path aotDir, String v) {
-        if (aotDir == null || v == null || v.isBlank() || !Files.isDirectory(aotDir)) return;
-        String prefix = "engine-" + v + "-";
-        List<String> removed = new ArrayList<>();
-        try (var entries = Files.newDirectoryStream(aotDir, "engine-*")) {
-            for (Path p : entries) {
-                String name = p.getFileName().toString();
-                if (name.startsWith(prefix) && name.substring(prefix.length()).matches("[0-9a-f]{16}\\..*")) {
-                    if (name.endsWith(".aot")) removed.add(name);
-                    else if (name.endsWith(".noaot") && name.length() > ".noaot".length()) {
-                        String stem = name.substring(0, name.length() - ".noaot".length());
-                        removed.add(stem.endsWith(".aot") ? stem : stem + ".aot");
-                    }
-                    Files.deleteIfExists(p);
-                }
-            }
-        } catch (IOException ignored) {
-            // best-effort maintenance
-        }
-        if (!removed.isEmpty()) {
-            cc.jumpkick.util.AotManifest.remove(aotDir, removed);
-            cc.jumpkick.util.AotManifest.reconcile(aotDir);
         }
     }
 
@@ -615,11 +549,7 @@ public final class EngineInstall {
             perms.add(PosixFilePermission.OTHERS_EXECUTE);
             Files.setPosixFilePermissions(p, perms);
         } catch (UnsupportedOperationException | IOException ignored) {
-            // Windows / restricted FS: executability is not permission-borne there.
+            // Windows / restricted FS
         }
-    }
-
-    private static void deleteRecursively(Path root) {
-        cc.jumpkick.util.PathUtil.deleteRecursively(root);
     }
 }

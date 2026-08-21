@@ -12,7 +12,7 @@ import java.util.stream.Stream;
 
 /**
  * Engine JVM entrypoint ({@code:engine}). Plain Java — never a native image. Spawned by the slim
- * client as {@code java -cp jk-engine.jar cc.jumpkick.engine.EngineMain}. Not a client: no CLI
+ * client as {@code java -cp lib/jk-engine/<jar> cc.jumpkick.engine.EngineMain}. Not a client: no CLI
  * command tree, no TUI.
  */
 public final class EngineMain {

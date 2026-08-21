@@ -160,7 +160,7 @@ public final class EngineFleet {
 
     /**
      * Resident engine JVMs this user owns that no on-disk pointer named. Match is the engine
-     * main class or {@code jk-engine.jar} on the command line. Sidecar AOT trainers and other
+     * main class or {@code /lib/jk-engine/} on the command line. Sidecar AOT trainers and other
      * users' processes are excluded. {@code allHomes} includes other {@code JK_HOME}s (status);
      * {@code false} keeps stop scoped to this home.
      */
@@ -208,29 +208,21 @@ public final class EngineFleet {
     }
 
     /**
-     * Best-effort product home from a spawn line ({@code …/<home>/lib/jk-engine.jar} or the leftover
-     * {@code …/<home>/versions/<v>/lib/jk-engine.jar}). Empty when the command line is not that shape.
+     * Best-effort product home from a spawn line ({@code …/<home>/lib/jk-engine/<jar>}). Empty when
+     * the command line is not that shape.
      */
     static Path homeFromCommandLine(String commandLine) {
         if (commandLine == null || commandLine.isBlank()) return null;
         String norm = commandLine.replace('\\', '/');
-        int jar = norm.indexOf("/lib/jk-engine.jar");
-        if (jar < 0) return null;
-        int lib = norm.lastIndexOf("/lib/jk-engine.jar", jar);
-        if (lib <= 0) return null;
-        int start = lib;
+        int marker = norm.indexOf("/lib/jk-engine/");
+        if (marker <= 0) return null;
+        int start = marker;
         while (start > 0) {
             char c = norm.charAt(start - 1);
             if (c == ' ' || c == '\t') break;
             start--;
         }
-        String parent = norm.substring(start, lib);
-        if (parent.isBlank()) return null;
-        // leftover: <home>/versions/<v>/lib/jk-engine.jar
-        int versions = parent.lastIndexOf("/versions/");
-        if (versions > 0 && parent.indexOf('/', versions + "/versions/".length()) < 0) {
-            parent = parent.substring(0, versions);
-        }
+        String parent = norm.substring(start, marker);
         return parent.isBlank() ? null : Path.of(parent);
     }
 
@@ -253,7 +245,7 @@ public final class EngineFleet {
     static boolean isResidentEngine(String commandLine) {
         if (commandLine == null || commandLine.isBlank()) return false;
         if (commandLine.contains("--aot-training")) return false;
-        return commandLine.contains("cc.jumpkick.engine.EngineMain") || commandLine.contains("jk-engine.jar");
+        return commandLine.contains("cc.jumpkick.engine.EngineMain") || commandLine.contains("/lib/jk-engine/");
     }
 
     static String commandLineOf(ProcessHandle handle) {

@@ -113,7 +113,7 @@ jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/en
 ```
 
 The client never embeds the engine. Spawning uses
-`~/.local/share/jk/lib/jk-engine.jar` (or `$JK_HOME/lib/jk-engine.jar`) or `JK_ENGINE_EXE`.
+`~/.local/share/jk/lib/jk-engine/` (or `$JK_HOME/lib/jk-engine/`) or `JK_ENGINE_EXE`.
 
 | Still Gradle | Why |
 |---|---|

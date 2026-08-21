@@ -54,9 +54,10 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   engines: `jk engine status` lists every resident engine this user owns (including other
   `JK_HOME`s and draining/ghost pids). `jk engine stop --all` stops **this home only** so a
   nested test suite cannot kill the host engine. `--pid` stops one explicitly.
-- **Versioning** — one live engine at `~/.local/share/jk/lib/jk-engine.jar` (or
-  `$JK_HOME/lib/jk-engine.jar`), paired with the PATH `jk`. An upgrade parks the previous jar as
-  `jk-engine.jar.old` and the previous client as `jk.old` (`jk.exe.old` on Windows) until the
+- **Versioning** — one live engine under `~/.local/share/jk/lib/jk-engine/` (or
+  `$JK_HOME/lib/jk-engine/`), with metadata in `~/.config/jk/jk-engine/config.toml` (or
+  `$JK_HOME/config/jk-engine/config.toml`), paired with the PATH `jk`. An upgrade parks the previous
+  jar as `<name>.jar.old` and the previous client as `jk.old` (`jk.exe.old` on Windows) until the
   displaced engine drains; GC deletes the parked files. Handshake detects skew and takes over.
   **Newer always wins**: the lock's
   `jk-min` is a *floor*, never a pin — a jk older than the floor refuses artifact jobs with an

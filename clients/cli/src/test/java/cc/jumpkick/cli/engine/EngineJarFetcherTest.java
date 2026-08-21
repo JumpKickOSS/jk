@@ -12,6 +12,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -21,7 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The spawn path's engine-jar self-heal ({@link EngineJarFetcher}): download from the release
  * layout ({@code releases/<version>/jk-engine-<version>.jar} + {@code SHA256SUMS}), verify,
- * ingest into the CAS, and install {@code $JK_HOME/lib/jk-engine.jar}. The
+ * ingest into the CAS, and install under {@code $JK_HOME/lib/jk-engine/}. The
  * wiring INTO {@code spawn()} is native-client-only and stays manual-verification territory,
  * like the spawn itself (see {@code EngineClientTest}).
  */
@@ -67,7 +68,8 @@ class EngineJarFetcherTest {
     }
 
     private static cc.jumpkick.cache.EngineInstall engineInstall(Path root) {
-        return new cc.jumpkick.cache.EngineInstall(root.resolve("lib"));
+        var dirs = cc.jumpkick.util.JkDirs.of(Map.of("JK_HOME", root.toString())::get, root.toString());
+        return new cc.jumpkick.cache.EngineInstall(root.resolve("lib"), dirs);
     }
 
     /**

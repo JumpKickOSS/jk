@@ -4,6 +4,7 @@ package cc.jumpkick.engine.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.protocol.CacheInventoryAck;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -35,6 +36,31 @@ class CacheInventoryOpsTest {
                 new CacheInventoryOps.Request("wipe-store", null, store, List.of(), List.of(), false));
         assertThat(wipe.files()).isEqualTo(1);
         assertThat(Files.exists(child)).isFalse();
+    }
+
+    @Test
+    void wipe_store_counts_hardlinked_blobs_once(@TempDir Path store) throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(probeHardLink(store), "hard links required");
+        byte[] payload = new byte[4_096];
+        Path cas = Files.createDirectories(store.resolve("sha256/ab")).resolve("blob");
+        Files.write(cas, payload);
+        Path repo =
+                Files.createDirectories(store.resolve("repos/central/g/a/1")).resolve("a.jar");
+        Files.createLink(repo, cas);
+
+        CacheInventoryAck dry = CacheInventoryOps.run(
+                new CacheInventoryOps.Request("wipe-store", null, store, List.of(), List.of(), true));
+        assertThat(dry.files()).isEqualTo(2);
+        assertThat(dry.bytes())
+                .as("unique inode bytes, not sum of hard-link sizes")
+                .isEqualTo(payload.length);
+
+        CacheInventoryAck wipe = CacheInventoryOps.run(
+                new CacheInventoryOps.Request("wipe-store", null, store, List.of(), List.of(), false));
+        assertThat(wipe.files()).isEqualTo(2);
+        assertThat(wipe.bytes()).isEqualTo(payload.length);
+        assertThat(cas).doesNotExist();
+        assertThat(repo).doesNotExist();
     }
 
     @Test
@@ -133,6 +159,22 @@ class CacheInventoryOpsTest {
         Files.writeString(f, "jar-bytes");
         Files.writeString(f.resolveSibling(f.getFileName() + ".sha256"), "abc");
         return f;
+    }
+
+    /** True when {@link Files#createLink} works on this volume (POSIX or NTFS hard links). */
+    private static boolean probeHardLink(Path dir) throws Exception {
+        Path x = Files.createDirectories(dir).resolve(".hl-x");
+        Path y = dir.resolve(".hl-y");
+        Files.writeString(x, "z");
+        try {
+            Files.createLink(y, x);
+            return true;
+        } catch (UnsupportedOperationException | FileSystemException e) {
+            return false;
+        } finally {
+            Files.deleteIfExists(y);
+            Files.deleteIfExists(x);
+        }
     }
 
     @Test

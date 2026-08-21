@@ -30,7 +30,8 @@ Product data uses platform-native locations (XDG on Linux/macOS; Windows Known F
 
 **Artifact store** (dependency CAS + `repos/`) lives under **data** (`…/store`). **Cache
 CAS** (action outputs) lives under **cache** (`…/cache/sha256`). The live engine jar is
-`<data>/lib/jk-engine.jar` (or `$JK_HOME/lib/jk-engine.jar`).
+`<data>/lib/jk-engine/<jar>` with metadata in `<config>/jk-engine/config.toml`
+(or `$JK_HOME/lib/jk-engine/…` + `$JK_HOME/config/jk-engine/config.toml`).
 
 Managed JDKs use the **IntelliJ shared root** so the IDE and JumpKick share runtimes.
 Discovery still picks up SDKMAN, mise, Homebrew, `JAVA_HOME`, and system installs before
@@ -43,13 +44,14 @@ XDG variables (`XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_
 
 | Env / flag | Effect |
 |------------|--------|
-| `JK_HOME` | Optional **single-tree umbrella** for product dirs (config, cache, store, state, data, bin, lib). Hermetic tests and cold CI roots. Does **not** move the default JDK root. |
+| `JK_HOME` | Optional **single-tree umbrella** for product dirs (`config/`, `cache/`, `store/`, `state/`, `data/`, `bin/`, `lib/`). Hermetic tests and cold CI roots. Does **not** move the default JDK root. Global prefs: `$JK_HOME/config/config.toml`; per-app install config: `$JK_HOME/config/<bin>/config.toml`. |
 | `JK_CACHE_DIR` | Action / local CPU cache |
 | `JK_STORE_DIR` | CAS / network-expensive store |
 | `JK_STATE_DIR` | Engine sockets, build history |
 | `JK_DATA_DIR` | Product data root (engine lib + default store parent) |
 | `JK_BIN_DIR` / `JK_INSTALL_DIR` | PATH install directory for `jk` / `jkx` |
-| `JK_CONFIG_FILE` | Absolute path to `config.toml` |
+| `JK_CONFIG_DIR` | Config root (global `config.toml` + per-app `<bin>/config.toml`). Default: `$JK_HOME/config` or `~/.config/jk` |
+| `JK_CONFIG_FILE` | Absolute path to the global `config.toml` |
 | `JK_JDKS_DIR` | Managed JDK **write** root. Set with `JK_HOME` for hermetic JDK isolation |
 | `JK_AOT_TRAIN=off` | Skip AOT train-on-miss (still **use** existing `.aot` caches). CI / short-lived builds usually set this |
 | `JK_WORKER_AOT=off` | Plugin workers: no AOT map and no train |

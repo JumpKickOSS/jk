@@ -18,6 +18,7 @@ import cc.jumpkick.runtime.WorkspaceSpec;
 import cc.jumpkick.tool.JarManifest;
 import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.tool.ToolLauncher;
+import cc.jumpkick.util.AppInstallConfig;
 import cc.jumpkick.util.GitUrl;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -440,6 +441,7 @@ public final class InstallCommand {
             // an installed tool must be a stable snapshot, not an alias of the build tree.
             Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
         }
+        writeAppInstallConfig(projectDir, plan);
         if (!plan.launcherScript().isEmpty()) {
             Path launcher = Path.of(plan.launcherPath());
             Files.createDirectories(launcher.getParent());
@@ -451,6 +453,48 @@ public final class InstallCommand {
         Path bin = Path.of(plan.binPath());
         markExecutable(bin);
         return bin;
+    }
+
+    /**
+     * Persist {@code $JK_CONFIG_DIR/<bin>/config.toml} for fat/minified installs (jar under
+     * {@code productLib/<bin>/}). Honors {@code [application].config} templates and {@code
+     * jk-config.*} system properties.
+     */
+    private void writeAppInstallConfig(Path projectDir, cc.jumpkick.engine.protocol.ExecPlan plan) throws IOException {
+        if (plan.linkDests().isEmpty()) return;
+        Path dest = Path.of(plan.linkDests().get(0));
+        Path parent = dest.getParent();
+        if (parent == null) return;
+        String bin = parent.getFileName().toString();
+        if (bin.isBlank()) return;
+        Map<String, String> keys = new LinkedHashMap<>(AppInstallConfig.jkConfigProperties());
+        keys.put("jar", dest.getFileName().toString());
+        keys.putIfAbsent("name", bin);
+        try {
+            var info = projectInfo(projectDir);
+            if (info.version() != null && !info.version().isBlank()) {
+                keys.putIfAbsent("version", info.version());
+            }
+        } catch (IOException ignored) {
+            // version is best-effort
+        }
+        String templateRel = null;
+        try {
+            var build = cc.jumpkick.config.JkBuildParser.parse(projectDir);
+            templateRel = build.application()
+                    .map(cc.jumpkick.model.JkBuild.Application::config)
+                    .orElse(null);
+        } catch (RuntimeException ignored) {
+            // no template
+        }
+        if (templateRel != null && !templateRel.isBlank()) {
+            Path templateFile = projectDir.resolve(templateRel);
+            if (Files.isRegularFile(templateFile)) {
+                AppInstallConfig.writeTemplate(JkDirs.current(), bin, Files.readString(templateFile), keys);
+                return;
+            }
+        }
+        AppInstallConfig.write(JkDirs.current(), bin, keys);
     }
 
     private static void markExecutable(Path file) {

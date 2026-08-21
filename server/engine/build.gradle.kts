@@ -83,8 +83,8 @@ tasks.shadowJar {
 }
 
 /**
- * Materialize the freshly-built engine fat jar into {@code $JK_HOME/lib/jk-engine.jar} (or
- * {@code ~/.local/share/jk/lib/jk-engine.jar}) and bounce the resident daemon so local dogfood
+ * Materialize the freshly-built engine fat jar into {@code $JK_HOME/lib/jk-engine/} (or
+ * {@code ~/.local/share/jk/lib/jk-engine/}) and bounce the resident daemon so local dogfood
  * picks up engine-side first-party plugin tables without a hand copy.
  *
  * Client resolution (first hit wins): `:cli:installDist` bin, `build/dist/jk`, platform bin dir

@@ -428,10 +428,11 @@ public final class ManifestTables {
         boolean assembly = artifactFlag(application, "assembly");
         boolean minified = artifactFlag(application, "minified");
         boolean nativeImage = artifactFlag(application, "native");
+        String config = application.getString("config");
         if (main == null || main.isBlank()) {
             throw new JkBuildParseException("[application].main is required");
         }
-        return Optional.of(new JkBuild.Application(main, assembly, minified, nativeImage));
+        return Optional.of(new JkBuild.Application(main, assembly, minified, nativeImage, config));
     }
 
     /**

@@ -225,28 +225,18 @@ public final class CacheInventoryOps {
     }
 
     private static CacheInventoryAck wipeStore(Path storeRoot, boolean dryRun) throws IOException {
-        long[] stats = {0L, 0L};
         if (storeRoot == null || !Files.isDirectory(storeRoot)) return CacheInventoryAck.wipe(0, 0);
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(storeRoot)) {
-            for (Path child : stream) {
-                countTree(child, stats);
-                if (!dryRun) PathUtil.deleteRecursivelyOrThrow(child);
+        // Unique-inode bytes (POSIX ino/dev or Windows fileKey) — CAS + repos hard links must not
+        // inflate "freed" when the same blob is linked under sha256/ and repos/.
+        DiskUsage.Stats stats = DiskUsage.of(storeRoot);
+        if (!dryRun) {
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(storeRoot)) {
+                for (Path child : stream) {
+                    PathUtil.deleteRecursivelyOrThrow(child);
+                }
             }
         }
-        return CacheInventoryAck.wipe(stats[0], stats[1]);
-    }
-
-    private static void countTree(Path root, long[] stats) {
-        try (var walk = Files.walk(root)) {
-            walk.filter(Files::isRegularFile).forEach(p -> {
-                stats[0]++;
-                try {
-                    stats[1] += Files.size(p);
-                } catch (IOException ignored) {
-                }
-            });
-        } catch (IOException ignored) {
-        }
+        return CacheInventoryAck.wipe(stats.files(), stats.bytes());
     }
 
     private static List<String> repoNames(Path reposRoot) {

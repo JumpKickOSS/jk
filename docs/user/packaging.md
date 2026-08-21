@@ -20,7 +20,15 @@ R8 minification is **opt-in**, never the default.
 main     = "com.example.App"   # required for run / fat / typical apps
 assembly = true
 # minified = true
+# config   = "config/install.toml"  # optional template → $JK_CONFIG_DIR/<bin>/config.toml
 ```
+
+On `jk install`, fat/minified apps land under `<data>/lib/<bin>/` and write
+`$JK_CONFIG_DIR/<bin>/config.toml` (default `~/.config/jk/<bin>/config.toml`, or
+`$JK_HOME/config/<bin>/config.toml`). If `config` is set, that module-relative template is
+rendered with `${version}`, `${jar}`, `${name}`, and any `jk-config.*` system properties.
+Without `config`, those same `jk-config.*` properties (plus `jar` / `version` / `name`) are
+written directly.
 
 Samples: [assembly-app](examples/assembly-app/), [minified-cli](examples/minified-cli/).
 Frameworks: [Frameworks](frameworks.md). Native / OCI: [Native](native.md), [Images](images.md).

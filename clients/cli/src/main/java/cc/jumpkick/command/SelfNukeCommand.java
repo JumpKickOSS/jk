@@ -157,16 +157,20 @@ public final class SelfNukeCommand implements CliCommand {
         }
 
         int exit = Exit.SUCCESS;
+        // Settle order: Storage → Cache → Self, with a blank between back-to-back wedges so
+        // adjacent chip backgrounds do not visually merge.
+        if (wantStore) {
+            settleGap();
+            int s = StorageCommand.runNuke(dryRun, true);
+            if (s != 0) exit = s;
+        }
         if (wantCache) {
             // Engines were stopped above for STATE/STORE — the hosted purge would boot a fresh
             // one only for the STATE rows below to delete its state dir out from under it.
             boolean enginesStopped = !dryRun && (selected.contains(Target.STATE) || wantStore);
+            settleGap();
             int c = CacheCommand.runNuke(dirs.cacheDir(), dryRun, global, true, enginesStopped);
             if (c != 0) exit = c;
-        }
-        if (wantStore) {
-            int s = StorageCommand.runNuke(dryRun, true);
-            if (s != 0) exit = s;
         }
 
         long removed = 0;
@@ -192,6 +196,7 @@ public final class SelfNukeCommand implements CliCommand {
             return Exit.SOFTWARE;
         }
         if (dryRun) {
+            settleGap();
             CommandWedge.printOk(
                     "Self",
                     "Dry run: would nuke "
@@ -201,6 +206,7 @@ public final class SelfNukeCommand implements CliCommand {
                             + (wantCache || wantStore ? " plus cache/store targets" : "")
                             + ".");
         } else if (removed > 0 || wantCache || wantStore) {
+            settleGap();
             CommandWedge.printOk(
                     "Self",
                     "Nuked selected JumpKick data. Kept: active engine "
@@ -210,6 +216,11 @@ public final class SelfNukeCommand implements CliCommand {
                             + ".");
         }
         return exit;
+    }
+
+    /** Blank line before a settle when this command prints wedges back-to-back. */
+    private static void settleGap() {
+        CliOutput.out();
     }
 
     /** Parse stackable target flags; default {@code --all} when none named. */
@@ -270,11 +281,10 @@ public final class SelfNukeCommand implements CliCommand {
     }
 
     /**
-     * Config nuke targets the dedicated platform config dir ({@code ~/.config/jk}) when there is
-     * one. Under {@code JK_HOME} the "config dir" is the umbrella root shared with the engine lib, store,
-     * and state — deleting it would wipe every kept subtree — so only {@code config.toml} itself is
-     * scheduled. Same when the config dir coincides with the product home/data root for any other
-     * reason.
+     * Config nuke targets the config root ({@code ~/.config/jk}, {@code $JK_HOME/config}, or
+     * {@code JK_CONFIG_DIR}) — including per-app {@code <bin>/config.toml} trees. If that root
+     * somehow coincides with the product home/data umbrella, only the global {@code config.toml}
+     * file is scheduled so store/lib/state are not wiped.
      */
     private static void planConfig(JkDirs dirs, Map<Path, PurgeRow> byPath, Guards guards) {
         Path configFile = abs(dirs.userConfigFilePath());
@@ -338,7 +348,7 @@ public final class SelfNukeCommand implements CliCommand {
         }
         if (wantStore) {
             CliOutput.out("  Kept:  forge/repo credentials  (remove via jk repo logout)");
-            CliOutput.out("  Kept:  " + pathStyled(dirs.productLibDir().resolve("jk-engine.jar")) + "  (live engine)");
+            CliOutput.out("  Kept:  " + pathStyled(dirs.productLibDir().resolve("jk-engine")) + "  (live engine)");
         }
         CliOutput.out("  Kept:  " + pathStyled(dirs.binDirectory()) + "  (PATH binaries)");
         CliOutput.out("  Kept:  " + pathStyled(dirs.jdksDir()) + "  (managed JDKs)");

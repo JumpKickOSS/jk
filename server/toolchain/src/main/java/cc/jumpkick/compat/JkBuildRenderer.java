@@ -108,6 +108,8 @@ public final class JkBuildRenderer {
         if (app.assembly()) sb.append("assembly = true\n");
         if (app.minified()) sb.append("minified = true\n");
         if (app.nativeImage()) sb.append("native   = true\n");
+        if (app.config() != null)
+            sb.append("config   = ").append(quote(app.config())).append('\n');
     }
 
     /** {@code [native]} table — {@code enabled} defaults true when the table is present. */

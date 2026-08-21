@@ -10,7 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 
 /**
- * Fetches the matching engine fat jar into {@code $JK_HOME/lib/jk-engine.jar} when spawn finds none
+ * Fetches the matching engine fat jar into {@code $JK_HOME/lib/jk-engine/} when spawn finds none
  * (built into {@link EngineClient}, no separate fetch command). Verifies {@code SHA256SUMS} and
  * materializes atomically so a torn download is never launchable.
  */
@@ -89,7 +89,7 @@ final class EngineJarFetcher {
         }
 
         cas.put(jar, actualSha);
-        return install.materialize(version, cas, actualSha).engineJar();
+        return install.materialize(version, cas, actualSha, jarName).engineJar();
     }
 
     private static byte[] get(Http http, URI uri, String what) throws IOException {

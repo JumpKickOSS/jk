@@ -163,7 +163,7 @@ public record JkBuild(
      * {@code JkBuildParser.ensureShrinkForMinified}).
      */
     public JkBuild withArtifacts(boolean assembly, boolean minified) {
-        Application app = application.orElse(new Application(null, false, false, false));
+        Application app = application.orElse(new Application(null, false, false, false, null));
         if (app.assembly() == (assembly || minified) && app.minified() == minified) return this;
         return new JkBuild(
                 project,
@@ -174,7 +174,7 @@ public record JkBuild(
                 workspace,
                 manifest,
                 plugins,
-                Optional.of(new Application(app.main(), assembly, minified, app.nativeImage())),
+                Optional.of(new Application(app.main(), assembly, minified, app.nativeImage(), app.config())),
                 nativeConfig,
                 pluginConfigs,
                 build,
@@ -897,25 +897,33 @@ public record JkBuild(
      * @param minified build an R8-minified {@code -min.jar}; implies {@code assembly}
      * @param nativeImage {@code native = true}: native-image on {@code jk build} and {@code jk
      *     install}
+     * @param config optional module-relative template copied to
+     *     {@code $JK_CONFIG_DIR/<bin>/config.toml} on {@code jk install}
      */
-    public record Application(String main, boolean assembly, boolean minified, boolean nativeImage) {
+    public record Application(String main, boolean assembly, boolean minified, boolean nativeImage, String config) {
 
         public Application {
             if (main != null && main.isBlank()) main = null;
+            if (config != null && config.isBlank()) config = null;
             // Artifacts are additive and a minified jar is built from the fat one, so asking for
             // -min.jar always yields -all.jar beside it. That is also what makes the pair
             // A/B-testable without a config change.
             if (minified) assembly = true;
         }
 
-        /** Convenience for importers: no minified artifact, no native image. */
+        /** Convenience for importers: no minified artifact, no native image, no config template. */
         public Application(String main, boolean assembly) {
-            this(main, assembly, false, false);
+            this(main, assembly, false, false, null);
         }
 
-        /** Convenience: no native image. */
+        /** Convenience: no native image, no config template. */
         public Application(String main, boolean assembly, boolean minified) {
-            this(main, assembly, minified, false);
+            this(main, assembly, minified, false, null);
+        }
+
+        /** Convenience: no config template. */
+        public Application(String main, boolean assembly, boolean minified, boolean nativeImage) {
+            this(main, assembly, minified, nativeImage, null);
         }
     }
 

@@ -51,14 +51,14 @@ resolved per run). List caches with `jk engine aot`.
 ### AOT on upgrade / displace
 
 All JEP 514 caches live under the **shared** `state/aot/` directory (not next to
-`jk-engine.jar`). File names carry the product version:
+`lib/jk-engine/`). File names carry the product version:
 
 - `engine-0.12.0-<key>.aot`
 - `java-compiler-0.12.0-<key>.aot` / `kotlinc-0.12.0-<key>.aot`
 
 Policy when a generation becomes primary (endpoint claim / `jk self materialize` — not every
 ensure of an already-live same-version engine), and again when install GC removes
-`jk-engine.jar.old` / `jk.old`:
+parked `*.jar.old` / `jk.old`:
 
 1. **Reap other versions** — delete every AOT artifact whose name is not for this exact
    product version (no `-<version>-<16hex>` segment). Legacy unversioned worker names
