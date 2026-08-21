@@ -191,6 +191,49 @@ class NewProjectOpsTest {
     }
 
     @Test
+    void layout_simple_reaches_path_templates(@TempDir Path temp) throws Exception {
+        // Path refs have no indexed metadata (spec empty) — the flag must still set simple=yes.
+        Path g8 = temp.resolve("dual.g8");
+        String src = "src/main/g8/src/$if(simple.truthy)$.$else$main$endif$/$if(simple.truthy)$.$else$java$endif$";
+        Files.createDirectories(g8.resolve(src));
+        Files.writeString(g8.resolve("default.properties"), "name=demo\n");
+        Files.writeString(g8.resolve("src/main/g8/jk.toml"), "name = \"$name$\"\n");
+        Files.writeString(g8.resolve(src + "/Main.java"), "class Main {}\n");
+        Path parent = temp.resolve("apps");
+        Files.createDirectories(parent);
+
+        var result = NewProjectOps.create(new NewProjectOps.Request(
+                "widget", parent.toString(), "com.acme", "java", "simple", g8.toAbsolutePath().toString(), true));
+
+        assertThat(result.path().resolve("src/Main.java")).exists();
+        assertThat(result.path().resolve("src/main/java")).doesNotExist();
+    }
+
+    @Test
+    void layout_simple_refused_when_template_metadata_omits_it(@TempDir Path temp) throws Exception {
+        Path templates = temp.resolve("templates");
+        Path g8 = templates.resolve("java").resolve("none").resolve("acme-trad-only.g8");
+        Files.createDirectories(g8.resolve("src/main/g8"));
+        Files.writeString(g8.resolve(".jk-template.toml"), """
+                language = "java"
+                framework = "none"
+                name = "acme-trad-only"
+                description = "demo"
+                layouts = ["traditional"]
+                """);
+        Files.writeString(g8.resolve("default.properties"), "name=demo\n");
+        Files.writeString(g8.resolve("src/main/g8/jk.toml"), "name = \"$name$\"\n");
+        Path parent = temp.resolve("apps");
+        Files.createDirectories(parent);
+
+        assertThatThrownBy(() -> NewProjectOps.create(new NewProjectOps.Request(
+                        "widget", parent.toString(), "com.acme", "java", "simple", "acme-trad-only", true)))
+                .hasMessageContaining("does not support --layout simple")
+                .hasMessageContaining("traditional");
+        assertThat(parent.resolve("widget")).doesNotExist();
+    }
+
+    @Test
     void resolve_template_finds_dogfood_short_name(@TempDir Path temp) throws Exception {
         // Unique short name so the official cache cannot steal the hit.
         Path templates = temp.resolve("templates");

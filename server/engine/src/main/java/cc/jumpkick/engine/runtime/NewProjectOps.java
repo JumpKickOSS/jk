@@ -222,10 +222,21 @@ public final class NewProjectOps {
                 templateRoot = spec.get().root();
             } else {
                 templateRoot = resolveTemplate(prep.template(), langName, prep.parent());
+                // resolveTemplate may have freshened the official cache; re-resolve so layout
+                // metadata is honored identically on cold and warm caches.
+                if (spec.isEmpty()) {
+                    spec = resolveIndexed(prep.template(), langName, prep.parent());
+                }
             }
-            if (spec.isPresent()
-                    && "simple".equalsIgnoreCase(prep.layout())
-                    && spec.get().supportsLayout(cc.jumpkick.giter8.Giter8ShortNames.LAYOUT_SIMPLE)) {
+            if ("simple".equalsIgnoreCase(prep.layout())) {
+                if (spec.isPresent()
+                        && !spec.get().supportsLayout(cc.jumpkick.giter8.Giter8ShortNames.LAYOUT_SIMPLE)) {
+                    throw new IOException("template " + prep.template() + " does not support --layout simple"
+                            + " (declared layouts: " + String.join(", ", spec.get().layouts()) + ")");
+                }
+                // Set for path/remote templates too (no indexed metadata): a dual-layout
+                // template honors it, a single-layout one ignores it — never a silent drop
+                // that renders a different tree than the flag asked for.
                 params.putIfAbsent("simple", "yes");
             }
             try {
