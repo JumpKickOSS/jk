@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -18,14 +19,11 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
- * Drives the {@code jk-java-compiler} plugin: runs javac in-process (under the project's JDK) with
- * annotation processors wrapped for provenance capture, and returns the diagnostics plus the
- * generated-file → originating-source mapping the incremental compiler needs for
- * annotation-processor incrementality.
+ * Drives the {@code jk-java-compiler} plugin. With {@code workdir} set, the worker runs Zinc
+ * incremental compile; without it, in-process javac with AP provenance.
  *
- * <p>Launched as {@code <javaHome>/bin/java -cp <workerJar>
- * cc.jumpkick.java.compiler.JavaIncrementalCompiler @<spec>}; the plugin streams {@value #PREFIX} JSONL
- * back on stdout. Mirrors {@link KotlincDriver}.
+ * <p>Launched as {@code java -cp <workerJar+POM>} {@code JavaIncrementalCompiler @<spec>}; streams
+ * {@value #PREFIX} JSONL on stdout. Mirrors {@link KotlincDriver}.
  */
 public final class ForkedJavac {
 
@@ -35,10 +33,20 @@ public final class ForkedJavac {
 
     /**
      * @param generated generated source file → the input source file(s) it originated from
+     * @param compiledSources sources Zinc (or javac) actually compiled this invocation
      */
-    public record Result(boolean success, List<CompileResult.Diagnostic> diagnostics, Map<Path, Set<Path>> generated) {
+    public record Result(
+            boolean success,
+            List<CompileResult.Diagnostic> diagnostics,
+            Map<Path, Set<Path>> generated,
+            List<Path> compiledSources) {
         public Result {
             diagnostics = List.copyOf(diagnostics);
+            compiledSources = compiledSources == null ? List.of() : List.copyOf(compiledSources);
+        }
+
+        public Result(boolean success, List<CompileResult.Diagnostic> diagnostics, Map<Path, Set<Path>> generated) {
+            this(success, diagnostics, generated, List.of());
         }
     }
 
@@ -51,7 +59,31 @@ public final class ForkedJavac {
             Path classOutput,
             Path sourceOutput,
             int release,
-            List<String> extraArgs) {}
+            List<String> extraArgs,
+            Path workdir) {
+        public Request(
+                Path javaHome,
+                Path workerJar,
+                List<Path> sources,
+                List<Path> classpath,
+                List<Path> processorPath,
+                Path classOutput,
+                Path sourceOutput,
+                int release,
+                List<String> extraArgs) {
+            this(
+                    javaHome,
+                    workerJar,
+                    sources,
+                    classpath,
+                    processorPath,
+                    classOutput,
+                    sourceOutput,
+                    release,
+                    extraArgs,
+                    null);
+        }
+    }
 
     public static Result compile(Request request) {
         try {
@@ -69,6 +101,7 @@ public final class ForkedJavac {
         try {
             List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
             Map<Path, Set<Path>> generated = new TreeMap<>();
+            List<Path> compiledSources = new ArrayList<>();
             String[] status = {null};
 
             // Fork the java-compiler plugin on jk's OWN runtime — the same rule as every
@@ -108,20 +141,29 @@ public final class ForkedJavac {
                         for (String s : Jsonl.strArray(json, "src")) origins.add(Path.of(s));
                         generated.put(gen, origins);
                     })
-                    .on(PluginProtocol.RESULT, json -> status[0] = Jsonl.str(json, "status"))
+                    .on(PluginProtocol.RESULT, json -> {
+                        status[0] = Jsonl.str(json, "status");
+                        for (String s : Jsonl.strArray(json, "compiled")) {
+                            compiledSources.add(Path.of(s));
+                        }
+                    })
                     .run(command);
             boolean success = exit == 0 && "OK".equals(status[0]);
-            return new Result(success, diagnostics, generated);
+            return new Result(success, diagnostics, generated, compiledSources);
         } finally {
             Files.deleteIfExists(spec);
         }
     }
 
     private static Path writeSpec(Request req) throws IOException {
+        Map<String, Path> layout = new LinkedHashMap<>();
+        layout.put("classesDir", req.classOutput());
+        if (req.sourceOutput() != null) layout.put("sourceOutput", req.sourceOutput());
+        if (req.workdir() != null) layout.put("workdir", req.workdir());
         SpecWriter sw = new SpecWriter()
                 .op(PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
                 .configInt("release", req.release())
-                .layout(Map.of("classesDir", req.classOutput(), "sourceOutput", req.sourceOutput()));
+                .layout(layout);
         for (Path s : req.sources()) sw.source(s);
         for (Path c : req.classpath()) sw.cp(c, PluginProtocol.ROLE_COMPILE);
         for (Path p : req.processorPath()) sw.cp(p, PluginProtocol.ROLE_PROCESSOR);
@@ -163,7 +205,13 @@ public final class ForkedJavac {
         SpecWriter sw = new SpecWriter()
                 .op(PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
                 .configInt("release", release)
-                .layout(Map.of("classesDir", classes, "sourceOutput", scratch.resolve("gen")))
+                .layout(Map.of(
+                        "classesDir",
+                        classes,
+                        "sourceOutput",
+                        scratch.resolve("gen"),
+                        "workdir",
+                        scratch.resolve("zinc-work")))
                 .source(src);
         Path trainSpec = scratch.resolve("train.spec");
         Files.write(trainSpec, sw.lines(), StandardCharsets.UTF_8);

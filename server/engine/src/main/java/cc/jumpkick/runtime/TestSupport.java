@@ -578,11 +578,8 @@ public final class TestSupport {
 
     /**
      * Compile test sources with action-cache lookup. Mirrors the compile-main step: same task ID /
-     * classpath / output-dir shape, and — crucially — the same {@code processorPath} + {@link
-     * cc.jumpkick.task.JavaIncrementalCompile.ApSetup} wiring, so annotation processors (Lombok,
-     * Immutables, …) run over test sources too. Modern javac only runs processors named by {@code
-     * -processorpath}; without it, a test class using {@code @Getter} would fail to find its
-     * generated modules even though main compilation handled the same annotation.
+     * classpath / output-dir shape, and the same {@code processorPath} + Zinc worker, so annotation
+     * processors (Lombok, Immutables, …) run over test sources too.
      */
     public static boolean compileWithCache(
             TaskContext ctx,
@@ -594,7 +591,7 @@ public final class TestSupport {
             int release,
             List<String> javacArgs,
             Path javaHome,
-            cc.jumpkick.task.JavaIncrementalCompile.ApSetup ap,
+            Path generatedSourceDir,
             Cas cas,
             Path cacheRoot)
             throws IOException {
@@ -636,7 +633,12 @@ public final class TestSupport {
             }
         }
         ctx.label(taskId + ": " + sources.size() + " sources");
-        cc.jumpkick.task.JavaIncrementalCompile.Result r = cc.jumpkick.task.JavaIncrementalCompile.run(
+        Path gen = generatedSourceDir != null
+                ? generatedSourceDir
+                : cacheRoot.resolve("generated").resolve(cacheTaskId);
+        Files.createDirectories(gen);
+        Path workerJar = cc.jumpkick.engine.plugin.PluginJar.JAVA_COMPILER.locate(cas);
+        cc.jumpkick.task.JavaCompile.Result r = cc.jumpkick.task.JavaCompile.run(
                 cacheTaskId,
                 request,
                 BuildIdentity.cacheKeyVersion(),
@@ -644,7 +646,8 @@ public final class TestSupport {
                 actionCache.cas(),
                 actionCache,
                 stateDir,
-                ap);
+                workerJar,
+                gen);
         // Surface javac diagnostics by severity — errors fail, warnings (e.g.
         // deprecation/unchecked) are shown but don't. Mirrors the main-compile
         // step so test sources report warnings the same way.

@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
@@ -204,26 +203,8 @@ public final class PlannerTest {
                         @SuppressWarnings("unchecked")
                         List<Path> processorCp =
                                 (List<Path>) ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
-                        cc.jumpkick.task.JavaIncrementalCompile.ApSetup ap = null;
-                        if (!processorCp.isEmpty()) {
-                            Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations", "test");
-                            Files.createDirectories(genDir);
-                            ap = new cc.jumpkick.task.JavaIncrementalCompile.ApSetup(
-                                    () -> {
-                                        try {
-                                            return PluginJar.JAVA_COMPILER.locate(cas);
-                                        } catch (RuntimeException e) {
-                                            ctx.warn(
-                                                    "javac",
-                                                    "java-compiler worker unavailable ("
-                                                            + e.getMessage()
-                                                            + "); compiling tests with plain javac"
-                                                            + " (no incremental annotation-processing provenance)");
-                                            return null;
-                                        }
-                                    },
-                                    genDir);
-                        }
+                        Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations", "test");
+                        Files.createDirectories(genDir);
                         boolean ok = TestSupport.compileWithCache(
                                 ctx,
                                 TaskNames.COMPILE_TEST,
@@ -234,7 +215,7 @@ public final class PlannerTest {
                                 ctx.require(RELEASE),
                                 javacArgs,
                                 ctx.require(JAVA_HOME),
-                                ap,
+                                genDir,
                                 cas,
                                 in.cache());
                         if (!ok) throw new RuntimeException("test compile failed");

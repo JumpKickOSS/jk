@@ -75,6 +75,7 @@ public final class ZincJavaCompiler {
             int release,
             List<String> extraOptions,
             List<Path> processorPath) {
+        RecordingJavaCompiler javac = null;
         try {
             Files.createDirectories(classOutput);
             Files.createDirectories(workdir);
@@ -82,7 +83,7 @@ public final class ZincJavaCompiler {
 
             IncrementalCompiler zinc = ZincUtil.defaultIncrementalCompiler();
             FileConverter converter = PlainVirtualFileConverter.converter();
-            RecordingJavaCompiler javac = recordingJavac(converter);
+            javac = recordingJavac(converter);
             Compilers compilers = javaOnlyCompilers(javac);
 
             VirtualFile[] sourceFiles = virtual(sources, converter);
@@ -133,7 +134,7 @@ public final class ZincJavaCompiler {
                 diags.add(new Diag(
                         "ERROR", null, 0, 0, failed.getMessage() == null ? "compile failed" : failed.getMessage()));
             }
-            return new Result(false, diags, List.of());
+            return new Result(false, diags, javac == null ? List.of() : javac.compiledSources());
         } catch (RuntimeException e) {
             return new Result(
                     false,

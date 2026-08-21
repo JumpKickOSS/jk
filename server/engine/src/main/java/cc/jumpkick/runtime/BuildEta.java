@@ -285,7 +285,7 @@ public final class BuildEta {
 
     /**
      * "Exactly zero sources changed" — the count must not be a suffix of a larger number
-     * ("10 sources changed"), see . Text form from {@code JavaIncrementalCompile}:
+     * ("10 sources changed"), see . Text form from {@code JavaCompile}:
      * {@code "1 source changed"} / {@code "<n> sources changed"}.
      */
     private static final java.util.regex.Pattern ZERO_SOURCES =

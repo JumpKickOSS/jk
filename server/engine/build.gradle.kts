@@ -180,6 +180,7 @@ fun Test.seedWorkerRepos(vararg projects: String) {
 tasks.withType<Test>().configureEach {
     // MemoryProbe's host_statistics64 FFM downcall (macOS memory read).
     jvmArgs("--enable-native-access=ALL-UNNAMED")
+    seedWorkerRepos(":java-compiler")
     dependsOn(
             javaCompilerWorkerJar,
             testRunnerJarCfg,

@@ -19,7 +19,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FreshnessStamp;
-import cc.jumpkick.task.JavaIncrementalCompile;
+import cc.jumpkick.task.JavaCompile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -382,8 +382,7 @@ public final class TaskForecaster {
                     Path stateDir =
                             cache.resolve("actions").resolve("incremental-java").resolve(taskId);
                     long tc = Perf.start();
-                    var pred = JavaIncrementalCompile.predict(
-                            taskId, req, BuildIdentity.cacheKeyVersion(), actionCache, stateDir);
+                    var pred = JavaCompile.predict(taskId, req, BuildIdentity.cacheKeyVersion(), actionCache, stateDir);
                     Perf.end("  predict-compile-main", tc);
                     compileMainKey = pred.actionKey();
                     steps.add(compileStep("compile-main", pred, compileDepDirty || force));
@@ -500,8 +499,7 @@ public final class TaskForecaster {
                     Path stateDir =
                             cache.resolve("actions").resolve("incremental-java").resolve(taskId);
                     long tt = Perf.start();
-                    var pred = JavaIncrementalCompile.predict(
-                            taskId, req, BuildIdentity.cacheKeyVersion(), actionCache, stateDir);
+                    var pred = JavaCompile.predict(taskId, req, BuildIdentity.cacheKeyVersion(), actionCache, stateDir);
                     Perf.end("  predict-compile-test", tt);
                     TaskForecast.Task p = compileStep("compile-test", pred, false);
                     steps.add(p);
@@ -1002,9 +1000,8 @@ public final class TaskForecaster {
         }
     }
 
-    /** Map a {@link JavaIncrementalCompile.Prediction} to a step, honoring upstream dirtiness. */
-    private static TaskForecast.Task compileStep(
-            String name, JavaIncrementalCompile.Prediction pred, boolean compileDepDirty) {
+    /** Map a {@link JavaCompile.Prediction} to a step, honoring upstream dirtiness. */
+    private static TaskForecast.Task compileStep(String name, JavaCompile.Prediction pred, boolean compileDepDirty) {
         return switch (pred.outcome()) {
             case CACHE_HIT ->
                 // Only force RUN when a *compile-scope* sibling is dirty (action key still sees

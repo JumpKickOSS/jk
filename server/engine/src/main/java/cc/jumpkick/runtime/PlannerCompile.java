@@ -176,37 +176,11 @@ public final class PlannerCompile {
                             /* keep the up-front estimate */
                         }
                     }
-                    // With processors declared, hand the incremental compiler an AP setup:
-                    // a *lazy* plugin-jar resolver + a stable generated-sources dir. The
-                    // engine routes through the plugin only once it has detected
-                    // source-generating processors, so bytecode-only processors (e.g.
-                    // Lombok) and first builds never resolve it — which matters because
-                    // a jk build that didn't bundle the plugin (or its sha resource)
-                    // would otherwise fail here even though the plugin isn't needed.
-                    // When it *is* needed but unavailable, warn once and fall back to
-                    // plain javac (correct, just without incremental AP provenance).
-                    cc.jumpkick.task.JavaIncrementalCompile.ApSetup ap = null;
-                    if (!processorCp.isEmpty()) {
-                        Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations");
-                        Files.createDirectories(genDir);
-                        ap = new cc.jumpkick.task.JavaIncrementalCompile.ApSetup(
-                                () -> {
-                                    try {
-                                        return PluginJar.JAVA_COMPILER.locate(cas);
-                                    } catch (RuntimeException e) {
-                                        ctx.warn(
-                                                "javac",
-                                                "java-compiler worker unavailable ("
-                                                        + e.getMessage()
-                                                        + "); compiling with plain javac"
-                                                        + " (no incremental annotation-processing provenance)");
-                                        return null;
-                                    }
-                                },
-                                genDir);
-                    }
+                    Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations");
+                    Files.createDirectories(genDir);
+                    Path workerJar = PluginJar.JAVA_COMPILER.locate(cas);
                     ctx.label("compiling " + sources.size() + " sources");
-                    cc.jumpkick.task.JavaIncrementalCompile.Result r = cc.jumpkick.task.JavaIncrementalCompile.run(
+                    cc.jumpkick.task.JavaCompile.Result r = cc.jumpkick.task.JavaCompile.run(
                             taskId,
                             request,
                             cc.jumpkick.model.BuildIdentity.cacheKeyVersion(),
@@ -215,7 +189,8 @@ public final class PlannerCompile {
                             actionCache.cas(),
                             actionCache,
                             javaStateDir,
-                            ap);
+                            workerJar,
+                            genDir);
                     ctx.put(ACTION_KEY, r.actionKey());
                     // Forward every javac diagnostic to the terminal, by severity:
                     // errors fail the build, warnings/notes (e.g. deprecation) are
