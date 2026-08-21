@@ -441,6 +441,60 @@ class PomRuntimeClasspathTest {
                 .hasMessageContaining("has no version");
     }
 
+    @Test
+    void root_pin_mediates_conflicting_transitive_versions(@TempDir Path tmp) throws Exception {
+        Path store = tmp.resolve("store");
+        Coordinate worker = Coordinate.of("cc.jumpkick", "jk-test-runner", "0.12.0");
+        Coordinate lib = Coordinate.of("com.foo", "lib", "1.0");
+        Coordinate guava33 = Coordinate.of("com.google", "guava", "33");
+        Coordinate guava32 = Coordinate.of("com.google", "guava", "32");
+        Path workerJar = putJar(store, "local", worker, "worker-bytes");
+        // Flattened root POM pins guava 33; lib's own upstream POM still says 32.
+        putPom(store, "local", worker, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-test-runner</artifactId>
+                  <version>0.12.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>lib</artifactId><version>1.0</version>
+                    </dependency>
+                    <dependency>
+                      <groupId>com.google</groupId><artifactId>guava</artifactId><version>33</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        putJar(store, "local", lib, "lib-bytes");
+        putPom(store, "local", lib, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.foo</groupId>
+                  <artifactId>lib</artifactId>
+                  <version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.google</groupId><artifactId>guava</artifactId><version>32</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        putJar(store, "local", guava33, "guava33-bytes");
+        putPom(store, "local", guava33, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.google</groupId><artifactId>guava</artifactId><version>33</version>
+                </project>
+                """);
+        putJar(store, "local", guava32, "guava32-bytes");
+
+        List<Path> cp = resolve(store, workerJar);
+        assertThat(cp.stream().map(Path::getFileName).map(Path::toString))
+                .contains("guava-33.jar")
+                .doesNotContain("guava-32.jar");
+    }
+
     private static List<Path> resolve(Path store, Path workerJar) {
         return PomRuntimeClasspath.resolve(workerJar, PomRuntimeClasspath.localRepos(store));
     }

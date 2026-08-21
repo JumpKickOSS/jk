@@ -10,8 +10,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -66,7 +68,7 @@ public final class PomRuntimeClasspath {
             EffectivePomBuilder builder = new EffectivePomBuilder(repos);
             Pom raw = PomParser.parse(Files.readAllBytes(pom));
             EffectivePom effective = builder.build(raw);
-            walkEffective(effective, coordinateOf(worker), builder, repos, new HashSet<>(), Set.of(), out, true);
+            walkEffective(effective, coordinateOf(worker), builder, repos, WalkState.fresh(), Set.of(), out, true);
         } catch (IllegalStateException e) {
             throw e;
         } catch (InterruptedException e) {
@@ -86,7 +88,7 @@ public final class PomRuntimeClasspath {
     public static void fetchRuntimeClosure(Coordinate root, RepoGroup repos) throws IOException, InterruptedException {
         EffectivePomBuilder builder = new EffectivePomBuilder(repos);
         EffectivePom pom = builder.build(root);
-        walkEffective(pom, root, builder, repos, new HashSet<>(), Set.of(), new ArrayList<>(), true);
+        walkEffective(pom, root, builder, repos, WalkState.fresh(), Set.of(), new ArrayList<>(), true);
     }
 
     /**
@@ -196,82 +198,118 @@ public final class PomRuntimeClasspath {
         return p.getFileName() == null ? "" : p.getFileName().toString();
     }
 
+    /**
+     * Version mediation for the walk. The worker POM is a flattened resolved classpath, so the
+     * root's pins are authoritative: they seed {@code mediated} before any transitive POM is
+     * read, and a transitive request for a different version of an already-mediated artifact is
+     * dropped (Maven nearest-wins) instead of appending a second jar whose classes would shadow
+     * order-dependently. {@code walked} keeps each winning artifact's subtree from being walked
+     * twice (and doubles as cycle protection).
+     */
+    private record WalkState(Map<String, String> mediated, Set<String> walked) {
+        static WalkState fresh() {
+            return new WalkState(new HashMap<>(), new HashSet<>());
+        }
+    }
+
+    private static String mediationKey(Coordinate coord) {
+        String key = coord.group() + ":" + coord.artifact();
+        if (coord.classifier() != null) key = key + ":" + coord.classifier();
+        if (!"jar".equalsIgnoreCase(coord.type())) key = key + "!" + coord.type();
+        return key;
+    }
+
     private static void walkEffective(
             EffectivePom pom,
             Coordinate self,
             EffectivePomBuilder builder,
             RepoGroup repos,
-            Set<String> visited,
+            WalkState state,
             Set<String> exclusions,
             List<Path> out,
             boolean rootPom)
             throws IOException, InterruptedException {
         if (self != null && pom.relocation() != null && pom.relocation().redirects(self)) {
-            addAndWalk(pom.relocation().applyTo(self), builder, repos, visited, exclusions, out, false);
+            addAndWalk(pom.relocation().applyTo(self), builder, repos, state, exclusions, out, false);
             return;
         }
+        if (rootPom) {
+            for (Pom.Dep d : pom.dependencies()) {
+                Coordinate coord = runtimeCoordinate(pom, d, true, exclusions);
+                if (coord != null) state.mediated().putIfAbsent(mediationKey(coord), coord.version());
+            }
+        }
         for (Pom.Dep d : pom.dependencies()) {
-            if (!runtimeDep(d, rootPom)) continue;
-            // Prune before any version policing: a dep an ancestor excluded (or a pom-type
-            // aggregate) must never abort the walk over a version we would not have used.
-            String ga = d.groupId() + ":" + d.artifactId();
-            if (exclusions.contains(ga)) continue;
-            String type = d.type() == null || d.type().isBlank() ? "jar" : d.type();
-            if ("pom".equalsIgnoreCase(type)) continue;
-            // Version policy for deps that survive pruning: one posture, loud. A blank version
-            // (no dependencyManagement governs it), an unresolved ${…}, and a floating selector
-            // all mean "we cannot know which jar belongs on the classpath" — dropping the dep
-            // silently trades a resolution-time error for NoClassDefFoundError in the worker.
-            // Optional deps are the exception: absent-if-unresolvable mirrors their fetch policy.
-            if (d.version() == null || d.version().isBlank()) {
-                if (d.optional()) continue;
-                throw new IllegalStateException("worker POM "
-                        + pom.groupId() + ":" + pom.artifactId() + ":" + pom.version()
-                        + " dependency " + ga
-                        + " has no version (no dependencyManagement entry governs it)");
-            }
-            if (isUnresolvedProperty(d.version())) {
-                if (d.optional()) continue;
-                throw new IllegalStateException("worker POM "
-                        + pom.groupId() + ":" + pom.artifactId() + ":" + pom.version()
-                        + " dependency " + ga
-                        + " has unresolved version " + d.version());
-            }
-            if (isFloating(d.version())) {
-                if (d.optional()) continue;
-                throw new IllegalStateException(
-                        "worker POM " + pom.artifactId() + " has floating version for " + ga);
-            }
-            String classifier = d.classifier() == null || d.classifier().isBlank() ? null : d.classifier();
-            Coordinate coord = new Coordinate(d.groupId(), d.artifactId(), d.version(), classifier, type);
+            Coordinate coord = runtimeCoordinate(pom, d, rootPom, exclusions);
+            if (coord == null) continue;
             Set<String> childExcl = new HashSet<>(exclusions);
             for (Pom.Dep.Exclusion ex : d.exclusions()) {
                 childExcl.add(ex.groupId() + ":" + ex.artifactId());
             }
-            addAndWalk(coord, builder, repos, visited, childExcl, out, d.optional());
+            addAndWalk(coord, builder, repos, state, childExcl, out, d.optional());
         }
+    }
+
+    /**
+     * {@code d} as a fetchable coordinate, or {@code null} when pruned. Pruning (ancestor
+     * exclusions, pom-type aggregates) runs before any version policing so a dep we would never
+     * use cannot abort the walk. The surviving version policy is one posture, loud: a blank
+     * version (no dependencyManagement governs it), an unresolved {@code $&#123;…&#125;}, and a floating
+     * selector all mean "we cannot know which jar belongs on the classpath" — dropping the dep
+     * silently trades a resolution-time error for NoClassDefFoundError in the worker. Optional
+     * deps are the exception: absent-if-unresolvable mirrors their fetch policy.
+     */
+    private static Coordinate runtimeCoordinate(
+            EffectivePom pom, Pom.Dep d, boolean rootPom, Set<String> exclusions) {
+        if (!runtimeDep(d, rootPom)) return null;
+        String ga = d.groupId() + ":" + d.artifactId();
+        if (exclusions.contains(ga)) return null;
+        String type = d.type() == null || d.type().isBlank() ? "jar" : d.type();
+        if ("pom".equalsIgnoreCase(type)) return null;
+        if (d.version() == null || d.version().isBlank()) {
+            if (d.optional()) return null;
+            throw new IllegalStateException("worker POM "
+                    + pom.groupId() + ":" + pom.artifactId() + ":" + pom.version()
+                    + " dependency " + ga
+                    + " has no version (no dependencyManagement entry governs it)");
+        }
+        if (isUnresolvedProperty(d.version())) {
+            if (d.optional()) return null;
+            throw new IllegalStateException("worker POM "
+                    + pom.groupId() + ":" + pom.artifactId() + ":" + pom.version()
+                    + " dependency " + ga
+                    + " has unresolved version " + d.version());
+        }
+        if (isFloating(d.version())) {
+            if (d.optional()) return null;
+            throw new IllegalStateException("worker POM " + pom.artifactId() + " has floating version for " + ga);
+        }
+        String classifier = d.classifier() == null || d.classifier().isBlank() ? null : d.classifier();
+        return new Coordinate(d.groupId(), d.artifactId(), d.version(), classifier, type);
     }
 
     private static void addAndWalk(
             Coordinate coord,
             EffectivePomBuilder builder,
             RepoGroup repos,
-            Set<String> visited,
+            WalkState state,
             Set<String> exclusions,
             List<Path> out,
             boolean optional)
             throws IOException, InterruptedException {
         String key = coord.group() + ":" + coord.artifact() + ":" + coord.version();
         if (coord.classifier() != null) key = key + ":" + coord.classifier();
-        if (!visited.add(key)) return;
+        String gaKey = mediationKey(coord);
+        String winner = state.mediated().putIfAbsent(gaKey, coord.version());
+        if (winner != null && !winner.equals(coord.version())) return; // mediated away — the winner's jar serves
+        if (!state.walked().add(gaKey)) return;
         Optional<RepoGroup.RepoFetched> art = repos.tryFetchArtifact(coord);
         if (art.isEmpty()) {
             if (optional) return;
             throw new IllegalStateException("worker runtime dependency " + key
                     + " is not in repos/local, repos/jumpkick, or repos/central; run `jk install`");
         }
-        Path abs = art.get().fetched().cachePath().toAbsolutePath().normalize();
-        if (!out.contains(abs)) out.add(abs);
+        out.add(art.get().fetched().cachePath().toAbsolutePath().normalize());
         EffectivePom child;
         try {
             child = builder.build(coord);
@@ -284,7 +322,7 @@ public final class PomRuntimeClasspath {
             throw new IllegalStateException(
                     "worker dependency " + key + " has an incomplete POM chain: " + e.getMessage(), e);
         }
-        walkEffective(child, coord, builder, repos, visited, exclusions, out, false);
+        walkEffective(child, coord, builder, repos, state, exclusions, out, false);
     }
 
     private static boolean runtimeDep(Pom.Dep d, boolean rootPom) {
