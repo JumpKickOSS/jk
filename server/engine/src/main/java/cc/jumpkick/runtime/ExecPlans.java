@@ -231,7 +231,11 @@ public final class ExecPlans {
                     layoutOf(build, dir, BuildLayout::testResultsDir),
                     testTags.includeTags(),
                     testTags.excludeTags(),
-                    hasLock && cc.jumpkick.lock.LockFreshness.isStale(dir, lockFile));
+                    hasLock && cc.jumpkick.lock.LockFreshness.isStale(dir, lockFile),
+                    build.project().isScala(),
+                    build.project().scala() == null
+                            ? ""
+                            : build.project().scala().raw());
         } catch (RuntimeException | IOException e) {
             return ProjectInfo.error(cc.jumpkick.util.Errors.text(e));
         }

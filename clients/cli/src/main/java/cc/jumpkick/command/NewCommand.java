@@ -150,6 +150,10 @@ public final class NewCommand implements CliCommand {
             return info.groovy();
         }
 
+        boolean scala() {
+            return info.scala();
+        }
+
         /** The JDK toolchain version (which JDK runs the build). */
         int jdkMajor() {
             int major = cc.jumpkick.model.JkBuild.Project.majorOf(info.jdk());
@@ -689,7 +693,11 @@ public final class NewCommand implements CliCommand {
                 ? parseLanguage(lang)
                 : (parent != null && parent.kotlin())
                         ? NewInputs.Language.KOTLIN
-                        : (parent != null && parent.groovy()) ? NewInputs.Language.GROOVY : NewInputs.Language.JAVA;
+                        : (parent != null && parent.groovy())
+                                ? NewInputs.Language.GROOVY
+                                : (parent != null && parent.scala())
+                                        ? NewInputs.Language.SCALA
+                                        : NewInputs.Language.JAVA;
         var isExecutable = Boolean.TRUE.equals(executable) || assembly || nativeImage;
         // Traditional (Maven) is the product default. --layout simple opts into the Mill-like tree.
         var resolvedLayout = (layoutFlag != null && !layoutFlag.isBlank()) ? layoutFlag.toLowerCase() : "traditional";

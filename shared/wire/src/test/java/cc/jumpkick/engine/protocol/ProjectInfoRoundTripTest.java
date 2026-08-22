@@ -36,6 +36,7 @@ class ProjectInfoRoundTripTest {
                 + ",\"testClassesDir\":\"/ws/target/classes/test\""
                 + ",\"kotlinClassesDir\":\"/ws/target/classes/kotlin\""
                 + ",\"groovyClassesDir\":\"/ws/target/classes/groovy\""
+                + ",\"scala\":true,\"scalaVersion\":\"3.8.4\""
                 + "}";
         ProjectInfo first = ProjectInfo.decode(line);
         ProjectInfo second = ProjectInfo.decode(first.encode());
@@ -50,5 +51,7 @@ class ProjectInfoRoundTripTest {
         assertThat(first.kotlinClassesDir()).isEqualTo("/ws/target/classes/kotlin");
         assertThat(first.applicationConfig()).isEqualTo("config/install.toml");
         assertThat(first.assembly()).isTrue();
+        assertThat(first.scala()).isTrue();
+        assertThat(first.scalaVersion()).isEqualTo("3.8.4");
     }
 }
