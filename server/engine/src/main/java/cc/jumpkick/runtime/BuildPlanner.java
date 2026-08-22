@@ -395,6 +395,7 @@ public final class BuildPlanner {
         // the source tree (see CompileSupport.resolveLanguages).
         boolean useKotlin = false;
         boolean useGroovy = false;
+        boolean useScala = false;
         boolean useJava = true;
         boolean compactLayout = false;
         boolean workspaceNoSources = false;
@@ -425,6 +426,7 @@ public final class BuildPlanner {
             useJava = langs.java() || langs.scala();
             useKotlin = langs.kotlin();
             useGroovy = langs.groovy();
+            useScala = langs.scala();
             // [processor-dependencies] on a Kotlin module can generate Java sources (Hilt's
             // components are Java) — route through the mixed plan so javac compiles them.
             if (useKotlin && !useJava && PlannerCompile.hasProcessorDeps(jkBuild)) {
@@ -446,6 +448,13 @@ public final class BuildPlanner {
         if (useKotlin && useGroovy) {
             throw new IllegalStateException(
                     "groovy+kotlin in one module is not supported yet — split the languages into separate modules");
+        }
+        // Scala compiles with Java in one Zinc session, but a second stub-generating compiler
+        // (kotlinc / groovyc) can't parse .scala, so the combo fails with a cryptic unresolved
+        // reference instead of the loud error above (JK-2318).
+        if (useScala && (useKotlin || useGroovy)) {
+            throw new IllegalStateException("scala+" + (useKotlin ? "kotlin" : "groovy")
+                    + " in one module is not supported — split the languages into separate modules");
         }
 
         // Build-plugin code layer: learn the registered steps/packager
