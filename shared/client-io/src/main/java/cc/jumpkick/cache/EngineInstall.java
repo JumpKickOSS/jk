@@ -421,7 +421,6 @@ public final class EngineInstall {
 
     private Optional<Materialized> materializeFromConfig(Map<String, String> cfg, boolean parked) {
         String version = cfg.get("version");
-        if (version == null || version.isBlank()) return Optional.empty();
         String sha = cfg.getOrDefault("engine-sha256", "");
         String jarName = cfg.get("jar");
         Path jar;
@@ -433,7 +432,25 @@ public final class EngineInstall {
             if (jar == null) return Optional.empty();
         }
         if (!Files.isRegularFile(jar)) return Optional.empty();
+        if (version == null || version.isBlank()) {
+            // The install metadata is gone (e.g. `jk self nuke --config` deleted <config>/jk-engine/
+            // config.toml) but the jar survives under product-lib as the nuke promised. Recover the
+            // version from the jar name so the kept engine still resolves instead of being orphaned
+            // (JK-2294); sha stays blank, which engineSha()/spawn already tolerate.
+            version = versionFromJarName(jar.getFileName().toString()).orElse(null);
+            if (version == null) return Optional.empty();
+        }
         return Optional.of(new Materialized(version, engineHome(), jar, sha));
+    }
+
+    /** Extract {@code <version>} from a {@code jk-engine-<version>.jar} (or parked {@code ….jar.old}) name. */
+    static Optional<String> versionFromJarName(String name) {
+        String prefix = "jk-engine-";
+        if (name == null || !name.startsWith(prefix)) return Optional.empty();
+        String rest = name.substring(prefix.length());
+        int dotJar = rest.indexOf(".jar");
+        if (dotJar <= 0) return Optional.empty();
+        return Optional.of(rest.substring(0, dotJar));
     }
 
     private Optional<Path> resolveLiveJarPath() {
