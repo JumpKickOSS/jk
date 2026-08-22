@@ -444,7 +444,7 @@ public final class EngineInstall {
     }
 
     /** Extract {@code <version>} from a {@code jk-engine-<version>.jar} (or parked {@code ….jar.old}) name. */
-    static Optional<String> versionFromJarName(String name) {
+    public static Optional<String> versionFromJarName(String name) {
         String prefix = "jk-engine-";
         if (name == null || !name.startsWith(prefix)) return Optional.empty();
         String rest = name.substring(prefix.length());
