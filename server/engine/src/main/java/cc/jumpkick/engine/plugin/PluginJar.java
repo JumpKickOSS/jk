@@ -210,7 +210,10 @@ public enum PluginJar {
             Files.deleteIfExists(tmpJar);
             Files.deleteIfExists(tmpPom);
         }
-        Path localJar = store.locate(relPath).orElseThrow();
+        Path localJar = store.locate(relPath)
+                .orElseThrow(() -> new IOException(
+                        "could not materialize official worker jar " + relPath + " under " + store.root()
+                                + " (store write failed — check disk space and permissions)"));
         fetchOfficialClosure(cas, http, base, localJar);
         return localJar;
     }

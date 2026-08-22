@@ -177,7 +177,10 @@ public final class RepoArtifactStore {
             }
             writeMemo(relativePath, artifact, sha256);
         } catch (IOException | RuntimeException e) {
-            // best-effort store write; caller falls back to the source path
+            // Best-effort store write: the caller re-checks presence and fails loudly if nothing
+            // landed (JK-2310). Surface the cause so a disk-full/permissions failure is diagnosable
+            // rather than silent.
+            System.err.println("jk: warning: could not store " + relativePath + " under " + root + ": " + e);
         }
     }
 
