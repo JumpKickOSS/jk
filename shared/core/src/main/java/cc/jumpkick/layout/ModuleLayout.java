@@ -71,6 +71,13 @@ public final class ModuleLayout {
         return !SourceLayout.looksTraditional(moduleDir);
     }
 
+    private record LayoutMemo(long mtime, long size, Boolean value) {}
+
+    // isCompact runs per module per build (and now walks to the workspace root); cache the per-file
+    // layout-key scan by (mtime,size) so repeated calls don't re-read jk.toml each time (JK-2327).
+    private static final java.util.concurrent.ConcurrentHashMap<Path, LayoutMemo> LAYOUT_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     /**
      * The explicit {@code layout} choice for a module dir: {@code TRUE} = simple, {@code FALSE} =
      * traditional, {@code null} = no key or an unrecognized value (let the tree decide).
@@ -78,6 +85,23 @@ public final class ModuleLayout {
     private static Boolean explicitLayout(Path dir) {
         Path toml = dir.resolve("jk.toml");
         if (!Files.isRegularFile(toml)) return null;
+        Path key = toml.toAbsolutePath().normalize();
+        long mtime;
+        long size;
+        try {
+            mtime = Files.getLastModifiedTime(toml).toMillis();
+            size = Files.size(toml);
+        } catch (IOException e) {
+            return scanLayout(toml);
+        }
+        LayoutMemo memo = LAYOUT_CACHE.get(key);
+        if (memo != null && memo.mtime() == mtime && memo.size() == size) return memo.value();
+        Boolean value = scanLayout(toml);
+        LAYOUT_CACHE.put(key, new LayoutMemo(mtime, size, value));
+        return value;
+    }
+
+    private static Boolean scanLayout(Path toml) {
         String layout = cc.jumpkick.config.TomlScan.scan(toml, "layout").get("layout");
         if (layout == null) return null;
         if ("traditional".equalsIgnoreCase(layout)) return Boolean.FALSE;
