@@ -101,6 +101,47 @@ class ForkedJavacTest {
         assertThat(dir.resolve("classes/app/WidgetGen.class")).isRegularFile();
     }
 
+    @Test
+    void job_scope_reuses_the_worker_for_compile_then_plan(@TempDir Path dir) throws Exception {
+        String workerProp = System.getProperty("jk.java.plugin.jar");
+        assumeTrue(
+                workerProp != null && Files.isRegularFile(Path.of(workerProp)),
+                "jk.java.plugin.jar must point at the built worker jar");
+
+        Path src = dir.resolve("src/a/A.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, "package a; public class A { public int n() { return 1; } }");
+        Path worker = Path.of(workerProp);
+        Path classes = dir.resolve("classes");
+        Path work = dir.resolve("zinc");
+        ForkedJavac.Request req = new ForkedJavac.Request(
+                Path.of(System.getProperty("java.home")),
+                worker,
+                List.of(src),
+                List.of(),
+                List.of(),
+                classes,
+                dir.resolve("gen"),
+                21,
+                List.of(),
+                work);
+
+        long job = 8801L;
+        cc.jumpkick.engine.JobWorkers.open(job);
+        try {
+            ForkedJavac.Result compiled = ForkedJavac.compile(req);
+            assertThat(compiled.success()).as("%s", compiled.diagnostics()).isTrue();
+            Files.writeString(src, "package a; public class A { public int n() { return 2; } }");
+            ForkedJavac.Plan plan = ForkedJavac.plan(req);
+            assertThat(plan.full()).isFalse();
+            assertThat(plan.sources()).isNotEmpty();
+        } finally {
+            JavaCompilerHost.end(job);
+            cc.jumpkick.engine.JobWorkers.shutdownForRequest(job, 0L);
+            cc.jumpkick.engine.JobWorkers.close();
+        }
+    }
+
     private static void compile(Path outDir, Map<String, String> sources) throws IOException {
         Path srcDir = outDir.resolve("_src");
         Files.createDirectories(outDir);

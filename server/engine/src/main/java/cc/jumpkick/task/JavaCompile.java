@@ -13,8 +13,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
-import java.util.TreeSet;
 
 /**
  * Action-cache front for Java compile. The {@code jk-java-compiler} worker owns Zinc incremental
@@ -46,7 +44,16 @@ public final class JavaCompile {
         FULL
     }
 
-    public record Prediction(Outcome outcome, String actionKey, int sourceCount, String reason) {
+    public record Prediction(Outcome outcome, String actionKey, int sourceCount, String reason, List<Path> sources) {
+        public Prediction {
+            reason = reason == null ? "" : reason;
+            sources = sources == null ? List.of() : List.copyOf(sources);
+        }
+
+        public Prediction(Outcome outcome, String actionKey, int sourceCount, String reason) {
+            this(outcome, actionKey, sourceCount, reason, List.of());
+        }
+
         public Prediction(Outcome outcome, String actionKey, int sourceCount) {
             this(outcome, actionKey, sourceCount, "");
         }
@@ -144,47 +151,86 @@ public final class JavaCompile {
     public static Prediction predict(
             String taskId, CompileRequest request, String jkVersion, ActionCache actionCache, Path stateDir)
             throws IOException {
+        return predict(taskId, request, jkVersion, actionCache, stateDir, null, null);
+    }
+
+    public static Prediction predict(
+            String taskId,
+            CompileRequest request,
+            String jkVersion,
+            ActionCache actionCache,
+            Path stateDir,
+            Path workerJar)
+            throws IOException {
+        return predict(taskId, request, jkVersion, actionCache, stateDir, workerJar, null);
+    }
+
+    public static Prediction predict(
+            String taskId,
+            CompileRequest request,
+            String jkVersion,
+            ActionCache actionCache,
+            Path stateDir,
+            Path workerJar,
+            Path generatedSourceDir)
+            throws IOException {
         String key = ActionKey.forJavac(taskId, request, jkVersion);
         if (request.sources().isEmpty() || actionCache.lookup(key).isPresent()) {
             return new Prediction(Outcome.CACHE_HIT, key, request.sources().size(), "");
         }
-        Optional<ActionCache.ActionRecord> prior = actionCache.lastFor(taskId);
-        String fullWhy = cannotIncrementReason(request, prior, stateDir);
-        if (fullWhy == null) {
-            int n = changedSources(request, prior.get().inputs()).size();
-            return new Prediction(Outcome.INCREMENTAL, key, n, n == 1 ? "1 source changed" : n + " sources changed");
+        if (!Files.isRegularFile(stateDir.resolve("zinc"))) {
+            return new Prediction(Outcome.FULL, key, request.sources().size(), "no zinc analysis");
         }
-        return new Prediction(Outcome.FULL, key, request.sources().size(), fullWhy);
-    }
-
-    private static String cannotIncrementReason(
-            CompileRequest request, Optional<ActionCache.ActionRecord> prior, Path stateDir) throws IOException {
-        if (prior.isEmpty()) return "no prior compile record";
-        if (!Files.isRegularFile(stateDir.resolve("zinc"))) return "no zinc analysis";
+        if (workerJar != null && Files.isRegularFile(workerJar)) {
+            Path gen = generatedSourceDir != null ? generatedSourceDir : stateDir.resolve("gen");
+            Files.createDirectories(gen);
+            ForkedJavac.Plan plan = ForkedJavac.plan(new ForkedJavac.Request(
+                    request.javaHome(),
+                    workerJar,
+                    request.sources(),
+                    request.classpath(),
+                    request.processorPath(),
+                    request.outputDir(),
+                    gen,
+                    request.release(),
+                    request.extraOptions(),
+                    stateDir,
+                    request.scalaVersion(),
+                    request.compilerClasspath(),
+                    request.scalaLibraryJar(),
+                    request.scalaCompilerJar(),
+                    request.scalaBridgeJar()));
+            List<Path> files = plan.sources();
+            if (plan.full()) {
+                return new Prediction(
+                        Outcome.FULL,
+                        key,
+                        files.isEmpty() ? request.sources().size() : files.size(),
+                        plan.reason(),
+                        files);
+            }
+            String reason = plan.reason();
+            if (reason.isBlank()) {
+                int n = files.size();
+                reason = n == 1 ? "1 source" : n + " sources";
+            }
+            return new Prediction(Outcome.INCREMENTAL, key, files.size(), reason, files);
+        }
+        Optional<ActionCache.ActionRecord> prior = actionCache.lastFor(taskId);
+        if (prior.isEmpty()) {
+            return new Prediction(Outcome.FULL, key, request.sources().size(), "no prior compile record");
+        }
         Map<String, String> in = prior.get().inputs();
         if (!String.valueOf(request.release()).equals(in.getOrDefault("release", null))) {
-            return "release changed";
+            return new Prediction(Outcome.FULL, key, request.sources().size(), "release changed");
         }
         if (!String.join(",", request.extraOptions()).equals(in.getOrDefault("options", ""))) {
-            return "javac options changed";
+            return new Prediction(Outcome.FULL, key, request.sources().size(), "javac options changed");
         }
-        if (!classpathUnchanged(request, in, "cp:", request.classpath())) return "classpath changed";
-        if (!classpathUnchanged(request, in, "pp:", request.processorPath())) {
-            return "annotation processor path changed";
-        }
-        return null;
-    }
-
-    private static boolean classpathUnchanged(
-            CompileRequest request, Map<String, String> in, String prefix, List<Path> nowPaths) {
-        Set<String> now = new TreeSet<>();
-        for (Path p : nowPaths) now.add(prefix + FreshnessStamp.identityKey(p));
-        Set<String> prior = new TreeSet<>();
-        for (String k : in.keySet()) {
-            if (!k.startsWith(prefix)) continue;
-            prior.add(prefix + FreshnessStamp.identityKey(Path.of(k.substring(prefix.length()))));
-        }
-        return now.equals(prior);
+        List<Path> changed = changedSources(request, in);
+        int n = changed.size();
+        String reason = n == 1 ? "1 source changed" : n + " sources changed";
+        return new Prediction(Outcome.INCREMENTAL, key, n, reason, changed);
     }
 
     private static List<Path> changedSources(CompileRequest request, Map<String, String> priorInputs)

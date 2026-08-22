@@ -58,6 +58,20 @@ class ZincJavaCompilerTest {
                 .contains("A.java", "B.java");
     }
 
+    @Test
+    void plan_after_body_edit_lists_only_the_changed_source(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir);
+        p.write("a/B.java", "package a; public class B { public String greet() { return \"hi\"; } }");
+        p.write("a/A.java", "package a; public class A { public String use() { return new B().greet(); } }");
+        assertThat(p.compile().success()).isTrue();
+
+        p.write("a/B.java", "package a; public class B { public String greet() { return \"hello there\"; } }");
+        ZincJavaCompiler.Plan plan = p.plan();
+        assertThat(plan.full()).isFalse();
+        assertThat(names(plan.sources())).containsExactly("B.java");
+        assertThat(plan.reason()).contains("source");
+    }
+
     private static List<String> names(List<Path> sources) {
         return sources.stream().map(p -> p.getFileName().toString()).toList();
     }
@@ -90,6 +104,14 @@ class ZincJavaCompilerTest {
                 sources = walk.filter(f -> f.toString().endsWith(".java")).toList();
             }
             return ZincJavaCompiler.compileJava(sources, List.of(), classes, workdir, null, 25, List.of(), List.of());
+        }
+
+        ZincJavaCompiler.Plan plan() throws IOException {
+            List<Path> sources;
+            try (var walk = Files.walk(src)) {
+                sources = walk.filter(f -> f.toString().endsWith(".java")).toList();
+            }
+            return ZincJavaCompiler.planJava(sources, List.of(), classes, workdir, null, 25, List.of(), List.of());
         }
     }
 }

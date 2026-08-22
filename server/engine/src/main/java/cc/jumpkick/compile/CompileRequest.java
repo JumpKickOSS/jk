@@ -8,8 +8,8 @@ import java.util.Objects;
 import lombok.Builder;
 
 /**
- * Input to {@link JavacRunner#compile(CompileRequest)}: sources, classpath, release, and optional
- * {@code .class} output. A null {@link #outputDir()} is check-only ({@code jk check}).
+ * Input to Java / mixed Java+Scala compile: sources, classpath, release, and optional {@code .class}
+ * output. A null {@link #outputDir()} is check-only ({@code jk check}).
  */
 @Builder
 public record CompileRequest(

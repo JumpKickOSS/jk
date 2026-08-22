@@ -128,9 +128,17 @@ public final class JobWorkers {
         CURRENT.remove();
     }
 
+    /**
+     * Request id this thread's forks belong to, or {@code null} when no job scope is open
+     * (one-shot tests, probes).
+     */
+    public static Long currentRequestId() {
+        return CURRENT.get();
+    }
+
     /** Test seam: the request scope currently open on this thread, or {@code null}. */
     static Long currentScope() {
-        return CURRENT.get();
+        return currentRequestId();
     }
 
     /** Test seam: force the shared CPU pool's threads to exist under the caller's scope. */

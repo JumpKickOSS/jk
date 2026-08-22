@@ -1,7 +1,10 @@
 # Explain and tasks
 
 `jk explain` forecasts **what will run** before it does: cache hit/miss per module and
-stage (sources changed, dependency changed, options/classpath), plus ETA.
+stage, plus ETA. Java compile steps are forecast by the same Zinc worker a build uses
+(one JVM for the explain job): source stamps, classpath jars that actually invalidate
+sources, and deleted types — not a whole-module guess whenever the classpath identity
+changes.
 
 Prefer this over Gradle build scans for day-to-day “why did this rebuild?” questions.
 

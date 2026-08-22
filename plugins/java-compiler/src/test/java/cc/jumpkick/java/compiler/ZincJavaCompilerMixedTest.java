@@ -5,10 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.zip.ZipFile;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -185,40 +188,175 @@ class ZincJavaCompilerMixedTest {
         }
     }
 
+    /**
+     * Gradle puts {@code scala3-compiler_3-*.jar} on {@code java.class.path}. JumpKick's test
+     * worker uses content-addressed blobs with hash filenames (no {@code .jar} suffix). Identify
+     * tools by zip entries and give Zinc the artifact-prefixed names it looks up.
+     */
     static List<Path> scalaCompilerJars() {
-        List<Path> out = new ArrayList<>();
-        for (String e : System.getProperty("java.class.path").split(File.pathSeparator)) {
-            Path p = Path.of(e);
-            if (!Files.isRegularFile(p)) continue;
-            String n = p.getFileName().toString();
-            if (!n.endsWith(".jar")) continue;
-            if (n.startsWith("scala")
-                    || n.startsWith("compiler-interface")
-                    || n.contains("sbt-bridge")
-                    || n.startsWith("jline")
-                    || n.startsWith("jansi")) {
-                out.add(p);
-            }
-        }
-        return out;
+        return ToolJars.compilerClasspath();
     }
 
     static Path junitJupiterApiJar() {
-        for (String e : System.getProperty("java.class.path").split(File.pathSeparator)) {
-            Path p = Path.of(e);
-            if (!Files.isRegularFile(p)) continue;
-            String n = p.getFileName().toString();
-            if (n.startsWith("junit-jupiter-api-") && n.endsWith(".jar")) return p;
-        }
-        throw new IllegalStateException("junit-jupiter-api not on the test classpath");
+        return ToolJars.junitJupiterApi();
     }
 
     static List<Path> scalaLibraryJars(List<Path> compilerCp) {
         List<Path> out = new ArrayList<>();
         for (Path p : compilerCp) {
             String n = p.getFileName().toString();
-            if (n.startsWith("scala3-library_3-") || n.startsWith("scala-library-")) out.add(p);
+            if (n.startsWith("scala-library") || n.startsWith("scala3-library_3")) out.add(p);
         }
         return out;
+    }
+
+    private static final class ToolJars {
+        private static final Path DIR = toolDir();
+        private static final List<Path> COMPILER = loadCompiler();
+        private static final Path JUNIT = loadJunit();
+
+        static List<Path> compilerClasspath() {
+            return COMPILER;
+        }
+
+        static Path junitJupiterApi() {
+            if (JUNIT == null) throw new IllegalStateException("junit-jupiter-api not on the test classpath");
+            return JUNIT;
+        }
+
+        private static Path toolDir() {
+            try {
+                return Files.createTempDirectory("jk-scala-tools-");
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }
+
+        private static List<Path> loadCompiler() {
+            List<Path> out = new ArrayList<>();
+            Path compiler = null, bridge = null, library = null;
+            for (Path p : classpathFiles()) {
+                String n = p.getFileName().toString();
+                if (named(n, "scala3-compiler_3")
+                        || named(n, "scala3-sbt-bridge")
+                        || named(n, "scala-library")
+                        || named(n, "scala3-library_3")
+                        || named(n, "compiler-interface")
+                        || n.startsWith("jline")
+                        || n.startsWith("jansi")
+                        || n.startsWith("scala")) {
+                    out.add(asJar(p));
+                    continue;
+                }
+                Kind k = kind(p);
+                switch (k) {
+                    case COMPILER -> compiler = p;
+                    case BRIDGE -> bridge = p;
+                    case LIBRARY -> library = p;
+                    case TOOL -> out.add(asJar(p));
+                    case OTHER -> {
+                        // not a Scala compiler jar
+                    }
+                }
+            }
+            if (compiler != null) out.add(namedCopy(compiler, "scala3-compiler_3.jar"));
+            if (bridge != null) out.add(namedCopy(bridge, "scala3-sbt-bridge.jar"));
+            if (library != null) out.add(namedCopy(library, "scala-library.jar"));
+            boolean haveCompiler = false, haveBridge = false, haveLib = false;
+            for (Path p : out) {
+                String n = p.getFileName().toString();
+                if (named(n, "scala3-compiler_3")) haveCompiler = true;
+                if (named(n, "scala3-sbt-bridge")) haveBridge = true;
+                if (named(n, "scala-library")) haveLib = true;
+            }
+            if (!haveCompiler || !haveBridge || !haveLib) {
+                throw new IllegalStateException("Scala compiler jars missing on test classpath (compiler="
+                        + haveCompiler
+                        + " bridge="
+                        + haveBridge
+                        + " library="
+                        + haveLib
+                        + ")");
+            }
+            return List.copyOf(out);
+        }
+
+        private static Path loadJunit() {
+            for (Path p : classpathFiles()) {
+                String n = p.getFileName().toString();
+                if (n.startsWith("junit-jupiter-api-") && n.endsWith(".jar")) return p;
+                if (hasEntry(p, "org/junit/jupiter/api/Test.class")) {
+                    return n.endsWith(".jar") ? p : namedCopy(p, "junit-jupiter-api.jar");
+                }
+            }
+            return null;
+        }
+
+        private static List<Path> classpathFiles() {
+            List<Path> out = new ArrayList<>();
+            String cp = System.getProperty("java.class.path", "");
+            for (String e : cp.split(File.pathSeparator)) {
+                if (e == null || e.isBlank()) continue;
+                Path p = Path.of(e);
+                if (Files.isRegularFile(p)) out.add(p);
+            }
+            return out;
+        }
+
+        private static boolean named(String filename, String artifactPrefix) {
+            return filename.startsWith(artifactPrefix + "-")
+                    || filename.startsWith(artifactPrefix + ".")
+                    || filename.equals(artifactPrefix + ".jar");
+        }
+
+        private enum Kind {
+            COMPILER,
+            BRIDGE,
+            LIBRARY,
+            TOOL,
+            OTHER
+        }
+
+        private static Kind kind(Path jar) {
+            try (ZipFile z = new ZipFile(jar.toFile())) {
+                if (z.getEntry("dotty/tools/dotc/Compiler.class") != null) return Kind.COMPILER;
+                if (z.getEntry("dotty/tools/xsbt/CompilerBridge.class") != null) return Kind.BRIDGE;
+                if (z.getEntry("scala/Predef.class") != null) return Kind.LIBRARY;
+                if (z.getEntry("org/jline/terminal/Terminal.class") != null
+                        || z.getEntry("org/fusesource/jansi/Ansi.class") != null
+                        || z.getEntry("xsbti/compile/CompilerInterface2.class") != null) {
+                    return Kind.TOOL;
+                }
+                return Kind.OTHER;
+            } catch (IOException e) {
+                return Kind.OTHER;
+            }
+        }
+
+        private static boolean hasEntry(Path jar, String entry) {
+            try (ZipFile z = new ZipFile(jar.toFile())) {
+                return z.getEntry(entry) != null;
+            } catch (IOException e) {
+                return false;
+            }
+        }
+
+        private static Path asJar(Path p) {
+            String n = p.getFileName().toString();
+            if (n.endsWith(".jar")) return p;
+            return namedCopy(p, Integer.toHexString(p.hashCode()) + ".jar");
+        }
+
+        private static Path namedCopy(Path src, String filename) {
+            try {
+                Path dest = DIR.resolve(filename);
+                if (!Files.isRegularFile(dest) || Files.size(dest) != Files.size(src)) {
+                    Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
+                }
+                return dest;
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }
     }
 }

@@ -9,10 +9,12 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.ModuleRuntimeClasspath;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
+import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.TaskContext;
@@ -22,9 +24,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -278,7 +282,7 @@ public final class PlannerSupport {
             JkBuild sib;
             try {
                 sib = JkBuildParser.parse(manifest);
-            } catch (RuntimeException ignored) {
+            } catch (IOException | RuntimeException ignored) {
                 continue;
             }
             BuildLayout layout = BuildLayout.of(dir, sib);
@@ -752,6 +756,67 @@ public final class PlannerSupport {
             if (pth != null && Files.isDirectory(pth)) out.add(pth);
         }
         return out;
+    }
+
+    /**
+     * Class dirs of workspace MAIN dependencies to vendor into a plugin-worker jar (Gradle
+     * {@code bundledCodec}: plugin-sdk + jsonl). External deps stay on the sidecar POM.
+     */
+    static List<Path> workerCodecClassDirs(Path moduleDir, JkBuild project) {
+        if (moduleDir == null || project == null || !cc.jumpkick.plugin.PluginModule.isWorker(moduleDir)) {
+            return List.of();
+        }
+        Path root;
+        JkBuild rootManifest;
+        try {
+            var rootOpt = WorkspaceLocator.findRoot(moduleDir);
+            if (rootOpt.isEmpty()) return List.of();
+            root = rootOpt.get();
+            rootManifest = JkBuildParser.parse(root.resolve("jk.toml"));
+        } catch (IOException | RuntimeException e) {
+            return List.of();
+        }
+        if (!rootManifest.isWorkspaceRoot()) return List.of();
+        Map<String, Path> dirByName = new LinkedHashMap<>();
+        Map<Path, JkBuild> byDir = new LinkedHashMap<>();
+        for (String module : rootManifest.workspace().modules()) {
+            Path dir = root.resolve(module);
+            Path manifest = dir.resolve("jk.toml");
+            if (!Files.isRegularFile(manifest)) continue;
+            JkBuild sib;
+            try {
+                sib = JkBuildParser.parse(manifest);
+            } catch (IOException | RuntimeException ignored) {
+                continue;
+            }
+            byDir.put(dir, sib);
+            String name = sib.project().name();
+            dirByName.putIfAbsent(name, dir);
+            if (name.startsWith("jk-") && name.length() > 3) {
+                dirByName.putIfAbsent(name.substring(3), dir);
+            }
+            Path base = dir.getFileName();
+            if (base != null) dirByName.putIfAbsent(base.toString(), dir);
+        }
+        LinkedHashSet<Path> out = new LinkedHashSet<>();
+        ArrayDeque<JkBuild> q = new ArrayDeque<>();
+        Set<String> seen = new HashSet<>();
+        q.add(project);
+        while (!q.isEmpty()) {
+            JkBuild cur = q.removeFirst();
+            for (Dependency d : cur.dependencies().of(Scope.MAIN)) {
+                String ws = d.workspaceName();
+                if (ws == null || !seen.add(ws)) continue;
+                Path dir = dirByName.get(ws);
+                if (dir == null) continue;
+                JkBuild sib = byDir.get(dir);
+                if (sib == null) continue;
+                Path classes = BuildLayout.of(dir, sib).classesDir();
+                if (Files.isDirectory(classes)) out.add(classes);
+                q.addLast(sib);
+            }
+        }
+        return List.copyOf(out);
     }
 
     /**

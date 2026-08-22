@@ -19,15 +19,16 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
- * Drives the {@code jk-java-compiler} plugin. With {@code workdir} set, the worker runs Zinc
- * incremental compile; without it, in-process javac with AP provenance.
+ * Drives the {@code jk-java-compiler} plugin. Inside a job request the same pull-mode JVM is
+ * reused for every module ({@link JavaCompilerHost}); otherwise this is a one-shot {@code @spec}
+ * fork.
  *
- * <p>Launched as {@code java -cp <workerJar+POM>} {@code JavaIncrementalCompiler @<spec>}; streams
- * {@value #PREFIX} JSONL on stdout. Mirrors {@link KotlincDriver}.
+ * <p>Launched as {@code java -cp <workerJar+POM>} {@code PluginMain --pull} or {@code @<spec>};
+ * streams {@value #PREFIX} JSONL on stdout.
  */
 public final class ForkedJavac {
 
-    private static final String PREFIX = "##JKJC:";
+    static final String PREFIX = "##JKJC:";
 
     private ForkedJavac() {}
 
@@ -47,6 +48,21 @@ public final class ForkedJavac {
 
         public Result(boolean success, List<CompileResult.Diagnostic> diagnostics, Map<Path, Set<Path>> generated) {
             this(success, diagnostics, generated, List.of());
+        }
+    }
+
+    /** One source Zinc would compile, with the analysis reason. */
+    public record Invalidation(Path source, String why) {}
+
+    /** Read-only Zinc invalidation forecast ({@code PLAN}). */
+    public record Plan(boolean full, String reason, List<Invalidation> invalidations) {
+        public Plan {
+            reason = reason == null ? "" : reason;
+            invalidations = invalidations == null ? List.of() : List.copyOf(invalidations);
+        }
+
+        public List<Path> sources() {
+            return invalidations.stream().map(Invalidation::source).toList();
         }
     }
 
@@ -120,13 +136,27 @@ public final class ForkedJavac {
     }
 
     public static Result compile(Request request) {
+        return JavaCompilerHost.compile(request);
+    }
+
+    public static Plan plan(Request request) {
+        return JavaCompilerHost.plan(request);
+    }
+
+    static Result oneshot(Request req) {
         try {
-            return run(request);
+            return run(req);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException("java worker interrupted", e);
+        }
+    }
+
+    static Plan oneshotPlan(Request req) {
+        try (JavaCompilerHost.Scope ignored = JavaCompilerHost.open()) {
+            return JavaCompilerHost.plan(req);
         }
     }
 
@@ -189,7 +219,7 @@ public final class ForkedJavac {
         }
     }
 
-    private static Path writeSpec(Request req) throws IOException {
+    static Path writeSpec(Request req) throws IOException {
         Map<String, Path> layout = new LinkedHashMap<>();
         layout.put("classesDir", req.classOutput());
         if (req.sourceOutput() != null) layout.put("sourceOutput", req.sourceOutput());
@@ -220,8 +250,8 @@ public final class ForkedJavac {
      * Background AOT trainer: same {@code java -cp worker PluginMain @spec} shape as a real
      * compile, recording with {@code -XX:AOTCacheOutput} while compiling a synthetic Hello.java.
      */
-    private static List<String> trainerCommand(
-            Request req, String workerCp, Path hostJavaHome, Path aotOutput, Path scratch) throws IOException {
+    static List<String> trainerCommand(Request req, String workerCp, Path hostJavaHome, Path aotOutput, Path scratch)
+            throws IOException {
         return trainerCommandForOptimize(
                 hostJavaHome, workerCp, aotOutput, scratch, req.release() > 0 ? req.release() : 25);
     }
@@ -270,17 +300,10 @@ public final class ForkedJavac {
     }
 
     /**
-     * Java-only: thin worker + Zinc POM closure. Mixed Scala: that plus the project-matched
-     * compiler + bridge (AOT keys stay Zinc-only when compilerClasspath is empty).
+     * Thin worker + Zinc POM closure. Mixed Scala loads the compiler through a child classloader
+     * inside the worker; it is not on this JVM classpath so the AOT key stays Zinc-only.
      */
     static String workerClasspath(Request req) {
-        String workerCp = cc.jumpkick.engine.plugin.WorkerLaunchClasspath.resolve(req.workerJar());
-        if (req.compilerClasspath() == null || req.compilerClasspath().isEmpty()) return workerCp;
-        String sep = System.getProperty("path.separator", ":");
-        StringBuilder sb = new StringBuilder(workerCp);
-        for (Path p : req.compilerClasspath()) {
-            sb.append(sep).append(p.toAbsolutePath());
-        }
-        return sb.toString();
+        return cc.jumpkick.engine.plugin.WorkerLaunchClasspath.resolve(req.workerJar());
     }
 }

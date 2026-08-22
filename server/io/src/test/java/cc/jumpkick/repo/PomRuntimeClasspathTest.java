@@ -107,6 +107,99 @@ class PomRuntimeClasspathTest {
     }
 
     @Test
+    void workspace_worker_resolves_from_host_store_when_sandbox_is_empty(@TempDir Path tmp) throws Exception {
+        Path host = tmp.resolve("host-store");
+        Path sandbox = tmp.resolve("sandbox-home");
+        Files.createDirectories(sandbox);
+        Coordinate worker = Coordinate.of("cc.jumpkick", "jk-host-worker", "1.0.0");
+        Coordinate dep = Coordinate.of("org.example", "lib", "1.0");
+        Path workspaceJar = tmp.resolve("target/plugins/host-worker/jk-host-worker-1.0.0.jar");
+        Files.createDirectories(workspaceJar.getParent());
+        Files.writeString(workspaceJar, "workspace-worker");
+        putJar(host, "local", worker, "store-worker");
+        putPom(host, "local", worker, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-host-worker</artifactId>
+                  <version>1.0.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.example</groupId>
+                      <artifactId>lib</artifactId>
+                      <version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        Path depJar = putJar(host, "local", dep, "dep-bytes");
+        putPom(host, "local", dep, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.example</groupId>
+                  <artifactId>lib</artifactId>
+                  <version>1.0</version>
+                </project>
+                """);
+
+        String prevHome = System.getProperty("jk.env.JK_HOME");
+        String prevHost = System.getProperty(PomRuntimeClasspath.HOST_STORE_PROPERTY);
+        try {
+            System.setProperty("jk.env.JK_HOME", sandbox.toString());
+            System.setProperty(
+                    PomRuntimeClasspath.HOST_STORE_PROPERTY,
+                    host.toAbsolutePath().toString());
+            List<Path> cp = PomRuntimeClasspath.resolve(workspaceJar);
+            assertThat(cp)
+                    .contains(
+                            workspaceJar.toAbsolutePath().normalize(),
+                            depJar.toAbsolutePath().normalize());
+        } finally {
+            restoreProp("jk.env.JK_HOME", prevHome);
+            restoreProp(PomRuntimeClasspath.HOST_STORE_PROPERTY, prevHost);
+        }
+    }
+
+    @Test
+    void a_first_party_name_outside_target_does_not_use_the_host_store(@TempDir Path tmp) throws Exception {
+        Path host = tmp.resolve("host-store");
+        Path sandbox = tmp.resolve("sandbox-home");
+        Files.createDirectories(sandbox);
+        Coordinate worker = Coordinate.of("cc.jumpkick", "jk-host-worker", "1.0.0");
+        putJar(host, "local", worker, "store-worker");
+        putPom(host, "local", worker, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-host-worker</artifactId>
+                  <version>1.0.0</version>
+                </project>
+                """);
+        Path jar = tmp.resolve("jk-host-worker-1.0.0.jar");
+        Files.writeString(jar, "x");
+
+        String prevHome = System.getProperty("jk.env.JK_HOME");
+        String prevHost = System.getProperty(PomRuntimeClasspath.HOST_STORE_PROPERTY);
+        try {
+            System.setProperty("jk.env.JK_HOME", sandbox.toString());
+            System.setProperty(
+                    PomRuntimeClasspath.HOST_STORE_PROPERTY,
+                    host.toAbsolutePath().toString());
+            assertThatThrownBy(() -> PomRuntimeClasspath.resolve(jar))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("POM");
+        } finally {
+            restoreProp("jk.env.JK_HOME", prevHome);
+            restoreProp(PomRuntimeClasspath.HOST_STORE_PROPERTY, prevHost);
+        }
+    }
+
+    private static void restoreProp(String key, String prev) {
+        if (prev == null) System.clearProperty(key);
+        else System.setProperty(key, prev);
+    }
+
+    @Test
     void interpolates_parent_property_versions(@TempDir Path tmp) throws Exception {
         Path store = tmp.resolve("store");
         Coordinate worker = Coordinate.of("cc.jumpkick", "jk-formatter", "1.0");

@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "a76ca7203ee09c379fb29fefc723021089ff2ebe0afe6e03f04be15e2c0c6c0a"
+manifests-sha256 = "55c37b879b5f548b8cecce3af3bea6435504a279d5e680b4bfd18c2e99100886"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [[artifact]]
@@ -25,6 +25,49 @@ version  = "4.10.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:bf3351bfeb6e13da2402ba3280077b268fb569bbeff69ef2e0aa82f241a71fe3"
 scopes   = ["main"]
+
+[[artifact]]
+name     = "com.eed3si9n:shaded-jawn-parser_3:jar:"
+version  = "1.7.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:d4d812ffe12e9d910cf4bf32b6e93a311e90238cc9a59af04ee99b5887e0f5b0"
+scopes   = ["main"]
+deps = [
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+]
+
+[[artifact]]
+name     = "com.eed3si9n:shaded-scalajson_3:jar:"
+version  = "1.0.0-M4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:d4997e6dfcdc24db0502a7bae6d44ac2e78e6f683e61b287cb756d9b2559cd33"
+scopes   = ["main"]
+deps = [
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+]
+
+[[artifact]]
+name     = "com.eed3si9n:sjson-new-core_3:jar:"
+version  = "0.15.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:b5833accc89949cb50ff90f49ffa3af1a57f602b844825ae8a1fa30483022222"
+scopes   = ["main"]
+deps = [
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+]
+
+[[artifact]]
+name     = "com.eed3si9n:sjson-new-scalajson_3:jar:"
+version  = "0.15.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:050669c78b1f6dcec712eb9b66fdf8b42b1592ef3e8b6030caf182dd66d8141f"
+scopes   = ["main"]
+deps = [
+  "com.eed3si9n:shaded-jawn-parser_3:jar:@1.7.0",
+  "com.eed3si9n:shaded-scalajson_3:jar:@1.0.0-M4",
+  "com.eed3si9n:sjson-new-core_3:jar:@0.15.1",
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+]
 
 [[artifact]]
 name     = "com.fasterxml.jackson.core:jackson-annotations:jar:"
@@ -120,7 +163,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:cc899ad12f3f522bfedb3765015be10d961eff5cd1f7b48839c972522ba17d02"
 scopes   = ["main"]
 deps = [
-  "com.google.protobuf:protobuf-java:jar:@4.35.1",
+  "com.google.protobuf:protobuf-java:jar:@4.36.0",
 ]
 
 [[artifact]]
@@ -345,22 +388,22 @@ deps = [
 
 [[artifact]]
 name     = "com.google.protobuf:protobuf-java-util:jar:"
-version  = "4.35.1"
+version  = "4.36.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:ed75aaf651a243a943ae73413acf96cb4b02fdae14a11ae05c8e66a4489e23f3"
+checksum = "sha256:ebbe226e2444db95d042280561d2c5bdf4117a5bae4c0536d85bd0910b297df5"
 scopes   = ["main"]
 deps = [
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
   "com.google.code.gson:gson:jar:@2.14.0",
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "com.google.protobuf:protobuf-java:jar:@4.35.1",
+  "com.google.protobuf:protobuf-java:jar:@4.36.0",
 ]
 
 [[artifact]]
 name     = "com.google.protobuf:protobuf-java:jar:"
-version  = "4.35.1"
+version  = "4.36.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:a4345ba2aa009912ff6f90467fea2d104605256b72c50840d75f13256638a472"
+checksum = "sha256:06515776b10bfed334b610273ffdd8884098a9333cb816314b4e4876bfcd2041"
 scopes   = ["main"]
 
 [[artifact]]
@@ -368,6 +411,53 @@ name     = "com.googlecode.javaewah:JavaEWAH:jar:"
 version  = "1.2.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d65226949713c4c61a784f41c51167e7b0316f93764398ebba9e4336b3d954c2"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "com.lihaoyi:fansi_3:jar:"
+version  = "0.5.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:df4b447704664563cb0fba9cf52d3fc7509654ab592824d5c2eb4647e6701ac4"
+scopes   = ["test"]
+deps = [
+  "com.lihaoyi:sourcecode_3:jar:@0.4.4",
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+]
+
+[[artifact]]
+name     = "com.lihaoyi:pprint_3:jar:"
+version  = "0.9.6"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:9bd6524b34da59c85859f2aa0663c5282477af107e48160b30a53da91e6f9016"
+scopes   = ["test"]
+deps = [
+  "com.lihaoyi:fansi_3:jar:@0.5.1",
+  "com.lihaoyi:sourcecode_3:jar:@0.4.4",
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+]
+
+[[artifact]]
+name     = "com.lihaoyi:sourcecode_3:jar:"
+version  = "0.4.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:40cc148f8baab769de72892443476a05eed7471a9b5cd2cbc2a47bf22cad30d3"
+scopes   = ["test"]
+deps = [
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+]
+
+[[artifact]]
+name     = "com.lmax:disruptor:jar:"
+version  = "4.0.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:c2ba80841541272bc815bcadab910d2d716aa563eca15762450ab4c889440505"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "com.swoval:file-tree-views:jar:"
+version  = "2.1.12"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:fd7373889b7a92cf3e97db36c920ba272aec158a9387b3259fca9f2dfaeda914"
 scopes   = ["main"]
 
 [[artifact]]
@@ -418,7 +508,7 @@ deps = [
   "com.google.oauth-client:google-oauth-client-java6:jar:@1.39.0",
   "com.google.oauth-client:google-oauth-client-jetty:jar:@1.39.0",
   "com.google.oauth-client:google-oauth-client:jar:@1.39.0",
-  "com.google.protobuf:protobuf-java-util:jar:@4.35.1",
+  "com.google.protobuf:protobuf-java-util:jar:@4.36.0",
   "commons-codec:commons-codec:jar:@1.22.1",
   "io.github.erdtman:java-json-canonicalization:jar:@1.1",
   "io.grpc:grpc-netty-shaded:jar:@1.83.1",
@@ -429,10 +519,20 @@ deps = [
 ]
 
 [[artifact]]
-name     = "io.github.classgraph:classgraph:jar:"
-version  = "4.8.192"
+name     = "io.get-coursier:interface:jar:"
+version  = "1.0.28"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:8d3e9d3864e51438a8a33391dc469f06d2d878278efc784b78ac5d4c0d5cfc87"
+checksum = "sha256:7592fe49c789b55429483185ac22ac6da43680a39c53b818c50bca0fb7dd6a78"
+scopes   = ["test"]
+deps = [
+  "org.slf4j:slf4j-api:jar:@2.0.18",
+]
+
+[[artifact]]
+name     = "io.github.classgraph:classgraph:jar:"
+version  = "4.8.193"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:e95ab7083d025b7f6a4fb7c0e608a9ff1ddc0ea91b4cd757c9c3a0650e61b34b"
 scopes   = ["main"]
 
 [[artifact]]
@@ -519,7 +619,7 @@ deps = [
   "com.google.api.grpc:proto-google-common-protos:jar:@2.74.0",
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
   "com.google.guava:guava:jar:@33.7.1-jre",
-  "com.google.protobuf:protobuf-java:jar:@4.35.1",
+  "com.google.protobuf:protobuf-java:jar:@4.36.0",
   "io.grpc:grpc-api:jar:@1.83.1",
   "io.grpc:grpc-protobuf-lite:jar:@1.83.1",
 ]
@@ -1574,6 +1674,13 @@ deps = [
 ]
 
 [[artifact]]
+name     = "org.fusesource.jansi:jansi:jar:"
+version  = "2.4.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:ec168cf31c4c3849348dfff7a04e90170615f7784f1255ee6747b98a854c04c5"
+scopes   = ["main"]
+
+[[artifact]]
 name     = "org.graalvm.sdk:nativeimage:jar:"
 version  = "25.2.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -1668,7 +1775,17 @@ name     = "org.jline:jline-native:jar:"
 version  = "4.3.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:ff94ab4bccc3c1549444082ce07a2760cbf1ad4dae04e43508597bd802bcb231"
-scopes   = ["main"]
+scopes   = ["main", "test"]
+
+[[artifact]]
+name     = "org.jline:jline-reader:jar:"
+version  = "4.3.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:02aa899906086ce9d9c992bb05aed776045e5915a180e717dcb661fb87ab84d3"
+scopes   = ["test"]
+deps = [
+  "org.jline:jline-terminal:jar:@4.3.1",
+]
 
 [[artifact]]
 name     = "org.jline:jline-terminal-ffm:jar:"
@@ -1681,11 +1798,22 @@ deps = [
 ]
 
 [[artifact]]
+name     = "org.jline:jline-terminal-jni:jar:"
+version  = "4.3.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:1c4873798f36412827087013e424199bced29da7c8421f3850cfe7f31f274c1c"
+scopes   = ["main", "test"]
+deps = [
+  "org.jline:jline-native:jar:@4.3.1",
+  "org.jline:jline-terminal:jar:@4.3.1",
+]
+
+[[artifact]]
 name     = "org.jline:jline-terminal:jar:"
 version  = "4.3.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:272927363471fdbf2f38710befbfe866acc1ed3472062a8ced02b16686f27bcc"
-scopes   = ["main"]
+scopes   = ["main", "test"]
 deps = [
   "org.jline:jline-native:jar:@4.3.1",
 ]
@@ -1849,7 +1977,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:4d532ef3c20c334a6817b6811d778efafbf4b54d52761ed59f26cd00a24f3c46"
 scopes   = ["main"]
 deps = [
-  "io.github.classgraph:classgraph:jar:@4.8.192",
+  "io.github.classgraph:classgraph:jar:@4.8.193",
   "io.micrometer:micrometer-core:jar:@1.17.1",
   "org.jetbrains:annotations:jar:@26.1.0",
   "org.openrewrite:rewrite-core:jar:@8.90.3",
@@ -1878,7 +2006,7 @@ checksum = "sha256:24701e0453fef239509a9f378bdd61bf954860788089278d43807b84ee484
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
-  "io.github.classgraph:classgraph:jar:@4.8.192",
+  "io.github.classgraph:classgraph:jar:@4.8.193",
   "io.micrometer:micrometer-core:jar:@1.17.1",
   "org.antlr:antlr4-runtime:jar:@4.13.2",
   "org.apache.commons:commons-text:jar:@1.15.0",
@@ -2000,6 +2128,329 @@ checksum = "sha256:01f7b1a015e33e2b62d5f5f37053306357ab1415fd181fcba7794f5d198c1
 scopes   = ["main", "provided", "processor"]
 
 [[artifact]]
+name     = "org.scala-lang.modules:scala-asm:jar:"
+version  = "9.10.1-scala-1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:620d24ce6b749a12aa4c6ecef3acf0cd50b6edb017234d8adb504b833c940bad"
+scopes   = ["test"]
+
+[[artifact]]
+name     = "org.scala-lang.modules:scala-parallel-collections_3:jar:"
+version  = "1.2.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:de814a415584199a6e3e680319d16b25c069aa69db08938c97c04f4b28e54a84"
+scopes   = ["main"]
+deps = [
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+]
+
+[[artifact]]
+name     = "org.scala-lang.modules:scala-parser-combinators_3:jar:"
+version  = "2.4.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:50f1b3dcf8f14975702dc6da287797e391fc5d4834e4d3e7e9f9125efdb2de9a"
+scopes   = ["main"]
+deps = [
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+]
+
+[[artifact]]
+name     = "org.scala-lang.modules:scala-xml_2.13:jar:"
+version  = "2.4.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:b549a1bf335bc4528cf26f005894c7c37220ac4e8450847973d8f4001b8f59ea"
+scopes   = ["main"]
+deps = [
+  "org.scala-lang:scala-library:jar:@3.8.4",
+]
+
+[[artifact]]
+name     = "org.scala-lang:scala-library:jar:"
+version  = "3.8.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:1b8330de5774c15874173f168b674255caa00c5ef3648ab0b6cb763bb7fd2de7"
+scopes   = ["main", "test"]
+
+[[artifact]]
+name     = "org.scala-lang:scala3-compiler_3:jar:"
+version  = "3.8.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:740be02b51e815ef2a927a422d61fd851e25403655fb9ee2e076b4f9ce1fb34e"
+scopes   = ["test"]
+deps = [
+  "org.scala-lang.modules:scala-asm:jar:@9.10.1-scala-1",
+  "org.scala-lang:scala3-interfaces:jar:@3.8.4",
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+  "org.scala-lang:tasty-core_3:jar:@3.8.4",
+  "org.scala-sbt:compiler-interface:jar:@2.0.4",
+]
+
+[[artifact]]
+name     = "org.scala-lang:scala3-interfaces:jar:"
+version  = "3.8.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:eac968f8ff5f7aed55fb9ffb535bb6effaef4c9d3d8593a45b6dd98b7ce0b9d9"
+scopes   = ["test"]
+
+[[artifact]]
+name     = "org.scala-lang:scala3-library_3:jar:"
+version  = "3.8.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:8f82e1c8974a868f3beeb475fa9c32239d2e082e9f803ebfc3eeb91211b887d1"
+scopes   = ["main", "test"]
+deps = [
+  "org.scala-lang:scala-library:jar:@3.8.4",
+]
+
+[[artifact]]
+name     = "org.scala-lang:scala3-repl_3:jar:"
+version  = "3.8.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:18df5463f4e81e6f86cb24cfd394062257edc602e61e902f5f230259e1f943b4"
+scopes   = ["test"]
+deps = [
+  "com.lihaoyi:fansi_3:jar:@0.5.1",
+  "com.lihaoyi:pprint_3:jar:@0.9.6",
+  "com.lihaoyi:sourcecode_3:jar:@0.4.4",
+  "io.get-coursier:interface:jar:@1.0.28",
+  "org.jline:jline-reader:jar:@4.3.1",
+  "org.jline:jline-terminal-jni:jar:@4.3.1",
+  "org.jline:jline-terminal:jar:@4.3.1",
+  "org.scala-lang:scala3-compiler_3:jar:@3.8.4",
+  "org.virtuslab:using_directives:jar:@1.1.4",
+]
+
+[[artifact]]
+name     = "org.scala-lang:scala3-sbt-bridge:jar:"
+version  = "3.8.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:a306dac5b82db1184035223945f596b8dc4210540e29f8838e96fa1456488b1e"
+scopes   = ["test"]
+deps = [
+  "org.scala-lang:scala3-compiler_3:jar:@3.8.4",
+  "org.scala-lang:scala3-repl_3:jar:@3.8.4",
+]
+
+[[artifact]]
+name     = "org.scala-lang:tasty-core_3:jar:"
+version  = "3.8.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:eaea300a6fa4ccd24c979f76e1356b10b27151b395ad3249f9ad8afb4ba8ae20"
+scopes   = ["test"]
+deps = [
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+]
+
+[[artifact]]
+name     = "org.scala-sbt.jline:jline:jar:"
+version  = "2.14.7-sbt-42b717d4418374417765c7651dca69b1b75d8b84"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:52957f0e66d3e6c35f66671272770e8b32b9a8abc1ce610579eafbe0431c4af9"
+scopes   = ["main"]
+deps = [
+  "org.fusesource.jansi:jansi:jar:@2.4.3",
+]
+
+[[artifact]]
+name     = "org.scala-sbt:compiler-interface:jar:"
+version  = "2.0.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:d973c89d6a0036f71501807dd2568f337f501be9dca4e72a7141fae35ba97d7d"
+scopes   = ["main", "test"]
+deps = [
+  "org.scala-sbt:util-interface:jar:@2.0.7",
+]
+
+[[artifact]]
+name     = "org.scala-sbt:io_3:jar:"
+version  = "1.13.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:04937038126a47051e324c87d065a822472862fdd68a0343bbcb7f5315471624"
+scopes   = ["main"]
+deps = [
+  "com.swoval:file-tree-views:jar:@2.1.12",
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+]
+
+[[artifact]]
+name     = "org.scala-sbt:launcher-interface:jar:"
+version  = "1.6.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:4181a31b5340e8e1cdbdbe70260aa0536918fa8a8206ab68f99a98bbdbfeb066"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "org.scala-sbt:sbinary_3:jar:"
+version  = "0.5.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:1723b63ba348dcd997b9bd0bf3805caae6de6d96b12959fd82d348e72f275804"
+scopes   = ["main"]
+deps = [
+  "org.scala-lang.modules:scala-xml_2.13:jar:@2.4.0",
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+]
+
+[[artifact]]
+name     = "org.scala-sbt:util-control_3:jar:"
+version  = "2.0.7"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:1a5e0dd58e9e06fc05a30520aab21baada6e86078ae6ed98aa64c793fb6b475d"
+scopes   = ["main"]
+deps = [
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+]
+
+[[artifact]]
+name     = "org.scala-sbt:util-core_3:jar:"
+version  = "2.0.7"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:edd307b1a4c4670740b466480ebfce4c99780407ac99b33c11a215df71f7acef"
+scopes   = ["main"]
+deps = [
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+]
+
+[[artifact]]
+name     = "org.scala-sbt:util-interface:jar:"
+version  = "2.0.7"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:0902abcee0b00979f040f8eca6a59fbcbce6e413c68895d654bbc3c7406f6068"
+scopes   = ["main", "test"]
+
+[[artifact]]
+name     = "org.scala-sbt:util-logging_3:jar:"
+version  = "2.0.7"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:301ecbd2b2809531c7f2efe93b5fc02a30316087ac2640cb9ed1cd545a68807e"
+scopes   = ["main"]
+deps = [
+  "com.eed3si9n:sjson-new-core_3:jar:@0.15.1",
+  "com.eed3si9n:sjson-new-scalajson_3:jar:@0.15.1",
+  "com.lmax:disruptor:jar:@4.0.0",
+  "org.jline:jline-native:jar:@4.3.1",
+  "org.jline:jline-terminal-jni:jar:@4.3.1",
+  "org.jline:jline-terminal:jar:@4.3.1",
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+  "org.scala-sbt.jline:jline:jar:@2.14.7-sbt-42b717d4418374417765c7651dca69b1b75d8b84",
+  "org.scala-sbt:io_3:jar:@1.13.0",
+  "org.scala-sbt:util-core_3:jar:@2.0.7",
+  "org.scala-sbt:util-interface:jar:@2.0.7",
+]
+
+[[artifact]]
+name     = "org.scala-sbt:util-relation_3:jar:"
+version  = "2.0.7"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:1c4345b44374eedef49689e2f2a859c188cfdc1e8db5966afc1f69b7ee873835"
+scopes   = ["main"]
+deps = [
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+]
+
+[[artifact]]
+name     = "org.scala-sbt:zinc-apiinfo_3:jar:"
+version  = "2.0.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:5295de5a1d63fda68391546ff626f718125c430daa3b4607c84541ae1a7e6449"
+scopes   = ["main"]
+deps = [
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+  "org.scala-sbt:compiler-interface:jar:@2.0.4",
+  "org.scala-sbt:zinc-classfile_3:jar:@2.0.4",
+]
+
+[[artifact]]
+name     = "org.scala-sbt:zinc-classfile_3:jar:"
+version  = "2.0.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:ed7f56d04913befa24a6fc6018f699b566e792aa993a5166ca0a80d1580bd615"
+scopes   = ["main"]
+deps = [
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+  "org.scala-sbt:compiler-interface:jar:@2.0.4",
+  "org.scala-sbt:io_3:jar:@1.13.0",
+  "org.scala-sbt:util-logging_3:jar:@2.0.7",
+]
+
+[[artifact]]
+name     = "org.scala-sbt:zinc-classpath_3:jar:"
+version  = "2.0.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:9f42b1b6e28d1fa90158750964fee58aa286e7e82f7aef48bbb9d38c74465921"
+scopes   = ["main"]
+deps = [
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+  "org.scala-sbt:compiler-interface:jar:@2.0.4",
+  "org.scala-sbt:io_3:jar:@1.13.0",
+  "org.scala-sbt:launcher-interface:jar:@1.6.2",
+]
+
+[[artifact]]
+name     = "org.scala-sbt:zinc-compile-core_3:jar:"
+version  = "2.0.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:39ab30c1368deea7050f18d0ab3bf570496e8cc4b6c21a2ae7506b6f25765c11"
+scopes   = ["main"]
+deps = [
+  "org.scala-lang.modules:scala-parser-combinators_3:jar:@2.4.0",
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+  "org.scala-sbt:compiler-interface:jar:@2.0.4",
+  "org.scala-sbt:io_3:jar:@1.13.0",
+  "org.scala-sbt:launcher-interface:jar:@1.6.2",
+  "org.scala-sbt:util-control_3:jar:@2.0.7",
+  "org.scala-sbt:util-logging_3:jar:@2.0.7",
+  "org.scala-sbt:zinc-apiinfo_3:jar:@2.0.4",
+  "org.scala-sbt:zinc-classfile_3:jar:@2.0.4",
+  "org.scala-sbt:zinc-classpath_3:jar:@2.0.4",
+]
+
+[[artifact]]
+name     = "org.scala-sbt:zinc-core_3:jar:"
+version  = "2.0.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:cea9d9114b19c9bcfe9b137f1a135d915a003a553ff27e595bd97b7949a12f62"
+scopes   = ["main"]
+deps = [
+  "org.scala-lang.modules:scala-parallel-collections_3:jar:@1.2.0",
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+  "org.scala-sbt:compiler-interface:jar:@2.0.4",
+  "org.scala-sbt:io_3:jar:@1.13.0",
+  "org.scala-sbt:util-logging_3:jar:@2.0.7",
+  "org.scala-sbt:util-relation_3:jar:@2.0.7",
+  "org.scala-sbt:zinc-apiinfo_3:jar:@2.0.4",
+  "org.scala-sbt:zinc-classpath_3:jar:@2.0.4",
+  "org.scala-sbt:zinc-compile-core_3:jar:@2.0.4",
+]
+
+[[artifact]]
+name     = "org.scala-sbt:zinc-persist_3:jar:"
+version  = "2.0.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:174d4f169a8baf36eeead33c9485eb6f5e9c3973f4775b2c1833d1c98ec1d9f6"
+scopes   = ["main"]
+deps = [
+  "org.scala-lang.modules:scala-parallel-collections_3:jar:@1.2.0",
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+  "org.scala-sbt:sbinary_3:jar:@0.5.2",
+  "org.scala-sbt:zinc-compile-core_3:jar:@2.0.4",
+  "org.scala-sbt:zinc-core_3:jar:@2.0.4",
+]
+
+[[artifact]]
+name     = "org.scala-sbt:zinc_3:jar:"
+version  = "2.0.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:83ef81980ff8ab819d2367b1cb23ee8df0cc2e6f4fe76b8f9cd42e70eac05bfd"
+scopes   = ["main"]
+deps = [
+  "org.scala-lang:scala3-library_3:jar:@3.8.4",
+  "org.scala-sbt:zinc-classfile_3:jar:@2.0.4",
+  "org.scala-sbt:zinc-compile-core_3:jar:@2.0.4",
+  "org.scala-sbt:zinc-core_3:jar:@2.0.4",
+  "org.scala-sbt:zinc-persist_3:jar:@2.0.4",
+]
+
+[[artifact]]
 name     = "org.slf4j:jcl-over-slf4j:jar:"
 version  = "2.0.18"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -2014,7 +2465,7 @@ name     = "org.slf4j:slf4j-api:jar:"
 version  = "2.0.18"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:44508fd1576500688c790b190acdd16fec4f8c79a3e0b900afd70503cf055f55"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "test"]
 
 [[artifact]]
 name     = "org.slf4j:slf4j-nop:jar:"
@@ -2043,6 +2494,13 @@ version  = "1.12"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:3e158a87bd73d8afb4b6e8239c013b7d049c48563f45860ce99cd2e448cf4a6b"
 scopes   = ["main"]
+
+[[artifact]]
+name     = "org.virtuslab:using_directives:jar:"
+version  = "1.1.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:f905fd8fd0d50e76bcaca3a9ef631a49587159f14cd5cc405fd3ade97c72c555"
+scopes   = ["test"]
 
 [[artifact]]
 name     = "org.yaml:snakeyaml:jar:"

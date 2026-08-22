@@ -14,6 +14,7 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -74,7 +75,8 @@ public final class PlannerPackage {
                     // custom packagers (boot-jar) merge step outputs themselves. The dirs are only
                     // *listed* here — staging them is a copy, and it must not happen before the
                     // cache check below.
-                    List<Path> contributed = existingContributedDirs(pluginDecls, layout);
+                    List<Path> contributed = new ArrayList<>(existingContributedDirs(pluginDecls, layout));
+                    contributed.addAll(PlannerSupport.workerCodecClassDirs(in.dir(), project));
                     Files.createDirectories(jarPath.getParent());
                     String mainClass = cc.jumpkick.plugin.PluginModule.mainClass(in.dir(), project);
                     // Application jars embed the lockfile-derived SBOM (libraries don't:
@@ -99,6 +101,7 @@ public final class PlannerPackage {
                             ActionKey.forArtifact(pkgTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);
                     if (restorePackaged(in.cache(), pkgKey, jarPath.getParent())) {
                         ctx.put(JAR_PATH, jarPath);
+                        writeSidecarPom(project, layout, jarPath);
                         ctx.label(jarPath.getFileName() + " up-to-date");
                         ctx.cached();
                         ctx.progress(1);
@@ -125,9 +128,25 @@ public final class PlannerPackage {
                             List.of(jarPath),
                             !in.ephemeralActions());
                     ctx.put(JAR_PATH, jarPath);
+                    writeSidecarPom(project, layout, jarPath);
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /** Sibling {@code .pom} so {@code WorkerLaunchClasspath} can resolve a workspace-built worker. */
+    static void writeSidecarPom(JkBuild project, BuildLayout layout, Path jarPath) {
+        if (project == null || jarPath == null) return;
+        try {
+            String name = jarPath.getFileName().toString();
+            Path pom = name.endsWith(".jar")
+                    ? jarPath.resolveSibling(name.substring(0, name.length() - 4) + ".pom")
+                    : jarPath.resolveSibling(name + ".pom");
+            Files.createDirectories(pom.getParent());
+            Files.write(pom, InstallPlans.renderedPomBytes(project, layout));
+        } catch (IOException ignored) {
+            // Launch still fails clearly if the POM is missing; packaging must not.
+        }
     }
 
     /**

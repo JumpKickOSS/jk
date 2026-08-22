@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileRequest;
-import cc.jumpkick.compile.incremental.JavacFixture;
+import cc.jumpkick.compile.JavacFixture;
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -36,7 +36,7 @@ class JavaIncrementalCompileTest {
 
         assertThat(p.build().compiledSources()).containsExactlyInAnyOrder("a/A.java", "a/B.java");
 
-        // Change B's method *body* only — same ABI.
+        // Change B's method *body* only — Zinc API hash unchanged.
         p.write("a/B.java", "package a; public class B { public String greet() { return \"hello there\"; } }");
         Run r = p.build();
         assertThat(r.outcome).isEqualTo("compiled");
@@ -51,8 +51,7 @@ class JavaIncrementalCompileTest {
         p.write("a/A.java", "package a; public class A { public String use() { return new B().greet(); } }");
         p.build();
 
-        // ABI change to B (add a public method) — A doesn't use it, but A depends on B,
-        // so A is conservatively recompiled via the reverse-dependency closure.
+        // Public-surface change to B. Zinc may recompile dependents that used B's API.
         p.write(
                 "a/B.java",
                 "package a; public class B { public String greet() { return \"hi\"; } public void bye() {} }");
@@ -79,7 +78,7 @@ class JavaIncrementalCompileTest {
     @Test
     void dependency_abi_change_recompiles_referencing_sources(@TempDir Path dir) throws Exception {
         // Two versions of a dependency at different paths (a dependency bump). v2
-        // adds an overload, an ABI change A's bytecode must react to.
+        // adds an overload; Zinc invalidates A via the changed classpath stamp.
         JavacFixture.compile(
                 dir.resolve("depv1"),
                 Map.of("dep.Lib", "package dep; public class Lib { public void f(Object o) {} }"));
@@ -200,7 +199,7 @@ class JavaIncrementalCompileTest {
         p.write("a/A.java", "package a; public class A { public int f() { return 1; } }");
         JavaCompile.Prediction pred = p.predict();
         assertThat(pred.outcome()).isEqualTo(JavaCompile.Outcome.FULL);
-        assertThat(pred.reason()).isEqualTo("no prior compile record");
+        assertThat(pred.reason()).isEqualTo("no zinc analysis");
         assertThat(pred.sourceCount()).isEqualTo(1);
     }
 
@@ -228,7 +227,7 @@ class JavaIncrementalCompileTest {
     }
 
     @Test
-    void predict_classpath_change_reasons_full(@TempDir Path dir) throws Exception {
+    void predict_classpath_change_invalidates_users(@TempDir Path dir) throws Exception {
         JavacFixture.compile(
                 dir.resolve("depv1"), Map.of("dep.Lib", "package dep; public class Lib { public void f() {} }"));
         JavacFixture.compile(
@@ -242,8 +241,10 @@ class JavaIncrementalCompileTest {
         p.build(List.of(depV1));
 
         JavaCompile.Prediction pred = p.predict(List.of(depV2));
-        assertThat(pred.outcome()).isEqualTo(JavaCompile.Outcome.FULL);
-        assertThat(pred.reason()).isEqualTo("classpath changed");
+        assertThat(pred.outcome()).isEqualTo(JavaCompile.Outcome.INCREMENTAL);
+        assertThat(pred.reason()).contains("classpath");
+        assertThat(pred.sources().stream().map(path -> path.getFileName().toString()))
+                .contains("A.java");
     }
 
     @Test
@@ -253,7 +254,7 @@ class JavaIncrementalCompileTest {
         p.build();
         JavaCompile.Prediction pred = p.predict(List.of(), 17);
         assertThat(pred.outcome()).isEqualTo(JavaCompile.Outcome.FULL);
-        assertThat(pred.reason()).isEqualTo("release changed");
+        assertThat(pred.reason()).containsAnyOf("release changed", "javac options changed");
     }
 
     // ---- harness ----------------------------------------------------------
@@ -346,7 +347,16 @@ class JavaIncrementalCompileTest {
         }
 
         JavaCompile.Prediction predict(List<Path> classpath, int release) throws IOException {
-            return JavaCompile.predict("compile-main", request(classpath, release), "jk-test", actionCache, stateDir);
+            try (cc.jumpkick.compile.JavaCompilerHost.Scope ignored = cc.jumpkick.compile.JavaCompilerHost.open()) {
+                return JavaCompile.predict(
+                        "compile-main",
+                        request(classpath, release),
+                        "jk-test",
+                        actionCache,
+                        stateDir,
+                        workerJar,
+                        root.resolve("gen"));
+            }
         }
 
         private CompileRequest request(List<Path> classpath, int release) throws IOException {

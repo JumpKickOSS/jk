@@ -65,6 +65,11 @@ public final class PluginReply {
         return "{\"t\":\"wrote\",\"path\":" + Jsonl.quote(path) + "}";
     }
 
+    /** Pull-protocol: the worker can accept one {@code COMPILE}/{@code PLAN} (or {@code DONE}). */
+    public static String ready() {
+        return "{\"t\":\"ready\"}";
+    }
+
     /** A terminal typed result payload; {@code fields} serialized by shape. */
     public static String result(Map<String, Object> fields) {
         StringBuilder b = new StringBuilder("{\"t\":\"result\"");

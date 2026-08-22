@@ -260,6 +260,7 @@ public final class JobEnvelope {
                 }
             } finally {
                 cc.jumpkick.task.IoLedger.close();
+                cc.jumpkick.compile.JavaCompilerHost.end(eventRequestId);
                 // Kill leftovers — never clear() the registry without shutdown, or a racing
                 // cancel thread's shutdownForRequest finds an empty set and plugin/javac
                 // children keep running.

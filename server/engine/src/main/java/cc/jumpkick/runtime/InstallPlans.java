@@ -253,6 +253,10 @@ public final class InstallPlans {
         }
     }
 
+    static byte[] renderedPomBytes(JkBuild project, BuildLayout layout) {
+        return renderedPom(project, layout);
+    }
+
     private static byte[] renderedPom(JkBuild project, BuildLayout layout) {
         String pomXml = cc.jumpkick.publish.PublishablePom.render(
                         project,

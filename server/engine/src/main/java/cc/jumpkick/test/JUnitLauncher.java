@@ -5,7 +5,9 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.util.JkDirs;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -112,6 +114,12 @@ public final class JUnitLauncher {
                 // Sibling of test-jk-home: <module>/target/test-shared-cache (SharedTestCache).
                 Path shared = Path.of(jkHome).getParent().resolve("test-shared-cache");
                 flags.add("-Djk.test.cache.dir=" + shared);
+                // Sandbox JK_HOME hides the product store; first-party workers still resolve
+                // Zinc from the host engine's store.
+                flags.add("-D"
+                        + PomRuntimeClasspath.HOST_STORE_PROPERTY
+                        + "="
+                        + JkDirs.store().toAbsolutePath().normalize());
             }
         }
         workerJarProps.forEach((prop, jar) -> flags.add("-D" + prop + "=" + jar));

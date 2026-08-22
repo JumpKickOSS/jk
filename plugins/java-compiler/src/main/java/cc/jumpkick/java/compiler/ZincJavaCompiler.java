@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
@@ -14,6 +15,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -27,11 +30,13 @@ import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.StandardLocation;
 import javax.tools.ToolProvider;
+import sbt.internal.inc.Analysis;
 import sbt.internal.inc.CompileFailed;
 import sbt.internal.inc.FileAnalysisStore;
 import sbt.internal.inc.FreshCompilerCache;
 import sbt.internal.inc.Locate;
 import sbt.internal.inc.PlainVirtualFileConverter;
+import sbt.internal.inc.Relations;
 import sbt.internal.inc.ScalaInstance;
 import sbt.internal.inc.Stamps;
 import sbt.internal.inc.ZincUtil;
@@ -45,6 +50,7 @@ import xsbti.Reporter;
 import xsbti.Severity;
 import xsbti.T2;
 import xsbti.VirtualFile;
+import xsbti.VirtualFileRef;
 import xsbti.compile.AnalysisContents;
 import xsbti.compile.AnalysisStore;
 import xsbti.compile.ClasspathOptions;
@@ -58,10 +64,14 @@ import xsbti.compile.IncToolOptions;
 import xsbti.compile.IncrementalCompiler;
 import xsbti.compile.Inputs;
 import xsbti.compile.JavaCompiler;
+import xsbti.compile.MiniOptions;
+import xsbti.compile.MiniSetup;
 import xsbti.compile.Output;
 import xsbti.compile.PerClasspathEntryLookup;
 import xsbti.compile.PreviousResult;
 import xsbti.compile.Setup;
+import xsbti.compile.analysis.ReadStamps;
+import xsbti.compile.analysis.Stamp;
 
 /**
  * Zinc incremental compile. Java-only uses a dummy scalac; {@link #compileMixed} is the same
@@ -87,6 +97,24 @@ public final class ZincJavaCompiler {
 
     public record Diag(String kind, String file, long line, long col, String message) {}
 
+    /** One source Zinc would compile, with the analysis reason. */
+    public record Invalidation(Path source, String why) {}
+
+    /**
+     * Read-only invalidation forecast from the previous Zinc analysis + current stamps. Does not
+     * write class files or analysis.
+     */
+    public record Plan(boolean full, String reason, List<Invalidation> invalidations) {
+        public Plan {
+            reason = reason == null ? "" : reason;
+            invalidations = invalidations == null ? List.of() : List.copyOf(invalidations);
+        }
+
+        public List<Path> sources() {
+            return invalidations.stream().map(Invalidation::source).toList();
+        }
+    }
+
     /**
      * Compile {@code sources} into {@code classOutput}, persisting Zinc analysis under {@code
      * workdir}.
@@ -102,6 +130,22 @@ public final class ZincJavaCompiler {
             List<Path> processorPath) {
         return compile(
                 sources, classpath, classOutput, workdir, sourceOutput, release, extraOptions, processorPath, null);
+    }
+
+    /**
+     * Forecast which sources Zinc would compile without writing outputs. Uses the previous analysis
+     * under {@code workdir} plus current source/library stamps.
+     */
+    public static Plan planJava(
+            List<Path> sources,
+            List<Path> classpath,
+            Path classOutput,
+            Path workdir,
+            Path sourceOutput,
+            int release,
+            List<String> extraOptions,
+            List<Path> processorPath) {
+        return plan(sources, classpath, classOutput, workdir, sourceOutput, release, extraOptions, processorPath);
     }
 
     /**
@@ -182,6 +226,7 @@ public final class ZincJavaCompiler {
             List<Path> processorPath,
             MixedScala mixed) {
         RecordingJavaCompiler javac = null;
+        ProcessorLoad processors = ProcessorLoad.none();
         try {
             Files.createDirectories(classOutput);
             Files.createDirectories(workdir);
@@ -193,8 +238,8 @@ public final class ZincJavaCompiler {
             IncrementalCompiler zinc = ZincUtil.defaultIncrementalCompiler();
             FileConverter converter = PlainVirtualFileConverter.converter();
             ApProvenance provenance = new ApProvenance();
-            List<Processor> processors = loadProcessors(processorPath);
-            javac = recordingJavac(converter, processors, provenance);
+            processors = loadProcessors(processorPath);
+            javac = recordingJavac(converter, processors.processors(), provenance);
             Compilers compilers = mixed != null ? mixedCompilers(javac, mixed) : javaOnlyCompilers(javac);
 
             VirtualFile[] sourceFiles = virtual(sources, converter);
@@ -268,6 +313,195 @@ public final class ZincJavaCompiler {
                     false,
                     List.of(new Diag("ERROR", null, 0, 0, e.getClass().getName() + ": " + e.getMessage())),
                     List.of());
+        } finally {
+            processors.close();
+        }
+    }
+
+    private static Plan plan(
+            List<Path> sources,
+            List<Path> classpath,
+            Path classOutput,
+            Path workdir,
+            Path sourceOutput,
+            int release,
+            List<String> extraOptions,
+            List<Path> processorPath) {
+        if (workdir == null || !Files.isRegularFile(workdir.resolve("zinc"))) {
+            return new Plan(true, "no zinc analysis", allSources(sources, "no zinc analysis"));
+        }
+        if (Files.isRegularFile(workdir.resolve("aggregating"))) {
+            return new Plan(
+                    true,
+                    "aggregating annotation processors",
+                    allSources(sources, "aggregating annotation processors"));
+        }
+        FileConverter converter = PlainVirtualFileConverter.converter();
+        AnalysisStore store = FileAnalysisStore.binary(workdir.resolve("zinc").toFile());
+        Optional<AnalysisContents> prev = store.get();
+        if (prev.isEmpty()) {
+            return new Plan(true, "no zinc analysis", allSources(sources, "no zinc analysis"));
+        }
+        MiniSetup setup = prev.get().getMiniSetup();
+        String[] wantOpts = javacOptions(release, extraOptions, sourceOutput, processorPath);
+        if (setup != null && optionsChanged(setup, wantOpts)) {
+            return new Plan(true, "javac options changed", allSources(sources, "javac options changed"));
+        }
+        xsbti.compile.CompileAnalysis raw = prev.get().getAnalysis();
+        if (!(raw instanceof Analysis analysis)) {
+            return new Plan(true, "no zinc analysis", allSources(sources, "no zinc analysis"));
+        }
+        ReadStamps previous = analysis.readStamps();
+        ReadStamps current = Stamps.timeWrapBinaryStamps(converter);
+        LinkedHashMap<Path, String> invalid = new LinkedHashMap<>();
+
+        for (Path src : sources) {
+            if (src == null) continue;
+            VirtualFile vf = converter.toVirtualFile(src);
+            Stamp old = previous.source(vf);
+            Stamp now = current.source(vf);
+            if (stampChanged(old, now)) {
+                invalid.putIfAbsent(src.toAbsolutePath().normalize(), "source changed");
+            }
+        }
+
+        Relations rel = analysis.relations();
+        for (Map.Entry<VirtualFileRef, Stamp> e : previous.getAllSourceStamps().entrySet()) {
+            Path src = pathOf(e.getKey(), converter);
+            if (src == null) continue;
+            boolean stillPresent = false;
+            for (Path s : sources) {
+                if (s != null && src.equals(s.toAbsolutePath().normalize())) {
+                    stillPresent = true;
+                    break;
+                }
+            }
+            if (stillPresent) continue;
+            var names = rel.classNames(e.getKey());
+            var nameIt = names.iterator();
+            while (nameIt.hasNext()) {
+                String className = nameIt.next();
+                var users = rel.usesInternalClass(className);
+                var userIt = users.iterator();
+                while (userIt.hasNext()) {
+                    String userClass = userIt.next();
+                    var defs = rel.definesClass(userClass);
+                    var defIt = defs.iterator();
+                    while (defIt.hasNext()) {
+                        Path userSrc = pathOf(defIt.next(), converter);
+                        if (userSrc != null) {
+                            invalid.putIfAbsent(userSrc, "used deleted " + className);
+                        }
+                    }
+                }
+            }
+        }
+
+        List<Path> libraries = new ArrayList<>(classpath == null ? List.of() : classpath);
+        if (classOutput != null) libraries.add(classOutput);
+        HashSet<Path> currentLibs = new HashSet<>();
+        for (Path lib : libraries) {
+            if (lib == null || !Files.exists(lib)) continue;
+            Path abs = lib.toAbsolutePath().normalize();
+            currentLibs.add(abs);
+            VirtualFile vf = converter.toVirtualFile(lib);
+            Stamp old = previous.library(vf);
+            Stamp now = current.library(vf);
+            if (!stampChanged(old, now)) continue;
+            String why = "classpath " + lib.getFileName() + " changed";
+            var users = rel.usesLibrary(vf);
+            var it = users.iterator();
+            while (it.hasNext()) {
+                Path src = pathOf(it.next(), converter);
+                if (src != null) invalid.putIfAbsent(src, why);
+            }
+        }
+        for (Map.Entry<VirtualFileRef, Stamp> e : previous.getAllLibraryStamps().entrySet()) {
+            Path lib = pathOf(e.getKey(), converter);
+            if (lib != null && currentLibs.contains(lib)) continue;
+            String name = lib == null ? "entry" : lib.getFileName().toString();
+            String why = "classpath " + name + " changed";
+            var users = rel.usesLibrary(e.getKey());
+            var it = users.iterator();
+            while (it.hasNext()) {
+                Path src = pathOf(it.next(), converter);
+                if (src != null) invalid.putIfAbsent(src, why);
+            }
+        }
+
+        if (invalid.isEmpty()) {
+            return new Plan(false, "zinc analysis current", List.of());
+        }
+        List<Invalidation> items = new ArrayList<>();
+        for (Map.Entry<Path, String> e : invalid.entrySet()) {
+            items.add(new Invalidation(e.getKey(), e.getValue()));
+        }
+        return new Plan(false, summarize(items), items);
+    }
+
+    private static List<Invalidation> allSources(List<Path> sources, String why) {
+        List<Invalidation> out = new ArrayList<>();
+        if (sources == null) return out;
+        for (Path s : sources) {
+            if (s != null) out.add(new Invalidation(s.toAbsolutePath().normalize(), why));
+        }
+        return out;
+    }
+
+    private static String summarize(List<Invalidation> items) {
+        int n = items.size();
+        String head = items.get(0).why();
+        boolean same = true;
+        for (Invalidation i : items) {
+            if (!head.equals(i.why())) {
+                same = false;
+                break;
+            }
+        }
+        if (same) {
+            if ("source changed".equals(head)) {
+                return n == 1 ? "1 source changed" : n + " sources changed";
+            }
+            return head;
+        }
+        return n == 1 ? "1 source" : n + " sources";
+    }
+
+    private static boolean optionsChanged(MiniSetup setup, String[] want) {
+        MiniOptions opts = setup.options();
+        if (opts == null) return false;
+        String[] have = opts.javacOptions();
+        if (have == null) return false;
+        if (have.length != want.length) return true;
+        for (int i = 0; i < have.length; i++) {
+            if (!have[i].equals(want[i])) return true;
+        }
+        return false;
+    }
+
+    private static boolean stampChanged(Stamp old, Stamp now) {
+        String a = old == null ? "" : old.writeStamp();
+        String b = now == null ? "" : now.writeStamp();
+        return !a.equals(b);
+    }
+
+    private static Path pathOf(VirtualFileRef ref, FileConverter converter) {
+        if (ref == null) return null;
+        try {
+            if (ref instanceof VirtualFile vf) {
+                return converter.toPath(vf).toAbsolutePath().normalize();
+            }
+        } catch (RuntimeException ignored) {
+            // fall through to id
+        }
+        String id = ref.id();
+        if (id == null || id.isBlank()) return null;
+        try {
+            if (id.startsWith("file:"))
+                return Path.of(URI.create(id)).toAbsolutePath().normalize();
+            return Path.of(id).toAbsolutePath().normalize();
+        } catch (RuntimeException e) {
+            return Path.of(id);
         }
     }
 
@@ -416,8 +650,24 @@ public final class ZincJavaCompiler {
         return new RecordingJavaCompiler(javac, converter);
     }
 
-    private static List<Processor> loadProcessors(List<Path> processorPath) {
-        if (processorPath == null || processorPath.isEmpty()) return List.of();
+    private record ProcessorLoad(List<Processor> processors, URLClassLoader loader) implements AutoCloseable {
+        static ProcessorLoad none() {
+            return new ProcessorLoad(List.of(), null);
+        }
+
+        @Override
+        public void close() {
+            if (loader == null) return;
+            try {
+                loader.close();
+            } catch (IOException ignored) {
+                // compile is finished; unload is best-effort
+            }
+        }
+    }
+
+    private static ProcessorLoad loadProcessors(List<Path> processorPath) {
+        if (processorPath == null || processorPath.isEmpty()) return ProcessorLoad.none();
         URL[] urls = new URL[processorPath.size()];
         for (int i = 0; i < processorPath.size(); i++) {
             try {
@@ -429,7 +679,7 @@ public final class ZincJavaCompiler {
         URLClassLoader loader = new URLClassLoader(urls, ZincJavaCompiler.class.getClassLoader());
         List<Processor> processors = new ArrayList<>();
         for (Processor p : ServiceLoader.load(Processor.class, loader)) processors.add(p);
-        return processors;
+        return new ProcessorLoad(processors, loader);
     }
 
     private static String[] javacOptions(int release, List<String> extra, Path sourceOutput, List<Path> processorPath) {
