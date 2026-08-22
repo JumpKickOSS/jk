@@ -2,11 +2,13 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -195,15 +197,15 @@ public final class PomRuntimeClasspath {
         Cas cas = new Cas(storeRoot);
         Http http = new Http();
         MavenRepo local =
-                new MavenRepo("local", storeRoot.resolve("repos/local").toUri(), http, cas);
+                storeOnlyRepo("local", storeRoot.resolve("repos/local").toUri(), http, cas);
         // Launch-time resolution is overwhelmingly store-resident, but for unclaimed groups the
         // jumpkick specialist's warm mirror is only consulted at last resort — after central's
         // network leg. Prepending it as a priority store keeps warm forks off the network
         // entirely (and hermetic tests hermetic); a true miss still walks the remotes below.
         MavenRepo jumpkickStore =
-                new MavenRepo("jumpkick", storeRoot.resolve("repos/jumpkick").toUri(), http, cas);
-        MavenRepo jumpkick = new MavenRepo("jumpkick", RepositorySpec.officialUrl(), http, cas);
-        MavenRepo central = new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
+                storeOnlyRepo("jumpkick", storeRoot.resolve("repos/jumpkick").toUri(), http, cas);
+        MavenRepo jumpkick = storeOnlyRepo("jumpkick", RepositorySpec.officialUrl(), http, cas);
+        MavenRepo central = storeOnlyRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
         RepoGroup remotes =
                 new RepoGroup(List.of(jumpkick, central), List.of(RepositorySpec.JUMPKICK.groups(), List.of()));
         List<MavenRepo> leading = new ArrayList<>();
@@ -226,9 +228,14 @@ public final class PomRuntimeClasspath {
         List<MavenRepo> repos = new ArrayList<>(REPOS.size());
         for (String name : REPOS) {
             Path dir = storeRoot.resolve("repos").resolve(name);
-            repos.add(new MavenRepo(name, dir.toUri(), http, cas));
+            repos.add(storeOnlyRepo(name, dir.toUri(), http, cas));
         }
         return repos;
+    }
+
+    /** Worker closures stay under {@code JK_STORE_DIR}; they do not write-through {@code ~/.m2}. */
+    private static MavenRepo storeOnlyRepo(String name, URI url, Http http, Cas cas) {
+        return new MavenRepo(name, url, http, cas, RepoCredential.ANONYMOUS, false);
     }
 
     static Path siblingPom(Path jar) {

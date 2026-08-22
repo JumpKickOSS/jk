@@ -124,4 +124,38 @@ class LibraryCatalogLayeringTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("only allowed at the workspace root");
     }
+
+    @Test
+    void nested_standalone_project_is_not_the_ancestor_workspace_catalog(@TempDir Path tmp) throws Exception {
+        Path root = tmp.resolve("ws");
+        Path nested = root.resolve("scratch").resolve("solo");
+        Files.createDirectories(nested);
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.example"
+                name = "ws"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["app"]
+                """);
+        Files.writeString(root.resolve("jk-libs.toml"), """
+                [libraries]
+                internal = "com.acme:from-workspace"
+                """);
+        Files.writeString(nested.resolve("jk.toml"), """
+                group = "com.solo"
+                name = "solo"
+                version = "1.0.0"
+                """);
+        Files.writeString(nested.resolve("jk-libs.toml"), """
+                [libraries]
+                internal = "com.acme:from-nested"
+                """);
+
+        LibraryCatalog catalog = LibraryCatalog.forProject(nested);
+        assertThat(catalog.lookup("internal"))
+                .get()
+                .extracting(LibraryCatalog.Module::moduleKey)
+                .isEqualTo("com.acme:from-nested");
+    }
 }

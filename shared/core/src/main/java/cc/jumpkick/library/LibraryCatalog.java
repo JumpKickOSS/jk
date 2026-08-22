@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -126,8 +127,11 @@ public final class LibraryCatalog {
 
     /**
      * Catalog root for {@code dir}: nearest ancestor workspace root (has {@code jk.toml} with
-     * {@code [workspace] modules}), else the nearest ancestor that has {@code jk.toml} (standalone),
-     * else {@code dir} itself.
+     * {@code [workspace] modules}) when {@code dir} <em>is</em> that root or a declared module;
+     * else the nearest ancestor that has {@code jk.toml} (standalone), else {@code dir} itself.
+     *
+     * <p>A nested {@code jk.toml} that is not a declared workspace module is its own catalog root
+     * (JUnit temps under {@code shared/core/build/tmp}, accidental inner projects).
      */
     public static Path catalogRoot(Path dir) {
         Path normalized = dir.toAbsolutePath().normalize();
@@ -138,12 +142,24 @@ public final class LibraryCatalog {
             if (Files.isRegularFile(jkToml)) {
                 if (nearestJkTomlDir == null) nearestJkTomlDir = candidate;
                 if (declaresWorkspaceModules(jkToml)) {
-                    return candidate;
+                    if (isWorkspaceOrDeclaredModule(candidate, nearestJkTomlDir, jkToml)) {
+                        return candidate;
+                    }
+                    return nearestJkTomlDir;
                 }
             }
             candidate = candidate.getParent();
         }
         return nearestJkTomlDir != null ? nearestJkTomlDir : normalized;
+    }
+
+    /** True when {@code projectDir} is the workspace root or an exact {@code [workspace] modules} path. */
+    static boolean isWorkspaceOrDeclaredModule(Path workspaceRoot, Path projectDir, Path workspaceJkToml) {
+        if (workspaceRoot.equals(projectDir)) return true;
+        Path rel = workspaceRoot.relativize(projectDir);
+        if (rel.getNameCount() == 0 || rel.startsWith("..")) return false;
+        String relPath = rel.toString().replace('\\', '/');
+        return workspaceModulePaths(workspaceJkToml).contains(relPath);
     }
 
     /**
@@ -191,6 +207,68 @@ public final class LibraryCatalog {
             return false;
         } catch (IOException e) {
             return false;
+        }
+    }
+
+    /** Quoted paths in {@code [workspace] modules} of {@code jkToml}. Empty on unreadable. */
+    static Set<String> workspaceModulePaths(Path jkToml) {
+        Set<String> out = new LinkedHashSet<>();
+        try {
+            boolean inWorkspace = false;
+            boolean inModulesArray = false;
+            for (String raw : Files.readString(jkToml, StandardCharsets.UTF_8).split("\n", -1)) {
+                String line = raw.strip();
+                if (line.isEmpty() || line.startsWith("#")) continue;
+                if (line.startsWith("[")) {
+                    int close = line.indexOf(']');
+                    String section = close > 1
+                            ? line.substring(line.startsWith("[[") ? 2 : 1, close)
+                                    .replace("]", "")
+                                    .strip()
+                            : "";
+                    inWorkspace = section.equals("workspace");
+                    inModulesArray = false;
+                    continue;
+                }
+                if (!inWorkspace) continue;
+                if (line.startsWith("modules")) {
+                    int open = line.indexOf('[');
+                    if (open < 0) continue;
+                    int end = line.lastIndexOf(']');
+                    if (end > open) {
+                        collectQuoted(line.substring(open + 1, end), out);
+                        continue;
+                    }
+                    inModulesArray = true;
+                    collectQuoted(line.substring(open + 1), out);
+                    continue;
+                }
+                if (inModulesArray) {
+                    int close = line.indexOf(']');
+                    if (close >= 0) {
+                        collectQuoted(line.substring(0, close), out);
+                        inModulesArray = false;
+                    } else {
+                        collectQuoted(line, out);
+                    }
+                }
+            }
+        } catch (IOException e) {
+            return Set.of();
+        }
+        return out;
+    }
+
+    private static void collectQuoted(String s, Set<String> out) {
+        int i = 0;
+        while (i < s.length()) {
+            int a = s.indexOf('"', i);
+            if (a < 0) return;
+            int b = s.indexOf('"', a + 1);
+            if (b < 0) return;
+            String v = s.substring(a + 1, b).strip();
+            if (!v.isEmpty()) out.add(v);
+            i = b + 1;
         }
     }
 

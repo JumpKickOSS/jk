@@ -144,7 +144,7 @@ public final class MavenRepo {
         this.baseUrl = normalize(Objects.requireNonNull(baseUrl, "baseUrl"));
         this.transport = Objects.requireNonNull(transport, "transport");
         this.cas = Objects.requireNonNull(cas, "cas");
-        // Full store for every repo: artifact +.sha256 sidecar under repos/<name>/.
+        // Full store for every repo: Maven-layout artifact + {@code .jk} memo under repos/<name>/.
         this.repoStore = RepoArtifactStore.forRepoName(cas.root(), name);
         this.credential = Objects.requireNonNull(credential, "credential");
         this.m2integration = m2integration;

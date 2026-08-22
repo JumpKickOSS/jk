@@ -35,7 +35,7 @@ public final class StorageCommand extends GroupCommand {
 
     @Override
     public String description() {
-        return "Manage the artifact store (repos, workers; Maven local is informational)";
+        return "Manage the artifact store (repos, workers)";
     }
 
     @Override

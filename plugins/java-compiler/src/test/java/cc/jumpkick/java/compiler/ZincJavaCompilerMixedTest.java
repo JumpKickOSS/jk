@@ -37,9 +37,9 @@ class ZincJavaCompilerMixedTest {
     }
 
     @Test
-    void hash_named_classpath_jars_are_visible_to_scalac(@TempDir Path dir) throws Exception {
-        Path hashed = dir.resolve("555d6cf20fa1710884dd01b86cc5785397ba73e21ada2d4b784f5f1a14dcafc4");
-        Files.copy(junitJupiterApiJar(), hashed);
+    void named_classpath_jars_are_visible_to_scalac(@TempDir Path dir) throws Exception {
+        Path named = dir.resolve("junit-jupiter-api.jar");
+        Files.copy(junitJupiterApiJar(), named);
         Project p = new Project(dir);
         p.write("T.scala", """
                 import org.junit.jupiter.api.Test
@@ -47,7 +47,7 @@ class ZincJavaCompilerMixedTest {
                   @Test def ok(): Unit = ()
                 """);
         List<Path> cp = new ArrayList<>(p.compileCp);
-        cp.add(hashed);
+        cp.add(named);
         ZincJavaCompiler.Result r = p.compileMixed(cp);
         assertThat(r.success()).as(r.diagnostics().toString()).isTrue();
         assertThat(p.classFile("T.class")).isRegularFile();

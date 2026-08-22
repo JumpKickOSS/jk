@@ -13,12 +13,15 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.repo.ArtifactMemo;
+import cc.jumpkick.repo.M2Dirs;
+import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -207,7 +210,6 @@ public final class InstallPlans {
             // The local Maven repo is primary. m2Dir is caller-resolved (--m2-dir redirects it).
             Path m2Root = m2Dir.resolve("repository");
 
-            // JAR → ~/.m2 with .sha1, .md5, _remote.repositories
             Path m2Jar = m2Root.resolve(jarRelPath);
             cc.jumpkick.repo.M2CompatWriter.MavenHashes jarH =
                     cc.jumpkick.repo.M2CompatWriter.copyToM2AndHash(jar, m2Jar);
@@ -215,19 +217,17 @@ public final class InstallPlans {
             cc.jumpkick.repo.M2CompatWriter.writeRemoteRepositories(
                     m2Jar.getParent(), "local", m2Jar.getFileName().toString());
 
-            // POM → ~/.m2 with .sha1, .md5
             Path m2Pom = m2Root.resolve(pomRelPath);
             cc.jumpkick.repo.M2CompatWriter.MavenHashes pomH =
                     cc.jumpkick.repo.M2CompatWriter.writeBytesToM2(pomBytes, m2Pom);
             cc.jumpkick.repo.M2CompatWriter.writeMavenSidecars(m2Pom, pomH.sha1(), pomH.md5());
 
-            // Index sidecars in repos/local/ (jk's O(1) lookup, pointing to ~/.m2)
-            writeLocalIndexSidecar(cacheDir, jarRelPath, Hashing.sha256Hex(jar));
-            writeLocalIndexSidecar(cacheDir, pomRelPath, Hashing.sha256Hex(pomBytes));
+            RepoArtifactStore local = localStore(cacheDir);
+            local.writeMemo(jarRelPath, m2Jar, Hashing.sha256Hex(jar));
+            local.writeMemo(pomRelPath, m2Pom, Hashing.sha256Hex(pomBytes));
         } else {
-            // repos/local/ is primary (plugin JARs, jk-internal use).
             writeToLocalStore(cacheDir, jarRelPath, jar);
-            writeContentToLocalStore(cacheDir, pomRelPath, pomBytes);
+            writeBytesToLocalStore(cacheDir, pomRelPath, pomBytes);
         }
     }
 
@@ -237,8 +237,8 @@ public final class InstallPlans {
     }
 
     /**
-     * True when {@code repos/local} already holds this module's thin jar (same SHA-256) and POM.
-     * {@code jk install} skips the copy in that case.
+     * True when this module's thin jar and POM are already installed at the same SHA-256
+     * ({@code repos/local}, or the Maven local repo when {@code [m2] install} is on).
      */
     public static boolean alreadyInstalled(JkBuild project, BuildLayout layout, Path cacheDir) {
         if (project == null || layout == null) return false;
@@ -246,15 +246,23 @@ public final class InstallPlans {
         if (!Files.isRegularFile(jar)) return false;
         var p = project.project();
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
-        Path store = JkStores.storeRootFor(cacheDir);
-        cc.jumpkick.repo.RepoArtifactStore local = new cc.jumpkick.repo.RepoArtifactStore(store, "local");
-        var installed = local.locate(cc.jumpkick.repo.MavenLayout.artifactPath(coord));
-        if (installed.isEmpty()) return false;
-        var installedPom = local.locate(cc.jumpkick.repo.MavenLayout.pomPath(coord));
-        if (installedPom.isEmpty()) return false;
+        String jarRel = MavenLayout.artifactPath(coord);
+        String pomRel = MavenLayout.pomPath(coord);
         try {
-            if (!Hashing.sha256Hex(jar).equals(Hashing.sha256Hex(installed.get()))) return false;
-            return Hashing.sha256Hex(renderedPom(project, layout)).equals(Hashing.sha256Hex(installedPom.get()));
+            String jarHex = Hashing.sha256Hex(jar);
+            String pomHex = Hashing.sha256Hex(renderedPom(project, layout));
+            if (installToMavenLocal(p)) {
+                Path storeLocal =
+                        JkStores.storeRootFor(cacheDir).resolve("repos").resolve("local");
+                Path m2 = M2Dirs.localRepository();
+                return ArtifactMemo.verify(
+                                m2.resolve(jarRel), ArtifactMemo.jkPath(storeLocal, jarRel), coord.toGav(), jarHex)
+                        && ArtifactMemo.verify(
+                                m2.resolve(pomRel), ArtifactMemo.jkPath(storeLocal, pomRel), coord.toGav(), pomHex);
+            }
+            RepoArtifactStore local = localStore(cacheDir);
+            return local.locate(jarRel, jarHex).isPresent()
+                    && local.locate(pomRel, pomHex).isPresent();
         } catch (RuntimeException | IOException e) {
             return false;
         }
@@ -298,31 +306,26 @@ public final class InstallPlans {
         }
     }
 
-    /** Write a sidecar-only entry in {@code repos/local/} pointing to an artifact in {@code ~/.m2}. */
-    private static void writeLocalIndexSidecar(Path cacheDir, String relativePath, String sha256) {
-        try {
-            Path sidecar = JkStores.resolve(cacheDir, "repos").resolve("local").resolve(relativePath + ".sha256");
-            Files.createDirectories(sidecar.getParent());
-            if (!Files.exists(sidecar)) Files.writeString(sidecar, sha256);
-        } catch (IOException ignored) {
-        }
-    }
-
     /**
-     * See {@link cc.jumpkick.repo.RepoArtifactStore#writeToLocalStore} — the one shared
-     * local-install write, routed to the store root: the resolver reads
-     * {@code repos/local/} from the store since the cache/store split, so writing to the raw
-     * cache root strands the artifact.
+     * See {@link RepoArtifactStore#writeToLocalStore} — the one shared local-install write, routed
+     * to the store root.
      */
     public static void writeToLocalStore(Path cacheDir, String relativePath, Path source) throws IOException {
-        cc.jumpkick.repo.RepoArtifactStore.writeToLocalStore(JkStores.storeRootFor(cacheDir), relativePath, source);
+        RepoArtifactStore.writeToLocalStore(JkStores.storeRootFor(cacheDir), relativePath, source);
     }
 
-    /** Write byte content directly into {@code repos/local/} as a full-store entry. */
-    private static void writeContentToLocalStore(Path cacheDir, String relativePath, byte[] content)
-            throws IOException {
-        Path target = JkStores.resolve(cacheDir, "repos").resolve("local").resolve(relativePath);
-        AtomicWrites.replace(target, content);
-        Files.writeString(Path.of(target + ".sha256"), Hashing.sha256Hex(content));
+    private static RepoArtifactStore localStore(Path cacheDir) {
+        return RepoArtifactStore.forRepoName(JkStores.storeRootFor(cacheDir), "local");
+    }
+
+    /** Write byte content into {@code repos/local/} as a full-store entry with a {@code .jk} memo. */
+    private static void writeBytesToLocalStore(Path cacheDir, String relativePath, byte[] content) throws IOException {
+        Path tmp = Files.createTempFile("jk-install-", ".bin");
+        try {
+            Files.write(tmp, content);
+            writeToLocalStore(cacheDir, relativePath, tmp);
+        } finally {
+            Files.deleteIfExists(tmp);
+        }
     }
 }

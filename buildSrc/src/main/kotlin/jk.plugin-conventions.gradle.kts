@@ -197,6 +197,19 @@ fun workerPomXml(): String {
 fun mavenLocalDir(storeRoot: File, group: String, artifact: String, version: String): File =
         storeRoot.resolve("repos/local/${group.replace('.', '/')}/$artifact/$version")
 
+fun jkMemoName(fileName: String): String =
+        when {
+            fileName.endsWith(".jar") || fileName.endsWith(".aar") || fileName.endsWith(".zip") ->
+                    fileName.substring(0, fileName.lastIndexOf('.')) + ".jk"
+            else -> fileName + ".jk"
+        }
+
+fun writeJkMemo(dest: File, group: String, artifact: String, version: String, hex: String) {
+    val memo = dest.resolveSibling(jkMemoName(dest.name))
+    memo.writeText("$group:$artifact:$version\n${dest.lastModified()}\n${dest.length()}\n$hex\n")
+    File(dest.path + ".sha256").delete()
+}
+
 fun installJar(
         storeRoot: File,
         group: String,
@@ -209,7 +222,7 @@ fun installJar(
     val suffix = classifier?.let { "-$it" }.orEmpty()
     val dest = dir.resolve("$artifact-$version$suffix.jar")
     copyReplacing(jar, dest)
-    File(dest.path + ".sha256").writeText(sha256Hex(jar))
+    writeJkMemo(dest, group, artifact, version, sha256Hex(jar))
     File(dest.path + ".classpath").delete()
     File(dest.path + ".deps").delete()
 }
@@ -220,7 +233,7 @@ fun installPom(storeRoot: File, group: String, artifact: String, version: String
     val dest = dir.resolve("$artifact-$version.pom")
     val bytes = xml.toByteArray(Charsets.UTF_8)
     dest.writeBytes(bytes)
-    File(dest.path + ".sha256").writeText(sha256Hex(bytes))
+    writeJkMemo(dest, group, artifact, version, sha256Hex(bytes))
 }
 
 fun stageWorkerMavenRepo(storeRoot: File, jar: File, pomXml: String) {
@@ -293,6 +306,8 @@ tasks.register("installLocal") {
                 pomTarget.isFile &&
                 sha256Hex(target) == hex &&
                 sha256Hex(pomTarget) == sha256Hex(pomXml.toByteArray(Charsets.UTF_8))) {
+            writeJkMemo(target, "cc.jumpkick", artifact, ver, hex)
+            writeJkMemo(pomTarget, "cc.jumpkick", artifact, ver, sha256Hex(pomTarget))
             println("Already installed $artifact $ver (sha256 match)")
             println("  path:   $target")
             return@doLast

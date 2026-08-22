@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.PomRuntimeClasspath;
+import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.util.Hashing;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -67,7 +68,7 @@ class JUnitLauncherWorkerCpTest {
         Path f = store.resolve("repos/local").resolve(rel);
         Files.createDirectories(f.getParent());
         Files.write(f, bytes);
-        Files.writeString(Path.of(f + ".sha256"), Hashing.sha256Hex(bytes));
+        RepoArtifactStore.forRepoName(store, "local").writeMemo(rel, f, Hashing.sha256Hex(bytes));
         return f;
     }
 }

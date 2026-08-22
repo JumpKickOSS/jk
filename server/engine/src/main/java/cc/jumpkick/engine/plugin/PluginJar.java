@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkVersion;
@@ -224,8 +225,10 @@ public enum PluginJar {
         if (coord == null) {
             throw new IOException("cannot parse Maven coordinate of official worker jar " + workerJar);
         }
-        MavenRepo official = new MavenRepo(OFFICIAL_REPO, base, http, cas);
-        MavenRepo central = new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
+        // Worker closures stay under JK_STORE_DIR (repos/jumpkick, repos/central) — not ~/.m2.
+        MavenRepo official = new MavenRepo(OFFICIAL_REPO, base, http, cas, RepoCredential.ANONYMOUS, false);
+        MavenRepo central = new MavenRepo(
+                "central", RepositorySpec.MAVEN_CENTRAL.url(), http, cas, RepoCredential.ANONYMOUS, false);
         RepoGroup repos = RepoGroup.of(central).withReposPrepended(List.of(official));
         PomRuntimeClasspath.fetchRuntimeClosure(coord, repos);
     }

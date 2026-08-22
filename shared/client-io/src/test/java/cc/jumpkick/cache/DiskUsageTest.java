@@ -25,7 +25,7 @@ class DiskUsageTest {
         Path repoJar = dir.resolve("repos/central/g/a/1/a.jar");
         Files.createDirectories(repoJar.getParent());
         Files.createLink(repoJar, casBlob);
-        Files.writeString(Path.of(repoJar + ".sha256"), "x".repeat(64));
+        Files.writeString(repoJar.resolveSibling("a.jk"), "x".repeat(64));
 
         DiskUsage.Stats[] parts = DiskUsage.exclusive(dir.resolve("sha256"), dir.resolve("repos"));
         assertThat(parts[0].files()).isEqualTo(1);

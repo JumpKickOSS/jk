@@ -103,15 +103,21 @@ public final class RepoArtifactStore {
     }
 
     /**
-     * The stored artifact path if fully materialised (sidecar and artifact file both present),
-     * else empty.
+     * The stored artifact path if the Maven-layout file is present. A missing {@code .jk} memo is
+     * written from the file bytes when possible (installLocal / leftover {@code .sha256} trees).
      */
     public Optional<Path> locate(String relativePath) {
         if (root == null) return Optional.empty();
-        Path sidecar = sidecarPath(relativePath);
-        if (!Files.isRegularFile(sidecar)) return Optional.empty();
         Path artifact = artifactPath(relativePath);
         if (!Files.isRegularFile(artifact)) return Optional.empty();
+        Path sidecar = sidecarPath(relativePath);
+        if (!Files.isRegularFile(sidecar)) {
+            try {
+                writeMemo(relativePath, artifact, Hashing.sha256Hex(artifact));
+            } catch (IOException ignored) {
+                // the jar is on disk; callers can still use it
+            }
+        }
         return Optional.of(artifact);
     }
 
@@ -133,9 +139,8 @@ public final class RepoArtifactStore {
     // Write paths
     // -------------------------------------------------------------------------
 
-    // Note: there is deliberately no sidecar-only write here. Every repo is a full store now — a
-    // sidecar without a backing artifact file is never a state this store intentionally creates.
-    // See materialize() below.
+    // A {@code .jk} memo may point at a blob outside this store (Maven local repo). locate() only
+    // returns files that live here; ArtifactLocator checks the memo against ~/.m2 first.
 
     /**
      * Copy {@code source} into this store at {@code relativePath} and write the {@code .jk} memo.
