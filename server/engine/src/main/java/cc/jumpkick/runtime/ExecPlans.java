@@ -292,6 +292,7 @@ public final class ExecPlans {
                     p.sourcesMode(),
                     p.description(),
                     p.m2integration(),
+                    p.m2install(),
                     p.layout(),
                     Set.of());
             return build.withProject(resolved);

@@ -101,6 +101,22 @@ class JkBuildRendererTest {
     }
 
     @Test
+    void m2install_opt_out_round_trips() {
+        JkBuild model = JkBuild.of(JkBuild.Project.builder("com.example", "widget", "1.0.0")
+                .jdkMajor(25)
+                .java(25)
+                .m2install(false)
+                .build());
+        String out = JkBuildRenderer.render(model);
+        assertThat(out).contains("m2install = false");
+        assertThat(out).doesNotContain("m2integration = false");
+
+        JkBuild reparsed = JkBuildParser.parse(out);
+        assertThat(reparsed.project().m2install()).isFalse();
+        assertThat(reparsed.project().m2integration()).isTrue();
+    }
+
+    @Test
     void application_presence_alone_drives_is_application() {
         JkBuild withApplication = JkBuild.builder(JkBuild.Project.builder("com.example", "app", "1.0.0")
                         .jdkMajor(25)

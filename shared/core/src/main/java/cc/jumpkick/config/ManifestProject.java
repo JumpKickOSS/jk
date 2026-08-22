@@ -33,6 +33,7 @@ public final class ManifestProject {
             "sources",
             "description",
             "m2integration",
+            "m2install",
             "layout",
             "id",
             "module");
@@ -150,6 +151,14 @@ public final class ManifestProject {
             m2integration = !Boolean.FALSE.equals(root.getBoolean("m2integration"));
         }
 
+        boolean m2install;
+        if (isWorkspaceInherit(root, "m2install") || (!workspaceRoot && !root.contains("m2install"))) {
+            inherits.add(JkBuild.ProjectInherit.M2INSTALL);
+            m2install = true;
+        } else {
+            m2install = !Boolean.FALSE.equals(root.getBoolean("m2install"));
+        }
+
         JkBuild.Layout layout;
         if (isWorkspaceInherit(root, "layout") || (!workspaceRoot && !root.contains("layout"))) {
             inherits.add(JkBuild.ProjectInherit.LAYOUT);
@@ -177,6 +186,7 @@ public final class ManifestProject {
                 sourcesMode,
                 description,
                 m2integration,
+                m2install,
                 layout,
                 inherits);
     }

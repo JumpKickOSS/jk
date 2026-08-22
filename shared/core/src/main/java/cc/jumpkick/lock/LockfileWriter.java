@@ -210,6 +210,9 @@ public final class LockfileWriter {
             if (Boolean.FALSE.equals(m.m2integration())) {
                 out.append("m2integration = false\n");
             }
+            if (Boolean.FALSE.equals(m.m2install())) {
+                out.append("m2install = false\n");
+            }
         }
 
         return out.toString();

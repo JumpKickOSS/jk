@@ -183,6 +183,7 @@ public final class LocalProjectBuilder {
                 p.sourcesMode(),
                 p.description(),
                 p.m2integration(),
+                p.m2install(),
                 p.layout(),
                 Set.of());
         return JkBuild.builder(overridden)

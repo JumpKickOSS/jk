@@ -1977,6 +1977,18 @@ class JkBuildParserTest {
                 .isFalse();
     }
 
+    @Test
+    void m2install_defaults_true_and_is_independent_of_m2integration() {
+        assertThat(JkBuildParser.parse(PROJECT).project().m2install()).isTrue();
+        assertThat(JkBuildParser.parse(PROJECT + "m2install = false\n")
+                        .project()
+                        .m2install())
+                .isFalse();
+        JkBuild both = JkBuildParser.parse(PROJECT + "m2integration = true\nm2install = false\n");
+        assertThat(both.project().m2integration()).isTrue();
+        assertThat(both.project().m2install()).isFalse();
+    }
+
     // ── splitEmbeddedUrl unit tests ──────────────────────────────────────────
 
     @Test

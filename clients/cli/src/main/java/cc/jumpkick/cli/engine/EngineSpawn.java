@@ -706,6 +706,7 @@ public final class EngineSpawn {
                 "JK_CACHE_DIR",
                 "JK_M2_LOCAL",
                 "JK_M2_LOOKUP",
+                "JK_M2_INSTALL",
                 "JK_CENTRAL_MIRROR")) {
             String v = System.getenv(key);
             if (v != null && !v.isBlank()) env.put(key, v);

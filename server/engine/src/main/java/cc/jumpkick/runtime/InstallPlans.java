@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
@@ -189,8 +190,9 @@ public final class InstallPlans {
     }
 
     /**
-     * Install the built JAR and POM into {@code repos/local/}; when {@code m2integration}, also mirror
-     * to the local Maven repo with checksum sidecars.
+     * Install the built JAR and POM into {@code repos/local/}; when {@code m2install} (and the
+     * machine {@code JK_M2_INSTALL} policy) is on, also write the Maven local repo with checksum
+     * sidecars. Independent of {@code m2integration}.
      */
     private static void cacheInstallArtifact(JkBuild project, BuildLayout layout, Path cacheDir, Path m2Dir)
             throws IOException {
@@ -201,7 +203,7 @@ public final class InstallPlans {
         String pomRelPath = cc.jumpkick.repo.MavenLayout.pomPath(coord);
         byte[] pomBytes = renderedPom(project, layout);
 
-        if (p.m2integration()) {
+        if (installToMavenLocal(p)) {
             // The local Maven repo is primary. m2Dir is caller-resolved (--m2-dir redirects it).
             Path m2Root = m2Dir.resolve("repository");
 
@@ -227,6 +229,11 @@ public final class InstallPlans {
             writeToLocalStore(cacheDir, jarRelPath, jar);
             writeContentToLocalStore(cacheDir, pomRelPath, pomBytes);
         }
+    }
+
+    /** Project {@code m2install} and the machine {@code JK_M2_INSTALL} / {@code [m2] install} policy. */
+    private static boolean installToMavenLocal(JkBuild.Project p) {
+        return p.m2install() && JkM2Config.resolve().install();
     }
 
     /**

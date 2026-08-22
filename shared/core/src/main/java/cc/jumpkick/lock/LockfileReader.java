@@ -146,6 +146,7 @@ public final class LockfileReader {
                     else if (raw instanceof Integer n) java = n;
                 }
                 Boolean m2 = t.contains("m2integration") ? t.getBoolean("m2integration") : null;
+                Boolean m2install = t.contains("m2install") ? t.getBoolean("m2install") : null;
                 modules.add(new Lockfile.ModuleEntry(
                         path,
                         group,
@@ -159,6 +160,7 @@ public final class LockfileReader {
                         t.getString("description"),
                         t.getString("sources"),
                         m2,
+                        m2install,
                         t.getString("layout")));
             }
         }

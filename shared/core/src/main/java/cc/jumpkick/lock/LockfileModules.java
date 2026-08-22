@@ -96,6 +96,7 @@ public final class LockfileModules {
                 p.description(),
                 sources,
                 p.m2integration() ? null : Boolean.FALSE,
+                p.m2install() ? null : Boolean.FALSE,
                 null);
     }
 

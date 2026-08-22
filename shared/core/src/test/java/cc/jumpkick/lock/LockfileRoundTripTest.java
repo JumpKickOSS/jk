@@ -184,6 +184,7 @@ class LockfileRoundTripTest {
                                 null,
                                 "publish",
                                 false,
+                                false,
                                 "maven")));
 
         String rendered = LockfileWriter.render(original);
@@ -196,7 +197,8 @@ class LockfileRoundTripTest {
                 .contains("java    = 25")
                 .contains("kotlin  = \"2.4.0\"")
                 .contains("sources = \"publish\"")
-                .contains("m2integration = false");
+                .contains("m2integration = false")
+                .contains("m2install = false");
         assertThat(rendered).doesNotContain("layout");
 
         Lockfile parsed = LockfileReader.parse(rendered);
@@ -207,6 +209,7 @@ class LockfileRoundTripTest {
         assertThat(parsed.modules().get(1).java()).isEqualTo(25);
         assertThat(parsed.modules().get(1).kotlin()).isEqualTo("2.4.0");
         assertThat(parsed.modules().get(1).m2integration()).isFalse();
+        assertThat(parsed.modules().get(1).m2install()).isFalse();
     }
 
     @Test
@@ -222,6 +225,7 @@ class LockfileRoundTripTest {
                         null,
                         null,
                         "3",
+                        null,
                         null,
                         null,
                         null,

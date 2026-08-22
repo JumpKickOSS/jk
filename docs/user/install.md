@@ -57,6 +57,7 @@ XDG variables (`XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_
 | `JK_AOT_TRAIN=off` | Skip AOT train-on-miss (still **use** existing `.aot` caches). CI / short-lived builds usually set this |
 | `JK_WORKER_AOT=off` | Plugin workers: no AOT map and no train |
 | `JK_CANCEL_GRACE_MS` | Shared cancel window for forked workers (default **500** ms, max 5000) |
+| `JK_M2_INSTALL` | `false` keeps `jk install` under `JK_STORE_DIR/repos/local` instead of the Maven local repo (same as `m2install = false`) |
 | `--cache-dir <dir>` | Same as `JK_CACHE_DIR` for one command; passed to the resident engine |
 
 Role-specific `JK_*_DIR` always wins over `JK_HOME` / XDG.

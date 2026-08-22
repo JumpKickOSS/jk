@@ -18,8 +18,9 @@ class JkM2ConfigTest {
     }
 
     @Test
-    void the_default_is_lookup_on(@TempDir Path tmp) {
+    void the_default_is_lookup_and_install_on(@TempDir Path tmp) {
         assertThat(JkM2Config.DEFAULTS.enabled()).isTrue();
+        assertThat(JkM2Config.DEFAULTS.install()).isTrue();
         assertThat(JkM2Config.fromToml(tmp.resolve("absent.toml"))).isEqualTo(JkM2Config.DEFAULTS);
     }
 
@@ -31,11 +32,20 @@ class JkM2ConfigTest {
 
     @Test
     void env_overrides_the_file(@TempDir Path tmp) throws Exception {
-        Path f = toml(tmp, "[m2]\nenabled = true\n");
+        Path f = toml(tmp, "[m2]\nenabled = true\ninstall = true\n");
 
-        JkM2Config c = JkM2Config.resolve(f, Map.of("JK_M2_LOOKUP", "false")::get);
+        JkM2Config c = JkM2Config.resolve(f, Map.of("JK_M2_LOOKUP", "false", "JK_M2_INSTALL", "false")::get);
 
         assertThat(c.enabled()).isFalse();
+        assertThat(c.install()).isFalse();
+    }
+
+    @Test
+    void install_can_be_off_while_lookup_stays_on(@TempDir Path tmp) throws Exception {
+        assertThat(JkM2Config.fromToml(toml(tmp, "[m2]\ninstall = false\n")).install())
+                .isFalse();
+        assertThat(JkM2Config.fromToml(toml(tmp, "[m2]\ninstall = false\n")).enabled())
+                .isTrue();
     }
 
     @Test

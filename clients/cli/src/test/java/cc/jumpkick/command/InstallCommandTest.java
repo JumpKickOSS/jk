@@ -75,7 +75,7 @@ class InstallCommandTest {
                 version  = "0.1.0"
                 jdk      = 25
                 java           = 25
-                m2integration  = false
+                m2install      = false
                 """);
         Path src = tempDir.resolve("src/main/java/com/example/Lib.java");
         Files.createDirectories(src.getParent());
@@ -101,7 +101,7 @@ class InstallCommandTest {
         // A library is not a usage error any more — it cache-installs.
         assertThat(exit).isEqualTo(0);
         assertThat(bin.resolve("lib-only")).doesNotExist(); // no launcher
-        // m2integration = false: repos/local is primary; the Maven local repo is untouched.
+        // m2install = false (m2integration still default true): repos/local, not ~/.m2.
         assertThat(cc.jumpkick.cache.JkStores.resolve(cache, "repos")
                         .resolve("local")
                         .resolve("com/example/lib-only/0.1.0/lib-only-0.1.0.jar"))
@@ -160,7 +160,7 @@ class InstallCommandTest {
     }
 
     @Test
-    void m2integration_writes_jar_and_pom_to_local_maven_repo(@TempDir Path tempDir) throws IOException {
+    void m2install_writes_jar_and_pom_to_local_maven_repo(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("jk.toml"), """
                 group     = "com.example"
                 name      = "lib-only"
