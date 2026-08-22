@@ -3,12 +3,30 @@ package cc.jumpkick.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class JkDirsTest {
+
+    @Test
+    void jk_home_config_falls_back_to_the_legacy_location(@TempDir Path home) throws Exception {
+        // JK-2324: config moved to $JK_HOME/config/config.toml; an existing legacy
+        // $JK_HOME/config.toml must still be honored so an upgrade doesn't drop it.
+        Map<String, String> env = Map.of("JK_HOME", home.toString());
+        JkDirs dirs = JkDirs.of(env::get, "/home/me", "Linux");
+
+        Files.writeString(home.resolve("config.toml"), "# legacy\n");
+        assertThat(dirs.userConfigFilePath()).isEqualTo(home.resolve("config.toml"));
+
+        // Once the new location exists, it wins.
+        Files.createDirectories(home.resolve("config"));
+        Files.writeString(home.resolve("config/config.toml"), "# new\n");
+        assertThat(dirs.userConfigFilePath()).isEqualTo(home.resolve("config/config.toml"));
+    }
 
     @Test
     void linux_xdg_defaults() {

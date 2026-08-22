@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.util;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Objects;
@@ -135,8 +136,9 @@ public final class JkDirs {
     }
 
     /**
-     * Leftover side-by-side tree ({@code …/versions/<v>/}). New installs do not write here;
-     * the engine GC deletes it once the product-lib engine exists.
+     * Leftover side-by-side tree ({@code …/versions/<v>/}) from pre-product-lib installs. New
+     * installs do not write here and nothing sweeps it any more (the legacy {@code gc} overload that
+     * did was deprecated) — it lingers until removed by hand. Retained only so old paths resolve.
      */
     public static Path versions() {
         return current().versionsDir();
@@ -166,7 +168,16 @@ public final class JkDirs {
     public Path userConfigFilePath() {
         String override = nonBlank(env.apply("JK_CONFIG_FILE"));
         if (override != null) return Path.of(override);
-        return configDir().resolve("config.toml");
+        Path current = configDir().resolve("config.toml");
+        // Back-compat: under JK_HOME the config moved from $JK_HOME/config.toml to
+        // $JK_HOME/config/config.toml. Keep honoring an existing legacy file so an upgrade doesn't
+        // silently drop the user's engine JDK pin / heap caps / trusted keys (JK-2324).
+        String jkHome = jkHomeOrNull();
+        if (jkHome != null && !Files.isRegularFile(current)) {
+            Path legacy = Path.of(jkHome).resolve("config.toml");
+            if (Files.isRegularFile(legacy)) return legacy;
+        }
+        return current;
     }
 
     /**
