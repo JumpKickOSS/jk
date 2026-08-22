@@ -45,7 +45,7 @@ public final class ArtifactLocator {
         if (m2integration && !storeOnly) {
             Path m2File = m2Root.resolve(relativePath);
             if (Files.isRegularFile(m2File)
-                    && verified(m2File, memoPath(repoName, relativePath), gav, expectedSha256)) {
+                    && verified(m2File, m2MemoPath(repoName, relativePath), gav, expectedSha256)) {
                 return Optional.of(m2File.toAbsolutePath().normalize());
             }
         }
@@ -59,9 +59,18 @@ public final class ArtifactLocator {
         return found.map(p -> p.toAbsolutePath().normalize());
     }
 
-    private Path memoPath(String repoName, String relativePath) {
+    /**
+     * The ~/.m2 probe gets its OWN memo ({@code <artifact>.m2.jk}), distinct from the store's own
+     * {@code .jk} sidecar. One shared memo can only record one blob's (mtime,size), so the m2 file
+     * and the store file kept invalidating each other's fast path and re-hashing the full jar on
+     * every resolve when they diverged (a stale ~/.m2 after a re-lock) — JK-2307.
+     */
+    private Path m2MemoPath(String repoName, String relativePath) {
         String name = repoName == null || repoName.isBlank() ? "local" : repoName;
-        return ArtifactMemo.jkPath(storeRoot.resolve("repos").resolve(name), relativePath);
+        Path store = ArtifactMemo.jkPath(storeRoot.resolve("repos").resolve(name), relativePath);
+        String n = store.getFileName().toString();
+        String m2n = (n.endsWith(".jk") ? n.substring(0, n.length() - 3) : n) + ".m2.jk";
+        return store.resolveSibling(m2n);
     }
 
     private static boolean verified(Path blob, Path jkFile, String gav, String expectedSha256) {
