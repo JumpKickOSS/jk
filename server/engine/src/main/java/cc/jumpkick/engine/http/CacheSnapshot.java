@@ -44,7 +44,49 @@ public record CacheSnapshot(
         long formatStampsBytes,
         long maxBytes,
         long actionMaxBytes,
-        long lastPrunedMillis) {
+        long lastPrunedMillis,
+        long mavenLocalCount,
+        long mavenLocalBytes) {
+
+    /**
+     * Compatibility constructor for callers that predate the captured Maven-local stats (JK-2293);
+     * defaults them to zero. Live code goes through {@link #capture(Path)}, which fills them in.
+     */
+    public CacheSnapshot(
+            long casCount,
+            long casBytes,
+            long actionsCount,
+            long actionsBytes,
+            long cacheCasCount,
+            long cacheCasBytes,
+            long workerJarsCount,
+            long workerJarsBytes,
+            long runLogsCount,
+            long runLogsBytes,
+            long formatStampsCount,
+            long formatStampsBytes,
+            long maxBytes,
+            long actionMaxBytes,
+            long lastPrunedMillis) {
+        this(
+                casCount,
+                casBytes,
+                actionsCount,
+                actionsBytes,
+                cacheCasCount,
+                cacheCasBytes,
+                workerJarsCount,
+                workerJarsBytes,
+                runLogsCount,
+                runLogsBytes,
+                formatStampsCount,
+                formatStampsBytes,
+                maxBytes,
+                actionMaxBytes,
+                lastPrunedMillis,
+                0L,
+                0L);
+    }
 
     /**
      * Default freshness for live {@code /api/cache} + SSE chrome. Deliberately half of
@@ -179,7 +221,11 @@ public record CacheSnapshot(
         return casCount + workerJarsCount;
     }
 
-    /** Maven local repository size — informational, not part of the jk store budget. */
+    /**
+     * Maven local repository size — informational, not part of the jk store budget. Walked once
+     * inside {@link #capture(Path)} and stored on the snapshot; never call this on the render / SSE
+     * connect path, which must not walk a multi-GiB {@code ~/.m2} (JK-2293).
+     */
     static DiskUsage.Stats mavenLocalStats() {
         try {
             return DiskUsage.of(cc.jumpkick.repo.M2Dirs.localRepository());
@@ -224,6 +270,7 @@ public record CacheSnapshot(
         long storeMax = cfg.maxStoreSizeBytes();
         long cacheMax = cfg.maxCacheSizeBytes();
         long lastPruned = readLastPrunedMillis(cacheRoot);
+        DiskUsage.Stats m2 = mavenLocalStats(); // walked once here, never on the render/connect path
         return new CacheSnapshot(
                 parts[0].files(),
                 parts[0].bytes(),
@@ -239,7 +286,9 @@ public record CacheSnapshot(
                 parts[4].bytes(),
                 storeMax,
                 cacheMax,
-                lastPruned);
+                lastPruned,
+                m2.files(),
+                m2.bytes());
     }
 
     private static JkCacheConfig resolveConfig() {
@@ -286,8 +335,8 @@ public record CacheSnapshot(
                 .put("cacheMaxBytes", cacheMaxBytes())
                 .put("artifactStorageCount", artifactStorageCount())
                 .put("artifactStorageBytes", artifactStorageBytes())
-                .put("mavenLocalCount", mavenLocalStats().files())
-                .put("mavenLocalBytes", mavenLocalStats().bytes())
+                .put("mavenLocalCount", mavenLocalCount)
+                .put("mavenLocalBytes", mavenLocalBytes)
                 .put("maxBytes", maxBytes)
                 .put("lastPrunedMillis", lastPrunedMillis);
     }
@@ -304,7 +353,7 @@ public record CacheSnapshot(
                 .put("cacheBytes", cacheBytes())
                 .put("cacheMaxBytes", cacheMaxBytes())
                 .put("artifactStorageBytes", artifactStorageBytes())
-                .put("mavenLocalBytes", mavenLocalStats().bytes())
+                .put("mavenLocalBytes", mavenLocalBytes)
                 .put("maxBytes", maxBytes)
                 .put("lastPrunedMillis", lastPrunedMillis);
     }
