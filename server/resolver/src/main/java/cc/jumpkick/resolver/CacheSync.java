@@ -242,7 +242,10 @@ public final class CacheSync {
         try {
             // Rate limit lives in MavenRepo.fetch (network leg only). Wrapping again deadlocks the
             // non-reentrant HostRateLimiter once concurrent fetchers hold all permits.
-            MavenRepo.Fetched f = p.repo.fetchArtifact(coord);
+            // Pass the pin so a stale local-mirror copy that no longer matches (republished GAV +
+            // re-lock) is evicted and re-fetched, rather than dead-ending in a checksum mismatch that
+            // never touches the network (JK-2305).
+            MavenRepo.Fetched f = p.repo.fetchArtifact(coord, p.expectedHex, () -> false);
             if (!f.sha256().equals(p.expectedHex)) {
                 return FetchResult.failure(p.pkg.name()
                         + " v"

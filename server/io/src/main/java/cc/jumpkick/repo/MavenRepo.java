@@ -194,7 +194,18 @@ public final class MavenRepo {
      * network leg starts and right after the host permit is granted, never mid-download.
      */
     public Fetched fetchArtifact(Coordinate coord, BooleanSupplier abort) throws IOException, InterruptedException {
-        return fetch(coord, MavenLayout.artifactPath(coord), true, Leg.ARTIFACT, abort);
+        return fetch(coord, MavenLayout.artifactPath(coord), true, Leg.ARTIFACT, abort, null);
+    }
+
+    /**
+     * As {@link #fetchArtifact(Coordinate, BooleanSupplier)} but validates a warm local-mirror hit
+     * against {@code expectedSha256} (the lock pin). A stale store copy (e.g. an internal repo
+     * republished the same GAV and the lock was re-pinned) is evicted and re-fetched from the network
+     * instead of failing the whole sync with a checksum-mismatch dead end (JK-2305).
+     */
+    public Fetched fetchArtifact(Coordinate coord, String expectedSha256, BooleanSupplier abort)
+            throws IOException, InterruptedException {
+        return fetch(coord, MavenLayout.artifactPath(coord), true, Leg.ARTIFACT, abort, expectedSha256);
     }
 
     /**
@@ -260,10 +271,16 @@ public final class MavenRepo {
 
     private Fetched fetch(Coordinate coord, String relativePath, boolean mirror, Leg leg)
             throws IOException, InterruptedException {
-        return fetch(coord, relativePath, mirror, leg, NO_ABORT);
+        return fetch(coord, relativePath, mirror, leg, NO_ABORT, null);
     }
 
-    private Fetched fetch(Coordinate coord, String relativePath, boolean mirror, Leg leg, BooleanSupplier abort)
+    private Fetched fetch(
+            Coordinate coord,
+            String relativePath,
+            boolean mirror,
+            Leg leg,
+            BooleanSupplier abort,
+            String expectedSha256)
             throws IOException, InterruptedException {
         if (cc.jumpkick.config.SessionContext.current().config().offlineOr(false)) {
             return fetchOffline(coord, relativePath);
@@ -273,7 +290,13 @@ public final class MavenRepo {
         boolean force = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
         if (mirror && !force) {
             Optional<Fetched> local = tryLocalMirror(coord, relativePath);
-            if (local.isPresent()) return local.get();
+            if (local.isPresent()) {
+                if (expectedSha256 == null || local.get().sha256().equalsIgnoreCase(expectedSha256)) {
+                    return local.get();
+                }
+                // Stale mirror copy against a changed pin: drop it and re-fetch from the network.
+                repoStore.evict(relativePath);
+            }
         }
         warnPlaintextHttpOnce();
         URI uri = baseUrl.resolve(relativePath);
