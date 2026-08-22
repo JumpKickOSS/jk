@@ -51,9 +51,12 @@ public final class CacheSync {
         this.cas = Objects.requireNonNull(cas, "cas");
         this.http = Objects.requireNonNull(http, "http");
         this.creds = Objects.requireNonNull(creds, "creds");
-        this.m2integration = m2integration;
+        // Effective policy is project AND the machine kill switch — mirror MavenRepo, so a global
+        // [m2] integration = false is honored here too (JK-2306).
+        boolean effectiveM2 = m2integration && cc.jumpkick.config.JkM2Config.resolve().integration();
+        this.m2integration = effectiveM2;
         this.locator = new cc.jumpkick.repo.ArtifactLocator(
-                cas.root(), m2integration ? cc.jumpkick.repo.M2Dirs.localRepository() : null, m2integration);
+                cas.root(), effectiveM2 ? cc.jumpkick.repo.M2Dirs.localRepository() : null, effectiveM2);
     }
 
     /**

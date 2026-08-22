@@ -171,7 +171,7 @@ public final class ClasspathResolver {
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             if (pkg.inAnyScope(scopes)) matched.add(pkg);
         }
-        return resolveEntries(selectPerModule(matched, scopes), requirePresent);
+        return resolveEntries(selectPerModule(matched, scopes), requirePresent, effectiveLocator(lock));
     }
 
     /**
@@ -184,7 +184,19 @@ public final class ClasspathResolver {
             if (pkg.inAnyScope(scopes)) matched.add(pkg);
         }
         // Prefer main-scoped dual rows when the walk hit both; same collapse as the full-lock path.
-        return resolveEntries(selectPerModule(matched, scopes), false);
+        return resolveEntries(selectPerModule(matched, scopes), false, effectiveLocator(lock));
+    }
+
+    /**
+     * Honor the project's {@code [m2] integration = false} recorded in the lock: use a store-only
+     * locator so {@code ~/.m2} is not consulted for the compile/runtime classpath, matching sync and
+     * the reference gate in {@code MavenRepo} (JK-2306). Any module opting out disables it.
+     */
+    private cc.jumpkick.repo.ArtifactLocator effectiveLocator(Lockfile lock) {
+        boolean projectOptOut = lock.modules().stream()
+                .anyMatch(m -> Boolean.FALSE.equals(m.m2integration()));
+        if (projectOptOut) return new cc.jumpkick.repo.ArtifactLocator(storeRoot);
+        return locator;
     }
 
     /**
@@ -258,7 +270,8 @@ public final class ClasspathResolver {
         return at > 0 ? depRef.substring(0, at) : depRef;
     }
 
-    private List<Entry> resolveEntries(List<Lockfile.Artifact> selected, boolean requirePresent) {
+    private List<Entry> resolveEntries(
+            List<Lockfile.Artifact> selected, boolean requirePresent, cc.jumpkick.repo.ArtifactLocator locator) {
         List<Entry> result = new ArrayList<>(selected.size());
         cc.jumpkick.task.AccessLedger ledger = cc.jumpkick.task.AccessLedger.atDefaultPath();
         for (Lockfile.Artifact pkg : selected) {
