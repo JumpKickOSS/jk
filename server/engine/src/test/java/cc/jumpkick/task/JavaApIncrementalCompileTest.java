@@ -83,6 +83,30 @@ class JavaApIncrementalCompileTest {
         assertThat(p.classFile("app/Registry.class")).isRegularFile();
     }
 
+    /**
+     * JK-2286: when an isolating processor stops generating a file — its annotation was removed from
+     * the origin — the previously generated source and its class must be deleted, not left to ship in
+     * the jar. Zinc can't do this because generated files are not in its source set.
+     */
+    @Test
+    void removing_the_annotation_deletes_the_previously_generated_class(@TempDir Path dir) throws Exception {
+        Path worker = workerJar();
+        Path procDir = isolatingProcessor(dir);
+        Project p = new Project(dir, worker, procDir);
+
+        p.write("app/Widget.java", widget("one"));
+        assertThat(p.build().success()).isTrue();
+        assertThat(p.classFile("app/WidgetGen.class")).isRegularFile();
+
+        // Remove @gen.Gen: Widget recompiles, the processor generates nothing, WidgetGen must go.
+        p.write("app/Widget.java", "package app; public class Widget { public String greet() { return \"none\"; } }");
+        assertThat(p.build().success()).isTrue();
+        assertThat(p.classFile("app/Widget.class")).isRegularFile();
+        assertThat(p.classFile("app/WidgetGen.class"))
+                .as("stale generated class must be pruned once its annotation is removed")
+                .doesNotExist();
+    }
+
     // ---- harness ----------------------------------------------------------
 
     private static Path workerJar() {
