@@ -145,8 +145,11 @@ public final class LockfileReader {
                     if (raw instanceof Long l) java = l.intValue();
                     else if (raw instanceof Integer n) java = n;
                 }
-                Boolean m2 = t.contains("m2integration") ? t.getBoolean("m2integration") : null;
-                Boolean m2install = t.contains("m2install") ? t.getBoolean("m2install") : null;
+                TomlTable m2Table = t.getTable("m2");
+                Boolean m2 =
+                        m2Table != null && m2Table.contains("integration") ? m2Table.getBoolean("integration") : null;
+                Boolean m2install =
+                        m2Table != null && m2Table.contains("install") ? m2Table.getBoolean("install") : null;
                 modules.add(new Lockfile.ModuleEntry(
                         path,
                         group,

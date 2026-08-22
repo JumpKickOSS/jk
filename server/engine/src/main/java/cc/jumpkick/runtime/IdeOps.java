@@ -338,7 +338,7 @@ public final class IdeOps {
         }
 
         Set<String> siblingCoords = siblingCoordinates(module, modules);
-        boolean m2 = cc.jumpkick.config.JkM2Config.resolve().enabled();
+        boolean m2 = cc.jumpkick.config.JkM2Config.resolve().integration();
         cc.jumpkick.repo.ArtifactLocator locator = new cc.jumpkick.repo.ArtifactLocator(
                 cas.root(), m2 ? cc.jumpkick.repo.M2Dirs.localRepository() : null, m2);
 

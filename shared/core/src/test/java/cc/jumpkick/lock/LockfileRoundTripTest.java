@@ -197,8 +197,8 @@ class LockfileRoundTripTest {
                 .contains("java    = 25")
                 .contains("kotlin  = \"2.4.0\"")
                 .contains("sources = \"publish\"")
-                .contains("m2integration = false")
-                .contains("m2install = false");
+                .contains("m2.integration = false")
+                .contains("m2.install = false");
         assertThat(rendered).doesNotContain("layout");
 
         Lockfile parsed = LockfileReader.parse(rendered);

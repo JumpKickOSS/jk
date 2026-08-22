@@ -331,7 +331,7 @@ public final class MavenRepo {
      * already equal; otherwise {@code repos/<name>/}. Never overwrites a mismatched local-repo file.
      */
     private Path placeArtifact(Coordinate coord, String relativePath, Path source, String sha256) throws IOException {
-        if (m2integration && cc.jumpkick.config.JkM2Config.resolve().enabled()) {
+        if (m2integration && cc.jumpkick.config.JkM2Config.resolve().integration()) {
             Path m2Target = M2Dirs.localRepository().resolve(relativePath);
             Optional<Path> used = writeThroughM2(m2Target, source, relativePath, sha256);
             if (used.isPresent()) return used.get();
@@ -373,7 +373,7 @@ public final class MavenRepo {
      * download, so the worst case is one wasted small GET.
      */
     private Optional<Fetched> tryM2(Coordinate coord, String relativePath, URI uri) {
-        if (!m2integration || !cc.jumpkick.config.JkM2Config.resolve().enabled()) return Optional.empty();
+        if (!m2integration || !cc.jumpkick.config.JkM2Config.resolve().integration()) return Optional.empty();
         if (http == null || !isHttp(baseUrl)) return Optional.empty();
         try {
             Path candidate = M2Dirs.localRepository().resolve(relativePath);
@@ -477,7 +477,7 @@ public final class MavenRepo {
      * return it without network I/O.
      */
     private Optional<Fetched> tryLocalMirror(Coordinate coord, String relativePath) {
-        if (m2integration && cc.jumpkick.config.JkM2Config.resolve().enabled()) {
+        if (m2integration && cc.jumpkick.config.JkM2Config.resolve().integration()) {
             Path m2File = M2Dirs.localRepository().resolve(relativePath);
             Optional<String> hex = repoStore.readSha256Sidecar(relativePath);
             if (Files.isRegularFile(m2File) && hex.isPresent()) {

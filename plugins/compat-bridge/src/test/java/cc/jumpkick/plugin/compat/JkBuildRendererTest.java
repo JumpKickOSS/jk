@@ -94,10 +94,12 @@ class JkBuildRendererTest {
                 .m2integration(false)
                 .build());
         String out = JkBuildRenderer.render(model);
-        assertThat(out).contains("m2integration = false");
+        assertThat(out).contains("[m2]").contains("integration = false");
+        assertThat(out).doesNotContain("install = false");
 
         JkBuild reparsed = JkBuildParser.parse(out);
         assertThat(reparsed.project().m2integration()).isFalse();
+        assertThat(reparsed.project().m2install()).isTrue();
     }
 
     @Test
@@ -108,8 +110,8 @@ class JkBuildRendererTest {
                 .m2install(false)
                 .build());
         String out = JkBuildRenderer.render(model);
-        assertThat(out).contains("m2install = false");
-        assertThat(out).doesNotContain("m2integration = false");
+        assertThat(out).contains("[m2]").contains("install = false");
+        assertThat(out).doesNotContain("integration = false");
 
         JkBuild reparsed = JkBuildParser.parse(out);
         assertThat(reparsed.project().m2install()).isFalse();

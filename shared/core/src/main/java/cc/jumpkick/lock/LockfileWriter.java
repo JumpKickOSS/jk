@@ -208,10 +208,10 @@ public final class LockfileWriter {
                 out.append("sources = ").append(quote(m.sources())).append('\n');
             }
             if (Boolean.FALSE.equals(m.m2integration())) {
-                out.append("m2integration = false\n");
+                out.append("m2.integration = false\n");
             }
             if (Boolean.FALSE.equals(m.m2install())) {
-                out.append("m2install = false\n");
+                out.append("m2.install = false\n");
             }
         }
 

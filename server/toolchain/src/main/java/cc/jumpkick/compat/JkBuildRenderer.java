@@ -66,8 +66,11 @@ public final class JkBuildRenderer {
         if (p.isScala()) {
             sb.append("scala    = ").append(quote(versionLiteral(p.scala()))).append('\n');
         }
-        if (!p.m2integration()) sb.append("m2integration = false\n");
-        if (!p.m2install()) sb.append("m2install = false\n");
+        if (!p.m2integration() || !p.m2install()) {
+            sb.append("\n[m2]\n");
+            if (!p.m2integration()) sb.append("integration = false\n");
+            if (!p.m2install()) sb.append("install = false\n");
+        }
     }
 
     /**

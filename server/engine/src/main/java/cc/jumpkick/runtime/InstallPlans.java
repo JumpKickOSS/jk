@@ -190,9 +190,9 @@ public final class InstallPlans {
     }
 
     /**
-     * Install the built JAR and POM into {@code repos/local/}; when {@code m2install} (and the
+     * Install the built JAR and POM into {@code repos/local/}; when {@code [m2] install} (and the
      * machine {@code JK_M2_INSTALL} policy) is on, also write the Maven local repo with checksum
-     * sidecars. Independent of {@code m2integration}.
+     * sidecars. Independent of {@code [m2] integration}.
      */
     private static void cacheInstallArtifact(JkBuild project, BuildLayout layout, Path cacheDir, Path m2Dir)
             throws IOException {
@@ -231,7 +231,7 @@ public final class InstallPlans {
         }
     }
 
-    /** Project {@code m2install} and the machine {@code JK_M2_INSTALL} / {@code [m2] install} policy. */
+    /** Project {@code [m2] install} and the machine {@code JK_M2_INSTALL} / {@code [m2] install} policy. */
     private static boolean installToMavenLocal(JkBuild.Project p) {
         return p.m2install() && JkM2Config.resolve().install();
     }

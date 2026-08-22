@@ -142,7 +142,7 @@ public final class EffectiveUserConfig {
     private static void addM2(List<Row> out, Path file, Function<String, String> env) {
         JkM2Config d = JkM2Config.DEFAULTS;
         JkM2Config e = JkM2Config.resolve(file, env);
-        add(out, "m2.enabled", d.enabled(), e.enabled());
+        add(out, "m2.integration", d.integration(), e.integration());
         add(out, "m2.install", d.install(), e.install());
     }
 

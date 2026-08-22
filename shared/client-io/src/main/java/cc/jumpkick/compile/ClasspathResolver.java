@@ -75,7 +75,7 @@ public final class ClasspathResolver {
     }
 
     private static cc.jumpkick.repo.ArtifactLocator defaultLocator(Path storeRoot) {
-        boolean m2 = cc.jumpkick.config.JkM2Config.resolve().enabled();
+        boolean m2 = cc.jumpkick.config.JkM2Config.resolve().integration();
         return new cc.jumpkick.repo.ArtifactLocator(
                 storeRoot, m2 ? cc.jumpkick.repo.M2Dirs.localRepository() : null, m2);
     }

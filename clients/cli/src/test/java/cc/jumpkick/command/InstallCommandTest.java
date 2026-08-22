@@ -75,7 +75,8 @@ class InstallCommandTest {
                 version  = "0.1.0"
                 jdk      = 25
                 java           = 25
-                m2install      = false
+                [m2]
+                install = false
                 """);
         Path src = tempDir.resolve("src/main/java/com/example/Lib.java");
         Files.createDirectories(src.getParent());
@@ -101,7 +102,7 @@ class InstallCommandTest {
         // A library is not a usage error any more — it cache-installs.
         assertThat(exit).isEqualTo(0);
         assertThat(bin.resolve("lib-only")).doesNotExist(); // no launcher
-        // m2install = false (m2integration still default true): repos/local, not ~/.m2.
+        // [m2] install = false (integration still default true): repos/local, not ~/.m2.
         assertThat(cc.jumpkick.cache.JkStores.resolve(cache, "repos")
                         .resolve("local")
                         .resolve("com/example/lib-only/0.1.0/lib-only-0.1.0.jar"))

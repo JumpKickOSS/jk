@@ -8,10 +8,10 @@ jk repo login | logout | search | refresh
 Credentials: env, OS keychain, or Maven `settings.xml`. Prefer `auth = "env:TOKEN"` over
 secrets in TOML. Corporate mirrors, forge package registries, S3/MinIO, and GCS are
 supported. After lock, a digest-matching file in the Maven local repository is used in
-place; otherwise `JK_STORE_DIR/repos/<name>/`. Set `m2integration = false` to keep
+place; otherwise `JK_STORE_DIR/repos/<name>/`. Set `[m2] integration = false` to keep
 third-party jars only under the jk store. `jk install` writes the Maven local repo
-when `m2install` is on (default); `m2install = false` or `JK_M2_INSTALL=false` keeps
-those artifacts in `repos/local`. First-party workers always live in `repos/local`.
+when `[m2] install` is on (default); `[m2] install = false` or `JK_M2_INSTALL=false`
+keeps those artifacts in `repos/local`. First-party workers always live in `repos/local`.
 
 ## Built-in remotes
 

@@ -32,8 +32,6 @@ public final class ManifestProject {
             "scala",
             "sources",
             "description",
-            "m2integration",
-            "m2install",
             "layout",
             "id",
             "module");
@@ -143,21 +141,9 @@ public final class ManifestProject {
             description = root.getString("description");
         }
 
-        boolean m2integration;
-        if (isWorkspaceInherit(root, "m2integration") || (!workspaceRoot && !root.contains("m2integration"))) {
-            inherits.add(JkBuild.ProjectInherit.M2INTEGRATION);
-            m2integration = true;
-        } else {
-            m2integration = !Boolean.FALSE.equals(root.getBoolean("m2integration"));
-        }
-
-        boolean m2install;
-        if (isWorkspaceInherit(root, "m2install") || (!workspaceRoot && !root.contains("m2install"))) {
-            inherits.add(JkBuild.ProjectInherit.M2INSTALL);
-            m2install = true;
-        } else {
-            m2install = !Boolean.FALSE.equals(root.getBoolean("m2install"));
-        }
+        M2Flags m2 = parseM2(root, workspaceRoot, inherits);
+        boolean m2integration = m2.integration;
+        boolean m2install = m2.install;
 
         JkBuild.Layout layout;
         if (isWorkspaceInherit(root, "layout") || (!workspaceRoot && !root.contains("layout"))) {
@@ -189,6 +175,56 @@ public final class ManifestProject {
                 m2install,
                 layout,
                 inherits);
+    }
+
+    private record M2Flags(boolean integration, boolean install) {}
+
+    /**
+     * {@code [m2] integration} / {@code [m2] install} (both default true). A module may inherit
+     * the whole table ({@code [m2] workspace = true}) or either key.
+     */
+    private static M2Flags parseM2(
+            TomlTable root, boolean workspaceRoot, java.util.EnumSet<JkBuild.ProjectInherit> inherits) {
+        if (root.contains("m2integration") || root.contains("m2install")) {
+            throw new JkBuildParseException(
+                    "m2integration / m2install moved under [m2] — use `integration` and `install`");
+        }
+        TomlTable m2 = root.isTable("m2") ? root.getTable("m2") : null;
+        if (m2 != null) {
+            for (String k : m2.keySet()) {
+                if (!"integration".equals(k) && !"install".equals(k) && !"workspace".equals(k)) {
+                    throw new JkBuildParseException("[m2] unknown key `" + k + "` — expected integration, install");
+                }
+            }
+        }
+        if (m2 != null && m2.contains("workspace") && isWorkspaceInherit(root, "m2")) {
+            inherits.add(JkBuild.ProjectInherit.M2INTEGRATION);
+            inherits.add(JkBuild.ProjectInherit.M2INSTALL);
+            return new M2Flags(true, true);
+        }
+        return new M2Flags(
+                parseM2Bool(root, "integration", workspaceRoot, JkBuild.ProjectInherit.M2INTEGRATION, inherits),
+                parseM2Bool(root, "install", workspaceRoot, JkBuild.ProjectInherit.M2INSTALL, inherits));
+    }
+
+    private static boolean parseM2Bool(
+            TomlTable root,
+            String key,
+            boolean workspaceRoot,
+            JkBuild.ProjectInherit inherit,
+            java.util.EnumSet<JkBuild.ProjectInherit> inherits) {
+        TomlTable m2 = root.getTable("m2");
+        boolean present = m2 != null && m2.contains(key);
+        if ((m2 != null && isWorkspaceInherit(m2, key)) || (!workspaceRoot && !present)) {
+            inherits.add(inherit);
+            return true;
+        }
+        if (!present) return true;
+        Boolean value = m2.getBoolean(key);
+        if (value == null) {
+            throw new JkBuildParseException("[m2]." + key + " must be true or false");
+        }
+        return value;
     }
 
     /**

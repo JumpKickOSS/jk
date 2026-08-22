@@ -1965,28 +1965,27 @@ class JkBuildParserTest {
     }
 
     @Test
-    void m2integration_defaults_true_explicit_false_opts_out() {
+    void m2_table_defaults_true_explicit_false_opts_out() {
         assertThat(JkBuildParser.parse(PROJECT).project().m2integration()).isTrue();
-        assertThat(JkBuildParser.parse(PROJECT + "m2integration = true\n")
+        assertThat(JkBuildParser.parse(PROJECT).project().m2install()).isTrue();
+        assertThat(JkBuildParser.parse(PROJECT + "\n[m2]\nintegration = true\n")
                         .project()
                         .m2integration())
                 .isTrue();
-        assertThat(JkBuildParser.parse(PROJECT + "m2integration = false\n")
+        assertThat(JkBuildParser.parse(PROJECT + "\n[m2]\nintegration = false\n")
                         .project()
                         .m2integration())
                 .isFalse();
+        JkBuild both = JkBuildParser.parse(PROJECT + "\n[m2]\nintegration = true\ninstall = false\n");
+        assertThat(both.project().m2integration()).isTrue();
+        assertThat(both.project().m2install()).isFalse();
     }
 
     @Test
-    void m2install_defaults_true_and_is_independent_of_m2integration() {
-        assertThat(JkBuildParser.parse(PROJECT).project().m2install()).isTrue();
-        assertThat(JkBuildParser.parse(PROJECT + "m2install = false\n")
-                        .project()
-                        .m2install())
-                .isFalse();
-        JkBuild both = JkBuildParser.parse(PROJECT + "m2integration = true\nm2install = false\n");
-        assertThat(both.project().m2integration()).isTrue();
-        assertThat(both.project().m2install()).isFalse();
+    void flat_m2integration_key_is_rejected() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "m2integration = false\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[m2]");
     }
 
     // ── splitEmbeddedUrl unit tests ──────────────────────────────────────────
