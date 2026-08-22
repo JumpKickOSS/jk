@@ -138,6 +138,10 @@ public final class JavaCompilerHost {
         // Held only while a COMPILE/PLAN is in flight, so the resident worker does not pin a
         // PluginSlots permit while idle (JK-2284). Touched only by the io thread.
         private cc.jumpkick.engine.plugin.PluginSlots.Lease slot;
+        // Bounded ring of the worker's most recent non-protocol lines, surfaced on a crash (JK-2296).
+        private static final int TAIL_MAX = 50;
+        private final java.util.concurrent.ConcurrentLinkedDeque<String> passthroughTail =
+                new java.util.concurrent.ConcurrentLinkedDeque<>();
 
         Session(long id, ForkedJavac.Request template) {
             io = Thread.ofVirtual().name("jk-zinc-host-" + id).start(() -> run(template));
@@ -197,7 +201,9 @@ public final class JavaCompilerHost {
                                 ForkedJavac.trainerCommand(template, workerCp, hostJavaHome, aotOutput, scratch)));
                 jvmFlags.addAll(cc.jumpkick.engine.plugin.JvmOptions.batchFlags(1));
                 List<String> command = PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("--pull"));
-                new PluginClient(ForkedJavac.PREFIX).converseNoSlot(command, (json, convo) -> onLine(json, convo));
+                new PluginClient(ForkedJavac.PREFIX)
+                        .passthrough(this::recordTail)
+                        .converseNoSlot(command, (json, convo) -> onLine(json, convo));
             } catch (Exception e) {
                 failAll(e);
             } finally {
@@ -269,11 +275,19 @@ public final class JavaCompilerHost {
                 return;
             }
             if (PluginProtocol.ERROR.equals(t)) {
-                w.compile.completeExceptionally(new IOException(Jsonl.str(json, "message")));
-                w.forecast.completeExceptionally(new IOException(Jsonl.str(json, "message")));
+                IOException err = new IOException(Jsonl.str(json, "message"));
+                w.compile.completeExceptionally(err);
+                w.forecast.completeExceptionally(err);
+                deleteSpec(w);
                 inflight = null;
                 releaseSlot();
             }
+        }
+
+        /** Keep the last {@link #TAIL_MAX} non-protocol worker lines for crash diagnostics. */
+        private void recordTail(String line) {
+            passthroughTail.addLast(line);
+            while (passthroughTail.size() > TAIL_MAX) passthroughTail.pollFirst();
         }
 
         /** Return the in-flight worker slot to the pool (idempotent; io thread only). */
@@ -283,14 +297,18 @@ public final class JavaCompilerHost {
             if (s != null) s.close();
         }
 
-        private static void complete(Work w) {
-            if (w.spec != null) {
-                try {
-                    Files.deleteIfExists(w.spec);
-                } catch (IOException ignored) {
-                    // temp spec
-                }
+        /** Delete a work item's spec temp file on every terminal path (JK-2296). */
+        private static void deleteSpec(Work w) {
+            if (w == null || w.spec == null) return;
+            try {
+                Files.deleteIfExists(w.spec);
+            } catch (IOException ignored) {
+                // temp spec — best effort
             }
+        }
+
+        private static void complete(Work w) {
+            deleteSpec(w);
             if (w.plan) {
                 boolean full = "full".equalsIgnoreCase(w.outcome);
                 List<ForkedJavac.Invalidation> items = new ArrayList<>();
@@ -311,10 +329,23 @@ public final class JavaCompilerHost {
             releaseSlot();
             Work cur = inflight;
             if (cur != null) {
-                cur.compile.completeExceptionally(e);
-                cur.forecast.completeExceptionally(e);
+                deleteSpec(cur);
+                Throwable withTail = withWorkerTail(e);
+                cur.compile.completeExceptionally(withTail);
+                cur.forecast.completeExceptionally(withTail);
             }
             drainFailQueued(e);
+        }
+
+        /**
+         * Attach the tail of the worker's non-protocol output (stack trace / OOM banner / spec-parse
+         * error) to a worker-death exception — otherwise the engine reports only "zinc worker exited"
+         * with no cause (JK-2296).
+         */
+        private Throwable withWorkerTail(Throwable e) {
+            if (passthroughTail.isEmpty()) return e;
+            String tail = String.join("\n", passthroughTail);
+            return new IOException(e.getMessage() + "\n--- zinc worker output ---\n" + tail, e);
         }
 
         /**
