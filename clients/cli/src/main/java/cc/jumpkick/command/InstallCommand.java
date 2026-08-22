@@ -469,6 +469,12 @@ public final class InstallCommand {
         Path dest = Path.of(plan.linkDests().get(0));
         Path parent = dest.getParent();
         if (parent == null) return;
+        // Only fat/minified installs (jar at productLib/<bin>/<jar>) carry a config entry keyed by
+        // <bin>. A native binary lands directly in the PATH bin dir, so its parent is that bin dir —
+        // treating it as the app name wrote a junk config/bin/config.toml (JK-2312).
+        Path grand = parent.getParent();
+        Path productLib = JkDirs.current().productLibDir().toAbsolutePath().normalize();
+        if (grand == null || !grand.toAbsolutePath().normalize().equals(productLib)) return;
         String bin = parent.getFileName().toString();
         if (bin.isBlank()) return;
         Map<String, String> keys = new LinkedHashMap<>(AppInstallConfig.jkConfigProperties());
