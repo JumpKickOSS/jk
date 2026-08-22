@@ -312,14 +312,8 @@ public final class RepoArtifactStore {
 
     /**
      * Remove entries hashing to {@code shas} from EVERY named repo store under
-     * {@code <cacheRoot>/repos/} — the shared tail of cache GC / sweep / LRU eviction.
-     *
-     * <p>Deletes the {@code .sha256} sidecar <em>and</em> the artifact file (the hard-link or
-     * legacy copy of the CAS blob). Callers that delete CAS paths must invoke this for the same
-     * sha set: with hard-linked materialization, removing only {@code sha256/…} leaves a live
-     * nlink under {@code repos/} and the GC does not reclaim disk. Never touches an opt-in
-     * {@code ~/.m2} mirror (jk doesn't GC Maven's store; see {@code m2install}).
-     * Best-effort; returns entries removed. Never throws.
+     * {@code <cacheRoot>/repos/}. Deletes the {@code .jk} memo and the artifact file. Never
+     * touches the Maven local repository. Best-effort; returns entries removed. Never throws.
      */
     public static int removeShasFromAll(Path cacheRoot, Set<String> shas, boolean dryRun) {
         if (shas.isEmpty()) return 0;
@@ -338,11 +332,7 @@ public final class RepoArtifactStore {
         return removed;
     }
 
-    /**
-     * Drop artifact + sidecar for each entry whose sidecar hash is in {@code shas}. The artifact
-     * path is typically a hard link to the CAS blob — unlinking it is half of disk reclaim (the
-     * CAS path is the other half, deleted by the GC caller).
-     */
+    /** Drop artifact + {@code .jk} memo for each entry whose memo hash is in {@code shas}. */
     public int removeShas(Set<String> shas, boolean dryRun) {
         if (root == null || shas.isEmpty() || !Files.isDirectory(root)) return 0;
         // Collect BEFORE deleting: pruning directories under a still-lazy Files.walk iterator
@@ -386,7 +376,7 @@ public final class RepoArtifactStore {
     }
 
     /**
-     * Drop the mirror entry for {@code relativePath} — artifact and {@code .sha256} sidecar — so the
+     * Drop the store entry for {@code relativePath} — artifact and {@code .jk} memo — so the
      * next resolve re-fetches it.
      *
      * <p>The escape hatch for jk's first-write-wins mirror contract: a mirror hit otherwise serves

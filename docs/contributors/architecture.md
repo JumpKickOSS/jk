@@ -238,19 +238,17 @@ and exclusions stay GA-scoped.
 3. **Action cache** hit → restore outputs from the **cache CAS**; miss → run and store.
 4. Compilers and tests run in **forked plugin processes** sized by a shared memory plan.
 
-**Two-tier CAS** (separate roots, separate budgets):
+**Two storage tiers** (separate roots, separate budgets):
 
 | Tier | Root | Contents |
 |------|------|----------|
-| **Artifact store** | `~/.local/share/jk/store/` (`JK_STORE_DIR`) | Long-lived blobs under `sha256/…` + Maven-layout views under `repos/<name>/…` (deps, workers, installLocal) |
+| **Artifact store** | `~/.local/share/jk/store/` (`JK_STORE_DIR`) | Maven-layout jars under `repos/<name>/…` plus `.jk` memos; first-party workers under `repos/local/`. The Maven local repository (`~/.m2/repository` by default) is the primary blob store when `m2integration` is on. |
 | **Cache** | `~/.cache/jk/` (`JK_CACHE_DIR`) | Action index (`actions/`) + rebuildable action payloads under `sha256/…` |
 
-Repo materialization **hard-links** store CAS blobs into `repos/<name>/` when the filesystem
-allows (one allocation) via portable NIO `Files.createLink`. GC unlinks **both** the store CAS
-path and matching `repos/` entries so space is reclaimed. Action payloads never share the
-artifact pool: deleting `~/.cache/jk` drops index and action blobs without touching deps.
-Ingest from build outputs / `~/.m2` is copy (or opt-in link for m2) so non-store trees never
-share identity with a hashed blob; writers inside either CAS must temp + atomic-replace.
+Dependency jars are real `*.jar` files. Compile classpaths never use hash-named CAS blobs.
+A digest-matching file in the Maven local repo is used in place; a mismatch is left untouched
+and the locked bytes live under `repos/<name>/`. Action-cache restore stays copy-not-link so
+compilers cannot mutate cached outputs. `jk storage nuke` does not delete `~/.m2`.
 
 ### Action keys and future remote cache (design)
 
@@ -263,7 +261,7 @@ keys** when adding a read-only remote later — only add an optional remote look
 | jk version | `jk:` in key material | Pin engine version for cross-machine hits |
 | Toolchain / release | `--release`, Kotlin target | Include JDK major when outputs are version-sensitive |
 | Sources | path + content SHA-256 | Prefer content-only relative paths for portability later |
-| Classpath / processors | CAS path (content-addressed) | Same hex blobs work remote |
+| Classpath / processors | lock digest (`file:<sha256>`) | Hex identity, independent of on-disk path |
 | Plugin / worker jar | worker hash in artifact keys | Must stay part of the key (upgrade invalidates) |
 | OS/arch | only when outputs are platform-specific | Omit for pure class jars |
 

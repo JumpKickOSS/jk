@@ -9,10 +9,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * d8 / R8 judge program and {@code --lib} inputs by file extension. Store-materialized runtime
- * jars are CAS blobs with no extension ({@code store/sha256/xx/yy/<hex>}), which d8/R8 reject as
- * "Unsupported source file type" — so every extensionless input gets a {@code .jar}-suffixed
- * hard-link alias under the step's scratch before it reaches the tool.
+ * d8 / R8 judge program and {@code --lib} inputs by file extension. Dependency jars are
+ * Maven-layout {@code *.jar} files; any extensionless input still gets a {@code .jar}-suffixed
+ * alias under the step's scratch so the tool accepts it.
  */
 final class JarInputs {
 

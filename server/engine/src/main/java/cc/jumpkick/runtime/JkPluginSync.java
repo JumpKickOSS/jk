@@ -42,7 +42,7 @@ public final class JkPluginSync {
     private JkPluginSync() {}
 
     public static Result ensureInCas(Cas cas, Observer obs) throws IOException, InterruptedException {
-        Path m2 = Path.of(System.getProperty("user.home"), ".m2", "repository");
+        Path m2 = cc.jumpkick.repo.M2Dirs.localRepository();
         Path cacheRoot = cas.root();
         RepoArtifactStore localStore = new RepoArtifactStore(cacheRoot, "local");
         RepoArtifactStore centralStore = new RepoArtifactStore(cacheRoot, "central");
@@ -70,11 +70,8 @@ public final class JkPluginSync {
             }
 
             try {
-                // Streamed hash + hard-link into the CAS (cross-fs falls back to a copy) —
-                // a plugin jar never has to fit in the heap.
                 String hex = cc.jumpkick.util.Hashing.sha256Hex(m2Jar);
-                Path casBlob = cas.putFile(m2Jar, hex);
-                localStore.materialize(relPath, casBlob, hex);
+                localStore.materialize(relPath, m2Jar, hex);
                 fetched++;
                 obs.fetched(w.artifactId());
             } catch (Exception e) {

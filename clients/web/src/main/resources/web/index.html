@@ -460,8 +460,8 @@
                 <span class="meter-fill used" :style="{ width: artifactStorageUtilizationPercent() + '%' }"></span>
               </span>
               <dl>
-                <dt>store CAS</dt><dd>{{ count(cache.casCount) }} · {{ gib(cache.casBytes) }}</dd>
-                <dt>repos / workers</dt><dd>{{ count(cache.workerJarsCount) }} · {{ gib(cache.workerJarsBytes) }}</dd>
+                <dt>jk-owned (repos / workers)</dt><dd>{{ count(cache.workerJarsCount) }} · {{ gib(cache.workerJarsBytes) }}</dd>
+                <dt>Maven local (not budgeted)</dt><dd>{{ count(cache.mavenLocalCount || 0) }} · {{ gib(cache.mavenLocalBytes || 0) }}</dd>
               </dl>
             </template>
             <div v-else class="dim small">Artifact store loading…</div>
@@ -535,7 +535,7 @@
         <span class="sb-div"></span>
         <span class="sb-item" data-tip="Cache tier (rebuildable action outputs) — jk cache usage"><jk-icon name="database"></jk-icon>Cache&nbsp;<b>{{ actionCacheBytes() != null ? gib(actionCacheBytes()) : '—' }}</b></span>
         <span class="sb-div"></span>
-        <span class="sb-item" data-tip="Artifact store (deps CAS + repos) — jk storage usage"><jk-icon name="database"></jk-icon>Store&nbsp;<b>{{ artifactStorageBytes() != null ? gib(artifactStorageBytes()) : '—' }}</b></span>
+        <span class="sb-item" data-tip="jk-owned artifact store — jk storage usage"><jk-icon name="database"></jk-icon>Store&nbsp;<b>{{ artifactStorageBytes() != null ? gib(artifactStorageBytes()) : '—' }}</b></span>
         <span class="sb-div"></span>
         <span class="sb-item"><jk-icon name="cpu"></jk-icon>Engine Heap&nbsp;<b>{{ status ? mib(status.heapCommittedBytes) : '—' }}</b></span>
       </div>

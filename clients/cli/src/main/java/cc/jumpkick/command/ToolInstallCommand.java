@@ -63,7 +63,7 @@ public final class ToolInstallCommand implements CliCommand {
                         .hide(),
                 Opt.value("<dir>", "Override the bin directory.", "--bin-dir").hide(),
                 Opt.value("<dir>", "Override the lib directory.", "--lib-dir").hide(),
-                Opt.value("<dir>", "Override the local Maven repo root (~/.m2) for m2install.", "--m2-dir")
+                Opt.value("<dir>", "Override the local Maven repo root (~/.m2).", "--m2-dir")
                         .hide(),
                 Opt.value("<url>", "Override the Maven repository URL (for tests).", "--repo-url")
                         .hide());

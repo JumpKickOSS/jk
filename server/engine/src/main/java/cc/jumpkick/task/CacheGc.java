@@ -14,12 +14,11 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * {@code jk cache clean} GC: mark reachable ({@link CacheRoots}), delete unreferenced blobs idle
- * longer than {@link #MAX_AGE}, drop matching {@code repos/} hard-links, compact the access log.
+ * {@code jk cache clean} GC: mark reachable ({@link CacheRoots}), delete unreferenced store-CAS
+ * blobs idle longer than {@link #MAX_AGE}, compact the access log.
  *
- * <p>CAS and {@code repos/<name>/} share inodes via hard link. Purging must remove <strong>every
- * directory entry</strong> for a sha (repo view first, then {@code sha256/…}) or the bytes stay
- * allocated and GC fails its only job.
+ * <p>Maven-layout jars under {@code repos/} are independent copies (not hard links into this CAS)
+ * and are not deleted here.
  */
 public final class CacheGc {
 
@@ -83,8 +82,6 @@ public final class CacheGc {
             }
         }
 
-        // Unlink repos/ first (hard links), then CAS — both required to free the inode.
-        int repoLinks = cc.jumpkick.repo.RepoArtifactStore.removeShasFromAll(storeRoot, purged, dryRun);
         if (!dryRun) {
             for (Path file : casPaths) {
                 Files.deleteIfExists(file);
@@ -96,6 +93,6 @@ public final class CacheGc {
         if (!dryRun && Files.exists(logFile)) {
             ledger.rewriteDropping(purged);
         }
-        return new Report(purged.size(), freed, repoLinks);
+        return new Report(purged.size(), freed, 0);
     }
 }

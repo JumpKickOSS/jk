@@ -14,10 +14,9 @@ import java.util.Set;
 /**
  * File-tree size accounting that does not double-count hard-linked files.
  *
- * <p>CAS blobs under {@code sha256/…} and Maven-layout views under {@code repos/…} share one
- * allocation via hard link. Naïve {@code Files.size} sums over both trees report ~2× true disk
- * use. This helper deduplicates on {@code (dev, ino)} so each underlying blob contributes once —
- * same idea as {@code du} across hard links.
+ * <p>When two trees share an inode, a naïve {@code Files.size} sum reports ~2× true disk use.
+ * This helper deduplicates on {@code (dev, ino)} so each underlying blob contributes once — same
+ * idea as {@code du} across hard links.
  *
  * <p>Only files with {@code nlink > 1} enter the seen-set at all (a single-link file cannot be
  * met twice), and the set itself is a primitive open-addressed long set — the previous
@@ -44,8 +43,8 @@ public final class DiskUsage {
     /**
      * Walk several trees <em>in order</em>. File counts include every directory entry. Byte size
      * for a hard-linked group is attributed to the <strong>first</strong> tree that contains a
-     * link — later trees add 0 bytes for that key. Put the CAS ({@code sha256/}) before
-     * {@code repos/} so blob bytes land under CAS and repo hard links do not inflate storage.
+     * link — later trees add 0 bytes for that key. Put store {@code sha256/} before {@code repos/}
+     * so leftover shared inodes are not counted twice.
      *
      * <p>Missing or unreadable roots contribute zeros. A null {@code fileKey} on the fallback
      * path (rare providers) falls back to the absolute path so accounting never drops a file.

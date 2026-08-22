@@ -34,6 +34,7 @@ junit = "5.11.0"
 | `groovy` | Groovy compiler version — **5+** (Groovy modules) |
 | `scala` | Scala 3 compiler version (Scala 3 only; mixed Java+Scala compile in one Zinc session). jk injects the matching stdlib (`scala-library`; on 3.8+ that jar *is* the Scala 3 library) |
 | `description` | Optional; does **not** auto-inherit in workspaces unless you set it or `description.workspace = true` |
+| `m2integration` | Use the Maven local repository as the primary third-party jar store (default **true**). `false` hosts those jars only under `JK_STORE_DIR/repos/<name>/`. First-party workers always stay in `repos/local`. |
 
 **Language mix:** Java is the default. A module may mix Java with Kotlin, Groovy, **or**
 Scala 3 (Java↔Scala circular refs compile in one Zinc session). **Kotlin + Groovy in one

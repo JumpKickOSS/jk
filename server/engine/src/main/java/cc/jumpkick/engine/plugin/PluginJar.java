@@ -195,11 +195,20 @@ public enum PluginJar {
             }
             sha = published.toLowerCase();
         }
-        Path casBlob = cas.put(bytes, sha);
         RepoArtifactStore store = RepoArtifactStore.forRepoName(cas.root(), OFFICIAL_REPO);
-        store.materialize(relPath, casBlob, sha);
-        String pomSha = Hashing.sha256Hex(pomBody);
-        store.materialize(pomRel, cas.put(pomBody, pomSha), pomSha);
+        Files.createDirectories(cas.root());
+        Path tmpJar = Files.createTempFile(cas.root(), ".worker-", ".jar");
+        Path tmpPom = Files.createTempFile(cas.root(), ".worker-", ".pom");
+        try {
+            Files.write(tmpJar, bytes);
+            store.materialize(relPath, tmpJar, sha);
+            String pomSha = Hashing.sha256Hex(pomBody);
+            Files.write(tmpPom, pomBody);
+            store.materialize(pomRel, tmpPom, pomSha);
+        } finally {
+            Files.deleteIfExists(tmpJar);
+            Files.deleteIfExists(tmpPom);
+        }
         Path localJar = store.locate(relPath).orElseThrow();
         fetchOfficialClosure(cas, http, base, localJar);
         return localJar;

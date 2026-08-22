@@ -1738,7 +1738,7 @@ class JkBuildParserTest {
         assertThat(parsed.features().byName().get("postgres").deps()).containsExactly("postgres-jdbc", "hikari");
     }
 
-    // --- application / native / m2install -----------------------------------
+    // --- application / native / m2integration -----------------------------------
 
     @Test
     void application_absent_means_not_an_application() {
@@ -1966,18 +1966,14 @@ class JkBuildParserTest {
 
     @Test
     void m2integration_defaults_true_explicit_false_opts_out() {
-        assertThat(JkBuildParser.parse(PROJECT).project().m2install()).isTrue();
+        assertThat(JkBuildParser.parse(PROJECT).project().m2integration()).isTrue();
         assertThat(JkBuildParser.parse(PROJECT + "m2integration = true\n")
                         .project()
-                        .m2install())
+                        .m2integration())
                 .isTrue();
         assertThat(JkBuildParser.parse(PROJECT + "m2integration = false\n")
                         .project()
-                        .m2install())
-                .isFalse();
-        assertThat(JkBuildParser.parse(PROJECT + "m2install = false\n")
-                        .project()
-                        .m2install())
+                        .m2integration())
                 .isFalse();
     }
 

@@ -95,7 +95,7 @@ public final class RepoGroupBuilder {
     public static RepoGroup buildFor(JkBuild project, URI overrideUrl, Cas cas, UnaryOperator<String> env) {
         Http http = new Http();
         List<MavenRepo> repos = new ArrayList<>();
-        boolean mirrorToM2 = project.project().m2install();
+        boolean mirrorToM2 = project.project().m2integration();
         if (overrideUrl != null) {
             // Tests pin one URL; project-declared repos are ignored.
             repos.add(new MavenRepo("central", overrideUrl, http, cas, RepoCredential.ANONYMOUS, mirrorToM2));

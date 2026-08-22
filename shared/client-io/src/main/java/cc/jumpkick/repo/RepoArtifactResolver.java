@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
-import cc.jumpkick.cache.Cas;
 import cc.jumpkick.lock.RepoSource;
-import java.nio.file.Path;
-import java.util.Optional;
 
 /**
- * The single owner of the lockfile {@code "<name>+<url>"} source-string format and of "find (or
- * materialise) an artifact on disk by its Maven-layout path". Consolidates parsing + locate logic
- * that was hand-copied across {@code CacheSync}, {@code ClasspathResolver}, and the CLI's IDE export.
+ * The lockfile {@code "<name>+<url>"} source-string format and named-remote vs local classification.
+ * Finding the on-disk jar is {@link ArtifactLocator}.
  */
 public final class RepoArtifactResolver {
 
@@ -33,52 +29,14 @@ public final class RepoArtifactResolver {
     }
 
     /**
-     * True for a <em>named remote</em> repo — one whose full store under {@code repos/<name>/} holds
-     * a real jar fetched from that repository. The {@code local} full store and {@code git:} sources
-     * are not named remotes (they resolve through the local store / the CAS instead).
+     * True for a <em>named remote</em> repo — one whose store under {@code repos/<name>/} holds a
+     * jar fetched from that repository. {@code local} and {@code git:} sources are first-party /
+     * synthesized and never live in the Maven local repository.
      */
     public static boolean isNamedRemote(String repoName) {
         return repoName != null
                 && !repoName.isEmpty()
                 && !repoName.equals("local")
                 && !repoName.startsWith(GIT_SOURCE_PREFIX);
-    }
-
-    /**
-     * Resolve an artifact to a real {@code .jar} path (proper Maven-layout filename, not a CAS hash
-     * path): the package's named-repo index first (when {@code source} is a named remote), else the
-     * local full store; materialising a local-store copy from the CAS blob {@code hex} when only the
-     * CAS holds it. Returns {@code null} when unresolved.
-     */
-    public static Path locateOrMaterialize(Cas cas, String source, String relativePath, String hex) {
-        String repoName = repoName(source);
-        if (isNamedRemote(repoName)) {
-            // With a pinned hash, resolve hash-verified so a rewritten/poisoned ~/.m2 copy
-            // falls through to the local store / CAS instead of being served as-is.
-            RepoArtifactStore store = RepoArtifactStore.forRepoName(cas.root(), repoName);
-            Optional<Path> found = hex != null ? store.locate(relativePath, hex) : store.locate(relativePath);
-            if (found.isPresent()) {
-                // Reclaim a legacy byte-duplicate into a hard link when the CAS still has the blob.
-                if (hex != null && cas.contains(hex)) {
-                    store.materialize(relativePath, cas.pathFor(hex), hex);
-                    return store.locate(relativePath, hex).orElse(found.get());
-                }
-                return found.get();
-            }
-        }
-        RepoArtifactStore local = RepoArtifactStore.forRepoName(cas.root(), "local");
-        Optional<Path> found = local.locate(relativePath);
-        if (found.isPresent()) {
-            if (hex != null && cas.contains(hex)) {
-                local.materialize(relativePath, cas.pathFor(hex), hex);
-                return local.locate(relativePath).orElse(found.get());
-            }
-            return found.get();
-        }
-        if (hex != null && cas.contains(hex)) {
-            local.materialize(relativePath, cas.pathFor(hex), hex);
-            found = local.locate(relativePath);
-        }
-        return found.orElse(null);
     }
 }

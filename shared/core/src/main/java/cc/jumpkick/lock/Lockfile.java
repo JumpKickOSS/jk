@@ -50,7 +50,7 @@ public record Lockfile(
             String scala,
             String description,
             String sources,
-            Boolean m2install,
+            Boolean m2integration,
             String layout) {
         public ModuleEntry {
             Objects.requireNonNull(path, "path");
@@ -71,9 +71,22 @@ public record Lockfile(
                 String groovy,
                 String description,
                 String sources,
-                Boolean m2install,
+                Boolean m2integration,
                 String layout) {
-            this(path, group, name, version, jdk, java, kotlin, groovy, null, description, sources, m2install, layout);
+            this(
+                    path,
+                    group,
+                    name,
+                    version,
+                    jdk,
+                    java,
+                    kotlin,
+                    groovy,
+                    null,
+                    description,
+                    sources,
+                    m2integration,
+                    layout);
         }
     }
 

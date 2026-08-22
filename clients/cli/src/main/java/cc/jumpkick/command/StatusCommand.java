@@ -254,7 +254,7 @@ public final class StatusCommand implements CliCommand {
             if (!Files.isDirectory(root) && !Files.isDirectory(storeRoot)) {
                 return new CacheSnapshot("—", "0", "0");
             }
-            // Exclusive sizes: hard-linked repos/ + sha256/ share one allocation (not 2×).
+            // Exclusive sizes: leftover shared inodes under repos/ + sha256/ counted once.
             CacheCommand.SectionStats s = CacheCommand.sectionStats(root);
             return new CacheSnapshot(
                     CacheCommand.fmtBytes(s.totalBytes()),

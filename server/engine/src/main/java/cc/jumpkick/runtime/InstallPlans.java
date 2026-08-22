@@ -189,7 +189,7 @@ public final class InstallPlans {
     }
 
     /**
-     * Install the built JAR and POM into {@code repos/local/}; when {@code m2install}, also mirror
+     * Install the built JAR and POM into {@code repos/local/}; when {@code m2integration}, also mirror
      * to the local Maven repo with checksum sidecars.
      */
     private static void cacheInstallArtifact(JkBuild project, BuildLayout layout, Path cacheDir, Path m2Dir)
@@ -201,7 +201,7 @@ public final class InstallPlans {
         String pomRelPath = cc.jumpkick.repo.MavenLayout.pomPath(coord);
         byte[] pomBytes = renderedPom(project, layout);
 
-        if (p.m2install()) {
+        if (p.m2integration()) {
             // The local Maven repo is primary. m2Dir is caller-resolved (--m2-dir redirects it).
             Path m2Root = m2Dir.resolve("repository");
 

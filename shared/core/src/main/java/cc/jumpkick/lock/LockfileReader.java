@@ -145,7 +145,7 @@ public final class LockfileReader {
                     if (raw instanceof Long l) java = l.intValue();
                     else if (raw instanceof Integer n) java = n;
                 }
-                Boolean m2 = t.contains("m2install") ? t.getBoolean("m2install") : null;
+                Boolean m2 = t.contains("m2integration") ? t.getBoolean("m2integration") : null;
                 modules.add(new Lockfile.ModuleEntry(
                         path,
                         group,

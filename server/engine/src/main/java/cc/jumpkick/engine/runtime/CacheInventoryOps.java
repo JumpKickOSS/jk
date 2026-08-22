@@ -170,11 +170,18 @@ public final class CacheInventoryOps {
         Stat workers = walkExclusiveAdding(lib, seen);
         long totalFiles = jarFiles + execFiles + ociFiles + workers.files;
         long totalBytes = jarBytes + execBytes + ociBytes + workers.bytes;
+        DiskUsage.Stats mavenLocal;
+        try {
+            mavenLocal = DiskUsage.of(cc.jumpkick.repo.M2Dirs.localRepository());
+        } catch (Exception e) {
+            mavenLocal = new DiskUsage.Stats(0, 0);
+        }
         List<String> stats = List.of(
                 pack("jars", jarFiles, jarBytes),
                 pack("executables", execFiles, execBytes),
                 pack("oci", ociFiles, ociBytes),
-                pack("workers", workers.files, workers.bytes));
+                pack("workers", workers.files, workers.bytes),
+                pack("maven-local", mavenLocal.files(), mavenLocal.bytes()));
         return CacheInventoryAck.usage("store-usage", stats, totalFiles, totalBytes);
     }
 
@@ -226,8 +233,8 @@ public final class CacheInventoryOps {
 
     private static CacheInventoryAck wipeStore(Path storeRoot, boolean dryRun) throws IOException {
         if (storeRoot == null || !Files.isDirectory(storeRoot)) return CacheInventoryAck.wipe(0, 0);
-        // Unique-inode bytes (POSIX ino/dev or Windows fileKey) — CAS + repos hard links must not
-        // inflate "freed" when the same blob is linked under sha256/ and repos/.
+        // Unique-inode bytes (POSIX ino/dev or Windows fileKey) so leftover hard links under
+        // sha256/ and repos/ are not counted twice.
         DiskUsage.Stats stats = DiskUsage.of(storeRoot);
         if (!dryRun) {
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(storeRoot)) {

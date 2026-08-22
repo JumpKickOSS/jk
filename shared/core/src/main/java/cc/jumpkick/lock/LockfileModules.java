@@ -95,7 +95,7 @@ public final class LockfileModules {
                 selectorRaw(p.scala()),
                 p.description(),
                 sources,
-                p.m2install() ? Boolean.TRUE : null,
+                p.m2integration() ? null : Boolean.FALSE,
                 null);
     }
 

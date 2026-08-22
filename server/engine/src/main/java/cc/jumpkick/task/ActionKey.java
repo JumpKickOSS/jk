@@ -194,7 +194,6 @@ public final class ActionKey {
             result.put(abs.toString(), FileHashMemo.contentHash(abs));
         }
         for (Path cp : request.classpath()) {
-            // CAS path when possible so repos/ vs sha256/ dual views do not fork the key.
             result.put("cp:" + FreshnessStamp.identityKey(cp), "");
         }
         for (Path pp : request.processorPath()) {

@@ -99,11 +99,9 @@ public final class PluginDescriptorOps {
     }
 
     /**
-     * The Maven-layout path for a lock-pinned worker jar: the first repo store whose sidecar hash
-     * matches the pin, else materialized into {@code repos/local} from the CAS blob. Forks must get
-     * layout paths, never bare CAS blobs — a blob has no {@code .jar} name and no coordinate, so
-     * {@link cc.jumpkick.repo.PomRuntimeClasspath} cannot reach its POM. Repos live beside the CAS
-     * under {@code cas.root()}.
+     * The Maven-layout path for a lock-pinned worker jar: the first repo store whose {@code .jk}
+     * memo matches the pin, else a copy into {@code repos/local} from a leftover store-CAS blob.
+     * Forks must get layout paths (a {@code .jar} name and a sibling POM).
      */
     static Optional<Path> pinnedLayoutJar(Cas cas, String module, String version, String sha256Hex) {
         String rel = MavenLayout.artifactPath(Coordinate.ofModule(module, version));

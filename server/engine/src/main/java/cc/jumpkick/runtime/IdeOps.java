@@ -37,7 +37,7 @@ import java.util.Set;
 
 /**
  * Engine-hosted {@code jk ide} model math (thin-client contract): resolving the workspace, its
- * modules, external libraries (lockfile + CAS reads), cross-module edges, and per-module JDK/SDK
+ * modules, external libraries (lockfile + Maven-layout jars), cross-module edges, and per-module JDK/SDK
  * handles all need the parsed models, so it runs engine-side and ships as an {@link IdeWireModel}.
  * The IDE-specific file generators — TTY + disk writers — stay client-side.
  *
@@ -338,6 +338,9 @@ public final class IdeOps {
         }
 
         Set<String> siblingCoords = siblingCoordinates(module, modules);
+        boolean m2 = cc.jumpkick.config.JkM2Config.resolve().enabled();
+        cc.jumpkick.repo.ArtifactLocator locator = new cc.jumpkick.repo.ArtifactLocator(
+                cas.root(), m2 ? cc.jumpkick.repo.M2Dirs.localRepository() : null, m2);
 
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             if (pkg.checksum() == null) continue; // path/git dep
@@ -347,20 +350,19 @@ public final class IdeOps {
             if (pkg.name().indexOf(':') < 0) continue;
             Coordinate coord = pkg.coordinate();
 
-            // Use a Maven-layout path with a proper .jar extension rather than the CAS
-            // (extension-less hash paths) — IDEs require .jar.
-            String artifactRelPath = MavenLayout.artifactPath(coord);
-            Path jar = cc.jumpkick.repo.RepoArtifactResolver.locateOrMaterialize(
-                    cas, pkg.source(), artifactRelPath, pkg.checksumHex());
+            Path jar = locator.locate(pkg).orElse(null);
             if (jar == null) continue; // not yet synced / non-Maven dep
 
             Path sourcesPath = null;
             if (pkg.sourcesChecksum() != null) {
                 Coordinate srcCoord =
                         new Coordinate(coord.group(), coord.artifact(), coord.version(), "sources", "jar");
-                String srcRelPath = MavenLayout.artifactPath(srcCoord);
-                sourcesPath = cc.jumpkick.repo.RepoArtifactResolver.locateOrMaterialize(
-                        cas, pkg.source(), srcRelPath, pkg.sourcesChecksumHex());
+                sourcesPath = locator.locate(
+                                cc.jumpkick.repo.RepoArtifactResolver.repoName(pkg.source()),
+                                MavenLayout.artifactPath(srcCoord),
+                                pkg.sourcesChecksumHex(),
+                                srcCoord.toGav())
+                        .orElse(null);
             }
 
             String libName = pkg.name() + ":" + pkg.version();

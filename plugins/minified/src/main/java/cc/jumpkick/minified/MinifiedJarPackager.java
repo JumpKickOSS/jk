@@ -91,8 +91,7 @@ final class MinifiedJarPackager {
             for (PackageIo.RuntimeEntry entry : io.runtimeEntries()) {
                 if (entry.jar() != null) program.add(entry.jar());
             }
-            // R8 judges program inputs by extension; store-materialized runtime jars are
-            // extensionless CAS blobs — alias them as .jar before they reach the tool.
+            // R8 judges program inputs by extension — alias any extensionless path as .jar.
             program = jarSuffixed(work, program);
 
             boolean obfuscate = io.config().bool("obfuscate", false);

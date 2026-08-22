@@ -143,7 +143,6 @@ public final class EffectiveUserConfig {
         JkM2Config d = JkM2Config.DEFAULTS;
         JkM2Config e = JkM2Config.resolve(file, env);
         add(out, "m2.enabled", d.enabled(), e.enabled());
-        add(out, "m2.link", d.link(), e.link());
     }
 
     private static void addTemplates(List<Row> out, Path file) {

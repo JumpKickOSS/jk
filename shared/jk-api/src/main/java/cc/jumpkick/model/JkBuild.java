@@ -554,7 +554,7 @@ public record JkBuild(
         SCALA,
         SOURCES,
         DESCRIPTION,
-        M2INSTALL,
+        M2INTEGRATION,
         LAYOUT
     }
 
@@ -569,7 +569,7 @@ public record JkBuild(
             VersionSelector scala,
             SourcesMode sourcesMode,
             String description,
-            boolean m2install,
+            boolean m2integration,
             Layout layout,
             Set<ProjectInherit> workspaceInherits) {
 
@@ -602,7 +602,7 @@ public record JkBuild(
                 VersionSelector groovy,
                 SourcesMode sourcesMode,
                 String description,
-                boolean m2install,
+                boolean m2integration,
                 Layout layout,
                 Set<ProjectInherit> workspaceInherits) {
             this(
@@ -616,7 +616,7 @@ public record JkBuild(
                     null,
                     sourcesMode,
                     description,
-                    m2install,
+                    m2integration,
                     layout,
                     workspaceInherits);
         }
@@ -632,7 +632,7 @@ public record JkBuild(
                 VersionSelector groovy,
                 SourcesMode sourcesMode,
                 String description,
-                boolean m2install,
+                boolean m2integration,
                 Layout layout) {
             this(
                     group,
@@ -645,7 +645,7 @@ public record JkBuild(
                     null,
                     sourcesMode,
                     description,
-                    m2install,
+                    m2integration,
                     layout,
                     Set.of());
         }
@@ -661,7 +661,7 @@ public record JkBuild(
                 VersionSelector groovy,
                 SourcesMode sourcesMode,
                 String description,
-                boolean m2install) {
+                boolean m2integration) {
             this(
                     group,
                     name,
@@ -673,7 +673,7 @@ public record JkBuild(
                     null,
                     sourcesMode,
                     description,
-                    m2install,
+                    m2integration,
                     Layout.AUTO,
                     Set.of());
         }
@@ -713,7 +713,7 @@ public record JkBuild(
             next.remove(ProjectInherit.SCALA);
             next.remove(ProjectInherit.SOURCES);
             next.remove(ProjectInherit.DESCRIPTION);
-            next.remove(ProjectInherit.M2INSTALL);
+            next.remove(ProjectInherit.M2INTEGRATION);
             next.remove(ProjectInherit.LAYOUT);
             if (next.equals(workspaceInherits)) return this;
             return new Project(
@@ -727,7 +727,7 @@ public record JkBuild(
                     scala,
                     sourcesMode,
                     description,
-                    m2install,
+                    m2integration,
                     layout,
                     next);
         }
@@ -759,7 +759,7 @@ public record JkBuild(
             VersionSelector sc = inherits(ProjectInherit.SCALA) ? root.scala() : scala;
             SourcesMode src = inherits(ProjectInherit.SOURCES) ? root.sourcesMode() : sourcesMode;
             String desc = inherits(ProjectInherit.DESCRIPTION) ? root.description() : description;
-            boolean m2 = inherits(ProjectInherit.M2INSTALL) ? root.m2install() : m2install;
+            boolean m2 = inherits(ProjectInherit.M2INTEGRATION) ? root.m2integration() : m2integration;
             Layout lay = inherits(ProjectInherit.LAYOUT) ? root.layout() : layout;
             return new Project(g, name, v, j, ja, kt, gr, sc, src, desc, m2, lay, Set.of());
         }
@@ -792,14 +792,14 @@ public record JkBuild(
                     scala,
                     sourcesMode,
                     description,
-                    m2install,
+                    m2integration,
                     layout,
                     next);
         }
 
         /** Library project — bare-major {@code jdk} (0 → unset). */
         public Project(String group, String name, String version, int jdk) {
-            this(group, name, version, majorSpec(jdk), jdk, null, null, null, null, null, false, Layout.AUTO, Set.of());
+            this(group, name, version, majorSpec(jdk), jdk, null, null, null, null, null, true, Layout.AUTO, Set.of());
         }
 
         /** A bare-major int as a jdk spec string ({@code 25} → {@code "25"}); 0/negative → unset. */
@@ -824,7 +824,7 @@ public record JkBuild(
             private VersionSelector scala;
             private SourcesMode sourcesMode = SourcesMode.DISABLED;
             private String description;
-            private boolean m2install = true;
+            private boolean m2integration = true;
             private Layout layout = Layout.AUTO;
 
             private Builder(String group, String name, String version) {
@@ -876,8 +876,8 @@ public record JkBuild(
                 return this;
             }
 
-            public Builder m2install(boolean m2install) {
-                this.m2install = m2install;
+            public Builder m2integration(boolean m2integration) {
+                this.m2integration = m2integration;
                 return this;
             }
 
@@ -898,7 +898,7 @@ public record JkBuild(
                         scala,
                         sourcesMode,
                         description,
-                        m2install,
+                        m2integration,
                         layout,
                         Set.of());
             }

@@ -29,9 +29,9 @@ import java.util.List;
 
 /**
  * {@code jk cache} — manage the <strong>cache tier</strong> under {@code $JK_CACHE_DIR}: action
- * index ({@code actions/}), cache CAS ({@code sha256/}), and format stamps. Long-lived artifact
- * CAS and Maven/repo mirrors live under the store ({@code JK_STORE_DIR}); see {@code jk storage}
- * / {@code jk repo search}.
+ * index ({@code actions/}), cache CAS ({@code sha256/}), and format stamps. Downloaded artifacts
+ * live under the store ({@code JK_STORE_DIR}) and the Maven local repository; see {@code jk
+ * storage} / {@code jk repo search}.
  */
 public final class CacheCommand extends GroupCommand {
 
@@ -82,10 +82,9 @@ public final class CacheCommand extends GroupCommand {
      * <p>Artifact CAS + {@code repos/} resolve via {@link JkStores} (store). Cache CAS ({@code
      * <cacheRoot>/sha256/}), action index, runs, and stamps stay under the cache root.
      *
-     * <p>Byte sizes are exclusive across store sections (CAS first), so hard-linked repo jars do not
-     * inflate "Size on Disk" or the utilization bar. Cache-tier {@code actions} stats include the
-     * cache CAS blob tree; plain (non-exclusive) counting there is exact because the cache CAS is
-     * copy-only — no blob is ever hard-linked across tiers (verified for ).
+     * <p>Byte sizes are exclusive across store sections (store CAS first) so a leftover hard link
+     * between {@code sha256/} and {@code repos/} is not counted twice. Cache-tier {@code actions}
+     * stats include the cache CAS blob tree; the cache CAS is copy-only.
      */
     static SectionStats sectionStats(Path cacheRoot) throws IOException {
         Path storeCas = JkStores.resolve(cacheRoot, "sha256");
@@ -94,7 +93,7 @@ public final class CacheCommand extends GroupCommand {
         Path cacheCas = cacheRoot.resolve("sha256");
         Path runs = cacheRoot.resolve("runs");
         Path stamps = cacheRoot.resolve("format-stamps");
-        // Store CAS first so hard-linked repos/ do not double-count; cache trees are exclusive of store.
+        // Store CAS first so leftover shared inodes with repos/ are not counted twice.
         DiskUsage.Stats[] parts = DiskUsage.exclusive(storeCas, repos, actions, runs, stamps);
         DiskUsage.Stats cacheCasStats = DiskUsage.of(cacheCas);
         Stats actionsPlusCacheCas =
@@ -165,7 +164,8 @@ public final class CacheCommand extends GroupCommand {
                 statFromAck(ack, "jars"),
                 statFromAck(ack, "executables"),
                 statFromAck(ack, "oci"),
-                statFromAck(ack, "workers"));
+                statFromAck(ack, "workers"),
+                statFromAck(ack, "maven-local"));
     }
 
     private static Stats statFromAck(cc.jumpkick.engine.protocol.CacheInventoryAck ack, String name) {
@@ -203,7 +203,11 @@ public final class CacheCommand extends GroupCommand {
     }
 
     /** Rows for {@code jk storage usage} (store-tier only). */
-    record StoreUsageStats(Stats jars, Stats executables, Stats oci, Stats workers) {
+    record StoreUsageStats(Stats jars, Stats executables, Stats oci, Stats workers, Stats mavenLocal) {
+        StoreUsageStats(Stats jars, Stats executables, Stats oci, Stats workers) {
+            this(jars, executables, oci, workers, new Stats(0, 0));
+        }
+
         long totalFiles() {
             return jars.files + executables.files + oci.files + workers.files;
         }
@@ -735,7 +739,13 @@ public final class CacheCommand extends GroupCommand {
             {"OCI Images", fmtCount(s.oci().files), fmtSize(s.oci().bytes)},
             {"Worker JARs", fmtCount(s.workers().files), fmtSize(s.workers().bytes)},
         };
-        return renderUsageTable("Artifact Storage", rows, s.totalFiles(), s.totalBytes(), maxBytes, lastCleaned);
+        List<String> out =
+                renderUsageTable("Artifact Storage", rows, s.totalFiles(), s.totalBytes(), maxBytes, lastCleaned);
+        Theme t = Theme.active();
+        out.add("  Maven local (not budgeted): "
+                + Theme.colorize(
+                        fmtCount(s.mavenLocal().files) + " files · " + fmtSize(s.mavenLocal().bytes), t.normalGray()));
+        return out;
     }
 
     /** Shared Element / File Count / Size box chrome for cache and store usage reports. */

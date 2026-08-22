@@ -301,7 +301,7 @@ public final class PlannerSetup {
                 .execute(ctx -> {
                     Lockfile lock = ctx.require(LOCKFILE);
                     JkBuild project = ctx.require(PROJECT);
-                    boolean mirrorToM2 = project.project().m2install();
+                    boolean mirrorToM2 = project.project().m2integration();
                     // Ticks are already counted up front by estimateTicks (artifact
                     // count); progress(1)-per-artifact below fills it.
                     var observer = new CacheSync.ProgressObserver() {

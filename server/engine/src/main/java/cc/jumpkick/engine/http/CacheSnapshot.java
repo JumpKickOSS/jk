@@ -21,8 +21,8 @@ import java.util.function.Supplier;
  * cacheMaxBytes} is the <strong>cache tier</strong> budget ({@code [cache] max-cache-size-gb},
  * default 4 GiB / 8 GiB on CI; small disks clamp both defaults).
  *
- * <p>Byte sizes are <em>exclusive</em> across store sections (CAS before repos) so hard-linked
- * {@code repos/} views do not double-count CAS blob allocations — same accounting as the CLI.
+ * <p>Byte sizes are <em>exclusive</em> across store sections (store CAS before {@code repos/}) so
+ * leftover hard links are not counted twice — same accounting as the CLI.
  *
  * <p>Prefer {@link #memoizing(Path)} for live engine paths: a full exclusive walk of a multi‑GiB
  * cache allocates tens of MiB of path/inode bookkeeping. Without single-flight + TTL, a dashboard
@@ -179,6 +179,15 @@ public record CacheSnapshot(
         return casCount + workerJarsCount;
     }
 
+    /** Maven local repository size — informational, not part of the jk store budget. */
+    static DiskUsage.Stats mavenLocalStats() {
+        try {
+            return DiskUsage.of(cc.jumpkick.repo.M2Dirs.localRepository());
+        } catch (Exception e) {
+            return new DiskUsage.Stats(0, 0);
+        }
+    }
+
     /**
      * Walk store + cache sections and snapshot their sizes — identical dirs and hardlink-aware
      * exclusive byte accounting as {@code jk cache usage} / {@code jk storage usage}. Prefer
@@ -277,6 +286,8 @@ public record CacheSnapshot(
                 .put("cacheMaxBytes", cacheMaxBytes())
                 .put("artifactStorageCount", artifactStorageCount())
                 .put("artifactStorageBytes", artifactStorageBytes())
+                .put("mavenLocalCount", mavenLocalStats().files())
+                .put("mavenLocalBytes", mavenLocalStats().bytes())
                 .put("maxBytes", maxBytes)
                 .put("lastPrunedMillis", lastPrunedMillis);
     }
@@ -293,6 +304,7 @@ public record CacheSnapshot(
                 .put("cacheBytes", cacheBytes())
                 .put("cacheMaxBytes", cacheMaxBytes())
                 .put("artifactStorageBytes", artifactStorageBytes())
+                .put("mavenLocalBytes", mavenLocalStats().bytes())
                 .put("maxBytes", maxBytes)
                 .put("lastPrunedMillis", lastPrunedMillis);
     }

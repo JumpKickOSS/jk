@@ -186,11 +186,11 @@ public final class JkDirs {
     }
 
     /**
-     * Everything jk fetched from somewhere else: the CAS ({@code sha256/}), the per-repo views
-     * ({@code repos/}), plugin/tool short classpaths under {@code lib/&lt;id&gt;/},
-     * {@code maven-metadata.xml} copies, git clones, the JDK catalog ({@code jdks.json}), and the
-     * library registry ({@code libs.global.toml}). Defaults to {@code <data>/store} (or
-     * {@code $JK_HOME/store}); override via {@code JK_STORE_DIR}.
+     * Downloaded artifacts: Maven-layout jars under {@code repos/} with {@code .jk} memos, plugin
+     * short classpaths under {@code lib/&lt;id&gt;/}, {@code maven-metadata.xml} copies, git clones,
+     * the JDK catalog ({@code jdks.json}), and the library registry ({@code libs.global.toml}).
+     * Engine/client install blobs may still sit under {@code sha256/}. Defaults to {@code
+     * <data>/store} (or {@code $JK_HOME/store}); override via {@code JK_STORE_DIR}.
      *
      * <h2>Why this is not under {@code cache/}</h2>
      *

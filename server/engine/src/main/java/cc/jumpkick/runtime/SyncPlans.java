@@ -159,7 +159,7 @@ public final class SyncPlans {
                     Cas cas = JkStores.cas(cache);
                     Http http = new Http();
                     JkBuild build = ctx.get(BUILD).orElse(null);
-                    boolean mirrorToM2 = build != null && build.project().m2install();
+                    boolean mirrorToM2 = build != null && build.project().m2integration();
                     var observer = new CacheSync.ProgressObserver() {
                         @Override
                         public void fetched(Lockfile.Artifact pkg) {

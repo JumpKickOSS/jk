@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -18,18 +19,13 @@ class CacheGcTest {
 
     private static final long DAY = 24L * 60 * 60 * 1000;
 
-    /**
-     * Seed both the CAS and a named repo store ({@code <cache>/repos/central/}) — {@link CacheGc}
-     * keeps every named store in lock-step with the CAS.
-     */
+    /** Seed a store-CAS blob plus an independent Maven-layout copy under {@code repos/central/}. */
     private static Path seed(Path cache, String body, Coordinate coord) throws IOException {
         Cas cas = new Cas(cache);
         Path blob = cas.put(body.getBytes(StandardCharsets.UTF_8));
         String rel = MavenLayout.artifactPath(coord);
-        Path stored = cache.resolve("repos/central").resolve(rel);
-        Files.createDirectories(stored.getParent());
-        Files.write(stored, body.getBytes(StandardCharsets.UTF_8));
-        Files.writeString(Path.of(stored + ".sha256"), Hashing.sha256Hex(body.getBytes(StandardCharsets.UTF_8)));
+        String hex = Hashing.sha256Hex(body.getBytes(StandardCharsets.UTF_8));
+        RepoArtifactStore.forRepoName(cache, "central").materialize(rel, blob, hex);
         return blob;
     }
 
@@ -44,10 +40,10 @@ class CacheGcTest {
         CacheGc.Report report = CacheGc.run(cache, cache, false);
 
         assertThat(report.purgedBlobs()).isEqualTo(1);
-        assertThat(report.repoLinksRemoved()).isEqualTo(1);
+        assertThat(report.repoLinksRemoved()).isZero();
         assertThat(new Cas(cache).contains(hex)).isFalse();
         assertThat(cache.resolve("repos/central/com/example/widget/1.0/widget-1.0.jar"))
-                .doesNotExist();
+                .exists();
         // The purged sha's entry is gone from the access log.
         assertThat(Files.readString(cache.resolve(".access.log"))).doesNotContain(hex);
     }

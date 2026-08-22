@@ -7,7 +7,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -29,9 +28,7 @@ import java.util.stream.Stream;
  * set" signal without us silently corrupting the next build (the action / sync layer naturally
  * re-fetches deleted CAS objects).
  *
- * <p><strong>Disk reclaim:</strong> CAS blobs and {@code repos/} views share an inode via hard
- * link. Eviction unlinks the repo entry ({@code removeShasFromAll}) <em>then</em> the CAS path so
- * nlink reaches zero and {@code --max-size} actually frees space.
+ * <p>Maven-layout jars under {@code repos/} are independent copies and are not evicted here.
  */
 public final class LruEvictor {
 
@@ -118,7 +115,6 @@ public final class LruEvictor {
         long freed = 0;
         int reachableEvicted = 0;
         long remaining = totalSize;
-        Set<String> deletedShas = new HashSet<>();
         List<Path> casPaths = new ArrayList<>();
         for (Entry e : entries) {
             if (remaining <= maxBytes) break;
@@ -126,11 +122,8 @@ public final class LruEvictor {
             freed += e.size();
             if (e.reachable()) reachableEvicted++;
             remaining -= e.size();
-            deletedShas.add(e.hex());
             casPaths.add(e.file());
         }
-        // Repo hard-links first, then CAS paths — both must go or the inode stays allocated.
-        cc.jumpkick.repo.RepoArtifactStore.removeShasFromAll(cas.root(), deletedShas, dryRun);
         if (!dryRun) {
             for (Path p : casPaths) {
                 Files.deleteIfExists(p);

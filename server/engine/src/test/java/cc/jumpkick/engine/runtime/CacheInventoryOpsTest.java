@@ -78,6 +78,7 @@ class CacheInventoryOpsTest {
         assertThat(ack.error()).isNull();
         assertThat(ack.totalFiles()).isEqualTo(1);
         assertThat(ack.stats()).anyMatch(s -> s.startsWith("jars|1|"));
+        assertThat(ack.stats()).anyMatch(s -> s.startsWith("maven-local|"));
     }
 
     @Test
@@ -157,7 +158,9 @@ class CacheInventoryOpsTest {
         Path f = storeRoot.resolve("repos").resolve(repo).resolve(rel);
         Files.createDirectories(f.getParent());
         Files.writeString(f, "jar-bytes");
-        Files.writeString(f.resolveSibling(f.getFileName() + ".sha256"), "abc");
+        Files.writeString(
+                cc.jumpkick.repo.ArtifactMemo.jkPath(storeRoot.resolve("repos").resolve(repo), rel),
+                "g:a:v\n0\n9\n" + "a".repeat(64) + "\n");
         return f;
     }
 

@@ -326,7 +326,7 @@ public final class LockPlans {
                                             + " but file is " + hex
                                             + " (`" + jar + "`)");
                                 }
-                                jarPath = cas.putFile(jar, hex);
+                                jarPath = jar;
                             } else {
                                 var coord = Coordinate.of(pd.group(), pd.name(), pd.version());
                                 var fetched = repos.tryFetchArtifact(coord)

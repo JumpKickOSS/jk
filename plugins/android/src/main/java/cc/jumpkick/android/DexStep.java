@@ -32,7 +32,7 @@ final class DexStep {
         for (var entry : exec.runtimeEntries()) {
             if (entry.jar() != null) runtimeJars.add(entry.jar());
         }
-        // Program inputs are judged by extension too — alias extensionless CAS blobs.
+        // Program inputs are judged by extension too — alias any extensionless path.
         runtimeJars = JarInputs.jarSuffixed(exec, runtimeJars);
 
         exec.label("d8 (" + classFiles.size() + " classes + " + runtimeJars.size() + " jars)");

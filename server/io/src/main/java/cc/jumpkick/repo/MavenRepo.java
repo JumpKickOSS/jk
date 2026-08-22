@@ -359,13 +359,6 @@ public final class MavenRepo {
     }
 
     /**
-     * The network leg: stream the body straight into the CAS (hashing as it flows, so a
-     * multi-hundred-MB JAR never sits in the heap as a single byte), then cross-check the
-     * published sidecar before pinning. Skips the check for metadata
-     * ({@code mirror=false}) — only POMs/artifacts establish the lock pin. Runs under the
-     * per-host permit so body + sidecar GETs count as one in-flight unit.
-     */
-    /**
      * Adopt {@code relativePath} out of the Maven local repository when its bytes match the checksum this
      * repository publishes for it.
      *

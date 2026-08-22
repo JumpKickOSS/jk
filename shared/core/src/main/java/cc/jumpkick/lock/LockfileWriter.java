@@ -207,8 +207,8 @@ public final class LockfileWriter {
             if (m.sources() != null && !m.sources().isBlank() && !"disabled".equals(m.sources())) {
                 out.append("sources = ").append(quote(m.sources())).append('\n');
             }
-            if (Boolean.TRUE.equals(m.m2install())) {
-                out.append("m2install = true\n");
+            if (Boolean.FALSE.equals(m.m2integration())) {
+                out.append("m2integration = false\n");
             }
         }
 
