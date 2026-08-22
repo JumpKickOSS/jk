@@ -9,13 +9,16 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.PubGrubResolver;
 import cc.jumpkick.resolver.Resolution;
 import cc.jumpkick.scala.ScalaResolver;
+import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Resolves/fetches the Scala 3 compiler + published sbt bridge (and transitives) into the CAS
@@ -34,10 +37,11 @@ public final class ScalaToolResolver {
             throws IOException, InterruptedException {
         requireSupportedVersion(scalaVersion);
         Path cacheFile = cacheFile(cas, scalaVersion);
+        Path libDir = libDir(cas, scalaVersion);
         boolean refresh = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
         if (!refresh) {
-            List<Path> named = listLibJars(libDir(cas, scalaVersion));
-            if (named != null) return named;
+            List<Path> cached = readValidatedClosure(libDir, cacheFile);
+            if (cached != null) return cached;
         }
 
         List<Dependency> roots = List.of(
@@ -45,8 +49,11 @@ public final class ScalaToolResolver {
                 new Dependency(ScalaResolver.BRIDGE_MODULE, VersionSelector.parse("=" + scalaVersion)));
         Resolution resolution = new PubGrubResolver(repos).resolve(roots);
 
-        Path libDir = libDir(cas, scalaVersion);
         Files.createDirectories(libDir);
+        // Drop the completion marker up front: a crash mid-copy then leaves no gate, so the next
+        // build re-resolves cleanly instead of trusting a half-written lib dir (JK-2290).
+        Files.deleteIfExists(cacheFile);
+        int expected = resolution.modules().size();
         List<Path> jars = new ArrayList<>();
         List<String> shas = new ArrayList<>();
         for (Resolution.ResolvedModule mod : resolution.modules().values()) {
@@ -54,23 +61,65 @@ public final class ScalaToolResolver {
             var hit = repos.tryFetchArtifact(coord);
             if (hit.isEmpty()) continue;
             Path named = libDir.resolve(coord.artifact() + "-" + coord.version() + ".jar");
-            if (!Files.isRegularFile(named) || Files.size(named) == 0) {
-                Files.copy(hit.get().fetched().cachePath(), named, StandardCopyOption.REPLACE_EXISTING);
+            // Copy through a unique temp + atomic move so a torn/partial copy is never observed by a
+            // concurrent build, and --force re-copies unconditionally (JK-2290).
+            Path tmp = Files.createTempFile(libDir, "." + named.getFileName() + ".", ".part");
+            try {
+                Files.copy(hit.get().fetched().cachePath(), tmp, StandardCopyOption.REPLACE_EXISTING);
+                AtomicWrites.moveInto(tmp, named);
+            } finally {
+                Files.deleteIfExists(tmp);
             }
             jars.add(named);
             shas.add(hit.get().fetched().sha256());
         }
-        if (jars.isEmpty()) {
+        if (jars.size() != expected) {
+            // A module in the resolved closure failed to fetch — refuse to bless a partial closure
+            // (scalac would later die with NoClassDefFoundError). No marker is written, so the next
+            // build retries from scratch.
             throw new IOException("Scala compiler closure for "
                     + scalaVersion
-                    + " resolved to no jars — is "
-                    + ScalaResolver.COMPILER_MODULE
-                    + ":"
-                    + scalaVersion
-                    + " available in the configured repositories?");
+                    + " is incomplete: fetched " + jars.size() + " of " + expected
+                    + " modules — check that " + ScalaResolver.COMPILER_MODULE + ":" + scalaVersion
+                    + " and its transitives are available in the configured repositories.");
         }
+        pruneOrphanJars(libDir, jars);
+        // Write the completion marker LAST — its presence + jar-count match is the read-path gate.
         writeCachedClosure(cacheFile, shas);
         return jars;
+    }
+
+    /**
+     * Return the cached named-jar closure only when it is provably complete: the {@code closure.shas}
+     * completion marker exists (written last, so a crashed resolve has none) and the lib dir holds
+     * exactly as many jars as it records. A partial lib dir returns {@code null} → re-resolve.
+     */
+    static List<Path> readValidatedClosure(Path libDir, Path cacheFile) throws IOException {
+        if (!Files.isRegularFile(cacheFile)) return null;
+        int recorded = recordedShaCount(cacheFile);
+        List<Path> jars = listLibJars(libDir);
+        if (jars == null || jars.size() != recorded) return null;
+        return jars;
+    }
+
+    private static int recordedShaCount(Path cacheFile) throws IOException {
+        int n = 0;
+        for (String line : Files.readAllLines(cacheFile, StandardCharsets.UTF_8)) {
+            if (!line.strip().isEmpty()) n++;
+        }
+        return n;
+    }
+
+    /** Delete any {@code .jar} in {@code libDir} that is not part of the freshly resolved closure. */
+    private static void pruneOrphanJars(Path libDir, List<Path> keep) throws IOException {
+        Set<Path> wanted = new HashSet<>(keep);
+        try (var stream = Files.list(libDir)) {
+            for (Path p : (Iterable<Path>) stream::iterator) {
+                if (p.getFileName().toString().endsWith(".jar") && !wanted.contains(p)) {
+                    Files.deleteIfExists(p);
+                }
+            }
+        }
     }
 
     /** Path of the version-matched {@code scala3-sbt-bridge} jar (named copy under {@code tools/scala/}). */
@@ -167,18 +216,6 @@ public final class ScalaToolResolver {
             stream.filter(p -> p.getFileName().toString().endsWith(".jar"))
                     .sorted()
                     .forEach(jars::add);
-        }
-        return jars.isEmpty() ? null : jars;
-    }
-
-    static List<Path> readCachedClosure(Path cacheFile, Cas cas) throws IOException {
-        if (!Files.isRegularFile(cacheFile)) return null;
-        List<Path> jars = new ArrayList<>();
-        for (String line : Files.readAllLines(cacheFile, StandardCharsets.UTF_8)) {
-            String sha = line.strip();
-            if (sha.isEmpty()) continue;
-            if (!cas.contains(sha)) return null;
-            jars.add(cas.pathFor(sha));
         }
         return jars.isEmpty() ? null : jars;
     }

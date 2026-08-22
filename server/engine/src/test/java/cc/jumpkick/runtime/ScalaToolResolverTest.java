@@ -4,15 +4,12 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.cache.Cas;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.resolver.VersionSelectors;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -20,24 +17,29 @@ import org.junit.jupiter.api.io.TempDir;
 class ScalaToolResolverTest {
 
     @Test
-    void round_trips_a_recorded_closure(@TempDir Path dir) throws IOException {
-        Cas cas = new Cas(dir.resolve("cache"));
-        List<String> shas = seedBlobs(cas, "alpha", "beta");
+    void validated_closure_hits_only_when_marker_and_jar_count_agree(@TempDir Path dir) throws IOException {
+        Path libDir = Files.createDirectories(dir.resolve("lib"));
         Path cacheFile = dir.resolve("closure.shas");
-        ScalaToolResolver.writeCachedClosure(cacheFile, shas);
-        List<Path> jars = ScalaToolResolver.readCachedClosure(cacheFile, cas);
+        Files.writeString(libDir.resolve("scala3-compiler_3-3.8.4.jar"), "c");
+        Files.writeString(libDir.resolve("scala-library-3.8.4.jar"), "l");
+        ScalaToolResolver.writeCachedClosure(cacheFile, List.of("sha-c", "sha-l"));
+
+        List<Path> jars = ScalaToolResolver.readValidatedClosure(libDir, cacheFile);
         assertThat(jars).hasSize(2);
-        assertThat(jars.getFirst()).isEqualTo(cas.pathFor(shas.getFirst()));
     }
 
     @Test
-    void evicted_blob_invalidates_the_whole_closure(@TempDir Path dir) throws IOException {
-        Cas cas = new Cas(dir.resolve("cache"));
-        List<String> shas = seedBlobs(cas, "one", "two");
+    void partial_lib_dir_without_completion_marker_is_a_miss(@TempDir Path dir) throws IOException {
+        // JK-2290: a resolve that copied some jars then died leaves jars but no closure.shas — it
+        // must NOT be trusted, or scalac launches against an incomplete closure.
+        Path libDir = Files.createDirectories(dir.resolve("lib"));
         Path cacheFile = dir.resolve("closure.shas");
-        ScalaToolResolver.writeCachedClosure(cacheFile, shas);
-        Files.delete(cas.pathFor(shas.getFirst()));
-        assertThat(ScalaToolResolver.readCachedClosure(cacheFile, cas)).isNull();
+        Files.writeString(libDir.resolve("scala3-compiler_3-3.8.4.jar"), "c");
+        assertThat(ScalaToolResolver.readValidatedClosure(libDir, cacheFile)).isNull();
+
+        // Marker present but jar count disagrees (an extra/orphan or missing jar) → also a miss.
+        ScalaToolResolver.writeCachedClosure(cacheFile, List.of("sha-c", "sha-l"));
+        assertThat(ScalaToolResolver.readValidatedClosure(libDir, cacheFile)).isNull();
     }
 
     @Test
@@ -82,12 +84,4 @@ class ScalaToolResolverTest {
         assertThat(LockPlans.resolveScalaVersion(javaOnly, null)).isNull();
     }
 
-    private static List<String> seedBlobs(Cas cas, String... contents) throws IOException {
-        List<String> shas = new ArrayList<>();
-        for (String c : contents) {
-            Path p = cas.put(c.getBytes(StandardCharsets.UTF_8));
-            shas.add(cas.hashFromPath(p).orElseThrow());
-        }
-        return shas;
-    }
 }
