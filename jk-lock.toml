@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "55c37b879b5f548b8cecce3af3bea6435504a279d5e680b4bfd18c2e99100886"
+manifests-sha256 = "0762a88f60f0fb3fc75a9ec9b1ee17f9fa7a4035f2e8c2ea9f4069261bbbb406"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [[artifact]]

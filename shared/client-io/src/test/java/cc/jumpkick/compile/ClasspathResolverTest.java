@@ -2,6 +2,7 @@
 package cc.jumpkick.compile;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Scope;
@@ -54,6 +55,17 @@ class ClasspathResolverTest {
 
         assertThat(new ClasspathResolver(tempDir).classpathFor(lock)).isEmpty();
         assertThat(a).exists();
+    }
+
+    @Test
+    void requirePresent_fails_when_jar_missing(@TempDir Path tempDir) {
+        Lockfile lock = lock(pkg("com.foo:a", "1.0", "0".repeat(64)));
+
+        assertThatThrownBy(
+                        () -> new ClasspathResolver(tempDir).classpathFor(lock, ClasspathResolver.COMPILE_MAIN, true))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("com.foo:a")
+                .hasMessageContaining("not on disk after sync");
     }
 
     @Test

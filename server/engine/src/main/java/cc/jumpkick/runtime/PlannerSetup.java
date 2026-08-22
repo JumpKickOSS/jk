@@ -131,29 +131,13 @@ public final class PlannerSetup {
                     Lockfile lock = ctx.require(LOCKFILE);
                     // Reading the lock keeps its deps fresh against the 90-day cache GC.
                     cc.jumpkick.task.AccessLedger.atDefaultPath().touchLock(lock);
-                    ctx.label("resolve classpath");
-                    ClasspathResolver resolver = new ClasspathResolver(cas);
-
-                    WorkspaceClasspath.Result mainSiblings =
-                            WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN));
-                    if (!mainSiblings.missingSiblingJars().isEmpty()) {
-                        for (String missing : mainSiblings.missingSiblingJars())
-                            ctx.error("workspace", "sibling not built — " + missing);
-                        throw new RuntimeException("missing workspace siblings");
-                    }
-                    // Lockfile + sibling jars + siblings' transitive lockfile deps — the
-                    // exact classpath `jk explain` re-derives, so the action keys match.
-                    List<Path> mainCp = mainCompileClasspath(lock, resolver, mainSiblings);
-                    // Plugin-contributed PROVIDED classpath (an Android platform jar): javac
-                    // sees it, runtime/packaging never do. Resolved through the same engine
-                    // fetch the steps use, so the compile action key fingerprints it.
-                    List<Path> contributedProvided = contributedProvidedClasspath(project, in, cas);
-                    mainCp.addAll(contributedProvided);
 
                     Profile profile = CompileSupport.resolveProfile(project.profiles(), in.profileName());
                     // Default lint (deprecation/unchecked) unless [build] lint = false;
                     // the profile's own javac args win (appended after). Shared by the
                     // main- and test-compile steps (both read JAVAC_ARGS).
+                    // Classpaths are published in resolve-deps AFTER sync — same reason
+                    // JAVA_HOME is published in ensure-jdk, not here.
                     ctx.put(
                             JAVAC_ARGS,
                             cc.jumpkick.compile.JavacLint.effectiveArgs(
@@ -161,63 +145,6 @@ public final class PlannerSetup {
                                     cc.jumpkick.plugin.manifest.PluginContributions.javacArgs(
                                             project, in.dir(), lockModules(lock)),
                                     profile == null ? List.of() : profile.javacArgs()));
-                    ctx.put(CLASSPATH, mainCp);
-
-                    // Annotation processors live in their own scope (kept off the
-                    // compile classpath); javac discovers them via -processorpath and
-                    // KspProcessors.split routes the KSP ones to the forked KSP2 round.
-                    // Workspace siblings must merge in exactly as they do for main/test
-                    // a processor declared `{ workspace = true }` is never in the
-                    // lock, so a lock-only path silently yields no processors at all.
-                    WorkspaceClasspath.Result processorSiblings =
-                            WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.PROCESSOR));
-                    // A declared processor that cannot be found generates nothing, and a build
-                    // that silently skips code generation is worse than one that fails.
-                    // Mirror the main-classpath missing-sibling guard above.
-                    if (!processorSiblings.missingSiblingJars().isEmpty()) {
-                        for (String missing : processorSiblings.missingSiblingJars())
-                            ctx.error("workspace", "processor sibling not built — " + missing);
-                        throw new RuntimeException("missing workspace siblings");
-                    }
-                    List<String> unresolvedProcessors = unresolvedProcessorDeps(project, lock, processorSiblings);
-                    if (!unresolvedProcessors.isEmpty()) {
-                        for (String unresolved : unresolvedProcessors)
-                            ctx.error(
-                                    "processor",
-                                    "processor dependency '" + unresolved + "' is declared in"
-                                            + " [processor-dependencies] but is not in jk-lock.toml —"
-                                            + " run `jk lock`");
-                        throw new RuntimeException("unresolved processor dependencies");
-                    }
-                    ctx.put(PROCESSOR_CP, processorClasspath(lock, resolver, processorSiblings));
-
-                    WorkspaceClasspath.Result testSiblings = WorkspaceClasspath.resolve(
-                            in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
-                    List<Path> compileTestCp =
-                            new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST));
-                    compileTestCp.addAll(testSiblings.jars());
-                    List<Path> testRuntimeCp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST));
-                    testRuntimeCp.addAll(testSiblings.jars());
-                    // A sibling's own external deps (e.g. resolver's maven-artifact) must
-                    // also reach the test classpath, or tests exercising sibling code hit
-                    // NoClassDefFoundError. Mirrors the main-cp sibling-lockfile loop above.
-                    for (Path sibLock : testSiblings.siblingLockfiles()) {
-                        try {
-                            cc.jumpkick.lock.Lockfile sl = cc.jumpkick.lock.LockfileReader.read(sibLock);
-                            for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN)) {
-                                if (!compileTestCp.contains(p)) compileTestCp.add(p);
-                            }
-                            for (Path p : resolver.classpathFor(sl, ClasspathResolver.RUNTIME)) {
-                                if (!testRuntimeCp.contains(p)) testRuntimeCp.add(p);
-                            }
-                        } catch (Exception ignored) {
-                            /* best-effort */
-                        }
-                    }
-                    compileTestCp.addAll(contributedProvided);
-                    ctx.put(PROVIDED_CP, contributedProvided);
-                    ctx.put(COMPILE_TEST_CP, compileTestCp);
-                    ctx.put(TEST_RUNTIME_CP, testRuntimeCp);
                     // Reuse source lists that the tick suppliers may have already walked.
                     // If the ticks haven't fired yet (unusual ordering), populate and cache now.
                     List<Path> javaMainSrcs = javaMainSrcRef.get();
@@ -330,8 +257,104 @@ public final class PlannerSetup {
                     boolean refresh = in.session().config().forceOr(false);
                     var report = new CacheSync(cas, new Http(), mirrorToM2).sync(lock, observer, refresh);
                     if (report.hasErrors()) throw new RuntimeException("dep sync had errors");
+                    // Classpaths must be resolved HERE, after jars are on disk. parse-build used
+                    // to snapshot them first; on a cold store ClasspathResolver soft-skipped
+                    // missing rows and compile saw an empty CP → javac "package does not exist"
+                    // even though resolve-deps then fetched everything successfully.
+                    ctx.label("resolve classpath");
+                    try {
+                        publishClasspaths(ctx, in, cas);
+                    } catch (RuntimeException e) {
+                        ctx.error("classpath", e.getMessage());
+                        throw e;
+                    } catch (Exception e) {
+                        ctx.error("classpath", e.getMessage() == null ? e.toString() : e.getMessage());
+                        throw new RuntimeException(e);
+                    }
                 })
                 .build();
+    }
+
+    /**
+     * Lock + workspace sibling classpaths for compile / test / processors. Called only after
+     * {@code resolve-deps} sync so every checksummed lock row is on disk ({@code requirePresent}).
+     */
+    static void publishClasspaths(TaskContext ctx, BuildPlanner.Inputs in, Cas cas) throws Exception {
+        Lockfile lock = ctx.require(LOCKFILE);
+        JkBuild project = ctx.require(PROJECT);
+        ClasspathResolver resolver = new ClasspathResolver(cas);
+
+        WorkspaceClasspath.Result mainSiblings =
+                WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN));
+        if (!mainSiblings.missingSiblingJars().isEmpty()) {
+            for (String missing : mainSiblings.missingSiblingJars())
+                ctx.error("workspace", "sibling not built — " + missing);
+            throw new RuntimeException("missing workspace siblings");
+        }
+        // Lockfile + sibling jars + siblings' transitive lockfile deps — the
+        // exact classpath `jk explain` re-derives, so the action keys match.
+        List<Path> mainCp = PlannerSupport.mainCompileClasspath(lock, resolver, mainSiblings, true);
+        // Plugin-contributed PROVIDED classpath (an Android platform jar): javac
+        // sees it, runtime/packaging never do. Resolved through the same engine
+        // fetch the steps use, so the compile action key fingerprints it.
+        List<Path> contributedProvided = contributedProvidedClasspath(project, in, cas);
+        mainCp.addAll(contributedProvided);
+        ctx.put(CLASSPATH, mainCp);
+
+        // Annotation processors live in their own scope (kept off the
+        // compile classpath); javac discovers them via -processorpath and
+        // KspProcessors.split routes the KSP ones to the forked KSP2 round.
+        // Workspace siblings must merge in exactly as they do for main/test
+        // a processor declared `{ workspace = true }` is never in the
+        // lock, so a lock-only path silently yields no processors at all.
+        WorkspaceClasspath.Result processorSiblings =
+                WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.PROCESSOR));
+        // A declared processor that cannot be found generates nothing, and a build
+        // that silently skips code generation is worse than one that fails.
+        // Mirror the main-classpath missing-sibling guard above.
+        if (!processorSiblings.missingSiblingJars().isEmpty()) {
+            for (String missing : processorSiblings.missingSiblingJars())
+                ctx.error("workspace", "processor sibling not built — " + missing);
+            throw new RuntimeException("missing workspace siblings");
+        }
+        List<String> unresolvedProcessors = unresolvedProcessorDeps(project, lock, processorSiblings);
+        if (!unresolvedProcessors.isEmpty()) {
+            for (String unresolved : unresolvedProcessors)
+                ctx.error(
+                        "processor",
+                        "processor dependency '" + unresolved + "' is declared in"
+                                + " [processor-dependencies] but is not in jk-lock.toml —"
+                                + " run `jk lock`");
+            throw new RuntimeException("unresolved processor dependencies");
+        }
+        ctx.put(PROCESSOR_CP, PlannerSupport.processorClasspath(lock, resolver, processorSiblings, true));
+
+        WorkspaceClasspath.Result testSiblings = WorkspaceClasspath.resolve(
+                in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
+        List<Path> compileTestCp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST, true));
+        compileTestCp.addAll(testSiblings.jars());
+        List<Path> testRuntimeCp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST, true));
+        testRuntimeCp.addAll(testSiblings.jars());
+        // A sibling's own external deps (e.g. resolver's maven-artifact) must
+        // also reach the test classpath, or tests exercising sibling code hit
+        // NoClassDefFoundError. Mirrors the main-cp sibling-lockfile loop above.
+        for (Path sibLock : testSiblings.siblingLockfiles()) {
+            try {
+                Lockfile sl = LockfileReader.read(sibLock);
+                for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN, true)) {
+                    if (!compileTestCp.contains(p)) compileTestCp.add(p);
+                }
+                for (Path p : resolver.classpathFor(sl, ClasspathResolver.RUNTIME, true)) {
+                    if (!testRuntimeCp.contains(p)) testRuntimeCp.add(p);
+                }
+            } catch (Exception ignored) {
+                /* best-effort */
+            }
+        }
+        compileTestCp.addAll(contributedProvided);
+        ctx.put(PROVIDED_CP, contributedProvided);
+        ctx.put(COMPILE_TEST_CP, compileTestCp);
+        ctx.put(TEST_RUNTIME_CP, testRuntimeCp);
     }
 
     static Task ensureJdkStep(BuildPlanner.Ctx cx) {

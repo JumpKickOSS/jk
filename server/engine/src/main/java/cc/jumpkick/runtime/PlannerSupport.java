@@ -80,14 +80,20 @@ public final class PlannerSupport {
      */
     public static List<Path> processorClasspath(
             Lockfile lock, ClasspathResolver resolver, WorkspaceClasspath.Result siblings) throws IOException {
-        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, Set.of(Scope.PROCESSOR)));
+        return processorClasspath(lock, resolver, siblings, false);
+    }
+
+    public static List<Path> processorClasspath(
+            Lockfile lock, ClasspathResolver resolver, WorkspaceClasspath.Result siblings, boolean requirePresent)
+            throws IOException {
+        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, Set.of(Scope.PROCESSOR), requirePresent));
         for (Path jar : siblings.siblingClosureJars()) {
             if (!cp.contains(jar)) cp.add(jar);
         }
         for (Path sibLock : siblings.siblingLockfiles()) {
             try {
                 Lockfile sl = LockfileReader.read(sibLock);
-                for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN)) {
+                for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN, requirePresent)) {
                     if (!cp.contains(p)) cp.add(p);
                 }
             } catch (Exception ignored) {
@@ -129,7 +135,13 @@ public final class PlannerSupport {
 
     public static List<Path> mainCompileClasspath(
             Lockfile lock, ClasspathResolver resolver, WorkspaceClasspath.Result siblings) throws IOException {
-        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_MAIN));
+        return mainCompileClasspath(lock, resolver, siblings, false);
+    }
+
+    public static List<Path> mainCompileClasspath(
+            Lockfile lock, ClasspathResolver resolver, WorkspaceClasspath.Result siblings, boolean requirePresent)
+            throws IOException {
+        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_MAIN, requirePresent));
         // The declared closure (deterministic jar paths) — not just the built ones
         // so the action key is stable whether or not target/ is currently populated.
         // In a valid build the siblings are all built (the missing-sibling check
@@ -139,7 +151,7 @@ public final class PlannerSupport {
         for (Path sibLock : siblings.siblingLockfiles()) {
             try {
                 Lockfile sl = LockfileReader.read(sibLock);
-                for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN)) {
+                for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN, requirePresent)) {
                     if (!cp.contains(p)) cp.add(p);
                 }
             } catch (Exception ignored) {
@@ -761,6 +773,10 @@ public final class PlannerSupport {
     /**
      * Class dirs of workspace MAIN dependencies to vendor into a plugin-worker jar (Gradle
      * {@code bundledCodec}: plugin-sdk + jsonl). External deps stay on the sidecar POM.
+     *
+     * <p>{@link cc.jumpkick.config.JkBuildParser#parse(Path)} rewrites {@code workspace:}
+     * placeholders to real {@code group:artifact} coordinates before packaging runs, so sibling
+     * lookup must accept both forms.
      */
     static List<Path> workerCodecClassDirs(Path moduleDir, JkBuild project) {
         if (moduleDir == null || project == null || !cc.jumpkick.plugin.PluginModule.isWorker(moduleDir)) {
@@ -778,6 +794,7 @@ public final class PlannerSupport {
         }
         if (!rootManifest.isWorkspaceRoot()) return List.of();
         Map<String, Path> dirByName = new LinkedHashMap<>();
+        Map<String, Path> dirByCoord = new LinkedHashMap<>();
         Map<Path, JkBuild> byDir = new LinkedHashMap<>();
         for (String module : rootManifest.workspace().modules()) {
             Path dir = root.resolve(module);
@@ -790,14 +807,11 @@ public final class PlannerSupport {
                 continue;
             }
             byDir.put(dir, sib);
-            String name = sib.project().name();
-            dirByName.putIfAbsent(name, dir);
-            if (name.startsWith("jk-") && name.length() > 3) {
-                dirByName.putIfAbsent(name.substring(3), dir);
-            }
-            Path base = dir.getFileName();
-            if (base != null) dirByName.putIfAbsent(base.toString(), dir);
+            indexWorkerSibling(dirByName, dirByCoord, dir, sib);
         }
+        // Members may depend on the workspace root unit itself.
+        byDir.put(root, rootManifest);
+        indexWorkerSibling(dirByName, dirByCoord, root, rootManifest);
         LinkedHashSet<Path> out = new LinkedHashSet<>();
         ArrayDeque<JkBuild> q = new ArrayDeque<>();
         Set<String> seen = new HashSet<>();
@@ -805,10 +819,10 @@ public final class PlannerSupport {
         while (!q.isEmpty()) {
             JkBuild cur = q.removeFirst();
             for (Dependency d : cur.dependencies().of(Scope.MAIN)) {
-                String ws = d.workspaceName();
-                if (ws == null || !seen.add(ws)) continue;
-                Path dir = dirByName.get(ws);
+                Path dir = workerSiblingDir(d, dirByName, dirByCoord);
                 if (dir == null) continue;
+                String seenKey = dir.toAbsolutePath().normalize().toString();
+                if (!seen.add(seenKey)) continue;
                 JkBuild sib = byDir.get(dir);
                 if (sib == null) continue;
                 Path classes = BuildLayout.of(dir, sib).classesDir();
@@ -817,6 +831,34 @@ public final class PlannerSupport {
             }
         }
         return List.copyOf(out);
+    }
+
+    private static void indexWorkerSibling(
+            Map<String, Path> dirByName, Map<String, Path> dirByCoord, Path dir, JkBuild sib) {
+        String name = sib.project().name();
+        dirByName.putIfAbsent(name, dir);
+        if (name.startsWith("jk-") && name.length() > 3) {
+            dirByName.putIfAbsent(name.substring(3), dir);
+        }
+        Path base = dir.getFileName();
+        if (base != null) dirByName.putIfAbsent(base.toString(), dir);
+        dirByCoord.putIfAbsent(sib.project().group() + ":" + name, dir);
+    }
+
+    /** Resolve a MAIN dep to a workspace sibling dir (placeholder or rewritten coordinate). */
+    private static Path workerSiblingDir(Dependency d, Map<String, Path> dirByName, Map<String, Path> dirByCoord) {
+        String ws = d.workspaceName();
+        if (ws != null) {
+            Path dir = dirByName.get(ws);
+            if (dir != null) return dir;
+            if (ws.startsWith("jk-") && ws.length() > 3) return dirByName.get(ws.substring(3));
+            return dirByName.get("jk-" + ws);
+        }
+        Path byCoord = dirByCoord.get(d.module());
+        if (byCoord != null) return byCoord;
+        Path byLib = dirByName.get(d.library());
+        if (byLib != null) return byLib;
+        return dirByName.get(d.name());
     }
 
     /**

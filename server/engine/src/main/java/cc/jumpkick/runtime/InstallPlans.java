@@ -273,13 +273,55 @@ public final class InstallPlans {
     }
 
     private static byte[] renderedPom(JkBuild project, BuildLayout layout) {
+        Path moduleRoot = layout.moduleRoot();
+        // Worker jars vendor workspace MAIN siblings (plugin-sdk / jsonl) the same way Gradle's
+        // bundledCodec does. Those edges must not appear on the sidecar / install POM — otherwise
+        // PomRuntimeClasspath looks for e.g. jk-plugin-sdk at the workspace version while Gradle
+        // installLocal only published the independent SPI line (0.1.0).
+        JkBuild forPom = omitVendoredWorkerSiblings(project, moduleRoot);
         String pomXml = cc.jumpkick.publish.PublishablePom.render(
-                        project,
+                        forPom,
                         null,
-                        cc.jumpkick.config.WorkspaceResolve.siblingCoordinates(layout.moduleRoot()),
-                        lockPins(layout.moduleRoot()))
+                        cc.jumpkick.config.WorkspaceResolve.siblingCoordinates(moduleRoot),
+                        lockPins(moduleRoot))
                 .xml();
         return pomXml.getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Drop MAIN / RUNTIME / EXPORT edges to workspace siblings from a worker's POM view. Libraries
+     * keep sibling deps so consumers can resolve them.
+     */
+    static JkBuild omitVendoredWorkerSiblings(JkBuild project, Path moduleRoot) {
+        if (project == null || moduleRoot == null || !cc.jumpkick.plugin.PluginModule.isWorker(moduleRoot)) {
+            return project;
+        }
+        Set<String> siblings = cc.jumpkick.config.WorkspaceResolve.siblingCoordinates(moduleRoot);
+        if (siblings.isEmpty()) return project;
+        Map<cc.jumpkick.model.Scope, List<cc.jumpkick.model.Dependency>> by = new LinkedHashMap<>();
+        boolean changed = false;
+        for (cc.jumpkick.model.Scope scope : cc.jumpkick.model.Scope.values()) {
+            List<cc.jumpkick.model.Dependency> deps = project.dependencies().of(scope);
+            if (deps.isEmpty()) continue;
+            boolean strip = scope == cc.jumpkick.model.Scope.MAIN
+                    || scope == cc.jumpkick.model.Scope.RUNTIME
+                    || scope == cc.jumpkick.model.Scope.EXPORT;
+            if (!strip) {
+                by.put(scope, deps);
+                continue;
+            }
+            List<cc.jumpkick.model.Dependency> kept = new ArrayList<>(deps.size());
+            for (cc.jumpkick.model.Dependency d : deps) {
+                if (siblings.contains(d.module())) {
+                    changed = true;
+                    continue;
+                }
+                kept.add(d);
+            }
+            if (!kept.isEmpty()) by.put(scope, kept);
+            else if (!deps.isEmpty()) changed = true;
+        }
+        return changed ? project.withDependencies(new JkBuild.Dependencies(by)) : project;
     }
 
     /** Exact versions from the module's lock, keyed by {@code group:artifact}. Empty when unlocked. */
