@@ -321,6 +321,9 @@ public final class RepoArtifactStore {
         try (Stream<Path> walk = Files.walk(root)) {
             walk.filter(Files::isRegularFile)
                     .filter(p -> !isMemoName(p.getFileName().toString()))
+                    // Leaked .put-*.tmp download temps are not stored artifacts (JK-2309).
+                    .filter(p -> !p.getFileName().toString().startsWith(".put-")
+                            && !p.getFileName().toString().endsWith(".tmp"))
                     .forEach(p -> result.add(root.relativize(p).toString()));
         } catch (IOException ignored) {
         }

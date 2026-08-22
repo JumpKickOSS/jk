@@ -241,6 +241,12 @@ public final class CachePlans {
         totalFiles += temps.files();
         totalBytes += temps.bytes();
 
+        // Reclaim leaked .put-*.tmp download temps under the Maven-layout store too — mirror=false
+        // fetches (metadata / file:// POMs) return the temp and never delete it (JK-2309).
+        TempSweep repoTemps = sweepCasTemps(cc.jumpkick.cache.JkStores.resolve(root, "repos"), dryRun);
+        totalFiles += repoTemps.files();
+        totalBytes += repoTemps.bytes();
+
         var runLogReport = cc.jumpkick.task.RunLogGc.sweep(root, cc.jumpkick.task.RunLogGc.DEFAULT_TTL, dryRun);
         totalFiles += runLogReport.deleted();
         totalBytes += runLogReport.freedBytes();
