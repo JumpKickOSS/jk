@@ -107,6 +107,25 @@ class JavaApIncrementalCompileTest {
                 .doesNotExist();
     }
 
+    /**
+     * JK-2300: a processor that writes a file with no originating elements (arity 0 — a common
+     * META-INF/services writer) has unknown provenance and must be treated as aggregating (full
+     * rebuild), not silently classified isolating.
+     */
+    @Test
+    void zero_origin_generated_file_forces_full_rebuild() throws Exception {
+        Path dir = Files.createTempDirectory("jk-zero-origin");
+        Path worker = workerJar();
+        Path procDir = zeroOriginProcessor(dir);
+        Project p = new Project(dir, worker, procDir);
+
+        p.write("app/Alpha.java", "package app; @reg.Reg public class Alpha {}");
+        assertThat(p.build().success()).isTrue();
+        assertThat(Files.isRegularFile(p.stateDir.resolve("aggregating")))
+                .as("arity-0 provenance must classify the project as aggregating")
+                .isTrue();
+    }
+
     // ---- harness ----------------------------------------------------------
 
     private static Path workerJar() {
@@ -272,6 +291,47 @@ class JavaApIncrementalCompileTest {
                         }
                         """));
         registerProcessor(procDir, "reg.RegProc");
+        return procDir;
+    }
+
+    /** Writes a resource with NO originating elements (arity 0), like a META-INF/services writer. */
+    private static Path zeroOriginProcessor(Path dir) throws IOException {
+        Path procDir = dir.resolve("proc-zero");
+        compile(
+                procDir,
+                Map.of(
+                        "reg.Reg", """
+                        package reg;
+                        import java.lang.annotation.*;
+                        @Retention(RetentionPolicy.SOURCE) @Target(ElementType.TYPE)
+                        public @interface Reg {}
+                        """,
+                        "reg.ZeroProc", """
+                        package reg;
+                        import javax.annotation.processing.*;
+                        import javax.lang.model.SourceVersion;
+                        import javax.lang.model.element.*;
+                        import javax.tools.*;
+                        import java.io.*;
+                        import java.util.Set;
+                        @SupportedAnnotationTypes("reg.Reg")
+                        public class ZeroProc extends AbstractProcessor {
+                            private boolean done;
+                            public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
+                            public boolean process(Set<? extends TypeElement> a, RoundEnvironment r) {
+                                if (done || r.getElementsAnnotatedWith(Reg.class).isEmpty()) return true;
+                                done = true;
+                                try {
+                                    // No originating elements -> arity 0 (unknown provenance).
+                                    FileObject f = processingEnv.getFiler().createResource(
+                                            StandardLocation.CLASS_OUTPUT, "", "META-INF/services/app.Thing");
+                                    try (Writer w = f.openWriter()) { w.write("app.Alpha\\n"); }
+                                } catch (IOException ex) { throw new UncheckedIOException(ex); }
+                                return true;
+                            }
+                        }
+                        """));
+        registerProcessor(procDir, "reg.ZeroProc");
         return procDir;
     }
 

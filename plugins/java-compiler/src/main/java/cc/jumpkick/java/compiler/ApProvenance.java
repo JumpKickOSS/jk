@@ -43,9 +43,16 @@ final class ApProvenance {
         return wrapped;
     }
 
+    /**
+     * True when any generated file's provenance is not exactly one origin: {@code >1} is a genuine
+     * aggregator, and {@code 0} is unknown provenance (a {@code createResource}/{@code createSourceFile}
+     * call with no originating elements — e.g. a {@code META-INF/services} writer). Both must force a
+     * full recompile, since an incremental subset rebuild could silently drop such a file's inputs
+     * (JK-2300). Only arity exactly 1 is safe to treat as isolating.
+     */
     boolean aggregating() {
         for (Set<Path> origins : generated.values()) {
-            if (origins.size() > 1) return true;
+            if (origins.size() != 1) return true;
         }
         return false;
     }
