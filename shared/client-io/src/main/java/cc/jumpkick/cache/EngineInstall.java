@@ -394,12 +394,14 @@ public final class EngineInstall {
     }
 
     private void writeConfig(String version, String engineJarSha, String jarFileName) throws IOException {
-        Map<String, String> keys = new LinkedHashMap<>();
+        // jk-config.* properties are the base; the COMPUTED identity keys are written last so they
+        // always win. A stray -Djk-config.engine-sha256 could otherwise poison the digest and make
+        // every command see a build-id mismatch and respawn the engine (JK-2325).
+        Map<String, String> keys = new LinkedHashMap<>(AppInstallConfig.jkConfigProperties());
         keys.put("version", version);
         keys.put("engine-sha256", engineJarSha);
         keys.put("protocol", "1");
         keys.put("jar", jarFileName);
-        keys.putAll(AppInstallConfig.jkConfigProperties());
         AppInstallConfig.write(dirs, BIN_NAME, keys);
     }
 
