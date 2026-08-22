@@ -21,6 +21,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.ServiceLoader;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Set;
 import java.util.function.Supplier;
 import javax.annotation.processing.Processor;
@@ -642,7 +643,24 @@ public final class ZincJavaCompiler {
         return ZincUtil.compilers(JavaTools.apply(javac, javadoc), scalac);
     }
 
+    /**
+     * Cache the Scala compiler (ScalaInstance + classloaders + bridge) per compiler-classpath so a
+     * multi-module job pays scalac warm-up once and does not leak an unclosed URLClassLoader per
+     * module (JK-2297). Keyed by version + classpath; scoped to the per-job worker process, which
+     * exits at job end, reclaiming the loaders.
+     */
+    private static final Map<String, xsbti.compile.ScalaCompiler> SCALAC_CACHE = new ConcurrentHashMap<>();
+
     private static Compilers mixedCompilers(JavaCompiler javac, MixedScala mixed) {
+        String key = mixed.version() + "\n"
+                + mixed.compilerClasspath().stream().map(Path::toString).collect(java.util.stream.Collectors.joining("\n"));
+        xsbti.compile.ScalaCompiler scalac = SCALAC_CACHE.computeIfAbsent(key, k -> buildScalac(mixed));
+        xsbti.compile.Javadoc javadoc =
+                Javadoc.local().isDefined() ? Javadoc.local().get() : Javadoc.fork(scala.Option.empty());
+        return ZincUtil.compilers(JavaTools.apply(javac, javadoc), scalac);
+    }
+
+    private static xsbti.compile.ScalaCompiler buildScalac(MixedScala mixed) {
         File[] allJars = mixed.compilerClasspath().stream().map(Path::toFile).toArray(File[]::new);
         File[] libraryJars = stdlibJars(mixed);
         File compilerJar = firstJar(mixed.compilerJar(), allJars, "scala3-compiler_3");
@@ -673,10 +691,7 @@ public final class ZincJavaCompiler {
         // bootLibrary + autoBoot: Zinc appends libraryJars when the compile CP already has
         // the stdlib. filterLibrary stays off so JDK 9+ (no -bootclasspath) cannot drop it.
         ClasspathOptions cpOpts = ClasspathOptions.of(true, false, false, true, false);
-        xsbti.compile.ScalaCompiler scalac = ZincUtil.scalaCompiler(instance, bridge, cpOpts);
-        xsbti.compile.Javadoc javadoc =
-                Javadoc.local().isDefined() ? Javadoc.local().get() : Javadoc.fork(scala.Option.empty());
-        return ZincUtil.compilers(JavaTools.apply(javac, javadoc), scalac);
+        return ZincUtil.scalaCompiler(instance, bridge, cpOpts);
     }
 
     /**
