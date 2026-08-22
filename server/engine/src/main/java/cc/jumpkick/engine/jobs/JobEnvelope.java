@@ -260,11 +260,14 @@ public final class JobEnvelope {
                 }
             } finally {
                 cc.jumpkick.task.IoLedger.close();
-                cc.jumpkick.compile.JavaCompilerHost.end(eventRequestId);
-                // Kill leftovers — never clear() the registry without shutdown, or a racing
-                // cancel thread's shutdownForRequest finds an empty set and plugin/javac
-                // children keep running.
+                // Kill leftovers first, THEN drain the Zinc session: if the worker is mid-compile
+                // its io thread is blocked in readLine and never sees end()'s POISON, so end() would
+                // burn its full 15s join before this force-kill ran (JK-2299). Killing the process
+                // first unblocks readLine, so end()'s join returns promptly.
+                // Never clear() the registry without shutdown, or a racing cancel thread's
+                // shutdownForRequest finds an empty set and plugin/javac children keep running.
                 JobWorkers.shutdownForRequest(eventRequestId, 0L);
+                cc.jumpkick.compile.JavaCompilerHost.end(eventRequestId);
                 JobWorkers.close();
                 host.unbindEventRequestId();
                 if (plan) host.cacheGate().readLock().unlock();

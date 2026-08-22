@@ -291,7 +291,7 @@ public final class ClasspathResolver {
             }
             if (pkg.isAar()) {
                 try {
-                    Path container = cc.jumpkick.cache.ExplodedArchives.explodeFile(new Cas(storeRoot), jar);
+                    Path container = cc.jumpkick.cache.ExplodedArchives.explodeFile(new Cas(storeRoot), jar, hex);
                     Path classesJar = container.resolve("classes.jar");
                     result.add(new Entry(pkg, Files.isRegularFile(classesJar) ? classesJar : null, container));
                 } catch (IOException e) {

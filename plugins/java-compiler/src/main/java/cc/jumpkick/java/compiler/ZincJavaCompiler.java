@@ -492,18 +492,17 @@ public final class ZincJavaCompiler {
             }
         }
 
+        // Normalize the current source set once — the deleted-source scan below is otherwise
+        // O(previous × current) with a normalize() per pair (JK-2298).
+        HashSet<Path> currentNorm = new HashSet<>();
+        for (Path s : sources) {
+            if (s != null) currentNorm.add(s.toAbsolutePath().normalize());
+        }
         Relations rel = analysis.relations();
         for (Map.Entry<VirtualFileRef, Stamp> e : previous.getAllSourceStamps().entrySet()) {
             Path src = pathOf(e.getKey(), converter);
             if (src == null) continue;
-            boolean stillPresent = false;
-            for (Path s : sources) {
-                if (s != null && src.equals(s.toAbsolutePath().normalize())) {
-                    stillPresent = true;
-                    break;
-                }
-            }
-            if (stillPresent) continue;
+            if (currentNorm.contains(src)) continue;
             var names = rel.classNames(e.getKey());
             var nameIt = names.iterator();
             while (nameIt.hasNext()) {
@@ -883,6 +882,7 @@ public final class ZincJavaCompiler {
         private final JavaCompiler delegate;
         private final FileConverter converter;
         private final List<Path> compiledSources = new ArrayList<>();
+        private final HashSet<Path> seen = new HashSet<>(); // O(1) dedup instead of O(n) contains (JK-2298)
 
         RecordingJavaCompiler(JavaCompiler delegate, FileConverter converter) {
             this.delegate = delegate;
@@ -903,7 +903,7 @@ public final class ZincJavaCompiler {
                 Logger log) {
             for (VirtualFile vf : sources) {
                 Path path = converter.toPath(vf);
-                if (!compiledSources.contains(path)) compiledSources.add(path);
+                if (seen.add(path)) compiledSources.add(path);
             }
             return delegate.run(sources, options, output, incToolOptions, reporter, log);
         }
