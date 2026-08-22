@@ -3,12 +3,10 @@ package cc.jumpkick.compile;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cache.Cas;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.util.Hashing;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -18,96 +16,77 @@ import org.junit.jupiter.api.io.TempDir;
 class ClasspathResolverTest {
 
     @Test
-    void maps_packages_with_checksums_to_cas_paths(@TempDir Path tempDir) {
-        Cas cas = new Cas(tempDir);
-        Lockfile lock = new Lockfile(
-                Lockfile.CURRENT_VERSION,
-                "jk test",
-                Lockfile.RESOLUTION_ALGORITHM,
-                List.of(pkg("com.foo:a", "1.0", "sha256:aaaa1111"), pkg("com.foo:b", "1.0", "sha256:bbbb2222")));
+    void maps_packages_with_checksums_to_maven_layout_jars(@TempDir Path tempDir) throws Exception {
+        Path a = putJar(tempDir, "com/foo/a/1.0/a-1.0.jar", "aaaa");
+        Path b = putJar(tempDir, "com/foo/b/1.0/b-1.0.jar", "bbbb");
+        Lockfile lock =
+                lock(pkg("com.foo:a", "1.0", Hashing.sha256Hex(a)), pkg("com.foo:b", "1.0", Hashing.sha256Hex(b)));
 
-        List<Path> cp = new ClasspathResolver(cas).classpathFor(lock);
-        assertThat(cp).containsExactly(cas.pathFor("aaaa1111"), cas.pathFor("bbbb2222"));
+        List<Path> cp = new ClasspathResolver(tempDir).classpathFor(lock);
+        assertThat(cp)
+                .containsExactly(
+                        a.toAbsolutePath().normalize(), b.toAbsolutePath().normalize());
+        assertThat(cp).allMatch(p -> p.getFileName().toString().endsWith(".jar"));
     }
 
     @Test
-    void skips_packages_without_checksum(@TempDir Path tempDir) {
-        Cas cas = new Cas(tempDir);
-        Lockfile lock = new Lockfile(
-                Lockfile.CURRENT_VERSION,
-                "jk test",
-                Lockfile.RESOLUTION_ALGORITHM,
-                List.of(pkg("com.foo:a", "1.0", "sha256:aaaa1111"), pkg("com.foo:b", "1.0", null)));
+    void skips_packages_without_checksum(@TempDir Path tempDir) throws Exception {
+        Path a = putJar(tempDir, "com/foo/a/1.0/a-1.0.jar", "aaaa");
+        Lockfile lock = lock(pkg("com.foo:a", "1.0", Hashing.sha256Hex(a)), pkg("com.foo:b", "1.0", null));
 
-        List<Path> cp = new ClasspathResolver(cas).classpathFor(lock);
-        assertThat(cp).containsExactly(cas.pathFor("aaaa1111"));
+        assertThat(new ClasspathResolver(tempDir).classpathFor(lock))
+                .containsExactly(a.toAbsolutePath().normalize());
     }
 
     @Test
-    void accepts_raw_hex_checksum(@TempDir Path tempDir) {
-        // Some packages may record the bare hex without the "sha256:" prefix.
-        Cas cas = new Cas(tempDir);
-        Lockfile lock = new Lockfile(
-                Lockfile.CURRENT_VERSION,
-                "jk test",
-                Lockfile.RESOLUTION_ALGORITHM,
-                List.of(pkg("com.foo:a", "1.0", "abcd1234")));
+    void accepts_raw_hex_checksum(@TempDir Path tempDir) throws Exception {
+        Path a = putJar(tempDir, "com/foo/a/1.0/a-1.0.jar", "abcd");
+        Lockfile lock = lock(pkg("com.foo:a", "1.0", Hashing.sha256Hex(a)));
 
-        List<Path> cp = new ClasspathResolver(cas).classpathFor(lock);
-        assertThat(cp).containsExactly(cas.pathFor("abcd1234"));
+        assertThat(new ClasspathResolver(tempDir).classpathFor(lock))
+                .containsExactly(a.toAbsolutePath().normalize());
     }
 
     @Test
-    void falls_back_to_cas_when_repos_artifact_no_longer_matches_lock(@TempDir Path tempDir) throws Exception {
-        Cas cas = new Cas(tempDir.resolve("cache"));
-        byte[] jar = "genuine".getBytes(StandardCharsets.UTF_8);
-        String hex = Hashing.sha256Hex(jar);
-        String m2Path = "com/foo/a/1.0/a-1.0.jar";
-        Path casBlob = cas.put(jar);
-        RepoArtifactStore store = RepoArtifactStore.forRepoName(cas.root(), "central");
-        store.materialize(m2Path, casBlob, hex);
-        Path readablePath = store.locate(m2Path).orElseThrow();
+    void mismatching_store_jar_is_skipped(@TempDir Path tempDir) throws Exception {
+        Path a = putJar(tempDir, "com/foo/a/1.0/a-1.0.jar", "genuine");
+        Lockfile lock = lock(pkg("com.foo:a", "1.0", "0".repeat(64)));
 
-        Lockfile lock = new Lockfile(
-                Lockfile.CURRENT_VERSION,
-                "jk test",
-                Lockfile.RESOLUTION_ALGORITHM,
-                List.of(pkg("com.foo:a", "1.0", "sha256:" + hex)));
-
-        // Compile classpath always uses the CAS content path so stamps/action-keys stay stable
-        // whether or not repos/<name>/ views exist (see ClasspathResolver.resolveEntries).
-        assertThat(new ClasspathResolver(cas).classpathFor(lock)).containsExactly(cas.pathFor(hex));
-        // Readable view is still materialised for humans / non-classpath consumers.
-        assertThat(readablePath).exists();
-
-        // Corrupt the index sidecar: classpath still resolves via CAS (locked bytes).
-        Path sidecar = store.root().resolve(m2Path + ".sha256");
-        Files.writeString(sidecar, "0000000000000000000000000000000000000000000000000000000000000000");
-        assertThat(new ClasspathResolver(cas).classpathFor(lock)).containsExactly(cas.pathFor(hex));
+        assertThat(new ClasspathResolver(tempDir).classpathFor(lock)).isEmpty();
+        assertThat(a).exists();
     }
 
     @Test
-    void classpath_closure_only_includes_reachable_runtime_deps(@TempDir Path tempDir) {
-        // Workspace-style lock: many main-scoped packages, but packaging must walk from roots.
-        Cas cas = new Cas(tempDir);
+    void classpath_closure_only_includes_reachable_runtime_deps(@TempDir Path tempDir) throws Exception {
+        Path app = putJar(tempDir, "com/foo/app/1.0/app-1.0.jar", "app");
+        Path lib = putJar(tempDir, "com/foo/lib/1.0/lib-1.0.jar", "lib");
+        putJar(tempDir, "com/other/noise/9.0/noise-9.0.jar", "noise");
         Lockfile lock = new Lockfile(
                 Lockfile.CURRENT_VERSION,
                 "jk test",
                 Lockfile.RESOLUTION_ALGORITHM,
                 List.of(
-                        pkg("com.foo:app:jar:", "1.0", "sha256:aaaa1111", List.of("com.foo:lib:jar:@1.0")),
-                        pkg("com.foo:lib:jar:", "1.0", "sha256:bbbb2222", List.of()),
-                        // Unrelated monorepo noise (android / quarkus / …) — must not ship in app fat jar.
-                        pkg("com.other:noise:jar:", "9.0", "sha256:cccc3333", List.of())));
+                        pkg(
+                                "com.foo:app:jar:",
+                                "1.0",
+                                "sha256:" + Hashing.sha256Hex(app),
+                                List.of("com.foo:lib:jar:@1.0")),
+                        pkg("com.foo:lib:jar:", "1.0", "sha256:" + Hashing.sha256Hex(lib), List.of()),
+                        pkg(
+                                "com.other:noise:jar:",
+                                "9.0",
+                                "sha256:"
+                                        + Hashing.sha256Hex(Files.readAllBytes(
+                                                tempDir.resolve("repos/central/com/other/noise/9.0/noise-9.0.jar"))),
+                                List.of())));
 
-        ClasspathResolver resolver = new ClasspathResolver(cas);
-        // Full-lock path still sees everything (compile/workspace semantics).
+        ClasspathResolver resolver = new ClasspathResolver(tempDir);
         assertThat(resolver.classpathFor(lock, ClasspathResolver.RUNTIME)).hasSize(3);
 
         List<Path> closure = resolver.classpathClosure(lock, List.of("com.foo:app"), ClasspathResolver.RUNTIME);
         assertThat(closure)
-                .containsExactlyInAnyOrder(cas.pathFor("aaaa1111"), cas.pathFor("bbbb2222"))
-                .doesNotContain(cas.pathFor("cccc3333"));
+                .containsExactlyInAnyOrder(
+                        app.toAbsolutePath().normalize(), lib.toAbsolutePath().normalize());
     }
 
     @Test
@@ -136,18 +115,27 @@ class ClasspathResolverTest {
         assertThat(ClasspathResolver.stripVersion("g:a:jar:")).isEqualTo("g:a:jar:");
     }
 
+    private static Path putJar(Path store, String relative, String payload) throws Exception {
+        Path src = store.resolve("src.bin");
+        Files.writeString(src, payload);
+        RepoArtifactStore.forRepoName(store, "central").materialize(relative, src, Hashing.sha256Hex(src));
+        Files.deleteIfExists(src);
+        return store.resolve("repos/central").resolve(relative);
+    }
+
+    private static Lockfile lock(Lockfile.Artifact... artifacts) {
+        return new Lockfile(Lockfile.CURRENT_VERSION, "jk test", Lockfile.RESOLUTION_ALGORITHM, List.of(artifacts));
+    }
+
     private static Lockfile.Artifact pkg(String module, String version, String checksum) {
         return pkg(module, version, checksum, List.of());
     }
 
     private static Lockfile.Artifact pkg(String module, String version, String checksum, List<String> deps) {
+        String c = checksum == null || checksum.startsWith("sha256:") || checksum.length() != 64
+                ? checksum
+                : "sha256:" + checksum;
         return new Lockfile.Artifact(
-                module,
-                version,
-                "central+https://repo.maven.apache.org/maven2/",
-                checksum,
-                null,
-                List.of(Scope.MAIN),
-                deps);
+                module, version, "central+https://repo.maven.apache.org/maven2/", c, null, List.of(Scope.MAIN), deps);
     }
 }

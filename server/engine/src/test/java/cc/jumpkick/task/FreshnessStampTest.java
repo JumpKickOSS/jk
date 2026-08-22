@@ -108,36 +108,23 @@ class FreshnessStampTest {
     }
 
     @Test
-    void content_addressed_classpath_mtime_churn_does_not_bust_freshness(@TempDir Path tempDir) throws IOException {
-        // Locked store jars live under …/sha256/… — the path is the content identity.
-        // A later resolve that re-touches the CAS blob's mtime must not force a recompile
-        // after a green build (the build→jk run stamp thrash).
+    void jar_classpath_mtime_churn_does_not_bust_freshness(@TempDir Path tempDir) throws IOException {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
         Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
-        Path casJar = tempDir.resolve("store")
-                .resolve("sha256")
-                .resolve("ab")
-                .resolve("cd")
-                .resolve("deadbeef");
-        Files.createDirectories(casJar.getParent());
-        writeFile(casJar, "payload");
+        Path jar = writeFile(tempDir.resolve("guava-33.4.8.jar"), "payload");
 
         FreshnessStamp.write(
-                classes, FreshnessStamp.JAVA_STAMP, "compile-main", "key123", List.of(src), List.of(casJar), RELEASE);
+                classes, FreshnessStamp.JAVA_STAMP, "compile-main", "key123", List.of(src), List.of(jar), RELEASE);
         Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
-        // CAS blob "rewritten" after the stamp — same path identity, newer mtime.
-        Files.setLastModifiedTime(casJar, FileTime.fromMillis(System.currentTimeMillis() + 5_000));
+        Files.setLastModifiedTime(jar, FileTime.fromMillis(System.currentTimeMillis() + 5_000));
 
-        assertThat(FreshnessStamp.isContentAddressed(casJar)).isTrue();
-        assertThat(FreshnessStamp.isFresh(classes, FreshnessStamp.JAVA_STAMP, List.of(src), List.of(casJar), RELEASE))
+        assertThat(FreshnessStamp.isFresh(classes, FreshnessStamp.JAVA_STAMP, List.of(src), List.of(jar), RELEASE))
                 .isTrue();
     }
 
     @Test
-    void mutable_classpath_jar_mtime_still_busts_freshness(@TempDir Path tempDir) throws IOException {
-        // Non-CAS jars (sibling outputs, local files) keep mtime checks — those can change
-        // in place without a path change.
+    void jar_content_change_busts_freshness(@TempDir Path tempDir) throws IOException {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
         Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
@@ -146,9 +133,8 @@ class FreshnessStampTest {
         FreshnessStamp.write(
                 classes, FreshnessStamp.JAVA_STAMP, "compile-main", "key123", List.of(src), List.of(localJar), RELEASE);
         Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
-        Files.setLastModifiedTime(localJar, FileTime.fromMillis(System.currentTimeMillis() + 5_000));
+        Files.writeString(localJar, "stub-MUTATED");
 
-        assertThat(FreshnessStamp.isContentAddressed(localJar)).isFalse();
         assertThat(FreshnessStamp.isFresh(classes, FreshnessStamp.JAVA_STAMP, List.of(src), List.of(localJar), RELEASE))
                 .isFalse();
     }
@@ -246,9 +232,8 @@ class FreshnessStampTest {
         FreshnessStamp.write(
                 classes, FreshnessStamp.JAVA_STAMP, "compile-main", "key123", List.of(src), List.of(jar), RELEASE);
 
-        // A dep got rebuilt — its mtime is now newer than our stamp.
         Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
-        Files.setLastModifiedTime(jar, FileTime.fromMillis(System.currentTimeMillis() + 5_000));
+        Files.writeString(jar, "stub-rebuilt");
 
         assertThat(FreshnessStamp.isFresh(classes, FreshnessStamp.JAVA_STAMP, List.of(src), List.of(jar), RELEASE))
                 .isFalse();

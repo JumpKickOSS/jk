@@ -25,11 +25,12 @@ class ClasspathFingerprintTest {
     }
 
     @Test
-    void cas_entry_is_keyed_by_its_hash_path_not_its_bytes(@TempDir Path dir) throws IOException {
-        // A CAS blob's path already encodes its content; the path is the fingerprint.
-        Path cas = write(dir.resolve("cache/sha256/ab/cd/rest"), "anything");
-        String fp = ClasspathFingerprint.entry(cas);
-        assertThat(fp).startsWith("cas:").contains("/sha256/");
+    void jar_entry_is_keyed_by_file_content(@TempDir Path dir) throws IOException {
+        Path jar = write(dir.resolve("repos/central/g/a/1/a-1.jar"), "anything");
+        String fp = ClasspathFingerprint.entry(jar);
+        assertThat(fp).startsWith("file:");
+        Files.writeString(jar, "anything");
+        assertThat(ClasspathFingerprint.entry(jar)).isEqualTo(fp);
     }
 
     @Test

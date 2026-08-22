@@ -4,7 +4,6 @@ package cc.jumpkick.repo;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.Hashing;
 import java.io.IOException;
-import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -21,22 +20,12 @@ import java.util.TreeMap;
 import java.util.stream.Stream;
 
 /**
- * Per-named-repository artifact index and store.
+ * Per-named-repository Maven-layout store under {@code <store>/repos/<name>/}.
  *
- * <h3>Full store, every repo</h3>
- * Both the artifact and its {@code .sha256} sidecar live under {@code <store>/repos/<name>/} —
- * jk's own tree, never {@code ~/.m2}. Fetched artifacts are <em>materialized</em> from the CAS via
- * {@link #materialize}: a <strong>hard link</strong> to the CAS blob when the filesystem allows it
- * (same bytes, one inode), else a copy. The store root is fully jk-owned ({@code JK_STORE_DIR} /
- * {@code ~/.local/share/jk/store}); writers must use temp + atomic replace, never in-place truncation of a
- * hard-linked path. (Separately, a project may opt into also mirroring artifacts to {@code ~/.m2}
- * for Maven/Gradle interop — see {@code m2install} — but that mirror is not this store and
- * is never hard-linked from the CAS by default.)
- *
- * <h3>Sidecar invariant</h3>
- * The sidecar is written <em>last</em>, after the artifact is fully on disk. Its existence is the
- * single O(1) "fully stored" signal — a partial download never leaves a sidecar behind. Its
- * content is the 64-char SHA-256 hex string.
+ * <p>Each artifact is a real {@code .jar}/{@code .pom}/… file plus one {@link ArtifactMemo}
+ * {@code .jk} file. Writers use temp + atomic replace. This tree is jk-owned; the Maven local
+ * repository (when {@code m2integration} is on) is a separate candidate cache and never holds
+ * {@code .jk} files.
  */
 public final class RepoArtifactStore {
 
@@ -66,8 +55,8 @@ public final class RepoArtifactStore {
     // -------------------------------------------------------------------------
 
     /**
-     * True when the artifact at {@code relativePath} has been fully stored — sidecar exists AND the
-     * actual artifact file is present. Two O(1) stat calls; no content read.
+     * True when the artifact at {@code relativePath} has been fully stored — {@code .jk} memo exists
+     * AND the artifact file is present.
      */
     public boolean contains(String relativePath) {
         if (root == null) return false;
@@ -89,17 +78,17 @@ public final class RepoArtifactStore {
     }
 
     /**
-     * Verify the artifact at {@code relativePath} against {@code expectedSha256} (the hash the
-     * lockfile pinned). {@code repos/<name>/} is exclusively jk-owned, so drift here would mean
-     * local corruption or manual tampering rather than an external tool's rewrite — still worth
-     * catching cheaply, hence this check stays, but it's a defensive backstop now rather than the
-     * primary integrity mechanism it was when the artifact lived in a tool-shared {@code ~/.m2}.
+     * Verify the artifact at {@code relativePath} against {@code expectedSha256} (the lock pin).
+     * Uses the {@code .jk} memo's size+mtime fast path and re-hashes on doubt.
      */
     public IndexState verify(String relativePath, String expectedSha256) {
-        if (locate(relativePath).isEmpty()) return IndexState.ABSENT;
+        if (root == null) return IndexState.ABSENT;
+        Path artifact = artifactPath(relativePath);
+        if (!Files.isRegularFile(artifact)) return IndexState.ABSENT;
         try {
-            String stored = Files.readString(sidecarPath(relativePath)).strip();
-            return stored.equals(expectedSha256) ? IndexState.VERIFIED : IndexState.MISMATCH;
+            boolean ok =
+                    ArtifactMemo.verify(artifact, sidecarPath(relativePath), inferGav(relativePath), expectedSha256);
+            return ok ? IndexState.VERIFIED : IndexState.MISMATCH;
         } catch (IOException unreadable) {
             return IndexState.MISMATCH;
         }
@@ -107,9 +96,7 @@ public final class RepoArtifactStore {
 
     /**
      * As {@link #locate(String)} but hash-verified: resolves only when {@link #verify} says the
-     * stored hash matches {@code expectedSha256}. A mismatching artifact is treated as absent so
-     * callers fall back to the CAS blob (whose path <em>is</em> its content) or re-fetch, rather
-     * than compile against bytes the lockfile never pinned.
+     * stored hash matches {@code expectedSha256}.
      */
     public Optional<Path> locate(String relativePath, String expectedSha256) {
         return verify(relativePath, expectedSha256) == IndexState.VERIFIED ? locate(relativePath) : Optional.empty();
@@ -135,19 +122,11 @@ public final class RepoArtifactStore {
     }
 
     /**
-     * Read the {@code .sha256} sidecar without re-statting the artifact. Callers that already
-     * {@link #locate}'d the path (warm resolve hot path) skip the extra {@link #contains} stats.
+     * SHA-256 from the {@code .jk} memo without re-statting the artifact.
      */
     public Optional<String> readSha256Sidecar(String relativePath) {
         if (root == null) return Optional.empty();
-        try {
-            Path side = sidecarPath(relativePath);
-            if (!Files.isRegularFile(side)) return Optional.empty();
-            String s = Files.readString(side).strip();
-            return s.isBlank() ? Optional.empty() : Optional.of(s);
-        } catch (IOException e) {
-            return Optional.empty();
-        }
+        return ArtifactMemo.read(sidecarPath(relativePath)).map(ArtifactMemo::sha256);
     }
 
     // -------------------------------------------------------------------------
@@ -159,58 +138,28 @@ public final class RepoArtifactStore {
     // See materialize() below.
 
     /**
-     * Materialise a fetched artifact under {@code repos/<name>/} and write its {@code .sha256}
-     * sidecar. Prefer a <strong>hard link</strong> to {@code casBlob} so the Maven-layout name and
-     * the CAS path share one file identity (no double disk for the same bytes). Fall back to a
-     * byte copy when the filesystem refuses links.
-     *
-     * <h3>Platform notes</h3>
-     * Uses {@link Files#createLink} — the portable NIO hard-link API:
-     * <ul>
-     * <li><b>Linux / macOS</b> — {@code link(2)} on the same filesystem
-     * <li><b>Windows</b> — {@code CreateHardLinkW} on NTFS (same volume). No elevation required
-     * (unlike symbolic links). FAT/exFAT/network shares that reject hard links fall through to
-     * copy via the same catch path as {@link cc.jumpkick.cache.Linking#linkOrCopy}
-     * </ul>
-     * CAS and {@code repos/} always live under one store root, so the same-volume constraint is
-     * satisfied on every supported platform. Soft links are intentionally not used.
-     *
-     * <p>Idempotent and reclaiming: if the repo entry already hard-links the CAS blob, this is a
-     * no-op. If a legacy <em>copy</em> already exists beside a CAS blob, replace it with a hard
-     * link so warm re-locks free the duplicate. Crash-safe: link/copy lands on a {@code .part}
-     * then atomic-move; the sidecar is written only after the artifact is complete.
-     *
-     * <p>Callers that overwrite a repo path (e.g. {@link #writeToLocalStore}) must use temp +
-     * atomic replace so they detach the directory entry without truncating the CAS file.
+     * Copy {@code source} into this store at {@code relativePath} and write the {@code .jk} memo.
+     * Idempotent when the destination already verifies as {@code sha256}. Source may be the
+     * destination (memo-only refresh).
      */
-    public void materialize(String relativePath, Path casBlob, String sha256) {
-        if (root == null) return;
+    public void materialize(String relativePath, Path source, String sha256) {
+        if (root == null || source == null || !Files.isRegularFile(source)) return;
         Path artifact = root.resolve(relativePath);
         Path tmp = artifact.resolveSibling(artifact.getFileName() + ".part");
         try {
-            Path sidecar = sidecarPath(relativePath);
-            boolean complete = Files.isRegularFile(sidecar) && Files.isRegularFile(artifact);
-            if (complete) {
-                // Already single identity with the CAS — nothing to do.
-                if (Files.isRegularFile(casBlob) && Files.isSameFile(artifact, casBlob)) return;
-                // Legacy duplicate copy (or missing CAS): only reclaim when the CAS blob exists.
-                if (!Files.isRegularFile(casBlob)) return;
-            } else if (!Files.isRegularFile(casBlob)) {
+            if (Files.isRegularFile(artifact)
+                    && verify(relativePath, sha256) == IndexState.VERIFIED
+                    && Files.isSameFile(artifact, source)) {
                 return;
             }
             Files.createDirectories(artifact.getParent());
-            Files.deleteIfExists(tmp);
-            // Hard link first (one allocation under the jk-owned store); copy only if the FS refuses.
-            // Catch set matches Linking.linkOrCopy: Windows CreateHardLink failures surface as
-            // FileSystemException; providers without hard links throw UnsupportedOperationException.
-            try {
-                Files.createLink(tmp, casBlob);
-            } catch (UnsupportedOperationException | FileSystemException linkRefused) {
-                Files.copy(casBlob, tmp, StandardCopyOption.REPLACE_EXISTING);
+            boolean same = Files.isRegularFile(artifact) && Files.isSameFile(source, artifact);
+            if (!same) {
+                Files.deleteIfExists(tmp);
+                Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
+                AtomicWrites.moveInto(tmp, artifact);
             }
-            AtomicWrites.moveInto(tmp, artifact);
-            Files.createDirectories(sidecar.getParent());
-            Files.writeString(sidecar, sha256);
+            ArtifactMemo.ofBlob(artifact, inferGav(relativePath), sha256).write(sidecarPath(relativePath));
         } catch (IOException | RuntimeException e) {
             try {
                 Files.deleteIfExists(tmp);
@@ -259,7 +208,7 @@ public final class RepoArtifactStore {
         Map<Path, Boolean> versionDirs = new TreeMap<>();
         try (Stream<Path> walk = Files.walk(root)) {
             walk.filter(Files::isRegularFile)
-                    .filter(p -> !p.getFileName().toString().endsWith(".sha256"))
+                    .filter(p -> !isMemoName(p.getFileName().toString()))
                     .forEach(p -> versionDirs.put(p.getParent(), Boolean.TRUE));
         } catch (IOException e) {
             return List.of();
@@ -348,7 +297,7 @@ public final class RepoArtifactStore {
         List<String> result = new ArrayList<>();
         try (Stream<Path> walk = Files.walk(root)) {
             walk.filter(Files::isRegularFile)
-                    .filter(p -> !p.getFileName().toString().endsWith(".sha256"))
+                    .filter(p -> !isMemoName(p.getFileName().toString()))
                     .forEach(p -> result.add(root.relativize(p).toString()));
         } catch (IOException ignored) {
         }
@@ -394,20 +343,28 @@ public final class RepoArtifactStore {
         // throws NoSuchFileException from the stream.
         List<Path> sidecars;
         try (Stream<Path> walk = Files.walk(root)) {
-            sidecars = walk.filter(p -> p.toString().endsWith(".sha256")).toList();
+            sidecars =
+                    walk.filter(p -> p.getFileName().toString().endsWith(".jk")).toList();
         } catch (IOException e) {
             return 0;
         }
         int removed = 0;
         for (Path sidecar : sidecars) {
             try {
-                String hash = Files.readString(sidecar).strip();
+                String hash =
+                        ArtifactMemo.read(sidecar).map(ArtifactMemo::sha256).orElse("");
                 if (!shas.contains(hash)) continue;
                 if (!dryRun) {
                     Files.deleteIfExists(sidecar);
-                    // Unlink the hard-linked (or legacy-copied) artifact so nlink can hit zero.
-                    Files.deleteIfExists(sidecar.resolveSibling(
-                            sidecar.getFileName().toString().replaceFirst("\\.sha256$", "")));
+                    String memoName = sidecar.getFileName().toString();
+                    String stem = memoName.endsWith(".jk") ? memoName.substring(0, memoName.length() - 3) : memoName;
+                    Path dir = sidecar.getParent();
+                    for (String ext : List.of(".jar", ".aar", ".pom", ".zip")) {
+                        Files.deleteIfExists(dir.resolve(stem + ext));
+                    }
+                    if (stem.endsWith(".pom")) {
+                        Files.deleteIfExists(dir.resolve(stem));
+                    }
                     pruneEmptyParents(sidecar.getParent());
                 }
                 removed++;
@@ -453,14 +410,29 @@ public final class RepoArtifactStore {
     }
 
     private Path sidecarPath(String relativePath) {
-        return root.resolve(relativePath + ".sha256");
+        return ArtifactMemo.jkPath(root, relativePath);
+    }
+
+    /** {@code g:a:v} from a Maven-relative path, or {@code -} when the path is too short. */
+    static String inferGav(String relativePath) {
+        Path rel = Path.of(relativePath);
+        int n = rel.getNameCount();
+        if (n < 3) return "-";
+        String version = rel.getName(n - 2).toString();
+        String artifact = rel.getName(n - 3).toString();
+        StringBuilder group = new StringBuilder();
+        for (int i = 0; i < n - 3; i++) {
+            if (i > 0) group.append('.');
+            group.append(rel.getName(i));
+        }
+        return group + ":" + artifact + ":" + version;
     }
 
     private boolean hasTrackedFile(Path versionDir) {
         if (!Files.isDirectory(versionDir)) return false;
         try (Stream<Path> entries = Files.list(versionDir)) {
             return entries.anyMatch(
-                    p -> Files.isRegularFile(p) && !p.getFileName().toString().endsWith(".sha256"));
+                    p -> Files.isRegularFile(p) && !isMemoName(p.getFileName().toString()));
         } catch (IOException e) {
             return false;
         }
@@ -493,11 +465,12 @@ public final class RepoArtifactStore {
         Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
         AtomicWrites.moveInto(tmp, target);
         String hex = Hashing.sha256Hex(target);
-        Files.writeString(Path.of(target + ".sha256"), hex);
-        // Ingest into the sibling CAS too: the compile classpath is materialized from
-        // sha256/<hex> for every locked artifact — local sources included — so a repos/local file
-        // without its blob locks fine and then silently vanishes from javac's classpath. Linking
-        // jk's own immutable repos/local entry mirrors materialize()'s CAS→repos link.
-        new cc.jumpkick.cache.Cas(artifactRoot).linkFile(target, hex);
+        ArtifactMemo.ofBlob(target, inferGav(relativePath), hex)
+                .write(target.resolveSibling(
+                        ArtifactMemo.jkFileName(target.getFileName().toString())));
+    }
+
+    private static boolean isMemoName(String fileName) {
+        return fileName.endsWith(".jk") || fileName.endsWith(".sha256");
     }
 }

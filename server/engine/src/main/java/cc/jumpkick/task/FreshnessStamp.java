@@ -79,7 +79,7 @@ public final class FreshnessStamp {
     static boolean isContentAddressed(Path p) {
         if (p == null) return false;
         String s = p.toString().replace('\\', '/');
-        return s.contains("/sha256/");
+        return s.contains("/sha256/") || s.startsWith("sha256/");
     }
 
     /**
@@ -207,38 +207,23 @@ public final class FreshnessStamp {
     }
 
     /**
-     * Stable classpath identity for stamp compare/write. Locked store jars may appear as either
-     * {@code store/sha256/ab/cd/…} or {@code store/repos/&lt;name&gt;/…/artifact.jar} (same bytes).
-     * Prefer the CAS form so build and explain agree after ClasspathResolver path policy changes.
+     * Stable classpath identity for stamp compare/write. Locked jars may live under the Maven
+     * local repo or {@code repos/<name>/}; identity is the content hash, not the path.
      */
     public static Path identityKey(Path p) {
         if (p == null) return Path.of(".");
-        Path abs = p.toAbsolutePath().normalize();
-        String s = abs.toString().replace('\\', '/');
-        int storeAt = s.indexOf("/store/");
-        if (storeAt < 0) return abs;
-        // Already content-addressed.
-        if (s.contains("/store/sha256/")) return abs;
-        // Named-repo view: prefer the CAS blob named by the sidecar hash.
-        Path sidecar = Path.of(abs + ".sha256");
-        if (Files.isRegularFile(sidecar)) {
-            try {
-                String hex = Files.readString(sidecar, StandardCharsets.UTF_8).trim();
-                if (hex.length() >= 64) {
-                    hex = hex.substring(0, 64);
-                    if (hex.chars().allMatch(c -> (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) {
-                        Path storeRoot = Path.of(s.substring(0, storeAt + "/store".length()));
-                        return storeRoot
-                                .resolve("sha256")
-                                .resolve(hex.substring(0, 2))
-                                .resolve(hex.substring(2, 4))
-                                .resolve(hex.substring(4));
-                    }
-                }
-            } catch (IOException ignored) {
-            }
+        if (p.getNameCount() >= 2 && "sha256".equals(p.getName(0).toString()) && !Files.isRegularFile(p)) {
+            return p;
         }
-        return abs;
+        Path abs = p.toAbsolutePath().normalize();
+        if (!Files.isRegularFile(abs)) return abs;
+        String name = abs.getFileName().toString();
+        if (!name.endsWith(".jar") && !name.endsWith(".aar") && !name.endsWith(".zip")) return abs;
+        try {
+            return Path.of("sha256", FileHashMemo.contentHash(abs));
+        } catch (IOException e) {
+            return abs;
+        }
     }
 
     private static boolean newerThan(Path file, long stampMillis) throws IOException {

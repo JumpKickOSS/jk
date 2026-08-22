@@ -26,12 +26,13 @@ import java.util.Queue;
 import java.util.Set;
 
 /**
- * Maps a {@link Lockfile}'s checksummed packages to on-disk artifact paths in the {@link Cas},
- * filtered by scope. Packages without a checksum (POM-only / path / git) are skipped — they don't
- * contribute to the compile classpath.
+ * Maps a {@link Lockfile}'s checksummed packages to on-disk {@code *.jar} paths, filtered by
+ * scope. Packages without a checksum (POM-only / path / git) are skipped — they don't contribute
+ * to the compile classpath.
  *
- * <p>This is a pure name-resolution step: it doesn't fetch anything. {@code jk sync} ensures the
- * CAS is populated.
+ * <p>This is a pure name-resolution step: it doesn't fetch anything. {@code jk sync} ensures
+ * artifacts are on disk. Paths are Maven-layout names (local repo or {@code repos/<name>/}), never
+ * hash-named CAS blobs.
  *
  * <p>Workspace locks are a <strong>union</strong> of every module's graph. Prefer
  * {@link #classpathClosure} / {@link #entriesForClosure} for packaging (assembly, native-image)
@@ -61,10 +62,20 @@ public final class ClasspathResolver {
     public static final Set<Scope> COMPILE_TEST =
             EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.PROVIDED, Scope.TEST, Scope.TEST_DEV);
 
-    private final Cas cas;
+    private final Path storeRoot;
+    private final cc.jumpkick.repo.ArtifactLocator locator;
 
     public ClasspathResolver(Cas cas) {
-        this.cas = Objects.requireNonNull(cas, "cas");
+        this(Objects.requireNonNull(cas, "cas").root());
+    }
+
+    public ClasspathResolver(Path storeRoot) {
+        this(storeRoot, new cc.jumpkick.repo.ArtifactLocator(storeRoot));
+    }
+
+    public ClasspathResolver(Path storeRoot, cc.jumpkick.repo.ArtifactLocator locator) {
+        this.storeRoot = Objects.requireNonNull(storeRoot, "storeRoot");
+        this.locator = Objects.requireNonNull(locator, "locator");
     }
 
     /** Backwards-compat overload: returns every checksummed package. */
@@ -242,17 +253,18 @@ public final class ClasspathResolver {
                 continue;
             }
             String hex = checksum.startsWith("sha256:") ? checksum.substring("sha256:".length()) : checksum;
-            // Always use the content-addressed CAS path for jar classpath entries.
-            // repos/<name>/<m2-path> is human-readable but optional: a blob may exist only under
-            // sha256/ until the named-repo view is linked (or vice versa). Mixing the two forms
-            // across build vs explain made FreshnessStamp / ActionCache treat every module as
-            // "classpath changed" after a successful build (JK explain/build dirty skew).
-            // The CAS path is the stable identity of the locked bytes.
+            Path jar = locator.locate(pkg).orElse(null);
+            if (jar == null) {
+                System.err.println("jk: warning: lock row "
+                        + pkg.name()
+                        + "@"
+                        + pkg.version()
+                        + " is not on disk — skipped from classpath (run `jk sync`)");
+                continue;
+            }
             if (pkg.isAar()) {
-                // Container packaging: the classpath entry is the exploded AAR's classes.jar;
-                // the container dir itself rides along for resource/manifest consumers.
                 try {
-                    Path container = cc.jumpkick.cache.ExplodedArchives.explode(cas, hex);
+                    Path container = cc.jumpkick.cache.ExplodedArchives.explodeFile(new Cas(storeRoot), jar);
                     Path classesJar = container.resolve("classes.jar");
                     result.add(new Entry(pkg, Files.isRegularFile(classesJar) ? classesJar : null, container));
                 } catch (IOException e) {
@@ -261,10 +273,7 @@ public final class ClasspathResolver {
                 ledger.touch(hex);
                 continue;
             }
-            // Ensure the blob is present (and repos views stay linked for humans) without
-            // using the repos path as the fingerprint.
-            resolveFromRepos(pkg, hex);
-            result.add(new Entry(pkg, cas.pathFor(hex)));
+            result.add(new Entry(pkg, jar));
             ledger.touch(hex);
         }
         return result;
@@ -309,22 +318,5 @@ public final class ClasspathResolver {
         if (hasTest) return 50;
         if (hasProc) return 25;
         return 0;
-    }
-
-    /**
-     * Named-repo store path for {@code pkg} verified against locked hash {@code hex}, or null when
-     * missing, hash-mismatched, or not a named remote (caller falls back to CAS).
-     */
-    private Path resolveFromRepos(Lockfile.Artifact pkg, String hex) {
-        String repoName = cc.jumpkick.repo.RepoArtifactResolver.repoName(pkg.source());
-        // Only a named remote repo has a full store under repos/<name>/; skip local/git/missing.
-        if (!cc.jumpkick.repo.RepoArtifactResolver.isNamedRemote(repoName)) return null;
-        if (pkg.name().indexOf(':') < 0) return null;
-        cc.jumpkick.model.Coordinate coord = pkg.coordinate();
-        String m2Path = cc.jumpkick.repo.MavenLayout.artifactPath(coord);
-        // locate() gives the repos/<name>/<m2-path> artifact path (human-readable) rather than a
-        // sha256/AB/CD/… CAS path.
-        cc.jumpkick.repo.RepoArtifactStore store = cc.jumpkick.repo.RepoArtifactStore.forRepoName(cas.root(), repoName);
-        return store.locate(m2Path, hex).orElse(null);
     }
 }
