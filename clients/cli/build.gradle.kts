@@ -127,6 +127,9 @@ val springBootWorkerJar by configurations.creating {
 val androidWorkerJar by configurations.creating {
     isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
 }
+val javaCompilerWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
 dependencies {
     kotlinWorkerJar(project(":kotlin-compiler"))
     groovyWorkerJar(project(":groovy-compiler"))
@@ -137,6 +140,7 @@ dependencies {
     compatBridgeWorkerJar(project(":compat-bridge"))
     springBootWorkerJar(project(":spring-boot"))
     androidWorkerJar(project(":android"))
+    javaCompilerWorkerJar(project(":java-compiler"))
 }
 
 // Unique short UDS state dir for this test task run. UDS sun_path is ~108 bytes;
@@ -191,8 +195,10 @@ tasks.named<Test>("integrationTest") {
             ":engine:shadowJar",
             kotlinWorkerJar, groovyWorkerJar, testRunnerJar, auditorWorkerJar, publisherWorkerJar,
             imageBuilderWorkerJar, compatBridgeWorkerJar, springBootWorkerJar, androidWorkerJar,
+            javaCompilerWorkerJar,
             ":kotlin-compiler:stageWorkerRepo",
             ":groovy-compiler:stageWorkerRepo",
+            ":java-compiler:stageWorkerRepo",
             ":test-runner:stageWorkerRepo",
             ":auditor:stageWorkerRepo",
             ":publisher:stageWorkerRepo",
@@ -227,6 +233,7 @@ tasks.named<Test>("integrationTest") {
         listOf(
                         ":kotlin-compiler",
                         ":groovy-compiler",
+                        ":java-compiler",
                         ":test-runner",
                         ":auditor",
                         ":publisher",
@@ -244,6 +251,7 @@ tasks.named<Test>("integrationTest") {
         systemProperty("jk.engine.jar", engineJar.absolutePath)
         systemProperty("jk.kotlin.plugin.jar", kotlinWorkerJar.singleFile.absolutePath)
         systemProperty("jk.groovy.plugin.jar", groovyWorkerJar.singleFile.absolutePath)
+        systemProperty("jk.java.plugin.jar", javaCompilerWorkerJar.singleFile.absolutePath)
         systemProperty("jk.test.runner.jar", testRunnerJar.singleFile.absolutePath)
         systemProperty("jk.auditor.plugin.jar", auditorWorkerJar.singleFile.absolutePath)
         systemProperty("jk.publisher.plugin.jar", publisherWorkerJar.singleFile.absolutePath)

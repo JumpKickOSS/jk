@@ -92,8 +92,10 @@ class ScalaBuildE2eTest {
         BuildPlanResult result = build(project, cache);
         assertThat(result.errors()).as("errors=%s", result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
-        assertThat(project.resolve("target/classes/main/com/example/Over.class")).exists();
-        assertThat(project.resolve("target/classes/main/com/example/Plain.class")).exists();
+        assertThat(project.resolve("target/classes/main/com/example/Over.class"))
+                .exists();
+        assertThat(project.resolve("target/classes/main/com/example/Plain.class"))
+                .exists();
     }
 
     @Test

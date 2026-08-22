@@ -39,7 +39,7 @@ else
 fi
 BUCKET="${JK_MAVEN_BUCKET:-jumpkick}"
 PREFIX="${JK_MAVEN_PREFIX:-repo}"
-LOCAL="$STORE/repos/local/cc/jumpkick"
+LOCAL="$STORE/repos/jk-local/cc/jumpkick"
 
 if [[ ! -d "$LOCAL" ]]; then
   echo "publish-maven-repo: missing $LOCAL — run ./gradlew installLocal or jk install first" >&2

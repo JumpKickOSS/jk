@@ -191,6 +191,11 @@ public final class ManifestTables {
         if (repos == null) return List.of();
         List<RepositorySpec> result = new ArrayList<>(repos.size());
         for (String name : repos.keySet()) {
+            if (RepositorySpec.JK_LOCAL.equals(name)) {
+                throw new JkBuildParseException(
+                        "repositories.jk-local is reserved for JumpKick's first-party install store"
+                                + " (repos/jk-local); pick another repository name");
+            }
             Object value = repos.get(name);
             String url;
             Optional<RepoCredential> credential = Optional.empty();

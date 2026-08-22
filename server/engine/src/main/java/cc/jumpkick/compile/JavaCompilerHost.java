@@ -21,6 +21,7 @@ import java.util.TreeSet;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -140,8 +141,7 @@ public final class JavaCompilerHost {
         private cc.jumpkick.engine.plugin.PluginSlots.Lease slot;
         // Bounded ring of the worker's most recent non-protocol lines, surfaced on a crash (JK-2296).
         private static final int TAIL_MAX = 50;
-        private final java.util.concurrent.ConcurrentLinkedDeque<String> passthroughTail =
-                new java.util.concurrent.ConcurrentLinkedDeque<>();
+        private final ConcurrentLinkedDeque<String> passthroughTail = new ConcurrentLinkedDeque<>();
 
         Session(long id, ForkedJavac.Request template) {
             io = Thread.ofVirtual().name("jk-zinc-host-" + id).start(() -> run(template));

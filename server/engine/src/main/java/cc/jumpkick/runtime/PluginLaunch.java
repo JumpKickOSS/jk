@@ -18,7 +18,7 @@ import java.util.jar.JarFile;
  * cc.jumpkick.plugin.process.PluginMain <spec>}. Heap sizing goes through {@link
  * JvmOptions}' shared plan.
  *
- * <p>Classpath resolution: sibling POM + {@code repos/local} (and the other store repos).
+ * <p>Classpath resolution: sibling POM + {@code repos/jk-local} (and the other store repos).
  */
 final class PluginLaunch {
 

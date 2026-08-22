@@ -24,9 +24,15 @@ class RepoSourceTest {
 
     @Test
     void no_plus_yields_null_name_and_whole_string_url() {
-        RepoSource rs = RepoSource.parse("local");
-        assertThat(rs.name()).isNull();
-        assertThat(rs.url()).isEqualTo("local"); // whole-string fallback (PolicyChecker contract)
+        // First-party store marker in the lockfile is the bare source "jk-local".
+        RepoSource jkLocal = RepoSource.parse("jk-local");
+        assertThat(jkLocal.name()).isNull();
+        assertThat(jkLocal.url()).isEqualTo("jk-local"); // whole-string fallback (PolicyChecker contract)
+
+        // Any bare token without '+' behaves the same (generic no-plus contract).
+        RepoSource bare = RepoSource.parse("local");
+        assertThat(bare.name()).isNull();
+        assertThat(bare.url()).isEqualTo("local");
     }
 
     @Test

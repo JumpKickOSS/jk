@@ -39,7 +39,7 @@ class PinnedWorkerJarTest {
         Path resolved = PluginDescriptorOps.pinnedLayoutJar(new Cas(cache), MODULE, VERSION, hex)
                 .orElseThrow();
 
-        assertThat(resolved).isEqualTo(cache.resolve("repos/local").resolve(REL));
+        assertThat(resolved).isEqualTo(cache.resolve("repos/jk-local").resolve(REL));
         assertThat(resolved).isRegularFile();
         assertThat(Files.isSameFile(resolved, blob))
                 .as("copy, not a CAS hard link")
@@ -61,7 +61,7 @@ class PinnedWorkerJarTest {
                 .orElseThrow();
 
         assertThat(resolved).isEqualTo(cache.resolve("repos/jumpkick").resolve(REL));
-        assertThat(cache.resolve("repos/local").resolve(REL)).doesNotExist();
+        assertThat(cache.resolve("repos/jk-local").resolve(REL)).doesNotExist();
     }
 
     @Test

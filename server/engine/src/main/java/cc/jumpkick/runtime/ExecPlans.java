@@ -878,8 +878,10 @@ public final class ExecPlans {
         }
 
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
-        Path repoJar =
-                JkStores.storeRootFor(cache).resolve("repos").resolve("local").resolve(MavenLayout.artifactPath(coord));
+        Path repoJar = JkStores.storeRootFor(cache)
+                .resolve("repos")
+                .resolve(cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL)
+                .resolve(MavenLayout.artifactPath(coord));
         if (!Files.isRegularFile(repoJar)) {
             repoJar = layout.mainJar();
         }

@@ -21,9 +21,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.ServiceLoader;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import javax.annotation.processing.Processor;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaFileObject;
@@ -318,7 +319,9 @@ public final class ZincJavaCompiler {
             }
             return new Result(false, diags, javac == null ? List.of() : javac.compiledSources());
         } catch (RuntimeException e) {
-            String msg = e.getMessage() == null ? e.getClass().getName() : e.getClass().getName() + ": " + e.getMessage();
+            String msg = e.getMessage() == null
+                    ? e.getClass().getName()
+                    : e.getClass().getName() + ": " + e.getMessage();
             return new Result(false, List.of(new Diag("ERROR", null, 0, 0, msg)), List.of());
         } finally {
             processors.close();
@@ -352,11 +355,7 @@ public final class ZincJavaCompiler {
      * merged provenance for the next build.
      */
     private static void reconcileGeneratedOutputs(
-            Path workdir,
-            Path sourceOutput,
-            Path classOutput,
-            List<Path> compiledSources,
-            Map<Path, Set<Path>> newProv)
+            Path workdir, Path sourceOutput, Path classOutput, List<Path> compiledSources, Map<Path, Set<Path>> newProv)
             throws IOException {
         if (workdir == null) return;
         Path provFile = workdir.resolve("provenance.tsv");
@@ -651,7 +650,7 @@ public final class ZincJavaCompiler {
 
     private static Compilers mixedCompilers(JavaCompiler javac, MixedScala mixed) {
         String key = mixed.version() + "\n"
-                + mixed.compilerClasspath().stream().map(Path::toString).collect(java.util.stream.Collectors.joining("\n"));
+                + mixed.compilerClasspath().stream().map(Path::toString).collect(Collectors.joining("\n"));
         xsbti.compile.ScalaCompiler scalac = SCALAC_CACHE.computeIfAbsent(key, k -> buildScalac(mixed));
         xsbti.compile.Javadoc javadoc =
                 Javadoc.local().isDefined() ? Javadoc.local().get() : Javadoc.fork(scala.Option.empty());

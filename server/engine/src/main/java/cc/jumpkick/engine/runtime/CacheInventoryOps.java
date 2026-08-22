@@ -247,15 +247,17 @@ public final class CacheInventoryOps {
     }
 
     private static List<String> repoNames(Path reposRoot) {
-        if (!Files.isDirectory(reposRoot)) return List.of("central", "local");
+        if (!Files.isDirectory(reposRoot)) {
+            return List.of("central", cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL);
+        }
         try (var s = Files.list(reposRoot)) {
             List<String> names = s.filter(Files::isDirectory)
                     .map(p -> p.getFileName().toString())
                     .sorted()
                     .toList();
-            return names.isEmpty() ? List.of("central", "local") : names;
+            return names.isEmpty() ? List.of("central", cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL) : names;
         } catch (IOException e) {
-            return List.of("central", "local");
+            return List.of("central", cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL);
         }
     }
 

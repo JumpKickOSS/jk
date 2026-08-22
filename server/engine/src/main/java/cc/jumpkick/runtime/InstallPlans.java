@@ -35,7 +35,7 @@ import java.util.Set;
 
 /**
  * {@code jk install} heavy halves: {@link #projectInstallBuildPlan} (build + cache-install into
- * {@code repos/local/}) and {@link #gitFetchBuildPlan}. User-home launcher shims stay client-side.
+ * {@code repos/jk-local/}) and {@link #gitFetchBuildPlan}. User-home launcher shims stay client-side.
  */
 public final class InstallPlans {
 
@@ -193,7 +193,7 @@ public final class InstallPlans {
     }
 
     /**
-     * Install the built JAR and POM into {@code repos/local/}; when {@code [m2] install} (and the
+     * Install the built JAR and POM into {@code repos/jk-local/}; when {@code [m2] install} (and the
      * machine {@code JK_M2_INSTALL} policy) is on, also write the Maven local repo with checksum
      * sidecars. Independent of {@code [m2] integration}.
      */
@@ -238,7 +238,7 @@ public final class InstallPlans {
 
     /**
      * True when this module's thin jar and POM are already installed at the same SHA-256
-     * ({@code repos/local}, or the Maven local repo when {@code [m2] install} is on).
+     * ({@code repos/jk-local}, or the Maven local repo when {@code [m2] install} is on).
      */
     public static boolean alreadyInstalled(JkBuild project, BuildLayout layout, Path cacheDir) {
         if (project == null || layout == null) return false;
@@ -252,8 +252,9 @@ public final class InstallPlans {
             String jarHex = Hashing.sha256Hex(jar);
             String pomHex = Hashing.sha256Hex(renderedPom(project, layout));
             if (installToMavenLocal(p)) {
-                Path storeLocal =
-                        JkStores.storeRootFor(cacheDir).resolve("repos").resolve("local");
+                Path storeLocal = JkStores.storeRootFor(cacheDir)
+                        .resolve("repos")
+                        .resolve(cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL);
                 Path m2 = M2Dirs.localRepository();
                 return ArtifactMemo.verify(
                                 m2.resolve(jarRel), ArtifactMemo.jkPath(storeLocal, jarRel), coord.toGav(), jarHex)
@@ -357,10 +358,11 @@ public final class InstallPlans {
     }
 
     private static RepoArtifactStore localStore(Path cacheDir) {
-        return RepoArtifactStore.forRepoName(JkStores.storeRootFor(cacheDir), "local");
+        return RepoArtifactStore.forRepoName(
+                JkStores.storeRootFor(cacheDir), cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL);
     }
 
-    /** Write byte content into {@code repos/local/} as a full-store entry with a {@code .jk} memo. */
+    /** Write byte content into {@code repos/jk-local/} as a full-store entry with a {@code .jk} memo. */
     private static void writeBytesToLocalStore(Path cacheDir, String relativePath, byte[] content) throws IOException {
         Path tmp = Files.createTempFile("jk-install-", ".bin");
         try {

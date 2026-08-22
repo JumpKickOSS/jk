@@ -515,7 +515,7 @@ public final class LockOrchestrator {
             packages.add(new Lockfile.Artifact(
                     dep.module(),
                     version,
-                    "local",
+                    cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL,
                     "sha256:" + dep.sha256(),
                     null,
                     new ArrayList<>(tags),

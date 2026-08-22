@@ -132,7 +132,7 @@ public final class BuildForecasting {
         // The dirty memo's clean claim covers package outputs only (it checks the module target
         // dir, not terminal artifacts). NATIVE/IMAGE/COMPILE/INSTALL must always run the
         // target-aware forecast walk — a memo hit here would skip a missing binary, a
-        // never-skippable image push, or a cache-install into repos/local. The memo is also
+        // never-skippable image push, or a cache-install into repos/jk-local. The memo is also
         // keyed without target, so a PACKAGE store must never be consumed by a terminal-target
         // run (jk build && jk install would no-op to success).
         // The memo is also keyed without the test selection: a widened run (`jk build --all`,

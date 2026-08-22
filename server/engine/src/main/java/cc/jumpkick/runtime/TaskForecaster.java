@@ -757,7 +757,7 @@ public final class TaskForecaster {
                         cc.jumpkick.run.TaskNames.WRITE_IMAGE, TaskForecast.Status.RUN, "image side-effect", null));
             }
 
-            // ---- cache-install — jk install terminal. Skip when repos/local already has this
+            // ---- cache-install — jk install terminal. Skip when repos/jk-local already has this
             // jar (matching SHA) and its POM. A packaged-but-never-installed module still runs.
             if (target == WorkspaceTarget.INSTALL && terminalDirs.contains(dir)) {
                 boolean jarDirty = steps.stream()

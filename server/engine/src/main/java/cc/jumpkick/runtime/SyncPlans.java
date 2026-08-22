@@ -273,6 +273,10 @@ public final class SyncPlans {
                         try {
                             var r = repos.tryFetchArtifact(coord);
                             if (r.isPresent()) {
+                                cas.putFile(r.get().fetched().cachePath(), hex);
+                                // Worker classpath needs the sibling POM next to the jar.
+                                repos.tryFetchArtifact(
+                                        new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "pom"));
                                 ctx.label("fetched " + pe.coordinate() + ":" + pe.version());
                             } else {
                                 ctx.error("plugin", pe.coordinate() + " not found in any repo");

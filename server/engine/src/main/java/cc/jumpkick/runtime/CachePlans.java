@@ -262,7 +262,7 @@ public final class CachePlans {
 
         // Size-bound the Maven-layout repos/ tree against the store budget — nothing enforced it
         // after the migration, so it grew without limit (JK-2304). Budget for repos/ is the store
-        // budget minus what the store CAS already occupies; repos/local is exempt.
+        // budget minus what the store CAS already occupies; repos/jk-local is exempt.
         long storeBudget = resolveStoreBudget();
         if (storeBudget > 0) {
             long storeCasBytes = cc.jumpkick.cache.DiskUsage.of(cc.jumpkick.cache.JkStores.resolve(root, "sha256"))

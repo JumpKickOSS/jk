@@ -12,15 +12,15 @@ import java.nio.file.Path;
 
 /**
  * Ensures jk's own child-JVM plugin jars ({@code jk-test-runner}, {@code jk-kotlin-compiler}, …)
- * are present in {@code repos/local/} so {@link PluginJar#locate()} can find them by Maven
+ * are present in {@code repos/jk-local/} so {@link PluginJar#locate()} can find them by Maven
  * coordinate.
  *
  * <p>These aren't project dependencies — they're jk's tooling, pinned to jk's own version. Until
  * they're published to Maven Central, {@code jk sync} copies them from the local Maven repository
  * ({@code ~/.m2/repository}, populated by {@code ./gradlew publishToMavenLocal} in jk's tree) into
- * {@code <cache>/repos/local/} in the m2 layout that {@link RepoArtifactStore} understands.
+ * {@code <cache>/repos/jk-local/} in the m2 layout that {@link RepoArtifactStore} understands.
  *
- * <p>Best-effort: a plugin already in {@code repos/local/} or {@code repos/central/} is skipped,
+ * <p>Best-effort: a plugin already in {@code repos/jk-local/} or {@code repos/central/} is skipped,
  * and a plugin absent from {@code ~/.m2} is reported but doesn't fail the sync.
  */
 public final class JkPluginSync {
@@ -44,7 +44,7 @@ public final class JkPluginSync {
     public static Result ensureInCas(Cas cas, Observer obs) throws IOException, InterruptedException {
         Path m2 = cc.jumpkick.repo.M2Dirs.localRepository();
         Path cacheRoot = cas.root();
-        RepoArtifactStore localStore = new RepoArtifactStore(cacheRoot, "local");
+        RepoArtifactStore localStore = new RepoArtifactStore(cacheRoot, cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL);
         RepoArtifactStore centralStore = new RepoArtifactStore(cacheRoot, "central");
         int present = 0;
         int fetched = 0;
@@ -61,7 +61,7 @@ public final class JkPluginSync {
                 continue;
             }
 
-            // Try to copy from ~/.m2/repository into repos/local/
+            // Try to copy from ~/.m2/repository into repos/jk-local/
             Path m2Jar = m2.resolve(relPath.replace('/', File.separatorChar));
             if (!Files.isRegularFile(m2Jar)) {
                 missing++;

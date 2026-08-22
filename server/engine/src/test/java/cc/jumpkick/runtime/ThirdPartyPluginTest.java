@@ -103,6 +103,12 @@ class ThirdPartyPluginTest {
                 group = "com.demo"
                 version = "0.1.0"
 
+                # Keep the fixture jar+pom under repos/<name>/ (not ~/.m2) so worker launch
+                # finds a sibling POM next to the jar.
+                [m2]
+                integration = false
+                install = false
+
                 [repositories]
                 local = "%s"
 
@@ -121,11 +127,18 @@ class ThirdPartyPluginTest {
         // 2. Lock: resolve the coordinate exactly as lock-plugins does — fetch, SHA-pin, extract.
         // JkStores.cas, not new Cas(cache): the engine reads plugin jars through the shared
         // store root, so the fetch must land there too or ensureMaterialized sees no jar.
+        // JkStores.cas ignores the temp cache path and uses the ambient product store (same
+        // root PluginDescriptorOps.ensureMaterialized reads). Fetch into that store, then put the
+        // jar into the CAS blob pool — matching SyncPlans.syncPlugins.
         Cas cas = cc.jumpkick.cache.JkStores.cas(cache);
         RepoGroup repos = RepoGroupBuilder.buildFor(build, null, cas);
-        var fetched =
-                repos.tryFetchArtifact(Coordinate.of(GROUP, ARTIFACT, VERSION)).orElseThrow();
+        Coordinate jarCoord = Coordinate.of(GROUP, ARTIFACT, VERSION);
+        var fetched = repos.tryFetchArtifact(jarCoord).orElseThrow();
         assertThat(fetched.fetched().sha256()).isEqualTo(hex);
+        // Sibling POM is required for worker classpath reconstruction.
+        repos.tryFetchArtifact(new Coordinate(GROUP, ARTIFACT, VERSION, null, "pom"))
+                .orElseThrow();
+        cas.putFile(fetched.fetched().cachePath(), hex);
         var entry = new Lockfile.PluginEntry(
                 GROUP + ":" + ARTIFACT, VERSION, "sha256:" + fetched.fetched().sha256());
         LockfileWriter.write(

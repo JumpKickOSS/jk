@@ -26,7 +26,7 @@ import java.util.Optional;
 /**
  * Registry of jk's child-JVM plugin jars. Locates each by Maven coordinate
  * ({@code cc.jumpkick:<artifactId>:<version>}), in order: {@code -D} jar property, then local cache
- * stores ({@code repos/local}, {@code repos/jumpkick}, {@code repos/central}), then a one-shot
+ * stores ({@code repos/jk-local}, {@code repos/jumpkick}, {@code repos/central}), then a one-shot
  * fetch from the official JumpKick Maven repository into {@code repos/jumpkick/}.
  */
 public enum PluginJar {
@@ -103,7 +103,7 @@ public enum PluginJar {
         String coordinate = "cc.jumpkick:" + artifactId + ":" + JkVersion.VERSION;
         List<Path> checked = new ArrayList<>();
 
-        for (String repoName : List.of("local", OFFICIAL_REPO, "central")) {
+        for (String repoName : List.of(cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL, OFFICIAL_REPO, "central")) {
             RepoArtifactStore store = new RepoArtifactStore(cacheRoot, repoName);
             var result = store.locate(relPath);
             if (result.isPresent()) return result.get();
@@ -135,7 +135,7 @@ public enum PluginJar {
             Path jar = Path.of(override);
             return Files.isRegularFile(jar) ? jar : null;
         }
-        for (String repoName : List.of("local", OFFICIAL_REPO, "central")) {
+        for (String repoName : List.of(cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL, OFFICIAL_REPO, "central")) {
             var result = new RepoArtifactStore(cas.root(), repoName).locate(relativePath());
             if (result.isPresent()) return result.get();
         }
@@ -211,9 +211,8 @@ public enum PluginJar {
             Files.deleteIfExists(tmpPom);
         }
         Path localJar = store.locate(relPath)
-                .orElseThrow(() -> new IOException(
-                        "could not materialize official worker jar " + relPath + " under " + store.root()
-                                + " (store write failed — check disk space and permissions)"));
+                .orElseThrow(() -> new IOException("could not materialize official worker jar " + relPath + " under "
+                        + store.root() + " (store write failed — check disk space and permissions)"));
         fetchOfficialClosure(cas, http, base, localJar);
         return localJar;
     }

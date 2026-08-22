@@ -28,8 +28,8 @@ class PomRuntimeClasspathTest {
     void single_arg_resolve_memoizes_until_the_jar_or_pom_changes(@TempDir Path tmp) throws Exception {
         Path store = tmp.resolve("store");
         Coordinate worker = Coordinate.of("cc.jumpkick", "jk-test-runner", "0.12.0");
-        Path workerJar = putJar(store, "local", worker, "worker-bytes");
-        putPom(store, "local", worker, """
+        Path workerJar = putJar(store, RepoArtifactResolver.JK_LOCAL, worker, "worker-bytes");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, worker, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>cc.jumpkick</groupId>
@@ -42,7 +42,7 @@ class PomRuntimeClasspathTest {
         assertThat(PomRuntimeClasspath.resolve(workerJar)).isSameAs(first);
 
         // A republished POM (new mtime) must invalidate the memo.
-        Path pomPath = store.resolve("repos/local").resolve(MavenLayout.pomPath(worker));
+        Path pomPath = store.resolve("repos/jk-local").resolve(MavenLayout.pomPath(worker));
         FileTime bumped = FileTime.fromMillis(Files.getLastModifiedTime(pomPath).toMillis() + 5_000);
         Files.setLastModifiedTime(pomPath, bumped);
         assertThat(PomRuntimeClasspath.resolve(workerJar)).isNotSameAs(first).isEqualTo(first);
@@ -54,8 +54,8 @@ class PomRuntimeClasspathTest {
         Coordinate worker = Coordinate.of("cc.jumpkick", "jk-test-runner", "0.12.0");
         Coordinate sdk = Coordinate.of("cc.jumpkick", "jk-plugin-sdk", "0.12.0");
         Coordinate junit = Coordinate.of("org.junit.jupiter", "junit-jupiter", "5.12.0");
-        Path workerJar = putJar(store, "local", worker, "worker-bytes");
-        putPom(store, "local", worker, """
+        Path workerJar = putJar(store, RepoArtifactResolver.JK_LOCAL, worker, "worker-bytes");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, worker, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>cc.jumpkick</groupId>
@@ -76,8 +76,8 @@ class PomRuntimeClasspathTest {
                   </dependencies>
                 </project>
                 """);
-        putJar(store, "local", sdk, "sdk-bytes");
-        putPom(store, "local", sdk, """
+        putJar(store, RepoArtifactResolver.JK_LOCAL, sdk, "sdk-bytes");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, sdk, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>cc.jumpkick</groupId>
@@ -90,7 +90,7 @@ class PomRuntimeClasspathTest {
         List<Path> cp = resolve(store, workerJar);
         assertThat(cp).contains(workerJar.toAbsolutePath().normalize());
         assertThat(cp)
-                .contains(store.resolve("repos/local")
+                .contains(store.resolve("repos/jk-local")
                         .resolve(MavenLayout.artifactPath(sdk))
                         .toAbsolutePath()
                         .normalize());
@@ -116,8 +116,8 @@ class PomRuntimeClasspathTest {
         Path workspaceJar = tmp.resolve("target/plugins/host-worker/jk-host-worker-1.0.0.jar");
         Files.createDirectories(workspaceJar.getParent());
         Files.writeString(workspaceJar, "workspace-worker");
-        putJar(host, "local", worker, "store-worker");
-        putPom(host, "local", worker, """
+        putJar(host, RepoArtifactResolver.JK_LOCAL, worker, "store-worker");
+        putPom(host, RepoArtifactResolver.JK_LOCAL, worker, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>cc.jumpkick</groupId>
@@ -132,8 +132,8 @@ class PomRuntimeClasspathTest {
                   </dependencies>
                 </project>
                 """);
-        Path depJar = putJar(host, "local", dep, "dep-bytes");
-        putPom(host, "local", dep, """
+        Path depJar = putJar(host, RepoArtifactResolver.JK_LOCAL, dep, "dep-bytes");
+        putPom(host, RepoArtifactResolver.JK_LOCAL, dep, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>org.example</groupId>
@@ -166,8 +166,8 @@ class PomRuntimeClasspathTest {
         Path sandbox = tmp.resolve("sandbox-home");
         Files.createDirectories(sandbox);
         Coordinate worker = Coordinate.of("cc.jumpkick", "jk-host-worker", "1.0.0");
-        putJar(host, "local", worker, "store-worker");
-        putPom(host, "local", worker, """
+        putJar(host, RepoArtifactResolver.JK_LOCAL, worker, "store-worker");
+        putPom(host, RepoArtifactResolver.JK_LOCAL, worker, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>cc.jumpkick</groupId>
@@ -206,8 +206,8 @@ class PomRuntimeClasspathTest {
         Coordinate databind = Coordinate.of("org.example", "databind", "1.0");
         Coordinate annotations = Coordinate.of("org.example", "annotations", "2.21");
         Coordinate parent = Coordinate.of("org.example", "parent", "1.0");
-        Path workerJar = putJar(store, "local", worker, "worker");
-        putPom(store, "local", worker, """
+        Path workerJar = putJar(store, RepoArtifactResolver.JK_LOCAL, worker, "worker");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, worker, """
                 <project>
                   <groupId>cc.jumpkick</groupId>
                   <artifactId>jk-formatter</artifactId>
@@ -221,7 +221,7 @@ class PomRuntimeClasspathTest {
                   </dependencies>
                 </project>
                 """);
-        putPom(store, "local", parent, """
+        putPom(store, RepoArtifactResolver.JK_LOCAL, parent, """
                 <project>
                   <groupId>org.example</groupId>
                   <artifactId>parent</artifactId>
@@ -232,8 +232,8 @@ class PomRuntimeClasspathTest {
                   </properties>
                 </project>
                 """);
-        putJar(store, "local", databind, "databind");
-        putPom(store, "local", databind, """
+        putJar(store, RepoArtifactResolver.JK_LOCAL, databind, "databind");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, databind, """
                 <project>
                   <parent>
                     <groupId>org.example</groupId>
@@ -251,8 +251,8 @@ class PomRuntimeClasspathTest {
                   </dependencies>
                 </project>
                 """);
-        Path annotationsJar = putJar(store, "local", annotations, "annotations");
-        putPom(store, "local", annotations, """
+        Path annotationsJar = putJar(store, RepoArtifactResolver.JK_LOCAL, annotations, "annotations");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, annotations, """
                 <project>
                   <groupId>org.example</groupId>
                   <artifactId>annotations</artifactId>
@@ -271,8 +271,8 @@ class PomRuntimeClasspathTest {
         Coordinate worker = Coordinate.of("cc.jumpkick", "jk-formatter", "1.0");
         Coordinate bom = Coordinate.of("org.example", "bom", "1.0");
         Coordinate lib = Coordinate.of("org.example", "lib", "9.9.9");
-        Path workerJar = putJar(store, "local", worker, "worker");
-        putPom(store, "local", worker, """
+        Path workerJar = putJar(store, RepoArtifactResolver.JK_LOCAL, worker, "worker");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, worker, """
                 <project>
                   <groupId>cc.jumpkick</groupId>
                   <artifactId>jk-formatter</artifactId>
@@ -296,7 +296,7 @@ class PomRuntimeClasspathTest {
                   </dependencies>
                 </project>
                 """);
-        putPom(store, "local", bom, """
+        putPom(store, RepoArtifactResolver.JK_LOCAL, bom, """
                 <project>
                   <groupId>org.example</groupId>
                   <artifactId>bom</artifactId>
@@ -313,8 +313,8 @@ class PomRuntimeClasspathTest {
                   </dependencyManagement>
                 </project>
                 """);
-        Path libJar = putJar(store, "local", lib, "lib");
-        putPom(store, "local", lib, """
+        Path libJar = putJar(store, RepoArtifactResolver.JK_LOCAL, lib, "lib");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, lib, """
                 <project>
                   <groupId>org.example</groupId>
                   <artifactId>lib</artifactId>
@@ -332,8 +332,8 @@ class PomRuntimeClasspathTest {
         Coordinate worker = Coordinate.of("cc.jumpkick", "jk-formatter", "1.0");
         Coordinate child = Coordinate.of("org.example", "child", "1.0");
         Coordinate testlib = Coordinate.of("org.example", "testlib", "1.0");
-        Path workerJar = putJar(store, "local", worker, "worker");
-        putPom(store, "local", worker, """
+        Path workerJar = putJar(store, RepoArtifactResolver.JK_LOCAL, worker, "worker");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, worker, """
                 <project>
                   <groupId>cc.jumpkick</groupId>
                   <artifactId>jk-formatter</artifactId>
@@ -347,8 +347,8 @@ class PomRuntimeClasspathTest {
                   </dependencies>
                 </project>
                 """);
-        Path childJar = putJar(store, "local", child, "child");
-        putPom(store, "local", child, """
+        Path childJar = putJar(store, RepoArtifactResolver.JK_LOCAL, child, "child");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, child, """
                 <project>
                   <groupId>org.example</groupId>
                   <artifactId>child</artifactId>
@@ -371,8 +371,8 @@ class PomRuntimeClasspathTest {
                   </dependencies>
                 </project>
                 """);
-        putJar(store, "local", testlib, "testlib");
-        putPom(store, "local", testlib, """
+        putJar(store, RepoArtifactResolver.JK_LOCAL, testlib, "testlib");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, testlib, """
                 <project>
                   <groupId>org.example</groupId>
                   <artifactId>testlib</artifactId>
@@ -390,8 +390,8 @@ class PomRuntimeClasspathTest {
         Path store = tmp.resolve("store");
         Coordinate worker = Coordinate.of("cc.jumpkick", "jk-formatter", "1.0");
         Coordinate child = Coordinate.of("org.example", "child", "1.0");
-        Path workerJar = putJar(store, "local", worker, "worker");
-        putPom(store, "local", worker, """
+        Path workerJar = putJar(store, RepoArtifactResolver.JK_LOCAL, worker, "worker");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, worker, """
                 <project>
                   <groupId>cc.jumpkick</groupId>
                   <artifactId>jk-formatter</artifactId>
@@ -405,8 +405,8 @@ class PomRuntimeClasspathTest {
                   </dependencies>
                 </project>
                 """);
-        putJar(store, "local", child, "child");
-        putPom(store, "local", child, """
+        putJar(store, RepoArtifactResolver.JK_LOCAL, child, "child");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, child, """
                 <project>
                   <groupId>org.example</groupId>
                   <artifactId>child</artifactId>
@@ -432,8 +432,8 @@ class PomRuntimeClasspathTest {
         Path store = tmp.resolve("store");
         Coordinate worker = Coordinate.of("cc.jumpkick", "jk-test-runner", "0.12.0");
         Coordinate lib = Coordinate.of("com.foo", "lib", "1.0");
-        Path workerJar = putJar(store, "local", worker, "worker-bytes");
-        putPom(store, "local", worker, """
+        Path workerJar = putJar(store, RepoArtifactResolver.JK_LOCAL, worker, "worker-bytes");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, worker, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>cc.jumpkick</groupId>
@@ -451,8 +451,8 @@ class PomRuntimeClasspathTest {
                   </dependencies>
                 </project>
                 """);
-        putJar(store, "local", lib, "lib-bytes");
-        putPom(store, "local", lib, """
+        putJar(store, RepoArtifactResolver.JK_LOCAL, lib, "lib-bytes");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, lib, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>com.foo</groupId>
@@ -477,8 +477,8 @@ class PomRuntimeClasspathTest {
         Path store = tmp.resolve("store");
         Coordinate worker = Coordinate.of("cc.jumpkick", "jk-test-runner", "0.12.0");
         Coordinate lib = Coordinate.of("com.foo", "lib", "1.0");
-        Path workerJar = putJar(store, "local", worker, "worker-bytes");
-        putPom(store, "local", worker, """
+        Path workerJar = putJar(store, RepoArtifactResolver.JK_LOCAL, worker, "worker-bytes");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, worker, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>cc.jumpkick</groupId>
@@ -491,8 +491,8 @@ class PomRuntimeClasspathTest {
                   </dependencies>
                 </project>
                 """);
-        putJar(store, "local", lib, "lib-bytes");
-        putPom(store, "local", lib, """
+        putJar(store, RepoArtifactResolver.JK_LOCAL, lib, "lib-bytes");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, lib, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <parent>
@@ -515,8 +515,8 @@ class PomRuntimeClasspathTest {
         Path store = tmp.resolve("store");
         Coordinate worker = Coordinate.of("cc.jumpkick", "jk-test-runner", "0.12.0");
         Coordinate fat = Coordinate.of("com.foo", "fat", "1.0");
-        Path workerJar = putJar(store, "local", worker, "worker-bytes");
-        putPom(store, "local", worker, """
+        Path workerJar = putJar(store, RepoArtifactResolver.JK_LOCAL, worker, "worker-bytes");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, worker, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>cc.jumpkick</groupId>
@@ -529,7 +529,7 @@ class PomRuntimeClasspathTest {
                   </dependencies>
                 </project>
                 """);
-        putJar(store, "local", fat, "fat-bytes");
+        putJar(store, RepoArtifactResolver.JK_LOCAL, fat, "fat-bytes");
 
         List<Path> cp = resolve(store, workerJar);
         assertThat(cp.stream().map(Path::getFileName).map(Path::toString)).contains("fat-1.0.jar");
@@ -539,8 +539,8 @@ class PomRuntimeClasspathTest {
     void blank_version_after_effective_pom_is_loud(@TempDir Path tmp) throws Exception {
         Path store = tmp.resolve("store");
         Coordinate worker = Coordinate.of("cc.jumpkick", "jk-test-runner", "0.12.0");
-        Path workerJar = putJar(store, "local", worker, "worker-bytes");
-        putPom(store, "local", worker, """
+        Path workerJar = putJar(store, RepoArtifactResolver.JK_LOCAL, worker, "worker-bytes");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, worker, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>cc.jumpkick</groupId>
@@ -567,9 +567,9 @@ class PomRuntimeClasspathTest {
         Coordinate lib = Coordinate.of("com.foo", "lib", "1.0");
         Coordinate guava33 = Coordinate.of("com.google", "guava", "33");
         Coordinate guava32 = Coordinate.of("com.google", "guava", "32");
-        Path workerJar = putJar(store, "local", worker, "worker-bytes");
+        Path workerJar = putJar(store, RepoArtifactResolver.JK_LOCAL, worker, "worker-bytes");
         // Flattened root POM pins guava 33; lib's own upstream POM still says 32.
-        putPom(store, "local", worker, """
+        putPom(store, RepoArtifactResolver.JK_LOCAL, worker, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>cc.jumpkick</groupId>
@@ -585,8 +585,8 @@ class PomRuntimeClasspathTest {
                   </dependencies>
                 </project>
                 """);
-        putJar(store, "local", lib, "lib-bytes");
-        putPom(store, "local", lib, """
+        putJar(store, RepoArtifactResolver.JK_LOCAL, lib, "lib-bytes");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, lib, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>com.foo</groupId>
@@ -599,14 +599,14 @@ class PomRuntimeClasspathTest {
                   </dependencies>
                 </project>
                 """);
-        putJar(store, "local", guava33, "guava33-bytes");
-        putPom(store, "local", guava33, """
+        putJar(store, RepoArtifactResolver.JK_LOCAL, guava33, "guava33-bytes");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, guava33, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>com.google</groupId><artifactId>guava</artifactId><version>33</version>
                 </project>
                 """);
-        putJar(store, "local", guava32, "guava32-bytes");
+        putJar(store, RepoArtifactResolver.JK_LOCAL, guava32, "guava32-bytes");
 
         List<Path> cp = resolve(store, workerJar);
         assertThat(cp.stream().map(Path::getFileName).map(Path::toString))

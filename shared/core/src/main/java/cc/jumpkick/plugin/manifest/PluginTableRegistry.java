@@ -386,32 +386,38 @@ public final class PluginTableRegistry {
     }
 
     private static Map<String, PluginDescriptor> loadBuiltIns() {
-        Map<String, PluginDescriptor> byTable = new LinkedHashMap<>();
+        Map<String, PluginDescriptor> fromClasspath = new LinkedHashMap<>();
         for (String resource : BUILT_IN) {
             try (InputStream in = openBuiltIn(resource)) {
                 if (in == null) continue;
                 PluginDescriptor manifest =
                         tryParseBuiltIn(new String(in.readAllBytes(), StandardCharsets.UTF_8), resource);
-                if (manifest != null) byTable.put(manifest.table(), manifest);
+                if (manifest != null) fromClasspath.put(manifest.table(), manifest);
             } catch (IOException e) {
                 throw new UncheckedIOException("failed to load built-in plugin manifest " + resource, e);
             }
         }
-        // Native CLI / :core main have no classpath fixtures. Tests may bake them; the engine
-        // installs from self-describing jars via putBuiltIn. A test JVM loading this class from
-        // jk-core (classes dir or jk-core-*.jar) overlays workspace sources and -Djk.<id>.plugin.jar
-        // so leftover flattened copies on another module's classes dir cannot poison class init.
+        // Classpath-baked fixtures must be all-or-nothing (poisoned partial trees). An empty
+        // classpath catalog is normal for the native CLI and the engine fat jar — those install
+        // from self-describing worker jars via putBuiltIn.
+        if (!fromClasspath.isEmpty() && fromClasspath.size() != BUILT_IN.size()) {
+            throw new IllegalStateException("missing built-in plugin manifest resources ("
+                    + (BUILT_IN.size() - fromClasspath.size())
+                    + "/"
+                    + BUILT_IN.size()
+                    + "; first-party manifests live on plugin jars and the test classpath, not :core)");
+        }
+
+        Map<String, PluginDescriptor> byTable = new LinkedHashMap<>(fromClasspath);
+        // Test JVMs loading this class from jk-core overlay workspace sources and optional
+        // -Djk.<id>.plugin.jar props (Gradle may wire only a subset of workers). Never apply
+        // those overlays inside the engine fat jar — a partial prop set used to trip the
+        // all-or-nothing check above and kill EngineMain before BuiltInPluginJars.install().
         if (shouldLoadWorkspacePluginSources()) {
             byTable.putAll(loadFromWorkspacePluginSources(discoverTestWorkspaceRoot()));
+            byTable.putAll(loadFromPluginJarProperties());
         }
-        byTable.putAll(loadFromPluginJarProperties());
-        if (byTable.size() == BUILT_IN.size()) return Map.copyOf(byTable);
-        if (byTable.isEmpty()) return Map.of();
-        throw new IllegalStateException("missing built-in plugin manifest resources ("
-                + (BUILT_IN.size() - byTable.size())
-                + "/"
-                + BUILT_IN.size()
-                + "; first-party manifests live on plugin jars and the test classpath, not :core)");
+        return byTable.isEmpty() ? Map.of() : Map.copyOf(byTable);
     }
 
     /**

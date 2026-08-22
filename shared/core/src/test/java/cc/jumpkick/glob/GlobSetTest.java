@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -95,7 +96,7 @@ class GlobSetTest {
             assertThat(matches).hasSize(3);
         } finally {
             try (var walk = Files.walk(tmp)) {
-                walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
                     try {
                         Files.deleteIfExists(p);
                     } catch (Exception ignored) {

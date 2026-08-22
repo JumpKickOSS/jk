@@ -49,12 +49,14 @@ public final class ArtifactLocator {
                 return Optional.of(m2File.toAbsolutePath().normalize());
             }
         }
-        String name = storeOnly || repoName == null || repoName.isBlank() ? "local" : repoName;
+        String name = storeOnly || repoName == null || repoName.isBlank() ? RepoArtifactResolver.JK_LOCAL : repoName;
         RepoArtifactStore store = RepoArtifactStore.forRepoName(storeRoot, name);
         Optional<Path> found = store.locate(relativePath, expectedSha256);
         if (found.isPresent()) return found.map(p -> p.toAbsolutePath().normalize());
-        if (!"local".equals(name)) {
-            found = RepoArtifactStore.forRepoName(storeRoot, "local").locate(relativePath, expectedSha256);
+        // First-party installs always land in jk-local.
+        if (!RepoArtifactResolver.JK_LOCAL.equals(name)) {
+            found = RepoArtifactStore.forRepoName(storeRoot, RepoArtifactResolver.JK_LOCAL)
+                    .locate(relativePath, expectedSha256);
         }
         return found.map(p -> p.toAbsolutePath().normalize());
     }
@@ -63,10 +65,10 @@ public final class ArtifactLocator {
      * The ~/.m2 probe gets its OWN memo ({@code <artifact>.m2.jk}), distinct from the store's own
      * {@code .jk} sidecar. One shared memo can only record one blob's (mtime,size), so the m2 file
      * and the store file kept invalidating each other's fast path and re-hashing the full jar on
-     * every resolve when they diverged (a stale ~/.m2 after a re-lock) — JK-2307.
+     * every resolve when they diverged (a stale ~/.m2 after a re-lock).
      */
     private Path m2MemoPath(String repoName, String relativePath) {
-        String name = repoName == null || repoName.isBlank() ? "local" : repoName;
+        String name = repoName == null || repoName.isBlank() ? RepoArtifactResolver.JK_LOCAL : repoName;
         Path store = ArtifactMemo.jkPath(storeRoot.resolve("repos").resolve(name), relativePath);
         String n = store.getFileName().toString();
         String m2n = (n.endsWith(".jk") ? n.substring(0, n.length() - 3) : n) + ".m2.jk";

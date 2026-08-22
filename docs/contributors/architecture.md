@@ -242,7 +242,7 @@ and exclusions stay GA-scoped.
 
 | Tier | Root | Contents |
 |------|------|----------|
-| **Artifact store** | `~/.local/share/jk/store/` (`JK_STORE_DIR`) | Maven-layout jars under `repos/<name>/…` plus `.jk` memos; first-party workers under `repos/local/`. The Maven local repository (`~/.m2/repository` by default) is the primary blob store when `[m2] integration` is on. |
+| **Artifact store** | `~/.local/share/jk/store/` (`JK_STORE_DIR`) | Maven-layout jars under `repos/<name>/…` plus `.jk` memos; first-party workers under `repos/jk-local/`. The Maven local repository (`~/.m2/repository` by default) is the primary blob store when `[m2] integration` is on. |
 | **Cache** | `~/.cache/jk/` (`JK_CACHE_DIR`) | Action index (`actions/`) + rebuildable action payloads under `sha256/…` |
 
 Dependency jars are real `*.jar` files. Compile classpaths never use hash-named CAS blobs.

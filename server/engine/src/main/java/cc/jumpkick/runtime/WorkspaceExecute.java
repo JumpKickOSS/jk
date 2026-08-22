@@ -656,7 +656,7 @@ public final class WorkspaceExecute {
         WorkspaceSpec spec = req.spec() == null ? WorkspaceSpec.DEFAULT : req.spec();
         // INSTALL publishes every module in the (already cone-filtered) graph — selected
         // terminals and production prereqs — so a worker POM can resolve sibling jars from
-        // repos/local. NATIVE/IMAGE keep selection-only terminals.
+        // repos/jk-local. NATIVE/IMAGE keep selection-only terminals.
         if (target == WorkspaceTarget.INSTALL) {
             Set<Path> all = new LinkedHashSet<>();
             for (BuildGraph.BuildUnit u : units) all.add(u.dir());

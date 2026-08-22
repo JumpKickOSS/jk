@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.lock.RepoSource;
+import cc.jumpkick.model.RepositorySpec;
 
 /**
  * The lockfile {@code "<name>+<url>"} source-string format and named-remote vs local classification.
@@ -17,6 +18,9 @@ public final class RepoArtifactResolver {
      */
     public static final String GIT_SOURCE_PREFIX = "git:";
 
+    /** @see RepositorySpec#JK_LOCAL */
+    public static final String JK_LOCAL = RepositorySpec.JK_LOCAL;
+
     private RepoArtifactResolver() {}
 
     /**
@@ -30,13 +34,24 @@ public final class RepoArtifactResolver {
 
     /**
      * True for a <em>named remote</em> repo — one whose store under {@code repos/<name>/} holds a
-     * jar fetched from that repository. {@code local} and {@code git:} sources are first-party /
-     * synthesized and never live in the Maven local repository.
+     * jar fetched from that repository. {@link #JK_LOCAL} and {@code git:} sources are first-party /
+     * synthesized and never live in the Maven local repository. A user remote named {@code local}
+     * is a normal named remote.
      */
     public static boolean isNamedRemote(String repoName) {
         return repoName != null
                 && !repoName.isEmpty()
-                && !repoName.equals("local")
+                && !JK_LOCAL.equals(repoName)
                 && !repoName.startsWith(GIT_SOURCE_PREFIX);
+    }
+
+    /** True when {@code source} is the bare first-party store marker ({@link #JK_LOCAL}). */
+    public static boolean isFirstPartySource(String source) {
+        return JK_LOCAL.equals(source);
+    }
+
+    /** True when {@code repoName} is the first-party store directory ({@link #JK_LOCAL}). */
+    public static boolean isFirstPartyStoreName(String repoName) {
+        return JK_LOCAL.equals(repoName);
     }
 }

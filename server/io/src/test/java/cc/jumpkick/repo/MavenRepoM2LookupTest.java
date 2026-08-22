@@ -82,7 +82,10 @@ class MavenRepoM2LookupTest {
         // JK-2321: when the repo publishes .sha256, adopt an ~/.m2 hit on the strong digest and do
         // NOT fall back to the collision-broken .sha1.
         seedM2(tmp.resolve("m2"), REAL);
-        serve("/" + REL + ".sha256", 200, cc.jumpkick.util.Hashing.sha256Hex(REAL).getBytes(StandardCharsets.UTF_8));
+        serve(
+                "/" + REL + ".sha256",
+                200,
+                cc.jumpkick.util.Hashing.sha256Hex(REAL).getBytes(StandardCharsets.UTF_8));
         // A .sha1 handler that would REJECT (wrong hash) — if the code fell back to it, adoption fails.
         serve("/" + REL + ".sha1", 200, "0".repeat(40).getBytes(StandardCharsets.UTF_8));
         MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tmp.resolve("store")));

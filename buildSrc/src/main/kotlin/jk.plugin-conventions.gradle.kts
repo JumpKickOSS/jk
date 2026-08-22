@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Shared conventions for jk's child-JVM worker modules (the "runner" plugins).
-// Each worker jar+POM is installed to store/repos/local under cc.jumpkick:jk-<projectName>
+// Each worker jar+POM is installed to store/repos/jk-local under cc.jumpkick:jk-<projectName>
 // — the same Maven layout `jk install` writes. Launch rebuilds the runtime classpath from
 // that POM. What stays in each worker's build.gradle.kts: its `description`, its
 // `dependencies`, and optional codec-vendoring.
@@ -195,7 +195,7 @@ fun workerPomXml(): String {
 }
 
 fun mavenLocalDir(storeRoot: File, group: String, artifact: String, version: String): File =
-        storeRoot.resolve("repos/local/${group.replace('.', '/')}/$artifact/$version")
+        storeRoot.resolve("repos/jk-local/${group.replace('.', '/')}/$artifact/$version")
 
 fun jkMemoName(fileName: String): String =
         when {
@@ -285,9 +285,9 @@ tasks.register("stageWorkerRepo") {
     }
 }
 
-// Same destination as `jk install`: store/repos/local/cc/jumpkick/<jk-artifact>/<ver>/.
+// Same destination as `jk install`: store/repos/jk-local/cc/jumpkick/<jk-artifact>/<ver>/.
 tasks.register("installLocal") {
-    description = "Install $workerArtifact jar+pom into the local Maven store (repos/local)"
+    description = "Install $workerArtifact jar+pom into the local Maven store (repos/jk-local)"
     group = "jk"
     dependsOn(tasks.jar, "writeWorkerPom", "stageWorkerRepo")
     inputs.file(jarProvider)

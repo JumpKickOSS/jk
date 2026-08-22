@@ -340,6 +340,9 @@ public final class LockPlans {
                                             + " (" + pd.coordinateWithVersion() + ")");
                                 }
                                 jarPath = fetched.fetched().cachePath();
+                                // Sibling POM for worker classpath reconstruction.
+                                repos.tryFetchArtifact(
+                                        new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "pom"));
                             }
                             entries.add(new Lockfile.PluginEntry(pd.coordinate(), pd.version(), "sha256:" + hex));
                             try {

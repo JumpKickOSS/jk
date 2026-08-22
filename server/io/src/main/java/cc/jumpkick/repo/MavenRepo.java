@@ -364,10 +364,11 @@ public final class MavenRepo {
         // Fail loudly rather than returning the transient download temp as the "stored" path: a
         // swallowed store-write error (disk full, permissions) otherwise makes sync report success
         // and the later requirePresent gate throws a misleading "run jk sync -F" loop (JK-2310).
-        return repoStore.locate(relativePath)
+        return repoStore
+                .locate(relativePath)
                 .orElseThrow(() -> new IOException(
-                        "failed to store " + coord.group() + ":" + coord.artifact() + ":" + coord.version()
-                                + " at " + relativePath + " (store write failed — check disk space and permissions)"));
+                        "failed to store " + coord.group() + ":" + coord.artifact() + ":" + coord.version() + " at "
+                                + relativePath + " (store write failed — check disk space and permissions)"));
     }
 
     private Optional<Path> writeThroughM2(Path m2Target, Path source, String relativePath, String sha256) {

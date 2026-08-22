@@ -44,7 +44,7 @@ public final class RepoArtifactStore {
         Objects.requireNonNull(cacheRoot, "cacheRoot");
         Objects.requireNonNull(repoName, "repoName");
         // A repo name is a raw substring from the project's config/lockfile; refuse one that would
-        // escape repos/ into an attacker-chosen directory (JK-2291).
+        // escape repos/ into an attacker-chosen directory.
         MavenLayout.requireSafeSegment(repoName, "repository name");
         this.root = cacheRoot.resolve("repos").resolve(repoName);
     }
@@ -165,8 +165,8 @@ public final class RepoArtifactStore {
             if (!same) {
                 // Unique temp per writer: a shared fixed ".part" name let two concurrent fetchers
                 // (two engines on one ~/.jk, or two syncs in one engine) interleave writes to the
-                // same inode and install corrupt bytes, which the memo then blessed as VERIFIED
-                // (JK-2292). A unique temp + atomic move makes the published file exactly the (already
+                // same inode and install corrupt bytes, which the memo then blessed as VERIFIED.
+                // A unique temp + atomic move makes the published file exactly the (already
                 // caller-verified) source bytes, so the memo's pinned sha describes them correctly.
                 Path tmp = Files.createTempFile(artifact.getParent(), "." + artifact.getFileName() + ".", ".part");
                 try {
@@ -179,7 +179,7 @@ public final class RepoArtifactStore {
             writeMemo(relativePath, artifact, sha256);
         } catch (IOException | RuntimeException e) {
             // Best-effort store write: the caller re-checks presence and fails loudly if nothing
-            // landed (JK-2310). Surface the cause so a disk-full/permissions failure is diagnosable
+            // landed. Surface the cause so a disk-full/permissions failure is diagnosable
             // rather than silent.
             System.err.println("jk: warning: could not store " + relativePath + " under " + root + ": " + e);
         }
@@ -321,7 +321,7 @@ public final class RepoArtifactStore {
         try (Stream<Path> walk = Files.walk(root)) {
             walk.filter(Files::isRegularFile)
                     .filter(p -> !isMemoName(p.getFileName().toString()))
-                    // Leaked .put-*.tmp download temps are not stored artifacts (JK-2309).
+                    // Leaked .put-*.tmp download temps are not stored artifacts.
                     .filter(p -> !p.getFileName().toString().startsWith(".put-")
                             && !p.getFileName().toString().endsWith(".tmp"))
                     .forEach(p -> result.add(root.relativize(p).toString()));
@@ -338,10 +338,9 @@ public final class RepoArtifactStore {
 
     /**
      * LRU-evict downloaded artifacts under {@code <cacheRoot>/repos/} down to {@code maxBytes}, keyed
-     * by last-access from {@code atimeByHash} (sha → millis; unknown = coldest). {@code repos/local}
-     * (first-party, no re-fetch source) is exempt. Re-fetchable third-party jars are fair game — this
-     * is the size bound the store budget promises, which nothing enforced after the Maven-layout
-     * migration (JK-2304). Best-effort; never throws.
+     * by last-access from {@code atimeByHash} (sha → millis; unknown = coldest). {@code
+     * repos/jk-local} is exempt — first-party, no re-fetch source. Re-fetchable third-party jars are
+     * fair game — this is the size bound the store budget promises. Best-effort; never throws.
      */
     public static EvictReport evictReposDownTo(
             Path cacheRoot, long maxBytes, Map<String, Long> atimeByHash, boolean dryRun) {
@@ -352,7 +351,9 @@ public final class RepoArtifactStore {
         try (Stream<Path> named = Files.list(reposDir)) {
             for (Path nameDir : (Iterable<Path>) named::iterator) {
                 String name = nameDir.getFileName().toString();
-                if (!Files.isDirectory(nameDir) || name.equals("local")) continue; // never evict first-party
+                if (!Files.isDirectory(nameDir) || RepoArtifactResolver.isFirstPartyStoreName(name)) {
+                    continue; // never evict first-party
+                }
                 RepoArtifactStore store = new RepoArtifactStore(cacheRoot, name);
                 for (String rel : store.allRelativePaths()) {
                     Path file = nameDir.resolve(rel);
@@ -466,7 +467,7 @@ public final class RepoArtifactStore {
         }
     }
     /**
-     * Write a file directly into {@code repos/local/} as a full-store entry (actual JAR on disk) —
+     * Write a file directly into {@code repos/jk-local/} as a full-store entry (actual JAR on disk) —
      * the local-install write path shared by the engine's install plan and the client's
      * {@code jk install <file.jar>} mode (a local, content-addressed write, like {@code
      * Cas.putByLink} — no network).
@@ -475,7 +476,8 @@ public final class RepoArtifactStore {
         // The caller picks the root deliberately: the engine install plan passes the
         // store (where resolvers read since the cache/store split); plugin install-local may pass
         // an isolated --cache-dir root on purpose.
-        Path target = MavenLayout.safeResolve(artifactRoot.resolve("repos/local"), relativePath);
+        Path target = MavenLayout.safeResolve(
+                artifactRoot.resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL), relativePath);
         Files.createDirectories(target.getParent());
         Path tmp = Files.createTempFile(target.getParent(), "." + target.getFileName() + ".", ".part");
         try {

@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code repos/local} is a publish destination. A leftover store-CAS copy of those bytes is a
+ * {@code repos/jk-local} is a publish destination. A leftover store-CAS copy of those bytes is a
  * sweep root (via the {@code .jk} memo) so GC does not eat a just-installed worker. Maven-layout
  * jars themselves are independent copies and survive CAS sweep / LRU even when the blob is
  * unreferenced.
@@ -30,11 +30,11 @@ class CacheRootsLocalRepoTest {
         Path blob = cas.put(jar);
         String hex = Hashing.sha256Hex(jar);
         String rel = "cc/jumpkick/jk-test-runner/1.0/jk-test-runner-1.0.jar";
-        Path artifact = cacheRoot.resolve("repos/local").resolve(rel);
+        Path artifact = cacheRoot.resolve("repos/jk-local").resolve(rel);
         Files.createDirectories(artifact.getParent());
         Files.write(artifact, jar);
         ArtifactMemo.ofBlob(artifact, "cc.jumpkick:jk-test-runner:1.0", hex)
-                .write(ArtifactMemo.jkPath(cacheRoot.resolve("repos/local"), rel));
+                .write(ArtifactMemo.jkPath(cacheRoot.resolve("repos/jk-local"), rel));
         Files.setLastModifiedTime(blob, FileTime.fromMillis(System.currentTimeMillis() - 24L * 60 * 60 * 1000));
 
         Set<String> roots = CacheRoots.collect(cas, cacheRoot.resolve("actions"), cacheRoot.resolve("tools"));

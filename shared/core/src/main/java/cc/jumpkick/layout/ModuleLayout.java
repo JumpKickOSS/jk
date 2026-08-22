@@ -7,6 +7,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Canonical module input roots.
@@ -60,7 +62,7 @@ public final class ModuleLayout {
         Boolean local = explicitLayout(moduleDir);
         if (local != null) return local;
         try {
-            java.util.Optional<Path> root = cc.jumpkick.config.WorkspaceLocator.findRoot(moduleDir);
+            Optional<Path> root = cc.jumpkick.config.WorkspaceLocator.findRoot(moduleDir);
             if (root.isPresent() && !root.get().equals(moduleDir)) {
                 Boolean inherited = explicitLayout(root.get());
                 if (inherited != null) return inherited;
@@ -75,8 +77,7 @@ public final class ModuleLayout {
 
     // isCompact runs per module per build (and now walks to the workspace root); cache the per-file
     // layout-key scan by (mtime,size) so repeated calls don't re-read jk.toml each time (JK-2327).
-    private static final java.util.concurrent.ConcurrentHashMap<Path, LayoutMemo> LAYOUT_CACHE =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Path, LayoutMemo> LAYOUT_CACHE = new ConcurrentHashMap<>();
 
     /**
      * The explicit {@code layout} choice for a module dir: {@code TRUE} = simple, {@code FALSE} =

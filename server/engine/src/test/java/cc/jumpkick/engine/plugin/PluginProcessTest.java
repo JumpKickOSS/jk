@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jsonl.Jsonl;
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -85,7 +86,7 @@ class PluginProcessTest {
         try (PluginSlots.Lease held = PluginSlots.acquire()) {
             var ran = new ArrayList<String>();
             var queue = new ArrayDeque<>(List.of("solo"));
-            org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(30), () -> {
+            org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(Duration.ofSeconds(30), () -> {
                 int exit = PluginProcess.converseNoSlot(
                         cmd(),
                         "##T:",

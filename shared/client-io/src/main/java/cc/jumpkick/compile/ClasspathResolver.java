@@ -193,8 +193,7 @@ public final class ClasspathResolver {
      * the reference gate in {@code MavenRepo} (JK-2306). Any module opting out disables it.
      */
     private cc.jumpkick.repo.ArtifactLocator effectiveLocator(Lockfile lock) {
-        boolean projectOptOut = lock.modules().stream()
-                .anyMatch(m -> Boolean.FALSE.equals(m.m2integration()));
+        boolean projectOptOut = lock.modules().stream().anyMatch(m -> Boolean.FALSE.equals(m.m2integration()));
         if (projectOptOut) return new cc.jumpkick.repo.ArtifactLocator(storeRoot);
         return locator;
     }

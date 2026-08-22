@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -32,10 +34,10 @@ class ProjectIdentityTest {
             assertThat(ProjectIdentity.isValidId(a.id())).isTrue();
         } finally {
             try (var walk = Files.walk(dir)) {
-                walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
                     try {
                         Files.deleteIfExists(p);
-                    } catch (java.io.IOException ignored) {
+                    } catch (IOException ignored) {
                         // best-effort cleanup
                     }
                 });

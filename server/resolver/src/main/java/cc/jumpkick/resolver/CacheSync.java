@@ -53,7 +53,8 @@ public final class CacheSync {
         this.creds = Objects.requireNonNull(creds, "creds");
         // Effective policy is project AND the machine kill switch — mirror MavenRepo, so a global
         // [m2] integration = false is honored here too (JK-2306).
-        boolean effectiveM2 = m2integration && cc.jumpkick.config.JkM2Config.resolve().integration();
+        boolean effectiveM2 =
+                m2integration && cc.jumpkick.config.JkM2Config.resolve().integration();
         this.m2integration = effectiveM2;
         this.locator = new cc.jumpkick.repo.ArtifactLocator(
                 cas.root(), effectiveM2 ? cc.jumpkick.repo.M2Dirs.localRepository() : null, effectiveM2);
@@ -106,9 +107,9 @@ public final class CacheSync {
                 observer.upToDate(pkg);
                 continue;
             }
-            // A "local" source (jk install <file>, jk's own worker JARs) is never fetched from a
-            // remote repo — it lives in repos/local.
-            if ("local".equals(pkg.source())) {
+            // First-party store source (jk install <file>, worker JARs) is never fetched from a
+            // remote — it lives in repos/jk-local.
+            if (cc.jumpkick.repo.RepoArtifactResolver.isFirstPartySource(pkg.source())) {
                 if (locator.locate(pkg).isPresent()) upToDate++;
                 else skipped++;
                 observer.upToDate(pkg);

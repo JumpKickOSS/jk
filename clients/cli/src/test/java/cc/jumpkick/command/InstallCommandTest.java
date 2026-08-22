@@ -102,9 +102,9 @@ class InstallCommandTest {
         // A library is not a usage error any more — it cache-installs.
         assertThat(exit).isEqualTo(0);
         assertThat(bin.resolve("lib-only")).doesNotExist(); // no launcher
-        // [m2] install = false (integration still default true): repos/local, not ~/.m2.
+        // [m2] install = false (integration still default true): repos/jk-local, not ~/.m2.
         assertThat(cc.jumpkick.cache.JkStores.resolve(cache, "repos")
-                        .resolve("local")
+                        .resolve("jk-local")
                         .resolve("com/example/lib-only/0.1.0/lib-only-0.1.0.jar"))
                 .exists();
         assertThat(m2.resolve("repository/com/example/lib-only/0.1.0/lib-only-0.1.0.jar"))

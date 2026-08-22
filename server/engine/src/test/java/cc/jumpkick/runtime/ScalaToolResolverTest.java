@@ -83,5 +83,4 @@ class ScalaToolResolverTest {
                         .build());
         assertThat(LockPlans.resolveScalaVersion(javaOnly, null)).isNull();
     }
-
 }

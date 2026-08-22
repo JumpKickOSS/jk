@@ -1215,6 +1215,23 @@ class JkBuildParserTest {
     }
 
     @Test
+    void repositories_jk_local_is_reserved() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                [repositories]
+                jk-local = "https://example.invalid/maven/"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.jk-local is reserved")
+                .hasMessageContaining("repos/jk-local");
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                [repositories.jk-local]
+                url = "file:///tmp/repo"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.jk-local is reserved");
+    }
+
+    @Test
     void parses_inline_token_and_basic_credentials() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 [repositories.ghp]

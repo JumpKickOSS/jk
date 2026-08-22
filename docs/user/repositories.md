@@ -11,7 +11,8 @@ supported. After lock, a digest-matching file in the Maven local repository is u
 place; otherwise `JK_STORE_DIR/repos/<name>/`. Set `[m2] integration = false` to keep
 third-party jars only under the jk store. `jk install` writes the Maven local repo
 when `[m2] install` is on (default); `[m2] install = false` or `JK_M2_INSTALL=false`
-keeps those artifacts in `repos/local`. First-party workers always live in `repos/local`.
+keeps those artifacts in `repos/jk-local`. First-party workers always live in `repos/jk-local`
+(`jk-local` is reserved; `[repositories.local]` is a normal user remote name).
 
 ## Built-in remotes
 

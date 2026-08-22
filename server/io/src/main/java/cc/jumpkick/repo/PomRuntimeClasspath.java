@@ -28,12 +28,12 @@ import java.util.stream.Collectors;
  * <p>Walks the <em>effective</em> POM ({@link EffectivePomBuilder}: parent-chain properties, BOM
  * imports, {@code dependencyManagement} version/scope defaults) and follows compile/runtime
  * dependencies (transitives included; {@code provided} / {@code test} / {@code optional}
- * transitives skipped). Artifacts are taken from {@code repos/local}, {@code repos/jumpkick}, then
+ * transitives skipped). Artifacts are taken from {@code repos/jk-local}, {@code repos/jumpkick}, then
  * {@code repos/central}, fetching a miss from the HTTP remotes when the session is online.
  */
 public final class PomRuntimeClasspath {
 
-    private static final List<String> REPOS = List.of("local", "jumpkick", "central");
+    private static final List<String> REPOS = List.of(RepoArtifactResolver.JK_LOCAL, "jumpkick", "central");
     private static final Pattern VERSION = Pattern.compile("\\d+(?:[._-][A-Za-z0-9]+)*");
 
     /**
@@ -124,7 +124,7 @@ public final class PomRuntimeClasspath {
         Path pom = pomFor(worker);
         if (pom == null) {
             throw new IllegalStateException(
-                    "worker " + worker + " has no Maven POM; run `jk install` to publish jar+pom to repos/local");
+                    "worker " + worker + " has no Maven POM; run `jk install` to publish jar+pom to repos/jk-local");
         }
         List<Path> out = new ArrayList<>();
         out.add(worker);
@@ -166,7 +166,7 @@ public final class PomRuntimeClasspath {
     private static final int STORE_REPOS_MAX = 32;
 
     /**
-     * {@code repos/local} plus JumpKick and Central HTTP remotes, CAS-rooted at {@code storeRoot}.
+     * {@code repos/jk-local} plus JumpKick and Central HTTP remotes, CAS-rooted at {@code storeRoot}.
      * Local is a priority repo so {@code installLocal} artifacts outrank exclusive remote bindings.
      */
     static RepoGroup storeRepos(Path storeRoot) {
@@ -196,8 +196,14 @@ public final class PomRuntimeClasspath {
     private static RepoGroup buildStoreRepos(Path storeRoot, Path extraStore) {
         Cas cas = new Cas(storeRoot);
         Http http = new Http();
-        MavenRepo local =
-                storeOnlyRepo("local", storeRoot.resolve("repos/local").toUri(), http, cas);
+        MavenRepo local = storeOnlyRepo(
+                RepoArtifactResolver.JK_LOCAL,
+                storeRoot
+                        .resolve("repos")
+                        .resolve(RepoArtifactResolver.JK_LOCAL)
+                        .toUri(),
+                http,
+                cas);
         // Launch-time resolution is overwhelmingly store-resident, but for unclaimed groups the
         // jumpkick specialist's warm mirror is only consulted at last resort — after central's
         // network leg. Prepending it as a priority store keeps warm forks off the network
@@ -331,7 +337,9 @@ public final class PomRuntimeClasspath {
                     Path parent = cur.getParent();
                     if (parent != null
                             && "repos".equals(fileName(parent))
-                            && (n.equals("local") || n.equals("jumpkick") || n.equals("central"))) {
+                            && (RepoArtifactResolver.isFirstPartyStoreName(n)
+                                    || n.equals("jumpkick")
+                                    || n.equals("central"))) {
                         break;
                     }
                     if (!n.isEmpty()) groupSegs.add(0, n);

@@ -17,7 +17,7 @@ import java.util.function.Function;
  * <p>{@code install} controls whether {@code jk install} writes first-party jars into the Maven
  * local repository. Independent of {@code integration}: {@code [m2] integration = true} with
  * {@code [m2] install = false} still reads third-party jars from {@code ~/.m2} but keeps {@code
- * jk install} under {@code repos/local}.
+ * jk install} under {@code repos/jk-local}.
  *
  * <p>Precedence: JVM system property &gt; {@code JK_*} env &gt; user file &gt; defaults. Malformed
  * values fall back to defaults.

@@ -629,9 +629,13 @@ public final class EngineSpawn {
                 // Also forward AOT switches so nested engines honor JK_AOT_TRAIN / jk.aot.train,
                 // and jk.env.* layout overlays (JkDirs test seam) so a spawned engine resolves the
                 // same store/state the client did.
+                //
+                // Do not forward jk.plugin.class — that is a client/test-runner host signal that
+                // would make PluginTableRegistry load workspace/test overlays inside the engine.
                 for (var e : System.getProperties().entrySet()) {
                     String key = String.valueOf(e.getKey());
                     if (!key.startsWith("jk.")) continue;
+                    if (key.equals("jk.plugin.class")) continue;
                     boolean jarOverride = key.endsWith(".jar");
                     boolean aotSwitch = key.equals("jk.aot.train") || key.equals("jk.worker.aot");
                     boolean envOverlay = key.startsWith("jk.env.");

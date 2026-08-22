@@ -40,7 +40,7 @@ import java.util.Set;
 /**
  * App-install plan used by {@code jk tool install} / {@code jk install}: current project, Maven
  * coordinate, or git URL (optional {@code @}/{@code #} ref; {@code gh:owner/repo} shorthands).
- * Cache-installs the thin jar and POM into {@code repos/local}; applications also get a launcher
+ * Cache-installs the thin jar and POM into {@code repos/jk-local}; applications also get a launcher
  * under {@code ~/.local/bin}. Plugin workers are those same repo jars — launch reconstructs the
  * classpath from the POM.
  */
@@ -123,9 +123,9 @@ public final class InstallCommand {
         Path cache = cacheDir();
         Files.createDirectories(cache);
         Coordinate coord = Coordinate.of(group, artifact, version);
-        // File-install writes directly to repos/local/ (the JAR is already on disk, no project
+        // File-install writes directly to repos/jk-local/ (the JAR is already on disk, no project
         // metadata for a POM, so ~/.m2 write is not appropriate here). Route to the store root:
-        // resolvers read repos/local and the classpath CAS from the store.
+        // resolvers read repos/jk-local and the classpath CAS from the store.
         cc.jumpkick.repo.RepoArtifactStore.writeToLocalStore(
                 cc.jumpkick.cache.JkStores.storeRootFor(cache), MavenLayout.artifactPath(coord), filePath);
 
@@ -284,7 +284,7 @@ public final class InstallCommand {
         }
 
         // Build + cache-install through the shared InstallPlans plan (jar always; assembly/native
-        // per jk.toml; jar + generated pom into ~/.m2 / repos/local) — engine-hosted for a real
+        // per jk.toml; jar + generated pom into ~/.m2 / repos/jk-local) — engine-hosted for a real
         // invocation, in-process for the test-only bypass. The make-install half runs below,
         // client-side either way: it writes the user-home launcher/binary this process owns.
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
@@ -563,8 +563,8 @@ public final class InstallCommand {
             // fall through to the jar-name form
         }
         return EngineInstall.versionFromJarName(engineJar.getFileName().toString())
-                .orElseThrow(() -> new IllegalStateException(
-                        "cannot determine engine version for " + engineJar.getFileName()));
+                .orElseThrow(() ->
+                        new IllegalStateException("cannot determine engine version for " + engineJar.getFileName()));
     }
 
     private Path cacheDir() {

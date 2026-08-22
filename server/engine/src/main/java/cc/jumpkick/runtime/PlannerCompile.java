@@ -123,7 +123,8 @@ public final class PlannerCompile {
                     // set (which includes extra-src / plugin-root .scala published by PlannerSetup),
                     // not the narrow main-roots walk — otherwise a variant-overlay .scala reaches the
                     // Zinc worker with the Java-only dummy compiler and fails cryptically (JK-2302).
-                    boolean hasScala = sources.stream().anyMatch(p -> p.toString().endsWith(".scala"));
+                    boolean hasScala =
+                            sources.stream().anyMatch(p -> p.toString().endsWith(".scala"));
                     ScalaCompile.Setup scalaSetup =
                             hasScala ? ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas) : null;
                     // The shared stamp recipeforecast and write-stamp use it too.

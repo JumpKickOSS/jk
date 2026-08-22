@@ -263,8 +263,13 @@ class EngineClientTest {
     @Test
     void engine_artifact_resolution_prefers_override_then_product_lib() throws IOException {
         Path dir = shortTempDir();
-        // Isolated product lib: the machine-global install must not leak into this contract.
-        cc.jumpkick.cache.EngineInstall install = new cc.jumpkick.cache.EngineInstall(dir.resolve("lib"));
+        // Isolated product lib AND config dir: the one-arg EngineInstall(productLib) writes config.toml
+        // to JkDirs.current() (the ambient JK_HOME), which under :cli:integrationTest is the shared
+        // test-jk-home — materializing a fake 1.2.3 engine there poisoned every later engine-dependent
+        // test with "no build engine for jk 0.12.0". Pin JK_HOME to this temp dir so config stays local.
+        cc.jumpkick.util.JkDirs isolated =
+                cc.jumpkick.util.JkDirs.of(k -> "JK_HOME".equals(k) ? dir.toString() : null, dir.toString());
+        cc.jumpkick.cache.EngineInstall install = new cc.jumpkick.cache.EngineInstall(dir.resolve("lib"), isolated);
 
         // no override, nothing materialized: empty (caller must materialize or set JK_ENGINE_EXE)
         assertThat(EngineClient.resolveEngineArtifact(null, "1.2.3", install)).isEmpty();

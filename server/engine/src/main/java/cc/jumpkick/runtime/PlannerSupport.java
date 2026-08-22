@@ -211,7 +211,8 @@ public final class PlannerSupport {
         }
         if (scalaSrcs.isEmpty()) return List.of();
         try {
-            return ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas).libraryJars();
+            return ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas)
+                    .libraryJars();
         } catch (IOException e) {
             return List.of();
         }
