@@ -67,7 +67,7 @@ public final class NewCommand implements CliCommand {
                 Opt.value("<group>", "Maven groupId (default: from git config).", "--group"),
                 // --jdk rides the GLOBAL option (same canonical key "jdk"); a local
                 // re-declaration would collide with it in the dispatcher.
-                Opt.value("<lang>", "Language: java | kotlin | groovy. Default: java.", "--lang"),
+                Opt.value("<lang>", "Language: java | kotlin | groovy | scala. Default: java.", "--lang"),
                 Opt.flag("Executable project (default is a library).", "--executable")
                         .negate(),
                 Opt.flag("Assembly (fat) jar. Implies --executable.", "--assembly"),

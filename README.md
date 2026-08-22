@@ -7,8 +7,8 @@
 [![GraalVM](https://img.shields.io/badge/native--image-GraalVM%2025-yellow.svg)](https://www.graalvm.org/)
 [![Status](https://img.shields.io/badge/status-alpha-red.svg)](docs/user/README.md)
 
-**JumpKick** (CLI: **`jk`**) is an elegant, powerful build system for the JVM — Java, Kotlin, and
-Groovy. A fast native binary. One simple TOML build definition. A real version lockfile. Dependency
+**JumpKick** (CLI: **`jk`**) is an elegant, powerful build system for the JVM — Java, Kotlin,
+Groovy, and Scala. A fast native binary. One simple TOML build definition. A real version lockfile. Dependency
 conflicts you can read. And best of all: builds that _skip work they can prove is already done_.
 
 JumpKick is _batteries included_ — a superior replacement for many tools you already juggle:
@@ -104,7 +104,7 @@ jk build        # still fully reproducible from that lock
 - `jk tree` · `jk why` · offline-friendly after `jk sync`
 
 ### Build & monorepos
-- Java + Kotlin (K2, KSP) + Groovy, workspaces with **one root lockfile**
+- Java + Kotlin (K2, KSP) + Groovy + Scala 3, workspaces with **one root lockfile**
 - Content-addressed store + **action cache** (restore, don't recompute)
 - `jk explain` — forecast what will run before it does
 - Variants, profiles, features (product / how / optional deps — deliberately separate)
