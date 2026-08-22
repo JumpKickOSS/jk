@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
-import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -113,7 +111,7 @@ public final class UpdateCommand implements CliCommand {
         EngineRequests.LockHandler handler = new EngineRequests.LockHandler() {
             @Override
             public BuildPlanListener onModuleStart(String moduleDir, String coord, List<Task> steps) {
-                return BuildPlanConsole.chooseConsoleListener("update", steps, mode);
+                return BuildPlanConsole.chooseConsoleListener("Update", "Updating versions", steps, mode);
             }
 
             @Override
@@ -162,25 +160,22 @@ public final class UpdateCommand implements CliCommand {
 
     // ---- shared rendering helpers --------------------------------------------
 
-    /** {@code ✓ Updated: path/to/jk-lock.toml › N packages} — shared by the hosted and in-process paths. */
+    /** {@code ✓ Update  Updated N packages in jk-lock.toml}. */
     static void printUpdatedLine(Path lockFile, int packages, Path workingDir) {
-        var th = Theme.active();
-        CliOutput.out(Theme.colorize(Glyphs.CHECK, th.success())
-                + " Updated: "
-                + Theme.colorize(PathDisplay.of(lockFile, workingDir), th.path())
-                + " "
-                + Theme.colorize("›", th.darkGray())
-                + " "
-                + Theme.colorize(String.valueOf(packages), th.cyan())
-                + " package"
-                + (packages == 1 ? "" : "s"));
+        String lockName = lockFile.getFileName() != null
+                ? lockFile.getFileName().toString()
+                : PathDisplay.of(lockFile, workingDir);
+        CommandWedge.printOk(
+                "Update", "Updated " + packages + " package" + (packages == 1 ? "" : "s") + " in " + lockName);
     }
 
     /** {@code Refreshed N git dependencies.} / {@code No git dependencies to refresh.} */
     static void printGitSummary(int refreshed) {
-        CliOutput.out(
-                refreshed == 0
-                        ? "No git dependencies to refresh."
-                        : "Refreshed " + refreshed + " git dependenc" + (refreshed == 1 ? "y" : "ies") + ".");
+        if (refreshed == 0) {
+            CommandWedge.printOk("Update", "No git dependencies to refresh.");
+        } else {
+            CommandWedge.printOk(
+                    "Update", "Refreshed " + refreshed + " git dependenc" + (refreshed == 1 ? "y" : "ies") + ".");
+        }
     }
 }

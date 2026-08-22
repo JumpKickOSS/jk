@@ -458,12 +458,13 @@ public final class LockPlans {
     /** {@code jk update}: same as {@link #lockBuildPlan} but always resolves fresh. */
     public static BuildPlan updateBuildPlan(
             Path dir, JkBuild effective, Path cache, URI repoUrl, List<String> features, boolean withDefaultFeatures) {
-        return updateBuildPlan(dir, effective, cache, repoUrl, features, withDefaultFeatures, null);
+        return updateBuildPlan(
+                dir, effective, cache, repoUrl, features, withDefaultFeatures, null, ResolveObserver.NOOP);
     }
 
     /**
      * As {@link #updateBuildPlan(Path, JkBuild, Path, URI, List, boolean)} with optional CLI
-     * platform-policy override ({@code enforced}|{@code floor},.
+     * platform-policy override ({@code enforced}|{@code floor}).
      */
     public static BuildPlan updateBuildPlan(
             Path dir,
@@ -473,16 +474,40 @@ public final class LockPlans {
             List<String> features,
             boolean withDefaultFeatures,
             String platformOverride) {
+        return updateBuildPlan(
+                dir, effective, cache, repoUrl, features, withDefaultFeatures, platformOverride, ResolveObserver.NOOP);
+    }
+
+    /**
+     * As {@link #updateBuildPlan(Path, JkBuild, Path, URI, List, boolean, String)} with a progress
+     * {@link ResolveObserver}. Preflight (parse) owns ~10% of the bar; resolve owns the rest via
+     * per-package graph/materialize ticks so the last dep lands near 100%.
+     */
+    public static BuildPlan updateBuildPlan(
+            Path dir,
+            JkBuild effective,
+            Path cache,
+            URI repoUrl,
+            List<String> features,
+            boolean withDefaultFeatures,
+            String platformOverride,
+            ResolveObserver observer) {
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         PlatformPolicy policy = effectivePlatformPolicy(effective, platformOverride);
+        AtomicInteger resolveEstimate = new AtomicInteger(0);
+        int resolveTicks = scopeEstimate(effective, lockFile);
+        // ~10% of the bar for parse/preflight; a thin write trailer so the last resolve tick is
+        // near 100% rather than stuck at a three-way equal split.
+        int preflightTicks = Math.max(1, (int) Math.round(resolveTicks / 9.0));
+        int writeTicks = 1;
 
         Task parseBuild = Task.builder(TaskNames.PARSE_BUILD)
-                .ticks(1)
+                .ticks(preflightTicks)
                 .execute(ctx -> {
                     ctx.label("parse jk.toml");
                     ctx.put(EFFECTIVE, effective);
                     ctx.put(MANIFESTS_SHA, cc.jumpkick.lock.LockManifestDigest.compute(dir));
-                    ctx.progress(1);
+                    ctx.progress(preflightTicks);
                 })
                 .build();
 
@@ -490,7 +515,10 @@ public final class LockPlans {
                 .stage(BuildStage.RESOLVE)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_BUILD)
-                .ticks(1)
+                .ticks(() -> {
+                    resolveEstimate.set(resolveTicks);
+                    return resolveTicks;
+                })
                 .execute(ctx -> {
                     ctx.label("re-resolve dependencies");
                     JkBuild eff = ctx.require(EFFECTIVE);
@@ -503,6 +531,35 @@ public final class LockPlans {
                                 GitSourceResolution.prepare(eff, baseRepos, cas, javaHome, JkVersion.VERSION);
                         PathSourceResolution.Prepared pathPrep = PathSourceResolution.prepare(
                                 prep.project(), prep.repos(), cas, dir, javaHome, JkVersion.VERSION);
+                        ResolveObserver wrappedObserver = new ResolveObserver() {
+                            @Override
+                            public void onTotal(int total) {
+                                int delta = total - resolveEstimate.getAndSet(total);
+                                if (delta > 0) ctx.updateTicks(delta);
+                                observer.onTotal(total);
+                            }
+
+                            @Override
+                            public void onPackage(String module, String version) {
+                                ctx.progress(1);
+                                observer.onPackage(module, version);
+                            }
+
+                            @Override
+                            public void onPhase(String label) {
+                                if (label != null && !label.isBlank()) ctx.label(label);
+                                observer.onPhase(label);
+                            }
+
+                            @Override
+                            public void onGraphPackage(String module, String version) {
+                                if (module != null) {
+                                    ctx.label("Resolving " + module + (version != null ? ":" + version : ""));
+                                }
+                                ctx.progress(1);
+                                observer.onGraphPackage(module, version);
+                            }
+                        };
                         // Float-to-latest needs current indexes; revalidate past TTL (conditional
                         // GET). Normal jk lock stays on the warm disk TTL.
                         Lockfile lock = cc.jumpkick.repo.MavenMetadataCache.withForceRevalidate(
@@ -514,7 +571,12 @@ public final class LockPlans {
                                         .withPlatformPolicy(policy)
                                         .withUnmappedPolicy(
                                                 pathPrep.project().build().unmappedPolicy())
-                                        .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures));
+                                        .lock(
+                                                pathPrep.project(),
+                                                JkVersion.VERSION,
+                                                features,
+                                                withDefaultFeatures,
+                                                wrappedObserver));
                         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
                         // jk update floats everything, including the Kotlin compiler pin.
                         String kotlinVersion = resolveKotlinVersion(eff, pathPrep.repos());
@@ -528,23 +590,25 @@ public final class LockPlans {
                             lock = lock.withScala(scalaVersion);
                         }
                         ctx.put(LOCKFILE, lock);
+                    } catch (UnsatisfiableException e) {
+                        ctx.error("verbatim", e.getMessage());
+                        throw new RuntimeException(e);
                     } catch (Exception e) {
                         ctx.error(TaskNames.RESOLVE_DEPS, e.getMessage());
                         throw new RuntimeException(e);
                     }
-                    ctx.progress(1);
                 })
                 .build();
 
         Task write = Task.builder(TaskNames.WRITE_LOCKFILE)
                 .requires(TaskNames.RESOLVE_DEPS)
-                .ticks(1)
+                .ticks(writeTicks)
                 .execute(ctx -> {
                     ctx.label("write " + lockFile.getFileName());
                     Lockfile stamped = cc.jumpkick.lock.LockfileModules.stamp(ctx.require(LOCKFILE), dir);
                     ctx.put(LOCKFILE, stamped);
                     LockfileWriter.write(stamped, lockFile, ctx.require(MANIFESTS_SHA));
-                    ctx.progress(1);
+                    ctx.progress(writeTicks);
                 })
                 .build();
 
