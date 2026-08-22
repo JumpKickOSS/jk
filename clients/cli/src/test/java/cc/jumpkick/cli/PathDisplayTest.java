@@ -62,13 +62,29 @@ class PathDisplayTest {
     }
 
     @Test
-    void absolute_when_outside_all_scopes(@TempDir Path tmp) throws IOException {
-        Path project = Files.createDirectories(tmp.resolve("project"));
-        Files.createDirectories(project.resolve(".git"));
-        Path outside = tmp.resolve("elsewhere/Other.java");
+    void absolute_when_outside_all_scopes() throws IOException {
+        // Sandbox OUTSIDE the repo: the build's java.io.tmpdir is build/tmp (inside the checkout),
+        // so a @TempDir path shares the process CWD (repo) as an anchor and renders repo-relative
+        // instead of absolute (JK-2314).
+        Path tmp = Files.createTempDirectory(Path.of(System.getProperty("user.home")), ".jk-pd-test-");
+        try {
+            Path project = Files.createDirectories(tmp.resolve("project"));
+            Files.createDirectories(project.resolve(".git"));
+            Path outside = tmp.resolve("elsewhere/Other.java");
 
-        // No shared anchor with the project -> absolute.
-        assertThat(PathDisplay.of(outside, project))
-                .isEqualTo(outside.toAbsolutePath().normalize().toString());
+            // No shared anchor with the project -> absolute.
+            assertThat(PathDisplay.of(outside, project))
+                    .isEqualTo(outside.toAbsolutePath().normalize().toString());
+        } finally {
+            try (var walk = Files.walk(tmp)) {
+                walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                    try {
+                        Files.deleteIfExists(p);
+                    } catch (IOException ignored) {
+                        // best-effort cleanup
+                    }
+                });
+            }
+        }
     }
 }

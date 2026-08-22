@@ -75,18 +75,35 @@ class GlobSetTest {
     }
 
     @Test
-    void build_outputs_and_tooling_dirs_are_skipped_by_default(@TempDir Path tmp) throws Exception {
-        Path ws = workspace(tmp);
-        write(ws, "plugins/spring-boot/target/classes/jk-plugin.toml", "stale build output");
-        write(ws, "plugins/spring-boot/build/jk-plugin.toml", "stale build output");
-        write(ws, "plugins/.git/jk-plugin.toml", "vcs internals");
-        Path module = ws.resolve("shared/core");
+    void build_outputs_and_tooling_dirs_are_skipped_by_default() throws Exception {
+        // Sandbox OUTSIDE the repo: with a @TempDir under the checkout, GlobSet anchors its
+        // default-skip rules on the real repo root (found by walking up), so the fake workspace's
+        // target/build/.git are not recognized as build outputs (JK-2314).
+        Path tmp = Files.createTempDirectory(Path.of(System.getProperty("user.home")), ".jk-glob-test-");
+        try {
+            Path ws = workspace(tmp);
+            write(ws, "plugins/spring-boot/target/classes/jk-plugin.toml", "stale build output");
+            write(ws, "plugins/spring-boot/build/jk-plugin.toml", "stale build output");
+            write(ws, "plugins/.git/jk-plugin.toml", "vcs internals");
+            Path module = ws.resolve("shared/core");
 
-        List<GlobSet.Match> matches = GlobSet.resolve(module, ws, "../../plugins/**/jk-plugin.toml", List.of(), false);
+            List<GlobSet.Match> matches =
+                    GlobSet.resolve(module, ws, "../../plugins/**/jk-plugin.toml", List.of(), false);
 
-        assertThat(matches.stream().map(Object::toString))
-                .noneMatch(s -> s.contains("/target/") || s.contains("/build/") || s.contains("/.git/"));
-        assertThat(matches).hasSize(3);
+            assertThat(matches.stream().map(Object::toString))
+                    .noneMatch(s -> s.contains("/target/") || s.contains("/build/") || s.contains("/.git/"));
+            assertThat(matches).hasSize(3);
+        } finally {
+            try (var walk = Files.walk(tmp)) {
+                walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                    try {
+                        Files.deleteIfExists(p);
+                    } catch (Exception ignored) {
+                        // best-effort cleanup
+                    }
+                });
+            }
+        }
     }
 
     @Test

@@ -126,15 +126,19 @@ class JkEnvTest {
         var defaults = globalDefaultConfig(tempDir, "temurin-25.0.3");
 
         // A bare directory with no jk.toml anywhere — yet the configured default
-        // JDK still lands on PATH so `java`/`javac` resolve.
+        // JDK still lands on PATH so `java`/`javac` resolve. It must live OUTSIDE the repo tree:
+        // the build's java.io.tmpdir is build/tmp (inside the checkout), so a @TempDir has the
+        // repo's own jk.toml as an ancestor and resolve() would find that project (JK-2314).
+        var noProject = Files.createTempDirectory(Path.of(System.getProperty("user.home")), ".jk-env-test-");
         var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", defaults);
-        var target = env.resolve(tempDir);
+        var target = env.resolve(noProject);
 
         var realHome = jdkHome.toRealPath();
         assertThat(target.isActive()).isTrue();
         assertThat(target.projectRoot()).isEmpty();
         assertThat(target.vars().get("JAVA_HOME")).isEqualTo(realHome.toString());
         assertThat(target.vars().get("PATH")).isEqualTo(realHome.resolve("bin") + File.pathSeparator + "/usr/bin");
+        Files.deleteIfExists(noProject);
     }
 
     @Test
