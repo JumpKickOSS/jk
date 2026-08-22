@@ -61,6 +61,42 @@ class ScalaBuildE2eTest {
     }
 
     @Test
+    void scala_only_under_extra_src_gets_a_compiler(@TempDir Path tmp) throws Exception {
+        // JK-2302: .scala living only under a [build] extra-src overlay (no standard main root) must
+        // still get a Scala toolchain — the gate reads the merged source set, not the main-roots walk.
+        Path project = Files.createDirectories(tmp.resolve("sextra"));
+        Path cache = cache();
+        Files.writeString(project.resolve("jk.toml"), """
+                name    = "sextra"
+                group   = "com.example"
+                version = "1.0.0"
+                java    = 25
+                scala   = "3.8.4"
+
+                [build]
+                extra-src = ["src/overlay"]
+
+                """ + REPOS);
+        // Traditional layout (src/main/java present) so the main-roots scala walk does NOT reach the
+        // overlay — the bug only bites when the narrow walk misses the extra-src .scala.
+        Path mainJava = Files.createDirectories(project.resolve("src/main/java/com/example"));
+        Files.writeString(mainJava.resolve("Plain.java"), "package com.example; public class Plain {}");
+        Path overlay = Files.createDirectories(project.resolve("src/overlay/com/example"));
+        Files.writeString(overlay.resolve("Over.scala"), """
+                package com.example
+
+                class Over:
+                  def hi: String = "overlay"
+                """);
+
+        BuildPlanResult result = build(project, cache);
+        assertThat(result.errors()).as("errors=%s", result.errors()).isEmpty();
+        assertThat(result.success()).isTrue();
+        assertThat(project.resolve("target/classes/main/com/example/Over.class")).exists();
+        assertThat(project.resolve("target/classes/main/com/example/Plain.class")).exists();
+    }
+
+    @Test
     void mixed_java_scala_circular_compiles(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("mixed"));
         Path cache = cache();

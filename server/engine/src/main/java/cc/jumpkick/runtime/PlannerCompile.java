@@ -128,10 +128,13 @@ public final class PlannerCompile {
                     boolean rerun = in.session().config().rebuildOr(false);
                     // Resolve the Scala toolchain before the stamp check so the stdlib jars are part
                     // of the freshness inputs — a scala-version bump must invalidate the stat-only
-                    // fast path (JK-2295). Cheap on a warm closure cache.
-                    ScalaCompile.Setup scalaSetup = scalaSrcs.isEmpty()
-                            ? null
-                            : ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas);
+                    // fast path (JK-2295). Cheap on a warm closure cache. Gate on the *merged* source
+                    // set (which includes extra-src / plugin-root .scala published by PlannerSetup),
+                    // not the narrow main-roots walk — otherwise a variant-overlay .scala reaches the
+                    // Zinc worker with the Java-only dummy compiler and fails cryptically (JK-2302).
+                    boolean hasScala = sources.stream().anyMatch(p -> p.toString().endsWith(".scala"));
+                    ScalaCompile.Setup scalaSetup =
+                            hasScala ? ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas) : null;
                     // The shared stamp recipeforecast and write-stamp use it too.
                     List<Path> stampInputs = mainStampClasspath(
                             baseClasspath, processorCp, mixed, cx.mixedGroovy(), ctx.require(LAYOUT), groovyJar);
