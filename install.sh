@@ -17,7 +17,8 @@
 #   JK_INSTALL_DIR   Override the install directory (default: ~/.local/bin,
 #                    or $XDG_BIN_HOME / $JK_BIN_DIR when set).
 #   JK_BIN_DIR       Same as JK_INSTALL_DIR (product layout env).
-#   JK_HOME          Optional single-tree umbrella for product data (tests/CI).
+#   JK_HOME          Optional single-tree umbrella; mirrors the XDG layout
+#                    ($JK_HOME/{bin,cache,config,data,state}). (tests/CI)
 #
 set -euo pipefail
 
@@ -230,8 +231,8 @@ fi
 
 # The engine ships as a single fat jar, jk-engine-<version>.jar (see
 # docs/architecture.md "Ship layout" / client+engine split; the engine is a JVM app,
-# not a second native binary). The live copy is under $JK_HOME/lib/jk-engine/
-# (or <data>/lib/jk-engine/) — materialized below for local dists;
+# not a second native binary). The live copy is <data>/lib/jk-engine/
+# ($JK_HOME/data/lib/jk-engine/ under the umbrella) — materialized below for local dists;
 # download installs self-fetch it on first engine spawn.
 if [ -n "$LOCAL_FILE" ]; then
   SRC_LIB="$(cd "$(dirname "$LOCAL_FILE")" && pwd)/lib"
@@ -274,22 +275,22 @@ run_jk activate --yes || note "'jk activate --yes' failed; run 'jk activate' (or
 # Best-effort: never fail the install. Replaces existing cache entries
 # (shallow clone depth 1, conditional GET with ETag). Works for both
 # `curl|bash` and `bash install.sh build/dist/jk` (local) flows.
+# Resolve the cache/store roots exactly as JkDirs does: a role-specific JK_*_DIR wins,
+# else $JK_HOME/<root>, else XDG. JK_HOME mirrors the XDG shape, so the store is always
+# <data>/store — $JK_HOME/data/store under the umbrella.
+_jk_cache_root="${XDG_CACHE_HOME:-${HOME}/.cache}/jk"
+[ -n "${JK_HOME:-}" ] && _jk_cache_root="${JK_HOME}/cache"
+[ -n "${JK_CACHE_DIR:-}" ] && _jk_cache_root="${JK_CACHE_DIR}"
+_jk_data_root="${XDG_DATA_HOME:-${HOME}/.local/share}/jk"
+[ -n "${JK_HOME:-}" ] && _jk_data_root="${JK_HOME}/data"
+[ -n "${JK_DATA_DIR:-}" ] && _jk_data_root="${JK_DATA_DIR}"
+_jk_store_root="${_jk_data_root}/store"
+[ -n "${JK_STORE_DIR:-}" ] && _jk_store_root="${JK_STORE_DIR}"
+
 if have git; then
   # jk-templates: shallow clone (replace if exists) – mirrors OfficialTemplatesFreshen dest
   _jk_templates_url="${JK_TEMPLATES_URL:-https://github.com/JumpKickOSS/jk-templates.git}"
-  _jk_cache_templates=""
-  if [ -d "${HOME}/.jk/cache/templates" ] || [ -d "${HOME}/.jk" ]; then
-    _jk_cache_templates="${HOME}/.jk/cache/templates"
-  else
-    _jk_cache_templates="${XDG_CACHE_HOME:-${HOME}/.cache}/jk/templates"
-    # Respect JK_CACHE_DIR if set (engine/cache root)
-    if [ -n "${JK_CACHE_DIR:-}" ]; then
-      _jk_cache_templates="${JK_CACHE_DIR}/templates"
-    fi
-    if [ -n "${JK_HOME:-}" ]; then
-      _jk_cache_templates="${JK_HOME}/cache/templates"
-    fi
-  fi
+  _jk_cache_templates="${_jk_cache_root}/templates"
   # Derive cache key similar to OfficialTemplatesFreshen (sanitize URL)
   _jk_tmpl_key="$(printf '%s' "$_jk_templates_url" | tr '[:upper:]' '[:lower:]' | sed -e 's|^https*://||' -e 's|^git@||' -e 's|\.git$||' -e 's|[^a-z0-9._-]|_|g')"
   _jk_tmpl_dest="$_jk_cache_templates/$_jk_tmpl_key"
@@ -304,27 +305,16 @@ fi
 # jk-libraries: conditional fetch of libraries.toml (ETag-aware in LibraryRegistrySync, but prefetch raw)
 if have curl; then
   _jk_libs_url="${JK_LIBRARIES_URL:-https://raw.githubusercontent.com/JumpKickOSS/jk-libraries/refs/heads/main/libraries.toml}"
-  _jk_libs_dest=""
-  if [ -n "${JK_CACHE_DIR:-}" ]; then
-    _jk_libs_dest="${JK_CACHE_DIR}/libs.global.toml"
-  elif [ -d "${HOME}/.jk" ]; then
-    _jk_libs_dest="${HOME}/.jk/cache/libs.global.toml"
-  else
-    _jk_libs_dest="${XDG_CACHE_HOME:-${HOME}/.cache}/jk/libs.global.toml"
-  fi
-  # Also try store location (StoreFeedRefresh uses store/libs.global.toml)
-  _jk_store_libs="${HOME}/.local/share/jk/store/libs.global.toml"
-  if [ -n "${JK_STORE_DIR:-}" ]; then _jk_store_libs="${JK_STORE_DIR}/libs.global.toml"; fi
-  if [ -n "${JK_HOME:-}" ]; then _jk_store_libs="${JK_HOME}/store/libs.global.toml"; fi
+  _jk_libs_dest="${_jk_cache_root}/libs.global.toml"
+  # Also seed the store copy (StoreFeedRefresh reads <store>/libs.global.toml)
+  _jk_store_libs="${_jk_store_root}/libs.global.toml"
   mkdir -p "$(dirname "$_jk_libs_dest")" "$(dirname "$_jk_store_libs")" || true
   curl -fsSL "$_jk_libs_url" -o "$_jk_libs_dest.tmp" >/dev/null 2>&1 && mv -f "$_jk_libs_dest.tmp" "$_jk_libs_dest" 2>/dev/null && cp -f "$_jk_libs_dest" "$_jk_store_libs" 2>/dev/null || rm -f "$_jk_libs_dest.tmp" 2>/dev/null || true
   unset _jk_libs_url _jk_libs_dest _jk_store_libs
 elif have wget; then
   _jk_libs_url="${JK_LIBRARIES_URL:-https://raw.githubusercontent.com/JumpKickOSS/jk-libraries/refs/heads/main/libraries.toml}"
-  _jk_libs_dest="${JK_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME}/.cache}/jk}/libs.global.toml"
-  _jk_store_libs="${HOME}/.local/share/jk/store/libs.global.toml"
-  if [ -n "${JK_STORE_DIR:-}" ]; then _jk_store_libs="${JK_STORE_DIR}/libs.global.toml"; fi
-  if [ -n "${JK_HOME:-}" ]; then _jk_store_libs="${JK_HOME}/store/libs.global.toml"; fi
+  _jk_libs_dest="${_jk_cache_root}/libs.global.toml"
+  _jk_store_libs="${_jk_store_root}/libs.global.toml"
   mkdir -p "$(dirname "$_jk_libs_dest")" "$(dirname "$_jk_store_libs")" || true
   wget -q "$_jk_libs_url" -O "$_jk_libs_dest.tmp" >/dev/null 2>&1 && mv -f "$_jk_libs_dest.tmp" "$_jk_libs_dest" 2>/dev/null && cp -f "$_jk_libs_dest" "$_jk_store_libs" 2>/dev/null || rm -f "$_jk_libs_dest.tmp" 2>/dev/null || true
   unset _jk_libs_url _jk_libs_dest _jk_store_libs
@@ -332,26 +322,25 @@ fi
 # jdks.json: one-shot fetch to store (JdkCatalogClient will revalidate with If-Modified-Since)
 if have curl; then
   _jk_jdks_url="${JK_JDKS_URL:-https://download.jetbrains.com/jdk/feed/v1/jdks.json}"
-  _jk_jdks_dest="${JK_STORE_DIR:-${HOME}/.local/share/jk/store}/jdks.json"
-  if [ -n "${JK_HOME:-}" ]; then _jk_jdks_dest="${JK_HOME}/store/jdks.json"; fi
+  _jk_jdks_dest="${_jk_store_root}/jdks.json"
   mkdir -p "$(dirname "$_jk_jdks_dest")" || true
   curl -fsSL "$_jk_jdks_url" -o "$_jk_jdks_dest.tmp" >/dev/null 2>&1 && mv -f "$_jk_jdks_dest.tmp" "$_jk_jdks_dest" 2>/dev/null || rm -f "$_jk_jdks_dest.tmp" 2>/dev/null || true
   unset _jk_jdks_url _jk_jdks_dest
 elif have wget; then
   _jk_jdks_url="${JK_JDKS_URL:-https://download.jetbrains.com/jdk/feed/v1/jdks.json}"
-  _jk_jdks_dest="${JK_STORE_DIR:-${HOME}/.local/share/jk/store}/jdks.json"
-  if [ -n "${JK_HOME:-}" ]; then _jk_jdks_dest="${JK_HOME}/store/jdks.json"; fi
+  _jk_jdks_dest="${_jk_store_root}/jdks.json"
   mkdir -p "$(dirname "$_jk_jdks_dest")" || true
   wget -q "$_jk_jdks_url" -O "$_jk_jdks_dest.tmp" >/dev/null 2>&1 && mv -f "$_jk_jdks_dest.tmp" "$_jk_jdks_dest" 2>/dev/null || rm -f "$_jk_jdks_dest.tmp" 2>/dev/null || true
   unset _jk_jdks_url _jk_jdks_dest
 fi
+unset _jk_cache_root _jk_data_root _jk_store_root
 
 # ---- warm the engine -------------------------------------------------------
 #
 # Pre-pay the engine's cold-start costs now so the first real build doesn't:
 # `jk engine start` installs the JDK that hosts the engine when none
 # qualifies, and on a download install triggers the client's own engine-jar
-# fetch (which writes under $JK_HOME/lib/jk-engine/). The engine serves immediately
+# fetch (which writes under <data>/lib/jk-engine/). The engine serves immediately
 # and manages its own AOT training sidecar off to the side
 # (docs/architecture.md), so ONE start is the whole warm-up. Best-effort by
 # design: a failed warm-up never fails the install. Skipped only for a local

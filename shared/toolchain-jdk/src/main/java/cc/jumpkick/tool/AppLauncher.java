@@ -15,7 +15,7 @@ import java.util.Set;
 /**
  * Writes a launcher script for an application installed by {@code jk install}. Thin apps use
  * {@code java -cp} over repo/CAS jars; fat and minified apps use {@code java -jar} of the copy
- * under {@code $JK_HOME/lib/&lt;bin&gt;/}.
+ * under {@code <data>/lib/&lt;bin&gt;/}.
  */
 public final class AppLauncher {
 

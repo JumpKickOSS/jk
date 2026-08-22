@@ -13,25 +13,19 @@ import org.junit.jupiter.api.io.TempDir;
 class JkDirsTest {
 
     @Test
-    void jk_home_config_falls_back_to_the_legacy_location(@TempDir Path home) throws Exception {
-        // JK-2324: config moved to $JK_HOME/config/config.toml; an existing legacy
-        // $JK_HOME/config.toml must still be honored so an upgrade doesn't drop it.
+    void jk_home_config_is_only_the_config_root_never_the_umbrella_root(@TempDir Path home) throws Exception {
+        // No old-layout support: a stray $JK_HOME/config.toml is not a config file, even when
+        // $JK_HOME/config/config.toml does not exist.
         Map<String, String> env = Map.of("JK_HOME", home.toString());
         JkDirs dirs = JkDirs.of(env::get, "/home/me", "Linux");
 
-        Files.writeString(home.resolve("config.toml"), "# legacy\n");
-        assertThat(dirs.userConfigFilePath()).isEqualTo(home.resolve("config.toml"));
-
-        // Once the new location exists, it wins.
-        Files.createDirectories(home.resolve("config"));
-        Files.writeString(home.resolve("config/config.toml"), "# new\n");
+        Files.writeString(home.resolve("config.toml"), "# stray\n");
         assertThat(dirs.userConfigFilePath()).isEqualTo(home.resolve("config/config.toml"));
     }
 
     @Test
     void linux_xdg_defaults() {
         JkDirs dirs = JkDirs.of(Map.<String, String>of()::get, "/home/me", "Linux");
-        assertThat(dirs.homeDir()).isEqualTo(Path.of("/home/me/.local/share/jk"));
         assertThat(dirs.dataDir()).isEqualTo(Path.of("/home/me/.local/share/jk"));
         assertThat(dirs.userConfigFilePath()).isEqualTo(Path.of("/home/me/.config/jk/config.toml"));
         assertThat(dirs.cacheDir()).isEqualTo(Path.of("/home/me/.cache/jk"));
@@ -40,7 +34,6 @@ class JkDirsTest {
         assertThat(dirs.storeDir()).isEqualTo(Path.of("/home/me/.local/share/jk/store"));
         assertThat(dirs.libDir()).isEqualTo(Path.of("/home/me/.local/share/jk/store/lib"));
         assertThat(dirs.productLibDir()).isEqualTo(Path.of("/home/me/.local/share/jk/lib"));
-        assertThat(dirs.versionsDir()).isEqualTo(Path.of("/home/me/.local/share/jk/versions"));
         assertThat(dirs.jdksDir()).isEqualTo(Path.of("/home/me/.jdks"));
         assertThat(dirs.buildsDir()).isEqualTo(Path.of("/home/me/.local/state/jk/builds"));
         assertThat(dirs.tmpDir()).isEqualTo(Path.of("/home/me/.local/state/jk/tmp"));
@@ -74,8 +67,6 @@ class JkDirsTest {
                 .isEqualTo(local.resolve("jk").resolve("data").resolve("store"));
         assertThat(dirs.productLibDir())
                 .isEqualTo(local.resolve("jk").resolve("data").resolve("lib"));
-        assertThat(dirs.versionsDir())
-                .isEqualTo(local.resolve("jk").resolve("data").resolve("versions"));
     }
 
     @Test
@@ -116,22 +107,44 @@ class JkDirsTest {
     }
 
     @Test
-    void jk_home_relocates_product_tree_but_not_jdks() {
+    void jk_home_relocates_the_five_roots_but_not_jdks() {
         Map<String, String> env = Map.of("JK_HOME", "/opt/jk");
         JkDirs dirs = JkDirs.of(env::get, "/home/me", "Linux");
-        assertThat(dirs.homeDir()).isEqualTo(Path.of("/opt/jk"));
-        assertThat(dirs.configDir()).isEqualTo(Path.of("/opt/jk/config"));
-        assertThat(dirs.userConfigFilePath()).isEqualTo(Path.of("/opt/jk/config/config.toml"));
-        assertThat(dirs.cacheDir()).isEqualTo(Path.of("/opt/jk/cache"));
-        assertThat(dirs.stateDir()).isEqualTo(Path.of("/opt/jk/state"));
-        assertThat(dirs.dataDir()).isEqualTo(Path.of("/opt/jk/data"));
         assertThat(dirs.binDirectory()).isEqualTo(Path.of("/opt/jk/bin"));
-        assertThat(dirs.storeDir()).isEqualTo(Path.of("/opt/jk/store"));
-        assertThat(dirs.libDir()).isEqualTo(Path.of("/opt/jk/store/lib"));
-        assertThat(dirs.productLibDir()).isEqualTo(Path.of("/opt/jk/lib"));
-        assertThat(dirs.versionsDir()).isEqualTo(Path.of("/opt/jk/versions"));
+        assertThat(dirs.cacheDir()).isEqualTo(Path.of("/opt/jk/cache"));
+        assertThat(dirs.configDir()).isEqualTo(Path.of("/opt/jk/config"));
+        assertThat(dirs.dataDir()).isEqualTo(Path.of("/opt/jk/data"));
+        assertThat(dirs.stateDir()).isEqualTo(Path.of("/opt/jk/state"));
         // Shared IntelliJ root — not $JK_HOME/jdks
         assertThat(dirs.jdksDir()).isEqualTo(Path.of("/home/me/.jdks"));
+    }
+
+    @Test
+    void jk_home_derives_everything_else_exactly_as_xdg_does() {
+        JkDirs xdg = JkDirs.of(Map.<String, String>of()::get, "/home/me", "Linux");
+        JkDirs umbrella = JkDirs.of(Map.of("JK_HOME", "/opt/jk")::get, "/home/me", "Linux");
+
+        // <data>/store, <store>/lib, <data>/lib, <config>/config.toml, <state>/builds, <state>/tmp
+        assertThat(umbrella.storeDir()).isEqualTo(Path.of("/opt/jk/data/store"));
+        assertThat(umbrella.libDir()).isEqualTo(Path.of("/opt/jk/data/store/lib"));
+        assertThat(umbrella.productLibDir()).isEqualTo(Path.of("/opt/jk/data/lib"));
+        assertThat(umbrella.userConfigFilePath()).isEqualTo(Path.of("/opt/jk/config/config.toml"));
+        assertThat(umbrella.buildsDir()).isEqualTo(Path.of("/opt/jk/state/builds"));
+        assertThat(umbrella.tmpDir()).isEqualTo(Path.of("/opt/jk/state/tmp"));
+
+        // Same derivation both ways: each path is its root plus an identical relative tail.
+        assertThat(umbrella.dataDir().relativize(umbrella.storeDir()))
+                .isEqualTo(xdg.dataDir().relativize(xdg.storeDir()));
+        assertThat(umbrella.dataDir().relativize(umbrella.productLibDir()))
+                .isEqualTo(xdg.dataDir().relativize(xdg.productLibDir()));
+        assertThat(umbrella.storeDir().relativize(umbrella.libDir()))
+                .isEqualTo(xdg.storeDir().relativize(xdg.libDir()));
+        assertThat(umbrella.stateDir().relativize(umbrella.buildsDir()))
+                .isEqualTo(xdg.stateDir().relativize(xdg.buildsDir()));
+        assertThat(umbrella.stateDir().relativize(umbrella.tmpDir()))
+                .isEqualTo(xdg.stateDir().relativize(xdg.tmpDir()));
+        assertThat(umbrella.configDir().relativize(umbrella.userConfigFilePath()))
+                .isEqualTo(xdg.configDir().relativize(xdg.userConfigFilePath()));
     }
 
     @Test
@@ -155,7 +168,6 @@ class JkDirsTest {
                 "JK_LIB_DIR", "/opt/shared/lib",
                 "JK_JDKS_DIR", "/opt/jdks");
         JkDirs dirs = JkDirs.of(env::get, "/home/me", "Linux");
-        assertThat(dirs.homeDir()).isEqualTo(Path.of("/opt/jk"));
         assertThat(dirs.userConfigFilePath()).isEqualTo(Path.of("/etc/jk-config.toml"));
         assertThat(dirs.cacheDir()).isEqualTo(Path.of("/var/cache/jk"));
         assertThat(dirs.storeDir()).isEqualTo(Path.of("/var/lib/jk/store"));
@@ -180,7 +192,7 @@ class JkDirsTest {
         env.put("JK_HOME", "  ");
         env.put("JK_CACHE_DIR", "");
         JkDirs dirs = JkDirs.of(env::get, "/home/me", "Linux");
-        assertThat(dirs.homeDir()).isEqualTo(Path.of("/home/me/.local/share/jk"));
+        assertThat(dirs.dataDir()).isEqualTo(Path.of("/home/me/.local/share/jk"));
         assertThat(dirs.cacheDir()).isEqualTo(Path.of("/home/me/.cache/jk"));
     }
 

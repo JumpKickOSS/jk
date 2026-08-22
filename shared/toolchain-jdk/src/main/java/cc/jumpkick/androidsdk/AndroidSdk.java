@@ -28,7 +28,7 @@ public final class AndroidSdk {
         if (override != null && !override.isBlank()) {
             return new AndroidSdk(Files.createDirectories(Path.of(override)));
         }
-        return resolve(System::getenv, JkDirs.home().resolve("android-sdk"));
+        return resolve(System::getenv, JkDirs.data().resolve("android-sdk"));
     }
 
     /** Explicit-env seam for tests. */

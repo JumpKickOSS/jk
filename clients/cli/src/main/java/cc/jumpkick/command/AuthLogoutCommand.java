@@ -34,7 +34,7 @@ public final class AuthLogoutCommand implements CliCommand {
                 Opt.value("<HOST>", "Forge host (required for Gitea/Forgejo)", "--host"),
                 Opt.value(
                                 "<dir>",
-                                "Override the credentials directory. Default: ~/.jk/credentials.",
+                                "Override the credentials directory. Default: <data>/credentials.",
                                 "--credentials-dir")
                         .hide());
     }

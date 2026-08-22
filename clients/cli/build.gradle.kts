@@ -240,7 +240,7 @@ tasks.named<Test>("integrationTest") {
         val testJkHome = layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath
         environment("JK_HOME", testJkHome)
         environment("JK_JDKS_DIR", "$testJkHome/jdks")
-        val store = file("$testJkHome/store")
+        val store = file("$testJkHome/data/store") // JK_HOME mirrors XDG: store is <data>/store
         listOf(
                         ":kotlin-compiler",
                         ":groovy-compiler",

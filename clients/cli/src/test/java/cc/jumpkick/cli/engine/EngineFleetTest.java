@@ -107,8 +107,9 @@ class EngineFleetTest {
         String production =
                 "/home/u/.jdks/temurin-25/bin/java -cp /home/u/.local/share/jk/lib/jk-engine/jk-engine-0.12.0.jar"
                         + " cc.jumpkick.engine.EngineMain";
-        String testHome = "/home/u/.jdks/temurin-25/bin/java -cp /tmp/test-jk-home/lib/jk-engine/jk-engine-0.12.0.jar"
-                + " cc.jumpkick.engine.EngineMain";
+        String testHome =
+                "/home/u/.jdks/temurin-25/bin/java -cp /tmp/test-jk-home/data/lib/jk-engine/jk-engine-0.12.0.jar"
+                        + " cc.jumpkick.engine.EngineMain";
         assertThat(EngineFleet.isResidentEngine(production)).isTrue();
         assertThat(EngineFleet.isResidentEngine(testHome)).isTrue();
         assertThat(EngineFleet.isResidentEngine(production + " --aot-training")).isFalse();
@@ -120,22 +121,28 @@ class EngineFleetTest {
 
     @Test
     void stop_scope_is_this_home_not_a_foreign_jk_home() {
-        Path home = Path.of("/tmp/test-jk-home");
-        Path state = home.resolve("state");
-        String local = "java -cp /tmp/test-jk-home/lib/jk-engine/jk-engine-0.12.0.jar cc.jumpkick.engine.EngineMain";
+        // Under JK_HOME=/tmp/test-jk-home the engine jar lives at <JK_HOME>/data/lib/jk-engine/.
+        Path data = Path.of("/tmp/test-jk-home/data");
+        Path state = Path.of("/tmp/test-jk-home/state");
+        String local =
+                "java -cp /tmp/test-jk-home/data/lib/jk-engine/jk-engine-0.12.0.jar cc.jumpkick.engine.EngineMain";
         String production = "java -cp /home/u/.local/share/jk/lib/jk-engine/jk-engine-0.12.0.jar"
                 + " -Djk.aot.train.output=/home/u/.local/state/jk/aot/engine.aot"
                 + " cc.jumpkick.engine.EngineMain";
-        assertThat(EngineFleet.belongsToThisHome(local, home, state)).isTrue();
-        assertThat(EngineFleet.belongsToThisHome(production, home, state)).isFalse();
+        assertThat(EngineFleet.belongsToThisHome(local, data, state)).isTrue();
+        assertThat(EngineFleet.belongsToThisHome(production, data, state)).isFalse();
     }
 
     @Test
-    void home_is_parsed_from_the_engine_jar_on_the_command_line() {
-        assertThat(EngineFleet.homeFromCommandLine(
-                        "java -cp /tmp/test-jk-home/lib/jk-engine/jk-engine-0.12.0.jar cc.jumpkick.engine.EngineMain"))
-                .isEqualTo(Path.of("/tmp/test-jk-home"));
-        assertThat(EngineFleet.homeFromCommandLine("java -jar other.jar")).isNull();
+    void data_root_is_parsed_from_the_engine_jar_on_the_command_line() {
+        assertThat(EngineFleet.dataDirFromCommandLine("java -cp /tmp/test-jk-home/data/lib/jk-engine/"
+                        + "jk-engine-0.12.0.jar cc.jumpkick.engine.EngineMain"))
+                .isEqualTo(Path.of("/tmp/test-jk-home/data"));
+        // XDG: the data root is the jk dir itself, not a sibling of state.
+        assertThat(EngineFleet.dataDirFromCommandLine(
+                        "java -cp /home/u/.local/share/jk/lib/jk-engine/jk-engine-0.12.0.jar"))
+                .isEqualTo(Path.of("/home/u/.local/share/jk"));
+        assertThat(EngineFleet.dataDirFromCommandLine("java -jar other.jar")).isNull();
     }
 
     @Test

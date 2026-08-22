@@ -83,8 +83,8 @@ tasks.shadowJar {
 }
 
 /**
- * Materialize the freshly-built engine fat jar into {@code $JK_HOME/lib/jk-engine/} (or
- * {@code ~/.local/share/jk/lib/jk-engine/}) and bounce the resident daemon so local dogfood
+ * Materialize the freshly-built engine fat jar into the product lib, {@code <data>/lib/jk-engine/}
+ * ({@code ~/.local/share/jk/lib/…} or {@code $JK_HOME/data/lib/…}), and bounce the resident daemon so local dogfood
  * picks up engine-side first-party plugin tables without a hand copy.
  *
  * Client resolution (first hit wins): `:cli:installDist` bin, `build/dist/jk`, platform bin dir
@@ -169,7 +169,7 @@ fun Test.seedWorkerRepos(vararg projects: String) {
     projects.forEach { dependsOn("$it:stageWorkerRepo") }
     doFirst {
         val home = environment["JK_HOME"] as? String ?: return@doFirst
-        val store = file("$home/store")
+        val store = file("$home/data/store") // JK_HOME mirrors XDG: store is <data>/store
         projects.forEach { p ->
             val src = project(p).layout.buildDirectory.dir("worker-repo").get().asFile
             if (src.isDirectory) src.copyRecursively(store, overwrite = true)

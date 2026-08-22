@@ -822,7 +822,7 @@ public final class ExecPlans {
 
     /**
      * {@code jk install}'s application half. Preference by what exists after the build: native
-     * binary → {@code ~/.local/bin}; else minified/fat → {@code $JK_HOME/lib/&lt;bin&gt;/} + {@code
+     * binary → {@code ~/.local/bin}; else minified/fat → {@code <data>/lib/&lt;bin&gt;/} + {@code
      * java -jar}; else thin jar stays in the local repo and the script uses {@code java -cp}.
      */
     private static ExecPlan installPlan(

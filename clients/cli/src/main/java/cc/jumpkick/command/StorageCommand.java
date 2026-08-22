@@ -50,7 +50,7 @@ public final class StorageCommand extends GroupCommand {
     /**
      * Wipe every child of the artifact store root — or, with {@code dryRun}, count what a wipe
      * would remove without deleting. Shared by {@code jk storage nuke} and {@code jk self nuke
-     * --store}. Returns {@code [files, bytes]} (best-effort sizes).
+     * --data}. Returns {@code [files, bytes]} (best-effort sizes).
      */
     public static long[] wipeStore(Path storeRoot, boolean dryRun) throws IOException {
         var ack = cc.jumpkick.cli.engine.EngineClient.cacheInventory(
@@ -66,8 +66,8 @@ public final class StorageCommand extends GroupCommand {
     }
 
     /**
-     * Full store nuke with confirm / dry-run. Used by {@code jk storage nuke} and single-target
-     * {@code jk self nuke --store}.
+     * Full store nuke with confirm / dry-run. Used by {@code jk storage nuke} and by the store
+     * leg of {@code jk self nuke --data}.
      *
      * @param skipConfirm when true (multi-target self nuke already confirmed), do not prompt
      */

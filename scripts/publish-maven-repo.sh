@@ -30,10 +30,10 @@ fi
 
 if [[ -n "${JK_STORE_DIR:-}" ]]; then
   STORE="$JK_STORE_DIR"
-elif [[ -n "${JK_HOME:-}" ]]; then
-  STORE="$JK_HOME/store"
 elif [[ -n "${JK_DATA_DIR:-}" ]]; then
   STORE="$JK_DATA_DIR/store"
+elif [[ -n "${JK_HOME:-}" ]]; then
+  STORE="$JK_HOME/data/store"
 else
   STORE="${XDG_DATA_HOME:-$HOME/.local/share}/jk/store"
 fi

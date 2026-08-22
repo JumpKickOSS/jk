@@ -32,7 +32,7 @@ Product data uses platform-native locations (XDG on Linux/macOS; Windows Known F
 under **data** (`…/store`). **Cache CAS** (action outputs) lives under **cache**
 (`…/cache/sha256`). The live engine jar is
 `<data>/lib/jk-engine/<jar>` with metadata in `<config>/jk-engine/config.toml`
-(or `$JK_HOME/lib/jk-engine/…` + `$JK_HOME/config/jk-engine/config.toml`).
+(under `JK_HOME`: `$JK_HOME/data/lib/jk-engine/…` + `$JK_HOME/config/jk-engine/config.toml`).
 
 Managed JDKs use the **IntelliJ shared root** so the IDE and JumpKick share runtimes.
 JumpKick records those installs in **`<state>/jk-jdks.toml`** (defaults + fingerprints) and
@@ -46,11 +46,11 @@ XDG variables (`XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_
 
 | Env / flag | Effect |
 |------------|--------|
-| `JK_HOME` | Optional **single-tree umbrella** for product dirs (`config/`, `cache/`, `store/`, `state/`, `data/`, `bin/`, `lib/`). Hermetic tests and cold CI roots. Does **not** move the default JDK root. Global prefs: `$JK_HOME/config/config.toml`; per-app install config: `$JK_HOME/config/<bin>/config.toml`. |
+| `JK_HOME` | Optional **single-tree umbrella**: the five roots relocate to `$JK_HOME/{bin,cache,config,data,state}` and everything else derives from them exactly as it does under XDG — so the store is `$JK_HOME/data/store`, the engine jar `$JK_HOME/data/lib/jk-engine/`, build history `$JK_HOME/state/builds`. Hermetic tests and cold CI roots. Does **not** move the default JDK root. |
 | `JK_CACHE_DIR` | Action / local CPU cache |
 | `JK_STORE_DIR` | CAS / network-expensive store |
 | `JK_STATE_DIR` | Engine sockets, build history, JDK inventory (`jk-jdks.toml`) and JDK access log |
-| `JK_DATA_DIR` | Product data root (engine lib + default store parent) |
+| `JK_DATA_DIR` | Product data root (engine lib, credentials, and the default store parent) |
 | `JK_BIN_DIR` / `JK_INSTALL_DIR` | PATH install directory for `jk` / `jkx` |
 | `JK_CONFIG_DIR` | Config root (global `config.toml` + per-app `<bin>/config.toml`). Default: `$JK_HOME/config` or `~/.config/jk` |
 | `JK_CONFIG_FILE` | Absolute path to the global `config.toml` |
@@ -63,6 +63,25 @@ XDG variables (`XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_
 | `--cache-dir <dir>` | Same as `JK_CACHE_DIR` for one command; passed to the resident engine |
 
 Role-specific `JK_*_DIR` always wins over `JK_HOME` / XDG.
+
+`JK_HOME` mirrors the XDG layout rather than flattening it — there is exactly one shape to
+learn, and `$JK_HOME` is just a different prefix for it:
+
+```
+$JK_HOME/            ~/                        role
+  bin/                 .local/bin/             PATH launchers
+  cache/               .cache/jk/              action cache + CAS
+  config/              .config/jk/             config.toml, <bin>/config.toml
+  data/                .local/share/jk/        product data
+    store/               store/                artifact store (JK_STORE_DIR)
+      lib/                 lib/                installed tool jars
+    lib/                 lib/                  live engine jar (jk-engine/)
+    credentials/         credentials/          forge tokens
+    repo-credentials/    repo-credentials/     per-repo credentials
+  state/               .local/state/jk/        engine socket, AOT, JDK inventory
+    builds/              builds/               build history
+    tmp/                 tmp/                  scratch
+```
 
 Cold resolve without wiping your real store:
 

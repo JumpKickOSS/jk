@@ -278,7 +278,7 @@ class EngineClientTest {
         materialize(install, dir, "0.1.0");
         assertThat(EngineClient.resolveEngineArtifact(null, "1.2.3", install)).isEmpty();
 
-        // $JK_HOME/lib/jk-engine/<jar>: the JVM-hosted engine's fat jar
+        // <data>/lib/jk-engine/<jar>: the JVM-hosted engine's fat jar
         Path engineJar = materialize(install, dir, "1.2.3");
         EngineSpawn.EngineArtifact viaLib =
                 EngineClient.resolveEngineArtifact(null, "1.2.3", install).orElseThrow();

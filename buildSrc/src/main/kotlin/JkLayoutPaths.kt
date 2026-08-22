@@ -6,22 +6,21 @@ import java.io.File
  * Gradle-side mirrors of [cc.jumpkick.util.JkDirs] platform defaults (buildSrc cannot depend on :core). Keep in sync
  * when layout resolution changes.
  *
- * Resolution order for product dirs: role env → JK_HOME umbrella → XDG / Known Folders.
+ * Resolution order for the roots: role env → JK_HOME umbrella → XDG / Known Folders. Everything else derives from a
+ * root, identically in every mode — JK_HOME mirrors the XDG shape rather than flattening it.
  */
 object JkLayoutPaths {
 
+    /** Always {@code <data>/store} — {@code $JK_HOME/data/store} under the umbrella. */
     fun storeRoot(): File {
         nonBlank(System.getenv("JK_STORE_DIR"))?.let {
             return File(it)
         }
-        nonBlank(System.getenv("JK_HOME"))?.let {
-            return File(it).resolve("store")
-        }
-        nonBlank(System.getenv("JK_DATA_DIR"))?.let {
-            return File(it).resolve("store")
-        }
         return dataRoot().resolve("store")
     }
+
+    /** The live engine jar / installed app jars: {@code <data>/lib}. */
+    fun productLibRoot(): File = dataRoot().resolve("lib")
 
     fun dataRoot(): File {
         nonBlank(System.getenv("JK_DATA_DIR"))?.let {

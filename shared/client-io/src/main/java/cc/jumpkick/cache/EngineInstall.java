@@ -47,7 +47,7 @@ public final class EngineInstall {
         this.dirs = dirs;
     }
 
-    /** Rooted at {@code $JK_HOME/lib} (or {@code <data>/lib}). */
+    /** Rooted at the product lib, {@code <data>/lib}. */
     public static EngineInstall current() {
         return new EngineInstall(JkDirs.productLib(), JkDirs.current());
     }
@@ -133,12 +133,6 @@ public final class EngineInstall {
         sweepParkedClients(binDir, removed);
         sweepSupersededAot(stateDir, removed);
         return removed;
-    }
-
-    /** @deprecated use {@link #gc(Path, Path)}; legacyVersions is ignored. */
-    @Deprecated
-    public List<Path> gc(Path binDir, Path legacyVersions, Path stateDir) {
-        return gc(binDir, stateDir);
     }
 
     /**

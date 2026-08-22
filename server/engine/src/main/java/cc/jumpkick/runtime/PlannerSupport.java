@@ -558,10 +558,10 @@ public final class PlannerSupport {
      * Isolated {@code JK_HOME} + short {@code JK_STATE_DIR} under {@code /tmp} (UDS path length) for
      * nested-engine CLI tests. Keeps the host engine's socket alone.
      *
-     * <p><strong>Fully sandboxed product layout</strong> — cache and store both live under
-     * {@code $JK_HOME}. Never point {@code JK_CACHE_DIR} or {@code JK_STORE_DIR} at the host: a
+     * <p><strong>Fully sandboxed product layout</strong> — {@code JK_HOME} mirrors XDG, so cache
+     * lands in {@code $JK_HOME/cache} and the store in {@code $JK_HOME/data/store}. Never point {@code JK_CACHE_DIR} or {@code JK_STORE_DIR} at the host: a
      * prior bug set them to the developer's real trees so {@code SelfNukeCommandTest} /
-     * {@code jk cache nuke} / {@code jk self nuke --store} wiped action-cache and install-local
+     * {@code jk cache nuke} / {@code jk self nuke --data} wiped action-cache and install-local
      * workers mid-{@code jk build}. After that, post-green {@code jk explain} reported a full
      * rebuild and subsequent tests could not find {@code jk-test-runner}.
      *

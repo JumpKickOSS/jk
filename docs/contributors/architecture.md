@@ -58,9 +58,9 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   engines: `jk engine status` lists every resident engine this user owns (including other
   `JK_HOME`s and draining/ghost pids). `jk engine stop --all` stops **this home only** so a
   nested test suite cannot kill the host engine. `--pid` stops one explicitly.
-- **Versioning** — one live engine under `~/.local/share/jk/lib/jk-engine/` (or
-  `$JK_HOME/lib/jk-engine/`), with metadata in `~/.config/jk/jk-engine/config.toml` (or
-  `$JK_HOME/config/jk-engine/config.toml`), paired with the PATH `jk`. An upgrade parks the previous
+- **Versioning** — one live engine under `<data>/lib/jk-engine/` (`~/.local/share/jk/lib/jk-engine/`,
+  or `$JK_HOME/data/lib/jk-engine/`), with metadata in `<config>/jk-engine/config.toml`, paired with
+  the PATH `jk`. One engine is hosted at a time, so there is no per-version directory tree. An upgrade parks the previous
   jar as `<name>.jar.old` and the previous client as `jk.old` (`jk.exe.old` on Windows) until the
   displaced engine drains; GC deletes the parked files. Handshake detects skew and takes over.
   **Newer always wins**: the lock's
@@ -129,7 +129,7 @@ jk engine start
 # edit style.css / index.html / *.webp → hard-refresh the browser
 ```
 
-Relative `web-root` values resolve against the product home (data root, or `$JK_HOME` when set).
+Relative `web-root` values resolve against the data root (`~/.local/share/jk`, or `$JK_HOME/data`).
 Only files present under the root are overridden; anything missing still falls through to the jar.
 
 ### HTTP server knobs
@@ -246,7 +246,7 @@ and exclusions stay GA-scoped.
 
 | Tier | Root | Contents |
 |------|------|----------|
-| **Artifact store** | `~/.local/share/jk/store/` (`JK_STORE_DIR`) | Maven-layout jars under `repos/<name>/…` plus `.jk` memos; first-party workers under `repos/jk-local/`. The Maven local repository (`~/.m2/repository` by default) is the primary blob store when `[m2] integration` is on. |
+| **Artifact store** | `<data>/store/` — `~/.local/share/jk/store/` or `$JK_HOME/data/store/` (`JK_STORE_DIR`) | Maven-layout jars under `repos/<name>/…` plus `.jk` memos; first-party workers under `repos/jk-local/`. The Maven local repository (`~/.m2/repository` by default) is the primary blob store when `[m2] integration` is on. |
 | **Cache** | `~/.cache/jk/` (`JK_CACHE_DIR`) | Action index (`actions/`) + rebuildable action payloads under `sha256/…` |
 
 Dependency jars are real `*.jar` files. Compile classpaths never use hash-named CAS blobs.
