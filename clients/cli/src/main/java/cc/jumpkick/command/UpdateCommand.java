@@ -7,6 +7,8 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.JkWedge;
+import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -160,13 +162,26 @@ public final class UpdateCommand implements CliCommand {
 
     // ---- shared rendering helpers --------------------------------------------
 
-    /** {@code ✓ Update  Updated N packages in jk-lock.toml}. */
+    /**
+     * {@code ✓ Update  Updated [yellow]N[/] packages in [path]jk-lock.toml[/]} — count in warning
+     * yellow, lockfile name in path periwinkle.
+     */
     static void printUpdatedLine(Path lockFile, int packages, Path workingDir) {
+        JkWedge.ok("Update", updatedTail(lockFile, packages, workingDir)).print();
+    }
+
+    /** Settle-line tail: {@code Updated [yellow]N[/] packages in [path]jk-lock.toml[/]}. */
+    static RichText updatedTail(Path lockFile, int packages, Path workingDir) {
         String lockName = lockFile.getFileName() != null
                 ? lockFile.getFileName().toString()
                 : PathDisplay.of(lockFile, workingDir);
-        CommandWedge.printOk(
-                "Update", "Updated " + packages + " package" + (packages == 1 ? "" : "s") + " in " + lockName);
+        return RichText.parse("Updated [yellow]"
+                + packages
+                + "[/] package"
+                + (packages == 1 ? "" : "s")
+                + " in [path]"
+                + RichText.escape(lockName)
+                + "[/]");
     }
 
     /** {@code Refreshed N git dependencies.} / {@code No git dependencies to refresh.} */
