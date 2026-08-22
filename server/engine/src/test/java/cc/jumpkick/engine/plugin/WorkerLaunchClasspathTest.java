@@ -79,8 +79,11 @@ class WorkerLaunchClasspathTest {
             Path sdkAbs = sdkClasses.toAbsolutePath().normalize();
             Path jsonlAbs = jsonlJar.toAbsolutePath().normalize();
             Path depAbs = depJar.toAbsolutePath().normalize();
-            assertThat(cp.getFirst()).isEqualTo(workerAbs);
-            assertThat(cp).contains(sdkAbs, jsonlAbs, depAbs);
+            // JK-2326: codec dirs must precede the worker jar so a fresh classes/main wins over the
+            // codec the jar vendors.
+            assertThat(cp).contains(workerAbs, sdkAbs, jsonlAbs, depAbs);
+            assertThat(cp.indexOf(sdkAbs)).isLessThan(cp.indexOf(workerAbs));
+            assertThat(cp.indexOf(jsonlAbs)).isLessThan(cp.indexOf(workerAbs));
             assertThat(cp.indexOf(sdkAbs)).isLessThan(cp.indexOf(depAbs));
             assertThat(cp.indexOf(jsonlAbs)).isLessThan(cp.indexOf(depAbs));
         } finally {

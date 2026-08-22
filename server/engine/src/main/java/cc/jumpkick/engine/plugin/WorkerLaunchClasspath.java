@@ -31,8 +31,10 @@ public final class WorkerLaunchClasspath {
         List<Path> resolved = PomRuntimeClasspath.resolve(worker);
         List<Path> codec = workspaceCodec(worker);
         if (codec.isEmpty()) return resolved;
+        // Codec dirs FIRST so a just-compiled classes/main wins over the copy the worker jar vendors
+        // — first-match-wins otherwise let a stale vendored codec shadow the fresh SDK, the exact
+        // codec skew this path exists to avoid (JK-2326).
         LinkedHashSet<Path> out = new LinkedHashSet<>();
-        out.add(resolved.getFirst());
         out.addAll(codec);
         out.addAll(resolved);
         return List.copyOf(out);
