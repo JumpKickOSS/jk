@@ -73,19 +73,10 @@ public final class PlannerCompile {
                     // The Kotlin incremental compiler gets its own dir (kotlin/main/)
                     // so it cannot prune Java's output; the assembler merges both.
                     Path javaOut = classes;
+                    // JAVA_SOURCES already carries the java+scala union (incl. extra-src/plugin-root
+                    // .scala) that PlannerSetup published — no need to re-walk the tree for .scala here
+                    // (JK-2320). hasScala below reads it directly.
                     List<Path> sources = javaSources(ctx);
-                    List<Path> scalaSrcs;
-                    try {
-                        scalaSrcs = CompileSupport.collectScalaSources(in.dir(), compact);
-                    } catch (Exception e) {
-                        scalaSrcs = List.of();
-                    }
-                    if (!scalaSrcs.isEmpty()) {
-                        sources = new ArrayList<>(sources);
-                        for (Path p : scalaSrcs) {
-                            if (!sources.contains(p)) sources.add(p);
-                        }
-                    }
                     List<Path> generated = pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".java");
                     List<Path> kspGenerated = kspGeneratedSources(ctx.require(LAYOUT), ".java");
                     List<Path> logicGenerated = BuildLogicSupport.generatedSources(ctx.require(LAYOUT), ".java");
