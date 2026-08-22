@@ -135,6 +135,9 @@ public final class JavaCompilerHost {
         private final Thread io;
         private volatile Work inflight;
         private volatile boolean dead;
+        // Held only while a COMPILE/PLAN is in flight, so the resident worker does not pin a
+        // PluginSlots permit while idle (JK-2284). Touched only by the io thread.
+        private cc.jumpkick.engine.plugin.PluginSlots.Lease slot;
 
         Session(long id, ForkedJavac.Request template) {
             io = Thread.ofVirtual().name("jk-zinc-host-" + id).start(() -> run(template));
@@ -145,7 +148,7 @@ public final class JavaCompilerHost {
         }
 
         ForkedJavac.Result submit(Work w) {
-            queue.add(w);
+            enqueue(w);
             try {
                 return w.compile.get();
             } catch (Exception e) {
@@ -154,12 +157,22 @@ public final class JavaCompilerHost {
         }
 
         ForkedJavac.Plan submitPlan(Work w) {
-            queue.add(w);
+            enqueue(w);
             try {
                 return w.forecast.get();
             } catch (Exception e) {
                 throw unwrap(e);
             }
+        }
+
+        /**
+         * Enqueue work, then re-check {@link #dead}: if the worker died between the caller's {@code
+         * alive()} check and this add, {@code failAll}'s drain has already run and would never see
+         * this item, hanging {@code compile.get()} forever (JK-2285). The re-check fails it here.
+         */
+        private void enqueue(Work w) {
+            queue.add(w);
+            if (dead) drainFailQueued(new IOException("zinc worker exited"));
         }
 
         void close() {
@@ -184,7 +197,7 @@ public final class JavaCompilerHost {
                                 ForkedJavac.trainerCommand(template, workerCp, hostJavaHome, aotOutput, scratch)));
                 jvmFlags.addAll(cc.jumpkick.engine.plugin.JvmOptions.batchFlags(1));
                 List<String> command = PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("--pull"));
-                new PluginClient(ForkedJavac.PREFIX).converse(command, (json, convo) -> onLine(json, convo));
+                new PluginClient(ForkedJavac.PREFIX).converseNoSlot(command, (json, convo) -> onLine(json, convo));
             } catch (Exception e) {
                 failAll(e);
             } finally {
@@ -210,6 +223,9 @@ public final class JavaCompilerHost {
                     convo.closeInput();
                     return;
                 }
+                // Take a worker slot only for the duration of this exchange; released on
+                // RESULT/ERROR/failure so an idle session holds none (JK-2284).
+                slot = cc.jumpkick.engine.plugin.PluginSlots.acquire();
                 try {
                     next.spec = ForkedJavac.writeSpec(next.req);
                     inflight = next;
@@ -217,6 +233,7 @@ public final class JavaCompilerHost {
                 } catch (IOException e) {
                     next.compile.completeExceptionally(e);
                     next.forecast.completeExceptionally(e);
+                    releaseSlot();
                 }
                 return;
             }
@@ -248,13 +265,22 @@ public final class JavaCompilerHost {
                 for (String s : Jsonl.strArray(json, "whys")) w.whys.add(s);
                 complete(w);
                 inflight = null;
+                releaseSlot();
                 return;
             }
             if (PluginProtocol.ERROR.equals(t)) {
                 w.compile.completeExceptionally(new IOException(Jsonl.str(json, "message")));
                 w.forecast.completeExceptionally(new IOException(Jsonl.str(json, "message")));
                 inflight = null;
+                releaseSlot();
             }
+        }
+
+        /** Return the in-flight worker slot to the pool (idempotent; io thread only). */
+        private void releaseSlot() {
+            cc.jumpkick.engine.plugin.PluginSlots.Lease s = slot;
+            slot = null;
+            if (s != null) s.close();
         }
 
         private static void complete(Work w) {
@@ -282,11 +308,22 @@ public final class JavaCompilerHost {
         }
 
         private void failAll(Throwable e) {
+            releaseSlot();
             Work cur = inflight;
             if (cur != null) {
                 cur.compile.completeExceptionally(e);
                 cur.forecast.completeExceptionally(e);
             }
+            drainFailQueued(e);
+        }
+
+        /**
+         * Fail every queued (not-yet-dispatched) Work. Safe to call from any thread — it only polls
+         * the concurrent queue and completes futures (both idempotent), and never touches the io
+         * thread's {@code slot}/{@code inflight}. Used both by {@link #failAll} and by {@link
+         * #enqueue}'s post-add dead re-check (JK-2285).
+         */
+        private void drainFailQueued(Throwable e) {
             Work w;
             while ((w = queue.poll()) != null) {
                 if (w == Work.POISON) continue;

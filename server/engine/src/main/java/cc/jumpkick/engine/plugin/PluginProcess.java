@@ -149,6 +149,22 @@ public final class PluginProcess {
     }
 
     /**
+     * As {@link #converse(List, String, BiConsumer, Consumer)} but WITHOUT taking a process-lifetime
+     * worker slot. The caller — the long-lived Zinc pull session — meters {@link PluginSlots} itself,
+     * once per in-flight COMPILE/PLAN exchange, so an idle resident worker does not pin a permit for
+     * the whole job and deadlock nested forks such as the test runner (JK-2284).
+     */
+    public static int converseNoSlot(
+            List<String> command,
+            String prefix,
+            BiConsumer<String, Conversation> onProtocol,
+            Consumer<String> onPassthrough)
+            throws IOException, InterruptedException {
+        ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
+        return converse(pb, prefix, onProtocol, onPassthrough, false, 0L);
+    }
+
+    /**
      * As {@link #converse(List, Map, Path, String, BiConsumer, Consumer)} with an inactivity
      * watchdog: when the child emits no output line for {@code idleTimeoutMs}, it is
      * force-killed and the conversation ends with its (non-zero) exit code. {@code 0} = no
