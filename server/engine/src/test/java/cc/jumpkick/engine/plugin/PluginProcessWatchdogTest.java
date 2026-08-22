@@ -13,9 +13,9 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * The converse inactivity watchdog (JK-2202): a child that goes silent past the window is
- * force-killed and the conversation returns its non-zero exit instead of blocking forever — a
- * JLine tty probe once hung a pull-mode test worker (and the whole suite) for 3.5h.
+ * The converse inactivity watchdog: a child that goes silent past the window is force-killed
+ * (including descendants that would otherwise keep the stdout pipe open) and the conversation
+ * returns its non-zero exit instead of blocking forever.
  */
 class PluginProcessWatchdogTest {
 
@@ -25,6 +25,8 @@ class PluginProcessWatchdogTest {
         assumeTrue(Files.isExecutable(sh), "POSIX shell required");
 
         Instant start = Instant.now();
+        // sleep is a child of sh and inherits stdout; killing only the shell would leave
+        // readLine blocked until sleep exits — the watchdog must tear down the whole tree.
         int exit = PluginProcess.converse(
                 List.of(sh.toString(), "-c", "echo '##JKT:{\"event\":\"hello\"}'; sleep 30"),
                 Map.of(),
