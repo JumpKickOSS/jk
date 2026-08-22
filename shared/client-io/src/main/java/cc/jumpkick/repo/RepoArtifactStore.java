@@ -42,6 +42,9 @@ public final class RepoArtifactStore {
     public RepoArtifactStore(Path cacheRoot, String repoName) {
         Objects.requireNonNull(cacheRoot, "cacheRoot");
         Objects.requireNonNull(repoName, "repoName");
+        // A repo name is a raw substring from the project's config/lockfile; refuse one that would
+        // escape repos/ into an attacker-chosen directory (JK-2291).
+        MavenLayout.requireSafeSegment(repoName, "repository name");
         this.root = cacheRoot.resolve("repos").resolve(repoName);
     }
 
@@ -149,8 +152,7 @@ public final class RepoArtifactStore {
      */
     public void materialize(String relativePath, Path source, String sha256) {
         if (root == null || source == null || !Files.isRegularFile(source)) return;
-        Path artifact = root.resolve(relativePath);
-        Path tmp = artifact.resolveSibling(artifact.getFileName() + ".part");
+        Path artifact = MavenLayout.safeResolve(root, relativePath);
         try {
             if (Files.isRegularFile(artifact)
                     && verify(relativePath, sha256) == IndexState.VERIFIED
@@ -160,16 +162,22 @@ public final class RepoArtifactStore {
             Files.createDirectories(artifact.getParent());
             boolean same = Files.isRegularFile(artifact) && Files.isSameFile(source, artifact);
             if (!same) {
-                Files.deleteIfExists(tmp);
-                Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
-                AtomicWrites.moveInto(tmp, artifact);
+                // Unique temp per writer: a shared fixed ".part" name let two concurrent fetchers
+                // (two engines on one ~/.jk, or two syncs in one engine) interleave writes to the
+                // same inode and install corrupt bytes, which the memo then blessed as VERIFIED
+                // (JK-2292). A unique temp + atomic move makes the published file exactly the (already
+                // caller-verified) source bytes, so the memo's pinned sha describes them correctly.
+                Path tmp = Files.createTempFile(artifact.getParent(), "." + artifact.getFileName() + ".", ".part");
+                try {
+                    Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
+                    AtomicWrites.moveInto(tmp, artifact);
+                } finally {
+                    Files.deleteIfExists(tmp);
+                }
             }
             writeMemo(relativePath, artifact, sha256);
         } catch (IOException | RuntimeException e) {
-            try {
-                Files.deleteIfExists(tmp);
-            } catch (IOException ignored) {
-            }
+            // best-effort store write; caller falls back to the source path
         }
     }
 
@@ -407,10 +415,11 @@ public final class RepoArtifactStore {
     // -------------------------------------------------------------------------
 
     private Path artifactPath(String relativePath) {
-        return root.resolve(relativePath);
+        return MavenLayout.safeResolve(root, relativePath);
     }
 
     private Path sidecarPath(String relativePath) {
+        MavenLayout.safeResolve(root, relativePath); // reject traversal before deriving the sidecar
         return ArtifactMemo.jkPath(root, relativePath);
     }
 
@@ -459,11 +468,15 @@ public final class RepoArtifactStore {
         // The caller picks the root deliberately: the engine install plan passes the
         // store (where resolvers read since the cache/store split); plugin install-local may pass
         // an isolated --cache-dir root on purpose.
-        Path target = artifactRoot.resolve("repos/local/" + relativePath);
+        Path target = MavenLayout.safeResolve(artifactRoot.resolve("repos/local"), relativePath);
         Files.createDirectories(target.getParent());
-        Path tmp = target.resolveSibling(target.getFileName() + ".part");
-        Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
-        AtomicWrites.moveInto(tmp, target);
+        Path tmp = Files.createTempFile(target.getParent(), "." + target.getFileName() + ".", ".part");
+        try {
+            Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
+            AtomicWrites.moveInto(tmp, target);
+        } finally {
+            Files.deleteIfExists(tmp);
+        }
         String hex = Hashing.sha256Hex(target);
         ArtifactMemo.ofBlob(target, inferGav(relativePath), hex)
                 .write(target.resolveSibling(

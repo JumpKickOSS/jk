@@ -26,7 +26,8 @@ public final class M2CompatWriter {
      */
     public static StreamResult streamToM2(InputStream in, Path target) throws IOException {
         Files.createDirectories(target.getParent());
-        Path tmp = target.resolveSibling(target.getFileName() + ".part");
+        // Unique temp so concurrent writers of the same artifact don't share an inode (JK-2292).
+        Path tmp = Files.createTempFile(target.getParent(), "." + target.getFileName() + ".", ".part");
         MessageDigest sha256 = newDigest("SHA-256");
         MessageDigest sha1 = newDigest("SHA-1");
         MessageDigest md5 = newDigest("MD5");
@@ -112,7 +113,8 @@ public final class M2CompatWriter {
      */
     public static MavenHashes copyToM2AndHash(Path source, Path target) throws IOException {
         Files.createDirectories(target.getParent());
-        Path tmp = target.resolveSibling(target.getFileName() + ".part");
+        // Unique temp so concurrent writers of the same artifact don't share an inode (JK-2292).
+        Path tmp = Files.createTempFile(target.getParent(), "." + target.getFileName() + ".", ".part");
         MessageDigest sha1 = newDigest("SHA-1");
         MessageDigest md5 = newDigest("MD5");
         try {

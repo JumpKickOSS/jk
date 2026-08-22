@@ -72,4 +72,48 @@ class RepoArtifactStoreTest {
         assertThat(source).exists();
         assertThat(store.evict(rel)).isFalse();
     }
+
+    @Test
+    void rejects_a_repo_name_that_escapes_the_store(@TempDir Path dir) {
+        // JK-2291: a repo name is a raw config/lockfile substring; it must not break out of repos/.
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new RepoArtifactStore(dir, "../../evil"))
+                .isInstanceOf(IllegalArgumentException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new RepoArtifactStore(dir, ".."))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejects_a_relative_path_that_escapes_the_store(@TempDir Path dir) throws IOException {
+        // JK-2291: a hostile GAV must not write outside repos/<name>/ (arbitrary file write).
+        Path source = dir.resolve("src.jar");
+        Files.writeString(source, "x");
+        String sha = Hashing.sha256Hex(source);
+        RepoArtifactStore store = new RepoArtifactStore(dir.resolve("cache"), "central");
+        Path escapeTarget = dir.resolve("pwned.jar");
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> store.materialize("../../../../pwned.jar", source, sha))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(escapeTarget).doesNotExist();
+    }
+
+    @Test
+    void materialize_uses_a_unique_temp_and_leaves_no_shared_part_file(@TempDir Path dir) throws IOException {
+        // JK-2292: the temp must not be a fixed "<name>.part" that concurrent writers of the same
+        // artifact would share; and none should linger after a successful publish.
+        Path source = dir.resolve("src.jar");
+        Files.writeString(source, "artifact-bytes");
+        String sha = Hashing.sha256Hex(source);
+        RepoArtifactStore store = new RepoArtifactStore(dir.resolve("cache"), "central");
+        String rel = "g/a/1/a-1.jar";
+        store.materialize(rel, source, sha);
+
+        Path artifactDir = dir.resolve("cache/repos/central/g/a/1");
+        try (var s = Files.list(artifactDir)) {
+            assertThat(s.map(p -> p.getFileName().toString()))
+                    .noneMatch(n -> n.endsWith(".part"))
+                    .contains("a-1.jar");
+        }
+        assertThat(store.verify(rel, sha)).isEqualTo(RepoArtifactStore.IndexState.VERIFIED);
+    }
 }

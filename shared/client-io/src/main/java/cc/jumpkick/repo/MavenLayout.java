@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.model.Coordinate;
+import java.nio.file.Path;
 
 /**
  * Maps coordinates to Maven repository paths.
@@ -12,6 +13,39 @@ import cc.jumpkick.model.Coordinate;
 public final class MavenLayout {
 
     private MavenLayout() {}
+
+    /**
+     * Resolve {@code relativePath} under {@code root}, refusing any result that escapes it —
+     * absolute segments, {@code ..} traversal, or a leading {@code /}. GAV coordinates and repo
+     * names come from a (possibly hostile) cloned project's lockfile and flow into real store and
+     * {@code ~/.m2} writes, so every write sink must resolve through this guard (JK-2291).
+     */
+    public static Path safeResolve(Path root, String relativePath) {
+        Path base = root.normalize();
+        Path resolved = base.resolve(relativePath).normalize();
+        if (!resolved.startsWith(base)) {
+            throw new IllegalArgumentException("path escapes store root: '" + relativePath + "' under " + root);
+        }
+        return resolved;
+    }
+
+    /**
+     * Reject a single path segment (repo name, classifier, …) that could break out of the layout:
+     * blank, a path separator, a null byte, {@code .}/{@code ..}, or a leading {@code ~}.
+     */
+    public static String requireSafeSegment(String segment, String what) {
+        if (segment == null
+                || segment.isBlank()
+                || segment.indexOf('/') >= 0
+                || segment.indexOf('\\') >= 0
+                || segment.indexOf('\0') >= 0
+                || segment.equals(".")
+                || segment.equals("..")
+                || segment.startsWith("~")) {
+            throw new IllegalArgumentException("unsafe " + what + ": '" + segment + "'");
+        }
+        return segment;
+    }
 
     /**
      * Relative path to the primary artifact for this coordinate. The extension comes from the
