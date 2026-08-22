@@ -33,6 +33,11 @@ public record ArtifactMemo(String coordinate, long mtimeMillis, long size, Strin
     }
 
     public static String jkFileName(String artifactFileName) {
+        // The stripped form (foo-1.0.jar → foo-1.0.jk) would collide if two of {.jar,.aar,.zip} shared
+        // a base name in one version dir. That cannot happen under Maven layout: a coordinate has one
+        // packaging, so PubGrub never places two primary artifacts in the same group/artifact/version
+        // dir. POMs and other extensions keep their full name (foo-1.0.pom.jk). (The sibling-deleting
+        // removeShas path that made this dangerous was removed with JK-2304.)
         String n = artifactFileName;
         if (n.endsWith(".jar") || n.endsWith(".aar") || n.endsWith(".zip")) {
             return n.substring(0, n.lastIndexOf('.')) + ".jk";
