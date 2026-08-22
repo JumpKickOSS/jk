@@ -74,6 +74,38 @@ class ModuleLayoutTest {
         assertThat(ModuleLayout.mainScalaRoots(tmp, true)).containsExactly(tmp.resolve("src"));
     }
 
+    @Test
+    void member_inherits_the_workspace_root_layout(@TempDir Path tmp) throws Exception {
+        // JK-2313: a workspace member that omits `layout` inherits the root's — isCompact must honor
+        // that, or raw-scan call sites disagree with compile on an ambiguous tree.
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "t"
+                name = "root"
+                version = "1.0.0"
+                layout = "simple"
+                [workspace]
+                modules = ["mod"]
+                """);
+        Path mod = Files.createDirectories(tmp.resolve("mod"));
+        Files.writeString(mod.resolve("jk.toml"), """
+                name = "mod"
+                """);
+        // A traditional-looking tree that would otherwise probe to non-compact.
+        Files.createDirectories(mod.resolve("src/main/java"));
+        Files.writeString(mod.resolve("src/main/java/Foo.java"), "class Foo {}");
+
+        assertThat(ModuleLayout.isCompact(mod))
+                .as("member inherits root layout = simple")
+                .isTrue();
+
+        // A member with its own explicit layout wins over the root.
+        Files.writeString(mod.resolve("jk.toml"), """
+                name = "mod"
+                layout = "traditional"
+                """);
+        assertThat(ModuleLayout.isCompact(mod)).isFalse();
+    }
+
     private static void writeToml(Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
                 group = "t"

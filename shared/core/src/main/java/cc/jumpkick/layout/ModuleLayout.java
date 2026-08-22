@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.layout;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -50,19 +51,38 @@ public final class ModuleLayout {
     private ModuleLayout() {}
 
     /**
-     * Compact/SIMPLE layout. Honors an explicit {@code layout =} in {@code jk.toml} when present;
+     * Compact/SIMPLE layout. Honors an explicit {@code layout =} in {@code jk.toml} when present; a
+     * workspace member that omits the key inherits the workspace root's {@code layout} (mirroring the
+     * resolved project's inheritance, so raw-scan call sites don't disagree with compile — JK-2313);
      * otherwise probes the tree.
      */
     public static boolean isCompact(Path moduleDir) {
-        Path toml = moduleDir.resolve("jk.toml");
-        if (Files.isRegularFile(toml)) {
-            String layout = cc.jumpkick.config.TomlScan.scan(toml, "layout").get("layout");
-            if (layout != null) {
-                if ("traditional".equalsIgnoreCase(layout)) return false;
-                if ("simple".equalsIgnoreCase(layout)) return true;
+        Boolean local = explicitLayout(moduleDir);
+        if (local != null) return local;
+        try {
+            java.util.Optional<Path> root = cc.jumpkick.config.WorkspaceLocator.findRoot(moduleDir);
+            if (root.isPresent() && !root.get().equals(moduleDir)) {
+                Boolean inherited = explicitLayout(root.get());
+                if (inherited != null) return inherited;
             }
+        } catch (IOException ignored) {
+            // not in a workspace / unreadable root — fall through to the tree probe
         }
         return !SourceLayout.looksTraditional(moduleDir);
+    }
+
+    /**
+     * The explicit {@code layout} choice for a module dir: {@code TRUE} = simple, {@code FALSE} =
+     * traditional, {@code null} = no key or an unrecognized value (let the tree decide).
+     */
+    private static Boolean explicitLayout(Path dir) {
+        Path toml = dir.resolve("jk.toml");
+        if (!Files.isRegularFile(toml)) return null;
+        String layout = cc.jumpkick.config.TomlScan.scan(toml, "layout").get("layout");
+        if (layout == null) return null;
+        if ("traditional".equalsIgnoreCase(layout)) return Boolean.FALSE;
+        if ("simple".equalsIgnoreCase(layout)) return Boolean.TRUE;
+        return null;
     }
 
     static boolean hasTraditionalDirs(Path moduleDir) {
