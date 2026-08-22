@@ -72,6 +72,43 @@ class ZincJavaCompilerTest {
         assertThat(plan.reason()).contains("source");
     }
 
+    @Test
+    void full_recompile_without_analysis_deletes_a_removed_sources_class(@TempDir Path dir) throws Exception {
+        // JK-2287: an analysis-less full compile (aggregating-AP wipe, or a jk-version bump that
+        // cleared state) must start from a clean class output, or a removed source's .class lingers.
+        Project p = new Project(dir);
+        p.write("a/A.java", "package a; public class A {}");
+        p.write("a/B.java", "package a; public class B {}");
+        assertThat(p.compile().success()).isTrue();
+        assertThat(p.classFile("a/B.class")).isRegularFile();
+
+        Files.delete(p.src.resolve("a/B.java"));
+        Files.delete(p.workdir.resolve("zinc")); // force an analysis-less full compile
+
+        assertThat(p.compile().success()).isTrue();
+        assertThat(p.classFile("a/A.class")).isRegularFile();
+        assertThat(p.classFile("a/B.class")).doesNotExist();
+    }
+
+    @Test
+    void corrupt_analysis_falls_back_to_a_full_compile(@TempDir Path dir) throws Exception {
+        // JK-2288: a truncated/incompatible analysis file must not fail every build persistently.
+        Project p = new Project(dir);
+        p.write("a/A.java", "package a; public class A {}");
+        assertThat(p.compile().success()).isTrue();
+
+        Files.writeString(p.workdir.resolve("zinc"), "not a valid zinc analysis store");
+
+        ZincJavaCompiler.Result r = p.compile();
+        assertThat(r.success()).as(r.diagnostics().toString()).isTrue();
+        assertThat(p.classFile("a/A.class")).isRegularFile();
+        assertThat(p.workdir.resolve("zinc")).isRegularFile(); // a fresh analysis was written
+
+        // plan() over the recovered analysis must also not throw
+        ZincJavaCompiler.Plan plan = p.plan();
+        assertThat(plan).isNotNull();
+    }
+
     private static List<String> names(List<Path> sources) {
         return sources.stream().map(p -> p.getFileName().toString()).toList();
     }

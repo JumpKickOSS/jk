@@ -277,7 +277,14 @@ public final class ZincJavaCompiler {
                     .withConverter(converter)
                     .withStamper(Stamps.timeWrapBinaryStamps(converter));
 
-            Optional<AnalysisContents> prev = store.get();
+            Optional<AnalysisContents> prev = readAnalysis(store, analysisFile);
+            if (prev.isEmpty()) {
+                // No usable previous analysis ⇒ a full compile. Zinc only deletes removed-source
+                // products when it has a prior analysis to diff against, so a full compile must start
+                // from a clean class output or renamed/removed/no-longer-generated classes linger and
+                // ship in the jar (JK-2287).
+                deleteClassFiles(classOutput);
+            }
             PreviousResult previous = prev.isPresent()
                     ? PreviousResult.of(prev.get().getAnalysis(), prev.get().getMiniSetup())
                     : PreviousResult.of(Optional.empty(), Optional.empty());
@@ -314,6 +321,35 @@ public final class ZincJavaCompiler {
         }
     }
 
+    /**
+     * Read the persisted Zinc analysis, tolerating corruption. A truncated file or a schema bump
+     * (e.g. a Zinc dependency upgrade) makes {@link AnalysisStore#get()} throw; rather than failing
+     * every build of the module until a manual {@code --rebuild}, delete the unreadable file and
+     * report "no analysis" so the caller falls through to a clean full compile (JK-2288).
+     */
+    private static Optional<AnalysisContents> readAnalysis(AnalysisStore store, Path analysisFile) {
+        try {
+            return store.get();
+        } catch (RuntimeException e) {
+            try {
+                Files.deleteIfExists(analysisFile);
+            } catch (IOException ignored) {
+                // best effort — a full compile will overwrite it anyway
+            }
+            return Optional.empty();
+        }
+    }
+
+    /** Remove every {@code .class} file under {@code dir} (used before an analysis-less full compile). */
+    private static void deleteClassFiles(Path dir) throws IOException {
+        if (!Files.isDirectory(dir)) return;
+        try (var walk = Files.walk(dir)) {
+            for (Path p : (Iterable<Path>) walk::iterator) {
+                if (p.toString().endsWith(".class")) Files.deleteIfExists(p);
+            }
+        }
+    }
+
     private static Plan plan(
             List<Path> sources,
             List<Path> classpath,
@@ -333,8 +369,9 @@ public final class ZincJavaCompiler {
                     allSources(sources, "aggregating annotation processors"));
         }
         FileConverter converter = PlainVirtualFileConverter.converter();
-        AnalysisStore store = FileAnalysisStore.binary(workdir.resolve("zinc").toFile());
-        Optional<AnalysisContents> prev = store.get();
+        Path analysisFile = workdir.resolve("zinc");
+        AnalysisStore store = FileAnalysisStore.binary(analysisFile.toFile());
+        Optional<AnalysisContents> prev = readAnalysis(store, analysisFile);
         if (prev.isEmpty()) {
             return new Plan(true, "no zinc analysis", allSources(sources, "no zinc analysis"));
         }
