@@ -19,6 +19,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -252,7 +253,34 @@ public final class CachePlans {
         var sweepReport = cc.jumpkick.task.CasSweep.sweep(cas, liveRefs, dryRun);
         totalFiles += sweepReport.deleted();
         totalBytes += sweepReport.freedBytes();
+
+        // Size-bound the Maven-layout repos/ tree against the store budget — nothing enforced it
+        // after the migration, so it grew without limit (JK-2304). Budget for repos/ is the store
+        // budget minus what the store CAS already occupies; repos/local is exempt.
+        long storeBudget = resolveStoreBudget();
+        if (storeBudget > 0) {
+            long storeCasBytes = cc.jumpkick.cache.DiskUsage.of(cc.jumpkick.cache.JkStores.resolve(root, "sha256"))
+                    .bytes();
+            long reposBudget = Math.max(0, storeBudget - storeCasBytes);
+            Map<String, Long> atimeByHash;
+            try {
+                atimeByHash = cc.jumpkick.task.AccessLedger.atDefaultPath().latestByHash();
+            } catch (IOException e) {
+                atimeByHash = Map.of();
+            }
+            var repoEvict = cc.jumpkick.repo.RepoArtifactStore.evictReposDownTo(root, reposBudget, atimeByHash, dryRun);
+            totalFiles += repoEvict.deleted();
+            totalBytes += repoEvict.freedBytes();
+        }
         return new SweepReport(totalFiles, totalBytes, 0L);
+    }
+
+    private static long resolveStoreBudget() {
+        try {
+            return cc.jumpkick.config.JkCacheConfig.resolve().maxStoreSizeBytes();
+        } catch (RuntimeException e) {
+            return cc.jumpkick.config.JkCacheConfig.DEFAULTS.maxStoreSizeBytes();
+        }
     }
 
     /** Legacy GC plan (idle 90+ day CAS blobs via {@link CacheGc}); retained for wire back-compat. */

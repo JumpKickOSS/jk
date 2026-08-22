@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -326,64 +327,64 @@ public final class RepoArtifactStore {
         return result;
     }
 
+    /** One evictable repos/ artifact: its owning repo name, name-relative path, size, and LRU time. */
+    private record ReposEntry(String repoName, String relPath, long size, long atimeMillis) {}
+
+    /** Outcome of {@link #evictReposDownTo}. */
+    public record EvictReport(int deleted, long freedBytes, long remainingBytes) {}
+
     /**
-     * Remove entries hashing to {@code shas} from EVERY named repo store under
-     * {@code <cacheRoot>/repos/}. Deletes the {@code .jk} memo and the artifact file. Never
-     * touches the Maven local repository. Best-effort; returns entries removed. Never throws.
+     * LRU-evict downloaded artifacts under {@code <cacheRoot>/repos/} down to {@code maxBytes}, keyed
+     * by last-access from {@code atimeByHash} (sha → millis; unknown = coldest). {@code repos/local}
+     * (first-party, no re-fetch source) is exempt. Re-fetchable third-party jars are fair game — this
+     * is the size bound the store budget promises, which nothing enforced after the Maven-layout
+     * migration (JK-2304). Best-effort; never throws.
      */
-    public static int removeShasFromAll(Path cacheRoot, Set<String> shas, boolean dryRun) {
-        if (shas.isEmpty()) return 0;
+    public static EvictReport evictReposDownTo(
+            Path cacheRoot, long maxBytes, Map<String, Long> atimeByHash, boolean dryRun) {
         Path reposDir = cacheRoot.resolve("repos");
-        if (!Files.isDirectory(reposDir)) return 0;
-        int removed = 0;
+        if (!Files.isDirectory(reposDir)) return new EvictReport(0, 0L, 0L);
+        List<ReposEntry> entries = new ArrayList<>();
+        long total = 0;
         try (Stream<Path> named = Files.list(reposDir)) {
             for (Path nameDir : (Iterable<Path>) named::iterator) {
-                if (!Files.isDirectory(nameDir)) continue;
-                removed +=
-                        new RepoArtifactStore(cacheRoot, nameDir.getFileName().toString()).removeShas(shas, dryRun);
+                String name = nameDir.getFileName().toString();
+                if (!Files.isDirectory(nameDir) || name.equals("local")) continue; // never evict first-party
+                RepoArtifactStore store = new RepoArtifactStore(cacheRoot, name);
+                for (String rel : store.allRelativePaths()) {
+                    Path file = nameDir.resolve(rel);
+                    long size;
+                    try {
+                        size = Files.size(file);
+                    } catch (IOException e) {
+                        continue;
+                    }
+                    String sha = store.readSha256Sidecar(rel).orElse("");
+                    long atime = atimeByHash.getOrDefault(sha, 0L);
+                    entries.add(new ReposEntry(name, rel, size, atime));
+                    total += size;
+                }
             }
         } catch (IOException ignored) {
             // best-effort
         }
-        return removed;
-    }
+        if (total <= maxBytes) return new EvictReport(0, 0L, total);
 
-    /** Drop artifact + {@code .jk} memo for each entry whose memo hash is in {@code shas}. */
-    public int removeShas(Set<String> shas, boolean dryRun) {
-        if (root == null || shas.isEmpty() || !Files.isDirectory(root)) return 0;
-        // Collect BEFORE deleting: pruning directories under a still-lazy Files.walk iterator
-        // throws NoSuchFileException from the stream.
-        List<Path> sidecars;
-        try (Stream<Path> walk = Files.walk(root)) {
-            sidecars =
-                    walk.filter(p -> p.getFileName().toString().endsWith(".jk")).toList();
-        } catch (IOException e) {
-            return 0;
-        }
-        int removed = 0;
-        for (Path sidecar : sidecars) {
-            try {
-                String hash =
-                        ArtifactMemo.read(sidecar).map(ArtifactMemo::sha256).orElse("");
-                if (!shas.contains(hash)) continue;
-                if (!dryRun) {
-                    Files.deleteIfExists(sidecar);
-                    String memoName = sidecar.getFileName().toString();
-                    String stem = memoName.endsWith(".jk") ? memoName.substring(0, memoName.length() - 3) : memoName;
-                    Path dir = sidecar.getParent();
-                    for (String ext : List.of(".jar", ".aar", ".pom", ".zip")) {
-                        Files.deleteIfExists(dir.resolve(stem + ext));
-                    }
-                    if (stem.endsWith(".pom")) {
-                        Files.deleteIfExists(dir.resolve(stem));
-                    }
-                    pruneEmptyParents(sidecar.getParent());
-                }
-                removed++;
-            } catch (IOException ignored) {
+        entries.sort(Comparator.comparingLong(ReposEntry::atimeMillis)
+                .thenComparing(Comparator.comparingLong(ReposEntry::size).reversed()));
+        int deleted = 0;
+        long freed = 0;
+        long remaining = total;
+        for (ReposEntry e : entries) {
+            if (remaining <= maxBytes) break;
+            if (!dryRun) {
+                new RepoArtifactStore(cacheRoot, e.repoName()).evict(e.relPath());
             }
+            deleted++;
+            freed += e.size();
+            remaining -= e.size();
         }
-        return removed;
+        return new EvictReport(deleted, freed, remaining);
     }
 
     /** The root directory ({@code <cache>/repos/<name>}), or {@code null} for {@link #NONE}. */
