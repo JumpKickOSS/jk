@@ -37,8 +37,8 @@ class JavaApIncrementalCompileTest {
         Path procDir = isolatingProcessor(dir);
         Project p = new Project(dir, worker, procDir);
 
-        // v1 — build 1 runs plain subprocess javac (no worker yet); the AP-generated
-        // WidgetGen.class is an "orphan" (no provenance) → project flagged source-gen.
+        // v1 — first build goes straight through the Zinc worker and establishes the analysis +
+        // provenance; the isolating processor generates app.WidgetGen.
         p.write("app/Widget.java", widget("one"));
         JavaCompile.Result b1 = p.build();
         assertThat(b1.success()).isTrue();

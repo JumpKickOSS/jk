@@ -169,11 +169,10 @@ public final class ForkedJavac {
             String[] status = {null};
 
             // Fork the java-compiler plugin on jk's OWN runtime — the same rule as every
-            // plugin (requirements.md "plugin host"), and the same javac the non-AP path
-            // already uses in-process (ToolProvider on the engine JDK): --release supplies
-            // the project's target semantics. It's a thin, JDK-only plugin (the compile
-            // classpath travels in the spec, not on the plugin's classpath), so its own
-            // jar is the whole classpath.
+            // plugin (requirements.md "plugin host"). All compilation goes through this forked
+            // Zinc worker (there is no in-engine javac path); --release supplies the project's
+            // target semantics. It's a thin, JDK-only plugin (the compile classpath travels in
+            // the spec, not on the plugin's classpath), so its own jar is the whole classpath.
             boolean win = HostPlatform.isWindows();
             Path hostJavaHome = cc.jumpkick.jdk.JavaHomes.runningJavaHome();
             Path javaExe = hostJavaHome.resolve("bin").resolve(win ? "java.exe" : "java");
