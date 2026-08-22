@@ -78,6 +78,22 @@ class MavenRepoM2LookupTest {
     }
 
     @Test
+    void prefers_the_sha256_sidecar_over_sha1(@TempDir Path tmp) throws Exception {
+        // JK-2321: when the repo publishes .sha256, adopt an ~/.m2 hit on the strong digest and do
+        // NOT fall back to the collision-broken .sha1.
+        seedM2(tmp.resolve("m2"), REAL);
+        serve("/" + REL + ".sha256", 200, cc.jumpkick.util.Hashing.sha256Hex(REAL).getBytes(StandardCharsets.UTF_8));
+        // A .sha1 handler that would REJECT (wrong hash) — if the code fell back to it, adoption fails.
+        serve("/" + REL + ".sha1", 200, "0".repeat(40).getBytes(StandardCharsets.UTF_8));
+        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tmp.resolve("store")));
+
+        MavenRepo.Fetched fetched = repo.fetchArtifact(coord());
+
+        assertThat(fetched.sha256()).isEqualTo(cc.jumpkick.util.Hashing.sha256Hex(REAL));
+        assertThat(hits).contains("/" + REL + ".sha256");
+    }
+
+    @Test
     void a_local_hit_confirmed_by_the_remote_checksum_skips_the_jar_transfer(@TempDir Path tmp) throws Exception {
         seedM2(tmp.resolve("m2"), REAL);
         serve("/" + REL + ".sha1", 200, sha1Of(REAL).getBytes(StandardCharsets.UTF_8));

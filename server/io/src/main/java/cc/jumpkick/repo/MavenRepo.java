@@ -409,19 +409,51 @@ public final class MavenRepo {
             Path candidate = MavenLayout.safeResolve(M2Dirs.localRepository(), relativePath);
             if (!Files.isRegularFile(candidate)) return Optional.empty();
 
-            Optional<String> advertised = fetchSha1(uri);
-            if (advertised.isEmpty()) return Optional.empty();
-            String actual = Hashing.fileHex("SHA-1", candidate);
-            if (!actual.equalsIgnoreCase(advertised.get())) return Optional.empty();
+            // Prefer the collision-resistant .sha256 sidecar; fall back to .sha1 only when the repo
+            // doesn't publish one (SHA-1 is chosen-prefix broken, and its match becomes the lock pin
+            // for bytes any `mvn install` could have seeded — JK-2321).
+            String vouchAlgo;
+            Optional<String> advertised = fetchSha256(uri);
+            if (advertised.isPresent()) {
+                vouchAlgo = "sha256";
+                if (!Hashing.fileHex("SHA-256", candidate).equalsIgnoreCase(advertised.get())) {
+                    return Optional.empty();
+                }
+            } else {
+                vouchAlgo = "sha1";
+                advertised = fetchSha1(uri);
+                if (advertised.isEmpty()) return Optional.empty();
+                if (!Hashing.fileHex("SHA-1", candidate).equalsIgnoreCase(advertised.get())) {
+                    return Optional.empty();
+                }
+            }
 
             String sha256 = Hashing.sha256Hex(candidate);
             repoStore.writeMemo(relativePath, candidate, sha256);
             if (cc.jumpkick.config.SessionContext.current().config().verboseOr(false)) {
-                System.err.println(
-                        "jk: adopted " + relativePath + " from Maven local repo (sha1 confirmed by " + name + ")");
+                System.err.println("jk: adopted " + relativePath + " from Maven local repo (" + vouchAlgo
+                        + " confirmed by " + name + ")");
             }
             return Optional.of(new Fetched(uri, candidate, sha256, Files.size(candidate)));
         } catch (IOException | RuntimeException e) {
+            return Optional.empty();
+        }
+    }
+
+    /** The {@code .sha256} this repository publishes beside {@code uri}; empty when absent or malformed. */
+    private Optional<String> fetchSha256(URI uri) {
+        try {
+            var resp = http.get(URI.create(uri + ".sha256"));
+            if (resp.statusCode() < 200 || resp.statusCode() >= 300) return Optional.empty();
+            String body = new String(resp.body(), StandardCharsets.UTF_8).strip();
+            if (body.isEmpty()) return Optional.empty();
+            String first = body.split("\\s+")[0];
+            if (first.length() != 64 || !first.chars().allMatch(c -> Character.digit(c, 16) >= 0)) {
+                return Optional.empty();
+            }
+            return Optional.of(first);
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             return Optional.empty();
         }
     }
