@@ -843,10 +843,7 @@ public final class EffortWeights {
                     project.project() != null ? project.project().javaRelease() : 0,
                     System::getenv);
             var r = cc.jumpkick.jdk.JdkResolution.resolve(
-                    req,
-                    registry,
-                    cc.jumpkick.jdk.GlobalDefaultJdk.current(),
-                    cc.jumpkick.jdk.JdkLts.OFFLINE_LATEST_LTS);
+                    req, registry, cc.jumpkick.jdk.JdkInventory.current(), cc.jumpkick.jdk.JdkLts.OFFLINE_LATEST_LTS);
             return (r.jdk().isEmpty() && r.wouldInstall()) ? JDK_DOWNLOAD : SKIP;
         } catch (Exception e) {
             return SKIP;

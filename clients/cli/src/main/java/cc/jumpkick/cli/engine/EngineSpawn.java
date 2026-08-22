@@ -5,10 +5,10 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
-import cc.jumpkick.jdk.GlobalDefaultJdk;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
@@ -316,8 +316,7 @@ public final class EngineSpawn {
         Optional<Pin> want = parsePin(pin);
         if (want.isEmpty()) return Optional.empty(); // unparseable pin → force the install path
         List<Path> homes = new ArrayList<>();
-        GlobalDefaultJdk defaults = GlobalDefaultJdk.current();
-        defaults.currentHome().ifPresent(homes::add);
+        JdkInventory defaults = JdkInventory.current();
         defaults.defaultHome().ifPresent(homes::add);
         try {
             homes.add(JavaHomes.runningJavaHome());
@@ -386,7 +385,7 @@ public final class EngineSpawn {
     /**
      * Which engine artifact a spawn chose. {@code EXE}: {@code path} is an executable whose {@code
      * main} IS the engine loop. {@code JAR}: {@code path} is the engine's fat jar under {@code
-     * $JK_HOME/lib/jk-engine/} (or {@code <data>/lib/jk-engine/}), launched as {@code
+     * <data>/lib/jk-engine/} ({@code $JK_HOME/data/lib/jk-engine/} under the umbrella), launched as {@code
      * <managed-jdk>/bin/java … -cp <path> cc.jumpkick.engine.EngineMain} — the engine is a plain JVM
      * app, never a native image. There is no client-binary FALLBACK: the slim client never hosts the
      * engine.

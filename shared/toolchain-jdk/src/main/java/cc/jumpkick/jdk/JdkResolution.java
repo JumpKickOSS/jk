@@ -10,8 +10,8 @@ import java.util.function.Function;
 
 /**
  * Canonical JDK resolution shared by the build plan and {@code jk activate}. Order: {@code --jdk},
- * {@code JK_JDK}, {@code .jdk-version}, lock, {@code jdk}, java-release floor, current/default
- * pointers, {@code JAVA_HOME}/{@code GRAALVM_HOME}, then {@code PATH}. {@link #resolve} stops on an
+ * {@code JK_JDK}, {@code .jdk-version}, lock, {@code jdk}, java-release floor, the inventory default,
+ * {@code JAVA_HOME}/{@code GRAALVM_HOME}, then {@code PATH}. {@link #resolve} stops on an
  * uninstalled named pin with {@code wouldInstall}; {@link #resolveForHook} never installs and falls through.
  */
 public final class JdkResolution {
@@ -23,7 +23,6 @@ public final class JdkResolution {
         LOCKFILE,
         PROJECT_TOML,
         JAVA_RELEASE_FLOOR,
-        CURRENT,
         DEFAULT,
         JAVA_HOME,
         GRAALVM_HOME,
@@ -66,7 +65,7 @@ public final class JdkResolution {
      * {@code JAVA_HOME}/{@code GRAALVM_HOME}/{@code PATH} are valid last-resort tiers (a build must
      * find <em>some</em> JDK).
      */
-    public static Resolved resolve(Request req, JdkRegistry registry, GlobalDefaultJdk defaults, int latestLtsMajor) {
+    public static Resolved resolve(Request req, JdkRegistry registry, JdkInventory defaults, int latestLtsMajor) {
         return walk(req, registry, defaults, latestLtsMajor, true, true);
     }
 
@@ -74,14 +73,14 @@ public final class JdkResolution {
      * Shell-hook resolution: never installs; only pin or default (no ambient {@code JAVA_HOME}/
      * {@code PATH} fallback).
      */
-    public static Resolved resolveForHook(Request req, JdkRegistry registry, GlobalDefaultJdk defaults) {
+    public static Resolved resolveForHook(Request req, JdkRegistry registry, JdkInventory defaults) {
         return walk(req, registry, defaults, JdkLts.OFFLINE_LATEST_LTS, false, false);
     }
 
     private static Resolved walk(
             Request req,
             JdkRegistry reg,
-            GlobalDefaultJdk defaults,
+            JdkInventory defaults,
             int latestLtsMajor,
             boolean canInstall,
             boolean envFallback) {
@@ -103,12 +102,6 @@ public final class JdkResolution {
             }
         }
 
-        // current
-        Optional<Path> cur = defaults.currentHome();
-        if (cur.isPresent() && hasBin(cur.get())) {
-            return Resolved.found(installed(cur.get()), Tier.CURRENT, null);
-        }
-
         // default: the exact recorded home wins (unambiguous when two installs
         // share a vendor-major identifier), then the recorded identifier, then
         // the de-facto policy.
@@ -116,14 +109,14 @@ public final class JdkResolution {
         if (defHome.isPresent() && hasBin(defHome.get())) {
             return Resolved.found(installed(defHome.get()), Tier.DEFAULT, null);
         }
-        try {
-            Optional<String> defId = defaults.currentIdentifier();
-            if (defId.isPresent()) {
+        Optional<String> defId = defaults.defaultId();
+        if (defId.isPresent()) {
+            try {
                 Optional<InstalledJdk> d = reg.find(defId.get());
                 if (d.isPresent()) return Resolved.found(d.get(), Tier.DEFAULT, defId.get());
+            } catch (IOException ignored) {
+                // unreadable registry — fall through to the de-facto policy
             }
-        } catch (IOException ignored) {
-            // malformed config — fall through to the de-facto policy
         }
         Optional<JdkHit> defacto = DefaultJdkPolicy.choose(reg.listHits(), latestLtsMajor);
         if (defacto.isPresent()) {

@@ -32,6 +32,8 @@ class JdkInstallerTest {
     private HttpServer server;
     private URI base;
     private final Map<String, byte[]> served = new HashMap<>();
+    private String prevStateDir;
+    private Path isolatedState;
 
     @BeforeEach
     void start() throws IOException {
@@ -48,11 +50,16 @@ class JdkInstallerTest {
         });
         server.start();
         base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
+        isolatedState = Files.createTempDirectory("jk-state-");
+        prevStateDir = System.getProperty("jk.env.JK_STATE_DIR");
+        System.setProperty("jk.env.JK_STATE_DIR", isolatedState.toString());
     }
 
     @AfterEach
     void stop() {
         server.stop(0);
+        if (prevStateDir == null) System.clearProperty("jk.env.JK_STATE_DIR");
+        else System.setProperty("jk.env.JK_STATE_DIR", prevStateDir);
     }
 
     @Test
@@ -271,9 +278,7 @@ class JdkInstallerTest {
     }
 
     @Test
-    void service_install_journals_the_ledger_under_the_registry_root(@TempDir Path tempDir) throws Exception {
-        // An overridden jdks dir must journal MRU rows in its own tree, not the
-        // default location's ledger.
+    void service_install_journals_the_ledger_under_state_dir(@TempDir Path tempDir) throws Exception {
         byte[] archive = buildTarGz(
                 "jdk-21.0.5+11",
                 Map.of(
@@ -286,7 +291,7 @@ class JdkInstallerTest {
 
         InstalledJdk installed = new JdkService().install(e, new JdkRegistry(jdksRoot), false, null);
 
-        Path ledger = jdksRoot.resolve(JdkAccessLedger.FILE_NAME);
+        Path ledger = isolatedState.resolve(JdkAccessLedger.FILE_NAME);
         assertThat(ledger).exists();
         assertThat(Files.readString(ledger))
                 .contains(installed.home().toAbsolutePath().normalize().toString());

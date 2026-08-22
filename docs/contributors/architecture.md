@@ -48,6 +48,10 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   `drain-status` to the successor. The one exception is an *orphaned* engine (no endpoint pointer
   names it, so nothing can reach it), which exits once it has no in-flight jobs and no attached
   event stream.
+- **JDK inventory** — managed installs live in the IntelliJ shared root (`~/.jdks`); JumpKick's
+  record of them (`jk-jdks.toml`, fingerprints, Java/Graal defaults) and the JDK access log live
+  under the platform **state** dir (`$JK_STATE_DIR`, default `~/.local/state/jk`). No
+  `default-jdk` / `current-jdk` symlinks under data.
 - **Identity** — one engine per (state directory, artifact store) pair. The store is part of the
   identity hash because two invocations can share a state dir while disagreeing about where downloads
   belong; without it, `JK_STORE_DIR` silently did nothing. A machine can therefore hold several

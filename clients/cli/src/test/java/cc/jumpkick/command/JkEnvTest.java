@@ -3,7 +3,8 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.jdk.GlobalDefaultJdk;
+import cc.jumpkick.jdk.InstalledJdk;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkOwnership;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.lock.Lockfile;
@@ -160,41 +161,18 @@ class JkEnvTest {
                 .isEqualTo(jdkHome.toRealPath().toString());
     }
 
-    @Test
-    void current_jdk_symlink_wins_over_default(@TempDir Path tempDir) throws IOException {
-        var jdksRoot = tempDir.resolve("jdks");
-        var current = fakeJdk(jdksRoot.resolve("temurin-26.0.1"));
-        fakeJdk(jdksRoot.resolve("temurin-21.0.5")); // the configured default
-
-        var data = tempDir.resolve("jkdata");
-        Files.createDirectories(data);
-        var configFile = data.resolve("config.toml");
-        Files.writeString(configFile, "default-jdk = \"temurin-21.0.5\"\n");
-        Files.createSymbolicLink(data.resolve("current-jdk"), current);
-        var defaults = new GlobalDefaultJdk(data.resolve("default-jdk"), data.resolve("current-jdk"), configFile);
-
-        var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", defaults);
-        var target = env.resolve(tempDir);
-
-        // current-jdk (26) is honoured ahead of the configured default (21).
-        assertThat(target.vars().get("JAVA_HOME"))
-                .isEqualTo(current.toRealPath().toString());
+    /** An inventory with no rows and no default. */
+    private static JdkInventory noGlobalDefault(Path tempDir) {
+        return new JdkInventory(tempDir.resolve("jdks"), tempDir.resolve("jk-jdks.toml"));
     }
 
-    /** A GlobalDefaultJdk pointing at empty, non-existent channels — no current, no default. */
-    private static GlobalDefaultJdk noGlobalDefault(Path tempDir) {
-        var data = tempDir.resolve("jkdata-empty");
-        return new GlobalDefaultJdk(
-                data.resolve("default-jdk"), data.resolve("current-jdk"), data.resolve("config.toml"));
-    }
-
-    /** A GlobalDefaultJdk whose config pins {@code default-jdk = "<id>"}; no current symlink. */
-    private static GlobalDefaultJdk globalDefaultConfig(Path tempDir, String id) throws IOException {
-        var data = tempDir.resolve("jkdata");
-        Files.createDirectories(data);
-        var configFile = data.resolve("config.toml");
-        Files.writeString(configFile, "default-jdk = \"" + id + "\"\n");
-        return new GlobalDefaultJdk(data.resolve("default-jdk"), data.resolve("current-jdk"), configFile);
+    /** Inventory whose {@code default} is {@code id} (the tree must already exist under {@code jdks/}). */
+    private static JdkInventory globalDefaultConfig(Path tempDir, String id) throws IOException {
+        Path jdks = tempDir.resolve("jdks");
+        JdkInventory inv = new JdkInventory(jdks, tempDir.resolve("jk-jdks.toml"));
+        Path home = jdks.resolve(id);
+        inv.setDefault(new InstalledJdk(id, home));
+        return inv;
     }
 
     /** Stand up a fake jk-managed JDK install (bin/java + release) and return its home. */

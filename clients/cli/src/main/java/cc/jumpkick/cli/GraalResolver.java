@@ -76,12 +76,12 @@ public final class GraalResolver {
 
         // 2. The `jk jdk graal` default-graal pointer, if one is set and usable.
         try {
-            cc.jumpkick.jdk.GlobalDefaultJdk gd = cc.jumpkick.jdk.GlobalDefaultJdk.current();
+            cc.jumpkick.jdk.JdkInventory gd = cc.jumpkick.jdk.JdkInventory.current();
             Optional<Path> gh = gd.graalHome();
             if (gh.isPresent() && NativeImageDriver.resolve(gh.get()).isPresent()) {
                 return gh.get();
             }
-            Optional<String> gid = gd.graalIdentifier();
+            Optional<String> gid = gd.graalId();
             if (gid.isPresent()) {
                 Optional<InstalledJdk> byId = registry.find(gid.get());
                 if (byId.isPresent()

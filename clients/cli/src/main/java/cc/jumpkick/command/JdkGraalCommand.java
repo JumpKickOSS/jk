@@ -3,9 +3,9 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.jdk.GlobalDefaultJdk;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkHit;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.command.Arity;
@@ -57,7 +57,7 @@ public final class JdkGraalCommand implements CliCommand {
         String spec = in.positionals().isEmpty() ? null : in.positionals().get(0);
         Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
-        GlobalDefaultJdk defaults = GlobalDefaultJdk.current();
+        JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
 
         List<JdkHit> graals =
                 registry.listHits().stream().filter(JdkGraalCommand::isGraal).toList();

@@ -186,6 +186,21 @@ class JdkAccessLedgerTest {
     }
 
     @Test
+    void migrates_legacy_jdks_root_ledger(@TempDir Path tempDir) throws IOException {
+        Path jdks = Files.createDirectories(tempDir.resolve("jdks"));
+        Path home = Files.createDirectories(jdks.resolve("temurin-25.0.4"));
+        Path legacy = jdks.resolve(JdkAccessLedger.LEGACY_JDKS_FILE_NAME);
+        Files.writeString(
+                legacy, "1700000000000|3|25.0.4|Eclipse Temurin|" + home.toRealPath() + "\n", StandardCharsets.UTF_8);
+        Path stateFile = tempDir.resolve("state").resolve(JdkAccessLedger.FILE_NAME);
+        JdkAccessLedger ledger = new JdkAccessLedger(stateFile, jdks);
+        var map = ledger.byJavaHome();
+        assertThat(map).hasSize(1);
+        assertThat(Files.exists(legacy)).isFalse();
+        assertThat(stateFile).exists();
+    }
+
+    @Test
     void display_name_from_feed_is_the_single_vendor_form() {
         // Raw feed strings ("Eclipse" + "Temurin") and the discovery path (JdkVendor.displayName)
         // must land the same ledger cell.

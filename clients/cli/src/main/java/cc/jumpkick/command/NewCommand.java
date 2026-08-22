@@ -129,7 +129,7 @@ public final class NewCommand implements CliCommand {
      */
     private ParentInfo parent;
 
-    /** Global {@code default-jdk} id from {@code ~/.jk/config/jk.toml}, or empty. */
+    /** Global default JDK id from the managed inventory, or empty. */
     private Optional<String> defaultJdk = Optional.empty();
 
     /** Inherited context from the parent project's identity keys. */
@@ -825,7 +825,7 @@ public final class NewCommand implements CliCommand {
     /** The user's global default JDK identifier, or empty (best-effort — never throws). */
     private static Optional<String> readDefaultJdk() {
         try {
-            return cc.jumpkick.jdk.GlobalDefaultJdk.current().currentIdentifier();
+            return cc.jumpkick.jdk.JdkInventory.current().defaultId();
         } catch (Exception ignored) {
             return Optional.empty();
         }

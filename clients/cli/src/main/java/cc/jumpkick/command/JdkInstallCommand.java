@@ -9,12 +9,12 @@ import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.config.NerdFontCaps;
-import cc.jumpkick.jdk.GlobalDefaultJdk;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkCatalog;
 import cc.jumpkick.jdk.JdkInstallListener;
 import cc.jumpkick.jdk.JdkInstaller;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkService;
@@ -273,7 +273,7 @@ public final class JdkInstallCommand implements CliCommand {
                     }
                     InstalledJdk installed = ctx.require(INSTALLED);
                     ctx.label("set " + installed.identifier() + " as default");
-                    GlobalDefaultJdk.current().set(installed);
+                    JdkInventory.of(registry.jdksRoot()).setDefault(installed);
                     cc.jumpkick.jdk.JdkAccessLedger.atDefaultPath().touch(installed);
                     CliOutput.out();
                     CliOutput.out(Theme.colorize("➜", Theme.active().brightGreen())
@@ -336,22 +336,20 @@ public final class JdkInstallCommand implements CliCommand {
         // and cause JLine errors on the second Confirm.ask() invocation.
         try (org.jline.terminal.Terminal terminal = Wizard.openTerminal()) {
             Wizard.drainInput(terminal.reader(), 40L);
-            cc.jumpkick.jdk.GlobalDefaultJdk defaults = cc.jumpkick.jdk.GlobalDefaultJdk.current();
+            JdkInventory defaults = JdkInventory.of(jdksDir != null ? jdksDir : cc.jumpkick.util.JkDirs.jdks());
             if (!alreadyMadeDefault) {
-                Integer cur = defaults.currentIdentifier()
-                        .map(JdkListCommand::parseMajor)
-                        .orElse(null);
+                Integer cur =
+                        defaults.defaultId().map(JdkListCommand::parseMajor).orElse(null);
                 if (cur == null || newMajor >= cur) {
                     if (Confirm.of("Make " + jdk.identifier() + " the default JDK?", true)
                             .ask(terminal)) {
-                        defaults.set(jdk);
+                        defaults.setDefault(jdk);
                     }
                 }
             }
             if (isGraalHome(jdk.home())) {
-                Integer curGraal = defaults.graalIdentifier()
-                        .map(JdkListCommand::parseMajor)
-                        .orElse(null);
+                Integer curGraal =
+                        defaults.graalId().map(JdkListCommand::parseMajor).orElse(null);
                 if (curGraal == null || newMajor >= curGraal) {
                     if (Confirm.of("Make it the default GraalVM (jk native / GRAALVM_HOME)?", true)
                             .ask(terminal)) {

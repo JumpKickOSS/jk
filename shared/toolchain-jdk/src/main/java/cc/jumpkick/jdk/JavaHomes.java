@@ -29,7 +29,7 @@ public final class JavaHomes {
             // Non-installing walk of the canonical order — JdkEnsure already
             // installed any pin during sync, so this just locates it. Falls back
             // to the running JVM when nothing resolves.
-            JdkResolution.Resolved r = JdkResolution.resolveForHook(req, new JdkRegistry(), GlobalDefaultJdk.current());
+            JdkResolution.Resolved r = JdkResolution.resolveForHook(req, new JdkRegistry(), JdkInventory.current());
             if (r.jdk().isPresent()) return r.jdk().get().home();
         } catch (RuntimeException ignored) {
             // fall through to the running JVM

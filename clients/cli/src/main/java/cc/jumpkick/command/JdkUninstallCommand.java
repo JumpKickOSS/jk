@@ -11,13 +11,15 @@ import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.cli.tui.Wizard;
-import cc.jumpkick.jdk.GlobalDefaultJdk;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.IntellijJdkDir;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInstaller;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
+import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.jdk.JdkToolUninstaller;
+import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -35,6 +37,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -135,7 +138,7 @@ public final class JdkUninstallCommand implements CliCommand {
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
         // Reclaim any partial archive left by a previously canceled download.
         JdkInstaller.sweepStaleDownloads(registry.jdksRoot());
-        GlobalDefaultJdk defaults = GlobalDefaultJdk.current();
+        JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
 
         if (argument != null && !argument.isBlank()) {
             return runSingle(registry, defaults);
@@ -152,7 +155,7 @@ public final class JdkUninstallCommand implements CliCommand {
 
     // --- single-target path -------------------------------------------------
 
-    private Integer runSingle(JdkRegistry registry, GlobalDefaultJdk defaults) throws IOException {
+    private Integer runSingle(JdkRegistry registry, JdkInventory defaults) throws IOException {
         // `<source>/<spec>` is optional: a slash qualifies which probe's copy to
         // remove, but a bare `<spec>` matches across every source. Specs never
         // contain a slash, so its presence unambiguously marks a source prefix.
@@ -233,7 +236,7 @@ public final class JdkUninstallCommand implements CliCommand {
 
     // --- wizard path --------------------------------------------------------
 
-    private Integer runWizard(JdkRegistry registry, GlobalDefaultJdk defaults) throws IOException {
+    private Integer runWizard(JdkRegistry registry, JdkInventory defaults) throws IOException {
         // Installs jk can't remove — OS-package-manager (`system`) and
         // IDE-registered (`intellij`) JDKs — don't belong in the checklist.
         List<JdkHit> installed = registry.listHits().stream()
@@ -245,7 +248,7 @@ public final class JdkUninstallCommand implements CliCommand {
                     "no removable JDKs installed " + "(system- and IDE-managed installs aren't removable here).");
             return 0;
         }
-        Optional<String> currentDefault = defaults.currentIdentifier();
+        Optional<String> currentDefault = defaults.defaultId();
 
         Terminal terminal;
         try {
@@ -286,7 +289,7 @@ public final class JdkUninstallCommand implements CliCommand {
      * are victims; the plan does the actual disk work + default-pointer reconciliation.
      * Interactive=true keeps the {@link Spinner} from competing with the framework's bar.
      */
-    private Integer runDeleteBuildPlan(List<JdkHit> victims, JdkRegistry registry, GlobalDefaultJdk defaults) {
+    private Integer runDeleteBuildPlan(List<JdkHit> victims, JdkRegistry registry, JdkInventory defaults) {
         Path cache = JkDirs.cache();
 
         Task deleteStep = Task.builder(TaskNames.DELETE)
@@ -362,6 +365,7 @@ public final class JdkUninstallCommand implements CliCommand {
             if (outcome == JdkToolUninstaller.Outcome.FALL_THROUGH) {
                 registry.purge(installed);
             }
+            JdkInventory.of(registry.jdksRoot()).remove(identifier);
         } catch (IOException e) {
             // The spinner has already cleared its line; print the failure where
             // the confirmation prompt was (confirmDeletion wiped it for us), then
@@ -413,9 +417,9 @@ public final class JdkUninstallCommand implements CliCommand {
      * the next-best LTS install on disk auto-promotes. When no LTS survives we clear the default;
      * applyLts handles the messaging in either case.
      */
-    private static void reconcileDefaultAfterRemoval(
-            JdkRegistry registry, GlobalDefaultJdk defaults, List<JdkHit> victims) throws IOException {
-        Optional<String> currentDefault = defaults.currentIdentifier();
+    private static void reconcileDefaultAfterRemoval(JdkRegistry registry, JdkInventory defaults, List<JdkHit> victims)
+            throws IOException {
+        Optional<String> currentDefault = defaults.defaultId();
         if (currentDefault.isEmpty()) return;
         boolean defaultRemoved = victims.stream()
                 .anyMatch(v -> JdkRegistry.identifierFor(v.home()).equals(currentDefault.get()));
@@ -428,12 +432,12 @@ public final class JdkUninstallCommand implements CliCommand {
             // No LTS left — at minimum clear the dangling default pointer.
             List<InstalledJdk> survivors = registry.list();
             if (survivors.isEmpty()) {
-                defaults.clear();
+                defaults.clearDefault();
                 CliOutput.out(Theme.colorize(
                         "(no remaining JDKs — global default cleared)",
                         Theme.active().normalGray()));
             } else {
-                defaults.set(survivors.getFirst());
+                defaults.setDefault(survivors.getFirst());
                 CliOutput.out(Theme.colorize("➜", Theme.active().brightGreen())
                         + " The "
                         + Theme.colorize("default", Theme.active().focused())
@@ -447,6 +451,31 @@ public final class JdkUninstallCommand implements CliCommand {
                                 Theme.active().warning()));
             }
         }
+        reconcileGraalAfterRemoval(registry, defaults, victims);
+    }
+
+    private static void reconcileGraalAfterRemoval(JdkRegistry registry, JdkInventory defaults, List<JdkHit> victims)
+            throws IOException {
+        Optional<String> graalDefault = defaults.graalId();
+        if (graalDefault.isEmpty()) return;
+        boolean graalRemoved = victims.stream()
+                .anyMatch(v -> JdkRegistry.identifierFor(v.home()).equals(graalDefault.get()));
+        if (!graalRemoved) return;
+        Optional<JdkHit> next = registry.listHits().stream()
+                .filter(h -> h.vendor() == JdkVendor.ORACLE_GRAALVM || h.vendor() == JdkVendor.GRAALVM_CE)
+                .min(Comparator.comparingInt((JdkHit h) -> {
+                            int i = JdkVendor.GRAAL_PREFERENCE.indexOf(h.vendor());
+                            return i >= 0 ? i : Integer.MAX_VALUE;
+                        })
+                        .thenComparing(
+                                h -> h.version() == null ? "" : JdkSelector.versionKey(h.version()),
+                                Comparator.reverseOrder()));
+        if (next.isEmpty()) {
+            defaults.clearGraal();
+            return;
+        }
+        JdkHit hit = next.get();
+        defaults.setGraal(new InstalledJdk(JdkRegistry.identifierFor(hit.home()), hit.home()));
     }
 
     /** Swallow stderr from {@code applyLts} when we're going to fall back ourselves. */

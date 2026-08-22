@@ -24,7 +24,7 @@ Product data uses platform-native locations (XDG on Linux/macOS; Windows Known F
 | **bin** (PATH) | `~/.local/bin` | `%USERPROFILE%\.local\bin` |
 | **data** (engine lib, store/CAS) | `~/.local/share/jk` | `%LOCALAPPDATA%\jk\data` |
 | **cache** (action cache) | `~/.cache/jk` | `%LOCALAPPDATA%\jk\cache` |
-| **state** (engine socket, build history) | `~/.local/state/jk` | `%LOCALAPPDATA%\jk\state` |
+| **state** (engine socket, build history, JDK inventory) | `~/.local/state/jk` | `%LOCALAPPDATA%\jk\state` |
 | **config** | `~/.config/jk/config.toml` | `%APPDATA%\jk\config.toml` |
 | **managed JDKs** | Linux: `~/.jdks` · macOS: `~/Library/Java/JavaVirtualMachines` | `%USERPROFILE%\.jdks` |
 
@@ -35,8 +35,9 @@ under **data** (`…/store`). **Cache CAS** (action outputs) lives under **cache
 (or `$JK_HOME/lib/jk-engine/…` + `$JK_HOME/config/jk-engine/config.toml`).
 
 Managed JDKs use the **IntelliJ shared root** so the IDE and JumpKick share runtimes.
-Discovery still picks up SDKMAN, mise, Homebrew, `JAVA_HOME`, and system installs before
-downloading. See [JDK](jdk.md).
+JumpKick records those installs in **`<state>/jk-jdks.toml`** (defaults + fingerprints) and
+usage in **`<state>/jdk-access.log`**. Discovery still picks up SDKMAN, mise, Homebrew,
+`JAVA_HOME`, and system installs before downloading. See [JDK](jdk.md).
 
 XDG variables (`XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_HOME`,
 `XDG_BIN_HOME`) are honored on Linux and macOS when `JK_HOME` is unset.
@@ -48,7 +49,7 @@ XDG variables (`XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_
 | `JK_HOME` | Optional **single-tree umbrella** for product dirs (`config/`, `cache/`, `store/`, `state/`, `data/`, `bin/`, `lib/`). Hermetic tests and cold CI roots. Does **not** move the default JDK root. Global prefs: `$JK_HOME/config/config.toml`; per-app install config: `$JK_HOME/config/<bin>/config.toml`. |
 | `JK_CACHE_DIR` | Action / local CPU cache |
 | `JK_STORE_DIR` | CAS / network-expensive store |
-| `JK_STATE_DIR` | Engine sockets, build history |
+| `JK_STATE_DIR` | Engine sockets, build history, JDK inventory (`jk-jdks.toml`) and JDK access log |
 | `JK_DATA_DIR` | Product data root (engine lib + default store parent) |
 | `JK_BIN_DIR` / `JK_INSTALL_DIR` | PATH install directory for `jk` / `jkx` |
 | `JK_CONFIG_DIR` | Config root (global `config.toml` + per-app `<bin>/config.toml`). Default: `$JK_HOME/config` or `~/.config/jk` |
@@ -108,7 +109,7 @@ eval "$("$HOME/.local/bin/jk" activate zsh)"
 (bash: `activate bash`; fish: `"$HOME/.local/bin/jk" activate fish | source`.)
 
 - **PATH** — prepends the platform bin so real `jk` / `jkx` resolve
-- **Hooks** — `jk hook-env` updates `JAVA_HOME` / `PATH` when you `cd`
+- **Hooks** — `jk hook-env` updates `JAVA_HOME` / `GRAALVM_HOME` / `PATH` when you `cd`
 - **Completions** — bash, zsh, fish, pwsh
 
 ## Official URLs

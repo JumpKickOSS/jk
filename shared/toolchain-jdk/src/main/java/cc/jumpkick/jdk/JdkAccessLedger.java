@@ -21,8 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
- * One-line-per-JDK access ledger at {@code $JK_JDKS_DIR/.jk-access.log} (default {@code
- * ~/.jdks/.jk-access.log}). Pipe-separated fields:
+ * One-line-per-JDK access ledger at {@code $JK_STATE_DIR/jdk-access.log}. Pipe-separated fields:
  *
  * <pre>
  * timestampInMillis|accessCount|version|vendor|javaHome
@@ -47,8 +46,11 @@ import java.util.regex.Pattern;
  */
 public final class JdkAccessLedger {
 
-    /** Default file name inside the jdks directory. */
-    public static final String FILE_NAME = ".jk-access.log";
+    /** Default file name under {@link JkDirs#state()}. */
+    public static final String FILE_NAME = "jdk-access.log";
+
+    /** Previous name inside the jdks directory; folded into {@link #FILE_NAME} on first touch. */
+    static final String LEGACY_JDKS_FILE_NAME = ".jk-access.log";
 
     /** Pre-rewrite journal file name (TSV, identifier-keyed); folded + removed on first touch. */
     static final String OLD_FILE_NAME = ".access.log";
@@ -61,17 +63,24 @@ public final class JdkAccessLedger {
     private static final ConcurrentHashMap<String, Object> JVM_LOCKS = new ConcurrentHashMap<>();
 
     private final Path file;
+    /** When set, first touch/load folds {@code .jk-access.log} / {@code .access.log} from this root. */
+    private final Path jdksRootForMigrate;
 
     /**
-     * Default-path constructor — writes under {@link JkDirs#jdksDir()}. Callers that need a custom
+     * Default-path constructor — writes under {@link JkDirs#state()}. Callers that need a custom
      * path (tests) use {@link #JdkAccessLedger(Path)}.
      */
     public static JdkAccessLedger atDefaultPath() {
-        return new JdkAccessLedger(JkDirs.jdks().resolve(FILE_NAME));
+        return new JdkAccessLedger(JkDirs.state().resolve(FILE_NAME), JkDirs.jdks());
     }
 
     public JdkAccessLedger(Path file) {
+        this(file, null);
+    }
+
+    JdkAccessLedger(Path file, Path jdksRootForMigrate) {
         this.file = Objects.requireNonNull(file, "file");
+        this.jdksRootForMigrate = jdksRootForMigrate;
     }
 
     /** Path to the ledger file (tests / diagnostics). */
@@ -91,6 +100,7 @@ public final class JdkAccessLedger {
         String ven = vendor == null ? "" : vendor;
         try {
             withExclusiveLock(() -> {
+                migrateFromJdksRoot();
                 Map<String, Entry> rows = load();
                 foldOldJournal(rows);
                 Entry prev = rows.get(homeKey);
@@ -159,8 +169,18 @@ public final class JdkAccessLedger {
      * both). Rows already present win. Called under {@link #withExclusiveLock}.
      */
     private void foldOldJournal(Map<String, Entry> rows) {
-        Path old = file.resolveSibling(OLD_FILE_NAME);
-        if (!Files.isRegularFile(old)) return;
+        foldTsvJournal(file.resolveSibling(OLD_FILE_NAME), file.getParent(), rows);
+        if (jdksRootForMigrate != null) {
+            foldTsvJournal(jdksRootForMigrate.resolve(OLD_FILE_NAME), jdksRootForMigrate, rows);
+        }
+    }
+
+    /**
+     * Fold a pre-rewrite {@code .access.log} TSV journal ({@code millis\tevent\tidentifier}) into
+     * {@code rows}, then delete it. Identifiers resolve as children of {@code idRoot}.
+     */
+    private static void foldTsvJournal(Path old, Path idRoot, Map<String, Entry> rows) {
+        if (old == null || idRoot == null || !Files.isRegularFile(old)) return;
         try {
             Map<String, long[]> byIdentifier = new LinkedHashMap<>(); // id -> {latestMillis, count}
             for (String line : Files.readString(old, StandardCharsets.UTF_8).split("\n")) {
@@ -176,7 +196,7 @@ public final class JdkAccessLedger {
                         parts[2].trim(), new long[] {millis, 1}, (a, b) -> new long[] {Math.max(a[0], b[0]), a[1] + 1});
             }
             for (Map.Entry<String, long[]> e : byIdentifier.entrySet()) {
-                Path home = file.resolveSibling(e.getKey());
+                Path home = idRoot.resolve(e.getKey());
                 if (!Files.isDirectory(home)) continue;
                 String homeKey = normalizeHome(home);
                 if (homeKey.isEmpty() || rows.containsKey(homeKey)) continue;
@@ -190,7 +210,26 @@ public final class JdkAccessLedger {
         }
     }
 
+    /**
+     * Copy {@code $JK_JDKS_DIR/.jk-access.log} to the state-dir ledger once. Safe to call unlocked
+     * (missing-target + exists-source); the exclusive lock around {@link #touch} serializes the
+     * common case.
+     */
+    private void migrateFromJdksRoot() {
+        if (jdksRootForMigrate == null) return;
+        Path legacy = jdksRootForMigrate.resolve(LEGACY_JDKS_FILE_NAME);
+        if (Files.isRegularFile(file) || !Files.isRegularFile(legacy)) return;
+        try {
+            if (file.getParent() != null) Files.createDirectories(file.getParent());
+            Files.copy(legacy, file);
+            Files.deleteIfExists(legacy);
+        } catch (IOException ignored) {
+            // next touch retries
+        }
+    }
+
     private Map<String, Entry> load() throws IOException {
+        migrateFromJdksRoot();
         Map<String, Entry> out = new LinkedHashMap<>();
         if (!Files.isRegularFile(file)) return out;
         String body = Files.readString(file, StandardCharsets.UTF_8);

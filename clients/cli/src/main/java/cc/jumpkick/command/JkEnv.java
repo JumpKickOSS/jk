@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.jdk.GlobalDefaultJdk;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkVendor;
 import java.io.File;
@@ -27,13 +27,13 @@ public final class JkEnv {
 
     private final JdkRegistry registry;
     private final String origPath;
-    private final GlobalDefaultJdk globalDefault;
+    private final JdkInventory globalDefault;
 
     public JkEnv(JdkRegistry registry, String origPath) {
-        this(registry, origPath, GlobalDefaultJdk.current());
+        this(registry, origPath, JdkInventory.current());
     }
 
-    public JkEnv(JdkRegistry registry, String origPath, GlobalDefaultJdk globalDefault) {
+    public JkEnv(JdkRegistry registry, String origPath, JdkInventory globalDefault) {
         this.registry = registry;
         this.origPath = origPath == null ? "" : origPath;
         this.globalDefault = globalDefault;
@@ -43,13 +43,13 @@ public final class JkEnv {
     public static JkEnv defaults() {
         var origPath = System.getenv("__JK_ORIG_PATH");
         if (origPath == null) origPath = System.getenv("PATH");
-        return new JkEnv(new JdkRegistry(), origPath, GlobalDefaultJdk.current());
+        return new JkEnv(new JdkRegistry(), origPath, JdkInventory.current());
     }
 
     /**
      * Resolve the desired env for a {@code cwd} via the one canonical JDK order ({@link
      * cc.jumpkick.jdk.JdkResolution}): {@code JK_JDK} env, the project's {@code .jdk-version} /
-     * {@code jk-lock.toml} / {@code jdk}, then the global current / default JDK, then {@code
+     * {@code jk-lock.toml} / {@code jdk}, then the inventory default JDK, then {@code
      * JAVA_HOME} / {@code GRAALVM_HOME} / {@code PATH}. Never installs (the hook must not block the
      * shell). Empty only when nothing resolves. Carries JAVA_HOME / GRAALVM_HOME / PATH plus the
      * project root (when a {@code jk.toml} was found upstream).
@@ -133,17 +133,16 @@ public final class JkEnv {
             Optional<cc.jumpkick.jdk.JdkHit> hit = registry.findHitBySpec(spec).filter(JkEnv::isGraalVendor);
             if (hit.isPresent()) return Optional.of(hit.get().home());
         }
-        // The `jk jdk graal` default pointer (symlink, then config identifier).
         Optional<Path> ghome = globalDefault.graalHome();
         if (ghome.isPresent() && Files.isDirectory(ghome.get().resolve("bin"))) return ghome;
-        try {
-            Optional<String> gid = globalDefault.graalIdentifier();
-            if (gid.isPresent()) {
+        Optional<String> gid = globalDefault.graalId();
+        if (gid.isPresent()) {
+            try {
                 var m = registry.find(gid.get());
                 if (m.isPresent()) return Optional.of(m.get().home());
+            } catch (IOException ignored) {
+                return Optional.empty();
             }
-        } catch (IOException ignored) {
-            // malformed config — no graal default
         }
         return Optional.empty();
     }

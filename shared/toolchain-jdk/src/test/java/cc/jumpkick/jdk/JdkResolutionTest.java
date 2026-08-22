@@ -55,20 +55,6 @@ class JdkResolutionTest {
     }
 
     @Test
-    void current_beats_default(@TempDir Path tmp) throws IOException {
-        Path jdks = jdks(tmp);
-        Path j21 = makeJdk(jdks, "temurin-21.0.5");
-        Path j25 = makeJdk(jdks, "temurin-25.0.3");
-        GlobalDefaultJdk gdj = gdj(tmp);
-        gdj.set(new InstalledJdk("temurin-25.0.3", j25)); // default = 25
-        gdj.setCurrent(new InstalledJdk("temurin-21.0.5", j21)); // current = 21
-
-        var r = JdkResolution.resolve(req(tmp).build(), reg(jdks), gdj, LATEST_LTS);
-        assertThat(r.tier()).isEqualTo(JdkResolution.Tier.CURRENT);
-        assertThat(r.jdk().get().home()).isEqualTo(j21);
-    }
-
-    @Test
     void de_facto_default_when_nothing_pinned_or_set(@TempDir Path tmp) throws IOException {
         Path jdks = jdks(tmp);
         makeJdk(jdks, "temurin-17.0.13");
@@ -98,8 +84,8 @@ class JdkResolutionTest {
     void hook_falls_through_an_uninstalled_pin(@TempDir Path tmp) throws IOException {
         Path jdks = jdks(tmp);
         Path j25 = makeJdk(jdks, "temurin-25.0.3");
-        GlobalDefaultJdk gdj = gdj(tmp);
-        gdj.set(new InstalledJdk("temurin-25.0.3", j25));
+        JdkInventory gdj = gdj(tmp);
+        gdj.setDefault(new InstalledJdk("temurin-25.0.3", j25));
         // Switch names an uninstalled 99 — the hook must not block; it falls
         // through to the default rather than reporting wouldInstall.
         var req = req(tmp).switchSpec("99").build();
@@ -131,9 +117,9 @@ class JdkResolutionTest {
         Files.writeString(jre.resolve("bin").resolve("java"), "#!/fake");
         Files.writeString(jre.resolve("release"), "JAVA_VERSION=\"25.0.4\"\nIMPLEMENTOR=\"Red Hat, Inc.\"\n");
 
-        GlobalDefaultJdk gdj = gdj(tmp);
-        gdj.setCurrent(new InstalledJdk("java-25-openjdk", jre));
-        // current points at a JRE → skipped; de-facto default should pick the real JDK.
+        JdkInventory gdj = gdj(tmp);
+        gdj.setDefault(new InstalledJdk("java-25-openjdk", jre));
+        // default points at a JRE → skipped; de-facto default should pick the real JDK.
         var r = JdkResolution.resolve(req(tmp).build(), reg(jdks), gdj, LATEST_LTS);
         assertThat(r.jdk().get().home()).isEqualTo(real);
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.DEFAULT);
@@ -149,11 +135,8 @@ class JdkResolutionTest {
         return new JdkRegistry(jdksRoot, List.of(new JkProbe(jdksRoot)));
     }
 
-    private static GlobalDefaultJdk gdj(Path tmp) {
-        Path data = tmp.resolve("data");
-        return new GlobalDefaultJdk(
-                data.resolve("default-jdk"), data.resolve("current-jdk"),
-                data.resolve("default-graal-jdk"), tmp.resolve("config/jk.toml"));
+    private static JdkInventory gdj(Path tmp) {
+        return new JdkInventory(tmp.resolve("jdks"), tmp.resolve("state/jk-jdks.toml"));
     }
 
     private static Path makeJdk(Path jdksRoot, String dirName) throws IOException {
