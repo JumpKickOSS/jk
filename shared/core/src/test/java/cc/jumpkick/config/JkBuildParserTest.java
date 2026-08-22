@@ -28,6 +28,26 @@ class JkBuildParserTest {
             """;
 
     @Test
+    void m2_workspace_true_cannot_combine_with_explicit_keys() {
+        // JK-2323: silently returning (true,true) would discard the explicit integration = false.
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                        [m2]
+                        workspace = true
+                        integration = false
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("workspace = true");
+    }
+
+    @Test
+    void m2_must_be_a_table() {
+        // JK-2323: a scalar `m2` must be a clean parse error, not a raw tomlj type exception.
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "m2 = \"yes\"\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("must be a table");
+    }
+
+    @Test
     void dead_test_tag_keys_fail_with_a_migration_message() {
         // silently ignoring the renamed keys would run the tests the config excluded.
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
