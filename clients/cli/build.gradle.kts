@@ -156,6 +156,14 @@ val cliTestStateDirShort =
         file(
                 "/tmp/jk-cli-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")
 
+// @TempDir root for the integration tier. It MUST live outside the repo checkout: the shared
+// convention points java.io.tmpdir at build/tmp (inside clients/cli, which has its own jk.toml),
+// so @TempDir project dirs would find — and the "promote to workspace" tests would MUTATE — the
+// real repo's jk.toml (JK-2329). A short /tmp path also keeps UDS socket paths under sun_path.
+val cliTestTmpDirShort =
+        file(
+                "/tmp/jk-cli-tmp-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")
+
 // Unit vs integration (suite performance):
 // :cli:test — pure unit (TUI/args/jsonl); NO engine spawn tax
 // :cli:integrationTest — Jk.execute + wire engine (serial, worker jars)
@@ -223,7 +231,10 @@ tasks.named<Test>("integrationTest") {
     systemProperty(
             "junit.jupiter.tempdir.factory.default",
             "cc.jumpkick.cli.engine.JkTempDirFactory")
+    // Override the shared build/tmp (inside the repo) so @TempDir lands outside the checkout.
+    systemProperty("java.io.tmpdir", cliTestTmpDirShort.absolutePath)
     doFirst {
+        cliTestTmpDirShort.mkdirs()
         cliTestStateDirShort.mkdirs()
         environment("JK_STATE_DIR", cliTestStateDirShort.absolutePath)
         val testJkHome = layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath
@@ -262,6 +273,7 @@ tasks.named<Test>("integrationTest") {
     }
     doLast {
         cliTestStateDirShort.deleteRecursively()
+        cliTestTmpDirShort.deleteRecursively()
     }
 }
 
