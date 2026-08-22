@@ -397,27 +397,31 @@ public final class PluginTableRegistry {
                 throw new UncheckedIOException("failed to load built-in plugin manifest " + resource, e);
             }
         }
-        // Classpath-baked fixtures must be all-or-nothing (poisoned partial trees). An empty
-        // classpath catalog is normal for the native CLI and the engine fat jar — those install
-        // from self-describing worker jars via putBuiltIn.
-        if (!fromClasspath.isEmpty() && fromClasspath.size() != BUILT_IN.size()) {
-            throw new IllegalStateException("missing built-in plugin manifest resources ("
-                    + (BUILT_IN.size() - fromClasspath.size())
-                    + "/"
-                    + BUILT_IN.size()
-                    + "; first-party manifests live on plugin jars and the test classpath, not :core)");
-        }
+        // A complete classpath catalog is the Gradle test-fixture tree. A partial set is leftover
+        // extra-resources copies in main classes (some still parse, stale [scaffold] files do not).
+        // Drop it: production stays empty until putBuiltIn; tests fall through to workspace
+        // sources / -Djk.*.plugin.jar. Class init must not die on a poisoned partial tree.
+        fromClasspath = acceptClasspathCatalog(fromClasspath);
 
         Map<String, PluginDescriptor> byTable = new LinkedHashMap<>(fromClasspath);
         // Test JVMs loading this class from jk-core overlay workspace sources and optional
         // -Djk.<id>.plugin.jar props (Gradle may wire only a subset of workers). Never apply
-        // those overlays inside the engine fat jar — a partial prop set used to trip the
-        // all-or-nothing check above and kill EngineMain before BuiltInPluginJars.install().
+        // those overlays inside the engine fat jar. A partial -Djk.*.plugin.jar set is normal
+        // (suites name only the workers they fork); BuiltInPluginJars.install fills the rest.
         if (shouldLoadWorkspacePluginSources()) {
             byTable.putAll(loadFromWorkspacePluginSources(discoverTestWorkspaceRoot()));
             byTable.putAll(loadFromPluginJarProperties());
         }
         return byTable.isEmpty() ? Map.of() : Map.copyOf(byTable);
+    }
+
+    /**
+     * Keep a classpath catalog only when it is empty or names every built-in. A partial tree is
+     * discarded rather than loaded or treated as a hard error.
+     */
+    static Map<String, PluginDescriptor> acceptClasspathCatalog(Map<String, PluginDescriptor> loaded) {
+        if (loaded.isEmpty() || loaded.size() == BUILT_IN.size()) return loaded;
+        return Map.of();
     }
 
     /**

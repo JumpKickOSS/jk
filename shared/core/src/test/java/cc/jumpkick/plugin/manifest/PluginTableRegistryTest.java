@@ -9,6 +9,7 @@ import cc.jumpkick.model.PluginConfig;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import org.junit.jupiter.api.Assumptions;
@@ -140,6 +141,19 @@ class PluginTableRegistryTest {
     void empty_workspace_plugin_tree_is_not_this_catalog(@TempDir Path dir) {
         assertThat(PluginTableRegistry.loadFromWorkspacePluginSources(dir)).isEmpty();
         assertThat(PluginTableRegistry.loadFromWorkspacePluginSources(null)).isEmpty();
+    }
+
+    @Test
+    void incomplete_classpath_catalog_is_dropped() {
+        var one = PluginDescriptors.parse("""
+                [plugin]
+                id = "spring-boot"
+                table = "spring-boot"
+                version = "1"
+                """, "spring-boot.jk-plugin.toml");
+        assertThat(PluginTableRegistry.acceptClasspathCatalog(Map.of())).isEmpty();
+        assertThat(PluginTableRegistry.acceptClasspathCatalog(Map.of(one.table(), one)))
+                .isEmpty();
     }
 
     @Test

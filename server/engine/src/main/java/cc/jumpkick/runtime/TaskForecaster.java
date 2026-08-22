@@ -608,10 +608,7 @@ public final class TaskForecaster {
             boolean testResourceDrift = false;
             Boolean knownResourceDrift = null;
             if (!compileDirty && Files.isDirectory(layout.classesDir())) {
-                boolean mainOut = resourcesOutOfSync(
-                        cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), layout.classesDir());
-                boolean pluginManifestOut = !mainOut && pluginManifestOutOfSync(dir, layout.classesDir());
-                mainResourceDrift = mainOut || pluginManifestOut;
+                mainResourceDrift = mainResourcesOutOfSync(dir, compact, layout.classesDir());
                 knownResourceDrift = mainResourceDrift;
                 if (haveTests && !skipTests && !testDirty && Files.isDirectory(layout.testClassesDir())) {
                     Path resTest = cc.jumpkick.layout.ModuleLayout.testResourcesDir(dir, compact);
@@ -876,10 +873,26 @@ public final class TaskForecaster {
 
     /** Main resource roots (or a module-root {@code jk-plugin.toml}) differ from copies under {@code classesDir}. */
     static boolean mainResourcesOutOfSync(Path dir, boolean compact, Path classesDir) {
+        if (flattenedPluginCatalogPresent(classesDir)) return true;
         if (resourcesOutOfSync(cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), classesDir)) {
             return true;
         }
         return pluginManifestOutOfSync(dir, classesDir);
+    }
+
+    /**
+     * True when main classes still hold test-only flattened plugin manifests. Those files are
+     * not in {@code src/main/resources}, so {@link #resourcesOutOfSync} cannot see them.
+     */
+    static boolean flattenedPluginCatalogPresent(Path classesDir) {
+        Path catalog = classesDir.resolve(Path.of("cc", "jumpkick", "plugin", "manifest"));
+        if (!Files.isDirectory(catalog)) return false;
+        try (var stream = Files.list(catalog)) {
+            return stream.anyMatch(
+                    p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(".jk-plugin.toml"));
+        } catch (IOException e) {
+            return true;
+        }
     }
 
     /**

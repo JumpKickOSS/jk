@@ -631,7 +631,7 @@ public final class EngineSpawn {
                 // same store/state the client did.
                 //
                 // Do not forward jk.plugin.class — that is a client/test-runner host signal that
-                // would make PluginTableRegistry load workspace/test overlays inside the engine.
+                // would load workspace/test plugin overlays inside the engine.
                 for (var e : System.getProperties().entrySet()) {
                     String key = String.valueOf(e.getKey());
                     if (!key.startsWith("jk.")) continue;

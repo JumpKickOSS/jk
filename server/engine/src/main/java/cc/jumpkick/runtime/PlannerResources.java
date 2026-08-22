@@ -9,6 +9,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.util.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -81,6 +82,11 @@ public final class PlannerResources {
                     } else {
                         ctx.label("no static resources");
                     }
+                    // Test-classpath fixtures must not ride main classes into the jar. Leftover
+                    // extra-resources copies of *.jk-plugin.toml (and scaffold trees) are stripped
+                    // after the merge so a skipped copy step cannot keep poisoning PluginTableRegistry.
+                    boolean stripped = stripFlattenedPluginCatalog(classes);
+                    if (stripped) ctx.label("stripped leftover plugin catalog");
                     // Project build logic: AFTER_RESOURCES anchor.
                     boolean logicRan = false;
                     try {
@@ -97,10 +103,43 @@ public final class PlannerResources {
                         Thread.currentThread().interrupt();
                         throw new IOException("build-logic interrupted", e);
                     }
-                    if (!copied && !logicRan) ctx.cached(); // SKIPPED — nothing to copy, no logic
+                    if (!copied && !logicRan && !stripped) ctx.cached(); // SKIPPED — nothing to copy, no logic
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /**
+     * Delete {@code cc/jumpkick/plugin/manifest/*.jk-plugin.toml} (and scaffold trees next to
+     * them) from main classes. Those files are test-classpath fixtures; production jars must not
+     * bake a flattened catalog. Class files in the same package (core) are left alone.
+     */
+    static boolean stripFlattenedPluginCatalog(Path classesDir) throws IOException {
+        Path catalog = classesDir.resolve(Path.of("cc", "jumpkick", "plugin", "manifest"));
+        if (!Files.isDirectory(catalog)) return false;
+        boolean stripped = false;
+        List<Path> children;
+        try (var stream = Files.list(catalog)) {
+            children = stream.toList();
+        }
+        for (Path p : children) {
+            String name = p.getFileName().toString();
+            if (Files.isRegularFile(p) && name.endsWith(".jk-plugin.toml")) {
+                Files.delete(p);
+                stripped = true;
+            } else if (Files.isDirectory(p) && !containsClassFiles(p)) {
+                PathUtil.deleteRecursivelyOrThrow(p);
+                stripped = true;
+            }
+        }
+        return stripped;
+    }
+
+    private static boolean containsClassFiles(Path dir) throws IOException {
+        try (var walk = Files.walk(dir)) {
+            return walk.anyMatch(
+                    p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(".class"));
+        }
     }
 
     /**
