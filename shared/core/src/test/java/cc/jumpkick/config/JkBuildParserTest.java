@@ -1965,10 +1965,16 @@ class JkBuildParserTest {
     }
 
     @Test
-    void m2install_defaults_false_explicit_true_opts_in() {
-        assertThat(JkBuildParser.parse(PROJECT).project().m2install()).isFalse();
-        assertThat(JkBuildParser.parse(PROJECT + "m2install = true\n").project().m2install())
+    void m2integration_defaults_true_explicit_false_opts_out() {
+        assertThat(JkBuildParser.parse(PROJECT).project().m2install()).isTrue();
+        assertThat(JkBuildParser.parse(PROJECT + "m2integration = true\n")
+                        .project()
+                        .m2install())
                 .isTrue();
+        assertThat(JkBuildParser.parse(PROJECT + "m2integration = false\n")
+                        .project()
+                        .m2install())
+                .isFalse();
         assertThat(JkBuildParser.parse(PROJECT + "m2install = false\n")
                         .project()
                         .m2install())

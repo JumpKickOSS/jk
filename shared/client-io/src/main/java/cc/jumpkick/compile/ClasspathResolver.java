@@ -66,11 +66,18 @@ public final class ClasspathResolver {
     private final cc.jumpkick.repo.ArtifactLocator locator;
 
     public ClasspathResolver(Cas cas) {
-        this(Objects.requireNonNull(cas, "cas").root());
+        this(Objects.requireNonNull(cas, "cas").root(), defaultLocator(cas.root()));
     }
 
+    /** Store-only (no Maven local repo). Tests and callers that already pass a locator. */
     public ClasspathResolver(Path storeRoot) {
         this(storeRoot, new cc.jumpkick.repo.ArtifactLocator(storeRoot));
+    }
+
+    private static cc.jumpkick.repo.ArtifactLocator defaultLocator(Path storeRoot) {
+        boolean m2 = cc.jumpkick.config.JkM2Config.resolve().enabled();
+        return new cc.jumpkick.repo.ArtifactLocator(
+                storeRoot, m2 ? cc.jumpkick.repo.M2Dirs.localRepository() : null, m2);
     }
 
     public ClasspathResolver(Path storeRoot, cc.jumpkick.repo.ArtifactLocator locator) {

@@ -159,13 +159,19 @@ public final class RepoArtifactStore {
                 Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
                 AtomicWrites.moveInto(tmp, artifact);
             }
-            ArtifactMemo.ofBlob(artifact, inferGav(relativePath), sha256).write(sidecarPath(relativePath));
+            writeMemo(relativePath, artifact, sha256);
         } catch (IOException | RuntimeException e) {
             try {
                 Files.deleteIfExists(tmp);
             } catch (IOException ignored) {
             }
         }
+    }
+
+    /** Write or refresh the {@code .jk} memo for {@code blob} (which may live outside this store). */
+    public void writeMemo(String relativePath, Path blob, String sha256) throws IOException {
+        if (root == null || blob == null || !Files.isRegularFile(blob)) return;
+        ArtifactMemo.ofBlob(blob, inferGav(relativePath), sha256).write(sidecarPath(relativePath));
     }
 
     // -------------------------------------------------------------------------
@@ -431,8 +437,7 @@ public final class RepoArtifactStore {
     private boolean hasTrackedFile(Path versionDir) {
         if (!Files.isDirectory(versionDir)) return false;
         try (Stream<Path> entries = Files.list(versionDir)) {
-            return entries.anyMatch(
-                    p -> Files.isRegularFile(p) && !isMemoName(p.getFileName().toString()));
+            return entries.anyMatch(Files::isRegularFile);
         } catch (IOException e) {
             return false;
         }

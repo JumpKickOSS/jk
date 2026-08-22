@@ -32,6 +32,7 @@ public final class ManifestProject {
             "scala",
             "sources",
             "description",
+            "m2integration",
             "m2install",
             "layout",
             "id",
@@ -142,13 +143,19 @@ public final class ManifestProject {
             description = root.getString("description");
         }
 
-        boolean m2install;
-        if (isWorkspaceInherit(root, "m2install") || (!workspaceRoot && !root.contains("m2install"))) {
+        boolean m2integration;
+        boolean hasM2 = root.contains("m2integration") || root.contains("m2install");
+        if (isWorkspaceInherit(root, "m2integration")
+                || isWorkspaceInherit(root, "m2install")
+                || (!workspaceRoot && !hasM2)) {
             inherits.add(JkBuild.ProjectInherit.M2INSTALL);
-            m2install = false;
+            m2integration = true;
+        } else if (root.contains("m2integration")) {
+            m2integration = !Boolean.FALSE.equals(root.getBoolean("m2integration"));
+        } else if (root.contains("m2install")) {
+            m2integration = Boolean.TRUE.equals(root.getBoolean("m2install"));
         } else {
-            // m2install defaults to false: ~/.cache/jk is primary. true mirrors into ~/.m2.
-            m2install = Boolean.TRUE.equals(root.getBoolean("m2install"));
+            m2integration = true;
         }
 
         JkBuild.Layout layout;
@@ -177,7 +184,7 @@ public final class ManifestProject {
                 scala,
                 sourcesMode,
                 description,
-                m2install,
+                m2integration,
                 layout,
                 inherits);
     }

@@ -824,7 +824,7 @@ public record JkBuild(
             private VersionSelector scala;
             private SourcesMode sourcesMode = SourcesMode.DISABLED;
             private String description;
-            private boolean m2install;
+            private boolean m2install = true;
             private Layout layout = Layout.AUTO;
 
             private Builder(String group, String name, String version) {
