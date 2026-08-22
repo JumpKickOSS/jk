@@ -204,7 +204,6 @@ public final class ActionKey {
         return result;
     }
 
-    /** Sorted source lines for action material — one content hash per path via {@link FileHashMemo}. */
     /**
      * One classpath/processorpath token. Identity is content (lock digest / file hash), not the
      * on-disk path — the same jar may live under the Maven local repo or {@code repos/<name>/}.

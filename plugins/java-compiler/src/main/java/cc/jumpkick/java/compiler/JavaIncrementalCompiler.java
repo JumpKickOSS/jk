@@ -73,7 +73,9 @@ public final class JavaIncrementalCompiler implements Plugin {
                             yield 2;
                         }
                     };
-            if (code != 0) worst = code;
+            // Keep the worst (highest) exit code: a later compile error (1) must not overwrite an
+            // earlier usage/unknown error (2) — JK-2316.
+            worst = Math.max(worst, code);
         }
     }
 

@@ -318,10 +318,8 @@ public final class ZincJavaCompiler {
             }
             return new Result(false, diags, javac == null ? List.of() : javac.compiledSources());
         } catch (RuntimeException e) {
-            return new Result(
-                    false,
-                    List.of(new Diag("ERROR", null, 0, 0, e.getClass().getName() + ": " + e.getMessage())),
-                    List.of());
+            String msg = e.getMessage() == null ? e.getClass().getName() : e.getClass().getName() + ": " + e.getMessage();
+            return new Result(false, List.of(new Diag("ERROR", null, 0, 0, msg)), List.of());
         } finally {
             processors.close();
         }
