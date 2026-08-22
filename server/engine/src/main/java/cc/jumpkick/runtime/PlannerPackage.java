@@ -213,14 +213,16 @@ public final class PlannerPackage {
                     @SuppressWarnings("unchecked")
                     List<Path> processorCp =
                             (List<Path>) ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
-                    // Match compile-java's freshness inputs exactly, including the processor path.
-                    List<Path> stampInputs = mainStampClasspath(
+                    // Match compile-java's freshness inputs exactly, including the processor path and
+                    // the Scala stdlib jars (JK-2295).
+                    List<Path> stampInputs = new ArrayList<>(mainStampClasspath(
                             baseClasspath,
                             processorCp,
                             mixed,
                             cx.mixedGroovy(),
                             ctx.require(LAYOUT),
-                            cx.mixedGroovy() ? groovyCompileJar(ctx, cx.cas()) : null);
+                            cx.mixedGroovy() ? groovyCompileJar(ctx, cx.cas()) : null));
+                    stampInputs.addAll(PlannerSupport.scalaStampLibs(ctx, in.dir(), compact, cas));
                     String actionKey = ctx.get(ACTION_KEY).orElse("");
                     cc.jumpkick.task.FreshnessStamp.write(
                             javaOut,

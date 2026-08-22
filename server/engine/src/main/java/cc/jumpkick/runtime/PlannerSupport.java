@@ -197,6 +197,27 @@ public final class PlannerSupport {
     }
 
     /**
+     * Scala stdlib jars to fold into the freshness stamp for a module with {@code .scala} sources, so
+     * a scala-version bump (which swaps the stdlib jar's content identity) invalidates the stat-only
+     * fast path instead of silently skipping the compile against the old compiler (JK-2295). Empty for
+     * a non-Scala module. Cheap on a warm closure cache (a directory listing, no network).
+     */
+    static List<Path> scalaStampLibs(TaskContext ctx, Path moduleDir, boolean compact, Cas cas) {
+        List<Path> scalaSrcs;
+        try {
+            scalaSrcs = CompileSupport.collectScalaSources(moduleDir, compact);
+        } catch (Exception e) {
+            return List.of();
+        }
+        if (scalaSrcs.isEmpty()) return List.of();
+        try {
+            return ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas).libraryJars();
+        } catch (IOException e) {
+            return List.of();
+        }
+    }
+
+    /**
      * The version-matched {@code groovy} jar for javac's classpath in a mixed module: every Groovy
      * class implements {@code groovy.lang.GroovyObject}, so Java code referencing a Groovy type
      * needs the jar to resolve the supertype. Warm after compile-groovy's setup (CAS-memoized).
