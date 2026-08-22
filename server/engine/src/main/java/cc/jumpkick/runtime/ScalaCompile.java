@@ -29,7 +29,18 @@ public final class ScalaCompile {
 
     public static Setup prepare(JkBuild project, Lockfile lock, Cas cas) throws IOException {
         String version = CompileToolchain.scalaVersionFor(lock, project);
-        if (version == null || version.isBlank()) version = ScalaResolver.DEFAULT_VERSION;
+        if (version == null || version.isBlank()) {
+            version = ScalaResolver.DEFAULT_VERSION;
+            // A declared non-exact selector (e.g. `scala = "3"`) with no resolved pin in the lock —
+            // offline first-resolve, or a metadata fetch that failed — was silently compiling with
+            // the bundled default, possibly outside the requested range (JK-2319).
+            var selector = project == null ? null : project.project().scala();
+            if (selector != null) {
+                System.err.println("jk: warning: no resolved Scala version in the lock for selector `"
+                        + selector.raw() + "` — falling back to " + version
+                        + "; run `jk lock` online to pin the intended version.");
+            }
+        }
         try {
             RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
             List<Path> compilerCp = ScalaToolResolver.resolveClasspath(repos, cas, version);
