@@ -334,7 +334,11 @@ public final class McpMachine {
                                 "bytes",
                                 plan.get(cc.jumpkick.runtime.CachePlans.BYTES).orElse(-1L));
                         if (result.success()) {
-                            CacheMaintenanceLocks.stampLastPruned(cache, System.currentTimeMillis());
+                            CacheMaintenanceLocks.stampLastPruned(
+                                    cache,
+                                    System.currentTimeMillis(),
+                                    plan.get(cc.jumpkick.runtime.CachePlans.FINAL_ACTION_BYTES)
+                                            .orElse(-1L));
                         } else {
                             preview.put("error", "cache clean failed");
                         }

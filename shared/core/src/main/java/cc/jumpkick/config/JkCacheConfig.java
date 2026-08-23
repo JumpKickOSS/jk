@@ -19,9 +19,11 @@ import java.util.function.Supplier;
  * Precedence: {@code JK_*} env &gt; user file &gt; defaults. Malformed values fall back to defaults.
  *
  * <p>{@link #maxCacheSizeGb} is the <strong>action cache</strong> budget ({@code jk cache usage}:
- * action index + cache CAS). It is the only size budget jk enforces — the artifact store and the
- * Maven local repository are never size-pruned. {@code 0} (and negatives) mean unset: the
- * documented default applies.
+ * key records + cache CAS) and {@link #incrementalMaxSizeGb} bounds the Zinc analysis trees
+ * ({@code actions/incremental-*}) separately — one denominator each, so a large workspace's
+ * incremental state cannot push the action cache over a line no key eviction could bring back.
+ * Those are the only size budgets jk enforces — the artifact store and the Maven local repository
+ * are never size-pruned. {@code 0} (and negatives) mean unset: the documented default applies.
  *
  * <p>Sizes are in <strong>GiB</strong> ({@code max-cache-size-gb} / {@code JK_MAX_CACHE_SIZE_GB});
  * fractional values are allowed ({@code 0.5} = 512 MiB). The logical default is 4 GiB; when {@code
@@ -29,7 +31,8 @@ import java.util.function.Supplier;
  * replaced by {@code (free × 0.8) / 2} — 40 % of free space, leaving the other half of the 80 %
  * margin for the artifact store. Explicit file/env sizes are never disk-clamped.
  */
-public record JkCacheConfig(boolean autoPrune, int pruneIntervalDays, double maxCacheSizeGb) {
+public record JkCacheConfig(
+        boolean autoPrune, int pruneIntervalDays, double maxCacheSizeGb, double incrementalMaxSizeGb) {
 
     static final long GIB = 1024L * 1024L * 1024L;
 
@@ -42,6 +45,19 @@ public record JkCacheConfig(boolean autoPrune, int pruneIntervalDays, double max
     /** Logical cache budget when {@code CI=1} or {@code CI=true}. */
     public static final double CI_MAX_CACHE_SIZE_GB = 8.0;
 
+    /**
+     * Default budget for Zinc analysis state (512 MiB). Small next to the action budget on purpose:
+     * incremental state is pure speed inside an edit loop, and losing it costs one full compile.
+     */
+    public static final double DEFAULT_INCREMENTAL_MAX_SIZE_GB = 0.5;
+
+    /**
+     * Share of the action budget the incremental default may claim. At the 4 GiB default this lands
+     * exactly on {@link #DEFAULT_INCREMENTAL_MAX_SIZE_GB}; on a disk-clamped budget it shrinks with
+     * it, so a 64 MiB machine does not reserve half a gigabyte for analysis files.
+     */
+    private static final double INCREMENTAL_DEFAULT_SHARE = 1.0 / 8.0;
+
     /** Floor for disk-clamped defaults (64 MiB) so a near-full volume never yields a zero budget. */
     static final double MIN_CLAMPED_GB = 64.0 / 1024.0;
 
@@ -49,7 +65,8 @@ public record JkCacheConfig(boolean autoPrune, int pruneIntervalDays, double max
      * Logical non-CI defaults (4 GiB) with no disk probe — used as parse fallbacks and when a probe
      * is unavailable. Prefer {@link #resolve()} for the effective machine budget.
      */
-    public static final JkCacheConfig DEFAULTS = new JkCacheConfig(true, 7, DEFAULT_MAX_CACHE_SIZE_GB);
+    public static final JkCacheConfig DEFAULTS =
+            new JkCacheConfig(true, 7, DEFAULT_MAX_CACHE_SIZE_GB, DEFAULT_INCREMENTAL_MAX_SIZE_GB);
 
     /** Total and usable bytes on a volume (for default clamp tests and probes). */
     public record DiskSpace(long totalBytes, long freeBytes) {
@@ -113,10 +130,17 @@ public record JkCacheConfig(boolean autoPrune, int pruneIntervalDays, double max
         double cacheGb =
                 envCache.isPresent() ? envCache.getAsDouble() : p.cacheGb().orElse(defaultCache);
 
+        double defaultIncremental = Math.min(DEFAULT_INCREMENTAL_MAX_SIZE_GB, defaultCache * INCREMENTAL_DEFAULT_SHARE);
+        OptionalDouble envIncremental = envPositiveDouble(env, "JK_INCREMENTAL_MAX_SIZE_GB");
+        double incrementalGb = envIncremental.isPresent()
+                ? envIncremental.getAsDouble()
+                : p.incrementalGb().orElse(defaultIncremental);
+
         return new JkCacheConfig(
                 EnvValues.bool(env, "JK_AUTO_PRUNE").orElse(p.autoPrune()),
                 envNonNegativeInt(env, "JK_PRUNE_INTERVAL_DAYS").orElse(p.pruneIntervalDays()),
-                cacheGb);
+                cacheGb,
+                incrementalGb);
     }
 
     /**
@@ -195,10 +219,14 @@ public record JkCacheConfig(boolean autoPrune, int pruneIntervalDays, double max
     public static JkCacheConfig fromToml(Path file) {
         Parsed p = parse(file);
         return new JkCacheConfig(
-                p.autoPrune(), p.pruneIntervalDays(), p.cacheGb().orElse(DEFAULT_MAX_CACHE_SIZE_GB));
+                p.autoPrune(),
+                p.pruneIntervalDays(),
+                p.cacheGb().orElse(DEFAULT_MAX_CACHE_SIZE_GB),
+                p.incrementalGb().orElse(DEFAULT_INCREMENTAL_MAX_SIZE_GB));
     }
 
-    private record Parsed(boolean autoPrune, int pruneIntervalDays, OptionalDouble cacheGb) {}
+    private record Parsed(
+            boolean autoPrune, int pruneIntervalDays, OptionalDouble cacheGb, OptionalDouble incrementalGb) {}
 
     private static Parsed parse(Path file) {
         TomlScan scan = TomlScan.scan(
@@ -206,7 +234,8 @@ public record JkCacheConfig(boolean autoPrune, int pruneIntervalDays, double max
                 "cache.auto-prune",
                 "cache.prune-interval-days",
                 "cache.max-cache-size-gb",
-                "cache.max-cache-size-mb");
+                "cache.max-cache-size-mb",
+                "cache.incremental-max-size-gb");
         boolean autoPrune =
                 switch (String.valueOf(scan.get("cache.auto-prune"))) {
                     case "true" -> true;
@@ -220,7 +249,8 @@ public record JkCacheConfig(boolean autoPrune, int pruneIntervalDays, double max
         if (cacheGb.isEmpty()) {
             cacheGb = legacyMbAsGb(scan, "cache.max-cache-size-mb");
         }
-        return new Parsed(autoPrune, interval, cacheGb);
+        OptionalDouble incrementalGb = positiveDouble(scanDouble(scan, "cache.incremental-max-size-gb"));
+        return new Parsed(autoPrune, interval, cacheGb, incrementalGb);
     }
 
     private static OptionalDouble legacyMbAsGb(TomlScan scan, String key) {
@@ -241,6 +271,11 @@ public record JkCacheConfig(boolean autoPrune, int pruneIntervalDays, double max
     /** Action-cache budget in bytes ({@link #maxCacheSizeGb}). */
     public long maxCacheSizeBytes() {
         return gbToBytes(maxCacheSizeGb);
+    }
+
+    /** Zinc analysis budget in bytes ({@link #incrementalMaxSizeGb}). */
+    public long incrementalMaxSizeBytes() {
+        return gbToBytes(incrementalMaxSizeGb);
     }
 
     static long gbToBytes(double gb) {

@@ -11,9 +11,11 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.FileTime;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -27,6 +29,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 /**
@@ -86,11 +89,52 @@ public final class ActionCache {
      * and a vanished entry is a miss, not a failure.
      */
     public Optional<ActionRecord> lookup(String actionKey) throws IOException {
+        Path key = keysDir().resolve(actionKey);
         try {
-            return Optional.of(parse(Files.readString(keysDir().resolve(actionKey))));
+            ActionRecord record = parse(Files.readString(key));
+            stampUsed(key);
+            return Optional.of(record);
         } catch (NoSuchFileException absent) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * Stamp {@code key} as used, so the prune ranks by last use rather than by last store.
+     *
+     * <p>A cache hit rewrites nothing else: the CAS is write-once and only a real run replaces the
+     * record. Without this stamp a module nobody edits keeps one ancient key and sorts *ahead* of
+     * the week-old dead keys of a module rebuilt hourly — the prune would evict what you always use
+     * and keep the debris.
+     *
+     * <p>Best-effort and coarsened: a read-only cache root, or a key a concurrent prune just took,
+     * simply keeps its previous ranking.
+     */
+    private static void stampUsed(Path key) {
+        long now = System.currentTimeMillis();
+        Long last = STAMPED.get(key);
+        if (last != null && now - last < STAMP_COARSENING_MILLIS) return;
+        try {
+            Files.setLastModifiedTime(key, FileTime.fromMillis(now));
+            STAMPED.put(key, now);
+        } catch (IOException ignored) {
+            // Ranking hint, never correctness.
+        }
+    }
+
+    /**
+     * Keys this engine stamped recently. A build looks the same entry up several times (forecast,
+     * plan, restore), and a resident engine repeats that every build; without the map the stamp
+     * would be one write per lookup instead of one per entry per hour.
+     */
+    private static final Map<Path, Long> STAMPED = new ConcurrentHashMap<>();
+
+    /** How coarse the last-use stamp is. Eviction ranks in days; sub-hour precision buys nothing. */
+    private static final long STAMP_COARSENING_MILLIS = Duration.ofHours(1).toMillis();
+
+    /** Drop the stamp memo at the idle boundary, alongside the other per-build heap residue. */
+    public static void clearStampCache() {
+        STAMPED.clear();
     }
 
     /** The record the {@code tasks/} pointer for {@code taskId} names, or empty. Same race, same answer. */

@@ -111,8 +111,11 @@ public final class CacheInventoryOps {
         DiskUsage.Stats stamps = DiskUsage.of(cacheRoot.resolve("format-stamps"));
         // Total is the action cache — the exact bytes the budget bounds and `jk cache clean`
         // prunes. Run logs, format stamps and hash memos live under the same root but have their
-        // own retention, so a whole-root walk would report a total nothing can reclaim.
+        // own retention, so a whole-root walk would report a total nothing can reclaim. Zinc
+        // analysis state is under actions/ but carries its own budget, so it is subtracted out and
+        // reported beside the total rather than inside it.
         DiskUsage.Stats[] budgeted = DiskUsage.exclusive(cacheRoot.resolve("actions"), cacheRoot.resolve("sha256"));
+        DiskUsage.Stats incremental = incrementalStats(cacheRoot.resolve("actions"));
         List<String> stats = List.of(
                 pack("classFiles", classFiles[0], classFiles[1]),
                 pack("testResults", testResults[0], testResults[1]),
@@ -122,8 +125,25 @@ public final class CacheInventoryOps {
                 pack("minifiedJars", minifiedJars[0], minifiedJars[1]),
                 pack("nativeBins", nativeBins[0], nativeBins[1]),
                 pack("ociImages", ociImages[0], ociImages[1]),
+                pack("incremental", incremental.files(), incremental.bytes()),
                 pack("stamps", stamps.files(), stamps.bytes()));
-        return CacheInventoryAck.usage("usage", stats, DiskUsage.totalFiles(budgeted), DiskUsage.totalBytes(budgeted));
+        return CacheInventoryAck.usage(
+                "usage",
+                stats,
+                Math.max(0L, DiskUsage.totalFiles(budgeted) - incremental.files()),
+                Math.max(0L, DiskUsage.totalBytes(budgeted) - incremental.bytes()));
+    }
+
+    /** Zinc analysis trees under {@code actions/} — separately budgeted, so counted separately. */
+    private static DiskUsage.Stats incrementalStats(Path actionsDir) throws IOException {
+        long files = 0;
+        long bytes = 0;
+        for (String name : List.of("incremental-java", "incremental-kotlin")) {
+            DiskUsage.Stats tree = DiskUsage.of(actionsDir.resolve(name));
+            files += tree.files();
+            bytes += tree.bytes();
+        }
+        return new DiskUsage.Stats(files, bytes);
     }
 
     private static CacheInventoryAck storeUsage(Path storeRoot) throws IOException {

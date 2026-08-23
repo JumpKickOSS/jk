@@ -82,7 +82,11 @@ public final class CacheMaintenanceVerb implements HostedVerb {
                             // scheduler re-runs work the user just did. Same file for
                             // the store tier: its usage footer reads from its own root.
                             if (result.success() && !dryRun && ("prune".equals(op) || "sweep".equals(op))) {
-                                CacheMaintenanceLocks.stampLastPruned(cache, host.nowMillis());
+                                CacheMaintenanceLocks.stampLastPruned(
+                                        cache,
+                                        host.nowMillis(),
+                                        plan.get(cc.jumpkick.runtime.CachePlans.FINAL_ACTION_BYTES)
+                                                .orElse(-1L));
                             }
                             return ProtoSession.planFinishCache(
                                     dir,

@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
-import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -89,15 +87,13 @@ public final class CacheMaintenanceLocks {
         return true;
     }
 
-    /** Record a completed prune so {@code usage} and the idle scheduler see fresh work. Best-effort. */
-    public static void stampLastPruned(Path cache, long nowMillis) {
-        try {
-            Files.writeString(
-                    cache.resolve(cc.jumpkick.task.CachePruneScheduler.LAST_PRUNED_FILE),
-                    Long.toString(nowMillis),
-                    StandardCharsets.UTF_8);
-        } catch (IOException ignored) {
-            // the maintenance itself succeeded; a missing stamp only re-runs it earlier
-        }
+    /**
+     * Record a completed prune so {@code usage} and the idle scheduler see fresh work. Best-effort.
+     *
+     * @param finalActionBytes action-tier bytes the pass left behind, or {@code -1} when it did not
+     *     measure them — a wipe or a store-tier sweep. The scheduler reads that as "no pressure".
+     */
+    public static void stampLastPruned(Path cache, long nowMillis, long finalActionBytes) {
+        cc.jumpkick.task.CachePruneScheduler.write(cache, nowMillis, finalActionBytes);
     }
 }

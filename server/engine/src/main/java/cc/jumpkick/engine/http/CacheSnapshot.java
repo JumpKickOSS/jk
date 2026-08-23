@@ -5,7 +5,6 @@ import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.engine.JsonOut;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -18,7 +17,9 @@ import java.util.function.Supplier;
  *
  * <p>{@code actionMaxBytes} is the <strong>action cache</strong> budget ({@code [cache]
  * max-cache-size-gb}, default 4 GiB / 8 GiB on CI; small disks clamp that default). The
- * artifact store is reported but never budgeted.
+ * artifact store is reported but never budgeted. {@code incrementalMaxBytes} is the separate
+ * Zinc-analysis budget ({@code incremental-max-size-gb}); {@code actionsBytes} excludes the
+ * incremental trees for that reason, so each bar measures its own tier.
  *
  * <p>Byte sizes are <em>exclusive</em> across store sections (store CAS before {@code repos/}) so
  * leftover hard links are not counted twice — same accounting as the CLI.
@@ -41,6 +42,9 @@ public record CacheSnapshot(
         long runLogsBytes,
         long formatStampsCount,
         long formatStampsBytes,
+        long incrementalCount,
+        long incrementalBytes,
+        long incrementalMaxBytes,
         long actionMaxBytes,
         long lastPrunedMillis,
         long mavenLocalCount,
@@ -216,14 +220,15 @@ public record CacheSnapshot(
             cacheCasStats = new DiskUsage.Stats(0, 0);
         }
 
-        long cacheMax = resolveConfig().maxCacheSizeBytes();
+        JkCacheConfig config = resolveConfig();
+        DiskUsage.Stats incremental = incrementalStats(actions);
         long lastPruned = readLastPrunedMillis(cacheRoot);
         DiskUsage.Stats m2 = mavenLocalStats(); // walked once here, never on the render/connect path
         return new CacheSnapshot(
                 parts[0].files(),
                 parts[0].bytes(),
-                parts[2].files(),
-                parts[2].bytes(),
+                Math.max(0L, parts[2].files() - incremental.files()),
+                Math.max(0L, parts[2].bytes() - incremental.bytes()),
                 cacheCasStats.files(),
                 cacheCasStats.bytes(),
                 parts[1].files(),
@@ -232,10 +237,32 @@ public record CacheSnapshot(
                 parts[3].bytes(),
                 parts[4].files(),
                 parts[4].bytes(),
-                cacheMax,
+                incremental.files(),
+                incremental.bytes(),
+                config.incrementalMaxSizeBytes(),
+                config.maxCacheSizeBytes(),
                 lastPruned,
                 m2.files(),
                 m2.bytes());
+    }
+
+    /**
+     * Zinc analysis trees under {@code actions/}. Reported apart from the action index because they
+     * are bounded apart from it — see {@code ActionCachePrune.Policy}.
+     */
+    private static DiskUsage.Stats incrementalStats(Path actionsDir) {
+        long files = 0;
+        long bytes = 0;
+        for (String name : new String[] {"incremental-java", "incremental-kotlin"}) {
+            try {
+                DiskUsage.Stats tree = DiskUsage.of(actionsDir.resolve(name));
+                files += tree.files();
+                bytes += tree.bytes();
+            } catch (Exception unreadable) {
+                // absent or mid-delete — counts as empty, same as every other section here
+            }
+        }
+        return new DiskUsage.Stats(files, bytes);
     }
 
     private static JkCacheConfig resolveConfig() {
@@ -247,13 +274,9 @@ public record CacheSnapshot(
     }
 
     private static long readLastPrunedMillis(Path cacheRoot) {
-        Path stamp = cacheRoot.resolve(cc.jumpkick.task.CachePruneScheduler.LAST_PRUNED_FILE);
-        if (!Files.isRegularFile(stamp)) return 0L;
-        try {
-            return Long.parseLong(Files.readString(stamp).trim());
-        } catch (Exception e) {
-            return 0L;
-        }
+        return cc.jumpkick.task.CachePruneScheduler.read(cacheRoot)
+                .map(cc.jumpkick.task.CachePruneScheduler.Stamp::millis)
+                .orElse(0L);
     }
 
     /** Full JSON for REST {@code GET /api/cache} and connect-hydrate when the Status panel needs sections. */
@@ -271,6 +294,10 @@ public record CacheSnapshot(
                 .put("runLogsBytes", runLogsBytes)
                 .put("formatStampsCount", formatStampsCount)
                 .put("formatStampsBytes", formatStampsBytes)
+                .put("incrementalCount", incrementalCount)
+                .put("incrementalBytes", incrementalBytes)
+                // Zinc analysis is budgeted apart from the action index: own bar, own denominator.
+                .put("incrementalMaxBytes", incrementalMaxBytes)
                 // Count-cap for the stamp tree (512k default / 1M when CI=1|true) — web shows % used, not GiB.
                 .put("formatStampsMax", cc.jumpkick.task.FormatStampGc.resolveMaxFiles())
                 .put("totalCount", totalCount())

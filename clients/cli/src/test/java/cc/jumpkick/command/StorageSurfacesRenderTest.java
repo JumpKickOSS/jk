@@ -14,6 +14,10 @@ import org.junit.jupiter.api.Test;
  */
 class StorageSurfacesRenderTest {
 
+    /** 4 GiB action budget / 512 MiB incremental budget — the shipped defaults. */
+    private static final cc.jumpkick.config.JkCacheConfig CACHE_CONFIG =
+            new cc.jumpkick.config.JkCacheConfig(true, 7, 4.0, 0.5);
+
     @Test
     void cache_usage_table_rows_share_one_visible_width() {
         var stats = new CacheCommand.CacheUsageStats(
@@ -25,9 +29,10 @@ class StorageSurfacesRenderTest {
                 new CacheCommand.Stats(1, 1_000_000),
                 new CacheCommand.Stats(2, 59_000_000),
                 new CacheCommand.Stats(0, 0),
+                new CacheCommand.Stats(48, 1_200_000),
                 new CacheCommand.Stats(170, 0),
                 new CacheCommand.Stats(702, 213_300_000));
-        List<String> lines = CacheCommand.renderCacheUsageTable(stats, 4L * 1024 * 1024 * 1024, "1 day ago");
+        List<String> lines = CacheCommand.renderCacheUsageTable(stats, CACHE_CONFIG, "1 day ago");
 
         assertBoxedRowsShareWidth(lines);
         String joined = TestAnsi.strip(String.join("\n", lines));
@@ -91,10 +96,11 @@ class StorageSurfacesRenderTest {
                 new CacheCommand.Stats(1, 1_000_000),
                 new CacheCommand.Stats(2, 59_000_000),
                 new CacheCommand.Stats(0, 0),
+                new CacheCommand.Stats(48, 1_200_000),
                 new CacheCommand.Stats(170, 0),
                 new CacheCommand.Stats(702, 213_300_000));
         String cache = TestAnsi.strip(
-                String.join("\n", CacheCommand.renderCacheUsageTable(cacheStats, 4L * 1024 * 1024 * 1024, "today")));
+                String.join("\n", CacheCommand.renderCacheUsageTable(cacheStats, CACHE_CONFIG, "today")));
         assertThat(cache).contains("Utilization");
     }
 

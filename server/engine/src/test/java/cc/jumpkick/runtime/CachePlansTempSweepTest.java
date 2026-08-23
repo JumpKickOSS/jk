@@ -67,24 +67,40 @@ class CachePlansTempSweepTest {
     }
 
     /**
-     * Age alone no longer condemns an action key — only the size budget does, and a {@code @TempDir}
-     * cache is nowhere near the machine's.
+     * The retention window is unconditional. A {@code @TempDir} cache is nowhere near the size
+     * budget, so the window is the only pass that can act here — and it must, or a cache that never
+     * fills up would keep work nobody will ask for again forever.
      */
     @Test
-    void prune_leaves_old_action_keys_alone_when_under_budget(@TempDir Path root) throws Exception {
+    void prune_takes_an_action_key_past_its_window_even_under_budget(@TempDir Path root) throws Exception {
+        Path key = seedActionKey(root, Duration.ofDays(90));
+
+        CachePlans.pruneBuildPlan(root, false, false).run();
+
+        assertThat(key).doesNotExist();
+    }
+
+    /** Inside the window, age alone still condemns nothing — only the size budget can take it. */
+    @Test
+    void prune_leaves_a_recently_used_action_key_alone(@TempDir Path root) throws Exception {
+        Path key = seedActionKey(root, Duration.ofHours(2));
+
+        CachePlans.pruneBuildPlan(root, false, false).run();
+
+        assertThat(key).exists();
+    }
+
+    /** One action entry — key record plus the blob it names — backdated by {@code age}. */
+    private static Path seedActionKey(Path root, Duration age) throws IOException {
         byte[] payload = "cached class bytes".getBytes(StandardCharsets.UTF_8);
         Path blob = new Cas(root).put(payload);
         Path key = seed(
                 root.resolve("actions/keys/action-key"),
                 "TASK compile-main@mod\nOUTPUT " + Hashing.sha256Hex(payload) + " classes/A.class\n");
-        long ninetyDaysAgo = System.currentTimeMillis() - Duration.ofDays(90).toMillis();
-        Files.setLastModifiedTime(key, FileTime.fromMillis(ninetyDaysAgo));
-        Files.setLastModifiedTime(blob, FileTime.fromMillis(ninetyDaysAgo));
-
-        CachePlans.pruneBuildPlan(root, false, false).run();
-
-        assertThat(key).exists();
-        assertThat(blob).exists();
+        FileTime backdated = FileTime.fromMillis(System.currentTimeMillis() - age.toMillis());
+        Files.setLastModifiedTime(key, backdated);
+        Files.setLastModifiedTime(blob, backdated);
+        return key;
     }
 
     /** The tier split is the contract: a plain prune must not reach into the artifact store. */

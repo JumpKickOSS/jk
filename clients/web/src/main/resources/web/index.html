@@ -447,6 +447,7 @@
               <dl>
                 <dt>cache CAS</dt><dd>{{ count(cache.cacheCasCount != null ? cache.cacheCasCount : 0) }} · {{ gib(cache.cacheCasBytes != null ? cache.cacheCasBytes : 0) }}</dd>
                 <dt>action index</dt><dd>{{ count(cache.actionsCount) }} · {{ gib(cache.actionsBytes) }}</dd>
+                <dt>incremental</dt><dd :data-tip="'Zinc analysis state vs [cache] incremental-max-size-gb (' + mib(cache.incrementalMaxBytes) + ')'">{{ count(cache.incrementalCount) }} · {{ mib(cache.incrementalBytes) }} · {{ incrementalUsedPct() }}% used</dd>
                 <dt>format stamps</dt><dd :data-tip="'Count of empty stamp files vs cap (' + formatStampsMaxLabel() + ')'">{{ count(cache.formatStampsCount) }} · {{ formatStampsUsedPct() }}% used</dd>
               </dl>
             </template>

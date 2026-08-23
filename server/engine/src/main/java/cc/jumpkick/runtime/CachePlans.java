@@ -36,8 +36,14 @@ public final class CachePlans {
     public static final BuildPlanKey<Long> BYTES = BuildPlanKey.of("cache-bytes", Long.class);
 
     /**
+     * Action-tier bytes left after the prune — what the scheduler records so a cache that fills up
+     * between two cadence ticks is pruned when it fills, not when the interval next elapses.
+     */
+    public static final BuildPlanKey<Long> FINAL_ACTION_BYTES = BuildPlanKey.of("cache-final-bytes", Long.class);
+
+    /**
      * Hygiene plan for the cache at {@code root}: leaked CAS temps, format stamps, step timings, an
-     * unreferenced-blob sweep, and an oldest-first prune of whole action-cache entries down to
+     * unreferenced-blob sweep, and a tiered retention pass over whole action-cache entries down to
      * {@code cache.max-cache-size-gb}. Never touches the artifact store. {@code includeJkTmp} sweeps
      * {@code state/tmp} only for the default cache dir.
      */
@@ -92,14 +98,16 @@ public final class CachePlans {
                     totalFiles += cacheSweep.deleted();
                     totalBytes += cacheSweep.freedBytes();
 
-                    long budget = cc.jumpkick.config.JkCacheConfig.resolve().maxCacheSizeBytes();
+                    var cacheConfig = cc.jumpkick.config.JkCacheConfig.resolve();
+                    var policy = cc.jumpkick.task.ActionCachePrune.Policy.of(cacheConfig);
                     // The sweep's victims are still on disk in a dry run, so hand them over: without
                     // that the prune counts the same blob twice and dry-run totals diverge.
-                    var prune = cc.jumpkick.task.ActionCachePrune.toBudget(
-                            root, cacheCas, budget, cacheSweep.deletedShas(), dryRun);
-                    totalFiles += prune.deletedKeys() + prune.deletedBlobs();
-                    totalBytes += prune.freedBytes();
-                    if (budget > 0 && prune.finalBytes() > budget) {
+                    var prune = cc.jumpkick.task.ActionCachePrune.run(
+                            root, cacheCas, policy, cacheSweep.deletedShas(), dryRun);
+                    totalFiles += prune.totalDeletedFiles();
+                    totalBytes += prune.totalFreedBytes();
+                    ctx.put(FINAL_ACTION_BYTES, prune.finalBytes());
+                    if (policy.actionBudgetBytes() > 0 && prune.finalBytes() > policy.actionBudgetBytes()) {
                         ctx.warn(
                                 "prune",
                                 "cache is still over budget — raise cache.max-cache-size-gb (or JK_MAX_CACHE_SIZE_GB)");

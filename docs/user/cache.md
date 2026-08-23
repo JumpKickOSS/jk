@@ -58,41 +58,80 @@ Does **not** delete `jk` / `jkx` on PATH, managed JDKs, or forge/repo credential
 
 | Report | Cap | Default |
 |--------|-----|---------|
-| `jk cache usage` | `[cache] max-cache-size-gb` / `JK_MAX_CACHE_SIZE_GB` | **4** GiB (8 on `CI=1`) |
+| `jk cache usage` — action cache | `[cache] max-cache-size-gb` / `JK_MAX_CACHE_SIZE_GB` | **4** GiB (8 on `CI=1`) |
+| `jk cache usage` — incremental state | `[cache] incremental-max-size-gb` / `JK_INCREMENTAL_MAX_SIZE_GB` | **512** MiB |
 
 ```toml
 # ~/.config/jk/config.toml
 [cache]
 max-cache-size-gb = 4
+incremental-max-size-gb = 0.5
 ```
 
 `0` or negative means **unset** (use the default). On volumes with **< 10 GiB** total
 capacity, the unset default becomes **40% of free space** — half of an 80% margin, with the
 other half left for the artifact store, which has no budget and is never pruned. Explicit
-sizes are never disk-clamped.
+sizes are never disk-clamped. The incremental default shrinks with a disk-clamped cache
+budget (to an eighth of it), so a small volume does not reserve half a gigabyte for
+analysis files.
 
-The budget covers the **action cache**: the action index (`actions/`) plus the cache CAS
-(`sha256/`). `jk cache clean` — and the engine’s idle-boundary hygiene — delete whole
-action-cache entries **oldest file-modification-time first** until the total fits. Deleting
-an entry removes its action key, its task pointer, and every blob no surviving key still
-references.
+### Three tiers, three shelf lives
 
-That timestamp is when the entry was last **written**, not when it was last used — a cache
-hit reads the entry without rewriting it. So a module you rarely change can be evicted
-before one you rebuild every day. The next build re-runs that action and re-stores it with
-a fresh timestamp, so the cost is one rebuild and it does not repeat for the same entry.
+`actions/` holds three kinds of thing that fail differently when they go, so each gets its
+own window and its own denominator:
 
-Entries modified in the last hour are never evicted, so a cache under constant write
-pressure can sit above its budget until the machine goes quiet.
+| Tier | What it is | Window | Bounded by |
+|------|------------|--------|------------|
+| **Action** | key records naming CAS outputs, plus those outputs | 30 days | `max-cache-size-gb` |
+| **Memo** | key records naming *no* output — a `run-tests` green stamp, where the record **is** the result | 90 days | a count cap (**20,000**), never bytes |
+| **Incremental** | Zinc analysis under `actions/incremental-java`, `actions/incremental-kotlin` | 7 days | `incremental-max-size-gb` |
+
+Each tier gets an **unconditional window pass** — stale entries go whether or not you are
+near the budget — and then a budget pass that only runs when the tier is over. Splitting the
+denominators is what makes that possible: under one budget for all of `actions/`, a large
+workspace’s Zinc state could push the total over the line and the prune would evict every
+action key and still be over.
+
+A memo is a few hundred bytes, so evicting one to reclaim space buys a rounding error and
+costs a whole test run. That is why the byte budget never takes one — only its window and
+its count cap do.
+
+### What goes first
+
+Within a tier, **superseded entries** go first: a key that is neither its task’s current
+pointer nor in its generation list can never be hit again, so it is free to take. After
+that, **oldest last use**.
+
+Last *use*, not last write: a cache hit re-stamps the key record (coarsened to an hour, so
+a build that looks the same entry up several times pays one write). A module you rebuild
+hourly therefore leaves dead keys that sort old, while a module you never touch but always
+hit sorts young and survives — the reverse of ranking by store time.
+
+Blob timestamps are deliberately never consulted. The CAS is write-once, so a blob’s mtime
+is when those bytes were *first* seen; an old blob under a young key means “still current”,
+and ranking on it would evict exactly the wrong entries.
+
+Deleting an entry removes its action key, its task pointer, and every blob no surviving key
+still references. Entries and blobs touched in the last hour are never evicted, so a cache
+under constant write pressure can sit above its budget until the machine goes quiet.
 
 Class-C outputs (native images, OCI tarballs, fat/minified jars) keep at most **2**
-generations of action keys (**1** for OCI); a replaced generation becomes an eviction
-candidate immediately. There is no separate Class-C size share and no Class-C TTL — one
-budget, one order.
+generations of action keys (**1** for OCI). There is no separate Class-C size share and no
+Class-C TTL — a replaced generation is simply superseded, which is already the front of the
+queue.
 
-Under budget there is nothing to evict, so `jk cache clean` reclaims only leaked temps,
-expired format stamps, stale timings and unreferenced blobs — it can legitimately report
-“Nothing to clean up.” on a cache that used to free gigabytes.
+### Cadence
+
+`[cache] auto-prune` and `prune-interval-days` (default **7**) drive the engine’s
+idle-boundary pass. The interval tightens to **daily** when the previous prune finished with
+the action tier still at 90% or more of its budget: a cache that full will be over again
+long before the week is out. Pressure tightens the cadence rather than bypassing it —
+bypassing would re-fire on every idle boundary, since a prune that ends under pressure ends
+under pressure however often it runs.
+
+Under budget and inside every window there is nothing to evict, so `jk cache clean`
+reclaims only leaked temps, expired format stamps, stale timings and unreferenced blobs —
+it can legitimately report “Nothing to clean up.” on a cache that used to free gigabytes.
 
 ## What is never pruned
 

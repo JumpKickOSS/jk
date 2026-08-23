@@ -86,7 +86,8 @@ class HttpEngineServerTest {
     private final List<cc.jumpkick.runtime.BuildMetrics.Entry> metricsRows = new ArrayList<>();
 
     /** The snapshot served by {@code GET /api/cache} — tests reassign the field directly. */
-    private static final CacheSnapshot EMPTY_CACHE = new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    private static final CacheSnapshot EMPTY_CACHE =
+            new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     private CacheSnapshot cacheSnapshot = EMPTY_CACHE;
     private HttpEngineServer server;
@@ -1092,6 +1093,9 @@ class HttpEngineServerTest {
                 9_000,
                 2,
                 100,
+                6,
+                4_096,
+                268_435_456L,
                 1_073_741_824L,
                 1_700_000_000_000L,
                 0,

@@ -2246,6 +2246,13 @@ export const appOptions = {
       if (n == null || max <= 0) return '—';
       return ((100 * n) / max).toFixed(1);
     },
+    /** Zinc analysis state vs its own budget — never the action budget; the two are separate tiers. */
+    incrementalUsedPct() {
+      const used = this.cache?.incrementalBytes;
+      const max = this.cache?.incrementalMaxBytes;
+      if (used == null || !max || max <= 0) return '—';
+      return Math.min(100, (100 * used) / max).toFixed(1);
+    },
 
     // ---- the Status view's build-stats section (running aggregates from /api/metrics) ----
 
@@ -2576,6 +2583,10 @@ export const appOptions = {
     // System RAM reads naturally in GiB (total / available physical memory the engine's OS reports).
     gib(bytes) {
       return bytes == null || bytes < 0 ? '—' : (bytes / 1073741824).toFixed(1) + ' GiB';
+    },
+    // The incremental tier is budgeted in the hundreds of MiB, where gib() rounds everything to 0.0.
+    mib(bytes) {
+      return bytes == null || bytes < 0 ? '—' : (bytes / 1048576).toFixed(1) + ' MiB';
     },
     // Header / about: whole-host CPU utilisation from /api/status systemCpuLoad ∈ [0,1].
     // The bean returns -1 until the first sample; show an em-dash rather than "0%".
