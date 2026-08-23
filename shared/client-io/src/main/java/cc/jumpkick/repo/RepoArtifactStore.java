@@ -18,6 +18,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 /**
@@ -59,7 +60,7 @@ public final class RepoArtifactStore {
     private static final String LEGACY_LOCAL_MARKER = ".jk-local-renamed";
 
     /** Roots already migrated (or confirmed clean) this process — elides the per-construction probe. */
-    private static final Set<Path> LEGACY_LOCAL_MIGRATED = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final Set<Path> LEGACY_LOCAL_MIGRATED = ConcurrentHashMap.newKeySet();
 
     /** Test seam: forget which roots this process already migrated, as a fresh process would. */
     static void clearLegacyMigrationMemoForTest() {

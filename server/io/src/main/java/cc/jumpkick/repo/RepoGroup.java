@@ -223,8 +223,7 @@ public final class RepoGroup {
         }
         Optional<RepoFetched> found = tryFetch(
                 coord,
-                (repo, c) -> repo.tryLocalArtifact(c)
-                        .filter(f -> expectedSha256Hex.equalsIgnoreCase(f.sha256())),
+                (repo, c) -> repo.tryLocalArtifact(c).filter(f -> expectedSha256Hex.equalsIgnoreCase(f.sha256())),
                 (repo, c) -> repo.fetchArtifact(c, expectedSha256Hex, NO_ABORT));
         if (found.isPresent() && ARTIFACT_HIT_CACHE.size() < HIT_CACHE_MAX) {
             ARTIFACT_HIT_CACHE.putIfAbsent(key, found.get());

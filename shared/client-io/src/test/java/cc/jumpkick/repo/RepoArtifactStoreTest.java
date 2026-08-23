@@ -54,7 +54,6 @@ class RepoArtifactStoreTest {
         assertThat(Files.getLastModifiedTime(artifact).toMillis()).isEqualTo(mtime);
     }
 
-
     @Test
     void legacy_local_store_is_folded_into_jk_local(@TempDir Path dir) throws IOException {
         RepoArtifactStore.clearLegacyMigrationMemoForTest();

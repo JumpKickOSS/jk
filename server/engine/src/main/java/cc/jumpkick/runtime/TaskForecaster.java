@@ -898,8 +898,8 @@ public final class TaskForecaster {
         if (!Files.isDirectory(catalog)) return false;
         var builtIn = cc.jumpkick.plugin.manifest.PluginTableRegistry.builtInManifestNames();
         try (var stream = Files.list(catalog)) {
-            return stream.anyMatch(
-                    p -> Files.isRegularFile(p) && builtIn.contains(p.getFileName().toString()));
+            return stream.anyMatch(p ->
+                    Files.isRegularFile(p) && builtIn.contains(p.getFileName().toString()));
         } catch (IOException e) {
             return true;
         }

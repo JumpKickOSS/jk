@@ -17,6 +17,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -118,8 +119,7 @@ public final class PlannerResources {
      * old delete-anything sweep silently kept them out of the jar while re-running resources every
      * build (copy → strip → drift → copy …). Every deletion is reported through {@code warn}.
      */
-    static boolean stripFlattenedPluginCatalog(Path classesDir, java.util.function.Consumer<String> warn)
-            throws IOException {
+    static boolean stripFlattenedPluginCatalog(Path classesDir, Consumer<String> warn) throws IOException {
         Path catalog = classesDir.resolve(Path.of("cc", "jumpkick", "plugin", "manifest"));
         if (!Files.isDirectory(catalog)) return false;
         List<String> builtIn = cc.jumpkick.plugin.manifest.PluginTableRegistry.builtInManifestNames();
@@ -134,9 +134,7 @@ public final class PlannerResources {
                 Files.delete(p);
                 warn.accept(name);
                 stripped = true;
-            } else if (Files.isDirectory(p)
-                    && builtIn.contains(name + ".jk-plugin.toml")
-                    && !containsClassFiles(p)) {
+            } else if (Files.isDirectory(p) && builtIn.contains(name + ".jk-plugin.toml") && !containsClassFiles(p)) {
                 PathUtil.deleteRecursivelyOrThrow(p);
                 warn.accept(name + "/");
                 stripped = true;

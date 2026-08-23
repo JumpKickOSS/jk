@@ -11,7 +11,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -230,10 +234,9 @@ public final class PluginProcess {
         // waits root-exit + a drain grace, then abandons the reader instead of hanging forever.
         BufferedReader reader = new cc.jumpkick.jsonl.BoundedLineReader(
                 new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
-        java.util.concurrent.atomic.AtomicBoolean abandoned = new java.util.concurrent.atomic.AtomicBoolean();
-        java.util.concurrent.atomic.AtomicReference<IOException> pumpError =
-                new java.util.concurrent.atomic.AtomicReference<>();
-        java.util.concurrent.CountDownLatch pumpDone = new java.util.concurrent.CountDownLatch(1);
+        AtomicBoolean abandoned = new AtomicBoolean();
+        AtomicReference<IOException> pumpError = new AtomicReference<>();
+        CountDownLatch pumpDone = new CountDownLatch(1);
         try (BufferedWriter stdin =
                 new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8))) {
             Conversation convo = new Conversation() {
@@ -286,13 +289,13 @@ public final class PluginProcess {
                 }
             });
             while (true) {
-                if (pumpDone.await(100, java.util.concurrent.TimeUnit.MILLISECONDS)) break;
+                if (pumpDone.await(100, TimeUnit.MILLISECONDS)) break;
                 if (!process.isAlive()) {
                     // Root is gone; let the pump drain buffered output and see EOF. If the grace
                     // elapses the write end is held by a reparented orphan we can neither
                     // enumerate nor wake — abandon the pump (it parks until the orphan exits,
                     // discarding whatever it reads) rather than wedging the job thread.
-                    if (!pumpDone.await(ORPHAN_DRAIN_GRACE_MS, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                    if (!pumpDone.await(ORPHAN_DRAIN_GRACE_MS, TimeUnit.MILLISECONDS)) {
                         abandoned.set(true);
                         forceStop(process); // best effort: stragglers still visible + fd close
                     }

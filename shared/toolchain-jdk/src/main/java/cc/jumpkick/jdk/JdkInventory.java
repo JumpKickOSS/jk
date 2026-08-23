@@ -14,6 +14,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -204,9 +206,10 @@ public final class JdkInventory {
             if (owned.containsKey(row.id)) {
                 // Fingerprinted moments ago in this very pass — re-walking the tree to compare
                 // the hash against itself is pure cost. A null sha means that walk failed.
-                out.add(row.sha256 != null && !row.sha256.isBlank()
-                        ? new Finding(Finding.Kind.OK, row.id, installDir(row.id), null)
-                        : new Finding(Finding.Kind.UNHASHED, row.id, installDir(row.id), "fingerprint failed"));
+                out.add(
+                        row.sha256 != null && !row.sha256.isBlank()
+                                ? new Finding(Finding.Kind.OK, row.id, installDir(row.id), null)
+                                : new Finding(Finding.Kind.UNHASHED, row.id, installDir(row.id), "fingerprint failed"));
             } else {
                 out.add(checkRow(row)); // identity-only rows: cheap presence probe
             }
@@ -329,7 +332,7 @@ public final class JdkInventory {
 
     private Snapshot cachedSnapshot;
     private long cachedSize = -1;
-    private java.nio.file.attribute.FileTime cachedModified;
+    private FileTime cachedModified;
 
     /**
      * Read-path snapshot, memoized on (size, mtime): {@code jk hook-env} runs on every shell
@@ -340,7 +343,7 @@ public final class JdkInventory {
         ensureMigrated();
         try {
             if (!Files.isRegularFile(file)) return Snapshot.empty();
-            var attrs = Files.readAttributes(file, java.nio.file.attribute.BasicFileAttributes.class);
+            var attrs = Files.readAttributes(file, BasicFileAttributes.class);
             if (cachedSnapshot != null
                     && attrs.size() == cachedSize
                     && attrs.lastModifiedTime().equals(cachedModified)) {
@@ -413,7 +416,9 @@ public final class JdkInventory {
                 } else {
                     rid = id != null && !id.isBlank()
                             ? id
-                            : (dir != null && dir.getFileName() != null ? dir.getFileName().toString() : null);
+                            : (dir != null && dir.getFileName() != null
+                                    ? dir.getFileName().toString()
+                                    : null);
                 }
                 if (rid != null && !rid.isBlank()) {
                     rows.put(rid, rowFor(new InstalledJdk(rid, recorded), null, false));
@@ -475,8 +480,9 @@ public final class JdkInventory {
         boolean matched = false;
         for (String line : existing.split("\n", -1)) {
             String stripped = line.strip();
-            boolean legacy = legacyKeys.stream().anyMatch(k -> stripped.startsWith(k)
-                    && stripped.substring(k.length()).stripLeading().startsWith("="));
+            boolean legacy = legacyKeys.stream()
+                    .anyMatch(k -> stripped.startsWith(k)
+                            && stripped.substring(k.length()).stripLeading().startsWith("="));
             if (legacy) {
                 matched = true;
                 continue;

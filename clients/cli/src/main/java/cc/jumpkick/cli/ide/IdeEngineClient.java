@@ -26,6 +26,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * Engine-backed session for IDE hosts (IntelliJ / VS Code plugins and agents). Prefer this over
@@ -318,7 +319,7 @@ public class IdeEngineClient {
      * BSP {@code buildTarget/run}: build the module, then execute the engine exec plan (same path as
      * {@code jk run}). Blocks until the process exits. {@code moduleDir} null → project root.
      */
-    public BuildOutcome runModule(Path moduleDir, BuildListener listener, java.util.function.Consumer<String> onOutput)
+    public BuildOutcome runModule(Path moduleDir, BuildListener listener, Consumer<String> onOutput)
             throws IOException {
         BuildListener progress = listener == null ? BuildListener.NOOP : listener;
         Path mod = moduleDir == null ? projectDir : moduleDir.toAbsolutePath().normalize();

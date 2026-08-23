@@ -166,10 +166,13 @@ class CommandDispatchTest {
 
     @org.junit.jupiter.api.Test
     void plugin_arg_scan_honors_output_flags() {
-        assertThat(CommandDispatch.pluginArgsAskJson(java.util.List.of("-O", "json"))).isTrue();
-        assertThat(CommandDispatch.pluginArgsAskJson(java.util.List.of("--output", "jsonl"))).isTrue();
-        assertThat(CommandDispatch.pluginArgsAskJson(java.util.List.of("--output=json", "x"))).isTrue();
-        assertThat(CommandDispatch.pluginArgsAskJson(java.util.List.of("-O", "text"))).isFalse();
-        assertThat(CommandDispatch.pluginArgsAskJson(java.util.List.of("build", "--fast"))).isFalse();
+        assertThat(CommandDispatch.pluginArgsAskJson(List.of("-O", "json"))).isTrue();
+        assertThat(CommandDispatch.pluginArgsAskJson(List.of("--output", "jsonl")))
+                .isTrue();
+        assertThat(CommandDispatch.pluginArgsAskJson(List.of("--output=json", "x")))
+                .isTrue();
+        assertThat(CommandDispatch.pluginArgsAskJson(List.of("-O", "text"))).isFalse();
+        assertThat(CommandDispatch.pluginArgsAskJson(List.of("build", "--fast")))
+                .isFalse();
     }
 }

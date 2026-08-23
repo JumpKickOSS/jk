@@ -22,7 +22,9 @@ public final class DirKeys {
 
     private static boolean looksWindowsAbsolute(String s) {
         if (s.startsWith("\\\\")) return true; // UNC
-        return s.length() >= 3 && Character.isLetter(s.charAt(0)) && s.charAt(1) == ':'
+        return s.length() >= 3
+                && Character.isLetter(s.charAt(0))
+                && s.charAt(1) == ':'
                 && (s.charAt(2) == '/' || s.charAt(2) == '\\');
     }
 

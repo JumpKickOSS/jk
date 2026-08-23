@@ -190,7 +190,6 @@ class JdkInventoryTest {
         assertThat(JdkInventory.render(parsed)).isEqualTo(once);
     }
 
-
     @Test
     void external_and_unowned_defaults_verify_ok_and_survive_repair(@TempDir Path tmp) throws IOException {
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));

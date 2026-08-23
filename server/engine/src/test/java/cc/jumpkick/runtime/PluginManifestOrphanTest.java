@@ -47,12 +47,14 @@ class PluginManifestOrphanTest {
         assertThat(TaskForecaster.mainResourcesOutOfSync(module, false, classes))
                 .isTrue();
 
-        assertThat(PlannerResources.stripFlattenedPluginCatalog(classes, name -> {})).isTrue();
+        assertThat(PlannerResources.stripFlattenedPluginCatalog(classes, name -> {}))
+                .isTrue();
         assertThat(toml).doesNotExist();
         assertThat(scaffold).doesNotExist();
         assertThat(keepClass).exists();
         assertThat(TaskForecaster.flattenedPluginCatalogPresent(classes)).isFalse();
-        assertThat(PlannerResources.stripFlattenedPluginCatalog(classes, name -> {})).isFalse();
+        assertThat(PlannerResources.stripFlattenedPluginCatalog(classes, name -> {}))
+                .isFalse();
     }
 
     @Test
@@ -67,7 +69,8 @@ class PluginManifestOrphanTest {
         Files.writeString(userDir.resolve("table.txt"), "x\n");
 
         assertThat(TaskForecaster.flattenedPluginCatalogPresent(classes)).isFalse();
-        assertThat(PlannerResources.stripFlattenedPluginCatalog(classes, name -> {})).isFalse();
+        assertThat(PlannerResources.stripFlattenedPluginCatalog(classes, name -> {}))
+                .isFalse();
         assertThat(userToml).exists();
         assertThat(userDir.resolve("table.txt")).exists();
     }
