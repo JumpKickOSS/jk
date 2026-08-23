@@ -35,6 +35,11 @@ elif [ -n "${JK_HOME:-}" ]; then
   INSTALL_DIR="${JK_HOME}/bin"
 elif [ -n "${XDG_BIN_HOME:-}" ]; then
   INSTALL_DIR="$XDG_BIN_HOME"
+elif [ -n "${XDG_DATA_HOME:-}" ]; then
+  # JkDirs.platformBinDir: without XDG_BIN_HOME, bin is the data home's SIBLING
+  # (~/.local/share -> ~/.local/bin). Skipping this step would install at
+  # ~/.local/bin while `jk activate` / `jk self update` operate on the sibling.
+  INSTALL_DIR="$(dirname "$XDG_DATA_HOME")/bin"
 else
   INSTALL_DIR="${HOME}/.local/bin"
 fi
