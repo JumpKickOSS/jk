@@ -318,7 +318,8 @@ public class IdeEngineClient {
      * BSP {@code buildTarget/run}: build the module, then execute the engine exec plan (same path as
      * {@code jk run}). Blocks until the process exits. {@code moduleDir} null → project root.
      */
-    public BuildOutcome runModule(Path moduleDir, BuildListener listener) throws IOException {
+    public BuildOutcome runModule(Path moduleDir, BuildListener listener, java.util.function.Consumer<String> onOutput)
+            throws IOException {
         BuildListener progress = listener == null ? BuildListener.NOOP : listener;
         Path mod = moduleDir == null ? projectDir : moduleDir.toAbsolutePath().normalize();
         BuildOutcome built = buildModule(mod, progress);
@@ -340,8 +341,20 @@ public class IdeEngineClient {
             Path cwd = plan.workingDir() != null && !plan.workingDir().isBlank() ? Path.of(plan.workingDir()) : mod;
             ProcessBuilder pb = new ProcessBuilder(argv);
             pb.directory(cwd.toFile());
-            pb.inheritIO();
-            int code = pb.start().waitFor();
+            // Never inheritIO: under `jk bsp serve` the parent's stdout IS the JSON-RPC frame
+            // stream and its stdin carries pending requests — an inherited child would interleave
+            // raw program output into the protocol and could eat frames. Merge the app's stderr
+            // into stdout and hand each line to the caller's sink; close the child's stdin so a
+            // read sees EOF instead of stealing ours.
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            p.getOutputStream().close();
+            try (var reader = p.inputReader()) {
+                for (String line; (line = reader.readLine()) != null; ) {
+                    onOutput.accept(line);
+                }
+            }
+            int code = p.waitFor();
             boolean ok = code == 0;
             progress.onModuleFinish(coord + " (run)", ok);
             return new BuildOutcome(ok, 1, ok ? 0 : 1, ok ? List.of() : List.of("run exited with code " + code));
