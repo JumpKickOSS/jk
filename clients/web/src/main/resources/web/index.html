@@ -449,6 +449,7 @@
                 <dt>action index</dt><dd>{{ count(cache.actionsCount) }} · {{ gib(cache.actionsBytes) }}</dd>
                 <dt>incremental</dt><dd :data-tip="'Zinc analysis state vs [cache] incremental-max-size-gb (' + mib(cache.incrementalMaxBytes) + ')'">{{ count(cache.incrementalCount) }} · {{ mib(cache.incrementalBytes) }} · {{ incrementalUsedPct() }}% used</dd>
                 <dt>format stamps</dt><dd :data-tip="'Count of empty stamp files vs cap (' + formatStampsMaxLabel() + ')'">{{ count(cache.formatStampsCount) }} · {{ formatStampsUsedPct() }}% used</dd>
+                <dt>derived</dt><dd data-tip="Small caches with their own retention (hash memos, format indexes, extracted trees) — bounded by count or supersession, so no budget bar">{{ count(cache.derivedCount) }} · {{ mib(cache.derivedBytes) }} apparent</dd>
               </dl>
             </template>
             <div v-else class="dim small">Action cache loading…</div>

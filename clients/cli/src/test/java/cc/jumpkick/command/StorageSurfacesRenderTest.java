@@ -30,6 +30,7 @@ class StorageSurfacesRenderTest {
                 new CacheCommand.Stats(0, 0),
                 new CacheCommand.Stats(48, 1_200_000),
                 new CacheCommand.Stats(170, 0),
+                new CacheCommand.Stats(16_449, 1_400_000),
                 new CacheCommand.Stats(702, 213_300_000));
         List<String> lines = CacheCommand.renderCacheUsageTable(stats, CACHE_CONFIG, "1 day ago");
 
@@ -45,6 +46,14 @@ class StorageSurfacesRenderTest {
         assertThat(joined).contains("OCI Images");
         assertThat(joined).contains("Format Stamps");
         assertThat(joined).contains("--"); // zero-byte stamps
+        String derived = lines.stream()
+                .map(TestAnsi::strip)
+                .filter(l -> l.contains("Derived caches"))
+                .findFirst()
+                .orElseThrow();
+        // Bounded by count and by supersession, so the line reports what is there and stops:
+        // "of <budget>" would name a number that is not this tier's bound.
+        assertThat(derived).contains("apparent").doesNotContain(" of ");
         assertThat(joined).contains("Last cleaned: 1 day ago");
         assertThat(joined).doesNotContain("Last pruned:");
         assertThat(joined).doesNotContain("Last Pruned");
@@ -95,6 +104,7 @@ class StorageSurfacesRenderTest {
                 new CacheCommand.Stats(0, 0),
                 new CacheCommand.Stats(48, 1_200_000),
                 new CacheCommand.Stats(170, 0),
+                new CacheCommand.Stats(0, 0),
                 new CacheCommand.Stats(702, 213_300_000));
         String cache = TestAnsi.strip(
                 String.join("\n", CacheCommand.renderCacheUsageTable(cacheStats, CACHE_CONFIG, "today")));

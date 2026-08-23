@@ -87,7 +87,7 @@ class HttpEngineServerTest {
 
     /** The snapshot served by {@code GET /api/cache} — tests reassign the field directly. */
     private static final CacheSnapshot EMPTY_CACHE =
-            new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     private CacheSnapshot cacheSnapshot = EMPTY_CACHE;
     private HttpEngineServer server;
@@ -1096,6 +1096,8 @@ class HttpEngineServerTest {
                 268_435_456L,
                 1_073_741_824L,
                 1_700_000_000_000L,
+                0,
+                0,
                 0,
                 0);
         HttpResponse<String> resp = get("/api/cache");

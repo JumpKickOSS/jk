@@ -32,7 +32,9 @@ class McpDiskTest {
             /* actionMaxBytes */ 4L << 30,
             /* lastPrunedMillis */ 0,
             /* mavenLocalCount */ 0,
-            /* mavenLocalBytes */ 0);
+            /* mavenLocalBytes */ 0,
+            0,
+            0);
 
     private final EngineHttpJobs jobs = new EngineHttpJobs() {
         @Override

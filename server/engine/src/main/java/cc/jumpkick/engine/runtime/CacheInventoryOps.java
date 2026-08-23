@@ -10,6 +10,8 @@ import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.task.Bound;
+import cc.jumpkick.task.CacheTier;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.PathUtil;
 import java.io.IOException;
@@ -115,6 +117,7 @@ public final class CacheInventoryOps {
         // reported beside the total rather than inside it.
         DiskUsage.Stats[] budgeted = DiskUsage.exclusive(cacheRoot.resolve("actions"), cacheRoot.resolve("sha256"));
         DiskUsage.Stats incremental = incrementalStats(cacheRoot.resolve("actions"));
+        DiskUsage.Stats derived = derivedStats(cacheRoot);
         List<String> stats = List.of(
                 pack("classFiles", classFiles[0], classFiles[1]),
                 pack("testResults", testResults[0], testResults[1]),
@@ -124,12 +127,31 @@ public final class CacheInventoryOps {
                 pack("nativeBins", nativeBins[0], nativeBins[1]),
                 pack("ociImages", ociImages[0], ociImages[1]),
                 pack("incremental", incremental.files(), incremental.bytes()),
-                pack("stamps", stamps.files(), stamps.bytes()));
+                pack("stamps", stamps.files(), stamps.bytes()),
+                pack("derived", derived.files(), derived.bytes()));
         return CacheInventoryAck.usage(
                 "usage",
                 stats,
                 Math.max(0L, DiskUsage.totalFiles(budgeted) - incremental.files()),
                 Math.max(0L, DiskUsage.totalBytes(budgeted) - incremental.bytes()));
+    }
+
+    /**
+     * The tiers with no row of their own: small derived caches bounded by count or supersession
+     * rather than by the action budget. Read off {@link CacheTier} so the report cannot fall
+     * behind the table.
+     */
+    private static DiskUsage.Stats derivedStats(Path cacheRoot) throws IOException {
+        long files = 0;
+        long bytes = 0;
+        for (CacheTier tier : CacheTier.values()) {
+            if (tier == CacheTier.ACTIONS || tier == CacheTier.CACHE_CAS || tier == CacheTier.FORMAT_STAMPS) continue;
+            if (tier.bound().kind() == Bound.Kind.UNBOUNDED) continue;
+            DiskUsage.Stats stats = DiskUsage.of(cacheRoot.resolve(tier.entry()));
+            files += stats.files();
+            bytes += stats.bytes();
+        }
+        return new DiskUsage.Stats(files, bytes);
     }
 
     /** Zinc analysis trees under {@code actions/} — separately budgeted, so counted separately. */

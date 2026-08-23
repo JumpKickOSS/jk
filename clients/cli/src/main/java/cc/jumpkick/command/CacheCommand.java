@@ -137,6 +137,7 @@ public final class CacheCommand extends GroupCommand {
             Stats ociImages,
             Stats incremental,
             Stats stamps,
+            Stats derived,
             Stats total) {
         long totalFiles() {
             return total.files;
@@ -158,6 +159,7 @@ public final class CacheCommand extends GroupCommand {
                 statFromAck(ack, "ociImages"),
                 statFromAck(ack, "incremental"),
                 statFromAck(ack, "stamps"),
+                statFromAck(ack, "derived"),
                 new Stats(ack.totalFiles(), ack.totalBytes()));
     }
 
@@ -699,6 +701,12 @@ public final class CacheCommand extends GroupCommand {
                 + Theme.colorize(
                         fmtCount(s.incremental().files) + " files · " + fmtSize(s.incremental().bytes) + " of "
                                 + fmtSize(cfg.incrementalMaxSizeBytes()),
+                        t.normalGray()));
+        // No denominator: these are bounded by count or by supersession, so a percentage would be
+        // measured against a number that is not their bound. Bytes are apparent, never allocated.
+        out.add("  Derived caches (own retention): "
+                + Theme.colorize(
+                        fmtCount(s.derived().files) + " files · " + fmtSize(s.derived().bytes) + " apparent",
                         t.normalGray()));
         return out;
     }

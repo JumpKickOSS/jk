@@ -6,7 +6,9 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.engine.JsonOut;
 import java.nio.file.Path;
+import java.util.EnumSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -46,7 +48,9 @@ public record CacheSnapshot(
         long actionMaxBytes,
         long lastPrunedMillis,
         long mavenLocalCount,
-        long mavenLocalBytes) {
+        long mavenLocalBytes,
+        long derivedCount,
+        long derivedBytes) {
 
     /**
      * Default freshness for live {@code /api/cache} + SSE chrome. Deliberately half of
@@ -55,6 +59,12 @@ public record CacheSnapshot(
      * onto one memoized result.
      */
     public static final long MEMO_TTL_MILLIS = 30_000L;
+
+    /** Tiers the report breaks out by name; everything else in the table sums into {@code derived}. */
+    private static final Set<cc.jumpkick.task.CacheTier> OWN_ROW = EnumSet.of(
+            cc.jumpkick.task.CacheTier.ACTIONS,
+            cc.jumpkick.task.CacheTier.CACHE_CAS,
+            cc.jumpkick.task.CacheTier.FORMAT_STAMPS);
 
     /**
      * Supplier that walks at most once per TTL and coalesces concurrent callers onto a single
@@ -220,6 +230,7 @@ public record CacheSnapshot(
         DiskUsage.Stats incremental = incrementalStats(actions);
         long lastPruned = readLastPrunedMillis(cacheRoot);
         DiskUsage.Stats m2 = mavenLocalStats(); // walked once here, never on the render/connect path
+        DiskUsage.Stats derived = derivedStats(cacheRoot);
         return new CacheSnapshot(
                 parts[0].files(),
                 parts[0].bytes(),
@@ -237,7 +248,32 @@ public record CacheSnapshot(
                 config.maxCacheSizeBytes(),
                 lastPruned,
                 m2.files(),
-                m2.bytes());
+                m2.bytes(),
+                derived.files(),
+                derived.bytes());
+    }
+
+    /**
+     * Every tier under the cache root that has no row of its own — the small derived caches that
+     * carry their own retention rather than the action budget. Driven off {@link
+     * cc.jumpkick.task.CacheTier} rather than a list here, so a tier added to the table shows up in
+     * the report without anyone remembering this file.
+     */
+    private static DiskUsage.Stats derivedStats(Path cacheRoot) {
+        long files = 0;
+        long bytes = 0;
+        for (var tier : cc.jumpkick.task.CacheTier.values()) {
+            if (OWN_ROW.contains(tier)) continue;
+            if (tier.bound().kind() == cc.jumpkick.task.Bound.Kind.UNBOUNDED) continue;
+            try {
+                DiskUsage.Stats stats = DiskUsage.of(cacheRoot.resolve(tier.entry()));
+                files += stats.files();
+                bytes += stats.bytes();
+            } catch (Exception unreadable) {
+                // a tier that cannot be walked contributes nothing, like an absent one
+            }
+        }
+        return new DiskUsage.Stats(files, bytes);
     }
 
     /**
@@ -301,6 +337,11 @@ public record CacheSnapshot(
                 .put("artifactStorageBytes", artifactStorageBytes())
                 .put("mavenLocalCount", mavenLocalCount)
                 .put("mavenLocalBytes", mavenLocalBytes)
+                // Apparent bytes, and no denominator: these tiers are bounded by count or by
+                // supersession, and a bar against a number that is not their bound would be a
+                // fiction. See CacheTier on why `du` disagrees with all of them anyway.
+                .put("derivedCount", derivedCount)
+                .put("derivedBytes", derivedBytes)
                 .put("lastPrunedMillis", lastPrunedMillis);
     }
 
