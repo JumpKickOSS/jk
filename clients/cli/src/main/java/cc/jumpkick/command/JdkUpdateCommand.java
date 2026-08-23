@@ -271,11 +271,6 @@ public final class JdkUpdateCommand implements CliCommand {
             installed = installer.install(entry, bytes -> pb.update(bytes, total));
             pb.finish();
         }
-        cc.jumpkick.jdk.JdkAccessLedger.atDefaultPath()
-                .touch(
-                        installed.home(),
-                        entry.version(),
-                        cc.jumpkick.jdk.JdkVendor.displayNameFromFeed(entry.vendor(), entry.product()));
         return installed;
     }
 

@@ -142,9 +142,9 @@ public enum JdkVendor {
     }
 
     /**
-     * Display-form vendor for raw feed {@code vendor}+{@code product} strings — the one vendor
-     * string form the {@link JdkAccessLedger} records everywhere (e.g. {@code "Eclipse"} +
-     * {@code "Temurin"} → {@code "Eclipse Temurin"}). Unrecognised feeds fall back to joining the
+     * Display-form vendor for raw feed {@code vendor}+{@code product} strings (e.g.
+     * {@code "Eclipse"} + {@code "Temurin"} → {@code "Eclipse Temurin"}), the one form
+     * {@link JdkInventory} records. Unrecognised feeds fall back to joining the
      * raw strings the same way {@link #displayName()} does, never to {@code "Unknown"}.
      */
     public static String displayNameFromFeed(String vendor, String product) {

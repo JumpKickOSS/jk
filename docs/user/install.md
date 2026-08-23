@@ -53,8 +53,9 @@ under **data** (`…/store`). **Cache CAS** (action outputs) lives under **cache
 (under `JK_HOME`: `$JK_HOME/data/lib/jk-engine/…` + `$JK_HOME/config/jk-engine/config.toml`).
 
 Managed JDKs use the **IntelliJ shared root** so the IDE and JumpKick share runtimes.
-JumpKick records those installs in **`<state>/jk-jdks.toml`** (defaults + fingerprints) and
-usage in **`<state>/jdk-access.log`**. Discovery still picks up SDKMAN, mise, Homebrew,
+JumpKick records those installs in **`<state>/jk-jdks.toml`** (defaults + fingerprints).
+Access times are not tracked: jk never removes a JDK on its own, so `jk jdk uninstall` is the
+only path. Discovery still picks up SDKMAN, mise, Homebrew,
 `JAVA_HOME`, and system installs before downloading. See [JDK](jdk.md).
 
 XDG variables (`XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_HOME`,
@@ -67,7 +68,7 @@ XDG variables (`XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_
 | `JK_HOME` | Optional **single-tree umbrella**: the five roots relocate to `$JK_HOME/{bin,cache,config,data,state}` and everything else derives from them exactly as it does under XDG — so the store is `$JK_HOME/data/store`, the engine jar `$JK_HOME/data/lib/jk-engine/`, build history `$JK_HOME/state/builds`. Hermetic tests and cold CI roots. Does **not** move the default JDK root. |
 | `JK_CACHE_DIR` | Action / local CPU cache |
 | `JK_STORE_DIR` | CAS / network-expensive store |
-| `JK_STATE_DIR` | Engine sockets, build history, JDK inventory (`jk-jdks.toml`) and JDK access log |
+| `JK_STATE_DIR` | Engine sockets, build history, JDK inventory (`jk-jdks.toml`) |
 | `JK_DATA_DIR` | Product data root (engine lib, credentials, and the default store parent) |
 | `JK_BIN_DIR` / `JK_INSTALL_DIR` | PATH install directory for `jk` / `jkx` |
 | `JK_CONFIG_DIR` | Config root (global `config.toml` + per-app `<bin>/config.toml`). Default: `$JK_HOME/config` or `~/.config/jk` |
