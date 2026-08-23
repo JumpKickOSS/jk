@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|--------|
-| **Status** | Draft |
+| **Status** | Implemented |
 | **Author** | — |
 | **Date** | 2026-08-23 |
 | **Audience** | Maintainers of `clients/cli` and the native-image client |
