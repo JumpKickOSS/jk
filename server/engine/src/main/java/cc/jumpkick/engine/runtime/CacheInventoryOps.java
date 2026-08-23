@@ -109,7 +109,10 @@ public final class CacheInventoryOps {
 
         DiskUsage.Stats eventLogs = DiskUsage.of(cacheRoot.resolve("runs"));
         DiskUsage.Stats stamps = DiskUsage.of(cacheRoot.resolve("format-stamps"));
-        DiskUsage.Stats total = DiskUsage.of(cacheRoot);
+        // Total is the action cache — the exact bytes the budget bounds and `jk cache clean`
+        // prunes. Run logs, format stamps and hash memos live under the same root but have their
+        // own retention, so a whole-root walk would report a total nothing can reclaim.
+        DiskUsage.Stats[] budgeted = DiskUsage.exclusive(cacheRoot.resolve("actions"), cacheRoot.resolve("sha256"));
         List<String> stats = List.of(
                 pack("classFiles", classFiles[0], classFiles[1]),
                 pack("testResults", testResults[0], testResults[1]),
@@ -120,7 +123,7 @@ public final class CacheInventoryOps {
                 pack("nativeBins", nativeBins[0], nativeBins[1]),
                 pack("ociImages", ociImages[0], ociImages[1]),
                 pack("stamps", stamps.files(), stamps.bytes()));
-        return CacheInventoryAck.usage("usage", stats, total.files(), total.bytes());
+        return CacheInventoryAck.usage("usage", stats, DiskUsage.totalFiles(budgeted), DiskUsage.totalBytes(budgeted));
     }
 
     private static CacheInventoryAck storeUsage(Path storeRoot) throws IOException {

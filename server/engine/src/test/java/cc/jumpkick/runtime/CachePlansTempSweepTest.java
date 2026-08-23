@@ -3,8 +3,11 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.util.Hashing;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -53,22 +56,35 @@ class CachePlansTempSweepTest {
     }
 
     @Test
-    void prune_reports_every_file_it_removed(@TempDir Path root) throws Exception {
-        // Cache tier: a stale action key past the threshold, plus a cache CAS temp.
-        Path staleKey = seed(root.resolve("actions/keys/stale"), "INPUT deadbeef /x");
-        Files.setLastModifiedTime(
-                staleKey,
-                FileTime.fromMillis(
-                        System.currentTimeMillis() - Duration.ofDays(90).toMillis()));
+    void prune_reports_every_temp_it_removed(@TempDir Path root) throws Exception {
         Path cacheTemp = seed(root.resolve("sha256/ab/.put-1234"), "partial");
 
-        BuildPlan plan = CachePlans.pruneBuildPlan(root, 30, false, false, false);
+        BuildPlan plan = CachePlans.pruneBuildPlan(root, false, false);
         plan.run();
 
         assertThat(cacheTemp).doesNotExist();
-        assertThat(staleKey).doesNotExist();
-        // The summary is the sweep, not a subset of it: both files are counted.
-        assertThat(plan.get(CachePlans.FILES).orElse(-1L)).isGreaterThanOrEqualTo(2);
+        assertThat(plan.get(CachePlans.FILES).orElse(-1L)).isEqualTo(1);
+    }
+
+    /**
+     * Age alone no longer condemns an action key — only the size budget does, and a {@code @TempDir}
+     * cache is nowhere near the machine's.
+     */
+    @Test
+    void prune_leaves_old_action_keys_alone_when_under_budget(@TempDir Path root) throws Exception {
+        byte[] payload = "cached class bytes".getBytes(StandardCharsets.UTF_8);
+        Path blob = new Cas(root).put(payload);
+        Path key = seed(
+                root.resolve("actions/keys/action-key"),
+                "TASK compile-main@mod\nOUTPUT " + Hashing.sha256Hex(payload) + " classes/A.class\n");
+        long ninetyDaysAgo = System.currentTimeMillis() - Duration.ofDays(90).toMillis();
+        Files.setLastModifiedTime(key, FileTime.fromMillis(ninetyDaysAgo));
+        Files.setLastModifiedTime(blob, FileTime.fromMillis(ninetyDaysAgo));
+
+        CachePlans.pruneBuildPlan(root, false, false).run();
+
+        assertThat(key).exists();
+        assertThat(blob).exists();
     }
 
     /** The tier split is the contract: a plain prune must not reach into the artifact store. */
@@ -77,7 +93,7 @@ class CachePlansTempSweepTest {
         Path storeTemp = cc.jumpkick.cache.JkStores.resolve(root, "sha256").resolve("ab/.put-jk1531");
         seed(storeTemp, "partial");
         try {
-            CachePlans.pruneBuildPlan(root, 30, false, false, false).run();
+            CachePlans.pruneBuildPlan(root, false, false).run();
 
             assertThat(storeTemp).exists();
         } finally {

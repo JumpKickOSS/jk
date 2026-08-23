@@ -25,14 +25,13 @@ jk self nuke          # jk-owned product dirs (not PATH, not JDKs)
 the action cache. `--force` also invalidates this project’s action-cache entries.
 
 Everything under a cache root — including its `sha256/` blob pool — is cache tier:
-cleaned with `jk cache clean` (including all Class-C heavy outputs) and wiped by
-`jk cache nuke`.
+cleaned with `jk cache clean` and wiped by `jk cache nuke`.
 
 ## Hygiene
 
 ```bash
 jk cache clean                    # first knob for safe space reclaim
-jk storage clean                  # orphan deps / old run logs
+jk storage clean                  # leaked download temps / old run logs
 jk cache nuke -y                  # wipe rebuildable action cache
 jk storage nuke                   # wipe downloaded artifacts (confirms)
 jk self nuke                      # all targets (default); confirms first
@@ -60,29 +59,49 @@ Does **not** delete `jk` / `jkx` on PATH, managed JDKs, or forge/repo credential
 | Report | Cap | Default |
 |--------|-----|---------|
 | `jk cache usage` | `[cache] max-cache-size-gb` / `JK_MAX_CACHE_SIZE_GB` | **4** GiB (8 on `CI=1`) |
-| `jk storage usage` | `[cache] max-store-size-gb` / `JK_MAX_STORE_SIZE_GB` | **6** GiB (12 on `CI=1`) |
 
 ```toml
 # ~/.config/jk/config.toml
 [cache]
 max-cache-size-gb = 4
-max-store-size-gb = 6
 ```
 
 `0` or negative means **unset** (use the default). On volumes with **< 10 GiB** total
-capacity, unset defaults are clamped so cache + store claim at most 80% of free space.
-Explicit sizes are never disk-clamped.
+capacity, the unset default becomes **40% of free space** — half of an 80% margin, with the
+other half left for the artifact store, which has no budget and is never pruned. Explicit
+sizes are never disk-clamped.
 
-The cache tier is rebuildable, so scheduled hygiene size-evicts it to its budget (Class-C
-heavy outputs first: native, OCI, fat/minified jars). **`jk cache clean`** drops all
-Class-C immediately, plus stale keys and temps, while keeping modular compile/test cache.
+The budget covers the **action cache**: the action index (`actions/`) plus the cache CAS
+(`sha256/`). `jk cache clean` — and the engine’s idle-boundary hygiene — delete whole
+action-cache entries **oldest file-modification-time first** until the total fits. Deleting
+an entry removes its action key, its task pointer, and every blob no surviving key still
+references.
 
-Class-C extra policy: **50%** of the cache budget, **3-day** unused TTL, **2 generations**
-of native binaries / fat jars, **1 generation** of OCI images.
+That timestamp is when the entry was last **written**, not when it was last used — a cache
+hit reads the entry without rewriting it. So a module you rarely change can be evicted
+before one you rebuild every day. The next build re-runs that action and re-stores it with
+a fresh timestamp, so the cost is one rebuild and it does not repeat for the same entry.
 
-The store’s 6 GiB default budgets **jk-owned** bytes (`repos/`, workers). It does not
-include the Maven local repository. `jk storage usage` reports Maven local size as a
-separate, unbudgeted line. `jk storage clean` never evicts reachable store files or
-`~/.m2`; it only reclaims garbage (`.put-` temps, expired run logs).
+Entries modified in the last hour are never evicted, so a cache under constant write
+pressure can sit above its budget until the machine goes quiet.
+
+Class-C outputs (native images, OCI tarballs, fat/minified jars) keep at most **2**
+generations of action keys (**1** for OCI); a replaced generation becomes an eviction
+candidate immediately. There is no separate Class-C size share and no Class-C TTL — one
+budget, one order.
+
+Under budget there is nothing to evict, so `jk cache clean` reclaims only leaked temps,
+expired format stamps, stale timings and unreferenced blobs — it can legitimately report
+“Nothing to clean up.” on a cache that used to free gigabytes.
+
+## What is never pruned
+
+- **The artifact store** (`JK_STORE_DIR`): Maven-layout `repos/`, worker jars and promoted
+  blobs grow without limit. No budget, no eviction, no reachability sweep. `jk storage
+  clean` reclaims only leaked `.put-` download temps and expired run logs. `jk storage
+  nuke` is the only way to shrink it on purpose.
+- **The Maven local repository** (`~/.m2/repository`): jk does not own it and never deletes
+  from it. `jk storage usage` reports its size for information only.
+- **Managed JDKs**: `jk jdk uninstall` removes them; nothing else does.
 
 MCP: `jk_disk` (`clean`/`nuke` require `confirm=true`).

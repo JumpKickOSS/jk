@@ -866,24 +866,27 @@ class EngineServerTest {
     }
 
     /**
-     * Engine-hosted {@code jk cache clean} round-trip (Wave 4 — the idle-boundary cache job): a
-     * real server over the socket sweeps a fixture cache holding a stale action key and a leftover
-     * cache-CAS temp file. Asserts the single-plan wire conversation ends in a summary-carrying
-     * {@code plan-finish}, that the stale files are gone, and that the {@code.prune.lock}
-     * cross-process guard was created (the hosted path always takes it — the Wave-3 finding's fix).
+     * Engine-hosted {@code jk cache clean} round-trip: a real server over the socket sweeps a
+     * fixture cache holding a leftover cache-CAS temp and a 90-day-old action key. Asserts the
+     * single-plan wire conversation ends in a summary-carrying {@code plan-finish} counting the one
+     * temp, and that the {@code.prune.lock} cross-process guard was created — the hosted path always
+     * takes it, so no second process can prune the same root underneath this one.
      *
-     * <p>Both planted files are <strong>cache</strong> tier. Since the  split a plain prune
-     * owns the cache root only; store temps belong to `jk storage clean`, and `CacheCommandTest`
-     * pins that half.
+     * <p>The aged key is a <strong>survivor</strong>: entries are evicted only to bring the action
+     * cache under its size budget, oldest first, and this fixture is orders of magnitude below it.
+     * Age on its own never deletes.
+     *
+     * <p>Both planted files are <strong>cache</strong> tier — a plain prune owns the cache root
+     * only; store temps belong to {@code jk storage clean}, which {@code CacheCommandTest} pins.
      */
     @Test
-    void cache_prune_request_sweeps_the_cache_over_the_socket() throws Exception {
+    void cache_clean_request_sweeps_temps_over_the_socket() throws Exception {
         Path cache = shortTempDir();
-        Path staleKey = cache.resolve("actions/keys/stale");
-        Files.createDirectories(staleKey.getParent());
-        Files.writeString(staleKey, "INPUT deadbeef /x");
+        Path agedKey = cache.resolve("actions/keys/aged");
+        Files.createDirectories(agedKey.getParent());
+        Files.writeString(agedKey, "INPUT deadbeef /x");
         Files.setLastModifiedTime(
-                staleKey,
+                agedKey,
                 FileTime.fromMillis(
                         System.currentTimeMillis() - Duration.ofDays(90).toMillis()));
         Path putTmp = cache.resolve("sha256").resolve(".put-1234");
@@ -899,7 +902,7 @@ class EngineServerTest {
         String planFinish = null;
         String buildError = null;
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            c.sendLine(ProtoSession.cachePruneRequest("prune", cache.toString(), 30, false, false, false));
+            c.sendLine(ProtoSession.cachePruneRequest("prune", cache.toString(), false, false));
             String line;
             while ((line = c.readLine()) != null) {
                 String type = EngineProtocol.typeOf(line);
@@ -921,11 +924,14 @@ class EngineServerTest {
         assertThat(types).contains(EngineProtocol.PLAN_TASK, EngineProtocol.PLAN_DONE);
         assertThat(planFinish).isNotNull();
         assertThat(Jsonl.bool(planFinish, "success", false)).isTrue();
-        assertThat(Jsonl.longValue(planFinish, "cacheFiles", -1)).isEqualTo(2);
+        assertThat(Jsonl.longValue(planFinish, "cacheFiles", -1)).isEqualTo(1);
         assertThat(Jsonl.longValue(planFinish, "cacheBytes", -1)).isPositive();
         // The engine (not the client) swept the cache.
-        assertThat(Files.exists(staleKey)).isFalse();
         assertThat(Files.exists(putTmp)).isFalse();
+        assertThat(Files.exists(agedKey))
+                .as("age alone is not an eviction criterion")
+                .isTrue();
+        assertThat(Files.readString(agedKey)).isEqualTo("INPUT deadbeef /x");
         // The cross-process guard exists: hosted maintenance always takes.prune.lock.
         assertThat(Files.exists(cache.resolve(".prune.lock"))).isTrue();
 

@@ -295,10 +295,6 @@ public final class ClasspathResolver {
     private List<Entry> resolveEntries(
             List<Lockfile.Artifact> selected, boolean requirePresent, cc.jumpkick.repo.ArtifactLocator locator) {
         List<Entry> result = new ArrayList<>(selected.size());
-        // One append for the whole classpath, not one per artifact: a workspace forecast resolves
-        // every module's classpath against the same lock, so per-artifact touches cost thousands of
-        // open/append/close round trips per build for a signal the GC only reads as a coarse LRU.
-        List<String> touched = new ArrayList<>(selected.size());
         for (Lockfile.Artifact pkg : selected) {
             String checksum = pkg.checksum();
             if (checksum == null) {
@@ -313,7 +309,6 @@ public final class ClasspathResolver {
                         + " (POM-only alias, or incomplete lock; re-run `jk lock`)");
                 continue;
             }
-            String hex = checksum.startsWith("sha256:") ? checksum.substring("sha256:".length()) : checksum;
             Path jar = locate(locator, pkg);
             if (jar == null) {
                 if (requirePresent) {
@@ -328,6 +323,7 @@ public final class ClasspathResolver {
                 continue;
             }
             if (pkg.isAar()) {
+                String hex = checksum.startsWith("sha256:") ? checksum.substring("sha256:".length()) : checksum;
                 try {
                     Path container = cc.jumpkick.cache.ExplodedArchives.explodeFile(new Cas(storeRoot), jar, hex);
                     Path classesJar = container.resolve("classes.jar");
@@ -335,13 +331,10 @@ public final class ClasspathResolver {
                 } catch (IOException e) {
                     throw new UncheckedIOException(pkg.name() + " v" + pkg.version() + ": " + e.getMessage(), e);
                 }
-                touched.add(hex);
                 continue;
             }
             result.add(new Entry(pkg, jar));
-            touched.add(hex);
         }
-        cc.jumpkick.task.AccessLedger.atDefaultPath().touchAll(touched);
         return result;
     }
 

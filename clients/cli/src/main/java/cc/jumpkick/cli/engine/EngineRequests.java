@@ -549,44 +549,12 @@ public final class EngineRequests {
 
     /**
      * Everything an engine-hosted cache maintenance op needs ({@code op} = {@code prune}/{@code
-     * purge}/{@code sweep}/{@code gc}/{@code clear} — {@code jk cache clean}/{@code nuke}, {@code
-     * jk storage clean}, {@code jk clean --force}). Ops ignore the fields they don't use.
+     * purge}/{@code sweep}/{@code clear} — {@code jk cache clean}/{@code nuke}, {@code jk storage
+     * clean}, {@code jk clean --force}). Ops ignore the fields they don't use; {@code projectRoot}
+     * is {@code null} for everything but {@code clear}.
      */
-    public record CacheMaintRequest(
-            String op,
-            Path cache,
-            int olderThanDays,
-            boolean dryRun,
-            boolean sweep,
-            boolean includeJkTmp,
-            Path projectRoot,
-            boolean dropAllClassC) {
-
-        /** Prune/purge/sweep request — no project scope. */
-        public CacheMaintRequest(
-                String op, Path cache, int olderThanDays, boolean dryRun, boolean sweep, boolean includeJkTmp) {
-            this(op, cache, olderThanDays, dryRun, sweep, includeJkTmp, null, false);
-        }
-
-        /** Project-scoped clear / clean-with-Class-C. */
-        public CacheMaintRequest(
-                String op,
-                Path cache,
-                int olderThanDays,
-                boolean dryRun,
-                boolean sweep,
-                boolean includeJkTmp,
-                Path projectRoot) {
-            this(op, cache, olderThanDays, dryRun, sweep, includeJkTmp, projectRoot, false);
-        }
-
-        /** Cache clean ({@code dropAllClassC=true}) or other prune variants. */
-        public static CacheMaintRequest cacheClean(
-                Path cache, int olderThanDays, boolean dryRun, boolean includeJkTmp) {
-            return new CacheMaintRequest("prune", cache, olderThanDays, dryRun, false, includeJkTmp, null, true);
-        }
-    }
+    public record CacheMaintRequest(String op, Path cache, boolean dryRun, boolean includeJkTmp, Path projectRoot) {}
 
     /** A hosted cache maintenance op's summary, decoded from the terminal plan-finish ({@code -1} = n/a). */
-    public record CacheMaintSummary(long files, long bytes, long reachableEvicted, long repoLinks) {}
+    public record CacheMaintSummary(long files, long bytes) {}
 }

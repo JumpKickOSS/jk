@@ -2,34 +2,27 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.run.TaskNames;
-import java.time.Duration;
+import java.nio.file.Path;
 import java.util.Locale;
-import java.util.Set;
 
 /**
- * Class-C ("heavy ship") action-cache policy: native images, OCI tarballs, and fat assembly jars.
+ * Generation policy for Class-C ("heavy ship") outputs: native images, OCI tarballs, and fat
+ * assembly jars.
  *
- * <p>These are large, low hit-rate under normal edit loops, and compete with modular compile/test
- * cache. Generations + short TTL + a share of the cache budget keep them from eating the pool.
- * Released artifacts are promoted into the long-lived store CAS (see {@link ActionPromote}).
+ * <p>Rebuilding one of these mints a new action key and leaves the previous one rooting its blob
+ * forever, so each task keeps a bounded generation list and drops the rest at store time. That is a
+ * bound on staleness, not a size policy — the action cache as a whole is bounded by
+ * {@link ActionCachePrune}. Released artifacts are promoted into the long-lived store CAS (see
+ * {@link cc.jumpkick.cache.ActionPromote}).
  *
- * <p>Defaults: 50 % of the action-cache budget, 3-day unused TTL, 2 generations of native binaries,
- * 1 generation of OCI images, 2 generations of fat assembly jars.
+ * <p>Defaults: 2 generations of native binaries, 1 generation of OCI images, 2 generations of fat
+ * assembly jars.
  */
 public final class HeavyActionPolicy {
-
-    /** Fraction of {@code max-cache-size} reserved as a hard ceiling for Class-C blob bytes. */
-    public static final double BUDGET_FRACTION = 0.50;
-
-    /** Unused Class-C action keys older than this are deleted on prune. */
-    public static final Duration TTL = Duration.ofDays(3);
 
     public static final int NATIVE_GENERATIONS = 2;
     public static final int IMAGE_GENERATIONS = 1;
     public static final int ASSEMBLY_GENERATIONS = 2;
-
-    private static final Set<String> HEAVY_TASKS = Set.of(
-            TaskNames.NATIVE_IMAGE, TaskNames.WRITE_IMAGE, TaskNames.PACKAGE_ASSEMBLY, TaskNames.PACKAGE_MINIFIED);
 
     private HeavyActionPolicy() {}
 
@@ -39,10 +32,6 @@ public final class HeavyActionPolicy {
         int at = taskId.indexOf('@');
         String name = at < 0 ? taskId : taskId.substring(0, at);
         return name.toLowerCase(Locale.ROOT);
-    }
-
-    public static boolean isClassC(String taskId) {
-        return HEAVY_TASKS.contains(taskName(taskId));
     }
 
     /**
@@ -58,9 +47,8 @@ public final class HeavyActionPolicy {
         };
     }
 
-    /** Class-C byte budget from the overall cache budget (0 if uncapped/unknown). */
-    public static long classCBudgetBytes(long maxCacheSizeBytes) {
-        if (maxCacheSizeBytes <= 0) return 0L;
-        return Math.max(0L, Math.round(maxCacheSizeBytes * BUDGET_FRACTION));
+    /** Generation-list sidecar for {@code taskId} under {@code tasksDir} ({@code <taskId>.gens}). */
+    public static Path gensFile(Path tasksDir, String taskId) {
+        return tasksDir.resolve(taskId + ".gens");
     }
 }

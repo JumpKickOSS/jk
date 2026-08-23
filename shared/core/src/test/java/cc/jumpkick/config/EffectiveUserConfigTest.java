@@ -26,7 +26,6 @@ class EffectiveUserConfigTest {
         assertThat(find(rows, "http.host").defaultValue()).isEqualTo("127.0.0.1");
         assertThat(find(rows, "http.host").effectiveValue()).isEqualTo("127.0.0.1");
         assertThat(find(rows, "cache.max-cache-size-gb").defaultValue()).isEqualTo("4");
-        assertThat(find(rows, "cache.max-store-size-gb").defaultValue()).isEqualTo("6");
         assertThat(find(rows, "engine.jobs").effectiveValue()).isEqualTo("auto");
     }
 
@@ -49,7 +48,6 @@ class EffectiveUserConfigTest {
         assertThat(find(rows, "http.port").effectiveValue()).isEqualTo("9000");
         assertThat(find(rows, "http.host").overridden()).isFalse();
         assertThat(find(rows, "cache.max-cache-size-gb").effectiveValue()).isEqualTo("2");
-        assertThat(find(rows, "cache.max-store-size-gb").overridden()).isFalse();
     }
 
     @Test

@@ -6,11 +6,11 @@ import java.nio.file.Path;
 import java.time.Duration;
 
 /**
- * Constants + small helpers shared by the future mark-and-sweep prune.
+ * Constants + small helpers shared by {@link CasSweep} and {@link ActionCachePrune}.
  *
  * <p>Lives in {@code engine.task} alongside {@link ActionCache} and {@link SyncManifest} because
- * they're the writers of the roots the sweep walks. The sweep itself lands in a later commit; for
- * now this class holds the contract everyone has to agree on.
+ * they're the writers of the roots the sweep walks. Both reclaimers honour the same write grace
+ * window, so a blob is never unlinked out from under a concurrent store or restore.
  */
 public final class Sweep {
 

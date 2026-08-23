@@ -143,7 +143,7 @@ public final class McpMachine {
             CacheSnapshot snap = cache == null ? null : cache.get();
             if (snap == null) snap = CacheSnapshot.capture(JkDirs.cache());
             m.put("cacheDir", JkDirs.cache().toString());
-            m.put("cacheBytes", snap.cacheBytes());
+            m.put("cacheBytes", snap.actionCacheBytes());
             m.put("storeDir", JkDirs.store().toString());
             m.put("storeBytes", snap.artifactStorageBytes());
             m.put("hint", "jk_disk action=clean then nuke if you still need space");
@@ -324,7 +324,7 @@ public final class McpMachine {
                         preview.put("nuked", true);
                         preview.put("note", "cache tier wiped; artifact store untouched");
                     } else {
-                        var plan = cc.jumpkick.runtime.CachePlans.pruneBuildPlan(cache, 30, false, false, true, true);
+                        var plan = cc.jumpkick.runtime.CachePlans.pruneBuildPlan(cache, false, true);
                         var result = plan.run();
                         preview.put("cleaned", result.success());
                         preview.put(

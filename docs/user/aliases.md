@@ -68,14 +68,6 @@ their arguments unchanged, so scripted spellings keep working while staying out 
 | `--rebuild`    | `-r/--redo`  |
 | `--directory`  | `--dir`      |
 
-## Hidden back-compat options
-
-Still functional, but gone from `--help`; the canonical home moved with the storage split.
-
-| Hidden surface                          | Canonical                  |
-| --------------------------------------- | -------------------------- |
-| `cache clean --sweep`                   | `storage clean`            |
-
 ## Hidden global options
 
 Accepted anywhere on the line — before the command, between a group and its subcommand, or

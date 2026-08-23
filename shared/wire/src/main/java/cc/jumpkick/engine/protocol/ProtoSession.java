@@ -128,40 +128,20 @@ public final class ProtoSession {
 
     /**
      * Run a cache maintenance operation (see {@link EngineProtocol#CACHE_PRUNE_REQUEST}). {@code op} is {@code
-     * prune}/{@code purge}/{@code gc}/{@code sweep}; {@code olderThanDays}/{@code sweep}/
-     * {@code dropAllClassC} apply to {@code prune} only; {@code includeJkTmp} asks the prune to also
-     * sweep {@code state/tmp} (only when the default cache dir is in use).
+     * prune}/{@code purge}/{@code sweep}; {@code includeJkTmp} asks the prune to also sweep {@code
+     * state/tmp} (only when the default cache dir is in use).
      */
-    public static String cachePruneRequest(
-            String op, String cache, int olderThanDays, boolean dryRun, boolean sweep, boolean includeJkTmp) {
-        return cachePruneRequest(op, cache, olderThanDays, dryRun, sweep, includeJkTmp, false);
-    }
-
-    /** @param dropAllClassC when true with {@code op=prune}, delete every Class-C action key */
-    public static String cachePruneRequest(
-            String op,
-            String cache,
-            int olderThanDays,
-            boolean dryRun,
-            boolean sweep,
-            boolean includeJkTmp,
-            boolean dropAllClassC) {
+    public static String cachePruneRequest(String op, String cache, boolean dryRun, boolean includeJkTmp) {
         return "{\"type\":\""
                 + EngineProtocol.CACHE_PRUNE_REQUEST
                 + "\",\"op\":"
                 + Jsonl.quote(op)
                 + ",\"cache\":"
                 + Jsonl.quote(cache)
-                + ",\"olderThanDays\":"
-                + olderThanDays
                 + ",\"dryRun\":"
                 + dryRun
-                + ",\"sweep\":"
-                + sweep
                 + ",\"includeJkTmp\":"
                 + includeJkTmp
-                + ",\"dropAllClassC\":"
-                + dropAllClassC
                 + "}";
     }
 
@@ -191,12 +171,10 @@ public final class ProtoSession {
 
     /**
      * As {@link #planFinish(String, boolean)}, additionally carrying a {@link EngineProtocol#CACHE_PRUNE_REQUEST}
-     * summary: files removed + bytes freed (what would be removed, on a dry run), the LRU evictor's
-     * reachable-eviction count ({@code prune --max-size} only), and the repo-mirror links removed
-     * ({@code gc} only). {@code -1} = not applicable to the op.
+     * summary: files removed + bytes freed (what would be removed, on a dry run). {@code -1} = the op
+     * reported no count.
      */
-    public static String planFinishCache(
-            String dir, boolean success, long files, long bytes, long reachableEvicted, long repoLinks) {
+    public static String planFinishCache(String dir, boolean success, long files, long bytes) {
         return "{\"type\":\""
                 + EngineProtocol.BUILDPLAN_FINISH
                 + "\",\"kind\":\"cache\",\"dir\":"
@@ -207,10 +185,6 @@ public final class ProtoSession {
                 + files
                 + ",\"cacheBytes\":"
                 + bytes
-                + ",\"cacheReachableEvicted\":"
-                + reachableEvicted
-                + ",\"cacheRepoLinks\":"
-                + repoLinks
                 + "}";
     }
 

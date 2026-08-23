@@ -180,7 +180,7 @@ changing the code (and vice versa):
 | `jk history list` | status · Id · Project · Kind · Took · When · Saved · Notes |
 | `jk tasks` | Name · Stage · Description (per module at a workspace root) |
 | `jk jdk list` | (wave 1 — the exemplar) |
-| `jk storage usage` | Element · File Count · Size (Jar Files / Native Bins / OCI Images / Worker JARs), plus Total, a spanning utilization row, and a last-cleaned footer |
+| `jk storage usage` | Element · File Count · Size (Jar Files / Native Bins / OCI Images / Worker JARs), plus Total and a last-cleaned footer |
 
 Use `new Table(title).columns(...).row(...)` (or the `Table.render` static for string cells).
 Rendered rows go out through `CliOutput`, so the envelope opens on the first one, and they degrade to ASCII under `--no-ansi`.
@@ -192,7 +192,7 @@ Rendered rows go out through `CliOutput`, so the envelope opens on the first one
 | `jk doctor` | `≡ Doctor` menu chip, then the checklist rows + summary |
 | `jk auth status` | `≡ Auth status` chip, then per-forge status lines |
 | `jk history show` | `≡ Build <id>` chip, then the detail block |
-| `jk cache usage` | Element · File Count · Size (Class Files / Test Results / Event Logs / Normal·Shadow·Minified Jars / Native Bins / OCI Images / Format Stamps), plus Total (whole cache root), a spanning utilization row, and a last-cleaned footer |
+| `jk cache usage` | Element · File Count · Size (Class Files / Test Results / Event Logs / Normal·Shadow·Minified Jars / Native Bins / OCI Images / Format Stamps), plus Total (the action cache: index + blobs), a spanning utilization row, and a last-cleaned footer |
 
 ### Hybrid settles (CommandWedge.ok/fail)
 
@@ -205,7 +205,7 @@ Rendered rows go out through `CliOutput`, so the envelope opens on the first one
 | `jk format` (quiet/check) | already wedge-settled (wave 1) |
 | `jk selective prepare` | already wedge-settled |
 | `jk jdk ensure` / `graal` | settles via `JdkRender.available` under the envelope |
-| `jk storage clean` | plan console (`Repo` chip); settles with the sweep summary (`Finished sweeping store …`), like `jk cache clean` |
+| `jk storage clean` | plan console (`Storage` chip); settles with the reclaim summary (`Finished cleaning store. …`), like `jk cache clean` |
 | `jk install` (plugin module) | `✓ Install` plus local-repo publish of PluginMain workers |
 
 ### Documented exceptions (deliberately plain)

@@ -500,8 +500,8 @@ public final class EngineServer implements AutoCloseable {
         // Store feeds are revalidated by HostWarmup / EngineMaintenance (not a 12 h process sleep).
         storeFeedRefresh = new StoreFeedRefresh(log, null);
         // 1-minute loop: config.toml mtime reload + wall-clock 12 h maintenance (feeds, templates,
-        // GC, AOT/cal). Laptop suspend-safe — due work runs on the next minute tick after resume.
-        engineMaintenance = new EngineMaintenance(log, storeFeedRefresh, idle::enqueueScheduledCacheGc);
+        // cache prune, AOT/cal). Laptop suspend-safe — due work runs on the next minute tick after resume.
+        engineMaintenance = new EngineMaintenance(log, storeFeedRefresh, idle::enqueueScheduledCachePrune);
         engineMaintenance.start();
         // First-start self-heal: feeds → templates → AOT/cal on the idle worker (does not block accept).
         idle.scheduleHostWarmup(false);

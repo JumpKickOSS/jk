@@ -13,13 +13,12 @@ import java.util.function.Supplier;
 
 /**
  * Storage breakdown for {@code GET /api/cache} and live {@code cache} SSE — the same two surfaces
- * the CLI splits as {@code jk cache usage} (cache CAS + action index + format stamps) and {@code
- * jk storage usage} (artifact store: jars / natives / OCI / worker jars; run logs are state).
+ * the CLI splits as {@code jk cache usage} (action index + cache CAS) and {@code jk storage usage}
+ * (artifact store: jars / natives / OCI / worker jars; run logs are state).
  *
- * <p>{@code maxBytes} is the <strong>artifact store</strong> budget ({@code [cache]
- * max-store-size-gb}, default 6 GiB / 12 GiB on CI). {@code actionMaxBytes} / {@code
- * cacheMaxBytes} is the <strong>cache tier</strong> budget ({@code [cache] max-cache-size-gb},
- * default 4 GiB / 8 GiB on CI; small disks clamp both defaults).
+ * <p>{@code actionMaxBytes} is the <strong>action cache</strong> budget ({@code [cache]
+ * max-cache-size-gb}, default 4 GiB / 8 GiB on CI; small disks clamp that default). The
+ * artifact store is reported but never budgeted.
  *
  * <p>Byte sizes are <em>exclusive</em> across store sections (store CAS before {@code repos/}) so
  * leftover hard links are not counted twice — same accounting as the CLI.
@@ -42,51 +41,10 @@ public record CacheSnapshot(
         long runLogsBytes,
         long formatStampsCount,
         long formatStampsBytes,
-        long maxBytes,
         long actionMaxBytes,
         long lastPrunedMillis,
         long mavenLocalCount,
         long mavenLocalBytes) {
-
-    /**
-     * Compatibility constructor for callers that predate the captured Maven-local stats (JK-2293);
-     * defaults them to zero. Live code goes through {@link #capture(Path)}, which fills them in.
-     */
-    public CacheSnapshot(
-            long casCount,
-            long casBytes,
-            long actionsCount,
-            long actionsBytes,
-            long cacheCasCount,
-            long cacheCasBytes,
-            long workerJarsCount,
-            long workerJarsBytes,
-            long runLogsCount,
-            long runLogsBytes,
-            long formatStampsCount,
-            long formatStampsBytes,
-            long maxBytes,
-            long actionMaxBytes,
-            long lastPrunedMillis) {
-        this(
-                casCount,
-                casBytes,
-                actionsCount,
-                actionsBytes,
-                cacheCasCount,
-                cacheCasBytes,
-                workerJarsCount,
-                workerJarsBytes,
-                runLogsCount,
-                runLogsBytes,
-                formatStampsCount,
-                formatStampsBytes,
-                maxBytes,
-                actionMaxBytes,
-                lastPrunedMillis,
-                0L,
-                0L);
-    }
 
     /**
      * Default freshness for live {@code /api/cache} + SSE chrome. Deliberately half of
@@ -188,25 +146,17 @@ public record CacheSnapshot(
     }
 
     /**
-     * Cache-tier footprint matching {@code jk cache usage}: action index + cache CAS + format
-     * stamps.
+     * Action-cache footprint matching {@code jk cache usage} and the budget {@link
+     * cc.jumpkick.task.ActionCachePrune} enforces: action index + cache CAS. Format stamps sit
+     * under the same root but have their own count cap, so counting them here would meter the
+     * budget bar against bytes no prune can reclaim.
      */
     public long actionCacheBytes() {
-        return actionsBytes + cacheCasBytes + formatStampsBytes;
+        return actionsBytes + cacheCasBytes;
     }
 
     public long actionCacheCount() {
-        return actionsCount + cacheCasCount + formatStampsCount;
-    }
-
-    /** Alias of {@link #actionCacheBytes()} — preferred name for the cache tier. */
-    public long cacheBytes() {
-        return actionCacheBytes();
-    }
-
-    /** Alias of {@link #actionMaxBytes} — preferred name for the cache budget. */
-    public long cacheMaxBytes() {
-        return actionMaxBytes;
+        return actionsCount + cacheCasCount;
     }
 
     /**
@@ -222,7 +172,7 @@ public record CacheSnapshot(
     }
 
     /**
-     * Maven local repository size — informational, not part of the jk store budget. Walked once
+     * Maven local repository size — informational; jk neither budgets nor prunes it. Walked once
      * inside {@link #capture(Path)} and stored on the snapshot; never call this on the render / SSE
      * connect path, which must not walk a multi-GiB {@code ~/.m2} (JK-2293).
      */
@@ -266,9 +216,7 @@ public record CacheSnapshot(
             cacheCasStats = new DiskUsage.Stats(0, 0);
         }
 
-        JkCacheConfig cfg = resolveConfig();
-        long storeMax = cfg.maxStoreSizeBytes();
-        long cacheMax = cfg.maxCacheSizeBytes();
+        long cacheMax = resolveConfig().maxCacheSizeBytes();
         long lastPruned = readLastPrunedMillis(cacheRoot);
         DiskUsage.Stats m2 = mavenLocalStats(); // walked once here, never on the render/connect path
         return new CacheSnapshot(
@@ -284,7 +232,6 @@ public record CacheSnapshot(
                 parts[3].bytes(),
                 parts[4].files(),
                 parts[4].bytes(),
-                storeMax,
                 cacheMax,
                 lastPruned,
                 m2.files(),
@@ -331,18 +278,15 @@ public record CacheSnapshot(
                 .put("actionCacheCount", actionCacheCount())
                 .put("actionCacheBytes", actionCacheBytes())
                 .put("actionMaxBytes", actionMaxBytes)
-                .put("cacheBytes", cacheBytes())
-                .put("cacheMaxBytes", cacheMaxBytes())
                 .put("artifactStorageCount", artifactStorageCount())
                 .put("artifactStorageBytes", artifactStorageBytes())
                 .put("mavenLocalCount", mavenLocalCount)
                 .put("mavenLocalBytes", mavenLocalBytes)
-                .put("maxBytes", maxBytes)
                 .put("lastPrunedMillis", lastPrunedMillis);
     }
 
     /**
-     * Thin live payload for footer chrome: dual surfaces + budgets only. Section
+     * Thin live payload for footer chrome: both surfaces plus the cache budget. Section
      * breakdown stays on REST / full {@link #toJson()}.
      */
     public JsonOut toThinJson() {
@@ -350,11 +294,8 @@ public record CacheSnapshot(
                 .put("thin", true)
                 .put("actionCacheBytes", actionCacheBytes())
                 .put("actionMaxBytes", actionMaxBytes)
-                .put("cacheBytes", cacheBytes())
-                .put("cacheMaxBytes", cacheMaxBytes())
                 .put("artifactStorageBytes", artifactStorageBytes())
                 .put("mavenLocalBytes", mavenLocalBytes)
-                .put("maxBytes", maxBytes)
                 .put("lastPrunedMillis", lastPrunedMillis);
     }
 }

@@ -104,7 +104,7 @@ public final class IdleHousekeeping {
     }
 
     /** 12-hour feed-refresh hook. Does not consult {@code .last-pruned}. */
-    public void enqueueScheduledCacheGc() {
+    public void enqueueScheduledCachePrune() {
         if (shuttingDown.getAsBoolean()) return;
         var config = cc.jumpkick.config.JkCacheConfig.resolve();
         if (config.autoPrune()) {
@@ -240,9 +240,7 @@ public final class IdleHousekeeping {
             FileLock pruneLock = lockChan.tryLock();
             if (pruneLock == null) return;
             try {
-                var config = cc.jumpkick.config.JkCacheConfig.resolve();
-                cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.CachePlans.pruneBuildPlan(
-                        cache, config.recordTtlDays(), false, false, false);
+                cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.CachePlans.pruneBuildPlan(cache, false, false);
                 cc.jumpkick.run.BuildPlanResult result = plan.run();
                 if (result.success()) {
                     Files.writeString(

@@ -11,7 +11,6 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.resolver.LockOrchestrator;
 import cc.jumpkick.resolver.ResolveObserver;
-import cc.jumpkick.task.AccessLedger;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.Collection;
@@ -153,7 +152,6 @@ public final class AutoLock {
             updated = cc.jumpkick.lock.LockfileModules.stamp(updated, scopeDir);
 
             LockfileWriter.write(updated, lockFile, manifestsSha);
-            AccessLedger.atDefaultPath().touchLock(updated);
             return updated;
         } catch (cc.jumpkick.resolver.pubgrub.UnsatisfiableException e) {
             // Hard failure: dependencies are genuinely unsatisfiable — re-throw so

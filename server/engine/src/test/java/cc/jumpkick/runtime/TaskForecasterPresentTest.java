@@ -41,7 +41,8 @@ class TaskForecasterPresentTest {
         Cas cas = new Cas(cache.resolve("cas"));
         ActionCache ac = new ActionCache(cas, cache.resolve("actions"));
         String key = "pkg-key-" + "b".repeat(56);
-        // Store a real package-like record, then delete its CAS blob (LRU eviction).
+        // Store a real package-like record, then delete its CAS blob: a payload can go missing
+        // while its record survives (promotion into the store CAS, a hand-deleted blob).
         Path jar = tmp.resolve("out/app.jar");
         Files.createDirectories(jar.getParent());
         Files.writeString(jar, "payload-bytes");

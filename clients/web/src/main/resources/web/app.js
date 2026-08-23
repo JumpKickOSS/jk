@@ -2198,29 +2198,18 @@ export const appOptions = {
 
     // ---- Status view storage panels (/api/cache + live `cache` SSE) ----
 
-    /** Cache-tier bytes (CLI: jk cache usage) — index + cache CAS + stamps. */
+    /** Action-cache bytes (CLI: jk cache usage) — action index + cache CAS. */
     actionCacheBytes() {
-      const c = this.cache;
-      if (!c) return null;
-      if (c.cacheBytes != null) return c.cacheBytes;
-      if (c.actionCacheBytes != null) return c.actionCacheBytes;
-      return (c.actionsBytes || 0) + (c.cacheCasBytes || 0) + (c.formatStampsBytes || 0);
+      return this.cache?.actionCacheBytes ?? null;
     },
 
     actionMaxBytes() {
-      const c = this.cache;
-      if (!c) return null;
-      if (c.cacheMaxBytes != null) return c.cacheMaxBytes;
-      return c.actionMaxBytes != null ? c.actionMaxBytes : null;
+      return this.cache?.actionMaxBytes ?? null;
     },
 
-    /** Artifact store: store CAS + repos/workers + run logs (CLI: jk storage). */
+    /** Artifact store: store CAS + worker jars (CLI: jk storage usage). Never budgeted. */
     artifactStorageBytes() {
-      const c = this.cache;
-      if (!c) return null;
-      if (c.artifactStorageBytes != null) return c.artifactStorageBytes;
-      // Run logs are state (not storage) — match jk storage usage.
-      return (c.casBytes || 0) + (c.workerJarsBytes || 0);
+      return this.cache?.artifactStorageBytes ?? null;
     },
 
     actionCacheUtilizationPercent() {
@@ -2228,18 +2217,6 @@ export const appOptions = {
       const max = this.actionMaxBytes();
       if (used == null || !max || max <= 0) return 0;
       return Math.min(100, Math.round((100 * used) / max));
-    },
-
-    artifactStorageUtilizationPercent() {
-      const c = this.cache;
-      const used = this.artifactStorageBytes();
-      if (!c || used == null || !c.maxBytes || c.maxBytes <= 0) return 0;
-      return Math.min(100, Math.round((100 * used) / c.maxBytes));
-    },
-
-    /** @deprecated combined meter — prefer action / artifact helpers */
-    cacheUtilizationPercent() {
-      return this.artifactStorageUtilizationPercent();
     },
 
     prunedAgo() {

@@ -18,47 +18,38 @@ import java.util.function.Supplier;
  * Machine-scoped {@code [cache]} policy from {@code ~/.config/jk/config.toml} (not project-overridable).
  * Precedence: {@code JK_*} env &gt; user file &gt; defaults. Malformed values fall back to defaults.
  *
- * <p>{@link #maxStoreSizeGb} is the <strong>artifact store</strong> display budget ({@code jk repo
- * storage}, store CAS + {@code repos/}). Exceeding it never evicts reachable blobs — GC only
- * reclaims unreferenced/expired garbage. {@link #maxCacheSizeGb} is the <strong>cache</strong>
- * budget ({@code jk cache usage}: cache CAS + action index + format stamps). Both treat {@code
- * 0} (and negatives) as unset — the documented default applies.
+ * <p>{@link #maxCacheSizeGb} is the <strong>action cache</strong> budget ({@code jk cache usage}:
+ * action index + cache CAS). It is the only size budget jk enforces — the artifact store and the
+ * Maven local repository are never size-pruned. {@code 0} (and negatives) mean unset: the
+ * documented default applies.
  *
  * <p>Sizes are in <strong>GiB</strong> ({@code max-cache-size-gb} / {@code JK_MAX_CACHE_SIZE_GB});
- * fractional values are allowed ({@code 0.5} = 512 MiB). Logical defaults are 4 GiB cache / 6 GiB
- * store; when {@code CI=1} or {@code CI=true}, 8 GiB / 12 GiB. On volumes with total capacity
- * under 10 GiB, those defaults are replaced by {@code (free × 0.8) / 2} each so cache + store use
- * at most 80 % of free space. Explicit file/env sizes are never disk-clamped.
+ * fractional values are allowed ({@code 0.5} = 512 MiB). The logical default is 4 GiB; when {@code
+ * CI=1} or {@code CI=true}, 8 GiB. On volumes with total capacity under 10 GiB, that default is
+ * replaced by {@code (free × 0.8) / 2} — 40 % of free space, leaving the other half of the 80 %
+ * margin for the artifact store. Explicit file/env sizes are never disk-clamped.
  */
-public record JkCacheConfig(
-        boolean autoPrune, double maxStoreSizeGb, int pruneIntervalDays, int recordTtlDays, double maxCacheSizeGb) {
+public record JkCacheConfig(boolean autoPrune, int pruneIntervalDays, double maxCacheSizeGb) {
 
     static final long GIB = 1024L * 1024L * 1024L;
 
-    /** Total volume size below which default budgets use the free-space formula. */
+    /** Total volume size below which the default budget uses the free-space formula. */
     public static final long SMALL_DISK_THRESHOLD_BYTES = 10L * GIB;
 
-    /** Logical default cache-tier budget (non-CI), before small-disk clamp. */
+    /** Logical default cache budget (non-CI), before small-disk clamp. */
     public static final double DEFAULT_MAX_CACHE_SIZE_GB = 4.0;
-
-    /** Logical default artifact-store budget (non-CI), before small-disk clamp. */
-    public static final double DEFAULT_MAX_STORE_SIZE_GB = 6.0;
 
     /** Logical cache budget when {@code CI=1} or {@code CI=true}. */
     public static final double CI_MAX_CACHE_SIZE_GB = 8.0;
 
-    /** Logical store budget when {@code CI=1} or {@code CI=true}. */
-    public static final double CI_MAX_STORE_SIZE_GB = 12.0;
-
-    /** Floor for disk-clamped defaults (64 MiB) so a near-full volume never yields a zero budget. */
+    /** Floor for disk-clamped defaults (64 MiB) so a near-full volume never yields a zero budget. */
     static final double MIN_CLAMPED_GB = 64.0 / 1024.0;
 
     /**
-     * Logical non-CI defaults (4 / 6 GiB) with no disk probe — used as parse fallbacks and when a
-     * probe is unavailable. Prefer {@link #resolve()} for the effective machine budget.
+     * Logical non-CI defaults (4 GiB) with no disk probe — used as parse fallbacks and when a probe
+     * is unavailable. Prefer {@link #resolve()} for the effective machine budget.
      */
-    public static final JkCacheConfig DEFAULTS =
-            new JkCacheConfig(true, DEFAULT_MAX_STORE_SIZE_GB, 7, 30, DEFAULT_MAX_CACHE_SIZE_GB);
+    public static final JkCacheConfig DEFAULTS = new JkCacheConfig(true, 7, DEFAULT_MAX_CACHE_SIZE_GB);
 
     /** Total and usable bytes on a volume (for default clamp tests and probes). */
     public record DiskSpace(long totalBytes, long freeBytes) {
@@ -86,12 +77,7 @@ public record JkCacheConfig(
 
     /** Effective machine config: user-global file + env overrides + CI/disk defaults. */
     public static JkCacheConfig resolve() {
-        // Each tier's clamp probes its own volume — JK_STORE_DIR may live elsewhere.
-        return resolve(
-                JkDirs.userConfigFile(),
-                System::getenv,
-                () -> DiskSpace.probe(JkDirs.cache()),
-                () -> DiskSpace.probe(JkDirs.store()));
+        return resolve(JkDirs.userConfigFile(), System::getenv, () -> DiskSpace.probe(JkDirs.cache()));
     }
 
     /** As {@link #resolve()} but against an explicit config file + env — probes {@link JkDirs#cache()}. */
@@ -108,26 +94,10 @@ public record JkCacheConfig(
         return resolve(userConfig, env, () -> disk);
     }
 
-    static JkCacheConfig resolve(Path userConfig, Function<String, String> env, Supplier<DiskSpace> disk) {
-        return resolve(userConfig, env, disk, disk);
-    }
-
-    static JkCacheConfig resolve(
-            Path userConfig,
-            Function<String, String> env,
-            Supplier<DiskSpace> cacheDisk,
-            Supplier<DiskSpace> storeDisk) {
+    static JkCacheConfig resolve(Path userConfig, Function<String, String> env, Supplier<DiskSpace> cacheDisk) {
         Objects.requireNonNull(env, "env");
         Parsed p = parse(userConfig);
-        OptionalDouble envStore = envPositiveDouble(env, "JK_MAX_STORE_SIZE_GB");
         OptionalDouble envCache = envPositiveDouble(env, "JK_MAX_CACHE_SIZE_GB");
-        if (envStore.isEmpty()) {
-            OptionalDouble mb = envPositiveDouble(env, "JK_MAX_STORE_SIZE_MB");
-            if (mb.isPresent()) {
-                warnLegacyOnce("JK_MAX_STORE_SIZE_MB is the pre-rename spelling — use JK_MAX_STORE_SIZE_GB");
-                envStore = OptionalDouble.of(mb.getAsDouble() / 1024.0);
-            }
-        }
         if (envCache.isEmpty()) {
             OptionalDouble mb = envPositiveDouble(env, "JK_MAX_CACHE_SIZE_MB");
             if (mb.isPresent()) {
@@ -137,22 +107,15 @@ public record JkCacheConfig(
         }
 
         double logicalCache = isCi(env) ? CI_MAX_CACHE_SIZE_GB : DEFAULT_MAX_CACHE_SIZE_GB;
-        double logicalStore = isCi(env) ? CI_MAX_STORE_SIZE_GB : DEFAULT_MAX_STORE_SIZE_GB;
         DiskSpace cacheSpace = cacheDisk != null ? cacheDisk.get() : null;
-        DiskSpace storeSpace = storeDisk != null ? storeDisk.get() : null;
         double defaultCache = clampDefaultGb(logicalCache, cacheSpace, () -> usedBytes(JkDirs.cache()));
-        double defaultStore = clampDefaultGb(logicalStore, storeSpace, () -> usedBytes(JkDirs.store()));
 
-        double storeGb =
-                envStore.isPresent() ? envStore.getAsDouble() : p.storeGb().orElse(defaultStore);
         double cacheGb =
                 envCache.isPresent() ? envCache.getAsDouble() : p.cacheGb().orElse(defaultCache);
 
         return new JkCacheConfig(
                 EnvValues.bool(env, "JK_AUTO_PRUNE").orElse(p.autoPrune()),
-                storeGb,
                 envNonNegativeInt(env, "JK_PRUNE_INTERVAL_DAYS").orElse(p.pruneIntervalDays()),
-                envNonNegativeInt(env, "JK_RECORD_TTL_DAYS").orElse(p.recordTtlDays()),
                 cacheGb);
     }
 
@@ -169,18 +132,21 @@ public record JkCacheConfig(
     }
 
     /**
-     * When total capacity is under 10 GiB, each budget becomes {@code (free × 0.8) / 2} GiB (80 % of
-     * free split evenly). Otherwise the logical default is kept. Explicit config never goes through
-     * this path.
+     * When total capacity is under 10 GiB, the default budget becomes {@code (free × 0.8) / 2} GiB.
+     * Otherwise the logical default is kept. Explicit config never goes through this path.
+     *
+     * <p>The halving reserves the other half of the margin for the artifact store, which has no
+     * budget and is never pruned: the cache budget is the only lever left on a small volume, so
+     * claiming the whole margin for the one tier we can bound would starve the one we cannot.
      */
     static double clampDefaultGb(double logicalGb, DiskSpace disk, LongSupplier tierUsedBytes) {
         if (disk == null || disk.totalBytes() >= SMALL_DISK_THRESHOLD_BYTES) {
             return logicalGb;
         }
-        // The tier's own footprint counts as reclaimable headroom — clamping on raw free makes
-        // the budget shrink as the tier fills (evict → free rises → budget grows → refill) and
+        // The cache's own footprint counts as reclaimable headroom — clamping on raw free makes
+        // the budget shrink as the cache fills (evict → free rises → budget grows → refill) and
         // converge far below the 80%-of-free intent. The usage walk runs only on
-        // small volumes, where the tier is small by construction.
+        // small volumes, where the cache is small by construction.
         long own = tierUsedBytes == null ? 0L : Math.max(0L, tierUsedBytes.getAsLong());
         double shareGb = ((disk.freeBytes() + own) * 0.8) / 2.0 / (double) GIB;
         if (shareGb < MIN_CLAMPED_GB) return MIN_CLAMPED_GB;
@@ -223,35 +189,23 @@ public record JkCacheConfig(
     }
 
     /**
-     * Parse {@code [cache]} without CI/disk defaults — missing sizes use {@link #DEFAULTS} logical
-     * 4 / 6 GiB. Prefer {@link #resolve()} for effective budgets.
+     * Parse {@code [cache]} without CI/disk defaults — a missing size uses the {@link #DEFAULTS}
+     * logical 4 GiB. Prefer {@link #resolve()} for the effective budget.
      */
     public static JkCacheConfig fromToml(Path file) {
         Parsed p = parse(file);
         return new JkCacheConfig(
-                p.autoPrune(),
-                p.storeGb().orElse(DEFAULT_MAX_STORE_SIZE_GB),
-                p.pruneIntervalDays(),
-                p.recordTtlDays(),
-                p.cacheGb().orElse(DEFAULT_MAX_CACHE_SIZE_GB));
+                p.autoPrune(), p.pruneIntervalDays(), p.cacheGb().orElse(DEFAULT_MAX_CACHE_SIZE_GB));
     }
 
-    private record Parsed(
-            boolean autoPrune,
-            OptionalDouble storeGb,
-            int pruneIntervalDays,
-            int recordTtlDays,
-            OptionalDouble cacheGb) {}
+    private record Parsed(boolean autoPrune, int pruneIntervalDays, OptionalDouble cacheGb) {}
 
     private static Parsed parse(Path file) {
         TomlScan scan = TomlScan.scan(
                 file,
                 "cache.auto-prune",
-                "cache.max-store-size-gb",
                 "cache.prune-interval-days",
-                "cache.record-ttl-days",
                 "cache.max-cache-size-gb",
-                "cache.max-store-size-mb",
                 "cache.max-cache-size-mb");
         boolean autoPrune =
                 switch (String.valueOf(scan.get("cache.auto-prune"))) {
@@ -259,19 +213,14 @@ public record JkCacheConfig(
                     case "false" -> false;
                     default -> DEFAULTS.autoPrune();
                 };
-        OptionalDouble storeGb = positiveDouble(scanDouble(scan, "cache.max-store-size-gb"));
         int interval = nonNegative(scanInt(scan, "cache.prune-interval-days")).orElse(DEFAULTS.pruneIntervalDays());
-        int ttl = nonNegative(scanInt(scan, "cache.record-ttl-days")).orElse(DEFAULTS.recordTtlDays());
         OptionalDouble cacheGb = positiveDouble(scanDouble(scan, "cache.max-cache-size-gb"));
-        // Pre-rename `-mb` keys still pin the budget (converted) — ignoring them silently would
+        // The pre-rename `-mb` key still pins the budget (converted) — ignoring it silently would
         // grow a deliberately small cache to the multi-GiB default on upgrade.
-        if (storeGb.isEmpty()) {
-            storeGb = legacyMbAsGb(scan, "cache.max-store-size-mb");
-        }
         if (cacheGb.isEmpty()) {
             cacheGb = legacyMbAsGb(scan, "cache.max-cache-size-mb");
         }
-        return new Parsed(autoPrune, storeGb, interval, ttl, cacheGb);
+        return new Parsed(autoPrune, interval, cacheGb);
     }
 
     private static OptionalDouble legacyMbAsGb(TomlScan scan, String key) {
@@ -289,14 +238,9 @@ public record JkCacheConfig(
         }
     }
 
-    /** Cache-tier budget in bytes ({@link #maxCacheSizeGb}). */
+    /** Action-cache budget in bytes ({@link #maxCacheSizeGb}). */
     public long maxCacheSizeBytes() {
         return gbToBytes(maxCacheSizeGb);
-    }
-
-    /** Artifact-store budget in bytes ({@link #maxStoreSizeGb}). */
-    public long maxStoreSizeBytes() {
-        return gbToBytes(maxStoreSizeGb);
     }
 
     static long gbToBytes(double gb) {

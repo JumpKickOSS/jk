@@ -25,6 +25,8 @@ import java.util.function.LongSupplier;
  * outputs). The Maven local repository is reported but never wiped. Credentials stay under
  * {@code jk repo login}/{@code logout}. Bare {@code jk storage} prints this group's help (like
  * {@code jk cache}).
+ *
+ * <p>The artifact store is never size-pruned; {@code clean} reclaims garbage only.
  */
 public final class StorageCommand extends GroupCommand {
 
@@ -154,10 +156,7 @@ public final class StorageCommand extends GroupCommand {
         }
     }
 
-    /**
-     * {@code jk storage usage} — artifact-store size/utilization table (jars, natives, OCI, worker
-     * jars).
-     */
+    /** {@code jk storage usage} — artifact-store size table (jars, natives, OCI, worker jars). */
     public static final class StorageUsageCommand implements CliCommand {
         @Override
         public String name() {
@@ -172,7 +171,7 @@ public final class StorageCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Show artifact-store size and utilization";
+            return "Show artifact-store size";
         }
 
         @Override
@@ -209,11 +208,9 @@ public final class StorageCommand extends GroupCommand {
                 return 1;
             }
             CacheCommand.StoreUsageStats s = CacheCommand.storeUsageFromAck(ack);
-            var cfg = cc.jumpkick.config.JkCacheConfig.resolve();
-            long maxBytes = cfg.maxStoreSizeBytes();
             String lastPruned = CacheCommand.lastPrunedLabel(cacheRoot);
             CommandWedge.envelopeStart();
-            for (String line : CacheCommand.renderStoreUsageTable(s, maxBytes, lastPruned)) {
+            for (String line : CacheCommand.renderStoreUsageTable(s, lastPruned)) {
                 CliOutput.out(line);
             }
             return 0;
@@ -228,7 +225,7 @@ public final class StorageCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Sweep unreferenced store objects and expired run logs";
+            return "Reclaim leaked download temps and expired run logs";
         }
 
         @Override
@@ -252,17 +249,13 @@ public final class StorageCommand extends GroupCommand {
             try {
                 result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                         cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest(
-                                "sweep", root, Integer.MAX_VALUE, dryRun, true, false),
+                        new cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest("sweep", root, dryRun, false, null),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Storage"),
                         CacheCommand::printWait,
                         summary);
             } catch (IOException e) {
                 CommandWedge.printFail("Storage", e.getMessage());
                 return cc.jumpkick.model.command.Exit.SOFTWARE;
-            }
-            if (summary[0] != null) {
-                CacheCommand.CacheCleanCommand.warnReachableEvicted(summary[0].reachableEvicted());
             }
             return result.success() ? 0 : 1;
         }

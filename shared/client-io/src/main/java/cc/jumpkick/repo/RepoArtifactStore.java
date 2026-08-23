@@ -8,7 +8,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -75,8 +74,8 @@ public final class RepoArtifactStore {
 
     /**
      * Fold a pre-rename {@code repos/local} first-party store into {@code repos/jk-local} so
-     * installs made before the rename stay resolvable (and stay out of LRU eviction, which only
-     * exempts the new name). Runs from every store construction, memoized per process and gated by
+     * installs made before the rename stay resolvable under one name. Runs from every store
+     * construction, memoized per process and gated by
      * {@link #LEGACY_LOCAL_MARKER} on disk, so the real work happens once per store lifetime — and
      * a {@code repos/local} created <em>after</em> the marker (a user remote actually named
      * {@code local}, legal since the rename) is never touched. Whole-directory atomic move when
@@ -413,89 +412,6 @@ public final class RepoArtifactStore {
             out.addAll(forRepoName(cacheRoot, repoName).versions(group, artifact));
         }
         return List.copyOf(out);
-    }
-
-    /** All relative m2 paths stored (non-sidecar files for full store). Empty for NONE. */
-    public List<String> allRelativePaths() {
-        if (root == null || !Files.isDirectory(root)) return List.of();
-        List<String> result = new ArrayList<>();
-        try (Stream<Path> walk = Files.walk(root)) {
-            walk.filter(Files::isRegularFile)
-                    .filter(p -> !isMemoName(p.getFileName().toString()))
-                    // Leaked .put-*.tmp download temps are not stored artifacts.
-                    .filter(p -> !p.getFileName().toString().startsWith(".put-")
-                            && !p.getFileName().toString().endsWith(".tmp"))
-                    .forEach(p -> result.add(root.relativize(p).toString()));
-        } catch (IOException ignored) {
-        }
-        return result;
-    }
-
-    /** One evictable repos/ artifact: its owning repo name, name-relative path, size, and LRU time. */
-    private record ReposEntry(String repoName, String relPath, long size, long atimeMillis) {}
-
-    /** Outcome of {@link #evictReposDownTo}. */
-    public record EvictReport(int deleted, long freedBytes, long remainingBytes) {}
-
-    /**
-     * LRU-evict downloaded artifacts under {@code <cacheRoot>/repos/} down to {@code maxBytes}, keyed
-     * by last-access from {@code atimeByHash} (sha → millis; unknown = coldest). {@code
-     * repos/jk-local} is exempt — first-party, no re-fetch source. Re-fetchable third-party jars are
-     * fair game — this is the size bound the store budget promises. Best-effort; never throws.
-     */
-    public static EvictReport evictReposDownTo(
-            Path cacheRoot, long maxBytes, Map<String, Long> atimeByHash, boolean dryRun) {
-        migrateLegacyLocal(cacheRoot);
-        Path reposDir = cacheRoot.resolve("repos");
-        if (!Files.isDirectory(reposDir)) return new EvictReport(0, 0L, 0L);
-        List<ReposEntry> entries = new ArrayList<>();
-        long total = 0;
-        try (Stream<Path> named = Files.list(reposDir)) {
-            for (Path nameDir : (Iterable<Path>) named::iterator) {
-                String name = nameDir.getFileName().toString();
-                // Before the rename marker lands, repos/local is (or may still hold) the
-                // pre-rename first-party store — never evict it. After the marker it is an
-                // ordinary user remote and fair game.
-                if (!Files.isDirectory(nameDir)
-                        || RepoArtifactResolver.isFirstPartyStoreName(name)
-                        || ("local".equals(name) && legacyLocalPending(cacheRoot))) {
-                    continue; // never evict first-party
-                }
-                RepoArtifactStore store = new RepoArtifactStore(cacheRoot, name);
-                for (String rel : store.allRelativePaths()) {
-                    Path file = nameDir.resolve(rel);
-                    long size;
-                    try {
-                        size = Files.size(file);
-                    } catch (IOException e) {
-                        continue;
-                    }
-                    String sha = store.readSha256Sidecar(rel).orElse("");
-                    long atime = atimeByHash.getOrDefault(sha, 0L);
-                    entries.add(new ReposEntry(name, rel, size, atime));
-                    total += size;
-                }
-            }
-        } catch (IOException ignored) {
-            // best-effort
-        }
-        if (total <= maxBytes) return new EvictReport(0, 0L, total);
-
-        entries.sort(Comparator.comparingLong(ReposEntry::atimeMillis)
-                .thenComparing(Comparator.comparingLong(ReposEntry::size).reversed()));
-        int deleted = 0;
-        long freed = 0;
-        long remaining = total;
-        for (ReposEntry e : entries) {
-            if (remaining <= maxBytes) break;
-            if (!dryRun) {
-                new RepoArtifactStore(cacheRoot, e.repoName()).evict(e.relPath());
-            }
-            deleted++;
-            freed += e.size();
-            remaining -= e.size();
-        }
-        return new EvictReport(deleted, freed, remaining);
     }
 
     /** The root directory ({@code <cache>/repos/<name>}), or {@code null} for {@link #NONE}. */

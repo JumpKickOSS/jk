@@ -7,7 +7,6 @@ import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -131,38 +130,6 @@ class RepoArtifactStoreTest {
         assertThat(ArtifactMemo.jkPath(cache.resolve("repos/central"), rel)).doesNotExist();
         assertThat(source).exists();
         assertThat(store.evict(rel)).isFalse();
-    }
-
-    @Test
-    void evict_repos_down_to_budget_drops_coldest_and_spares_jk_local(@TempDir Path dir) throws IOException {
-        // The repos/ tree must be size-bounded — evict coldest third-party jars first,
-        // keep repos/jk-local (first-party, no re-fetch source).
-        Path cache = dir.resolve("cache");
-        RepoArtifactStore central = new RepoArtifactStore(cache, "central");
-        Path a = mkjar(dir, "a", 10_000);
-        Path b = mkjar(dir, "b", 10_000);
-        central.materialize("g/a/1/a-1.jar", a, Hashing.sha256Hex(a));
-        central.materialize("g/b/1/b-1.jar", b, Hashing.sha256Hex(b));
-        // First-party under repos/jk-local must never be evicted.
-        RepoArtifactStore.writeToLocalStore(cache, "g/local/1/local-1.jar", mkjar(dir, "local", 10_000));
-
-        // a is colder than b.
-        Map<String, Long> atimes = Map.of(Hashing.sha256Hex(a), 1_000L, Hashing.sha256Hex(b), 9_000L);
-
-        // Budget fits one 10k jar → the coldest third-party (a) is evicted, b kept.
-        var report = RepoArtifactStore.evictReposDownTo(cache, 12_000, atimes, false);
-        assertThat(report.deleted()).isEqualTo(1);
-        assertThat(central.contains("g/a/1/a-1.jar")).isFalse();
-        assertThat(central.contains("g/b/1/b-1.jar")).isTrue();
-        assertThat(cache.resolve("repos/jk-local/g/local/1/local-1.jar")).exists();
-    }
-
-    private static Path mkjar(Path dir, String name, int size) throws IOException {
-        Path f = dir.resolve(name + ".jar");
-        byte[] bytes = new byte[size];
-        for (int i = 0; i < size; i++) bytes[i] = (byte) (name.charAt(0) + i);
-        Files.write(f, bytes);
-        return f;
     }
 
     @Test

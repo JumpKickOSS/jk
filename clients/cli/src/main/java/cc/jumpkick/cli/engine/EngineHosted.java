@@ -422,14 +422,7 @@ final class EngineHosted {
         String requestLine = "clear".equals(req.op())
                 ? ProtoSession.cacheClearRequest(
                         req.cache().toString(), req.projectRoot().toString(), req.dryRun())
-                : ProtoSession.cachePruneRequest(
-                        req.op(),
-                        req.cache().toString(),
-                        req.olderThanDays(),
-                        req.dryRun(),
-                        req.sweep(),
-                        req.includeJkTmp(),
-                        req.dropAllClassC());
+                : ProtoSession.cachePruneRequest(req.op(), req.cache().toString(), req.dryRun(), req.includeJkTmp());
         return EnginePluginAdapter.stream(
                         paths,
                         requestLine,
@@ -438,10 +431,7 @@ final class EngineHosted {
                         (type, line) ->
                                 onWait.accept(Jsonl.bool(line, "external", false), Jsonl.intValue(line, "plans", 0)),
                         line -> summaryOut[0] = new EngineRequests.CacheMaintSummary(
-                                Jsonl.longValue(line, "cacheFiles", -1),
-                                Jsonl.longValue(line, "cacheBytes", -1),
-                                Jsonl.longValue(line, "cacheReachableEvicted", -1),
-                                Jsonl.longValue(line, "cacheRepoLinks", -1)))
+                                Jsonl.longValue(line, "cacheFiles", -1), Jsonl.longValue(line, "cacheBytes", -1)))
                 .result();
     }
 }

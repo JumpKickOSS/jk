@@ -48,11 +48,10 @@ class LiveVitalsTest {
 
     @Test
     void presentCache_tracks_action_and_artifact_surfaces_separately() {
-        CacheSnapshot a = new CacheSnapshot(1, 1_000_000, 2, 100_000, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0);
+        CacheSnapshot a = new CacheSnapshot(1, 1_000_000, 2, 100_000, 0, 0, 0, 0, 0, 0, 0, 0, 1L << 30, 0, 0, 0);
         CacheSnapshot actionGrew =
-                new CacheSnapshot(1, 1_000_000, 2, 2_000_000, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0);
-        CacheSnapshot casGrew =
-                new CacheSnapshot(1, 3_000_000, 2, 100_000, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0);
+                new CacheSnapshot(1, 1_000_000, 2, 2_000_000, 0, 0, 0, 0, 0, 0, 0, 0, 1L << 30, 0, 0, 0);
+        CacheSnapshot casGrew = new CacheSnapshot(1, 3_000_000, 2, 100_000, 0, 0, 0, 0, 0, 0, 0, 0, 1L << 30, 0, 0, 0);
         assertThat(LiveVitals.PresentCache.of(a)).isNotEqualTo(LiveVitals.PresentCache.of(actionGrew));
         assertThat(LiveVitals.PresentCache.of(a)).isNotEqualTo(LiveVitals.PresentCache.of(casGrew));
     }
@@ -62,7 +61,7 @@ class LiveVitalsTest {
         HttpEvents hub = new HttpEvents();
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
         AtomicReference<CacheSnapshot> cache =
-                new AtomicReference<>(new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
+                new AtomicReference<>(new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1L << 30, 0, 0, 0));
         try (LiveVitals live = new LiveVitals(hub, status::get, cache::get);
                 HttpEvents.Subscription sub = hub.subscribe()) {
             live.publishStatus(true);
@@ -105,7 +104,7 @@ class LiveVitalsTest {
         HttpEvents hub = new HttpEvents();
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
         AtomicReference<CacheSnapshot> cache = new AtomicReference<>(
-                new CacheSnapshot(10, 5_000_000, 2, 100_000, 0, 0, 1, 2_000_000, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
+                new CacheSnapshot(10, 5_000_000, 2, 100_000, 0, 0, 1, 2_000_000, 0, 0, 0, 0, 1L << 30, 0, 0, 0));
         try (LiveVitals live = new LiveVitals(hub, status::get, cache::get);
                 HttpEvents.Subscription sub = hub.subscribe()) {
             live.publishCache(true);
@@ -122,13 +121,12 @@ class LiveVitalsTest {
 
     @Test
     void cache_json_exposes_dual_surface_fields() {
-        CacheSnapshot c = new CacheSnapshot(10, 1000, 5, 50, 0, 0, 2, 200, 1, 30, 0, 0, 20L << 30, 1L << 30, 99);
+        CacheSnapshot c = new CacheSnapshot(10, 1000, 5, 50, 0, 0, 2, 200, 1, 30, 0, 0, 1L << 30, 99, 0, 0);
         String json = c.toJson().toString();
         assertThat(json)
                 .contains("\"actionCacheBytes\":50")
                 .contains("\"artifactStorageBytes\":1200")
-                .contains("\"actionMaxBytes\":")
-                .contains("\"maxBytes\":");
+                .contains("\"actionMaxBytes\":");
         // Store CAS + worker jars. Run logs are state, not storage, so they are not in the total.
         assertThat(c.artifactStorageBytes()).isEqualTo(1000 + 200);
         String thin = c.toThinJson().toString();
@@ -146,7 +144,7 @@ class LiveVitalsTest {
         HttpEvents hub = new HttpEvents();
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
         AtomicReference<CacheSnapshot> cache =
-                new AtomicReference<>(new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
+                new AtomicReference<>(new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1L << 30, 0, 0, 0));
         try (LiveVitals live = new LiveVitals(hub, status::get, cache::get);
                 HttpEvents.Subscription mcp = hub.subscribe(HttpEvents.FrameStyle.MCP, null)) {
             assertThat(hub.hasSubscribers()).isTrue();
@@ -173,7 +171,7 @@ class LiveVitalsTest {
         HttpEvents hub = new HttpEvents();
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
         AtomicReference<CacheSnapshot> cache =
-                new AtomicReference<>(new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
+                new AtomicReference<>(new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1L << 30, 0, 0, 0));
         try (LiveVitals live = new LiveVitals(hub, status::get, cache::get);
                 HttpEvents.Subscription dash = hub.subscribe();
                 HttpEvents.Subscription mcp = hub.subscribe(HttpEvents.FrameStyle.MCP, null)) {
@@ -191,7 +189,7 @@ class LiveVitalsTest {
         HttpEvents hub = new HttpEvents();
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
         CacheSnapshot snapshot =
-                new CacheSnapshot(10, 5_000_000, 2, 100_000, 0, 0, 1, 2_000_000, 0, 0, 0, 0, 20L << 30, 1L << 30, 0);
+                new CacheSnapshot(10, 5_000_000, 2, 100_000, 0, 0, 1, 2_000_000, 0, 0, 0, 0, 1L << 30, 0, 0, 0);
         AtomicInteger captures = new AtomicInteger();
         Supplier<CacheSnapshot> slowCapture = () -> {
             captures.incrementAndGet();
@@ -230,7 +228,7 @@ class LiveVitalsTest {
         AtomicInteger captures = new AtomicInteger();
         Supplier<CacheSnapshot> capture = () -> {
             captures.incrementAndGet();
-            return new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0);
+            return new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1L << 30, 0, 0, 0);
         };
         try (LiveVitals live = new LiveVitals(hub, status::get, capture);
                 HttpEvents.Subscription sub = hub.subscribe()) {
@@ -248,7 +246,7 @@ class LiveVitalsTest {
         HttpEvents hub = new HttpEvents();
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
         AtomicReference<CacheSnapshot> cache =
-                new AtomicReference<>(new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
+                new AtomicReference<>(new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1L << 30, 0, 0, 0));
         try (LiveVitals live = new LiveVitals(hub, status::get, cache::get);
                 HttpEvents.Subscription existing = hub.subscribe();
                 HttpEvents.Subscription fresh = hub.subscribe()) {
@@ -268,7 +266,7 @@ class LiveVitalsTest {
         HttpEvents hub = new HttpEvents();
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
         CacheSnapshot snapshot =
-                new CacheSnapshot(10, 5_000_000, 2, 100_000, 0, 0, 1, 2_000_000, 0, 0, 0, 0, 20L << 30, 1L << 30, 0);
+                new CacheSnapshot(10, 5_000_000, 2, 100_000, 0, 0, 1, 2_000_000, 0, 0, 0, 0, 1L << 30, 0, 0, 0);
         AtomicReference<Thread> captureThread = new AtomicReference<>();
         Supplier<CacheSnapshot> capture = () -> {
             captureThread.set(Thread.currentThread());

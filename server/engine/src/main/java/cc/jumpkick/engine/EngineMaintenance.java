@@ -33,7 +33,7 @@ public final class EngineMaintenance implements AutoCloseable {
     /** How often we poll config mtime and the 12 h stamp. */
     public static final Duration TICK = Duration.ofMinutes(1);
 
-    /** Wall-clock gap between full maintenance cycles (feeds, templates, GC, warmup). */
+    /** Wall-clock gap between full maintenance cycles (feeds, templates, cache prune, warmup). */
     public static final Duration MAINTENANCE_INTERVAL = StoreFeedRefresh.INTERVAL;
 
     private final Consumer<String> log;
@@ -47,7 +47,7 @@ public final class EngineMaintenance implements AutoCloseable {
     private volatile long configMtimeMillis = -1L;
 
     /**
-     * @param onMaintenanceDue after feeds/templates; typically enqueue cache GC + schedule host
+     * @param onMaintenanceDue after feeds/templates; typically enqueue the cache prune + schedule host
      *     warmup (AOT/cal). Must not throw.
      */
     public EngineMaintenance(Consumer<String> log, StoreFeedRefresh feeds, Runnable onMaintenanceDue) {
@@ -139,7 +139,7 @@ public final class EngineMaintenance implements AutoCloseable {
     }
 
     /**
-     * Full cycle: store feeds + official templates, then GC/warmup enqueue, then stamp. Failures
+     * Full cycle: store feeds + official templates, then prune/warmup enqueue, then stamp. Failures
      * inside feeds are already quiet.
      */
     void runMaintenanceCycle() {
