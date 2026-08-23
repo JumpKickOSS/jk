@@ -384,9 +384,14 @@ public final class CacheCommand extends GroupCommand {
             return List.of(cc.jumpkick.cli.CommonOpts.cacheDir());
         }
 
+        /** A bare path for shell substitution — {@code du -sh "$(jk cache dir)"}. */
+        @Override
+        public boolean scriptMode(Invocation in) {
+            return true;
+        }
+
         @Override
         public int run(Invocation in) {
-            CliOutput.skipEnvelope();
             CliOutput.out(String.valueOf(resolveCacheRoot(
                     in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null))));
             return 0;

@@ -249,19 +249,31 @@ public final class CommandDispatch {
                     paths, dir, cc.jumpkick.util.JkDirs.cache(), command, args);
 
             if (!report.found()) return null;
-            if (report.error() != null) {
-                cc.jumpkick.cli.tui.CommandWedge.printFail(command, report.error());
-                return 1;
+            // A plugin command is a leaf command: same envelope, same close after the failure
+            // wedge, so its output is spaced like every other command's.
+            CliOutput.beginCommand(false);
+            try {
+                if (report.error() != null) {
+                    cc.jumpkick.cli.tui.CommandWedge.printFail(command, report.error());
+                    return 1;
+                }
+                for (String line : report.output()) CliOutput.out(line);
+                return report.exit();
+            } finally {
+                CliOutput.closeEnvelope();
             }
-            for (String line : report.output()) CliOutput.out(line);
-            return report.exit();
         } catch (Exception e) {
             return null; // best-effort — fall back to the normal help
         }
     }
 
     /** Dispatch {@code cmd} against {@code rest} (its arguments), descending into subcommands. */
-    private static int dispatch(CliCommand cmd, String qualified, List<String> rest, boolean ansi) {
+    /**
+     * Run one command, envelope and all. Package-private: a test drives a leaf command straight
+     * through here to cover the paths no shipped command can be made to take on demand — an
+     * exception escaping {@code run} into the error line below.
+     */
+    static int dispatch(CliCommand cmd, String qualified, List<String> rest, boolean ansi) {
         if (!cmd.subcommands().isEmpty()) {
             int subAt = commandIndex(rest);
             if (subAt < 0) {
@@ -309,11 +321,12 @@ public final class CommandDispatch {
             System.out.println("jk " + Jk.VERSION);
             return 0;
         }
+        boolean script = GlobalOptions.outputIsJson(in) || cmd.scriptMode(in);
         try {
-            // One leading chrome blank per leaf command (prep spinner + settle share it).
-            // JSON/JSONL stdout is machine-consumed — skip so the first line stays parseable.
-            cc.jumpkick.cli.tui.CommandWedge.resetEnvelope();
-            if (GlobalOptions.outputIsJson(in)) CliOutput.skipEnvelope();
+            // One envelope per leaf command: the leading blank on the first chrome write, one
+            // trailing blank after the last — including after the error line below. Machine stdout
+            // (JSON/JSONL, or a script-mode command) opts out of both and of the ASCII rewrite.
+            CliOutput.beginCommand(script);
             // Hidden global -y/--yes: skip Confirm prompts for this leaf command only.
             cc.jumpkick.cli.tui.Confirm.setAssumeYes(in.isSet("yes"));
             try {
@@ -328,10 +341,11 @@ public final class CommandDispatch {
         } catch (Exception e) {
             closeActiveLiveRegion();
             String msg = e.getMessage() != null ? e.getMessage() : e.toString();
-            System.err.println(HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi) + " " + msg);
+            CliOutput.err(HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi) + " " + msg);
             return 1;
         } finally {
-            // Trailing blank after the last chrome — settles do not print this (exec handoff).
+            // Trailing blank after the last chrome, on whichever stream wrote it — settles never
+            // print it themselves, and an exec handoff suppresses it outright.
             CliOutput.closeEnvelope();
         }
     }
@@ -420,14 +434,17 @@ public final class CommandDispatch {
         String jar = HelpRenderer.paint(e.artifactId() + ".jar", t.warning(), ansi);
         String coord = HelpRenderer.paint(e.coordinate(), t.cyan(), ansi);
         String jk = ansi ? Ansi.sgr(t.helpHint()) + "jk" + Ansi.RESET : "jk";
-        System.err.println(label + " " + jar + " not found.");
-        System.err.println("  Coordinate: " + coord);
+        CliOutput.err(label + " " + jar + " not found.");
+        CliOutput.err("  Coordinate: " + coord);
         for (Path p : e.pathsChecked()) {
-            System.err.println("  Checked:    " + HelpRenderer.paint(p.toString(), t.path(), ansi));
+            CliOutput.err("  Checked:    " + HelpRenderer.paint(p.toString(), t.path(), ansi));
         }
-        System.err.println("  Reinstall " + jk + " or set -D" + e.jarProperty() + "=<path>");
+        CliOutput.err("  Reinstall " + jk + " or set -D" + e.jarProperty() + "=<path>");
     }
 
+    // Parse and usage errors print before the envelope opens (dispatch has not begun a command
+    // yet), so they write the real streams directly. Everything after beginCommand goes through
+    // CliOutput.
     private static void printError(String qualified, CliCommand cmd, ParseException e, boolean ansi) {
         String label = HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi);
         String message =

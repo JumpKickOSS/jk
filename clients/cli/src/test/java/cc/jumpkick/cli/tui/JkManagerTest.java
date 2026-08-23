@@ -4,6 +4,7 @@ package cc.jumpkick.cli.tui;
 import static cc.jumpkick.cli.tui.JkManagerTestSupport.stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.theme.Theme;
 import java.io.ByteArrayOutputStream;
@@ -148,7 +149,7 @@ class JkManagerTest {
 
     @Test
     void settle_prints_leading_blank_only() {
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var cm = JkManager.plan(stream(buf), "Build", false);
         cm.finishSuccess("ok took 1s");
@@ -162,7 +163,7 @@ class JkManagerTest {
 
     @Test
     void exec_handoff_settle_has_no_trailing_blank() {
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var cm = JkManager.plan(stream(buf), "Run", false);
         cm.finishBuildPlanExec("Executing `java -cp … Main`");
@@ -175,7 +176,7 @@ class JkManagerTest {
 
     @Test
     void prep_envelope_then_command_manager_does_not_double_blank() {
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var ps = stream(buf);
         CommandWedge.envelopeStart(ps); // e.g. EnsureFreshLock / analyzing

@@ -29,11 +29,11 @@ import java.util.List;
  *
  * <p>Human commands print exactly <strong>one blank line before</strong> the first chrome line of
  * the invocation and <strong>one blank line after</strong> the last chrome when the command
- * exits. {@link cc.jumpkick.cli.CliOutput} owns that rule: the first stdout/stderr write inserts
- * the leading blank; dispatch calls {@link cc.jumpkick.cli.CliOutput#closeEnvelope()} after
- * {@code run}. Do <strong>not</strong> add a trailing blank in settles — {@code jk run} hands
- * off to {@code inheritIO} with no gap. Machine-consumed stdout must call
- * {@link cc.jumpkick.cli.CliOutput#skipEnvelope()} before printing.
+ * exits. {@link cc.jumpkick.cli.CliOutput} owns that lifecycle — it opens the envelope on the first
+ * write and dispatch closes it after {@code run}. This class formats wedges and, for chrome whose
+ * first write goes to a stream {@code CliOutput} does not own, opens the envelope on that stream.
+ * Do <strong>not</strong> add a trailing blank in settles. A command whose stdout is consumed by a
+ * program declares {@code CliCommand.scriptMode(Invocation)} instead of printing wedges to it.
  *
  * <p>Colors: blue/work chip for {@link #working}, green for {@link #ok}, red for {@link #fail}.
  * Subprocess streams go <em>before</em> the wedge; engine detail after (or details.jsonl).
@@ -45,16 +45,6 @@ import java.util.List;
 public final class CommandWedge {
 
     private CommandWedge() {}
-
-    /** Clear the per-command envelope flag — call from command dispatch before {@code run}. */
-    public static void resetEnvelope() {
-        CliOutput.resetEnvelope();
-    }
-
-    /** True after the leading blank has been printed for this command. */
-    public static boolean envelopeStarted() {
-        return CliOutput.envelopeStarted();
-    }
 
     /** Green check chip + message (done successfully). */
     public static String ok(String command, String message) {
@@ -110,17 +100,20 @@ public final class CommandWedge {
     }
 
     /**
-     * Leading blank of the human chrome envelope on stdout — at most once per command (see
-     * {@link #resetEnvelope}). Safe to call from every chrome entry (spinner, bar, settle). The
-     * matching trailing blank is {@link cc.jumpkick.cli.CliOutput#closeEnvelope()}, from dispatch.
+     * Leading blank of the human chrome envelope on stdout — at most once per command. Safe to call
+     * from every chrome entry (spinner, bar, settle). The matching trailing blank is
+     * {@link cc.jumpkick.cli.CliOutput#closeEnvelope()}, from dispatch.
      */
     public static void envelopeStart() {
         CliOutput.ensureLeadingBlank();
     }
 
     /**
-     * Like {@link #envelopeStart()} but writes the blank on {@code out} (e.g. a test capture stream
-     * or {@link JkManager}'s sink).
+     * Like {@link #envelopeStart()} but writes the blank on {@code out}. Needed when the first
+     * chrome of a command reaches the terminal through a stream {@code CliOutput} does not own — a
+     * {@link JkManager} sink, a {@link Spinner} writer, a test capture — which would otherwise print
+     * before the envelope opened. {@code out} must be stdout-side; stderr chrome calls
+     * {@link #envelopeStartErr()}.
      */
     public static void envelopeStart(PrintStream out) {
         CliOutput.ensureLeadingBlank(out);
@@ -140,7 +133,6 @@ public final class CommandWedge {
      * Prefer this for one-shot commands over raw {@link CliOutput#out} of a check glyph.
      */
     public static void printOk(String command, String message) {
-        envelopeStart();
         CliOutput.out(ok(command, message));
     }
 
@@ -149,7 +141,6 @@ public final class CommandWedge {
      * {@link #fail}.
      */
     public static void printFail(String command, String message) {
-        envelopeStartErr();
         CliOutput.err(fail(command, message));
     }
 
@@ -157,7 +148,6 @@ public final class CommandWedge {
      * Print a failure settle with "Failed to …" phrasing and a leading stderr blank when first.
      */
     public static void printFailedTo(String command, String tail) {
-        envelopeStartErr();
         CliOutput.err(failedTo(command, tail));
     }
 
@@ -165,19 +155,16 @@ public final class CommandWedge {
      * Working / play chip on stderr (exec handoff, watch loop) with leading blank when first chrome.
      */
     public static void printWorking(String command, String message) {
-        envelopeStartErr();
         CliOutput.err(working(command, message));
     }
 
     /** Generic glyph chip on stdout with envelope. */
     public static void printChip(String glyph, String command, String message) {
-        envelopeStart();
         CliOutput.out(chip(glyph, command, message));
     }
 
     /** Generic glyph chip on stderr with envelope. */
     public static void printChipErr(String glyph, String command, String message) {
-        envelopeStartErr();
         CliOutput.err(chip(glyph, command, message));
     }
 
@@ -209,7 +196,6 @@ public final class CommandWedge {
      * the leading blank when this is first chrome.
      */
     public static void printLine(String wedgeLine) {
-        envelopeStart();
         CliOutput.out(wedgeLine);
     }
 
@@ -217,7 +203,6 @@ public final class CommandWedge {
      * Print a pre-rendered wedge line on stderr with the leading blank when this is first chrome.
      */
     public static void printErrLine(String wedgeLine) {
-        envelopeStartErr();
         CliOutput.err(wedgeLine);
     }
 

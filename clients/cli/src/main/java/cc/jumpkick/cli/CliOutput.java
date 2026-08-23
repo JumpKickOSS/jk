@@ -4,7 +4,7 @@ package cc.jumpkick.cli;
 import cc.jumpkick.cli.tui.PlainAscii;
 import java.io.OutputStream;
 import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
+import java.nio.charset.Charset;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -16,21 +16,49 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>Convention, matching the streams it wraps: {@link #out} for machine/user <em>result</em> output
  * on stdout; {@link #err} for human-facing diagnostics, errors, and progress on stderr.
  *
- * <p>Under {@code --no-ansi}, string writes run through {@link PlainAscii} so ellipsis, bullets,
- * and pulse circles in free-form messages become ASCII without each command hand-substituting.
- *
  * <h2>Blank-line envelope</h2>
  *
- * <p>Human commands print exactly one blank line before the first chrome of the invocation and
- * one blank line after the last chrome when the command exits. This class owns that rule: the
- * first {@link #out}/{@link #err}/{@link #stdout}/{@link #stderr} write inserts the leading blank;
- * dispatch calls {@link #closeEnvelope} after {@code run}. Settles themselves do not print the
- * trailing blank — {@code jk run} must be able to hand off to {@code inheritIO} with no gap.
+ * <p>Human commands print exactly one blank line before the first chrome of the invocation and one
+ * blank line after the last. This class owns that rule: the first {@link #out}/{@link #err}/{@link
+ * #stdout}/{@link #stderr} write inserts the leading blank; dispatch calls {@link #beginCommand}
+ * before {@code run} and {@link #closeEnvelope} after it. The trailing blank lands on whichever
+ * stream wrote last, so a command that ends on a stderr failure gets its gap there and a redirected
+ * stdout stays clean. Settles themselves never close.
  *
- * <p>Machine-consumed stdout must call {@link #skipEnvelope} before printing (paths, tokens, eval
- * scripts, JSON objects). Dispatch already skips for {@code --output json}/{@code jsonl}.
+ * <h2>Script mode</h2>
+ *
+ * <p>When this invocation's stdout is consumed by a program (an {@code eval}'d script, a path, a
+ * token, wire JSON) dispatch begins the command in script mode: no leading or trailing blank on
+ * stdout and no {@link PlainAscii} rewrite of it, so the payload is byte-exact. stderr keeps full
+ * human treatment — it is for the person at the terminal even when stdout is piped. Commands
+ * declare the mode via {@code CliCommand.scriptMode(Invocation)}; {@code --output json}/{@code
+ * jsonl} enters it too.
+ *
+ * <h2>Encoding</h2>
+ *
+ * <p>{@link #out}/{@link #err} and their raw forms hand {@link System#out}/{@link System#err} a
+ * string, so that stream's own encoder produces the bytes: the console's on a terminal, a
+ * redirect's under capture. {@link #stdout()}/{@link #stderr()} instead write finished bytes past
+ * that encoder, which is why they carry the console charset themselves.
+ *
+ * <h2>Handing the terminal to a child</h2>
+ *
+ * <p>An {@code inheritIO} exec gives the child the real stdout, and the leading blank is already
+ * printed by then so the child's first line is separated from jk's chrome. The <em>trailing</em>
+ * blank would land after the child's own output, in the caller's redirect: commands call {@link
+ * #skipTrailingBlank()} at the handoff to suppress it.
  */
 public final class CliOutput {
+
+    /**
+     * Charset {@link System#out} encodes with. Resolved once: {@link #stdout()} writes finished
+     * bytes past {@code System.out}'s encoder, so it must produce the same bytes the console
+     * expects.
+     */
+    private static final Charset STDOUT_CHARSET = consoleCharset("stdout.encoding");
+
+    /** Charset {@link System#err} encodes with; see {@link #STDOUT_CHARSET}. */
+    private static final Charset STDERR_CHARSET = consoleCharset("stderr.encoding");
 
     /**
      * Once true, the leading blank has been printed for this command. Reset at dispatch so prep
@@ -38,35 +66,41 @@ public final class CliOutput {
      */
     private static final AtomicBoolean ENVELOPE_STARTED = new AtomicBoolean(false);
 
-    /** When true, the first write does not insert a leading blank (script / JSON stdout). */
-    private static final AtomicBoolean SKIP_ENVELOPE = new AtomicBoolean(false);
-
-    /** Once true, {@link #closeEnvelope} has printed the trailing blank (or skipped). */
+    /** Once true, {@link #closeEnvelope} has printed the trailing blank. */
     private static final AtomicBoolean ENVELOPE_CLOSED = new AtomicBoolean(false);
 
+    /** When true, stdout is machine-consumed: no envelope and no ASCII rewrite on that stream. */
+    private static final AtomicBoolean SCRIPT_MODE = new AtomicBoolean(false);
+
     /**
-     * True when the leading blank landed on stderr (failure / working chrome). Trailing blank
-     * follows that stream so a fail-only command does not leak a newline onto stdout.
+     * The side the most recent chrome write went to. The trailing blank follows it, so the gap
+     * lands after the last visible line rather than on a stream the user redirected away.
      */
-    private static final AtomicBoolean ENVELOPE_ON_ERR = new AtomicBoolean(false);
+    private static final AtomicBoolean LAST_WRITE_ON_ERR = new AtomicBoolean(false);
+
+    /** When true, a child process owns the terminal and {@link #closeEnvelope} must stay quiet. */
+    private static final AtomicBoolean TRAILING_BLANK_SKIPPED = new AtomicBoolean(false);
 
     private CliOutput() {}
 
-    /** Clear envelope state — call from command dispatch before {@code run}. */
-    public static void resetEnvelope() {
+    /**
+     * Start one leaf command's blank-line envelope, clearing all per-command state. {@code
+     * scriptMode} marks this invocation's stdout machine-consumed: no leading or trailing blank on
+     * stdout and no {@link PlainAscii} rewrite of it, so the payload is byte-exact; stderr stays
+     * human-formatted either way. Called from command dispatch before {@code run} and from nothing
+     * else.
+     */
+    public static void beginCommand(boolean scriptMode) {
         ENVELOPE_STARTED.set(false);
-        SKIP_ENVELOPE.set(false);
         ENVELOPE_CLOSED.set(false);
-        ENVELOPE_ON_ERR.set(false);
+        LAST_WRITE_ON_ERR.set(false);
+        TRAILING_BLANK_SKIPPED.set(false);
+        SCRIPT_MODE.set(scriptMode);
     }
 
-    /**
-     * Do not insert a leading or trailing blank on this command. Use immediately before
-     * machine-consumed stdout (eval scripts, paths, tokens, raw JSON) so command substitution and
-     * {@code eval "$(jk …)"} stay parseable.
-     */
-    public static void skipEnvelope() {
-        SKIP_ENVELOPE.set(true);
+    /** True when this invocation's stdout is machine-consumed (see {@link #beginCommand}). */
+    public static boolean scriptMode() {
+        return SCRIPT_MODE.get();
     }
 
     /** True after the leading blank has been printed for this command. */
@@ -76,57 +110,77 @@ public final class CliOutput {
 
     /**
      * Mark the envelope as already opened without printing. Use when chrome that owns its own
-     * leading blank (wizard header, terminal writer) ran first so later writes do not insert a
-     * second blank.
+     * leading blank (wizard header, terminal writer) ran first, so later writes do not insert a
+     * second blank. No-op in script mode.
      */
     public static void markEnvelopeStarted() {
+        if (SCRIPT_MODE.get()) return;
         ENVELOPE_STARTED.set(true);
     }
 
-    /**
-     * Leading blank on stdout — at most once per command. Safe to call from every chrome entry
-     * (spinner, bar, settle). No-op after {@link #skipEnvelope}.
-     */
+    /** Leading blank on stdout — at most once per command. No-op in script mode. */
     public static void ensureLeadingBlank() {
-        ensureLeadingBlank(System.out);
+        openEnvelope(System.out, false);
     }
 
-    /** Leading blank on stderr once per command (failure / working chrome). */
+    /** Leading blank on stderr — at most once per command (failure / working chrome). */
     public static void ensureLeadingBlankErr() {
-        ensureLeadingBlank(System.err);
+        openEnvelope(System.err, true);
     }
 
     /**
-     * Leading blank on {@code dest} (test capture stream, {@code JkManager} sink, or a live
-     * terminal writer). Shares the per-command flag with {@link #out} / {@link #err}.
+     * Leading blank on a <em>stdout-side</em> stream this class does not own: a {@link
+     * cc.jumpkick.cli.tui.JkManager} sink, a live terminal writer, a test capture. Shares the
+     * per-command flag with {@link #out}. For stderr chrome call {@link #ensureLeadingBlankErr()} —
+     * a wrapper stream cannot be recognised by reference, so this overload does not guess.
      */
     public static void ensureLeadingBlank(PrintStream dest) {
-        if (dest == null || SKIP_ENVELOPE.get()) return;
-        if (ENVELOPE_STARTED.compareAndSet(false, true)) {
-            ENVELOPE_ON_ERR.set(dest == System.err);
-            dest.println();
-        }
+        openEnvelope(dest, false);
     }
 
     /**
-     * Trailing blank after the last chrome of a human command. Idempotent. No-op when the envelope
-     * was skipped or never opened (no chrome). Dispatch calls this after {@code run} so individual
-     * commands and settles do not.
+     * A child process owns the terminal from here on ({@code ProcessBuilder.inheritIO}): suppress
+     * the envelope's trailing blank only. Everything already printed stays. Without this, {@code jk
+     * run > app.out} gains a trailing newline the program never emitted.
+     */
+    public static void skipTrailingBlank() {
+        TRAILING_BLANK_SKIPPED.set(true);
+    }
+
+    /**
+     * Trailing blank after the last chrome line of a human command, on whichever stream wrote it
+     * last, so the gap lands after the last visible line and a redirected stdout does not collect
+     * it. Idempotent. No-op when nothing opened the envelope or after {@link #skipTrailingBlank()}.
+     * Deliberately no script-mode check: machine stdout never opens the envelope, so the only thing
+     * that can reach here in script mode is a stderr wedge, and that wedge has earned its gap.
+     * Dispatch calls this after {@code run}; commands and settles do not.
      */
     public static void closeEnvelope() {
-        if (SKIP_ENVELOPE.get() || !ENVELOPE_STARTED.get()) return;
+        if (TRAILING_BLANK_SKIPPED.get() || !ENVELOPE_STARTED.get()) return;
         if (!ENVELOPE_CLOSED.compareAndSet(false, true)) return;
-        PrintStream dest = ENVELOPE_ON_ERR.get() ? System.err : System.out;
+        PrintStream dest = LAST_WRITE_ON_ERR.get() ? System.err : System.out;
         dest.println();
         dest.flush();
     }
 
-    /** Record that the envelope opened on stdout or stderr. No-op after the first chrome. */
-    private static void markStarted(boolean err) {
-        if (SKIP_ENVELOPE.get()) return;
-        if (ENVELOPE_STARTED.compareAndSet(false, true)) {
-            ENVELOPE_ON_ERR.set(err);
-        }
+    /**
+     * Note a chrome write, printing the leading blank on the first one. {@code err} is the side
+     * {@code dest} ultimately writes to; machine stdout is not chrome, so in script mode a stdout
+     * write leaves the envelope untouched. Returns true when this call printed the blank, so a
+     * caller whose own payload <em>is</em> a blank line does not emit a second one.
+     */
+    private static boolean openEnvelope(PrintStream dest, boolean err) {
+        if (dest == null) return false;
+        if (SCRIPT_MODE.get() && !err) return false;
+        LAST_WRITE_ON_ERR.set(err);
+        if (!ENVELOPE_STARTED.compareAndSet(false, true)) return false;
+        dest.println();
+        return true;
+    }
+
+    /** Rewrite {@code line} for plain consoles unless it is machine-bound stdout. */
+    private static String render(String line, boolean err) {
+        return err || !SCRIPT_MODE.get() ? PlainAscii.apply(line) : line;
     }
 
     /** Print a line to stdout (result output). */
@@ -135,20 +189,20 @@ public final class CliOutput {
             out();
             return;
         }
-        ensureLeadingBlank(System.out);
-        System.out.println(PlainAscii.apply(line));
+        openEnvelope(System.out, false);
+        System.out.println(render(line, false));
     }
 
     /** Print a blank line to stdout. The first blank of a command <em>is</em> the envelope. */
     public static void out() {
-        markStarted(false);
+        if (openEnvelope(System.out, false)) return;
         System.out.println();
     }
 
     /** Print to stdout with no trailing newline. */
     public static void outRaw(String s) {
-        ensureLeadingBlank(System.out);
-        System.out.print(PlainAscii.apply(s));
+        openEnvelope(System.out, false);
+        System.out.print(render(s, false));
     }
 
     /** Print a line to stderr (diagnostics, errors, progress). */
@@ -157,70 +211,120 @@ public final class CliOutput {
             err();
             return;
         }
-        ensureLeadingBlank(System.err);
-        System.err.println(PlainAscii.apply(line));
+        openEnvelope(System.err, true);
+        System.err.println(render(line, true));
     }
 
     /** Print a blank line to stderr. The first blank of a command <em>is</em> the envelope. */
     public static void err() {
-        markStarted(true);
+        if (openEnvelope(System.err, true)) return;
         System.err.println();
     }
 
     /** Print to stderr with no trailing newline. */
     public static void errRaw(String s) {
-        ensureLeadingBlank(System.err);
-        System.err.print(PlainAscii.apply(s));
+        openEnvelope(System.err, true);
+        System.err.print(render(s, true));
     }
 
     /**
-     * Stdout for APIs that need a {@link PrintStream} (JkManager, Spinner, renderers). Under
-     * plain mode the stream rewrites Unicode chrome via {@link PlainAscii#wrap}. The first write
-     * opens the envelope.
+     * Stdout for APIs that need a {@link PrintStream} (JkManager, Spinner, renderers). The first
+     * write opens the envelope; string writes are ASCII-rewritten under plain mode unless stdout is
+     * machine-consumed.
      */
     public static PrintStream stdout() {
-        return PlainAscii.wrap(new EnvelopeStream(false));
+        return new EnvelopeStream(false);
     }
 
     /**
-     * Stderr for APIs that need a {@link PrintStream}. Under plain mode the stream rewrites
-     * Unicode chrome via {@link PlainAscii#wrap}. The first write opens the envelope.
+     * Stderr for APIs that need a {@link PrintStream}. The first write opens the envelope and
+     * string writes are ASCII-rewritten under plain mode — stderr is human even in script mode.
      */
     public static PrintStream stderr() {
-        return PlainAscii.wrap(new EnvelopeStream(true));
+        return new EnvelopeStream(true);
     }
 
     /**
-     * PrintStream over {@link LiveSystemStream}. Envelope insertion lives on the {@link
-     * OutputStream} so every {@link PrintStream} path ({@code print}, {@code println}, {@code
-     * printf}, {@code write}) shares one first-write hook.
+     * Charset {@link System#out} / {@link System#err} encode with: {@code property} ({@code
+     * stdout.encoding} / {@code stderr.encoding}, set by the JVM from the console), then {@code
+     * native.encoding}, then the JVM default. Unknown or unsupported names fall through. {@link
+     * #stdout()} hands finished bytes to {@code System.out.write(byte[],int,int)}, which does not
+     * re-encode, so this stream must produce the console's bytes or Unicode chrome renders as
+     * mojibake on a cp1252 / cp437 console.
      */
-    private static final class EnvelopeStream extends PrintStream {
-        EnvelopeStream(boolean err) {
-            super(new LiveSystemStream(err), true, StandardCharsets.UTF_8);
+    static Charset consoleCharset(String property) {
+        Charset declared = charsetOrNull(System.getProperty(property));
+        if (declared != null) return declared;
+        Charset nativeEncoding = charsetOrNull(System.getProperty("native.encoding"));
+        return nativeEncoding != null ? nativeEncoding : Charset.defaultCharset();
+    }
+
+    private static Charset charsetOrNull(String name) {
+        if (name == null || name.isBlank()) return null;
+        try {
+            return Charset.forName(name.trim());
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 
-    /** True when {@code buf[off,len]} is a non-empty run of {@code \n}/{@code \r} only. */
-    static boolean onlyNewlines(byte[] buf, int off, int len) {
+    /**
+     * True when {@code buf[off,len]} is itself a line break: a run of {@code \n} / {@code \r}
+     * carrying at least one {@code \n}. Such a write already <em>is</em> the leading blank, so the
+     * first-write hook must not print a second one. A bare {@code \r} is a cursor return (a live
+     * region repainting a row in place), not a blank line.
+     */
+    static boolean isLineBreak(byte[] buf, int off, int len) {
         if (buf == null || len <= 0) return false;
         int end = Math.min(off + len, buf.length);
-        for (int i = off; i < end; i++) {
+        boolean sawNewline = false;
+        for (int i = Math.max(off, 0); i < end; i++) {
             byte c = buf[i];
-            if (c != '\n' && c != '\r') return false;
+            if (c == '\n') sawNewline = true;
+            else if (c != '\r') return false;
         }
-        return true;
+        return sawNewline;
     }
 
     /**
-     * Forwards to the current {@link System#out}/{@link System#err} without capturing the stream
-     * at construction — tests swap those streams via {@code System.setOut}. The first write
-     * inserts the leading blank unless the payload itself is that blank.
+     * The stream behind {@link #stdout()} / {@link #stderr()}. Rewrites Unicode chrome to ASCII
+     * under plain mode (never for machine stdout), opens the envelope on the first write, and
+     * encodes with the console's charset. One stream does all three so every {@link PrintStream}
+     * path shares one hook and there is exactly one encoder in the chain.
      */
-    private static final class LiveSystemStream extends OutputStream {
+    private static final class EnvelopeStream extends PrintStream implements PlainAscii.Rewriting {
         private final boolean err;
 
+        EnvelopeStream(boolean err) {
+            super(new LiveSystemStream(err), true, err ? STDERR_CHARSET : STDOUT_CHARSET);
+            this.err = err;
+        }
+
+        @Override
+        public void print(String s) {
+            super.print(render(s, err));
+        }
+
+        @Override
+        public void println(String s) {
+            print(s); // subclass path: print + newline, so the rewrite runs once
+            println();
+        }
+    }
+
+    /** Byte sink for {@link EnvelopeStream}: the envelope hook plus a fixed target stream. */
+    private static final class LiveSystemStream extends OutputStream {
+        private final PrintStream target;
+        private final boolean err;
+
+        /**
+         * Snapshots the stream at construction: a {@code JkManager} built from {@link #stdout()}
+         * keeps painting to the real stdout while {@code JkManager.captureOutput()} has {@link
+         * System#out} redirected into its own line sink. Resolving per write would feed the
+         * region's own paint back through the sink (writeAbove &rarr; paint &rarr; sink &rarr; …).
+         */
         LiveSystemStream(boolean err) {
+            this.target = err ? System.err : System.out;
             this.err = err;
         }
 
@@ -231,19 +335,18 @@ public final class CliOutput {
 
         @Override
         public void write(byte[] b, int off, int len) {
-            PrintStream raw = err ? System.err : System.out;
-            if (!SKIP_ENVELOPE.get() && ENVELOPE_STARTED.compareAndSet(false, true)) {
-                ENVELOPE_ON_ERR.set(err);
-                if (!onlyNewlines(b, off, len)) {
-                    raw.println();
+            if (!SCRIPT_MODE.get() || err) {
+                LAST_WRITE_ON_ERR.set(err);
+                if (ENVELOPE_STARTED.compareAndSet(false, true) && !isLineBreak(b, off, len)) {
+                    target.println();
                 }
             }
-            raw.write(b, off, len);
+            target.write(b, off, len);
         }
 
         @Override
         public void flush() {
-            (err ? System.err : System.out).flush();
+            target.flush();
         }
     }
 }

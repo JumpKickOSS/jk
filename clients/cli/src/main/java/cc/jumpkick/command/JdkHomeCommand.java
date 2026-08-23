@@ -34,6 +34,12 @@ public final class JdkHomeCommand implements CliCommand {
                         .hide());
     }
 
+    /** {@code eval "$(jk jdk home)"} — stdout is an export line; the no-pin failure stays a human wedge on stderr. */
+    @Override
+    public boolean scriptMode(Invocation in) {
+        return true;
+    }
+
     @Override
     public int run(Invocation in) throws IOException {
         Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
@@ -46,7 +52,6 @@ public final class JdkHomeCommand implements CliCommand {
                             + " (write `.jdk-version` via `jk jdk use <spec>`)");
             return Exit.CONFIG;
         }
-        CliOutput.skipEnvelope();
         CliOutput.out("export JAVA_HOME=" + shellQuote(jdk.get().home().toString()));
         return 0;
     }

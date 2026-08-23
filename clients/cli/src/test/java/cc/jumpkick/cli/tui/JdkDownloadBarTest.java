@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -18,11 +19,11 @@ class JdkDownloadBarTest {
     @Test
     void show_prints_leading_envelope_blank() throws Exception {
         withNoProgress(() -> {
-            CommandWedge.resetEnvelope();
+            CliOutput.beginCommand(false);
             var buf = new ByteArrayOutputStream();
             var ps = new PrintStream(buf, true, StandardCharsets.UTF_8);
             try (JdkDownloadBar bar = JdkDownloadBar.show(ps, "Eclipse Temurin 25")) {
-                assertThat(CommandWedge.envelopeStarted()).isTrue();
+                assertThat(CliOutput.envelopeStarted()).isTrue();
             }
             String out = buf.toString(StandardCharsets.UTF_8);
             assertThat(out).startsWith("\n");
@@ -34,14 +35,14 @@ class JdkDownloadBarTest {
     @Test
     void showInstalling_reuses_envelope_without_second_blank() throws Exception {
         withNoProgress(() -> {
-            CommandWedge.resetEnvelope();
+            CliOutput.beginCommand(false);
             var buf = new ByteArrayOutputStream();
             var ps = new PrintStream(buf, true, StandardCharsets.UTF_8);
             try (JdkDownloadBar download = JdkDownloadBar.show(ps, "Eclipse Temurin 25")) {
                 download.finish();
             }
             try (JdkDownloadBar installing = JdkDownloadBar.showInstalling(ps, "Eclipse Temurin 25")) {
-                assertThat(CommandWedge.envelopeStarted()).isTrue();
+                assertThat(CliOutput.envelopeStarted()).isTrue();
             }
             String out = buf.toString(StandardCharsets.UTF_8);
             assertThat(out).startsWith("\n");

@@ -23,7 +23,7 @@ Almost every human command settles with a **JkWedge** (green ok / red fail / blu
 - **Tree** / plan step list under a wedge+progress header (`Gap.NONE` / `EACH` / `CHILDREN`)
 - **Wizard** steps with indigo/title chips
 
-API: `cc.jumpkick.cli.tui.JkWedge` (`CommandWedge` is envelope + printOk).
+API: `cc.jumpkick.cli.tui.JkWedge` (`CommandWedge` is the print helpers).
 
 ### Progress variants
 
@@ -122,7 +122,7 @@ Every **human** command prints:
 1. Exactly **one blank line before** the **first** chrome of the invocation — whichever comes first: prep spinner (`EnsureFreshLock` / `CommandWedge.analyzing`), open spinner, live `JkManager` bar, or settle chip  
 2. Exactly **one blank line after** the **last** chrome when the command exits (breathing room before the shell prompt)
 
-`CliOutput` owns the rule. The first `out` / `err` / `stdout()` / `stderr()` write of a leaf command inserts the leading blank. Dispatch calls `CommandWedge.resetEnvelope()` before `run` and `CliOutput.closeEnvelope()` after (including on exception, after the error line). Settles do **not** print the trailing blank — `jk run` must hand off to `inheritIO` with no gap; the close happens after the child returns.
+`CliOutput` owns the rule. The first `out` / `err` / `stdout()` / `stderr()` write of a leaf command inserts the leading blank. Dispatch calls `CliOutput.beginCommand(scriptMode)` before `run` and `CliOutput.closeEnvelope()` after — including on exception, after the error line, which goes through `CliOutput.err`. The trailing blank lands on whichever stream wrote last, so a command that ends on a stderr failure gets its gap there and a redirected stdout stays clean. Settles do **not** close. Plugin-declared commands (dispatched over the wire, not via `CliCommand`) share the same envelope.
 
 Spinners, `JkManager`, `JdkDownloadBar`, and wizards (`markEnvelopeStarted` after their own leading blank) share the same flag, so conditional paths (cache-hit vs rebuild, lock freshen before explain) cannot skip or double the blanks.
 
@@ -136,22 +136,21 @@ Helpers (wedge *formatting*, not envelope enforcement):
 - Pre-rendered wedge line: `CommandWedge.printLine(line)` / `printErrLine(line)`  
 - Multi-line chrome: `envelopeStart()` / `envelopeStartErr()` then body lines  
 - Live plans: `JkManager` opens the leading blank if prep has not already  
-- **Exec handoff** (`jk run`): command may print a single separator before `inheritIO`  
+- **Exec handoff** — every `inheritIO` exec (`jk run`, `jk mvn`, `jk gradle`, `jk jshell`, `jk shell`, script files): call `CliOutput.skipTrailingBlank()` immediately before it, because the child owns stdout from there and `jk run > app.out` must not collect jk's closing blank  
 
 Optional blank lines **between** chrome and follow-up tips (e.g. after `jk add`) are fine — that is content spacing, not the closing envelope.
 
-**Script-mode** stdout must call `CliOutput.skipEnvelope()` before printing (paths, tokens, shell hooks). Dispatch already skips for `--output json` / `jsonl`. `jk --version` writes `System.out` directly and is outside the envelope.
+**Script-mode** commands override `scriptMode(Invocation)` on `CliCommand`. Dispatch consults it once, before `run`, and it suppresses the envelope **and** the Unicode→ASCII rewrite on stdout, so the payload reaches its consumer byte-exact. stderr stays human — spaced and formatted — even then. `--output json` / `jsonl` enters the same mode. `jk --version` writes `System.out` directly and is outside the envelope, as are parse/usage errors and help screens.
 
 Do **not** write human chrome with raw `System.out.println` — that bypasses `CliOutput` and skips the blank.
 
 ## Script-mode allowlist (no wedge)
 
-These commands intentionally emit only machine-consumable stdout:
+These commands intentionally emit only machine-consumable stdout. Every row but `jk --version` — which prints before dispatch begins a command — is a `scriptMode(Invocation)` override; `ScriptModeAllowlistTest` fails when the table and the code drift.
 
 | Command | Typical stdout | Consumer |
 |---------|----------------|----------|
 | `jk activate <shell>` | PATH + hooks + completions | `eval "$("$HOME/.local/bin/jk" activate bash)"` |
-| `jk deactivate` | Teardown script | activate proxy |
 | `jk hook-env -s <shell>` | Env sync lines | shell hook |
 | `jk jdk home` | `export JAVA_HOME=…` | `eval "$(jk jdk home)"` |
 | `jk auth token [provider]` | Single-line token | scripts / curl |
@@ -161,10 +160,10 @@ These commands intentionally emit only machine-consumable stdout:
 | `jk --version` / `-V` | `jk <version>` | CI |
 | `jk explain --graph dot\|mermaid` | Graph source | `dot` / editors |
 | `jk selective resolve` (+ `--json`) | Paths or JSON | CI selective plans |
-| `jk bsp serve` | JSON-RPC on stdio | IDE BSP client |
-| `jk ide --print-model` | Wire JSON | IDE plugins |
+| `jk bsp serve` (bare `jk bsp` is `serve`; `run` is an alias) | JSON-RPC on stdio | IDE BSP client |
+| `jk ide --print-model` (and its `jk vscode` alias) | Wire JSON | IDE plugins |
 
-Adding a new exception requires updating this table.
+Adding a new exception requires updating this table and the override that backs it.
 
 ## List/status surfaces and hybrid settles (JK-1375)
 
@@ -184,7 +183,7 @@ changing the code (and vice versa):
 | `jk storage usage` | Element · File Count · Size (Jar Files / Native Bins / OCI Images / Worker JARs), plus Total, a spanning utilization row, and a last-cleaned footer |
 
 Use `new Table(title).columns(...).row(...)` (or the `Table.render` static for string cells).
-`Table.print()` opens the envelope and degrades to ASCII under `--no-ansi`.
+Rendered rows go out through `CliOutput`, so the envelope opens on the first one, and they degrade to ASCII under `--no-ansi`.
 
 ### Wedge header + rows
 
@@ -267,9 +266,9 @@ Under `--output json` / `jsonl`, suppress human chrome (no envelope, no wedge). 
 
 ## Checklist for new commands
 
-1. Is this **script-mode** (eval / path / token / protocol)? If yes: plain stdout only; call `CliOutput.skipEnvelope()` before printing; document here.  
+1. Is this **script-mode** (eval / path / token / protocol)? If yes: plain stdout only; override `scriptMode(Invocation)` and add the row to the allowlist above.  
 2. Otherwise: settle with **CommandWedge** (or table/tree/wizard that includes wedge chrome).  
-3. Print through **`CliOutput`** (the leading blank is automatic). Call `CliOutput.skipEnvelope()` only for machine-consumed stdout.  
+3. Print through **`CliOutput`**, never raw `System.out` — the leading blank is automatic.  
 4. Bounded work → bar; indeterminate → spinner; always settle to a **static** icon.  
 5. Verify **nerd / ansi / plain** (`--no-ansi`) look intentional.  
 6. Agents: document JSONL events if you add machine-visible facts.
@@ -279,7 +278,7 @@ Under `--output json` / `jsonl`, suppress human chrome (no envelope, no wedge). 
 | Concern | Location |
 |---------|----------|
 | Styled text | `cli/tui/RichText.java` — markup (`[bold]`, `[#hex]`, `[link url]`, theme tokens) |
-| Settled wedge | `cli/tui/JkWedge.java` (`CommandWedge` is print helpers; `CliOutput` owns the envelope) |
+| Settled wedge | `cli/tui/JkWedge.java` (`CommandWedge` formats wedges and opens the envelope on a caller-supplied stream; `CliOutput` owns the envelope lifecycle) |
 | Pill | `cli/tui/Pill.java` — nerd `label` / ansi padded / plain `[label]` |
 | Coord | `cli/tui/Coord.java` + `theme/Coords` RichText factories |
 | Code | `SourceCode.java` / `JavaCode` / `KotlinCode` / `GroovyCode` |

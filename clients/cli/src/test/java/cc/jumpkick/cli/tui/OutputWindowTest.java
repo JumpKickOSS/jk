@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.TestAnsi;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -40,7 +41,7 @@ class OutputWindowTest {
     @Test
     void writeAbove_keeps_printing_past_ring_capacity_when_not_animating() {
         // JK-2085: piped/CI plan mode (animate=false) printed nothing after the 200th line.
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), false, true, 80);
         cm.name = "Build";
@@ -60,7 +61,7 @@ class OutputWindowTest {
         var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
         cc.jumpkick.config.SessionContext.runWhere(
                 cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
-                    CommandWedge.resetEnvelope();
+                    CliOutput.beginCommand(false);
                     var buf = new ByteArrayOutputStream();
                     var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
                     cm.name = "Build";
@@ -93,7 +94,7 @@ class OutputWindowTest {
     @Test
     void reopen_never_redumps_committed_lines() {
         // JK-2092: open dumps into permanent scrollback; close→reopen must dump only new lines.
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
         cm.name = "Build";
@@ -125,7 +126,7 @@ class OutputWindowTest {
     void full_viewport_keeps_rule_and_header_and_trims_tree_rows() {
         // JK-2106: at a full viewport the tail-slice deleted the separator (and one more over,
         // the header). Trimming must sacrifice tree rows instead.
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
         cm.name = "Build";
@@ -149,7 +150,7 @@ class OutputWindowTest {
     void piped_plan_output_preserves_blank_lines_verbatim() {
         // JK-2108: the peek ring strips blanks, but piped/CI output prints tool lines verbatim —
         // docs/tui.md promises the non-TTY path is unchanged.
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), false, true, 80);
         cm.name = "Build";
@@ -172,7 +173,7 @@ class OutputWindowTest {
 
     @Test
     void live_region_never_fills_full_terminal_height() {
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
         cm.name = "Build";
@@ -216,7 +217,7 @@ class OutputWindowTest {
 
     @Test
     void plan_opens_peek_when_config_build_output_true() {
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var prev = cc.jumpkick.config.SessionContext.current();
         try {
             cc.jumpkick.config.SessionContext.installConfig(
@@ -234,7 +235,7 @@ class OutputWindowTest {
 
     @Test
     void plan_keeps_peek_closed_by_default() {
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var prev = cc.jumpkick.config.SessionContext.current();
         try {
             cc.jumpkick.config.SessionContext.installConfig(cc.jumpkick.config.JkConfig.empty());
@@ -249,7 +250,7 @@ class OutputWindowTest {
 
     @Test
     void writeAbove_buffers_when_hidden_and_paints_when_shown() {
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         // animate=true so plan mode buffers without always printing
         var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
@@ -273,7 +274,7 @@ class OutputWindowTest {
 
     @Test
     void visible_empty_buffer_still_shows_rule_above_wedge() {
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
         cm.name = "Build";
@@ -292,7 +293,7 @@ class OutputWindowTest {
 
     @Test
     void hide_after_committed_output_replaces_rule_with_blank_separator() {
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
         cm.name = "Build";
@@ -315,7 +316,7 @@ class OutputWindowTest {
 
     @Test
     void settle_after_committed_process_output_inserts_one_blank_before_chip() {
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
         cm.name = "Build";
@@ -360,7 +361,7 @@ class OutputWindowTest {
 
     @Test
     void showProcessFailureOutput_opens_pane() {
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
         cm.name = "Build";

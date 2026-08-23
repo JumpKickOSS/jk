@@ -23,9 +23,17 @@ public final class ManualCommand implements CliCommand {
         return "Print the JumpKick playbook for agents and new users";
     }
 
+    /**
+     * The playbook is consumed as a document (MCP, redirection into a file), so the bytes must match
+     * {@link JkManual#markdown()} exactly &mdash; em dashes and middots included.
+     */
+    @Override
+    public boolean scriptMode(Invocation in) {
+        return true;
+    }
+
     @Override
     public int run(Invocation in) {
-        CliOutput.skipEnvelope();
         CliOutput.outRaw(JkManual.markdown());
         CliOutput.stdout().flush();
         return Exit.SUCCESS;

@@ -3,10 +3,10 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.RichText;
 import java.nio.file.Path;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,8 +16,8 @@ import org.junit.jupiter.api.Test;
 class UpdateCommandSettleTest {
 
     @BeforeEach
-    void resetEnvelope() {
-        CommandWedge.resetEnvelope();
+    void beginCommand() {
+        CliOutput.beginCommand(false);
     }
 
     @Test

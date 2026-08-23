@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.TestAnsi;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -46,7 +47,7 @@ class ModuleScopeHintTest {
         var noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
         cc.jumpkick.config.SessionContext.runWhere(
                 cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
-                    CommandWedge.resetEnvelope();
+                    CliOutput.beginCommand(false);
                     var buf = new ByteArrayOutputStream();
                     var prev = System.out;
                     try {

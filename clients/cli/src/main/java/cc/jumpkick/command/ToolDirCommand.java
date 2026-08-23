@@ -29,10 +29,15 @@ public final class ToolDirCommand implements CliCommand {
                         .hide());
     }
 
+    /** A bare path for installers to add to {@code PATH}. */
+    @Override
+    public boolean scriptMode(Invocation in) {
+        return true;
+    }
+
     @Override
     public int run(Invocation in) {
         Path toolsDir = in.value("tools-dir").map(Path::of).orElse(null);
-        CliOutput.skipEnvelope();
         CliOutput.out(
                 String.valueOf(toolsDir != null ? toolsDir : JkDirs.cache().resolve("tools")));
         return 0;

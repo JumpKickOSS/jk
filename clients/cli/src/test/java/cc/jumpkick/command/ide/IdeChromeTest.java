@@ -3,8 +3,8 @@ package cc.jumpkick.command.ide;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.TestAnsi;
-import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.RichText;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -20,8 +20,8 @@ import org.junit.jupiter.api.io.TempDir;
 class IdeChromeTest {
 
     @AfterEach
-    void resetEnvelope() {
-        CommandWedge.resetEnvelope();
+    void beginCommand() {
+        CliOutput.beginCommand(false);
     }
 
     @Test

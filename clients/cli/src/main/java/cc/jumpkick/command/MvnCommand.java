@@ -86,6 +86,7 @@ public final class MvnCommand implements CliCommand {
         ProcessBuilder pb =
                 new ProcessBuilder(command).directory(projectDir.toFile()).inheritIO();
         PassthroughEnv.apply(pb.environment(), jdk.map(InstalledJdk::home).orElse(null));
+        CliOutput.skipTrailingBlank();
         return pb.start().waitFor();
     }
 

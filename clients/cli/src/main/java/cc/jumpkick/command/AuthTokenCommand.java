@@ -48,6 +48,12 @@ public final class AuthTokenCommand implements CliCommand {
                 "github | gitlab | gitea (forgejo/codeberg) | bitbucket.\nOmit to auto-detect."));
     }
 
+    /** The single token line on stdout feeds {@code curl -H "Authorization: Bearer $(jk auth token)"}. */
+    @Override
+    public boolean scriptMode(Invocation in) {
+        return true;
+    }
+
     @Override
     public int run(Invocation in) {
         String provider = in.positionals().isEmpty() ? null : in.positionals().get(0);
@@ -81,7 +87,6 @@ public final class AuthTokenCommand implements CliCommand {
                     + target.kind().id());
             return 1;
         }
-        CliOutput.skipEnvelope();
         CliOutput.out(token.get().value());
         return 0;
     }

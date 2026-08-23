@@ -80,8 +80,9 @@ public final class GlobalOptions {
     }
 
     /**
-     * True when this invocation asked for machine-readable JSON/JSONL on stdout — used by
-     * dispatch to skip the human blank-line envelope before {@code run}.
+     * True when this invocation asked for machine-readable JSON/JSONL on stdout — used by dispatch
+     * to enter script mode before {@code run}, alongside a command's own
+     * {@code CliCommand.scriptMode(Invocation)}.
      */
     public static boolean outputIsJson(Invocation in) {
         return outputIsJson(in.value("output").orElse(null));

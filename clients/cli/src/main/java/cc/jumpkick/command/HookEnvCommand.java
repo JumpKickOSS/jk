@@ -38,6 +38,12 @@ public final class HookEnvCommand implements CliCommand {
                 .require());
     }
 
+    /** The activate script's directory hook evals stdout on every prompt. */
+    @Override
+    public boolean scriptMode(Invocation in) {
+        return true;
+    }
+
     @Override
     public int run(Invocation in) throws IOException {
         String shellName = in.value("shell").orElseThrow();
@@ -54,7 +60,6 @@ public final class HookEnvCommand implements CliCommand {
         var out = new StringBuilder();
         var snapshot = JkDiff.EnvSnapshot.fromSystem();
         emit(shell.get(), target, prevDiff, snapshot, out);
-        CliOutput.skipEnvelope();
         CliOutput.outRaw(String.valueOf(out));
         return 0;
     }

@@ -79,6 +79,7 @@ public final class ShellCommand implements CliCommand {
 
         var javaHome = target.vars().get(JkEnv.JAVA_HOME);
         CliOutput.out("Entering jk shell with JAVA_HOME=" + javaHome);
+        CliOutput.skipTrailingBlank();
         Process p = pb.start();
         return p.waitFor();
     }

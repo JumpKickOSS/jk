@@ -141,9 +141,14 @@ public final class StorageCommand extends GroupCommand {
             return "Print the artifact store directory path";
         }
 
+        /** A bare path for shell substitution — {@code ls "$(jk storage dir)"}. */
+        @Override
+        public boolean scriptMode(Invocation in) {
+            return true;
+        }
+
         @Override
         public int run(Invocation in) {
-            CliOutput.skipEnvelope();
             CliOutput.out(String.valueOf(JkStores.store()));
             return 0;
         }

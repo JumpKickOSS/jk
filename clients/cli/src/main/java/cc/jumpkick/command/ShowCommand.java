@@ -41,6 +41,12 @@ public final class ShowCommand implements CliCommand {
         return List.of(Param.of("task", Arity.ONE, "Task name (package-jar, compile-java, …)"));
     }
 
+    /** Always the path-printing form of {@code jk tasks show}: one path per line for command substitution. */
+    @Override
+    public boolean scriptMode(Invocation in) {
+        return true;
+    }
+
     @Override
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);

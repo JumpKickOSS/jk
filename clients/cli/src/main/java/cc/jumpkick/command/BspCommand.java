@@ -48,13 +48,25 @@ public final class BspCommand implements CliCommand {
         return List.of(Param.of("action", Arity.ZERO_OR_ONE, "install (write .bsp/jk.json) or serve (default: serve)"));
     }
 
+    /** The action positional, lowercased; bare {@code jk bsp} is {@code serve}. */
+    private static String action(Invocation in) {
+        return in.positionals().isEmpty()
+                ? "serve"
+                : in.positionals().getFirst().trim().toLowerCase(Locale.ROOT);
+    }
+
+    /** Serving is JSON-RPC on stdio: the IDE's BSP client is the only reader of stdout. */
+    @Override
+    public boolean scriptMode(Invocation in) {
+        String action = action(in);
+        return action.equals("serve") || action.equals("run");
+    }
+
     @Override
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
         Path dir = global.workingDir();
-        String action = in.positionals().isEmpty()
-                ? "serve"
-                : in.positionals().getFirst().trim().toLowerCase(Locale.ROOT);
+        String action = action(in);
 
         return switch (action) {
             case "install" -> install(dir);

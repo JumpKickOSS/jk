@@ -71,6 +71,12 @@ public final class IdeCommand implements CliCommand {
         return opts;
     }
 
+    /** {@code --print-model} is the IDE plugins' wire channel: raw JSON on stdout, byte-exact. */
+    @Override
+    public boolean scriptMode(Invocation in) {
+        return in.has("print-model");
+    }
+
     @Override
     public int run(Invocation in) throws Exception {
         // Machine path for IDE plugins: structured model without writing .iml/.vscode.
@@ -135,7 +141,6 @@ public final class IdeCommand implements CliCommand {
         try {
             var wire = IdeSupport.wireModel(in);
             // Raw wire JSON only — no TTY chrome (plugins parse stdout).
-            CliOutput.skipEnvelope();
             CliOutput.out(wire.encode());
             return 0;
         } catch (IdeSupport.IdeException e) {

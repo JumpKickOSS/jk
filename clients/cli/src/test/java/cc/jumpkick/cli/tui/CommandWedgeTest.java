@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.NerdFontCaps;
 import java.io.ByteArrayOutputStream;
@@ -55,19 +56,19 @@ class CommandWedgeTest {
 
     @Test
     void envelope_start_is_idempotent_until_reset() {
-        CommandWedge.resetEnvelope();
-        assertThat(CommandWedge.envelopeStarted()).isFalse();
+        CliOutput.beginCommand(false);
+        assertThat(CliOutput.envelopeStarted()).isFalse();
         CommandWedge.envelopeStart();
-        assertThat(CommandWedge.envelopeStarted()).isTrue();
+        assertThat(CliOutput.envelopeStarted()).isTrue();
         CommandWedge.envelopeStart(); // no second blank side effect on flag
-        assertThat(CommandWedge.envelopeStarted()).isTrue();
-        CommandWedge.resetEnvelope();
-        assertThat(CommandWedge.envelopeStarted()).isFalse();
+        assertThat(CliOutput.envelopeStarted()).isTrue();
+        CliOutput.beginCommand(false);
+        assertThat(CliOutput.envelopeStarted()).isFalse();
     }
 
     @Test
     void printFail_opens_stderr_envelope_once() {
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var err = new ByteArrayOutputStream();
         var prev = System.err;
         try {
@@ -90,7 +91,7 @@ class CommandWedgeTest {
 
     @Test
     void printOk_opens_stdout_envelope_once() {
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var prev = System.out;
         try {
@@ -108,7 +109,7 @@ class CommandWedgeTest {
 
     @Test
     void printLine_opens_stdout_envelope_once() {
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var prev = System.out;
         try {

@@ -89,19 +89,23 @@ public final class PlainAscii {
         return true;
     }
 
+    /** Marker for streams that already ASCII-rewrite their string writes (see {@link #wrap}). */
+    public interface Rewriting {}
+
     /**
-     * Return {@code out} unchanged under ANSI; otherwise a stream that runs {@link #apply} on
-     * every {@code print(String)} / {@code println(String)} so JkManager and Spinner do not
-     * need per-call transforms.
+     * Return {@code out} unchanged under ANSI, or when it already rewrites its own string writes;
+     * otherwise a stream that runs {@link #apply} on every {@code print(String)} /
+     * {@code println(String)} so JkManager and Spinner do not need per-call transforms. Wrapping is
+     * idempotent by design: a second layer would re-encode the bytes as well as re-transform them.
      */
     public static PrintStream wrap(PrintStream out) {
         if (out == null || Theme.active().isAnsi()) return out;
-        if (out instanceof PlainPrintStream) return out;
+        if (out instanceof Rewriting) return out;
         return new PlainPrintStream(out);
     }
 
     /** PrintStream that ASCII-rewrites string writes under plain mode. */
-    private static final class PlainPrintStream extends PrintStream {
+    private static final class PlainPrintStream extends PrintStream implements Rewriting {
         PlainPrintStream(PrintStream delegate) {
             super(delegate, true, StandardCharsets.UTF_8);
         }

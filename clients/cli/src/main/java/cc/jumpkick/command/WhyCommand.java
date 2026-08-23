@@ -80,7 +80,7 @@ public final class WhyCommand implements CliCommand {
             if (!any) {
                 CliOutput.out("  (not reachable from any declared dependency — orphan lockfile entry?)");
             }
-            if (report.matchNames().size() > 1) CliOutput.out();
+            if (i + 1 < report.matchNames().size()) CliOutput.out();
         }
         return 0;
     }

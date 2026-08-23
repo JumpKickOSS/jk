@@ -20,6 +20,8 @@ class TrustCommandTest {
                 .isEqualTo(0);
         String listed = Capture.stdout(() -> Jk.execute("trust", "list", "--state-dir", state.toString()));
         assertThat(listed).contains("https://github.com/acme/");
+        // `jk trust list` is human output: both the populated and the empty branch get the envelope.
+        assertThat(listed).startsWith("\n");
 
         assertThat(Jk.execute("trust", "remove", "--state-dir", state.toString(), "https://github.com/acme/"))
                 .isEqualTo(0);
