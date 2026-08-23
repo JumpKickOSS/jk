@@ -103,6 +103,39 @@ class JavaIncrementalCompilerTest {
     }
 
     @Test
+    void a_second_incremental_round_gets_fresh_processor_instances(@TempDir Path dir) throws Exception {
+        // AbstractProcessor.init is single-shot, and Zinc calls the Java compiler once per
+        // incremental round. Reusing one processor set across rounds fails the whole compile with
+        // "Cannot call init more than once." — only reachable when round 1 invalidates more work,
+        // which is why it survived a green first build.
+        Path procDir = dir.resolve("proc");
+        writeGenProcessor(procDir);
+
+        Path base = dir.resolve("src/app/Base.java");
+        Path user = dir.resolve("src/app/User.java");
+        Files.createDirectories(base.getParent());
+        Files.writeString(base, "package app; public class Base { public int n() { return 1; } }");
+        Files.writeString(user, "package app; @gen.Gen public class User { long m() { return new Base().n(); } }");
+
+        Path classOut = dir.resolve("classes");
+        Path genOut = dir.resolve("gen-src");
+        Path workdir = dir.resolve("zinc-work");
+
+        assertThat(compileBoth(dir, procDir, classOut, genOut, workdir, base, user))
+                .as("first compile")
+                .isZero();
+
+        // Change Base's return type so Zinc recompiles Base, then discovers User depends on the
+        // changed signature and must follow — a second javac round inside one invocation. User
+        // widens to long, so it stays well-typed and only the round count differs.
+        Files.writeString(base, "package app; public class Base { public long n() { return 1L; } }");
+
+        String out = captureCompile(dir, procDir, classOut, genOut, workdir, base, user);
+        assertThat(out).doesNotContain("Cannot call init more than once");
+        assertThat(out).contains("\"t\":\"result\",\"status\":\"OK\"");
+    }
+
+    @Test
     void zinc_compile_emits_compiled_source_list(@TempDir Path dir) throws Exception {
         Path src = dir.resolve("src/a/Hello.java");
         Files.createDirectories(src.getParent());
@@ -150,5 +183,83 @@ class JavaIncrementalCompilerTest {
         args.addAll(files);
         int rc = javac.run(null, null, null, args.toArray(new String[0]));
         if (rc != 0) throw new IllegalStateException("fixture javac failed, rc=" + rc);
+    }
+
+    /** The {@code gen.Gen} annotation + {@code gen.GenProc} processor, ServiceLoader-registered in {@code procDir}. */
+    private static void writeGenProcessor(Path procDir) throws Exception {
+        compile(procDir, Map.of("gen.Gen", """
+                        package gen;
+                        import java.lang.annotation.*;
+                        @Retention(RetentionPolicy.SOURCE) @Target(ElementType.TYPE)
+                        public @interface Gen {}
+                        """, "gen.GenProc", """
+                        package gen;
+                        import javax.annotation.processing.*;
+                        import javax.lang.model.SourceVersion;
+                        import javax.lang.model.element.*;
+                        import javax.tools.JavaFileObject;
+                        import java.io.*;
+                        import java.util.Set;
+                        @SupportedAnnotationTypes("gen.Gen")
+                        public class GenProc extends AbstractProcessor {
+                            public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
+                            public boolean process(Set<? extends TypeElement> a, RoundEnvironment r) {
+                                for (Element e : r.getElementsAnnotatedWith(Gen.class)) {
+                                    if (!(e instanceof TypeElement t)) continue;
+                                    String pkg = processingEnv.getElementUtils().getPackageOf(t).getQualifiedName().toString();
+                                    String name = (pkg.isEmpty()?"":pkg+".") + t.getSimpleName() + "Gen";
+                                    try {
+                                        JavaFileObject f = processingEnv.getFiler().createSourceFile(name, t);
+                                        try (Writer w = f.openWriter()) {
+                                            w.write((pkg.isEmpty()?"":"package "+pkg+";\\n") + "public class " + t.getSimpleName() + "Gen {}\\n");
+                                        }
+                                    } catch (IOException ex) { throw new UncheckedIOException(ex); }
+                                }
+                                return true;
+                            }
+                        }
+                        """));
+        Path services = procDir.resolve("META-INF/services/javax.annotation.processing.Processor");
+        Files.createDirectories(services.getParent());
+        Files.writeString(services, "gen.GenProc\n");
+    }
+
+    /** Exit code of one {@code compileSpec} over {@code sources}, sharing {@code workdir} so Zinc stays incremental. */
+    private static int compileBoth(Path dir, Path procDir, Path classOut, Path genOut, Path workdir, Path... sources)
+            throws Exception {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        return runSpec(dir, procDir, classOut, genOut, workdir, buf, sources);
+    }
+
+    /** As {@link #compileBoth} but returns the JSONL the run emitted. */
+    private static String captureCompile(
+            Path dir, Path procDir, Path classOut, Path genOut, Path workdir, Path... sources) throws Exception {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        runSpec(dir, procDir, classOut, genOut, workdir, buf, sources);
+        return buf.toString(StandardCharsets.UTF_8);
+    }
+
+    private static int runSpec(
+            Path dir,
+            Path procDir,
+            Path classOut,
+            Path genOut,
+            Path workdir,
+            ByteArrayOutputStream buf,
+            Path... sources)
+            throws Exception {
+        var spec = new cc.jumpkick.plugin.protocol.SpecWriter()
+                .op(cc.jumpkick.plugin.protocol.PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
+                .configInt("release", 21)
+                .layout(Map.of("classesDir", classOut, "sourceOutput", genOut, "workdir", workdir));
+        for (Path s : sources) spec = spec.source(s.toAbsolutePath());
+        spec = spec.cp(procDir, cc.jumpkick.plugin.protocol.PluginProtocol.ROLE_COMPILE)
+                .cp(procDir, cc.jumpkick.plugin.protocol.PluginProtocol.ROLE_PROCESSOR);
+        Path specFile = Files.createTempFile(dir, "spec", ".txt");
+        Files.write(specFile, spec.lines());
+        return JavaIncrementalCompiler.compileSpec(
+                specFile,
+                new cc.jumpkick.plugin.protocol.ProtocolWriter(
+                        new PrintStream(buf, true, StandardCharsets.UTF_8), "##JKJC:"));
     }
 }

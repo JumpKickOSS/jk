@@ -243,7 +243,7 @@ public final class ZincJavaCompiler {
             FileConverter converter = PlainVirtualFileConverter.converter();
             ApProvenance provenance = new ApProvenance();
             processors = loadProcessors(processorPath);
-            javac = recordingJavac(converter, processors.processors(), provenance);
+            javac = recordingJavac(converter, processors, provenance);
             Compilers compilers = mixed != null ? mixedCompilers(javac, mixed) : javaOnlyCompilers(javac);
 
             VirtualFile[] sourceFiles = virtual(sources, converter);
@@ -832,10 +832,10 @@ public final class ZincJavaCompiler {
     }
 
     private static RecordingJavaCompiler recordingJavac(
-            FileConverter converter, List<Processor> processors, ApProvenance provenance) {
+            FileConverter converter, ProcessorLoad processors, ApProvenance provenance) {
         JavaCompiler javac;
-        if (!processors.isEmpty()) {
-            javac = new ProvenanceJavac(processors, provenance);
+        if (processors.any()) {
+            javac = new ProvenanceJavac(processors.loader(), provenance);
         } else {
             scala.Option<JavaCompiler> local = sbt.internal.inc.javac.JavaCompiler.local();
             javac = local.isDefined() ? local.get() : sbt.internal.inc.javac.JavaCompiler.fork(scala.Option.empty());
@@ -843,9 +843,13 @@ public final class ZincJavaCompiler {
         return new RecordingJavaCompiler(javac, converter);
     }
 
-    private record ProcessorLoad(List<Processor> processors, URLClassLoader loader) implements AutoCloseable {
+    /**
+     * The processor path's classloader, kept open for the whole compile. Holds no {@link Processor}
+     * instances: each javac round loads its own (see {@link #freshProcessors}).
+     */
+    private record ProcessorLoad(boolean any, URLClassLoader loader) implements AutoCloseable {
         static ProcessorLoad none() {
-            return new ProcessorLoad(List.of(), null);
+            return new ProcessorLoad(false, null);
         }
 
         @Override
@@ -870,9 +874,21 @@ public final class ZincJavaCompiler {
             }
         }
         URLClassLoader loader = new URLClassLoader(urls, ZincJavaCompiler.class.getClassLoader());
+        // Probe only — the instance the iterator creates is discarded without being initialized.
+        boolean any = ServiceLoader.load(Processor.class, loader).iterator().hasNext();
+        return new ProcessorLoad(any, loader);
+    }
+
+    /**
+     * A new {@link Processor} instance per javac round. {@link javax.annotation.processing.AbstractProcessor#init}
+     * is single-shot — it throws {@code "Cannot call init more than once."} — while Zinc calls the Java
+     * compiler once per incremental round, so a round set is never reusable. Package-private so a test
+     * can pin that two loads share nothing.
+     */
+    static List<Processor> freshProcessors(URLClassLoader loader) {
         List<Processor> processors = new ArrayList<>();
         for (Processor p : ServiceLoader.load(Processor.class, loader)) processors.add(p);
-        return new ProcessorLoad(processors, loader);
+        return processors;
     }
 
     private static String[] javacOptions(int release, List<String> extra, Path sourceOutput, List<Path> processorPath) {
@@ -934,11 +950,11 @@ public final class ZincJavaCompiler {
      * Used instead of Zinc's {@code JavaCompiler.local} when a processor path is present.
      */
     private static final class ProvenanceJavac implements JavaCompiler {
-        private final List<Processor> processors;
+        private final URLClassLoader loader;
         private final ApProvenance provenance;
 
-        ProvenanceJavac(List<Processor> processors, ApProvenance provenance) {
-            this.processors = processors;
+        ProvenanceJavac(URLClassLoader loader, ApProvenance provenance) {
+            this.loader = loader;
             this.provenance = provenance;
         }
 
@@ -971,7 +987,7 @@ public final class ZincJavaCompiler {
                 }
                 Iterable<? extends JavaFileObject> units = fm.getJavaFileObjectsFromPaths(srcPaths);
                 JavacTask task = (JavacTask) javac.getTask(null, fm, diags, Arrays.asList(options), null, units);
-                task.setProcessors(provenance.wrap(processors));
+                task.setProcessors(provenance.wrap(freshProcessors(loader)));
                 boolean ok = task.call();
                 sbt.internal.inc.javac.DiagnosticsReporter bridge =
                         new sbt.internal.inc.javac.DiagnosticsReporter(reporter);
