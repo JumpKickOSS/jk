@@ -3,8 +3,9 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.terminal.Signals;
+import cc.jumpkick.terminal.Terminals;
 import java.nio.file.Path;
-import org.jline.utils.Signals;
 
 /**
  * App-level SIGINT handlercancel the live engine job through the same
@@ -20,19 +21,11 @@ import org.jline.utils.Signals;
  * <li>{@code halt(2)} — guaranteed process death if anything above is stuck
  * </ol>
  *
- * <p>Wizards temporarily override this via {@link org.jline.terminal.Terminal#handle} so Ctrl-C
- * inside a wizard runs the wizard's own cancel path instead. The wizard re-calls {@link #install}
- * from its {@code finally} block so the global default is restored on exit — JLine's "previous
- * handler" tracking doesn't reliably round-trip the underlying {@code sun.misc.Signal} handler back
- * into place.
+ * <p>Wizards run in {@code PROMPT} (ISIG off) so Ctrl-C arrives as {@code Key.CtrlC} instead of
+ * SIGINT. Live plans use {@code PLAN_KEYS} (ISIG on) so this handler still owns Ctrl-C.
  *
- * <p>Uses {@link Signals#register} (JLine's reflective wrapper around {@code sun.misc.Signal})
- * instead of calling that class directly, so the compiler doesn't emit "internal proprietary API"
- * warnings.
- *
- * <p>JLine {@code TerminalBuilder} defaults to {@code nativeSignals(true)} + {@code SIG_DFL}, which
- * replaces this handler. Every system-terminal open used for Ctrl-O / probes must pass
- * {@code nativeSignals(false)} and/or call {@link #install} again after {@code build()}.
+ * <p>Uses {@link Signals#register} (reflective {@code sun.misc.Signal} wrapper) so the compiler
+ * doesn't emit "internal proprietary API" warnings.
  */
 public final class GlobalCancel {
 
@@ -85,7 +78,7 @@ public final class GlobalCancel {
             Thread tty = Thread.ofPlatform()
                     .daemon(true)
                     .name("jk-sigint-tty-restore")
-                    .start(Interactivity::prepareProcessExit);
+                    .start(Terminals::shutdown);
             try {
                 tty.join(500L);
             } catch (InterruptedException ignored) {

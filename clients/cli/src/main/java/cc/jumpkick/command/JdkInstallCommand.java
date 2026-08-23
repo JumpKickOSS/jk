@@ -30,12 +30,13 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.terminal.TerminalSession;
+import cc.jumpkick.terminal.Terminals;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.Optional;
-import org.jline.terminal.Terminal;
 
 /**
  * {@code jk jdk install [<spec>]} — pull a JDK from the JetBrains JDK feed and unpack it into the
@@ -138,7 +139,7 @@ public final class JdkInstallCommand implements CliCommand {
 
         // Pre-plan sanity: when no spec and no TTY, we can't go further.
         boolean haveSpec = spec != null && !spec.isBlank();
-        if (!haveSpec && !isInteractiveTerminal()) {
+        if (!haveSpec && !isInteractiveTerminalSession()) {
             cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "JDK",
                     "stdin is not a TTY — pass `lts` / `latest` "
@@ -330,11 +331,10 @@ public final class JdkInstallCommand implements CliCommand {
     private void offerDefaults(InstalledJdk jdk, boolean alreadyMadeDefault) {
         int newMajor = JdkListCommand.parseMajor(jdk.identifier());
         if (newMajor == 0 || !Confirm.isInteractiveTerminal()) return;
-        // Open one terminal for all prompts in this call — avoids repeated
-        // TerminalBuilder probes (DA / DECRQM) that would accumulate in stdin
-        // and cause JLine errors on the second Confirm.ask() invocation.
-        try (org.jline.terminal.Terminal terminal = Wizard.openTerminal()) {
-            Wizard.drainInput(terminal.reader(), 40L);
+        // One session for all prompts in this call.
+        TerminalSession terminal = Terminals.controlling();
+        terminal.drain(java.time.Duration.ofMillis(40));
+        try {
             JdkInventory defaults = JdkInventory.of(jdksDir != null ? jdksDir : cc.jumpkick.util.JkDirs.jdks());
             if (!alreadyMadeDefault) {
                 Integer cur =
@@ -422,12 +422,7 @@ public final class JdkInstallCommand implements CliCommand {
 
     private static JdkInstallWizard.Result runWizard(JdkCatalog catalog, String os, String arch, boolean showAll)
             throws IOException {
-        Terminal terminal;
-        try {
-            terminal = Wizard.openTerminal();
-        } catch (IOException e) {
-            throw new IOException("failed to open terminal: " + e.getMessage(), e);
-        }
+        TerminalSession terminal = Terminals.controlling();
         Optional<JdkInstallWizard.Result> result = JdkInstallWizard.run(catalog, os, arch, showAll, terminal);
         if (result.isEmpty()) {
             // Ctrl-C cancellation. Wizard.printCancellation preserves the cyan
@@ -441,11 +436,11 @@ public final class JdkInstallCommand implements CliCommand {
             Runtime.getRuntime().halt(130); // 128 + SIGINT
             throw new AssertionError("unreachable");
         }
-        terminal.close();
+        // session close is Terminals.shutdown only
         return result.get();
     }
 
-    private static boolean isInteractiveTerminal() {
+    private static boolean isInteractiveTerminalSession() {
         return cc.jumpkick.cli.tui.Interactivity.canPrompt();
     }
 

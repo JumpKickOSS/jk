@@ -3,33 +3,33 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import org.jline.terminal.Attributes;
+import cc.jumpkick.terminal.InputMode;
+import cc.jumpkick.terminal.posix.TermiosLinux;
+import java.lang.foreign.Arena;
+import java.lang.foreign.ValueLayout;
 import org.junit.jupiter.api.Test;
 
 /**
  * Regresses the Mac Ctrl-O failure mode: with IEXTEN left on, the kernel treats Ctrl-O as VDISCARD
- * and never delivers 0x0F to {@link KeyReader}.
+ * and never delivers 0x0F. PLAN_KEYS also clears IXON.
  */
 class OutputKeyListenerAttributesTest {
 
     @Test
-    void disables_iexten_so_ctrl_o_is_not_swallowed_as_vdiscard() {
-        Attributes saved = new Attributes();
-        saved.setLocalFlag(Attributes.LocalFlag.ICANON, true);
-        saved.setLocalFlag(Attributes.LocalFlag.ECHO, true);
-        saved.setLocalFlag(Attributes.LocalFlag.IEXTEN, true);
-        saved.setLocalFlag(Attributes.LocalFlag.ISIG, true);
-        saved.setControlChar(Attributes.ControlChar.VMIN, 1);
-        saved.setControlChar(Attributes.ControlChar.VTIME, 0);
-
-        Attributes raw = JkManager.outputKeyListenerAttributes(saved);
-
-        assertThat(raw.getLocalFlag(Attributes.LocalFlag.ICANON)).isFalse();
-        assertThat(raw.getLocalFlag(Attributes.LocalFlag.ECHO)).isFalse();
-        assertThat(raw.getLocalFlag(Attributes.LocalFlag.IEXTEN)).isFalse();
-        // Ctrl-C must still raise SIGINT for GlobalCancel.
-        assertThat(raw.getLocalFlag(Attributes.LocalFlag.ISIG)).isTrue();
-        assertThat(raw.getControlChar(Attributes.ControlChar.VMIN)).isEqualTo(1);
-        assertThat(raw.getControlChar(Attributes.ControlChar.VTIME)).isZero();
+    void plan_keys_clears_iexten_and_ixon_keeps_isig() {
+        try (Arena arena = Arena.ofConfined()) {
+            var t = arena.allocate(TermiosLinux.SIZE);
+            t.set(ValueLayout.JAVA_INT, 0, TermiosLinux.IXON | TermiosLinux.ICRNL);
+            t.set(
+                    ValueLayout.JAVA_INT,
+                    12,
+                    TermiosLinux.ECHO | TermiosLinux.ICANON | TermiosLinux.IEXTEN | TermiosLinux.ISIG);
+            TermiosLinux.apply(t, InputMode.PLAN_KEYS);
+            assertThat(TermiosLinux.ixonOff(t)).isTrue();
+            assertThat(TermiosLinux.iextenOff(t)).isTrue();
+            assertThat(TermiosLinux.isigOn(t)).isTrue();
+            assertThat(TermiosLinux.cc(t, TermiosLinux.VMIN)).isEqualTo(1);
+            assertThat(TermiosLinux.cc(t, TermiosLinux.VTIME)).isEqualTo(0);
+        }
     }
 }

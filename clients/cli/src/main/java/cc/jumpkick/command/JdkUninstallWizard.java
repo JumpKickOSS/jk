@@ -9,11 +9,11 @@ import cc.jumpkick.cli.tui.WizardStep;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkVendor;
+import cc.jumpkick.terminal.TerminalSession;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
 
@@ -40,7 +40,7 @@ final class JdkUninstallWizard {
     private JdkUninstallWizard() {}
 
     /** Show the wizard. Empty result means the user cancelled (Esc). */
-    static Optional<JdkHit> run(List<JdkHit> installed, Optional<String> currentDefault, Terminal terminal) {
+    static Optional<JdkHit> run(List<JdkHit> installed, Optional<String> currentDefault, TerminalSession terminal) {
         Map<String, JdkHit> byId = new LinkedHashMap<>();
         for (JdkHit hit : installed) {
             byId.put(choiceIdFor(hit), hit);

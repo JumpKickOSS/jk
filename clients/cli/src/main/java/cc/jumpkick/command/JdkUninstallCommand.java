@@ -32,6 +32,8 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.terminal.TerminalSession;
+import cc.jumpkick.terminal.Terminals;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -41,7 +43,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import org.jline.terminal.Terminal;
 
 /**
  * {@code jk jdk uninstall <source>/<spec>} — source-qualified single-target removal. Without
@@ -143,7 +144,7 @@ public final class JdkUninstallCommand implements CliCommand {
         if (argument != null && !argument.isBlank()) {
             return runSingle(registry, defaults);
         }
-        if (!isInteractiveTerminal()) {
+        if (!isInteractiveTerminalSession()) {
             cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "JDK",
                     "stdin is not a TTY — pass a spec "
@@ -250,18 +251,13 @@ public final class JdkUninstallCommand implements CliCommand {
         }
         Optional<String> currentDefault = defaults.defaultId();
 
-        Terminal terminal;
-        try {
-            terminal = Wizard.openTerminal();
-        } catch (IOException e) {
-            throw new IOException("failed to open terminal: " + e.getMessage(), e);
-        }
+        TerminalSession terminal = Terminals.controlling();
         // Keep terminal open through confirmation + deletion: JLine's
         // system(true) terminal owns the native FD 0, and `terminal.close()`
         // closes it. Reading System.in after that throws "Stream Closed".
         // Wizard.run's finally force-restores ECHO+ICANON on, so a plain
         // System.in readLine inside this block works as expected.
-        try (terminal) {
+        {
             Optional<JdkHit> outcome = JdkUninstallWizard.run(installed, currentDefault, terminal);
             if (outcome.isEmpty()) {
                 // Ctrl-C cancellation. Render the red closer on the active rail,
@@ -391,7 +387,7 @@ public final class JdkUninstallCommand implements CliCommand {
      * keeping the JLine terminal open across this call (see {@link #runWizard}) — once the terminal
      * closes, the underlying {@code System.in} FD goes with it.
      */
-    private boolean confirmDeletion(JdkHit victim, Terminal terminal) {
+    private boolean confirmDeletion(JdkHit victim, TerminalSession terminal) {
         if (assumeYes) return true;
         String warn = Theme.colorize(Glyphs.BANG, Theme.active().warning());
         String question = warn + " Are you sure you want to delete " + target(victim) + "?";
@@ -403,7 +399,7 @@ public final class JdkUninstallCommand implements CliCommand {
         // Erase the question so the ✓/✗ result line (printed by uninstallOne)
         // lands in its place. Confirm left the cursor one row below the prompt,
         // so step back up, return to column 0, and clear to end of line.
-        if (proceed && isInteractiveTerminal()) {
+        if (proceed && isInteractiveTerminalSession()) {
             CliOutput.outRaw(Ansi.cursorUp(1) + "\r" + Ansi.ERASE_LINE_TO_END);
             CliOutput.stdout().flush();
         }
@@ -496,7 +492,7 @@ public final class JdkUninstallCommand implements CliCommand {
         });
     }
 
-    private static boolean isInteractiveTerminal() {
+    private static boolean isInteractiveTerminalSession() {
         return cc.jumpkick.cli.tui.Interactivity.canPrompt();
     }
 }

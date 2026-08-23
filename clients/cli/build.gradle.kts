@@ -21,8 +21,9 @@ dependencies {
     implementation(project(":wire"))
     // Shared JSONL reader for the engine/worker wire envelope (not the plugin SPI).
     implementation(project(":jsonl"))
+    implementation(project(":cli-terminal"))
 
-    // JLine 4 FFM terminal provider for raw-mode TUI (jk init wizard).
+    // JLine 4 FFM terminal provider for Theme/AttributedStyle (JK-2376 drops this).
     // FFM backend requires JDK 22+; the GraalVM-compiled binary embeds the
     // FFM downcalls natively. Reflection/resource hints live under
     // src/main/resources/META-INF/native-image/org.jline/jline-terminal-ffm/.
@@ -346,7 +347,7 @@ graalvmNative {
         buildArgs.add("--initialize-at-run-time=org.jline")
         // WindowsUtf8 binds Kernel32 via FFM at first enable() — keep that off the
         // image-build heap so downcalls resolve against the running process.
-        buildArgs.add("--initialize-at-run-time=cc.jumpkick.cli.tui.WindowsUtf8")
+        buildArgs.add("--initialize-at-run-time=cc.jumpkick.terminal.windows.WindowsUtf8")
         // jline-native ships a resource-config with a broad "org/jline/nativ/.*"
         // pattern that embeds ALL platform native libs (Windows DLLs, Linux/macOS/
         // FreeBSD .so/.dylib for every arch) as image resources. jk uses the FFM

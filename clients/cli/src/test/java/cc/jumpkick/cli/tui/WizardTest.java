@@ -3,6 +3,9 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.terminal.InputMode;
+import cc.jumpkick.terminal.MemoryTerminal;
+import cc.jumpkick.terminal.Terminals;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -15,14 +18,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import org.jline.terminal.impl.DumbTerminal;
 import org.junit.jupiter.api.Test;
 
 /**
- * Drives the wizard against JLine's {@link DumbTerminal}. The terminal is fed bytes through a
- * {@link PipedOutputStream}; the wizard reads via its normal {@code term.reader()} path. Raw-mode
- * signal/attribute integration is exercised manually in Task 7 — DumbTerminal's no-op {@code
- * enterRawMode} is enough to verify the state machine.
+ * Drives the wizard against {@link MemoryTerminal}. The terminal is fed bytes through a
+ * {@link PipedOutputStream}; the wizard reads via {@code readKey}.
  */
 class WizardTest {
 
@@ -32,14 +32,17 @@ class WizardTest {
      */
     private static final long READY_POLL_MS = 2L;
 
-    private record Harness(DumbTerminal terminal, PipedOutputStream input, ByteArrayOutputStream output) {}
+    private record Harness(MemoryTerminal tty, PipedOutputStream input) {
+        String output() {
+            return new String(tty.written(), StandardCharsets.UTF_8);
+        }
+    }
 
     private static Harness newHarness() throws IOException {
         var pipeIn = new PipedInputStream(8192);
         var pipeOut = new PipedOutputStream(pipeIn);
-        var sink = new ByteArrayOutputStream();
-        var term = new DumbTerminal("test", "ansi", pipeIn, sink, StandardCharsets.UTF_8);
-        return new Harness(term, pipeOut, sink);
+        var tty = Terminals.memory(pipeIn, new ByteArrayOutputStream());
+        return new Harness(tty, pipeOut);
     }
 
     private static void write(OutputStream out, byte... bytes) throws IOException {
@@ -60,7 +63,7 @@ class WizardTest {
     private static void waitReady(Harness h, String prompt) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
         while (System.nanoTime() < deadline) {
-            if (h.output().toString(StandardCharsets.UTF_8).contains(prompt)) return;
+            if (h.output().contains(prompt)) return;
             Thread.sleep(READY_POLL_MS);
         }
         throw new TimeoutException("wizard never showed: " + prompt);
@@ -81,14 +84,14 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
+            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
             waitReady(h, "Project name");
             write(h.input(), (byte) 'f', (byte) 'o', (byte) 'o', (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.get("name")).isEqualTo("foo");
         } finally {
             exec.shutdownNow();
-            h.terminal().close();
+            h.tty().close();
         }
     }
 
@@ -106,14 +109,14 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
+            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
             waitReady(h, "Language");
             write(h.input(), (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.get("lang")).isEqualTo("java");
         } finally {
             exec.shutdownNow();
-            h.terminal().close();
+            h.tty().close();
         }
     }
 
@@ -131,7 +134,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
+            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
             waitReady(h, "Language");
             write(h.input(), (byte) 0x1B, (byte) '[', (byte) 'C');
             tick();
@@ -140,7 +143,7 @@ class WizardTest {
             assertThat(answers.get("lang")).isEqualTo("kotlin");
         } finally {
             exec.shutdownNow();
-            h.terminal().close();
+            h.tty().close();
         }
     }
 
@@ -158,7 +161,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
+            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
             waitReady(h, "Dependencies");
             // Select first (lombok), move down twice, select third (commons-io), enter.
             write(h.input(), (byte) 0x20);
@@ -174,7 +177,7 @@ class WizardTest {
             assertThat(answers.getList("deps")).containsExactly("lombok", "commons-io");
         } finally {
             exec.shutdownNow();
-            h.terminal().close();
+            h.tty().close();
         }
     }
 
@@ -191,7 +194,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
+            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
             waitReady(h, "Dependencies");
             write(h.input(), (byte) 'a');
             tick();
@@ -200,7 +203,7 @@ class WizardTest {
             assertThat(answers.getList("deps")).containsExactly("lombok", "guava");
         } finally {
             exec.shutdownNow();
-            h.terminal().close();
+            h.tty().close();
         }
     }
 
@@ -216,7 +219,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
+            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
             waitReady(h, "Name");
             write(h.input(), (byte) 'b', (byte) 'a', (byte) 'r', (byte) 0x0A);
             waitReady(h, "Hello"); // OutputStep preview line (ANSI may wrap)
@@ -225,14 +228,13 @@ class WizardTest {
             assertThat(answers.get("name")).isEqualTo("bar");
         } finally {
             exec.shutdownNow();
-            h.terminal().close();
+            h.tty().close();
         }
     }
 
     @Test
     void ctrl_c_returns_empty() throws Exception {
         var h = newHarness();
-        var savedBefore = h.terminal().getAttributes();
         var wizard = Wizard.builder()
                 .command("Test")
                 .step(WizardStep.InputStep.of("name", "Name").build())
@@ -240,17 +242,16 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
+            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
             waitReady(h, "Name");
             write(h.input(), (byte) 0x03);
             var answers = await(result);
             assertThat(answers).isEmpty();
-            // Attributes should be restored to a value matching the snapshot prior to entry.
-            var savedAfter = h.terminal().getAttributes();
-            assertThat(savedAfter.getControlChars()).isEqualTo(savedBefore.getControlChars());
+            assertThat(h.tty().mode()).isEqualTo(InputMode.COOKED);
+            assertThat(h.tty().isLive()).isTrue();
         } finally {
             exec.shutdownNow();
-            h.terminal().close();
+            h.tty().close();
         }
     }
 
@@ -271,7 +272,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
+            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
             waitReady(h, "Mode");
             // Accept default ("lib") and let the wizard skip the conditional step.
             write(h.input(), (byte) 0x0A);
@@ -280,7 +281,7 @@ class WizardTest {
             assertThat(answers.asMap()).doesNotContainKey("main");
         } finally {
             exec.shutdownNow();
-            h.terminal().close();
+            h.tty().close();
         }
     }
 
@@ -294,14 +295,14 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
+            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
             waitReady(h, "Name");
             write(h.input(), (byte) 'a', (byte) 'b', (byte) 'c', (byte) 0x7F, (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.get("name")).isEqualTo("ab");
         } finally {
             exec.shutdownNow();
-            h.terminal().close();
+            h.tty().close();
         }
     }
 
@@ -317,7 +318,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
+            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
             waitReady(h, "Name");
             // Right-arrow then Enter → placeholder becomes the answer.
             write(h.input(), (byte) 0x1B, (byte) '[', (byte) 'C');
@@ -327,7 +328,7 @@ class WizardTest {
             assertThat(answers.get("name")).isEqualTo("widget");
         } finally {
             exec.shutdownNow();
-            h.terminal().close();
+            h.tty().close();
         }
     }
 
@@ -343,7 +344,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
+            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
             waitReady(h, "Name");
             // Realize "widget", then append "-2" → final = "widget-2".
             write(h.input(), (byte) 0x1B, (byte) '[', (byte) 'C');
@@ -353,7 +354,7 @@ class WizardTest {
             assertThat(answers.get("name")).isEqualTo("widget-2");
         } finally {
             exec.shutdownNow();
-            h.terminal().close();
+            h.tty().close();
         }
     }
 
@@ -371,7 +372,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
+            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
             waitReady(h, "Name");
             // Step 1: type "widget", Enter → name = "widget".
             write(h.input(), (byte) 'w', (byte) 'i', (byte) 'd', (byte) 'g', (byte) 'e', (byte) 't', (byte) 0x0A);
@@ -383,7 +384,7 @@ class WizardTest {
             assertThat(answers.get("artifact")).isEqualTo("widget");
         } finally {
             exec.shutdownNow();
-            h.terminal().close();
+            h.tty().close();
         }
     }
 
@@ -399,7 +400,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
+            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
             waitReady(h, "Name");
             // Tab then Enter → placeholder becomes the answer.
             write(h.input(), (byte) 0x09);
@@ -409,7 +410,7 @@ class WizardTest {
             assertThat(answers.get("name")).isEqualTo("widget");
         } finally {
             exec.shutdownNow();
-            h.terminal().close();
+            h.tty().close();
         }
     }
 
@@ -428,7 +429,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
+            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
             waitReady(h, "Pick a fruit");
             // Down 3× from apple(0) → custom row (index 3), type "mango", Enter.
             for (int i = 0; i < 3; i++) {
@@ -442,7 +443,7 @@ class WizardTest {
             assertThat(answers.get("fruit")).isEqualTo("mango");
         } finally {
             exec.shutdownNow();
-            h.terminal().close();
+            h.tty().close();
         }
     }
 
@@ -461,7 +462,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
+            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
             waitReady(h, "Pick a fruit");
             // Down once → banana, Enter → the choice id, not custom text.
             write(h.input(), (byte) 0x1B, (byte) '[', (byte) 'B');
@@ -471,7 +472,7 @@ class WizardTest {
             assertThat(answers.get("fruit")).isEqualTo("banana");
         } finally {
             exec.shutdownNow();
-            h.terminal().close();
+            h.tty().close();
         }
     }
 
@@ -488,7 +489,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
+            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
             waitReady(h, "Pick a fruit");
             // Move to the (empty) custom row and press Enter — must NOT advance.
             write(h.input(), (byte) 0x1B, (byte) '[', (byte) 'B');
@@ -505,7 +506,7 @@ class WizardTest {
             assertThat(answers.get("fruit")).isEqualTo("kiwi");
         } finally {
             exec.shutdownNow();
-            h.terminal().close();
+            h.tty().close();
         }
     }
 
@@ -524,7 +525,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
+            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
             waitReady(h, "Pick fruits");
             // Space → check apple(0); Down 3× → custom row; type "kiwi"; Enter.
             write(h.input(), (byte) 0x20);
@@ -540,7 +541,7 @@ class WizardTest {
             assertThat(answers.getList("fruit")).containsExactly("apple", "kiwi");
         } finally {
             exec.shutdownNow();
-            h.terminal().close();
+            h.tty().close();
         }
     }
 
@@ -556,7 +557,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
+            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
             waitReady(h, "Name");
             write(h.input(), (byte) 0x1B, (byte) '[', (byte) 'C');
             tick();
@@ -565,7 +566,7 @@ class WizardTest {
             assertThat(answers.get("name")).isEqualTo("hi");
         } finally {
             exec.shutdownNow();
-            h.terminal().close();
+            h.tty().close();
         }
     }
 }

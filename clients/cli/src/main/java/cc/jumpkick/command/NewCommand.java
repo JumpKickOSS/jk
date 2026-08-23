@@ -23,6 +23,8 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.scaffold.NewInputs;
+import cc.jumpkick.terminal.TerminalSession;
+import cc.jumpkick.terminal.Terminals;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -33,7 +35,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import org.jline.terminal.Terminal;
 
 /**
  * {@code jk new} — scaffold a project or workspace module (aliases: {@code init}, {@code create}).
@@ -110,7 +111,7 @@ public final class NewCommand implements CliCommand {
     @SuppressWarnings("rawtypes")
     private static final BuildPlanKey<List> CANDIDATES = BuildPlanKey.of("candidates", List.class);
 
-    private static final BuildPlanKey<Terminal> TERMINAL = BuildPlanKey.of("terminal", Terminal.class);
+    private static final BuildPlanKey<TerminalSession> TERMINAL = BuildPlanKey.of("terminal", TerminalSession.class);
     private static final BuildPlanKey<cc.jumpkick.jdk.JdkCatalog> CATALOG =
             BuildPlanKey.of("catalog", cc.jumpkick.jdk.JdkCatalog.class);
     private static final BuildPlanKey<Answers> ANSWERS = BuildPlanKey.of("answers", Answers.class);
@@ -355,13 +356,7 @@ public final class NewCommand implements CliCommand {
                     ctx.label("discover JDKs + fetch catalog + open terminal");
                     var jdkOptionsFuture = CompletableFuture.supplyAsync(NewJdkOptions::discover, JkThreads.io());
                     var catalogFuture = CompletableFuture.supplyAsync(NewCommand::fetchCatalogQuiet, JkThreads.io());
-                    Terminal terminal;
-                    try {
-                        terminal = Wizard.openTerminal();
-                    } catch (IOException e) {
-                        ctx.error("terminal", "failed to open terminal: " + e.getMessage());
-                        throw new RuntimeException(e);
-                    }
+                    TerminalSession terminal = Terminals.controlling();
                     ctx.put(TERMINAL, terminal);
                     var jdkOptions = jdkOptionsFuture.join();
                     var catalog = catalogFuture.join();
@@ -386,7 +381,7 @@ public final class NewCommand implements CliCommand {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("run wizard");
-                    Terminal terminal = ctx.require(TERMINAL);
+                    TerminalSession terminal = ctx.require(TERMINAL);
                     @SuppressWarnings("unchecked")
                     List<NewJdkCandidate> candidates = (List<NewJdkCandidate>) ctx.require(CANDIDATES);
 
@@ -474,47 +469,33 @@ public final class NewCommand implements CliCommand {
                 .addTask(scaffold)
                 .build();
 
-        // Single try/finally wrapping the whole plan lifecycle plus the
-        // success-emit path: emitSuccessOnTerminal writes through the
-        // wizard's JLine terminal handle, so the terminal has to stay
-        // open until after that call. The finally closes it on the way
-        // out whether scaffold succeeded, failed, or threw.
-        try {
-            BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
+        BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
 
-            if (!result.success()) {
-                for (BuildPlanResult.Diagnostic d : result.errors()) {
-                    if ("no-jdks".equals(d.code())) {
-                        emitNoJdksError();
-                        return Exit.CONFIG;
-                    }
-                    if ("exists".equals(d.code())) {
-                        NewInputs partial = plan.get(INPUTS).orElse(null);
-                        String coord = partial != null ? partial.group() + ":" + partial.name() : "project";
-                        boolean isInit = directory != null && isCurrentDirArg(directory);
-                        Terminal term = plan.get(TERMINAL).orElse(null);
-                        emitProjectExistsError(coord, parent != null, isInit, term);
-                        return Exit.CONFIG;
-                    }
+        if (!result.success()) {
+            for (BuildPlanResult.Diagnostic d : result.errors()) {
+                if ("no-jdks".equals(d.code())) {
+                    emitNoJdksError();
+                    return Exit.CONFIG;
                 }
-                return Exit.CONFIG;
+                if ("exists".equals(d.code())) {
+                    NewInputs partial = plan.get(INPUTS).orElse(null);
+                    String coord = partial != null ? partial.group() + ":" + partial.name() : "project";
+                    boolean isInit = directory != null && isCurrentDirArg(directory);
+                    TerminalSession term = plan.get(TERMINAL).orElse(null);
+                    emitProjectExistsError(coord, parent != null, isInit, term);
+                    return Exit.CONFIG;
+                }
             }
-
-            NewInputs inputs = plan.get(INPUTS).orElseThrow();
-            boolean isInit = directory != null && isCurrentDirArg(directory);
-            plan.get(TERMINAL)
-                    .ifPresentOrElse(
-                            t -> emitSuccessOnTerminal(inputs, t, registered, isInit),
-                            () -> emitSuccessPlain(inputs, registered, isInit));
-            return 0;
-        } finally {
-            plan.get(TERMINAL).ifPresent(t -> {
-                try {
-                    t.close();
-                } catch (IOException ignored) {
-                }
-            });
+            return Exit.CONFIG;
         }
+
+        NewInputs inputs = plan.get(INPUTS).orElseThrow();
+        boolean isInit = directory != null && isCurrentDirArg(directory);
+        plan.get(TERMINAL)
+                .ifPresentOrElse(
+                        t -> emitSuccessOnTerminalSession(inputs, t, registered, isInit),
+                        () -> emitSuccessPlain(inputs, registered, isInit));
+        return 0;
     }
 
     /**
@@ -568,13 +549,13 @@ public final class NewCommand implements CliCommand {
      * runs the wizard — the positional only pre-seeds the name.
      */
     private boolean shouldRunWizard() {
-        if (!isInteractiveTerminal()) {
+        if (!isInteractiveTerminalSession()) {
             return false;
         }
         return !anyFlagSupplied();
     }
 
-    private static boolean isInteractiveTerminal() {
+    private static boolean isInteractiveTerminalSession() {
         // Gates the interactive `jk new` wizard — input axis, so key on the controlling terminal.
         return cc.jumpkick.cli.tui.Interactivity.canPrompt();
     }
@@ -752,7 +733,8 @@ public final class NewCommand implements CliCommand {
         return NewWizard.isCurrentDirArg(arg);
     }
 
-    private static void emitProjectExistsError(String coord, boolean isModule, boolean isInit, Terminal terminal) {
+    private static void emitProjectExistsError(
+            String coord, boolean isModule, boolean isInit, TerminalSession terminal) {
         Theme t = Theme.active();
         NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
         String noun = isModule ? "module" : "project";
@@ -779,7 +761,7 @@ public final class NewCommand implements CliCommand {
         String chipLine = cc.jumpkick.cli.tui.JkWedge.chipLine(Glyphs.CROSS, chipCommand, nerdFont, failTail);
 
         if (terminal != null) {
-            var writer = terminal.writer();
+            var writer = terminal.ttyOut();
             cc.jumpkick.cli.tui.CommandWedge.markEnvelopeStarted();
             writer.println(warnLine);
             writer.println(chipLine);
@@ -1078,8 +1060,9 @@ public final class NewCommand implements CliCommand {
                 target);
     }
 
-    private static void emitSuccessOnTerminal(NewInputs inputs, Terminal terminal, Module module, boolean isInit) {
-        var writer = terminal.writer();
+    private static void emitSuccessOnTerminalSession(
+            NewInputs inputs, TerminalSession terminal, Module module, boolean isInit) {
+        var writer = terminal.ttyOut();
         // Wizard already opened the envelope (leading blank + closing spacer).
         cc.jumpkick.cli.tui.CommandWedge.markEnvelopeStarted();
         writer.println(successLine(inputs, module, isInit));

@@ -67,7 +67,7 @@ public final class ShellCommand implements CliCommand {
         String shell = System.getenv().getOrDefault("SHELL", "/bin/sh");
         ProcessBuilder pb = new ProcessBuilder(shell);
         pb.directory(dir.toFile());
-        cc.jumpkick.cli.tui.Interactivity.restoreForChildProcess();
+        cc.jumpkick.terminal.Terminals.restoreForChild();
         pb.inheritIO();
         var env = pb.environment();
         target.vars().forEach(env::put);

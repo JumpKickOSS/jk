@@ -143,7 +143,7 @@ public final class JshellCommand implements CliCommand {
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.directory(dir.toFile());
-        cc.jumpkick.cli.tui.Interactivity.restoreForChildProcess();
+        cc.jumpkick.terminal.Terminals.restoreForChild();
         pb.inheritIO();
         Process p = pb.start();
         // Skip the gap only once the exec actually started — a failed start() still owns

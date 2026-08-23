@@ -10,6 +10,11 @@ import cc.jumpkick.runtime.progress.HeaderProgressState;
 import cc.jumpkick.runtime.progress.HeaderProgressStrategy;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
 import cc.jumpkick.runtime.progress.WeightedProgressStrategy;
+import cc.jumpkick.terminal.InputMode;
+import cc.jumpkick.terminal.Key;
+import cc.jumpkick.terminal.ModeGuard;
+import cc.jumpkick.terminal.TerminalSession;
+import cc.jumpkick.terminal.Terminals;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -19,10 +24,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.jline.terminal.Attributes;
-import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedStyle;
-import org.jline.utils.NonBlockingReader;
 
 /**
  * Live console for long-running commands: simple pulse-circle task mode, or plan mode (header
@@ -242,8 +244,8 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     // stopAnimator → stopKeyListener). keyLock serializes start/stop so the take-restore-null
     // sequence is atomic and a stale-null read can never skip the attribute restore.
     private final Object keyLock = new Object();
-    private Terminal keyTerminal;
-    private Attributes keyAttrsSaved;
+    private TerminalSession keyTerminal;
+    private ModeGuard keyMode;
     private Thread keyThread;
     private volatile boolean keysStopped;
 
@@ -1236,58 +1238,44 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     }
 
     private void startKeyListenerLocked() {
-        Terminal t = null;
-        Attributes saved = null;
+        TerminalSession t = null;
+        ModeGuard mode = null;
         try {
-            t = Interactivity.takeSharedTerminal();
-            if (t == null) {
-                t = Wizard.openTerminal();
+            t = Terminals.controlling();
+            if (!t.isLive()) {
+                return;
             }
-            saved = t.getAttributes();
-            // ISIG remains: Ctrl-C → SIGINT → GlobalCancel. Do not call
-            // {@code terminal.handle(INT, …)} — that would steal the signal from GlobalCancel
-            // the same way JLine's default native SIG_DFL handlers did.
-            t.setAttributes(outputKeyListenerAttributes(saved));
-            GlobalCancel.install();
-            Wizard.drainInput(t.reader(), 40L);
+            mode = t.enter(InputMode.PLAN_KEYS);
+            t.drain(Duration.ofMillis(40));
             keyTerminal = t;
-            keyAttrsSaved = saved;
+            keyMode = mode;
             keysStopped = false;
             keyThread = new Thread(this::readKeys, "jk-output-keys");
             keyThread.setDaemon(true);
             keyThread.start();
         } catch (Exception ignored) {
-            // Peek is optional — plan continues without Ctrl-O. But never strand the taken tty:
-            // if we failed after setAttributes(raw), the shared terminal's restore hook already
-            // stood down (slot empty), so the shell would inherit a raw, echo-less terminal.
-            // Restore cooked and put the terminal back for the next consumer.
-            if (t != null) {
-                if (saved != null) {
-                    try {
-                        Wizard.restoreCooked(t, saved);
-                    } catch (RuntimeException ignored2) {
-                        // best-effort
-                    }
+            if (mode != null) {
+                try {
+                    mode.close();
+                } catch (RuntimeException ignored2) {
+                    // best-effort
                 }
-                Interactivity.returnSharedTerminal(t);
             }
             keyTerminal = null;
-            keyAttrsSaved = null;
+            keyMode = null;
         }
     }
 
     private void stopKeyListener() {
         keysStopped = true; // volatile: unblocks readKeys before we take keyLock
         Thread kt;
-        Terminal t;
-        Attributes saved;
+        ModeGuard mode;
         synchronized (keyLock) {
             kt = keyThread;
             keyThread = null;
-            t = keyTerminal;
-            saved = keyAttrsSaved;
             keyTerminal = null;
-            keyAttrsSaved = null;
+            mode = keyMode;
+            keyMode = null;
         }
         if (kt != null) {
             kt.interrupt();
@@ -1297,35 +1285,33 @@ public final class JkManager implements AutoCloseable, LiveRegion {
                 Thread.currentThread().interrupt();
             }
         }
-        if (t != null && saved != null) {
+        if (mode != null) {
             try {
-                Wizard.restoreCooked(t, saved);
+                mode.close();
             } catch (RuntimeException ignored) {
                 // best-effort
             }
-            // NEVER close: the system terminal owns FD 0 (see Interactivity) — closing it here
-            // broke stdin for everything after the plan in the same invocation (jk run's
-            // inheritIO app, wizard prompts, the next plan's Ctrl-O). Return it for reuse.
-            Interactivity.returnSharedTerminal(t);
         }
     }
 
     private void readKeys() {
-        Terminal t;
+        TerminalSession t;
         synchronized (keyLock) {
             t = keyTerminal;
         }
-        if (t == null) return;
-        NonBlockingReader reader = t.reader();
+        if (t == null) {
+            return;
+        }
         while (!keysStopped && !stopped && !done) {
-            try {
-                KeyReader.Key key = KeyReader.readOrNull(reader, 100L);
-                if (key instanceof KeyReader.Key.CtrlO) {
-                    toggleOutputWindow();
+            var key = t.readKey(Duration.ofMillis(100));
+            if (key.isEmpty()) {
+                if (!t.isLive()) {
+                    return;
                 }
-                // Ctrl-C is handled by the signal path (ISIG); ignore other keys.
-            } catch (RuntimeException e) {
-                return; // reader closed / failed
+                continue;
+            }
+            if (key.get() instanceof Key.CtrlO) {
+                toggleOutputWindow();
             }
         }
     }
@@ -1345,21 +1331,6 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     }
 
     // --- helpers ----------------------------------------------------------
-
-    /**
-     * TTY attributes for the Ctrl-O peek listener. Byte-at-a-time, no echo, IEXTEN off so macOS
-     * VDISCARD (Ctrl-O) reaches {@link KeyReader}; ISIG left alone for GlobalCancel. VMIN=1 /
-     * VTIME=0 matches JLine {@code enterRawMode} — VMIN=0 makes idle reads look like EOF.
-     */
-    static Attributes outputKeyListenerAttributes(Attributes saved) {
-        Attributes raw = new Attributes(saved);
-        raw.setLocalFlag(Attributes.LocalFlag.ICANON, false);
-        raw.setLocalFlag(Attributes.LocalFlag.ECHO, false);
-        raw.setLocalFlag(Attributes.LocalFlag.IEXTEN, false);
-        raw.setControlChar(Attributes.ControlChar.VMIN, 1);
-        raw.setControlChar(Attributes.ControlChar.VTIME, 0);
-        return raw;
-    }
 
     private static String key(String module, String stepKey) {
         return module + '\0' + stepKey;

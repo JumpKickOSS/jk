@@ -4,16 +4,19 @@ package cc.jumpkick.cli.tui;
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.terminal.InputMode;
+import cc.jumpkick.terminal.Key;
+import cc.jumpkick.terminal.ModeGuard;
+import cc.jumpkick.terminal.TerminalSession;
+import cc.jumpkick.terminal.Terminals;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import org.jline.terminal.Attributes;
-import org.jline.terminal.Terminal;
-import org.jline.utils.NonBlockingReader;
 
 /**
  * Single-keystroke prompt. Bindings map a key to a value and a settle label. Enter takes the
@@ -64,15 +67,15 @@ public final class Prompt<T> implements Widget {
         if (!rawEligible(Interactivity.canPrompt(), Theme.active().isAnsi())) {
             return cookedFallback();
         }
-        try (Terminal terminal = Wizard.openTerminal()) {
-            Wizard.drainInput(terminal.reader(), 40L);
-            return ask(terminal);
-        } catch (IOException e) {
+        TerminalSession tty = Terminals.controlling();
+        if (!tty.isLive()) {
             return cookedFallback();
         }
+        tty.drain(Duration.ofMillis(40));
+        return ask(tty);
     }
 
-    public T ask(Terminal terminal) {
+    public T ask(TerminalSession tty) {
         if (assumeYes() && onEnter instanceof Boolean) {
             @SuppressWarnings("unchecked")
             T yes = (T) Boolean.TRUE;
@@ -83,19 +86,19 @@ public final class Prompt<T> implements Widget {
         String hint = hintText(false);
         err.print(promptText(false));
         err.flush();
-        Attributes saved = terminal.enterRawMode();
-        try {
-            NonBlockingReader reader = terminal.reader();
+        try (ModeGuard raw = tty.enter(InputMode.PROMPT)) {
             while (true) {
-                T result = interpret(KeyReader.read(reader));
+                var key = tty.readKey(Duration.ZERO);
+                if (key.isEmpty()) {
+                    return onCancel;
+                }
+                T result = interpret(key.get());
                 if (result != null) {
                     err.print(settleOverwrite(hint, settleLabel(result)));
                     err.flush();
                     return result;
                 }
             }
-        } finally {
-            Wizard.restoreCooked(terminal, saved);
         }
     }
 
@@ -113,18 +116,18 @@ public final class Prompt<T> implements Widget {
         return List.of(question.render(ctx) + " " + hintText(ctx.mode() == RenderContext.Mode.PLAIN));
     }
 
-    private T interpret(KeyReader.Key key) {
+    private T interpret(Key key) {
         return switch (key) {
-            case KeyReader.Key.Char c -> {
+            case Key.Char c -> {
                 char ch = Character.toLowerCase(c.c());
                 for (Binding<T> b : bindings) {
                     if (Character.toLowerCase(b.key()) == ch) yield b.value();
                 }
                 yield null;
             }
-            case KeyReader.Key.Enter ignored -> onEnter;
-            case KeyReader.Key.CtrlC ignored -> onCancel;
-            case KeyReader.Key.Escape ignored -> onCancel;
+            case Key.Enter ignored -> onEnter;
+            case Key.CtrlC ignored -> onCancel;
+            case Key.Escape ignored -> onCancel;
             default -> null;
         };
     }

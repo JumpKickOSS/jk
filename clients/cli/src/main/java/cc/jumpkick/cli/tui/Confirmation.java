@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.terminal.TerminalSession;
 import java.util.List;
-import org.jline.terminal.Terminal;
 
 /**
  * Yes/no prompt. Default-yes paints {@code [Y/n]}; default-no paints {@code [y/N]}. Enter takes the
@@ -33,8 +33,8 @@ public final class Confirmation implements Widget {
         return Boolean.TRUE.equals(prompt.ask());
     }
 
-    public boolean ask(Terminal terminal) {
-        return Boolean.TRUE.equals(prompt.ask(terminal));
+    public boolean ask(TerminalSession tty) {
+        return Boolean.TRUE.equals(prompt.ask(tty));
     }
 
     @Override

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import org.jline.terminal.Terminal;
+import cc.jumpkick.terminal.TerminalSession;
 
 /**
  * Façade over {@link Confirmation} so existing {@code Confirm.of(...).ask()} callers stay valid.
@@ -38,8 +38,8 @@ public final class Confirm {
         return confirmation.ask();
     }
 
-    public boolean ask(Terminal terminal) {
-        return confirmation.ask(terminal);
+    public boolean ask(TerminalSession tty) {
+        return confirmation.ask(tty);
     }
 
     static boolean rawEligible(boolean canPrompt, boolean ansi) {

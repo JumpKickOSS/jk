@@ -217,7 +217,7 @@ public final class RunCommand {
             }
         }
         command.addAll(appArgs);
-        cc.jumpkick.cli.tui.Interactivity.restoreForChildProcess();
+        cc.jumpkick.terminal.Terminals.restoreForChild();
         // The program's own stdout is the last thing on this terminal — `jk run > app.out` must
         // not collect jk's closing blank.
         Process p = new ProcessBuilder(command).inheritIO().start();
