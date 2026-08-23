@@ -41,9 +41,11 @@ public enum CacheTier {
 
     /**
      * One index per formatter configuration. {@code save()} rewrites the live index on every {@code
-     * jk format}, so mtime is an exact use clock here and the window costs nothing to maintain.
+     * jk format}, so mtime is an exact use clock here and the window is the whole policy: no count
+     * cap, because the population is one per configuration a workspace actually formats with, and
+     * a cap on that would evict an index still in weekly use to make room for one used today.
      */
-    FORMAT_FRESHNESS("format-freshness", Bound.files(Duration.ofDays(7), Bound.countCap(64))),
+    FORMAT_FRESHNESS("format-freshness", Bound.files(Duration.ofDays(7), Bound.none())),
 
     /**
      * Content hashes keyed by absolute path. Capped by count, never by bytes: entries are ~150 B,
