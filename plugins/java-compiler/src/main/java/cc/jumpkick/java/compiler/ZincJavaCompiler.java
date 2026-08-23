@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -873,7 +874,7 @@ public final class ZincJavaCompiler {
                 throw new IllegalArgumentException("bad processor path entry: " + processorPath.get(i), e);
             }
         }
-        URLClassLoader loader = new URLClassLoader(urls, ZincJavaCompiler.class.getClassLoader());
+        URLClassLoader loader = processorClassLoader(urls);
         // Full iteration, not a hasNext() probe: hasNext validates only the FIRST services entry
         // (it loads the provider class without instantiating), so a jar whose second entry is
         // broken would otherwise blow up mid-Zinc-compile as a raw ServiceConfigurationError.
@@ -884,7 +885,7 @@ public final class ZincJavaCompiler {
         try {
             any = false;
             for (Processor ignored : ServiceLoader.load(Processor.class, loader)) any = true;
-        } catch (java.util.ServiceConfigurationError e) {
+        } catch (ServiceConfigurationError e) {
             try {
                 loader.close();
             } catch (IOException ignored) {
@@ -907,7 +908,7 @@ public final class ZincJavaCompiler {
         List<Processor> processors = new ArrayList<>();
         try {
             for (Processor p : ServiceLoader.load(Processor.class, loader)) processors.add(p);
-        } catch (java.util.ServiceConfigurationError e) {
+        } catch (ServiceConfigurationError e) {
             // SCE extends Error and would sail past every catch in compile(), potentially after a
             // cycle already wrote class files without persistAnalysis. loadProcessors fails fast
             // for entries broken at load time; this guards ones that break mid-compile (a jar
@@ -915,6 +916,15 @@ public final class ZincJavaCompiler {
             throw new IllegalStateException("broken annotation processor registration: " + e.getMessage(), e);
         }
         return processors;
+    }
+
+    /**
+     * Processor-path loader. Parent is the platform loader so {@link Processor} resolves, but
+     * {@link ServiceLoader} does not inherit {@code META-INF/services} registrations from the
+     * worker classpath — those are not on the user's {@code -processorpath}.
+     */
+    static URLClassLoader processorClassLoader(URL[] urls) {
+        return new URLClassLoader(urls, ClassLoader.getPlatformClassLoader());
     }
 
     private static String[] javacOptions(int release, List<String> extra, Path sourceOutput, List<Path> processorPath) {
