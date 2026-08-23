@@ -17,7 +17,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -116,7 +115,7 @@ class CacheRetentionHashMemoTest {
         Path gone = source(src, "Gone.java");
         memoize(cache, gone, source(src, "Kept.java"));
         Files.delete(gone);
-        Counting probe = new Counting();
+        CountingProbe probe = new CountingProbe();
 
         CacheRetention.sweep(cache, new Cas(cache), Set.of(), false, probe, capAt(64));
 
@@ -127,33 +126,6 @@ class CacheRetentionHashMemoTest {
     }
 
     // ---------------------------------------------------------------- fixtures
-
-    /** A {@link CacheRetention.Probe} that answers truthfully and counts what it was asked. */
-    private static final class Counting implements CacheRetention.Probe {
-        private final AtomicInteger asked = new AtomicInteger();
-
-        int questions() {
-            return asked.get();
-        }
-
-        @Override
-        public long mtime(Path entry) throws IOException {
-            asked.incrementAndGet();
-            return CacheRetention.Probe.REAL.mtime(entry);
-        }
-
-        @Override
-        public long size(Path entry) throws IOException {
-            asked.incrementAndGet();
-            return CacheRetention.Probe.REAL.size(entry);
-        }
-
-        @Override
-        public String read(Path entry) throws IOException {
-            asked.incrementAndGet();
-            return CacheRetention.Probe.REAL.read(entry);
-        }
-    }
 
     /** A source file old enough for the memo to trust its stat. */
     private static Path source(Path dir, String name) throws IOException {

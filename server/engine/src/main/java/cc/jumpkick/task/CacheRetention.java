@@ -24,7 +24,9 @@ import java.util.stream.Stream;
  * runs at the idle boundary after a build and on its 12 h maintenance tick. There is no second call
  * site and no CLI-only path — that is the whole point of the class.
  *
- * <p>Nothing younger than {@link Sweep#MIN_AGE_FOR_SWEEP} is ever taken. The prune holds the cache
+ * <p>No window and no cap takes an entry younger than {@link Sweep#MIN_AGE_FOR_SWEEP}. The two
+ * reset instruments do, because what they clear is a hard link or a derived snapshot that the next
+ * build recreates, and half a tier is not a state worth aiming for. The prune holds the cache
  * locks, but a second engine sharing the root holds none of them and may be mid-write, so every
  * bound here is soft: a tier left above its cap under continuous write pressure is a legitimate
  * outcome, not a failure.
@@ -175,13 +177,17 @@ public final class CacheRetention {
             if (countFiles(root) <= max) return new Tally(0, 0L);
         }
 
+        // A reset tier has no order to put its entries in, so it never asks how old they are:
+        // the answer could only be used to choose a victim it does not choose.
+        boolean ranks = bound.window() != null || bound.cap() instanceof Bound.Cap.Count;
+
         List<Entry> entries = new ArrayList<>();
         long total = 0L;
         try (Stream<Path> walk = Files.walk(root)) {
             for (Path file : (Iterable<Path>) walk.filter(Files::isRegularFile)::iterator) {
                 try {
                     long size = probe.size(file);
-                    entries.add(new Entry(file, probe.mtime(file), size));
+                    entries.add(new Entry(file, ranks ? probe.mtime(file) : 0L, size));
                     total += size;
                 } catch (NoSuchFileException vanished) {
                     // another engine got there first
