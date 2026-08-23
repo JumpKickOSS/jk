@@ -188,7 +188,7 @@ public final class ExplainCommand implements CliCommand {
         long fullEtaMillis;
         // [0] = current remaining ETA; [1] = full-rebuild ETA (effort denominator).
         long[] etaOut = new long[2];
-        try (Spinner prep = livePrep ? CommandWedge.analyzing(CliOutput.stdout(), "Explain", prepMsg) : null) {
+        try (Spinner prep = livePrep ? CommandWedge.analyzingStdout("Explain", prepMsg) : null) {
             // Same starting lock as `jk build` so the dirty plan and ETA match the countdown.
             // Pass the prep spinner so a freshen failure settles it before writing stderr.
             if (needsLock) {

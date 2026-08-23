@@ -84,8 +84,7 @@ public final class StatusCommand implements CliCommand {
             if (lockCode != 0) return lockCode;
         }
 
-        try (var analyzing =
-                live ? CommandWedge.analyzing(CliOutput.stdout(), "Status", "Analyzing status...") : null) {
+        try (var analyzing = live ? CommandWedge.analyzingStdout("Status", "Analyzing status...") : null) {
             rows = EngineClient.metrics(paths, globalOnly ? null : cwd.toString()).stream()
                     .filter(l -> EngineProtocol.METRICS_ENTRY.equals(EngineProtocol.typeOf(l)))
                     .toList();

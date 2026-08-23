@@ -2,13 +2,23 @@
 package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.testing.MainSources;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.NerdFontCaps;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 class CommandWedgeTest {
@@ -52,6 +62,55 @@ class CommandWedgeTest {
         assertThat(CommandWedge.ok("X", "y", NerdFontCaps.NONE)).contains("X").contains("y");
         assertThat(CommandWedge.fail("X", "y", NerdFontCaps.NONE)).contains("X").contains("y");
         assertThat(CommandWedge.working("X", "y")).contains("X").contains("y");
+    }
+
+    @Test
+    void analyzing_stdout_is_suppressed_when_stdout_is_machine_consumed() {
+        // JK-2330: `jk bsp serve` hands stdout to BspServer as the JSON-RPC frame channel, and
+        // `jk explain --graph` writes graph source there. A spinner would put cursor ANSI in both.
+        var out = new ByteArrayOutputStream();
+        var prev = System.out;
+        try {
+            System.setOut(new PrintStream(out, true, StandardCharsets.UTF_8));
+            CliOutput.beginCommand(true);
+            assertThat(CommandWedge.analyzingStdout("BSP", "Locking…")).isNull();
+        } finally {
+            System.setOut(prev);
+        }
+        assertThat(out.toString(StandardCharsets.UTF_8)).isEmpty();
+        assertThat(CliOutput.envelopeStarted()).isFalse();
+        CliOutput.beginCommand(false);
+    }
+
+    @Test
+    void no_source_animates_straight_onto_cli_output_stdout() {
+        // The interactivity gate callers rely on asks whether stdout is a *terminal*, which a
+        // pty-allocating IDE or CI runner answers yes to while still parsing every byte. Only
+        // analyzingStdout consults scriptMode, so routing around it reopens JK-2330.
+        Optional<Path> mainOpt = MainSources.locate();
+        assumeTrue(mainOpt.isPresent(), "cli main sources not adjacent to test classpath — skip scan");
+        Path main = mainOpt.get();
+        Pattern anti = Pattern.compile("analyzing\\(\\s*CliOutput\\.stdout\\(\\)");
+        Path wedge = main.resolve("cc/jumpkick/cli/tui/CommandWedge.java");
+        List<String> offenders = new ArrayList<>();
+        try (Stream<Path> walk = Files.walk(main)) {
+            walk.filter(p -> p.toString().endsWith(".java"))
+                    .filter(p -> !p.equals(wedge))
+                    .forEach(p -> {
+                        try {
+                            if (anti.matcher(Files.readString(p)).find()) {
+                                offenders.add(main.relativize(p).toString());
+                            }
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        assertThat(offenders)
+                .as("call CommandWedge.analyzingStdout(command, message) instead")
+                .isEmpty();
     }
 
     @Test

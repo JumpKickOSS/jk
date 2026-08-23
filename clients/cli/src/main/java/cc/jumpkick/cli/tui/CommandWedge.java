@@ -72,6 +72,22 @@ public final class CommandWedge {
     }
 
     /**
+     * {@link #analyzing} on stdout, or {@code null} when this invocation's stdout is machine-consumed
+     * ({@link CliOutput#scriptMode()}) — BSP's JSON-RPC frames, {@code jk explain --graph}, a path, a
+     * token. Cursor-movement ANSI and pulse frames must never enter a stream a program is parsing,
+     * and the interactivity gate callers use gives no cover: it asks whether stdout is a terminal,
+     * which a pty-allocating IDE or CI runner answers yes to while still parsing every byte.
+     *
+     * <p>Null rather than a silent spinner so the caller's existing {@code --no-progress} null
+     * handling covers this too. Suppressed rather than moved to stderr because
+     * {@link Spinner#showWedge} opens the envelope on the stream it is handed, and the one-argument
+     * {@link CliOutput#ensureLeadingBlank(PrintStream)} records the stdout side by contract.
+     */
+    public static Spinner analyzingStdout(String command, String message) {
+        return CliOutput.scriptMode() ? null : analyzing(CliOutput.stdout(), command, message);
+    }
+
+    /**
      * Blue menu chip used as the left half of a box-table title: {@code
      * ≡ Title} on the plan-blue chip. Prefer {@link Table} for full table chrome.
      */
