@@ -26,6 +26,7 @@ public final class MemoryTerminal implements TerminalSession {
     private final PrintWriter out;
     private final Deque<InputMode> stack = new ArrayDeque<>();
     private volatile boolean live = true;
+    private int pushback = -1;
 
     MemoryTerminal(InputStream in, OutputStream ignored) {
         this.in = in;
@@ -73,18 +74,12 @@ public final class MemoryTerminal implements TerminalSession {
             if (!forever && System.nanoTime() >= deadline) {
                 return Optional.empty();
             }
-            try {
-                if (in.available() > 0) {
-                    int b = in.read();
-                    if (b < 0) {
-                        live = false;
-                        return Optional.empty();
-                    }
-                    return Optional.of(Keys.mapByte(b));
-                }
-            } catch (IOException e) {
-                live = false;
+            int b = readNow();
+            if (b == -2) {
                 return Optional.empty();
+            }
+            if (b >= 0) {
+                return Optional.of(Keys.dispatch(b, feed));
             }
             long remaining = forever ? SLICE_NANOS : Math.min(SLICE_NANOS, Math.max(0, deadline - System.nanoTime()));
             if (remaining == 0) {
@@ -130,5 +125,63 @@ public final class MemoryTerminal implements TerminalSession {
             // test backend
         }
         out.close();
+    }
+
+    private final Keys.ByteFeed feed = new Keys.ByteFeed() {
+        @Override
+        public int read(Duration timeout) {
+            return readRaw(timeout);
+        }
+
+        @Override
+        public void unread(int b) {
+            pushback = b;
+        }
+    };
+
+    private int readNow() {
+        return readRaw(Duration.ofNanos(1));
+    }
+
+    private int readRaw(Duration timeout) {
+        if (pushback >= 0) {
+            int b = pushback;
+            pushback = -1;
+            return b;
+        }
+        if (!live) {
+            return -2;
+        }
+        try {
+            if (in.available() > 0) {
+                int b = in.read();
+                if (b < 0) {
+                    live = false;
+                    return -2;
+                }
+                return b;
+            }
+        } catch (IOException e) {
+            live = false;
+            return -2;
+        }
+        long nanos = timeout.toNanos();
+        if (nanos <= 1) {
+            return -1;
+        }
+        long deadline = System.nanoTime() + nanos;
+        while (live && System.nanoTime() < deadline) {
+            try {
+                if (in.available() > 0) {
+                    int b = in.read();
+                    return b < 0 ? -2 : b;
+                }
+            } catch (IOException e) {
+                live = false;
+                return -2;
+            }
+            LockSupport.parkNanos(Math.min(1_000_000L, deadline - System.nanoTime()));
+        }
+        return -1;
     }
 }

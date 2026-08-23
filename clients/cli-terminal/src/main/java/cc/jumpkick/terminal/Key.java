@@ -2,8 +2,8 @@
 package cc.jumpkick.terminal;
 
 /**
- * One decoded input event. CSI arrows and ESC-peek live in {@code Keys} (JK-2374 expands
- * parse); the type is here so {@link TerminalSession#readKey} has a stable return.
+ * One decoded input event. CSI arrows and ESC-peek live in package-private {@code Keys};
+ * the type is here so {@link TerminalSession#readKey} has a stable return.
  */
 public sealed interface Key
         permits Key.CtrlC,

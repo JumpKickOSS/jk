@@ -21,6 +21,18 @@ final class NativeTerminal implements TerminalSession {
     private final PrintWriter out;
     private volatile boolean live = true;
     private boolean fdsClosed;
+    private int pushback = -1;
+    private final Keys.ByteFeed feed = new Keys.ByteFeed() {
+        @Override
+        public int read(Duration timeout) {
+            return readDevice(timeout);
+        }
+
+        @Override
+        public void unread(int b) {
+            pushback = b;
+        }
+    };
 
     NativeTerminal(PosixTty posix, WindowsConsole windows) {
         this.posix = posix;
@@ -74,7 +86,7 @@ final class NativeTerminal implements TerminalSession {
         if (!ok) {
             return Optional.empty();
         }
-        int b = posix != null ? posix.readByte(timeout, this::isLive) : windows.readByte(timeout, this::isLive);
+        int b = readDevice(timeout);
         lock.lock();
         try {
             if (!live) {
@@ -90,7 +102,7 @@ final class NativeTerminal implements TerminalSession {
         if (b < 0) {
             return Optional.empty();
         }
-        return Optional.of(Keys.mapByte(b));
+        return Optional.of(Keys.dispatch(b, feed));
     }
 
     @Override
@@ -177,6 +189,15 @@ final class NativeTerminal implements TerminalSession {
         if (windows != null) {
             windows.apply(mode);
         }
+    }
+
+    private int readDevice(Duration timeout) {
+        if (pushback >= 0) {
+            int b = pushback;
+            pushback = -1;
+            return b;
+        }
+        return posix != null ? posix.readByte(timeout, this::isLive) : windows.readByte(timeout, this::isLive);
     }
 
     private void restore() {
