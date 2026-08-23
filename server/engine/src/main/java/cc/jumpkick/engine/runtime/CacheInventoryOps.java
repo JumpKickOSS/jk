@@ -107,11 +107,10 @@ public final class CacheInventoryOps {
             }
         }
 
-        DiskUsage.Stats eventLogs = DiskUsage.of(cacheRoot.resolve("runs"));
         DiskUsage.Stats stamps = DiskUsage.of(cacheRoot.resolve("format-stamps"));
         // Total is the action cache — the exact bytes the budget bounds and `jk cache clean`
-        // prunes. Run logs, format stamps and hash memos live under the same root but have their
-        // own retention, so a whole-root walk would report a total nothing can reclaim. Zinc
+        // prunes. Format stamps and hash memos live under the same root but have their own
+        // retention, so a whole-root walk would report a total nothing can reclaim. Zinc
         // analysis state is under actions/ but carries its own budget, so it is subtracted out and
         // reported beside the total rather than inside it.
         DiskUsage.Stats[] budgeted = DiskUsage.exclusive(cacheRoot.resolve("actions"), cacheRoot.resolve("sha256"));
@@ -119,7 +118,6 @@ public final class CacheInventoryOps {
         List<String> stats = List.of(
                 pack("classFiles", classFiles[0], classFiles[1]),
                 pack("testResults", testResults[0], testResults[1]),
-                pack("eventLogs", eventLogs.files(), eventLogs.bytes()),
                 pack("normalJars", normalJars[0], normalJars[1]),
                 pack("shadowJars", shadowJars[0], shadowJars[1]),
                 pack("minifiedJars", minifiedJars[0], minifiedJars[1]),

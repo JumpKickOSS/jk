@@ -38,8 +38,6 @@ public record CacheSnapshot(
         long cacheCasBytes,
         long workerJarsCount,
         long workerJarsBytes,
-        long runLogsCount,
-        long runLogsBytes,
         long formatStampsCount,
         long formatStampsBytes,
         long incrementalCount,
@@ -141,12 +139,12 @@ public record CacheSnapshot(
 
     /** All section file counts (debug / legacy combined total). */
     public long totalCount() {
-        return casCount + actionsCount + cacheCasCount + workerJarsCount + runLogsCount + formatStampsCount;
+        return casCount + actionsCount + cacheCasCount + workerJarsCount + formatStampsCount;
     }
 
     /** All section bytes (debug / legacy combined total — prefer the two surfaces below). */
     public long totalBytes() {
-        return casBytes + actionsBytes + cacheCasBytes + workerJarsBytes + runLogsBytes + formatStampsBytes;
+        return casBytes + actionsBytes + cacheCasBytes + workerJarsBytes + formatStampsBytes;
     }
 
     /**
@@ -199,14 +197,12 @@ public record CacheSnapshot(
         Path repos = JkStores.resolve(cacheRoot, "repos");
         Path actions = cacheRoot.resolve("actions");
         Path cacheCas = cacheRoot.resolve("sha256");
-        Path runs = cacheRoot.resolve("runs");
         Path stamps = cacheRoot.resolve("format-stamps");
         DiskUsage.Stats[] parts;
         try {
-            parts = DiskUsage.exclusive(storeCas, repos, actions, runs, stamps);
+            parts = DiskUsage.exclusive(storeCas, repos, actions, stamps);
         } catch (Exception e) {
             parts = new DiskUsage.Stats[] {
-                new DiskUsage.Stats(0, 0),
                 new DiskUsage.Stats(0, 0),
                 new DiskUsage.Stats(0, 0),
                 new DiskUsage.Stats(0, 0),
@@ -235,8 +231,6 @@ public record CacheSnapshot(
                 parts[1].bytes(),
                 parts[3].files(),
                 parts[3].bytes(),
-                parts[4].files(),
-                parts[4].bytes(),
                 incremental.files(),
                 incremental.bytes(),
                 config.incrementalMaxSizeBytes(),
@@ -290,8 +284,6 @@ public record CacheSnapshot(
                 .put("cacheCasBytes", cacheCasBytes)
                 .put("workerJarsCount", workerJarsCount)
                 .put("workerJarsBytes", workerJarsBytes)
-                .put("runLogsCount", runLogsCount)
-                .put("runLogsBytes", runLogsBytes)
                 .put("formatStampsCount", formatStampsCount)
                 .put("formatStampsBytes", formatStampsBytes)
                 .put("incrementalCount", incrementalCount)

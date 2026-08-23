@@ -6,9 +6,7 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
-import cc.jumpkick.cli.run.CompositeBuildPlanListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.EventLogListener;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Coord;
 import cc.jumpkick.cli.tui.JkManager;
@@ -324,13 +322,12 @@ public final class NativeCommand implements CliCommand {
                         CliOutput.out("══ " + wsRoot.relativize(m.dir()) + " (" + (++idx[0]) + "/"
                                 + Math.max(total[0], idx[0]) + ") ══");
                     }
-                    var log = EventLogListener.open(m.cache(), m.plan().name());
                     // JSON: workspace member listener (no aggregate-rider writes). Verbose: full console.
                     var console = json
                             ? new cc.jumpkick.cli.run.JsonlListener(System.out, false)
                             : BuildPlanConsole.chooseConsoleListener(
                                     m.plan().name(), m.plan().steps(), mode);
-                    return CompositeBuildPlanListener.of(console, log);
+                    return console;
                 }
 
                 @Override
@@ -369,11 +366,8 @@ public final class NativeCommand implements CliCommand {
 
             @Override
             public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
-                var log = EventLogListener.open(m.cache(), m.plan().name());
-                return CompositeBuildPlanListener.of(
-                        new cc.jumpkick.cli.run.AggregateModuleListener(
-                                agg, m.coord(), m.plan().steps(), m.weight()),
-                        log);
+                return new cc.jumpkick.cli.run.AggregateModuleListener(
+                        agg, m.coord(), m.plan().steps(), m.weight());
             }
 
             @Override
@@ -456,9 +450,7 @@ public final class NativeCommand implements CliCommand {
         var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
             @Override
             public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
-                var log = EventLogListener.open(m.cache(), m.plan().name());
-                return CompositeBuildPlanListener.of(
-                        BuildPlanConsole.chooseConsoleListener(m.plan().steps(), mode, spec, coord), log);
+                return BuildPlanConsole.chooseConsoleListener(m.plan().steps(), mode, spec, coord);
             }
         };
         cc.jumpkick.runtime.WorkspaceResult result;

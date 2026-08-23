@@ -12,8 +12,8 @@ import java.util.Set;
 
 /**
  * Stable wire format for plan events as one-JSON-object-per-line text. Shared by {@link
- * JsonlListener} (stdout for {@code --output json}/{@code jsonl}), {@link EventLogListener}
- * (always-on under the cache run log), and {@link CliSessionTranscript} ({@code details.jsonl}).
+ * JsonlListener} (stdout for {@code --output json}/{@code jsonl}) and {@link CliSessionTranscript}
+ * ({@code details.jsonl}).
  * Centralising the shape here means agents, CI, and future MCP tools share one schema — see
  * {@code docs/machine-output.md}.
  *

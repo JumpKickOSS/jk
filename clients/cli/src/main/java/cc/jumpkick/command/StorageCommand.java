@@ -225,7 +225,7 @@ public final class StorageCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Reclaim leaked download temps and expired run logs";
+            return "Reclaim leaked download temps";
         }
 
         @Override

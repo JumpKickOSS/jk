@@ -176,7 +176,7 @@ Builders and round-trip tests live in `shared/wire` / `EngineProtocolTest`.
 | `jk.toml` | grammar / tables | Additive only; no version bump |
 | `jk-lock.toml` | `version` / `Lockfile.CURRENT_VERSION` | Stay on **1**; additive rows/fields only |
 | Client↔engine wire | `EngineProtocol.PROTOCOL` | Stay on **1** |
-| CLI JSONL / run logs | `JsonlShape.SCHEMA` / `"schema"` | Stay on **1** |
+| CLI JSONL / session transcripts | `JsonlShape.SCHEMA` / `"schema"` | Stay on **1** |
 | Session transcripts | `details.jsonl` `"schema"` | Stay on **1** |
 | Run report | `jk-results.md` | Markdown; no version field |
 | REST `/api/*` | response shapes | Additive fields only |

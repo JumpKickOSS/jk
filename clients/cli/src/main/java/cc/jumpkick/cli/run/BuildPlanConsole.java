@@ -15,8 +15,7 @@ import java.util.List;
  * Single entry point CLI commands use to run a {@link BuildPlan} against the right set of console
  * listeners — picks {@link CommandManagerListener} (default TTY), {@link VerboseListener} ({@code
  * --verbose}), {@link JsonlListener} ({@code --output json}), or {@link SilentListener} (non-TTY,
- * {@code --quiet}, or interactive plan); always layers an {@link EventLogListener} on top so the
- * run lands in {@code <cacheRoot>/runs/}.
+ * {@code --quiet}, or interactive plan).
  *
  * <p>Ctrl-C during a plan is handled by the app-level {@link cc.jumpkick.cli.tui.GlobalCancel}
  * handler (installed at startup): it repaints the in-flight progress bar as canceled, prints {@code
@@ -45,10 +44,6 @@ public final class BuildPlanConsole {
      * decides what exit code to surface based on {@code result.success}.
      */
     public static BuildPlanResult run(BuildPlan plan, Mode mode, Path cacheRoot) {
-        // Always log every run for post-hoc debug. Best-effort: a
-        // failed log open just leaves the listener out of the chain.
-        EventLogListener log = EventLogListener.open(cacheRoot, plan.name());
-        if (log != null) plan.addListener(log);
         attachSessionMirror(plan, mode);
 
         BuildPlanListener console = chooseConsoleListener(plan, mode);
@@ -72,8 +67,6 @@ public final class BuildPlanConsole {
      * {@link SimpleTaskListener} owns the output (animating only on a TTY).
      */
     public static BuildPlanResult run(BuildPlan plan, Mode mode, Path cacheRoot, ConsoleSpec spec) {
-        EventLogListener log = EventLogListener.open(cacheRoot, plan.name());
-        if (log != null) plan.addListener(log);
         attachSessionMirror(plan, mode);
 
         BuildPlanListener console =
@@ -114,8 +107,6 @@ public final class BuildPlanConsole {
      */
     public static BuildPlanResult runBuildPlan(
             BuildPlan plan, Mode mode, Path cacheRoot, ConsoleSpec spec, String module) {
-        EventLogListener log = EventLogListener.open(cacheRoot, plan.name());
-        if (log != null) plan.addListener(log);
         attachSessionMirror(plan, mode);
 
         plan.addListener(chooseConsoleListener(plan.steps(), mode, spec, module));
@@ -161,8 +152,6 @@ public final class BuildPlanConsole {
      * compact summary line per unit instead.
      */
     public static BuildPlanResult runBuildPlanSilently(BuildPlan plan, Path cacheRoot) {
-        EventLogListener log = EventLogListener.open(cacheRoot, plan.name());
-        if (log != null) plan.addListener(log);
         // Silent still mirrors to details.jsonl when a session is open (TTY chrome suppressed).
         attachSessionMirror(plan, Mode.QUIET);
         plan.addListener(new SilentListener(System.out, System.err));
@@ -179,8 +168,6 @@ public final class BuildPlanConsole {
      * renders eagerly.
      */
     public static Buffered runBuildPlanBuffered(BuildPlan plan, Path cacheRoot) {
-        EventLogListener log = EventLogListener.open(cacheRoot, plan.name());
-        if (log != null) plan.addListener(log);
         attachSessionMirror(plan, Mode.QUIET);
         List<String> lines = new ArrayList<>();
         plan.addListener(new BuildPlanListener() {
@@ -259,8 +246,6 @@ public final class BuildPlanConsole {
      */
     public static BuildPlanResult runBuildPlanInto(
             BuildPlan plan, Path cacheRoot, String module, AggregateContext agg, long slice) {
-        EventLogListener log = EventLogListener.open(cacheRoot, plan.name());
-        if (log != null) plan.addListener(log);
         // Workspace TTY path is never JSON mode — always mirror plan events into details.jsonl.
         attachSessionMirror(plan, Mode.AUTO);
         plan.addListener(new AggregateModuleListener(agg, module, plan.steps(), slice));
@@ -276,8 +261,6 @@ public final class BuildPlanConsole {
      */
     public static BuildPlanResult runBuildPlanIntoBuffered(
             BuildPlan plan, Path cacheRoot, String module, AggregateContext agg, long slice, List<String> outBuffer) {
-        EventLogListener log = EventLogListener.open(cacheRoot, plan.name());
-        if (log != null) plan.addListener(log);
         attachSessionMirror(plan, Mode.AUTO);
         AggregateModuleListener lis = new AggregateModuleListener(agg, module, plan.steps(), slice);
         lis.bufferOutputInto(outBuffer);

@@ -24,8 +24,6 @@ class McpDiskTest {
             /* cacheCasBytes */ 50,
             /* workerJarsCount */ 1,
             /* workerJarsBytes */ 100,
-            /* runLogsCount */ 3,
-            /* runLogsBytes */ 30,
             /* formatStampsCount */ 4,
             /* formatStampsBytes */ 20,
             /* incrementalCount */ 6,

@@ -139,7 +139,7 @@ public final class CachePlans {
 
     /**
      * Delete the cache-tier trees under {@code root}: action index, format stamps, and cache CAS
-     * ({@code sha256/}). Leaves {@code repos/} and {@code runs/} alone.
+     * ({@code sha256/}). Leaves {@code repos/} alone.
      */
     public static void purgeActionCache(Path root) throws IOException {
         for (String tree : new String[] {"actions", "format-stamps", "sha256"}) {
@@ -170,7 +170,7 @@ public final class CachePlans {
     public record SweepReport(long files, long bytes) {}
 
     /**
-     * Artifact-store GC: leaked {@code .put-} download temps and expired run logs, nothing else.
+     * Artifact-store GC: leaked {@code .put-} download temps, nothing else.
      * The store is never size-bounded and its blobs are never collected — {@code jk storage nuke} is
      * the only way to shrink it.
      */
@@ -187,10 +187,6 @@ public final class CachePlans {
         TempSweep repoTemps = sweepCasTemps(cc.jumpkick.cache.JkStores.resolve(root, "repos"), dryRun);
         totalFiles += repoTemps.files();
         totalBytes += repoTemps.bytes();
-
-        var runLogReport = cc.jumpkick.task.RunLogGc.sweep(root, cc.jumpkick.task.RunLogGc.DEFAULT_TTL, dryRun);
-        totalFiles += runLogReport.deleted();
-        totalBytes += runLogReport.freedBytes();
 
         return new SweepReport(totalFiles, totalBytes);
     }

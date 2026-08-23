@@ -391,14 +391,12 @@ public final class RunCommand {
 
             @Override
             public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
-                var log = cc.jumpkick.cli.run.EventLogListener.open(
-                        m.cache(), m.plan().name());
                 List<String> buf = Collections.synchronizedList(new ArrayList<String>());
                 buffers.put(m.dir(), buf);
                 var lis = new cc.jumpkick.cli.run.AggregateModuleListener(
                         agg, m.coord(), m.plan().steps(), m.weight());
                 lis.bufferOutputInto(buf);
-                return cc.jumpkick.cli.run.CompositeBuildPlanListener.of(lis, log);
+                return lis;
             }
 
             @Override

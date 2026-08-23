@@ -103,7 +103,6 @@ class CacheCommandTest {
         assertThat(plain).contains("Cache Storage");
         assertThat(plain).contains("Class Files");
         assertThat(plain).contains("Test Results");
-        assertThat(plain).contains("Event Logs");
         assertThat(plain).contains("Normal Jars");
         assertThat(plain).contains("Shadow Jars");
         assertThat(plain).contains("Minified Jars");

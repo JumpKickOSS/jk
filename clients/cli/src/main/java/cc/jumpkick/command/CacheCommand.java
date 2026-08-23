@@ -130,7 +130,6 @@ public final class CacheCommand extends GroupCommand {
     record CacheUsageStats(
             Stats classFiles,
             Stats testResults,
-            Stats eventLogs,
             Stats normalJars,
             Stats shadowJars,
             Stats minifiedJars,
@@ -152,7 +151,6 @@ public final class CacheCommand extends GroupCommand {
         return new CacheUsageStats(
                 statFromAck(ack, "classFiles"),
                 statFromAck(ack, "testResults"),
-                statFromAck(ack, "eventLogs"),
                 statFromAck(ack, "normalJars"),
                 statFromAck(ack, "shadowJars"),
                 statFromAck(ack, "minifiedJars"),
@@ -687,7 +685,6 @@ public final class CacheCommand extends GroupCommand {
         String[][] rows = {
             {"Class Files", fmtCount(s.classFiles().files), fmtSize(s.classFiles().bytes)},
             {"Test Results", fmtCount(s.testResults().files), fmtSize(s.testResults().bytes)},
-            {"Event Logs", fmtCount(s.eventLogs().files), fmtSize(s.eventLogs().bytes)},
             {"Normal Jars", fmtCount(s.normalJars().files), fmtSize(s.normalJars().bytes)},
             {"Shadow Jars", fmtCount(s.shadowJars().files), fmtSize(s.shadowJars().bytes)},
             {"Minified Jars", fmtCount(s.minifiedJars().files), fmtSize(s.minifiedJars().bytes)},

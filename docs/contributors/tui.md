@@ -192,7 +192,7 @@ Rendered rows go out through `CliOutput`, so the envelope opens on the first one
 | `jk doctor` | `≡ Doctor` menu chip, then the checklist rows + summary |
 | `jk auth status` | `≡ Auth status` chip, then per-forge status lines |
 | `jk history show` | `≡ Build <id>` chip, then the detail block |
-| `jk cache usage` | Element · File Count · Size (Class Files / Test Results / Event Logs / Normal·Shadow·Minified Jars / Native Bins / OCI Images / Format Stamps), plus Total (the action cache: index + blobs), a spanning utilization row, and a last-cleaned footer |
+| `jk cache usage` | Element · File Count · Size (Class Files / Test Results / Normal·Shadow·Minified Jars / Native Bins / OCI Images / Format Stamps), plus Total (the action cache: index + blobs), a spanning utilization row, and a last-cleaned footer |
 
 ### Hybrid settles (CommandWedge.ok/fail)
 

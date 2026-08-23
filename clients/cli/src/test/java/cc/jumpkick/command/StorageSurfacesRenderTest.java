@@ -23,7 +23,6 @@ class StorageSurfacesRenderTest {
         var stats = new CacheCommand.CacheUsageStats(
                 new CacheCommand.Stats(100, 50_000),
                 new CacheCommand.Stats(5, 200),
-                new CacheCommand.Stats(10, 5_000),
                 new CacheCommand.Stats(3, 8_000),
                 new CacheCommand.Stats(2, 90_000_000),
                 new CacheCommand.Stats(1, 1_000_000),
@@ -39,7 +38,6 @@ class StorageSurfacesRenderTest {
         assertThat(joined).contains("Cache Storage");
         assertThat(joined).contains("Class Files");
         assertThat(joined).contains("Test Results");
-        assertThat(joined).contains("Event Logs");
         assertThat(joined).contains("Normal Jars");
         assertThat(joined).contains("Shadow Jars");
         assertThat(joined).contains("Minified Jars");
@@ -90,7 +88,6 @@ class StorageSurfacesRenderTest {
         var cacheStats = new CacheCommand.CacheUsageStats(
                 new CacheCommand.Stats(100, 50_000),
                 new CacheCommand.Stats(5, 200),
-                new CacheCommand.Stats(10, 5_000),
                 new CacheCommand.Stats(3, 8_000),
                 new CacheCommand.Stats(2, 90_000_000),
                 new CacheCommand.Stats(1, 1_000_000),

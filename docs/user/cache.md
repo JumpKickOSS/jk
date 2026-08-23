@@ -31,7 +31,7 @@ cleaned with `jk cache clean` and wiped by `jk cache nuke`.
 
 ```bash
 jk cache clean                    # first knob for safe space reclaim
-jk storage clean                  # leaked download temps / old run logs
+jk storage clean                  # leaked download temps
 jk cache nuke -y                  # wipe rebuildable action cache
 jk storage nuke                   # wipe downloaded artifacts (confirms)
 jk self nuke                      # all targets (default); confirms first
@@ -137,7 +137,7 @@ it can legitimately report “Nothing to clean up.” on a cache that used to fr
 
 - **The artifact store** (`JK_STORE_DIR`): Maven-layout `repos/`, worker jars and promoted
   blobs grow without limit. No budget, no eviction, no reachability sweep. `jk storage
-  clean` reclaims only leaked `.put-` download temps and expired run logs. `jk storage
+  clean` reclaims only leaked `.put-` download temps. `jk storage
   nuke` is the only way to shrink it on purpose.
 - **The Maven local repository** (`~/.m2/repository`): jk does not own it and never deletes
   from it. `jk storage usage` reports its size for information only.
