@@ -52,6 +52,11 @@ public final class PluginTableRegistry {
             "minified.jk-plugin.toml",
             "micronaut.jk-plugin.toml");
 
+    /** The built-in manifest filenames — the only names the resources strip may delete. */
+    public static List<String> builtInManifestNames() {
+        return BUILT_IN;
+    }
+
     /** Load a plugin resource relative to its manifest ({@code <id>/<relPath>}). */
     public static String resourceText(PluginDescriptor manifest, String relPath) {
         Path archive = ARCHIVES.get(manifest.id());

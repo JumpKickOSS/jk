@@ -85,7 +85,8 @@ public final class PlannerResources {
                     // Test-classpath fixtures must not ride main classes into the jar. Leftover
                     // extra-resources copies of *.jk-plugin.toml (and scaffold trees) are stripped
                     // after the merge so a skipped copy step cannot keep poisoning PluginTableRegistry.
-                    boolean stripped = stripFlattenedPluginCatalog(classes);
+                    boolean stripped = stripFlattenedPluginCatalog(
+                            classes, name -> ctx.warn("resources", "stripped leftover plugin-catalog copy: " + name));
                     if (stripped) ctx.label("stripped leftover plugin catalog");
                     // Project build logic: AFTER_RESOURCES anchor.
                     boolean logicRan = false;
@@ -110,13 +111,18 @@ public final class PlannerResources {
     }
 
     /**
-     * Delete {@code cc/jumpkick/plugin/manifest/*.jk-plugin.toml} (and scaffold trees next to
-     * them) from main classes. Those files are test-classpath fixtures; production jars must not
-     * bake a flattened catalog. Class files in the same package (core) are left alone.
+     * Delete jk's OWN flattened catalog fixtures — the {@code BUILT_IN} manifest names and their
+     * scaffold trees — from main classes. Those files are test-classpath fixtures; production jars
+     * must not bake a flattened catalog. Restricted to the built-in names on purpose: a user
+     * project may legitimately ship resources under {@code cc/jumpkick/plugin/manifest/}, and the
+     * old delete-anything sweep silently kept them out of the jar while re-running resources every
+     * build (copy → strip → drift → copy …). Every deletion is reported through {@code warn}.
      */
-    static boolean stripFlattenedPluginCatalog(Path classesDir) throws IOException {
+    static boolean stripFlattenedPluginCatalog(Path classesDir, java.util.function.Consumer<String> warn)
+            throws IOException {
         Path catalog = classesDir.resolve(Path.of("cc", "jumpkick", "plugin", "manifest"));
         if (!Files.isDirectory(catalog)) return false;
+        List<String> builtIn = cc.jumpkick.plugin.manifest.PluginTableRegistry.builtInManifestNames();
         boolean stripped = false;
         List<Path> children;
         try (var stream = Files.list(catalog)) {
@@ -124,11 +130,15 @@ public final class PlannerResources {
         }
         for (Path p : children) {
             String name = p.getFileName().toString();
-            if (Files.isRegularFile(p) && name.endsWith(".jk-plugin.toml")) {
+            if (Files.isRegularFile(p) && builtIn.contains(name)) {
                 Files.delete(p);
+                warn.accept(name);
                 stripped = true;
-            } else if (Files.isDirectory(p) && !containsClassFiles(p)) {
+            } else if (Files.isDirectory(p)
+                    && builtIn.contains(name + ".jk-plugin.toml")
+                    && !containsClassFiles(p)) {
                 PathUtil.deleteRecursivelyOrThrow(p);
+                warn.accept(name + "/");
                 stripped = true;
             }
         }

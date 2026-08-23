@@ -889,13 +889,17 @@ public final class TaskForecaster {
     /**
      * True when main classes still hold test-only flattened plugin manifests. Those files are
      * not in {@code src/main/resources}, so {@link #resourcesOutOfSync} cannot see them.
+     * Restricted to jk's BUILT_IN names, matching the strip in {@code PlannerResources}: a user
+     * resource that merely shares the package must not read as drift, or every build re-runs
+     * resources forever.
      */
     static boolean flattenedPluginCatalogPresent(Path classesDir) {
         Path catalog = classesDir.resolve(Path.of("cc", "jumpkick", "plugin", "manifest"));
         if (!Files.isDirectory(catalog)) return false;
+        var builtIn = cc.jumpkick.plugin.manifest.PluginTableRegistry.builtInManifestNames();
         try (var stream = Files.list(catalog)) {
             return stream.anyMatch(
-                    p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(".jk-plugin.toml"));
+                    p -> Files.isRegularFile(p) && builtIn.contains(p.getFileName().toString()));
         } catch (IOException e) {
             return true;
         }
