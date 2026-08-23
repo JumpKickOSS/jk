@@ -423,6 +423,15 @@ public final class PluginTableRegistry {
     /**
      * Keep a classpath catalog only when it is empty or names every built-in. A partial tree is
      * discarded rather than loaded or treated as a hard error.
+     *
+     * <p>Accepted residual (JK-2345): a COMPLETE leftover catalog from the same era — all current
+     * built-ins present and parseable, content stale — passes this gate and seeds BY_TABLE at
+     * class init. The engine replaces entries per plugin via {@code putBuiltIn} at install time;
+     * only catalog-less CLI/test JVMs would validate tables against the stale schemas until the
+     * next build's copy-resources refresh. The manifests carry no jk-version stamp to compare
+     * against, stamping one would touch fixture generation for a window this narrow, and the
+     * PlannerResources strip plus drift detection already remove leftovers from main classes —
+     * so the gap is documented rather than closed.
      */
     static Map<String, PluginDescriptor> acceptClasspathCatalog(Map<String, PluginDescriptor> loaded) {
         if (loaded.isEmpty() || loaded.size() == BUILT_IN.size()) return loaded;
