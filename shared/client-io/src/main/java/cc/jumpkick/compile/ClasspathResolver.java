@@ -272,7 +272,10 @@ public final class ClasspathResolver {
     private List<Entry> resolveEntries(
             List<Lockfile.Artifact> selected, boolean requirePresent, cc.jumpkick.repo.ArtifactLocator locator) {
         List<Entry> result = new ArrayList<>(selected.size());
-        cc.jumpkick.task.AccessLedger ledger = cc.jumpkick.task.AccessLedger.atDefaultPath();
+        // One append for the whole classpath, not one per artifact: a workspace forecast resolves
+        // every module's classpath against the same lock, so per-artifact touches cost thousands of
+        // open/append/close round trips per build for a signal the GC only reads as a coarse LRU.
+        List<String> touched = new ArrayList<>(selected.size());
         for (Lockfile.Artifact pkg : selected) {
             String checksum = pkg.checksum();
             if (checksum == null) {
@@ -309,12 +312,13 @@ public final class ClasspathResolver {
                 } catch (IOException e) {
                     throw new UncheckedIOException(pkg.name() + " v" + pkg.version() + ": " + e.getMessage(), e);
                 }
-                ledger.touch(hex);
+                touched.add(hex);
                 continue;
             }
             result.add(new Entry(pkg, jar));
-            ledger.touch(hex);
+            touched.add(hex);
         }
+        cc.jumpkick.task.AccessLedger.atDefaultPath().touchAll(touched);
         return result;
     }
 
