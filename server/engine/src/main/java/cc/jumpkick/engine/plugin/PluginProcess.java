@@ -222,10 +222,20 @@ public final class PluginProcess {
         }
         // Bounded like the client socket: a worker emitting an unbounded line must not OOM the
         // engine. No idle timeout — a compiling worker is legitimately silent for long stretches.
-        try (BufferedReader reader = new cc.jumpkick.jsonl.BoundedLineReader(
-                        new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
-                BufferedWriter stdin =
-                        new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8))) {
+        //
+        // The pump runs on its own virtual thread so this (job) thread can give up on the pipe:
+        // on Linux a root that exits leaving a reparented child holding the stdout write end
+        // produces neither EOF nor a visible descendant — descendants() of a dead process is
+        // empty, and closing the fd does not wake a blocked native pipe read. The job thread
+        // waits root-exit + a drain grace, then abandons the reader instead of hanging forever.
+        BufferedReader reader = new cc.jumpkick.jsonl.BoundedLineReader(
+                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+        java.util.concurrent.atomic.AtomicBoolean abandoned = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicReference<IOException> pumpError =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.CountDownLatch pumpDone = new java.util.concurrent.CountDownLatch(1);
+        try (BufferedWriter stdin =
+                new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8))) {
             Conversation convo = new Conversation() {
                 @Override
                 public void send(String line) {
@@ -252,17 +262,45 @@ public final class PluginProcess {
             if (closeStdinImmediately) {
                 convo.closeInput();
             }
-            try {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    lastLineAt.set(System.currentTimeMillis());
-                    if (line.startsWith(prefix)) {
-                        onProtocol.accept(line.substring(prefix.length()), convo);
-                    } else if (onPassthrough != null) {
-                        onPassthrough.accept(line);
+            Thread pump = Thread.ofVirtual().name("jk-worker-pump").start(() -> {
+                try {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        if (abandoned.get()) continue; // orphan chatter after the job moved on
+                        lastLineAt.set(System.currentTimeMillis());
+                        if (line.startsWith(prefix)) {
+                            onProtocol.accept(line.substring(prefix.length()), convo);
+                        } else if (onPassthrough != null) {
+                            onPassthrough.accept(line);
+                        }
+                    }
+                } catch (IOException e) {
+                    pumpError.set(e);
+                } finally {
+                    pumpDone.countDown();
+                    try {
+                        reader.close(); // pump owns the reader: closing it from another thread
+                    } catch (IOException ignored) { // would block on the readLine monitor
+                        // Already closed / process gone.
                     }
                 }
-            } catch (IOException e) {
+            });
+            while (true) {
+                if (pumpDone.await(100, java.util.concurrent.TimeUnit.MILLISECONDS)) break;
+                if (!process.isAlive()) {
+                    // Root is gone; let the pump drain buffered output and see EOF. If the grace
+                    // elapses the write end is held by a reparented orphan we can neither
+                    // enumerate nor wake — abandon the pump (it parks until the orphan exits,
+                    // discarding whatever it reads) rather than wedging the job thread.
+                    if (!pumpDone.await(ORPHAN_DRAIN_GRACE_MS, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                        abandoned.set(true);
+                        forceStop(process); // best effort: stragglers still visible + fd close
+                    }
+                    break;
+                }
+            }
+            IOException e = pumpError.get();
+            if (e != null && !abandoned.get()) {
                 // Worker died or pipe closed mid-stream: bare "closed"). Prefer a
                 // waitFor exit code over an opaque IOException when the process is already gone.
                 if (isPipeClosed(e) && !process.isAlive()) {
@@ -294,6 +332,13 @@ public final class PluginProcess {
         }
         return process.waitFor();
     }
+
+    /**
+     * After the root exits, how long the pump gets to drain buffered output before the job
+     * concludes an orphan is holding the pipe and abandons the reader. Only the orphan case pays
+     * it — a clean EOF releases the latch immediately.
+     */
+    private static final long ORPHAN_DRAIN_GRACE_MS = 5_000L;
 
     /**
      * Kill the worker and its descendants, then close the parent's read end so {@code readLine}
