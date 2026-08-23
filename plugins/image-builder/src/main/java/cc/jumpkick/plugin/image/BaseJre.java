@@ -81,7 +81,15 @@ final class BaseJre {
         if (Files.isRegularFile(marker)) {
             long age = System.currentTimeMillis()
                     - Files.getLastModifiedTime(marker).toMillis();
-            if (pinned || age < REVALIDATE_MILLIS) return findJava(root);
+            if (pinned) {
+                // The marker is also what cache retention reads to decide the tree is still in
+                // use, and a pinned reference never re-resolves, so this is the only place the
+                // use is ever recorded. A mutable tag records it by re-validating instead, which
+                // rewrites the marker at least as often as the retention window can care about.
+                Files.setLastModifiedTime(marker, FileTime.fromMillis(System.currentTimeMillis()));
+                return findJava(root);
+            }
+            if (age < REVALIDATE_MILLIS) return findJava(root);
         }
         extractIfChanged(base, root, marker);
         return findJava(root);

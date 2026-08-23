@@ -136,7 +136,7 @@ public final class CacheRetention {
                     bytes += t.bytes();
                 }
                 case NESTED_SUBTREES -> {
-                    Tally t = new Tally(0, 0L);
+                    Tally t = strays(root, now, grace, dryRun);
                     for (Path parent : children(root)) {
                         if (!Files.isDirectory(parent)) continue;
                         t = t.plus(sweepSubtrees(parent, bound, now, grace, dryRun, probe));
@@ -238,6 +238,21 @@ public final class CacheRetention {
     }
 
     /**
+     * Reclaim what is not a tree in a tier of trees. Every tier laid out this way keys itself by a
+     * directory per entry, so a loose file beside them is residue — most often the tarball an
+     * interrupted base-image extract left behind, which no window and no cap is written against.
+     */
+    private static Tally strays(Path root, long now, long grace, boolean dryRun) throws IOException {
+        Tally out = new Tally(0, 0L);
+        for (Path child : children(root)) {
+            if (Files.isDirectory(child)) continue;
+            if (age(child, now) < grace) continue;
+            out = out.plus(delete(child, dryRun));
+        }
+        return out;
+    }
+
+    /**
      * Whether the source {@code entry} describes is gone, read from the path on its last line.
      *
      * <p>Two ways to answer "no" that are not "the file is there": an entry that records no path
@@ -279,7 +294,7 @@ public final class CacheRetention {
             trees.add(new Tree(dir, newestMtime(dir, probe)));
         }
 
-        Tally out = new Tally(0, 0L);
+        Tally out = strays(root, now, grace, dryRun);
         List<Tree> survivors = new ArrayList<>();
         for (Tree t : trees) {
             if (expired(bound.window(), now, t.mtime()) && now - t.mtime() >= grace) {

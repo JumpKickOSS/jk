@@ -76,7 +76,12 @@ public enum CacheTier {
     /** Hard-link aliases for {@code jk jshell}. Near-zero real bytes; recreated on demand. */
     JSHELL_CP("jshell-cp", Bound.files(null, Bound.resetAlways())),
 
-    /** An extracted JRE per base image, 50–200 MB each — the only tier where a count cap is a byte bound. */
+    /**
+     * An extracted JRE per base image, 50–200 MB each — the only tier where a count cap is a byte
+     * bound. The window reads the {@code .extracted} marker, which {@code BaseJre.javaBinary}
+     * touches on use; without that a digest-pinned tree, which is never re-extracted and never
+     * rewritten, would age out of a workspace that builds an image with it every day.
+     */
     BASE_JRE("base-jre", Bound.subtrees(Duration.ofDays(30), Bound.countCap(2))),
 
     /** A materialized Maven repo per path-dependency fingerprint. Every source edit mints one. */

@@ -143,6 +143,20 @@ class CacheRetentionCoverageTest {
         }
     }
 
+    /** An interrupted base-image extract leaves its tarball beside the trees; nothing else would. */
+    @Test
+    void a_loose_file_in_a_tier_of_trees_is_residue(@TempDir Path root) throws IOException {
+        Path live = tree(root, "base-jre/sha256-live", Duration.ofDays(2).toMillis());
+        Path leaked = file(root, "base-jre/sha256-live.tar", "half a base image", OLD);
+        Path fresh = file(root, "base-jre/sha256-other.tar", "still being written", FRESH);
+
+        CacheRetention.sweep(root, new Cas(root), Set.of(), false);
+
+        assertThat(leaked).doesNotExist();
+        assertThat(fresh).as("another engine may be mid-pull").exists();
+        assertThat(live).exists();
+    }
+
     /** The residue rule: anything the table does not name is reclaimed, and reported. */
     @Test
     void unrecognised_entries_are_reclaimed_and_named(@TempDir Path root) throws IOException {
