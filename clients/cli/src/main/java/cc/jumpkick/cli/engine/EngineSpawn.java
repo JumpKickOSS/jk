@@ -456,8 +456,7 @@ public final class EngineSpawn {
         // ONE home for every AOT cache — engine and workers alike live in ~/.local/state/jk/aot/ so a
         // user (or `jk engine aot`) finds them all side by side. The engine's file
         // carries its jk version ("engine-<version>-<key>.aot") because its LIFETIME is
-        // version-scoped: a new primary reaps other versions' engine AOT, and
-        // EngineInstall.gc also retires leftover version trees. The sweep below stays
+        // version-scoped: a new primary reaps other versions' engine AOT. The sweep below stays
         // within one version so side-by-side keys for the same version never thrash each other.
         // Worker caches (kotlinc-/java-compiler-) have no version dimension.
         Path aotDir = cc.jumpkick.util.JkDirs.state().resolve("aot");
