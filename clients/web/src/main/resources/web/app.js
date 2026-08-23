@@ -2230,11 +2230,11 @@ export const appOptions = {
     count(n) {
       return n == null ? '—' : n.toLocaleString();
     },
-    /** Format-stamp count cap (512k default / 1M on CI); from API or local fallback. */
+    /** Format-stamp count cap; from the API, or the local fallback below. */
     formatStampsMax() {
       const m = this.cache?.formatStampsMax;
       if (m != null && m > 0) return m;
-      return 512000;
+      return 65536;
     },
     formatStampsMaxLabel() {
       return this.formatStampsMax().toLocaleString();

@@ -11,11 +11,16 @@ import java.util.function.Function;
  */
 public final class FormatStamps {
 
-    /** Default cap (dev / non-CI). */
-    public static final int DEFAULT_MAX_FILES = 512_000;
+    /**
+     * Default cap (dev / non-CI). One stamp per source ever formatted, across every checkout that
+     * shares the cache: the jk tree is ~2,000 sources, so this holds thirty of it. The number is a
+     * count of inodes and dirents, which is what a stamp actually costs — a byte budget would read
+     * zero here no matter how many there are.
+     */
+    public static final int DEFAULT_MAX_FILES = 65_536;
 
     /** Cap when {@code CI=1} or {@code CI=true}: CI checkouts are wider and shorter-lived. */
-    public static final int CI_MAX_FILES = 1_000_000;
+    public static final int CI_MAX_FILES = 131_072;
 
     private FormatStamps() {}
 
@@ -23,7 +28,7 @@ public final class FormatStamps {
         return maxFiles(System::getenv);
     }
 
-    /** Testable: {@code CI=1} / {@code CI=true} (case-insensitive) → 1M, otherwise 512k. */
+    /** Testable: {@code CI=1} / {@code CI=true} (case-insensitive) → the CI cap. */
     public static int maxFiles(Function<String, String> env) {
         String ci = env.apply("CI");
         if ("1".equals(ci) || (ci != null && "true".equalsIgnoreCase(ci))) {
