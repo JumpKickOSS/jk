@@ -364,14 +364,13 @@ rm -f "${JK_BIN}.old" "${JKX_BIN}.old" 2>/dev/null || true
 # PATH entrypoints stay real files — not pointers into product data — so
 # deleting product data does not uninstall jk.
 
-printf '\n'
-
 # ---- ready -----------------------------------------------------------------
 #
 # Never block on a keypress here: install is finished. Cases that used to
 # `read` from /dev/tty (curl|bash) or silently `exec $SHELL` (local tty) made
 # the script feel hung after `jk activate`. Print how to pick up PATH/hooks;
-# the user reloads when ready.
+# the user reloads when ready. `jk activate` already closed with the human
+# envelope's trailing blank — do not add another spacer before this section.
 case "${SHELL##*/}" in
   zsh)  SOURCE_HINT='source ~/.zshrc' ;;
   bash) SOURCE_HINT='source ~/.bashrc' ;;
