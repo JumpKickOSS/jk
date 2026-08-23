@@ -168,7 +168,8 @@ public final class ModuleOutputRestore {
             Path javaRoot = compact ? moduleDir.resolve("src") : moduleDir.resolve("src/main/java");
             return !CompileSupport.collectJavaSources(javaRoot).isEmpty()
                     || !CompileSupport.collectKotlinSources(moduleDir, compact).isEmpty()
-                    || !CompileSupport.collectGroovySources(moduleDir, compact).isEmpty();
+                    || !CompileSupport.collectGroovySources(moduleDir, compact).isEmpty()
+                    || !CompileSupport.collectScalaSources(moduleDir, compact).isEmpty();
         } catch (Exception e) {
             return true; // fail safe: treat as sourced so missing classes counts
         }

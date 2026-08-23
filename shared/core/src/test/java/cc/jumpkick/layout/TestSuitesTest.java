@@ -62,4 +62,20 @@ class TestSuitesTest {
         Files.writeString(intJava.resolve("ITest.java"), "class ITest {}");
         assertThat(TestSuites.discover(tmp, false)).containsExactly("test", "integration");
     }
+
+    @Test
+    void collect_scala_simple_and_traditional(@TempDir Path tmp) throws Exception {
+        Files.createDirectories(tmp.resolve("test/src"));
+        Files.writeString(tmp.resolve("test/src/HelloSpec.scala"), "class HelloSpec");
+        assertThat(TestSuites.collectScalaSources(tmp, true, List.of("test")))
+                .extracting(p -> p.getFileName().toString())
+                .containsExactly("HelloSpec.scala");
+
+        Path trad = tmp.resolve("trad");
+        Files.createDirectories(trad.resolve("src/test/scala"));
+        Files.writeString(trad.resolve("src/test/scala/T.scala"), "class T");
+        assertThat(TestSuites.collectScalaSources(trad, false, List.of("test")))
+                .extracting(p -> p.getFileName().toString())
+                .containsExactly("T.scala");
+    }
 }

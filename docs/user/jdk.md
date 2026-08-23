@@ -14,12 +14,18 @@ jk jdk pin temurin-25          # writes .jdk-version
 jk jdk home
 jk jdk uninstall …
 jk jdk update
+jk jdk verify                  # fingerprint managed trees (`jk jdks verify`)
 jk shell                       # subshell with the project JDK
 ```
 
 Discovery looks at existing installs (IntelliJ shared root, SDKMAN, mise, asdf, Homebrew,
 system, `JAVA_HOME`) before downloading from the JetBrains JDK feed. Managed write root:
-[Install](install.md) (IntelliJ-shared `~/.jdks` / macOS Library JVMs).
+[Install](install.md) (IntelliJ-shared `~/.jdks` / macOS Library JVMs). JumpKick's inventory of
+those trees (defaults + SHA-256 fingerprints) lives in **`$JK_STATE_DIR/jk-jdks.toml`**
+(`~/.local/state/jk/jk-jdks.toml` on Linux), not next to the installs — the jdks directory is
+shared with IntelliJ. `jk jdk verify` (alias `jk jdks verify`) recomputes fingerprints including
+the `.jk-owned` marker. There is no on-disk “current” JDK pointer: `JAVA_HOME` / `GRAALVM_HOME`
+are whatever the [shell hook](install.md#shell-integration) last exported.
 
 **GraalVM** for [native-image](native.md): `jk jdk` can provision a Graal-capable
 distribution when native work needs it.

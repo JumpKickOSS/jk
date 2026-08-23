@@ -33,6 +33,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * {@code jk explain} — forecast of what a build would run (cache hit/miss per module/stage). Prefer
@@ -79,6 +80,23 @@ public final class ExplainCommand implements CliCommand {
         return opts;
     }
 
+    /** The {@code --graph} format ({@code dot} / {@code mermaid}), or null when the flag is absent. */
+    private static String graphFormat(Invocation in) {
+        return in.value("graph").filter(s -> !s.isBlank()).orElse(null);
+    }
+
+    /** The {@code --graph-out} destination, or empty when the graph goes to stdout instead. */
+    private static Optional<String> graphOut(Invocation in) {
+        return in.value("graph-out").filter(s -> !s.isBlank());
+    }
+
+    /** {@code jk explain --graph dot} pipes a graph source into {@code dot} or an editor preview. */
+    @Override
+    public boolean scriptMode(Invocation in) {
+        // With --graph-out the graph lands in a file and stdout carries only the human settle.
+        return graphFormat(in) != null && graphOut(in).isEmpty();
+    }
+
     @Override
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
@@ -89,8 +107,8 @@ public final class ExplainCommand implements CliCommand {
         Path buildFile = proj.buildFile();
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
 
-        String graphFmt = in.value("graph").orElse(null);
-        boolean hasGraph = graphFmt != null && !graphFmt.isBlank();
+        String graphFmt = graphFormat(in);
+        boolean hasGraph = graphFmt != null;
         String modulesSpec = in.value("modules").orElse(null);
         String affectedSinceEarly = in.value("affected-since").orElse(null);
         var peek = BuildCommand.projectInfoOrNull(startDir);
@@ -110,10 +128,10 @@ public final class ExplainCommand implements CliCommand {
         if (hasGraph) {
             // Resolve a relative --graph-out against the INVOCATION dir before graphDir is
             // rehomed to the workspace root for member cwds (JK-2167).
-            String graphOut = in.value("graph-out")
+            String graphOutPath = graphOut(in)
                     .map(o -> startDir.resolve(o).toAbsolutePath().normalize().toString())
                     .orElse(null);
-            return emitModuleGraph(graphDir, graphFmt, modulesSpec, affectedSinceEarly, graphOut);
+            return emitModuleGraph(graphDir, graphFmt, modulesSpec, affectedSinceEarly, graphOutPath);
         }
 
         // HARD INVARIANT: bare `jk explain` uses the exact same defaults as bare `jk build`
@@ -170,7 +188,7 @@ public final class ExplainCommand implements CliCommand {
         long fullEtaMillis;
         // [0] = current remaining ETA; [1] = full-rebuild ETA (effort denominator).
         long[] etaOut = new long[2];
-        try (Spinner prep = livePrep ? CommandWedge.analyzing(CliOutput.stdout(), "Explain", prepMsg) : null) {
+        try (Spinner prep = livePrep ? CommandWedge.analyzingStdout("Explain", prepMsg) : null) {
             // Same starting lock as `jk build` so the dirty plan and ETA match the countdown.
             // Pass the prep spinner so a freshen failure settles it before writing stderr.
             if (needsLock) {
@@ -400,7 +418,7 @@ public final class ExplainCommand implements CliCommand {
         };
     }
 
-    /** {@code "N source(s) changed"} from {@code JavaIncrementalCompile}, digit-guarded. */
+    /** {@code "N source(s) changed"} from {@code JavaCompile}, digit-guarded. */
     private static final java.util.regex.Pattern CHANGED_SOURCES =
             java.util.regex.Pattern.compile("(?<!\\d)(\\d+) sources? changed");
 
@@ -682,7 +700,7 @@ public final class ExplainCommand implements CliCommand {
             Path parent = out.getParent();
             if (parent != null) Files.createDirectories(parent);
             Files.writeString(out, graph);
-            cc.jumpkick.cli.tui.CommandWedge.printFail(
+            cc.jumpkick.cli.tui.CommandWedge.printOk(
                     "Explain", "wrote " + out.toAbsolutePath().normalize());
         } else {
             CliOutput.out(graph.endsWith("\n") ? graph.substring(0, graph.length() - 1) : graph);

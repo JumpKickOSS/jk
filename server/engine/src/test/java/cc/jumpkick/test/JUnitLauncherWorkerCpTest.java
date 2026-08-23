@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.PomRuntimeClasspath;
+import cc.jumpkick.repo.RepoArtifactResolver;
+import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.util.Hashing;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -64,10 +66,10 @@ class JUnitLauncherWorkerCpTest {
     }
 
     private static Path put(Path store, String rel, byte[] bytes) throws Exception {
-        Path f = store.resolve("repos/local").resolve(rel);
+        Path f = store.resolve("repos/jk-local").resolve(rel);
         Files.createDirectories(f.getParent());
         Files.write(f, bytes);
-        Files.writeString(Path.of(f + ".sha256"), Hashing.sha256Hex(bytes));
+        RepoArtifactStore.forRepoName(store, RepoArtifactResolver.JK_LOCAL).writeMemo(rel, f, Hashing.sha256Hex(bytes));
         return f;
     }
 }

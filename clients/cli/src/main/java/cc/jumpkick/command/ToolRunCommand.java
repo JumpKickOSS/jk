@@ -169,8 +169,13 @@ public final class ToolRunCommand implements CliCommand {
                 if (suffixHits.size() > 1) {
                     // Two modules share the leaf: picking whichever is declared first silently
                     // runs the wrong one — name the candidates instead.
-                    String candidates =
-                            suffixHits.stream().map(d -> wsRoot(d, start)).collect(Collectors.joining(", "));
+                    Path root = wsRoot;
+                    // The message tells the user to pass the full module path, so the candidates
+                    // have to be exactly those strings — workspace-relative and forward-slashed,
+                    // the same shape `m` is matched against above.
+                    String candidates = suffixHits.stream()
+                            .map(d -> root.relativize(d).toString().replace('\\', '/'))
+                            .collect(Collectors.joining(", "));
                     throw new AmbiguousModuleTarget("`" + want + "` matches several workspace modules (" + candidates
                             + ") — use the full module path");
                 }
@@ -187,17 +192,6 @@ public final class ToolRunCommand implements CliCommand {
 
     private static List<String> workspaceModules(Path jkToml) {
         return cc.jumpkick.config.TomlScan.scan(jkToml, "workspace.modules").stringArray("workspace.modules");
-    }
-
-    /** Render a module dir relative to its workspace for an error message. */
-    private static String wsRoot(Path moduleDir, Path start) {
-        try {
-            return cc.jumpkick.config.WorkspaceLocator.findRoot(start)
-                    .map(r -> r.relativize(moduleDir).toString())
-                    .orElse(moduleDir.toString());
-        } catch (Exception e) {
-            return moduleDir.toString();
-        }
     }
 
     /** {@code jk run <leaf>} matched more than one workspace module. */

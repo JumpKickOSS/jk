@@ -1,7 +1,14 @@
 # Install
 
 ```bash
+# Linux / macOS
 curl -fsSL https://jumpkick.build/install.sh | bash
+jk --help
+```
+
+```powershell
+# Windows (PowerShell 5.1+ / PowerShell 7+)
+irm https://jumpkick.build/install.ps1 | iex
 jk --help
 ```
 
@@ -9,8 +16,19 @@ The installer puts **`jk`** and **`jkx`** on your PATH. JumpKick requires **JDK 
 run and will install one if needed. After that, prefer `java = N` in `jk.toml` for
 language level — [Concepts](concepts.md).
 
-Windows: `%USERPROFILE%\.local\bin`. Developer builds of this repository:
-[Contributing](../../CONTRIBUTING.md).
+Windows PATH install dir: `%USERPROFILE%\.local\bin`. `install.ps1` prepends that
+directory to your **User PATH** (visible from cmd and PowerShell) and runs
+`jk activate --yes` for profile hooks. Local dogfood from this repository (after
+`.\gradlew dist`):
+
+```powershell
+.\install.cmd build\dist\jk.exe
+# or, if you prefer invoking PowerShell directly:
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 build\dist\jk.exe
+```
+
+(`.\install.ps1` alone often fails under the default **Restricted** execution policy;
+`install.cmd` and `irm | iex` do not.) See [Contributing](../../CONTRIBUTING.md).
 
 Self-update of an installed binary: `jk self update` (verifies the release). Release
 layout and signing: [contributor releases](../contributors/releases.md).
@@ -24,18 +42,20 @@ Product data uses platform-native locations (XDG on Linux/macOS; Windows Known F
 | **bin** (PATH) | `~/.local/bin` | `%USERPROFILE%\.local\bin` |
 | **data** (engine lib, store/CAS) | `~/.local/share/jk` | `%LOCALAPPDATA%\jk\data` |
 | **cache** (action cache) | `~/.cache/jk` | `%LOCALAPPDATA%\jk\cache` |
-| **state** (engine socket, build history) | `~/.local/state/jk` | `%LOCALAPPDATA%\jk\state` |
+| **state** (engine socket, build history, JDK inventory) | `~/.local/state/jk` | `%LOCALAPPDATA%\jk\state` |
 | **config** | `~/.config/jk/config.toml` | `%APPDATA%\jk\config.toml` |
 | **managed JDKs** | Linux: `~/.jdks` · macOS: `~/Library/Java/JavaVirtualMachines` | `%USERPROFILE%\.jdks` |
 
-**Artifact store** (dependency CAS + `repos/`) lives under **data** (`…/store`). **Cache
-CAS** (action outputs) lives under **cache** (`…/cache/sha256`). The live engine jar is
+**Artifact store** (`repos/` + `.jk` memos; Maven local repo for third-party jars) lives
+under **data** (`…/store`). **Cache CAS** (action outputs) lives under **cache**
+(`…/cache/sha256`). The live engine jar is
 `<data>/lib/jk-engine/<jar>` with metadata in `<config>/jk-engine/config.toml`
-(or `$JK_HOME/lib/jk-engine/…` + `$JK_HOME/config/jk-engine/config.toml`).
+(under `JK_HOME`: `$JK_HOME/data/lib/jk-engine/…` + `$JK_HOME/config/jk-engine/config.toml`).
 
 Managed JDKs use the **IntelliJ shared root** so the IDE and JumpKick share runtimes.
-Discovery still picks up SDKMAN, mise, Homebrew, `JAVA_HOME`, and system installs before
-downloading. See [JDK](jdk.md).
+JumpKick records those installs in **`<state>/jk-jdks.toml`** (defaults + fingerprints) and
+usage in **`<state>/jdk-access.log`**. Discovery still picks up SDKMAN, mise, Homebrew,
+`JAVA_HOME`, and system installs before downloading. See [JDK](jdk.md).
 
 XDG variables (`XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_HOME`,
 `XDG_BIN_HOME`) are honored on Linux and macOS when `JK_HOME` is unset.
@@ -44,11 +64,11 @@ XDG variables (`XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_
 
 | Env / flag | Effect |
 |------------|--------|
-| `JK_HOME` | Optional **single-tree umbrella** for product dirs (`config/`, `cache/`, `store/`, `state/`, `data/`, `bin/`, `lib/`). Hermetic tests and cold CI roots. Does **not** move the default JDK root. Global prefs: `$JK_HOME/config/config.toml`; per-app install config: `$JK_HOME/config/<bin>/config.toml`. |
+| `JK_HOME` | Optional **single-tree umbrella**: the five roots relocate to `$JK_HOME/{bin,cache,config,data,state}` and everything else derives from them exactly as it does under XDG — so the store is `$JK_HOME/data/store`, the engine jar `$JK_HOME/data/lib/jk-engine/`, build history `$JK_HOME/state/builds`. Hermetic tests and cold CI roots. Does **not** move the default JDK root. |
 | `JK_CACHE_DIR` | Action / local CPU cache |
 | `JK_STORE_DIR` | CAS / network-expensive store |
-| `JK_STATE_DIR` | Engine sockets, build history |
-| `JK_DATA_DIR` | Product data root (engine lib + default store parent) |
+| `JK_STATE_DIR` | Engine sockets, build history, JDK inventory (`jk-jdks.toml`) and JDK access log |
+| `JK_DATA_DIR` | Product data root (engine lib, credentials, and the default store parent) |
 | `JK_BIN_DIR` / `JK_INSTALL_DIR` | PATH install directory for `jk` / `jkx` |
 | `JK_CONFIG_DIR` | Config root (global `config.toml` + per-app `<bin>/config.toml`). Default: `$JK_HOME/config` or `~/.config/jk` |
 | `JK_CONFIG_FILE` | Absolute path to the global `config.toml` |
@@ -56,9 +76,30 @@ XDG variables (`XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_
 | `JK_AOT_TRAIN=off` | Skip AOT train-on-miss (still **use** existing `.aot` caches). CI / short-lived builds usually set this |
 | `JK_WORKER_AOT=off` | Plugin workers: no AOT map and no train |
 | `JK_CANCEL_GRACE_MS` | Shared cancel window for forked workers (default **500** ms, max 5000) |
+| `JK_M2_INTEGRATION` | `false` skips the Maven local repo for third-party jars (same as `[m2] integration = false`) |
+| `JK_M2_INSTALL` | `false` keeps `jk install` under `JK_STORE_DIR/repos/jk-local` instead of the Maven local repo (same as `[m2] install = false`) |
 | `--cache-dir <dir>` | Same as `JK_CACHE_DIR` for one command; passed to the resident engine |
 
 Role-specific `JK_*_DIR` always wins over `JK_HOME` / XDG.
+
+`JK_HOME` mirrors the XDG layout rather than flattening it — there is exactly one shape to
+learn, and `$JK_HOME` is just a different prefix for it:
+
+```
+$JK_HOME/            ~/                        role
+  bin/                 .local/bin/             PATH launchers
+  cache/               .cache/jk/              action cache + CAS
+  config/              .config/jk/             config.toml, <bin>/config.toml
+  data/                .local/share/jk/        product data
+    store/               store/                artifact store (JK_STORE_DIR)
+      lib/                 lib/                installed tool jars
+    lib/                 lib/                  live engine jar (jk-engine/)
+    credentials/         credentials/          forge tokens
+    repo-credentials/    repo-credentials/     per-repo credentials
+  state/               .local/state/jk/        engine socket, AOT, JDK inventory
+    builds/              builds/               build history
+    tmp/                 tmp/                  scratch
+```
 
 Cold resolve without wiping your real store:
 
@@ -105,14 +146,15 @@ eval "$("$HOME/.local/bin/jk" activate zsh)"
 (bash: `activate bash`; fish: `"$HOME/.local/bin/jk" activate fish | source`.)
 
 - **PATH** — prepends the platform bin so real `jk` / `jkx` resolve
-- **Hooks** — `jk hook-env` updates `JAVA_HOME` / `PATH` when you `cd`
+- **Hooks** — `jk hook-env` updates `JAVA_HOME` / `GRAALVM_HOME` / `PATH` when you `cd`
 - **Completions** — bash, zsh, fish, pwsh
 
 ## Official URLs
 
 | URL | Role |
 |-----|------|
-| `https://jumpkick.build/install.sh` | Installer |
+| `https://jumpkick.build/install.sh` | Installer (Linux / macOS) |
+| `https://jumpkick.build/install.ps1` | Installer (Windows / PowerShell) |
 | `https://jumpkick.build/releases/` | Native client + engine jar |
 | `https://jumpkick.build/repo/` | First-party Maven repo (workers, `cc.jumpkick.*`) |
 

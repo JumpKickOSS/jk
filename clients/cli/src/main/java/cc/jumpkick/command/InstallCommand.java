@@ -40,7 +40,7 @@ import java.util.Set;
 /**
  * App-install plan used by {@code jk tool install} / {@code jk install}: current project, Maven
  * coordinate, or git URL (optional {@code @}/{@code #} ref; {@code gh:owner/repo} shorthands).
- * Cache-installs the thin jar and POM into {@code repos/local}; applications also get a launcher
+ * Cache-installs the thin jar and POM into {@code repos/jk-local}; applications also get a launcher
  * under {@code ~/.local/bin}. Plugin workers are those same repo jars — launch reconstructs the
  * classpath from the POM.
  */
@@ -123,9 +123,9 @@ public final class InstallCommand {
         Path cache = cacheDir();
         Files.createDirectories(cache);
         Coordinate coord = Coordinate.of(group, artifact, version);
-        // File-install writes directly to repos/local/ (the JAR is already on disk, no project
+        // File-install writes directly to repos/jk-local/ (the JAR is already on disk, no project
         // metadata for a POM, so ~/.m2 write is not appropriate here). Route to the store root:
-        // resolvers read repos/local and the classpath CAS from the store.
+        // resolvers read repos/jk-local and the classpath CAS from the store.
         cc.jumpkick.repo.RepoArtifactStore.writeToLocalStore(
                 cc.jumpkick.cache.JkStores.storeRootFor(cache), MavenLayout.artifactPath(coord), filePath);
 
@@ -284,7 +284,7 @@ public final class InstallCommand {
         }
 
         // Build + cache-install through the shared InstallPlans plan (jar always; assembly/native
-        // per jk.toml; jar + generated pom into ~/.m2 / repos/local) — engine-hosted for a real
+        // per jk.toml; jar + generated pom into ~/.m2 / repos/jk-local) — engine-hosted for a real
         // invocation, in-process for the test-only bypass. The make-install half runs below,
         // client-side either way: it writes the user-home launcher/binary this process owns.
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
@@ -435,6 +435,24 @@ public final class InstallCommand {
                 && plan.binPath().isEmpty()) {
             return null;
         }
+        // Self-host engine install: route through EngineInstall so the live jar is replaced
+        // atomically under the install lock, the previous jar is parked for the drain window, a
+        // downgrade is refused, and config.toml is written coherently — none of which the generic
+        // copy + AppInstallConfig.write below provides (JK-2311).
+        Path productLib = JkDirs.current().productLibDir().toAbsolutePath().normalize();
+        for (int i = 0; i < plan.linkDests().size(); i++) {
+            Path dest = Path.of(plan.linkDests().get(i)).toAbsolutePath().normalize();
+            Path parent = dest.getParent();
+            if (parent != null
+                    && EngineInstall.BIN_NAME.equals(parent.getFileName().toString())
+                    && productLib.equals(parent.getParent())) {
+                Path src = Path.of(plan.linkSrcs().get(i));
+                String version = engineInstallVersion(projectDir, src);
+                new EngineInstall(JkDirs.productLib())
+                        .materializeFromFiles(version, cc.jumpkick.cache.JkStores.cas(cacheDir), src);
+                return null; // the engine is a jar the client launches — no launcher/bin to link
+            }
+        }
         for (int i = 0; i < plan.linkSrcs().size(); i++) {
             Path src = Path.of(plan.linkSrcs().get(i));
             Path dest = Path.of(plan.linkDests().get(i));
@@ -469,6 +487,12 @@ public final class InstallCommand {
         Path dest = Path.of(plan.linkDests().get(0));
         Path parent = dest.getParent();
         if (parent == null) return;
+        // Only fat/minified installs (jar at productLib/<bin>/<jar>) carry a config entry keyed by
+        // <bin>. A native binary lands directly in the PATH bin dir, so its parent is that bin dir —
+        // treating it as the app name wrote a junk config/bin/config.toml (JK-2312).
+        Path grand = parent.getParent();
+        Path productLib = JkDirs.current().productLibDir().toAbsolutePath().normalize();
+        if (grand == null || !grand.toAbsolutePath().normalize().equals(productLib)) return;
         String bin = parent.getFileName().toString();
         if (bin.isBlank()) return;
         Map<String, String> keys = new LinkedHashMap<>(AppInstallConfig.jkConfigProperties());
@@ -528,6 +552,19 @@ public final class InstallCommand {
      */
     private static int failureExit(BuildPlanResult result, String label, Path cache) {
         return 1;
+    }
+
+    /** Engine version for a self-host install: the project version, else parsed from the jar name. */
+    private String engineInstallVersion(Path projectDir, Path engineJar) {
+        try {
+            var info = projectInfo(projectDir);
+            if (info.version() != null && !info.version().isBlank()) return info.version();
+        } catch (IOException ignored) {
+            // fall through to the jar-name form
+        }
+        return EngineInstall.versionFromJarName(engineJar.getFileName().toString())
+                .orElseThrow(() ->
+                        new IllegalStateException("cannot determine engine version for " + engineJar.getFileName()));
     }
 
     private Path cacheDir() {

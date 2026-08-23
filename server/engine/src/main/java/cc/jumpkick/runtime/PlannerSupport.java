@@ -9,10 +9,12 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.ModuleRuntimeClasspath;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
+import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.TaskContext;
@@ -22,9 +24,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -76,14 +80,20 @@ public final class PlannerSupport {
      */
     public static List<Path> processorClasspath(
             Lockfile lock, ClasspathResolver resolver, WorkspaceClasspath.Result siblings) throws IOException {
-        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, Set.of(Scope.PROCESSOR)));
+        return processorClasspath(lock, resolver, siblings, false);
+    }
+
+    public static List<Path> processorClasspath(
+            Lockfile lock, ClasspathResolver resolver, WorkspaceClasspath.Result siblings, boolean requirePresent)
+            throws IOException {
+        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, Set.of(Scope.PROCESSOR), requirePresent));
         for (Path jar : siblings.siblingClosureJars()) {
             if (!cp.contains(jar)) cp.add(jar);
         }
         for (Path sibLock : siblings.siblingLockfiles()) {
             try {
                 Lockfile sl = LockfileReader.read(sibLock);
-                for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN)) {
+                for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN, requirePresent)) {
                     if (!cp.contains(p)) cp.add(p);
                 }
             } catch (Exception ignored) {
@@ -125,7 +135,13 @@ public final class PlannerSupport {
 
     public static List<Path> mainCompileClasspath(
             Lockfile lock, ClasspathResolver resolver, WorkspaceClasspath.Result siblings) throws IOException {
-        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_MAIN));
+        return mainCompileClasspath(lock, resolver, siblings, false);
+    }
+
+    public static List<Path> mainCompileClasspath(
+            Lockfile lock, ClasspathResolver resolver, WorkspaceClasspath.Result siblings, boolean requirePresent)
+            throws IOException {
+        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_MAIN, requirePresent));
         // The declared closure (deterministic jar paths) — not just the built ones
         // so the action key is stable whether or not target/ is currently populated.
         // In a valid build the siblings are all built (the missing-sibling check
@@ -135,7 +151,7 @@ public final class PlannerSupport {
         for (Path sibLock : siblings.siblingLockfiles()) {
             try {
                 Lockfile sl = LockfileReader.read(sibLock);
-                for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN)) {
+                for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN, requirePresent)) {
                     if (!cp.contains(p)) cp.add(p);
                 }
             } catch (Exception ignored) {
@@ -178,6 +194,28 @@ public final class PlannerSupport {
         }
         if (processorCp != null) inputs.addAll(processorCp);
         return inputs;
+    }
+
+    /**
+     * Scala stdlib jars to fold into the freshness stamp for a module with {@code .scala} sources, so
+     * a scala-version bump (which swaps the stdlib jar's content identity) invalidates the stat-only
+     * fast path instead of silently skipping the compile against the old compiler (JK-2295). Empty for
+     * a non-Scala module. Cheap on a warm closure cache (a directory listing, no network).
+     */
+    static List<Path> scalaStampLibs(TaskContext ctx, Path moduleDir, boolean compact, Cas cas) {
+        List<Path> scalaSrcs;
+        try {
+            scalaSrcs = CompileSupport.collectScalaSources(moduleDir, compact);
+        } catch (Exception e) {
+            return List.of();
+        }
+        if (scalaSrcs.isEmpty()) return List.of();
+        try {
+            return ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas)
+                    .libraryJars();
+        } catch (IOException e) {
+            return List.of();
+        }
     }
 
     /**
@@ -278,7 +316,7 @@ public final class PlannerSupport {
             JkBuild sib;
             try {
                 sib = JkBuildParser.parse(manifest);
-            } catch (RuntimeException ignored) {
+            } catch (IOException | RuntimeException ignored) {
                 continue;
             }
             BuildLayout layout = BuildLayout.of(dir, sib);
@@ -314,7 +352,7 @@ public final class PlannerSupport {
      * re-package (this miss path), not to trust the on-disk jar as authoritative.
      *
      * <p>{@code --redo}/{@code --force} skip <em>restore</em> (always re-package) but still
-     * {@link #storePackaged store} — same contract as {@link JavaIncrementalCompile}: the next
+     * {@link #storePackaged store} — same contract as {@link cc.jumpkick.task.JavaCompile}: the next
      * {@code jk explain} / incremental build must see a CACHE_HIT, not a phantom repackage.
      */
     static boolean restorePackaged(Path cacheRoot, String key, Path baseDir) throws IOException {
@@ -520,10 +558,10 @@ public final class PlannerSupport {
      * Isolated {@code JK_HOME} + short {@code JK_STATE_DIR} under {@code /tmp} (UDS path length) for
      * nested-engine CLI tests. Keeps the host engine's socket alone.
      *
-     * <p><strong>Fully sandboxed product layout</strong> — cache and store both live under
-     * {@code $JK_HOME}. Never point {@code JK_CACHE_DIR} or {@code JK_STORE_DIR} at the host: a
+     * <p><strong>Fully sandboxed product layout</strong> — {@code JK_HOME} mirrors XDG, so cache
+     * lands in {@code $JK_HOME/cache} and the store in {@code $JK_HOME/data/store}. Never point {@code JK_CACHE_DIR} or {@code JK_STORE_DIR} at the host: a
      * prior bug set them to the developer's real trees so {@code SelfNukeCommandTest} /
-     * {@code jk cache nuke} / {@code jk self nuke --store} wiped action-cache and install-local
+     * {@code jk cache nuke} / {@code jk self nuke --data} wiped action-cache and install-local
      * workers mid-{@code jk build}. After that, post-green {@code jk explain} reported a full
      * rebuild and subsequent tests could not find {@code jk-test-runner}.
      *
@@ -752,6 +790,97 @@ public final class PlannerSupport {
             if (pth != null && Files.isDirectory(pth)) out.add(pth);
         }
         return out;
+    }
+
+    /**
+     * Class dirs of workspace MAIN dependencies to vendor into a plugin-worker jar (Gradle
+     * {@code bundledCodec}: plugin-sdk + jsonl). External deps stay on the sidecar POM.
+     *
+     * <p>{@link cc.jumpkick.config.JkBuildParser#parse(Path)} rewrites {@code workspace:}
+     * placeholders to real {@code group:artifact} coordinates before packaging runs, so sibling
+     * lookup must accept both forms.
+     */
+    static List<Path> workerCodecClassDirs(Path moduleDir, JkBuild project) {
+        if (moduleDir == null || project == null || !cc.jumpkick.plugin.PluginModule.isWorker(moduleDir)) {
+            return List.of();
+        }
+        Path root;
+        JkBuild rootManifest;
+        try {
+            var rootOpt = WorkspaceLocator.findRoot(moduleDir);
+            if (rootOpt.isEmpty()) return List.of();
+            root = rootOpt.get();
+            rootManifest = JkBuildParser.parse(root.resolve("jk.toml"));
+        } catch (IOException | RuntimeException e) {
+            return List.of();
+        }
+        if (!rootManifest.isWorkspaceRoot()) return List.of();
+        Map<String, Path> dirByName = new LinkedHashMap<>();
+        Map<String, Path> dirByCoord = new LinkedHashMap<>();
+        Map<Path, JkBuild> byDir = new LinkedHashMap<>();
+        for (String module : rootManifest.workspace().modules()) {
+            Path dir = root.resolve(module);
+            Path manifest = dir.resolve("jk.toml");
+            if (!Files.isRegularFile(manifest)) continue;
+            JkBuild sib;
+            try {
+                sib = JkBuildParser.parse(manifest);
+            } catch (IOException | RuntimeException ignored) {
+                continue;
+            }
+            byDir.put(dir, sib);
+            indexWorkerSibling(dirByName, dirByCoord, dir, sib);
+        }
+        // Members may depend on the workspace root unit itself.
+        byDir.put(root, rootManifest);
+        indexWorkerSibling(dirByName, dirByCoord, root, rootManifest);
+        LinkedHashSet<Path> out = new LinkedHashSet<>();
+        ArrayDeque<JkBuild> q = new ArrayDeque<>();
+        Set<String> seen = new HashSet<>();
+        q.add(project);
+        while (!q.isEmpty()) {
+            JkBuild cur = q.removeFirst();
+            for (Dependency d : cur.dependencies().of(Scope.MAIN)) {
+                Path dir = workerSiblingDir(d, dirByName, dirByCoord);
+                if (dir == null) continue;
+                String seenKey = dir.toAbsolutePath().normalize().toString();
+                if (!seen.add(seenKey)) continue;
+                JkBuild sib = byDir.get(dir);
+                if (sib == null) continue;
+                Path classes = BuildLayout.of(dir, sib).classesDir();
+                if (Files.isDirectory(classes)) out.add(classes);
+                q.addLast(sib);
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private static void indexWorkerSibling(
+            Map<String, Path> dirByName, Map<String, Path> dirByCoord, Path dir, JkBuild sib) {
+        String name = sib.project().name();
+        dirByName.putIfAbsent(name, dir);
+        if (name.startsWith("jk-") && name.length() > 3) {
+            dirByName.putIfAbsent(name.substring(3), dir);
+        }
+        Path base = dir.getFileName();
+        if (base != null) dirByName.putIfAbsent(base.toString(), dir);
+        dirByCoord.putIfAbsent(sib.project().group() + ":" + name, dir);
+    }
+
+    /** Resolve a MAIN dep to a workspace sibling dir (placeholder or rewritten coordinate). */
+    private static Path workerSiblingDir(Dependency d, Map<String, Path> dirByName, Map<String, Path> dirByCoord) {
+        String ws = d.workspaceName();
+        if (ws != null) {
+            Path dir = dirByName.get(ws);
+            if (dir != null) return dir;
+            if (ws.startsWith("jk-") && ws.length() > 3) return dirByName.get(ws.substring(3));
+            return dirByName.get("jk-" + ws);
+        }
+        Path byCoord = dirByCoord.get(d.module());
+        if (byCoord != null) return byCoord;
+        Path byLib = dirByName.get(d.library());
+        if (byLib != null) return byLib;
+        return dirByName.get(d.name());
     }
 
     /**

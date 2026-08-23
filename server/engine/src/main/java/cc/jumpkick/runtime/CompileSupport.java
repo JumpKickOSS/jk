@@ -26,14 +26,16 @@ public final class CompileSupport {
         return cc.jumpkick.layout.Languages.resolve(project, projectDir);
     }
 
-    /** True if {@code projectDir} contains any Java, Kotlin, or Groovy source files. */
+    /** True if {@code projectDir} contains any Java, Kotlin, Groovy, or Scala source files. */
     static boolean hasSources(Path projectDir) {
         return Files.isDirectory(projectDir.resolve("src/main/java"))
                 || Files.isDirectory(projectDir.resolve("src/main/kotlin"))
                 || Files.isDirectory(projectDir.resolve("src/main/groovy"))
+                || Files.isDirectory(projectDir.resolve("src/main/scala"))
                 || cc.jumpkick.layout.Languages.anySourceUnder(projectDir.resolve("src"), ".java")
                 || cc.jumpkick.layout.Languages.anySourceUnder(projectDir.resolve("src"), ".kt")
-                || cc.jumpkick.layout.Languages.anySourceUnder(projectDir.resolve("src"), ".groovy");
+                || cc.jumpkick.layout.Languages.anySourceUnder(projectDir.resolve("src"), ".groovy")
+                || cc.jumpkick.layout.Languages.anySourceUnder(projectDir.resolve("src"), ".scala");
     }
 
     /** Whether this project uses the flat ({@code src/}/{@code test/}) layout. */
@@ -120,6 +122,24 @@ public final class CompileSupport {
     /** All default-suite test {@code .groovy} files (roots from {@link cc.jumpkick.layout.TestSuites}). */
     public static List<Path> collectGroovyTestSources(Path projectDir, boolean compact) throws IOException {
         return cc.jumpkick.layout.TestSuites.collectGroovySources(
+                projectDir, compact, List.of(cc.jumpkick.layout.TestSuites.DEFAULT));
+    }
+
+    /**
+     * All main {@code.scala} files for a project — roots from {@link
+     * cc.jumpkick.layout.ModuleLayout#mainScalaRoots} (SIMPLE shares {@code src/} by extension).
+     */
+    public static List<Path> collectScalaSources(Path projectDir, boolean compact) throws IOException {
+        var out = new LinkedHashSet<Path>();
+        for (Path root : cc.jumpkick.layout.ModuleLayout.mainScalaRoots(projectDir, compact)) {
+            out.addAll(collectFilesWithExtension(root, ".scala"));
+        }
+        return new ArrayList<>(out);
+    }
+
+    /** All default-suite test {@code .scala} files (roots from {@link cc.jumpkick.layout.TestSuites}). */
+    public static List<Path> collectScalaTestSources(Path projectDir, boolean compact) throws IOException {
+        return cc.jumpkick.layout.TestSuites.collectScalaSources(
                 projectDir, compact, List.of(cc.jumpkick.layout.TestSuites.DEFAULT));
     }
 

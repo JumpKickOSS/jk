@@ -11,6 +11,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
 import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
@@ -18,6 +19,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.zip.ZipEntry;
@@ -99,25 +101,45 @@ public final class PluginDescriptorOps {
     }
 
     /**
-     * The Maven-layout path for a lock-pinned worker jar: the first repo store whose sidecar hash
-     * matches the pin, else materialized into {@code repos/local} from the CAS blob. Forks must get
-     * layout paths, never bare CAS blobs — a blob has no {@code .jar} name and no coordinate, so
-     * {@link cc.jumpkick.repo.PomRuntimeClasspath} cannot reach its POM. Repos live beside the CAS
-     * under {@code cas.root()}.
+     * The Maven-layout path for a lock-pinned worker jar: the first repo store whose {@code .jk}
+     * memo matches the pin, else a copy into {@code repos/jk-local} from a leftover store-CAS blob.
+     * Forks must get layout paths (a {@code .jar} name and a sibling POM).
      */
     static Optional<Path> pinnedLayoutJar(Cas cas, String module, String version, String sha256Hex) {
         String rel = MavenLayout.artifactPath(Coordinate.ofModule(module, version));
         Path storeRoot = cas.root();
-        for (String repoName : List.of("local", PluginJar.OFFICIAL_REPO, "central")) {
+        for (String repoName : pluginRepoProbeOrder(storeRoot)) {
             Optional<Path> stored =
                     RepoArtifactStore.forRepoName(storeRoot, repoName).locate(rel, sha256Hex);
             if (stored.isPresent()) return stored;
         }
         Path blob = cas.pathFor(sha256Hex);
         if (!Files.isRegularFile(blob)) return Optional.empty();
-        RepoArtifactStore local = RepoArtifactStore.forRepoName(storeRoot, "local");
+        RepoArtifactStore local = RepoArtifactStore.forRepoName(storeRoot, RepoArtifactResolver.JK_LOCAL);
         local.materialize(rel, blob, sha256Hex);
         return local.locate(rel, sha256Hex);
+    }
+
+    /**
+     * Prefer first-party / official / Central, then every other {@code repos/<name>/} directory so a
+     * user-declared remote (e.g. {@code local}) is still found with its sibling POM.
+     */
+    private static List<String> pluginRepoProbeOrder(Path storeRoot) {
+        LinkedHashSet<String> names = new LinkedHashSet<>();
+        names.add(RepoArtifactResolver.JK_LOCAL);
+        names.add(PluginJar.OFFICIAL_REPO);
+        names.add("central");
+        Path repos = storeRoot.resolve("repos");
+        if (Files.isDirectory(repos)) {
+            try (var stream = Files.list(repos)) {
+                stream.filter(Files::isDirectory)
+                        .map(p -> p.getFileName().toString())
+                        .forEach(names::add);
+            } catch (IOException ignored) {
+                // best-effort directory listing
+            }
+        }
+        return List.copyOf(names);
     }
 
     /** The declaration whose materialized manifest carries {@code pluginId}, or empty. */

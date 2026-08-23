@@ -147,7 +147,7 @@ class JdkAccessLedgerTest {
         Path file = tempDir.resolve(".jk-access.log");
         Path real = Files.createDirectories(tempDir.resolve("temurin-21.0.5"));
         Path link = tempDir.resolve("temurin-21");
-        Files.createSymbolicLink(link, real);
+        DirLinks.replace(link, real);
 
         JdkAccessLedger ledger = new JdkAccessLedger(file);
         ledger.touch(real, "21.0.5", "Eclipse Temurin");
@@ -183,6 +183,21 @@ class JdkAccessLedgerTest {
         assertThat(folded.timestampMillis()).isEqualTo(300);
         assertThat(folded.accessCount()).isEqualTo(2);
         assertThat(folded.version()).isEqualTo("21.0.5");
+    }
+
+    @Test
+    void migrates_legacy_jdks_root_ledger(@TempDir Path tempDir) throws IOException {
+        Path jdks = Files.createDirectories(tempDir.resolve("jdks"));
+        Path home = Files.createDirectories(jdks.resolve("temurin-25.0.4"));
+        Path legacy = jdks.resolve(JdkAccessLedger.LEGACY_JDKS_FILE_NAME);
+        Files.writeString(
+                legacy, "1700000000000|3|25.0.4|Eclipse Temurin|" + home.toRealPath() + "\n", StandardCharsets.UTF_8);
+        Path stateFile = tempDir.resolve("state").resolve(JdkAccessLedger.FILE_NAME);
+        JdkAccessLedger ledger = new JdkAccessLedger(stateFile, jdks);
+        var map = ledger.byJavaHome();
+        assertThat(map).hasSize(1);
+        assertThat(Files.exists(legacy)).isFalse();
+        assertThat(stateFile).exists();
     }
 
     @Test

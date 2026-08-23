@@ -96,7 +96,7 @@ final class LockCascade {
             };
             BuildPlan plan = update
                     ? LockPlans.updateBuildPlan(
-                            dir, effective, cache, repoUrl, features, withDefaults, platformOverride)
+                            dir, effective, cache, repoUrl, features, withDefaults, platformOverride, observer)
                     : LockPlans.lockBuildPlan(
                             dir,
                             effective,

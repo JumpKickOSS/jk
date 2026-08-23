@@ -3,14 +3,10 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkConfig;
-import cc.jumpkick.config.Session;
-import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.cli.testing.NoAnsi;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Optional;
-import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 /** Unicode chrome → ASCII under plain / --no-ansi. */
@@ -54,7 +50,7 @@ class PlainAsciiTest {
 
     @Test
     void apply_rewrites_under_no_ansi() throws Exception {
-        withNoAnsi(() -> {
+        NoAnsi.forced(() -> {
             assertThat(PlainAscii.apply("Locking g:n…")).isEqualTo("Locking g:n...");
             assertThat(PlainAscii.apply(" • detail")).isEqualTo(" - detail");
             assertThat(PlainAscii.apply("● pulse")).isEqualTo("* pulse");
@@ -64,7 +60,7 @@ class PlainAsciiTest {
 
     @Test
     void wrap_stream_rewrites_println() throws Exception {
-        withNoAnsi(() -> {
+        NoAnsi.forced(() -> {
             var buf = new ByteArrayOutputStream();
             PrintStream wrapped = PlainAscii.wrap(new PrintStream(buf, true, StandardCharsets.UTF_8));
             wrapped.println("Waiting for authorization…");
@@ -75,7 +71,7 @@ class PlainAsciiTest {
 
     @Test
     void plain_wedge_message_rewrites_ellipsis() throws Exception {
-        withNoAnsi(() -> {
+        NoAnsi.forced(() -> {
             assertThat(JkWedge.plainWedge("*", "Lock", "Locking g:n…")).isEqualTo("jk: * Lock > Locking g:n...");
             return null;
         });
@@ -86,15 +82,5 @@ class PlainAsciiTest {
         assertThat(Glyphs.BULLET_PLAIN).isEqualTo("-");
         assertThat(Glyphs.PULSE_PLAIN).isEqualTo("*");
         assertThat(Glyphs.CANCELLED_PLAIN).isEqualTo("o");
-    }
-
-    private static <T> T withNoAnsi(Supplier<T> body) throws Exception {
-        JkConfig noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
-        Session original = SessionContext.current();
-        try {
-            return SessionContext.where(original.withConfig(noAnsi), body::get);
-        } finally {
-            SessionContext.install(original);
-        }
     }
 }

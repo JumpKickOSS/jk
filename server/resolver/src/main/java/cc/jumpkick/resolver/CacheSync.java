@@ -7,11 +7,9 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.RepoSource;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.MavenRepo;
-import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.net.URI;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -22,38 +20,44 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 /**
- * Ensures every lockfile sha256 is present in the CAS (fetch+verify on miss). Parallel on {@link
- * JkThreads#io}; per-host concurrency is capped inside {@link MavenRepo}do not wrap
- * fetches again or nested acquires deadlock the shared limiter. Checksum mismatches are reported,
- * never accepted.
+ * Ensures every lockfile sha256 is on disk as a Maven-layout {@code *.jar} (Maven local repo
+ * and/or {@code repos/<name>/}). Parallel on {@link JkThreads#io}; per-host concurrency is capped
+ * inside {@link MavenRepo}. Checksum mismatches are reported, never accepted.
  */
 public final class CacheSync {
 
     private final Cas cas;
     private final Http http;
     private final cc.jumpkick.repo.RepoCredentialResolver creds;
-    private final boolean mirrorToM2;
+    private final boolean m2integration;
+    private final cc.jumpkick.repo.ArtifactLocator locator;
 
     public CacheSync(Cas cas, Http http) {
-        this(cas, http, new cc.jumpkick.repo.RepoCredentialResolver(), false);
+        this(cas, http, new cc.jumpkick.repo.RepoCredentialResolver(), true);
     }
 
-    /** As above, with the resolving project's {@code m2install} value. */
-    public CacheSync(Cas cas, Http http, boolean mirrorToM2) {
-        this(cas, http, new cc.jumpkick.repo.RepoCredentialResolver(), mirrorToM2);
+    /** As above, with the resolving project's {@code m2integration} value. */
+    public CacheSync(Cas cas, Http http, boolean m2integration) {
+        this(cas, http, new cc.jumpkick.repo.RepoCredentialResolver(), m2integration);
     }
 
-    /** Visible for tests — inject a credential resolver. {@code mirrorToM2} defaults to false. */
+    /** Visible for tests — inject a credential resolver. */
     public CacheSync(Cas cas, Http http, cc.jumpkick.repo.RepoCredentialResolver creds) {
-        this(cas, http, creds, false);
+        this(cas, http, creds, true);
     }
 
-    /** Visible for tests — inject a credential resolver and {@code mirrorToM2} explicitly. */
-    public CacheSync(Cas cas, Http http, cc.jumpkick.repo.RepoCredentialResolver creds, boolean mirrorToM2) {
+    /** Visible for tests — inject a credential resolver and {@code m2integration} explicitly. */
+    public CacheSync(Cas cas, Http http, cc.jumpkick.repo.RepoCredentialResolver creds, boolean m2integration) {
         this.cas = Objects.requireNonNull(cas, "cas");
         this.http = Objects.requireNonNull(http, "http");
         this.creds = Objects.requireNonNull(creds, "creds");
-        this.mirrorToM2 = mirrorToM2;
+        // Effective policy is project AND the machine kill switch — mirror MavenRepo, so a global
+        // [m2] integration = false is honored here too (JK-2306).
+        boolean effectiveM2 =
+                m2integration && cc.jumpkick.config.JkM2Config.resolve().integration();
+        this.m2integration = effectiveM2;
+        this.locator = new cc.jumpkick.repo.ArtifactLocator(
+                cas.root(), effectiveM2 ? cc.jumpkick.repo.M2Dirs.localRepository() : null, effectiveM2);
     }
 
     /**
@@ -78,8 +82,8 @@ public final class CacheSync {
     }
 
     /**
-     * Sync with per-package progress. {@code refresh} forces re-download even when CAS already
-     * holds the blob.
+     * Sync with per-package progress. {@code refresh} forces re-download even when a verified
+     * jar is already on disk.
      */
     public Report sync(Lockfile lock, ProgressObserver observer, boolean refresh)
             throws IOException, InterruptedException {
@@ -98,36 +102,15 @@ public final class CacheSync {
             }
             String hex = pkg.checksumHex();
 
-            // Check the named-repo store first (repos/<name>/<m2-path>.sha256), verifying the
-            // recorded hash against the lockfile's pin — presence alone isn't enough, since the
-            // pin can change (a re-lock) even though this store is otherwise exclusively
-            // jk-owned. Fall back to the CAS for artifacts fetched before this store existed (old
-            // lockfiles / old builds).
-            if (!refresh) {
-                RepoArtifactStore.IndexState state = repoStoreState(pkg);
-                if (state == RepoArtifactStore.IndexState.VERIFIED) {
-                    upToDate++;
-                    observer.upToDate(pkg);
-                    continue;
-                }
-                if (cas.contains(hex)) {
-                    // The CAS holds the pinned bytes. On MISMATCH, re-mirror them into the opt-in
-                    // ~/.m2 copy (no network) so Maven/Gradle recover too, when mirroring is
-                    // enabled. Best-effort: even unhealed, the classpath resolver serves the
-                    // verified CAS path.
-                    if (state == RepoArtifactStore.IndexState.MISMATCH) healM2FromCas(pkg, hex);
-                    upToDate++;
-                    observer.upToDate(pkg);
-                    continue;
-                }
-                // MISMATCH (or ABSENT) with no CAS copy: fall through to a real re-fetch,
-                // which re-verifies against the lockfile checksum and rewrites ~/.m2.
+            if (!refresh && locator.locate(pkg).isPresent()) {
+                upToDate++;
+                observer.upToDate(pkg);
+                continue;
             }
-            // A "local" source (jk install <file>, jk's own worker JARs) is never fetched from a
-            // remote repo — it lives in the repos/local full store. Materialize it into the CAS so
-            // the compile classpath can resolve it by hash, then treat it as satisfied.
-            if ("local".equals(pkg.source())) {
-                if (materializeLocal(pkg, hex)) upToDate++;
+            // First-party store source (jk install <file>, worker JARs) is never fetched from a
+            // remote — it lives in repos/jk-local.
+            if (cc.jumpkick.repo.RepoArtifactResolver.isFirstPartySource(pkg.source())) {
+                if (locator.locate(pkg).isPresent()) upToDate++;
                 else skipped++;
                 observer.upToDate(pkg);
                 continue;
@@ -183,7 +166,11 @@ public final class CacheSync {
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             if (pkg.sourcesChecksum() == null) continue;
             String hex = pkg.sourcesChecksumHex();
-            if (cas.contains(hex)) {
+            Coordinate sourcesCoord =
+                    new Coordinate(pkg.moduleGroup(), pkg.moduleArtifact(), pkg.version(), "sources", "jar");
+            String repoName = cc.jumpkick.repo.RepoArtifactResolver.repoName(pkg.source());
+            String rel = cc.jumpkick.repo.MavenLayout.artifactPath(sourcesCoord);
+            if (locator.locate(repoName, rel, hex, sourcesCoord.toGav()).isPresent()) {
                 observer.upToDate(pkg);
                 continue;
             }
@@ -256,7 +243,10 @@ public final class CacheSync {
         try {
             // Rate limit lives in MavenRepo.fetch (network leg only). Wrapping again deadlocks the
             // non-reentrant HostRateLimiter once concurrent fetchers hold all permits.
-            MavenRepo.Fetched f = p.repo.fetchArtifact(coord);
+            // Pass the pin so a stale local-mirror copy that no longer matches (republished GAV +
+            // re-lock) is evicted and re-fetched, rather than dead-ending in a checksum mismatch that
+            // never touches the network (JK-2305).
+            MavenRepo.Fetched f = p.repo.fetchArtifact(coord, p.expectedHex, () -> false);
             if (!f.sha256().equals(p.expectedHex)) {
                 return FetchResult.failure(p.pkg.name()
                         + " v"
@@ -275,63 +265,6 @@ public final class CacheSync {
         }
     }
 
-    /**
-     * The artifact's state in its named-repo store, verified against the lockfile checksum:
-     * {@code VERIFIED} when present with the pinned hash, {@code MISMATCH} when present but the
-     * content changed (corruption/tampering — {@code repos/<name>/} is exclusively jk-owned, so
-     * this should be rare), {@code ABSENT} when never stored — or for non-Maven sources (git,
-     * path) and malformed source strings.
-     */
-    private RepoArtifactStore.IndexState repoStoreState(Lockfile.Artifact pkg) {
-        String repoName = cc.jumpkick.repo.RepoArtifactResolver.repoName(pkg.source());
-        if (repoName == null) return RepoArtifactStore.IndexState.ABSENT;
-        Coordinate coord = toCoord(pkg);
-        String m2Path = cc.jumpkick.repo.MavenLayout.artifactPath(coord);
-        cc.jumpkick.repo.RepoArtifactStore store = cc.jumpkick.repo.RepoArtifactStore.forRepoName(cas.root(), repoName);
-        return store.verify(m2Path, pkg.checksumHex());
-    }
-
-    /**
-     * Re-mirror the lock-pinned CAS blob over a poisoned/overwritten {@code ~/.m2} copy (named
-     * remote repos only — the {@code local} full store and git sources don't mirror into {@code
-     * ~/.m2}). No-op unless {@code mirrorToM2} is enabled for this sync — with it disabled jk isn't
-     * maintaining a {@code ~/.m2} mirror for this project, so there's nothing to heal. jk's own
-     * {@code repos/<name>/} sidecar needs no correction here: it was written correctly at fetch
-     * time and nothing external can have touched it. Best-effort: on failure the classpath
-     * resolver still serves the verified {@code repos/<name>/} path, only the mirror stays stale.
-     */
-    private void healM2FromCas(Lockfile.Artifact pkg, String hex) {
-        if (!mirrorToM2) return;
-        String repoName = cc.jumpkick.repo.RepoArtifactResolver.repoName(pkg.source());
-        if (!cc.jumpkick.repo.RepoArtifactResolver.isNamedRemote(repoName)) return;
-        try {
-            String m2Path = cc.jumpkick.repo.MavenLayout.artifactPath(toCoord(pkg));
-            Path target = cc.jumpkick.repo.M2Dirs.localRepository().resolve(m2Path);
-            var hashes = cc.jumpkick.repo.M2CompatWriter.copyToM2AndHash(cas.pathFor(hex), target);
-            cc.jumpkick.repo.M2CompatWriter.writeMavenSidecars(target, hashes.sha1(), hashes.md5());
-        } catch (IOException | RuntimeException ignored) {
-            // Best-effort — the CAS path keeps this build correct either way.
-        }
-    }
-
-    /**
-     * Ensure a {@code local}-source artifact (installed into the repos/local full store) is present
-     * in the CAS under its locked hash, so the compile classpath can resolve it by hash. Returns
-     * false when the artifact isn't in the local store (nothing to materialize).
-     */
-    private boolean materializeLocal(Lockfile.Artifact pkg, String hex) {
-        if (cas.contains(hex)) return true;
-        cc.jumpkick.repo.RepoArtifactStore local = cc.jumpkick.repo.RepoArtifactStore.forRepoName(cas.root(), "local");
-        Optional<Path> jar = local.locate(cc.jumpkick.repo.MavenLayout.artifactPath(toCoord(pkg)));
-        if (jar.isEmpty()) return false;
-        try {
-            cas.putFile(jar.get(), hex);
-            return true;
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
     private MavenRepo repoFor(String source, Map<String, MavenRepo> cache) {
         MavenRepo existing = cache.get(source);
         if (existing != null) return existing;
@@ -342,7 +275,7 @@ public final class CacheSync {
         }
         URI url = URI.create(rs.url());
         var cred = creds.resolve(name, url, Optional.empty());
-        MavenRepo repo = new MavenRepo(name, url, http, cas, cred, mirrorToM2);
+        MavenRepo repo = new MavenRepo(name, url, http, cas, cred, m2integration);
         cache.put(source, repo);
         return repo;
     }
@@ -351,7 +284,7 @@ public final class CacheSync {
         return pkg.coordinate();
     }
 
-    /** A package whose CAS entry is missing and needs to be fetched. */
+    /** A package whose jar is missing on disk and needs to be fetched. */
     private record PendingFetch(Lockfile.Artifact pkg, String expectedHex, MavenRepo repo) {}
 
     /** Outcome of one parallel fetch — null error means success. */

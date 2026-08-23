@@ -76,6 +76,7 @@ public final class GradleCommand implements CliCommand {
         ProcessBuilder pb =
                 new ProcessBuilder(command).directory(projectDir.toFile()).inheritIO();
         PassthroughEnv.apply(pb.environment(), jdk.map(InstalledJdk::home).orElse(null));
+        cc.jumpkick.cli.CliOutput.skipTrailingBlank();
         return pb.start().waitFor();
     }
 }

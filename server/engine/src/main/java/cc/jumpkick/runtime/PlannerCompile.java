@@ -73,6 +73,9 @@ public final class PlannerCompile {
                     // The Kotlin incremental compiler gets its own dir (kotlin/main/)
                     // so it cannot prune Java's output; the assembler merges both.
                     Path javaOut = classes;
+                    // JAVA_SOURCES already carries the java+scala union (incl. extra-src/plugin-root
+                    // .scala) that PlannerSetup published — no need to re-walk the tree for .scala here
+                    // (JK-2320). hasScala below reads it directly.
                     List<Path> sources = javaSources(ctx);
                     List<Path> generated = pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".java");
                     List<Path> kspGenerated = kspGeneratedSources(ctx.require(LAYOUT), ".java");
@@ -114,9 +117,23 @@ public final class PlannerCompile {
                     List<Path> processorCp =
                             (List<Path>) ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
                     boolean rerun = in.session().config().rebuildOr(false);
+                    // Resolve the Scala toolchain before the stamp check so the stdlib jars are part
+                    // of the freshness inputs — a scala-version bump must invalidate the stat-only
+                    // fast path (JK-2295). Cheap on a warm closure cache. Gate on the *merged* source
+                    // set (which includes extra-src / plugin-root .scala published by PlannerSetup),
+                    // not the narrow main-roots walk — otherwise a variant-overlay .scala reaches the
+                    // Zinc worker with the Java-only dummy compiler and fails cryptically (JK-2302).
+                    boolean hasScala =
+                            sources.stream().anyMatch(p -> p.toString().endsWith(".scala"));
+                    ScalaCompile.Setup scalaSetup =
+                            hasScala ? ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas) : null;
                     // The shared stamp recipeforecast and write-stamp use it too.
                     List<Path> stampInputs = mainStampClasspath(
                             baseClasspath, processorCp, mixed, cx.mixedGroovy(), ctx.require(LAYOUT), groovyJar);
+                    if (scalaSetup != null) {
+                        stampInputs = new ArrayList<>(stampInputs);
+                        stampInputs.addAll(scalaSetup.libraryJars());
+                    }
                     if (!rerun
                             && cc.jumpkick.task.FreshnessStamp.isFresh(
                                     javaOut,
@@ -145,15 +162,28 @@ public final class PlannerCompile {
                             javacArgs.add(stubs.toAbsolutePath().toString());
                         }
                     }
-                    CompileRequest request = CompileRequest.builder()
+                    if (scalaSetup != null) {
+                        classpath = new ArrayList<>(classpath);
+                        for (Path lib : scalaSetup.libraryJars()) {
+                            if (!classpath.contains(lib)) classpath.add(lib);
+                        }
+                    }
+                    CompileRequest.CompileRequestBuilder req = CompileRequest.builder()
                             .sources(sources)
                             .classpath(classpath)
                             .outputDir(javaOut)
                             .release(ctx.require(RELEASE))
                             .extraOptions(javacArgs)
                             .javaHome(ctx.require(JAVA_HOME))
-                            .processorPath(processorCp)
-                            .build();
+                            .processorPath(processorCp);
+                    if (scalaSetup != null) {
+                        req.scalaVersion(scalaSetup.version())
+                                .compilerClasspath(scalaSetup.compilerClasspath())
+                                .scalaLibraryJar(scalaSetup.libraryJar())
+                                .scalaCompilerJar(scalaSetup.compilerJar())
+                                .scalaBridgeJar(scalaSetup.bridgeJar());
+                    }
+                    CompileRequest request = req.build();
                     String taskId = ActionKey.qualifiedTaskId("compile-main", javaOut);
                     Path javaStateDir = in.cache()
                             .resolve("actions")
@@ -162,7 +192,7 @@ public final class PlannerCompile {
                     // Reweight the bar slice now that the real request is known: a CAS
                     // action-cache hit means a cheap hard-link restore (3), not a full
                     // javac (ceil(sources × 0.1)). Uses the exact key
-                    // JavaIncrementalCompile will look up, so the estimate matches what
+                    // JavaCompile will look up, so the estimate matches what
                     // actually happens — no plan-start reconstruction divergence.
                     if (!rerun) {
                         try {
@@ -176,37 +206,11 @@ public final class PlannerCompile {
                             /* keep the up-front estimate */
                         }
                     }
-                    // With processors declared, hand the incremental compiler an AP setup:
-                    // a *lazy* plugin-jar resolver + a stable generated-sources dir. The
-                    // engine routes through the plugin only once it has detected
-                    // source-generating processors, so bytecode-only processors (e.g.
-                    // Lombok) and first builds never resolve it — which matters because
-                    // a jk build that didn't bundle the plugin (or its sha resource)
-                    // would otherwise fail here even though the plugin isn't needed.
-                    // When it *is* needed but unavailable, warn once and fall back to
-                    // plain javac (correct, just without incremental AP provenance).
-                    cc.jumpkick.task.JavaIncrementalCompile.ApSetup ap = null;
-                    if (!processorCp.isEmpty()) {
-                        Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations");
-                        Files.createDirectories(genDir);
-                        ap = new cc.jumpkick.task.JavaIncrementalCompile.ApSetup(
-                                () -> {
-                                    try {
-                                        return PluginJar.JAVA_COMPILER.locate(cas);
-                                    } catch (RuntimeException e) {
-                                        ctx.warn(
-                                                "javac",
-                                                "java-compiler worker unavailable ("
-                                                        + e.getMessage()
-                                                        + "); compiling with plain javac"
-                                                        + " (no incremental annotation-processing provenance)");
-                                        return null;
-                                    }
-                                },
-                                genDir);
-                    }
+                    Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations");
+                    Files.createDirectories(genDir);
+                    Path workerJar = PluginJar.JAVA_COMPILER.locate(cas);
                     ctx.label("compiling " + sources.size() + " sources");
-                    cc.jumpkick.task.JavaIncrementalCompile.Result r = cc.jumpkick.task.JavaIncrementalCompile.run(
+                    cc.jumpkick.task.JavaCompile.Result r = cc.jumpkick.task.JavaCompile.run(
                             taskId,
                             request,
                             cc.jumpkick.model.BuildIdentity.cacheKeyVersion(),
@@ -215,7 +219,8 @@ public final class PlannerCompile {
                             actionCache.cas(),
                             actionCache,
                             javaStateDir,
-                            ap);
+                            workerJar,
+                            genDir);
                     ctx.put(ACTION_KEY, r.actionKey());
                     // Forward every javac diagnostic to the terminal, by severity:
                     // errors fail the build, warnings/notes (e.g. deprecation) are

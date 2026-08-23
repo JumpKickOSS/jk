@@ -21,8 +21,8 @@ import java.util.function.Supplier;
  * cacheMaxBytes} is the <strong>cache tier</strong> budget ({@code [cache] max-cache-size-gb},
  * default 4 GiB / 8 GiB on CI; small disks clamp both defaults).
  *
- * <p>Byte sizes are <em>exclusive</em> across store sections (CAS before repos) so hard-linked
- * {@code repos/} views do not double-count CAS blob allocations — same accounting as the CLI.
+ * <p>Byte sizes are <em>exclusive</em> across store sections (store CAS before {@code repos/}) so
+ * leftover hard links are not counted twice — same accounting as the CLI.
  *
  * <p>Prefer {@link #memoizing(Path)} for live engine paths: a full exclusive walk of a multi‑GiB
  * cache allocates tens of MiB of path/inode bookkeeping. Without single-flight + TTL, a dashboard
@@ -44,7 +44,49 @@ public record CacheSnapshot(
         long formatStampsBytes,
         long maxBytes,
         long actionMaxBytes,
-        long lastPrunedMillis) {
+        long lastPrunedMillis,
+        long mavenLocalCount,
+        long mavenLocalBytes) {
+
+    /**
+     * Compatibility constructor for callers that predate the captured Maven-local stats (JK-2293);
+     * defaults them to zero. Live code goes through {@link #capture(Path)}, which fills them in.
+     */
+    public CacheSnapshot(
+            long casCount,
+            long casBytes,
+            long actionsCount,
+            long actionsBytes,
+            long cacheCasCount,
+            long cacheCasBytes,
+            long workerJarsCount,
+            long workerJarsBytes,
+            long runLogsCount,
+            long runLogsBytes,
+            long formatStampsCount,
+            long formatStampsBytes,
+            long maxBytes,
+            long actionMaxBytes,
+            long lastPrunedMillis) {
+        this(
+                casCount,
+                casBytes,
+                actionsCount,
+                actionsBytes,
+                cacheCasCount,
+                cacheCasBytes,
+                workerJarsCount,
+                workerJarsBytes,
+                runLogsCount,
+                runLogsBytes,
+                formatStampsCount,
+                formatStampsBytes,
+                maxBytes,
+                actionMaxBytes,
+                lastPrunedMillis,
+                0L,
+                0L);
+    }
 
     /**
      * Default freshness for live {@code /api/cache} + SSE chrome. Deliberately half of
@@ -180,6 +222,19 @@ public record CacheSnapshot(
     }
 
     /**
+     * Maven local repository size — informational, not part of the jk store budget. Walked once
+     * inside {@link #capture(Path)} and stored on the snapshot; never call this on the render / SSE
+     * connect path, which must not walk a multi-GiB {@code ~/.m2} (JK-2293).
+     */
+    static DiskUsage.Stats mavenLocalStats() {
+        try {
+            return DiskUsage.of(cc.jumpkick.repo.M2Dirs.localRepository());
+        } catch (Exception e) {
+            return new DiskUsage.Stats(0, 0);
+        }
+    }
+
+    /**
      * Walk store + cache sections and snapshot their sizes — identical dirs and hardlink-aware
      * exclusive byte accounting as {@code jk cache usage} / {@code jk storage usage}. Prefer
      * {@link #memoizing(Path)} on live engine paths so concurrent REST/SSE callers do not walk
@@ -215,6 +270,7 @@ public record CacheSnapshot(
         long storeMax = cfg.maxStoreSizeBytes();
         long cacheMax = cfg.maxCacheSizeBytes();
         long lastPruned = readLastPrunedMillis(cacheRoot);
+        DiskUsage.Stats m2 = mavenLocalStats(); // walked once here, never on the render/connect path
         return new CacheSnapshot(
                 parts[0].files(),
                 parts[0].bytes(),
@@ -230,7 +286,9 @@ public record CacheSnapshot(
                 parts[4].bytes(),
                 storeMax,
                 cacheMax,
-                lastPruned);
+                lastPruned,
+                m2.files(),
+                m2.bytes());
     }
 
     private static JkCacheConfig resolveConfig() {
@@ -277,6 +335,8 @@ public record CacheSnapshot(
                 .put("cacheMaxBytes", cacheMaxBytes())
                 .put("artifactStorageCount", artifactStorageCount())
                 .put("artifactStorageBytes", artifactStorageBytes())
+                .put("mavenLocalCount", mavenLocalCount)
+                .put("mavenLocalBytes", mavenLocalBytes)
                 .put("maxBytes", maxBytes)
                 .put("lastPrunedMillis", lastPrunedMillis);
     }
@@ -293,6 +353,7 @@ public record CacheSnapshot(
                 .put("cacheBytes", cacheBytes())
                 .put("cacheMaxBytes", cacheMaxBytes())
                 .put("artifactStorageBytes", artifactStorageBytes())
+                .put("mavenLocalBytes", mavenLocalBytes)
                 .put("maxBytes", maxBytes)
                 .put("lastPrunedMillis", lastPrunedMillis);
     }

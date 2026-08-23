@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Shared conventions for jk's child-JVM worker modules (the "runner" plugins).
-// Each worker jar+POM is installed to store/repos/local under cc.jumpkick:jk-<projectName>
+// Each worker jar+POM is installed to store/repos/jk-local under cc.jumpkick:jk-<projectName>
 // — the same Maven layout `jk install` writes. Launch rebuilds the runtime classpath from
 // that POM. What stays in each worker's build.gradle.kts: its `description`, its
 // `dependencies`, and optional codec-vendoring.
@@ -195,7 +195,20 @@ fun workerPomXml(): String {
 }
 
 fun mavenLocalDir(storeRoot: File, group: String, artifact: String, version: String): File =
-        storeRoot.resolve("repos/local/${group.replace('.', '/')}/$artifact/$version")
+        storeRoot.resolve("repos/jk-local/${group.replace('.', '/')}/$artifact/$version")
+
+fun jkMemoName(fileName: String): String =
+        when {
+            fileName.endsWith(".jar") || fileName.endsWith(".aar") || fileName.endsWith(".zip") ->
+                    fileName.substring(0, fileName.lastIndexOf('.')) + ".jk"
+            else -> fileName + ".jk"
+        }
+
+fun writeJkMemo(dest: File, group: String, artifact: String, version: String, hex: String) {
+    val memo = dest.resolveSibling(jkMemoName(dest.name))
+    memo.writeText("$group:$artifact:$version\n${dest.lastModified()}\n${dest.length()}\n$hex\n")
+    File(dest.path + ".sha256").delete()
+}
 
 fun installJar(
         storeRoot: File,
@@ -209,7 +222,7 @@ fun installJar(
     val suffix = classifier?.let { "-$it" }.orEmpty()
     val dest = dir.resolve("$artifact-$version$suffix.jar")
     copyReplacing(jar, dest)
-    File(dest.path + ".sha256").writeText(sha256Hex(jar))
+    writeJkMemo(dest, group, artifact, version, sha256Hex(jar))
     File(dest.path + ".classpath").delete()
     File(dest.path + ".deps").delete()
 }
@@ -220,7 +233,7 @@ fun installPom(storeRoot: File, group: String, artifact: String, version: String
     val dest = dir.resolve("$artifact-$version.pom")
     val bytes = xml.toByteArray(Charsets.UTF_8)
     dest.writeBytes(bytes)
-    File(dest.path + ".sha256").writeText(sha256Hex(bytes))
+    writeJkMemo(dest, group, artifact, version, sha256Hex(bytes))
 }
 
 fun stageWorkerMavenRepo(storeRoot: File, jar: File, pomXml: String) {
@@ -272,9 +285,9 @@ tasks.register("stageWorkerRepo") {
     }
 }
 
-// Same destination as `jk install`: store/repos/local/cc/jumpkick/<jk-artifact>/<ver>/.
+// Same destination as `jk install`: store/repos/jk-local/cc/jumpkick/<jk-artifact>/<ver>/.
 tasks.register("installLocal") {
-    description = "Install $workerArtifact jar+pom into the local Maven store (repos/local)"
+    description = "Install $workerArtifact jar+pom into the local Maven store (repos/jk-local)"
     group = "jk"
     dependsOn(tasks.jar, "writeWorkerPom", "stageWorkerRepo")
     inputs.file(jarProvider)
@@ -293,6 +306,8 @@ tasks.register("installLocal") {
                 pomTarget.isFile &&
                 sha256Hex(target) == hex &&
                 sha256Hex(pomTarget) == sha256Hex(pomXml.toByteArray(Charsets.UTF_8))) {
+            writeJkMemo(target, "cc.jumpkick", artifact, ver, hex)
+            writeJkMemo(pomTarget, "cc.jumpkick", artifact, ver, sha256Hex(pomTarget))
             println("Already installed $artifact $ver (sha256 match)")
             println("  path:   $target")
             return@doLast

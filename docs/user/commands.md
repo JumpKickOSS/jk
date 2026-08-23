@@ -29,7 +29,7 @@ Canonical names. Hidden aliases (Maven/Gradle muscle memory) are listed in
 | `jk install` | Local repo + PATH / jkx | [Packaging](packaging.md), [Tools](tools.md) |
 | `jk verify` | Rebuild and hash-diff | [Publish](publish.md) |
 | `jk audit` / `jk deny` | OSV / source denylist | [Publish](publish.md) |
-| `jk jdk …` | JDK install / pin / list | [JDK](jdk.md) |
+| `jk jdk …` | JDK install / pin / list / verify | [JDK](jdk.md) |
 | `jk tool …` / `jkx` | One-off JVM tools | [Tools](tools.md) |
 | `jk library …` | Catalog search / update | [Dependencies](dependencies.md) |
 | `jk import` / `jk export` | Maven / Gradle / BOM / IDE | [Migration](migration.md) |

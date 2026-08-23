@@ -9,7 +9,7 @@ import java.util.Optional;
 /**
  * De-facto default JDK when no explicit {@code jk jdk default} is set: sole install if one; else
  * current latest-LTS major if installed; else newest installed. Pure/offline — not persisted
- * ({@link GlobalDefaultJdk} wins when present).
+ * ({@link JdkInventory} wins when present).
  */
 public final class DefaultJdkPolicy {
 

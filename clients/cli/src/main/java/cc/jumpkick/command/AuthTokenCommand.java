@@ -35,7 +35,7 @@ public final class AuthTokenCommand implements CliCommand {
                 Opt.value("<HOST>", "Forge host (required for Gitea/Forgejo)", "--host"),
                 Opt.value(
                                 "<dir>",
-                                "Override the credentials directory. Default: ~/.jk/credentials.",
+                                "Override the credentials directory. Default: <data>/credentials.",
                                 "--credentials-dir")
                         .hide());
     }
@@ -46,6 +46,12 @@ public final class AuthTokenCommand implements CliCommand {
                 "provider",
                 Arity.ZERO_OR_ONE,
                 "github | gitlab | gitea (forgejo/codeberg) | bitbucket.\nOmit to auto-detect."));
+    }
+
+    /** The single token line on stdout feeds {@code curl -H "Authorization: Bearer $(jk auth token)"}. */
+    @Override
+    public boolean scriptMode(Invocation in) {
+        return true;
     }
 
     @Override

@@ -30,7 +30,16 @@ public final class ExplodedArchives {
     /** The exploded dir for an arbitrary archive file (a workspace sibling's AAR), keyed by its content. */
     public static Path explodeFile(Cas cas, Path archive) throws IOException {
         String hex = cc.jumpkick.util.Hashing.sha256Hex(archive);
-        return explodeAt(cas.root().resolve("exploded").resolve(shard(hex)), archive);
+        return explodeFile(cas, archive, hex);
+    }
+
+    /**
+     * As {@link #explodeFile(Cas, Path)} but keyed by an already-known content hash — skips a full
+     * re-hash of the archive on every classpath resolution when the caller already holds the verified
+     * lock pin (JK-2308).
+     */
+    public static Path explodeFile(Cas cas, Path archive, String sha256Hex) throws IOException {
+        return explodeAt(cas.root().resolve("exploded").resolve(shard(sha256Hex)), archive);
     }
 
     private static String shard(String hex) {

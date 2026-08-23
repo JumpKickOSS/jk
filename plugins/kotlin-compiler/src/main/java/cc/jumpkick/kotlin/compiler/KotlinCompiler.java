@@ -213,9 +213,7 @@ public final class KotlinCompiler implements Plugin {
 
     /**
      * The compiler's plugin loader silently ignores classpath entries that don't end in
-     * {@code .jar} — jk's CAS blob paths carry no extension, so hard-link (or copy) the jar to a
-     * {@code .jar}-suffixed temp file. Silent is the operative word: nothing fails, the plugin
-     * just never runs.
+     * {@code .jar}. Alias any extensionless path so the plugin is actually loaded.
      */
     private static Path jarSuffixed(Path jar) throws IOException {
         if (jar.getFileName().toString().endsWith(".jar")) return jar;

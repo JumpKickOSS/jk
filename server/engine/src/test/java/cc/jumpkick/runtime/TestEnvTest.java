@@ -46,8 +46,10 @@ class TestEnvTest {
                 """);
         var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project));
 
-        assertThat(env.get("JK_HOME"))
-                .isEqualTo(tmp.resolve("target/mine").toAbsolutePath().toString());
+        // ${target} expands to a host path, so on Windows the declared value reads
+        // C:\…\target/mine — mixed separators. The contract is the directory named, not the string.
+        assertThat(Path.of(env.get("JK_HOME")))
+                .isEqualTo(tmp.resolve("target/mine").toAbsolutePath());
         assertThat(env.get("JK_HTTP_ENABLED")).isEqualTo("false");
         // The default the module didn't mention survives.
         assertThat(env.get("JK_M2_LOCAL")).endsWith("test-m2");

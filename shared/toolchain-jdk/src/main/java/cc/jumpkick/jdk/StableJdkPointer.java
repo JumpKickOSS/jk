@@ -3,7 +3,6 @@ package cc.jumpkick.jdk;
 
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -11,7 +10,6 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.Objects;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 /**
@@ -20,8 +18,6 @@ import java.util.stream.Stream;
  * dirs go to {@link JdkGarbage}; {@link #javaHome} does not resolve the link.
  */
 public final class StableJdkPointer {
-
-    private static final boolean WINDOWS = HostPlatform.isWindows();
 
     private final Path jdksRoot;
 
@@ -76,47 +72,7 @@ public final class StableJdkPointer {
         }
 
         Files.createDirectories(jdksRoot);
-        link(pointer, installDir);
-    }
-
-    private static void link(Path pointer, Path target) throws IOException {
-        if (WINDOWS) {
-            createJunction(pointer, target);
-        } else {
-            Files.createSymbolicLink(pointer, target);
-        }
-    }
-
-    /**
-     * Create a Windows directory junction {@code pointer → target} via {@code mklink /J} (a cmd.exe
-     * builtin). Junctions need no elevation.
-     */
-    private static void createJunction(Path pointer, Path target) throws IOException {
-        ProcessBuilder pb = new ProcessBuilder(
-                "cmd.exe",
-                "/c",
-                "mklink",
-                "/J",
-                pointer.toAbsolutePath().toString(),
-                target.toAbsolutePath().toString());
-        pb.redirectErrorStream(true);
-        try {
-            Process proc = pb.start();
-            byte[] out = proc.getInputStream().readAllBytes();
-            if (!proc.waitFor(30, TimeUnit.SECONDS)) {
-                proc.destroyForcibly();
-                throw new IOException("mklink /J timed out creating " + pointer);
-            }
-            if (proc.exitValue() != 0) {
-                throw new IOException("mklink /J failed (exit "
-                        + proc.exitValue()
-                        + "): "
-                        + new String(out, StandardCharsets.UTF_8).trim());
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("interrupted creating junction " + pointer, e);
-        }
+        DirLinks.replace(pointer, installDir);
     }
 
     /**

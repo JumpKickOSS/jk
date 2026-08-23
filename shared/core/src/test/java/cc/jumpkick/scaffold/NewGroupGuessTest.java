@@ -115,22 +115,37 @@ class NewGroupGuessTest {
 
     @Test
     void falls_back_to_home_gitconfig(@TempDir Path tempDir) throws IOException {
-        var work = tempDir.resolve("work");
+        // `work` must be walk-clean: readEmail walks its ancestors to the filesystem root, and a
+        // @TempDir under the checkout would hit the repo's (or the dev's ~/.gitconfig) config before
+        // reaching the home fallback (JK-2314).
+        var work = walkCleanDir();
         var home = tempDir.resolve("home");
-        Files.createDirectories(work);
-        Files.createDirectories(home);
-        Files.writeString(home.resolve(".gitconfig"), """
-                [user]
-                    email = carol@github.com
-                """);
-        assertThat(NewGroupGuess.guess(work, home)).isEqualTo("io.github.carol");
+        try {
+            Files.createDirectories(home);
+            Files.writeString(home.resolve(".gitconfig"), """
+                    [user]
+                        email = carol@github.com
+                    """);
+            assertThat(NewGroupGuess.guess(work, home)).isEqualTo("io.github.carol");
+        } finally {
+            Files.deleteIfExists(work);
+        }
     }
 
     @Test
-    void no_gitconfig_returns_fallback(@TempDir Path tempDir) {
-        var work = tempDir.resolve("work");
+    void no_gitconfig_returns_fallback(@TempDir Path tempDir) throws IOException {
+        var work = walkCleanDir();
         var home = tempDir.resolve("home");
-        assertThat(NewGroupGuess.guess(work, home)).isEqualTo("com.example");
+        try {
+            assertThat(NewGroupGuess.guess(work, home)).isEqualTo("com.example");
+        } finally {
+            Files.deleteIfExists(work);
+        }
+    }
+
+    /** A temp dir whose ancestor chain carries no git config (unlike a @TempDir under the checkout). */
+    private static Path walkCleanDir() throws IOException {
+        return Files.createTempDirectory(Path.of("/tmp"), "jk-grp-test-");
     }
 
     @Test

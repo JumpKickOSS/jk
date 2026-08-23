@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -14,10 +16,9 @@ import java.util.Set;
 /**
  * File-tree size accounting that does not double-count hard-linked files.
  *
- * <p>CAS blobs under {@code sha256/…} and Maven-layout views under {@code repos/…} share one
- * allocation via hard link. Naïve {@code Files.size} sums over both trees report ~2× true disk
- * use. This helper deduplicates on {@code (dev, ino)} so each underlying blob contributes once —
- * same idea as {@code du} across hard links.
+ * <p>When two trees share an inode, a naïve {@code Files.size} sum reports ~2× true disk use.
+ * This helper deduplicates on {@code (dev, ino)} so each underlying blob contributes once — same
+ * idea as {@code du} across hard links.
  *
  * <p>Only files with {@code nlink > 1} enter the seen-set at all (a single-link file cannot be
  * met twice), and the set itself is a primitive open-addressed long set — the previous
@@ -44,11 +45,11 @@ public final class DiskUsage {
     /**
      * Walk several trees <em>in order</em>. File counts include every directory entry. Byte size
      * for a hard-linked group is attributed to the <strong>first</strong> tree that contains a
-     * link — later trees add 0 bytes for that key. Put the CAS ({@code sha256/}) before
-     * {@code repos/} so blob bytes land under CAS and repo hard links do not inflate storage.
+     * link — later trees add 0 bytes for that key. Put store {@code sha256/} before {@code repos/}
+     * so leftover shared inodes are not counted twice.
      *
-     * <p>Missing or unreadable roots contribute zeros. A null {@code fileKey} on the fallback
-     * path (rare providers) falls back to the absolute path so accounting never drops a file.
+     * <p>Missing or unreadable roots contribute zeros. When {@code fileKey} is null (common on
+     * Windows), hard links are deduplicated through {@link SameFileKeys}.
      */
     public static Stats[] exclusive(List<Path> roots) throws IOException {
         Objects.requireNonNull(roots, "roots");
@@ -122,25 +123,59 @@ public final class DiskUsage {
                 if (!attrs.isRegularFile()) continue;
                 files++;
                 Object key = attrs.fileKey();
-                if (key == null) {
-                    key = p.toAbsolutePath().normalize();
-                }
-                if (seen.addObject(key)) {
-                    bytes += attrs.size();
-                }
+                // Windows often returns a null fileKey; isSameFile still detects hard links.
+                if (key == null) key = seen.sameFileIdentity(p, attrs.size());
+                if (seen.addObject(key)) bytes += attrs.size();
             }
         }
         return new Stats(files, bytes);
     }
 
     /**
+     * Hard-link identity for providers that report a null {@code fileKey} — Windows, where the
+     * only way to tell two links apart is {@link Files#isSameFile}. Same-size files are the
+     * candidate set, so the caller gets back the <em>first</em> path of each link group and can
+     * dedupe on it like a {@code fileKey}.
+     *
+     * <p>Two guards keep a store full of same-size blobs from turning {@code jk cache usage} into
+     * a quadratic pile of syscalls; both trade a bounded over-count for a bounded cost.
+     */
+    public static final class SameFileKeys {
+
+        /**
+         * Past this many same-size candidates, comparing each new file against all of them costs
+         * more than the double-counting it prevents.
+         */
+        static final int MAX_LINK_CANDIDATES = 64;
+
+        private final Map<Long, List<Path>> bySize = new HashMap<>();
+
+        /** Identity of {@code path}: the first same-size path it is a hard link of, else itself. */
+        public Object identity(Path path, long size) {
+            // An empty file shares no blob, so dedupe would buy nothing for the comparisons it costs.
+            if (size == 0) return path;
+            List<Path> candidates = bySize.computeIfAbsent(size, k -> new ArrayList<>(2));
+            for (Path candidate : candidates) {
+                try {
+                    if (Files.isSameFile(path, candidate)) return candidate;
+                } catch (IOException vanished) {
+                    // A candidate deleted mid-walk cannot be this file's twin.
+                }
+            }
+            if (candidates.size() < MAX_LINK_CANDIDATES) candidates.add(path);
+            return path;
+        }
+    }
+
+    /**
      * Cross-root seen-set: a primitive open-addressed {@code (dev, ino)} long set on unix,
-     * an object set of {@code fileKey}s elsewhere. ~8 bytes per multi-linked file instead of a
-     * boxed key + node per file.
+     * an object set of {@code fileKey}s elsewhere, and a {@link SameFileKeys} identity when
+     * {@code fileKey} is null (Windows).
      */
     private static final class SeenLinks {
         boolean unixSupported = true;
         private Set<Object> objects; // fallback platforms only, lazily created
+        private SameFileKeys sameFile; // null-fileKey platforms only, lazily created
         private long[] slots = new long[1 << 10];
         private int used;
         private boolean hasZero;
@@ -170,6 +205,11 @@ public final class DiskUsage {
         boolean addObject(Object key) {
             if (objects == null) objects = new HashSet<>();
             return objects.add(key);
+        }
+
+        Object sameFileIdentity(Path path, long size) {
+            if (sameFile == null) sameFile = new SameFileKeys();
+            return sameFile.identity(path, size);
         }
 
         private void grow() {

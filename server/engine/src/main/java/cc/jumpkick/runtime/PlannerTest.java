@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
@@ -85,7 +84,9 @@ public final class PlannerTest {
                             cc.jumpkick.layout.TestSuites.collectKotlinSources(in.dir(), compact, suiteNames);
                     List<Path> gvTest =
                             cc.jumpkick.layout.TestSuites.collectGroovySources(in.dir(), compact, suiteNames);
-                    if (javaTest.isEmpty() && ktTest.isEmpty() && gvTest.isEmpty()) {
+                    List<Path> scTest =
+                            cc.jumpkick.layout.TestSuites.collectScalaSources(in.dir(), compact, suiteNames);
+                    if (javaTest.isEmpty() && ktTest.isEmpty() && gvTest.isEmpty() && scTest.isEmpty()) {
                         ctx.label("no test sources");
                         ctx.put(NO_TEST_SOURCES, true);
                         ctx.cached(); // SKIPPED — nothing to compile
@@ -97,6 +98,7 @@ public final class PlannerTest {
                     allTestSources.addAll(javaTest);
                     allTestSources.addAll(ktTest);
                     allTestSources.addAll(gvTest);
+                    allTestSources.addAll(scTest);
                     ctx.put(TEST_SOURCES, allTestSources);
                     @SuppressWarnings("unchecked")
                     List<Path> compileCp = (List<Path>) ctx.require(COMPILE_TEST_CP);
@@ -187,8 +189,8 @@ public final class PlannerTest {
                         }
                     }
 
-                    // Java test sources, against the Kotlin/Groovy test output in a mixed module.
-                    if (!javaTest.isEmpty()) {
+                    // Java/Scala test sources, against the Kotlin/Groovy test output in a mixed module.
+                    if (!javaTest.isEmpty() || !scTest.isEmpty()) {
                         Path javaTestOut = testClasses; // javac always writes to java/test/
                         List<Path> javaCp = baseCp;
                         if (mixedTest || mixedTestGv) {
@@ -204,25 +206,15 @@ public final class PlannerTest {
                         @SuppressWarnings("unchecked")
                         List<Path> processorCp =
                                 (List<Path>) ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
-                        cc.jumpkick.task.JavaIncrementalCompile.ApSetup ap = null;
-                        if (!processorCp.isEmpty()) {
-                            Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations", "test");
-                            Files.createDirectories(genDir);
-                            ap = new cc.jumpkick.task.JavaIncrementalCompile.ApSetup(
-                                    () -> {
-                                        try {
-                                            return PluginJar.JAVA_COMPILER.locate(cas);
-                                        } catch (RuntimeException e) {
-                                            ctx.warn(
-                                                    "javac",
-                                                    "java-compiler worker unavailable ("
-                                                            + e.getMessage()
-                                                            + "); compiling tests with plain javac"
-                                                            + " (no incremental annotation-processing provenance)");
-                                            return null;
-                                        }
-                                    },
-                                    genDir);
+                        Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations", "test");
+                        Files.createDirectories(genDir);
+                        ScalaCompile.Setup scalaSetup = null;
+                        if (!scTest.isEmpty()) {
+                            scalaSetup = ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas);
+                            javaCp = new ArrayList<>(javaCp);
+                            for (Path lib : scalaSetup.libraryJars()) {
+                                if (!javaCp.contains(lib)) javaCp.add(lib);
+                            }
                         }
                         boolean ok = TestSupport.compileWithCache(
                                 ctx,
@@ -234,9 +226,11 @@ public final class PlannerTest {
                                 ctx.require(RELEASE),
                                 javacArgs,
                                 ctx.require(JAVA_HOME),
-                                ap,
+                                genDir,
                                 cas,
-                                in.cache());
+                                in.cache(),
+                                scTest,
+                                scalaSetup);
                         if (!ok) throw new RuntimeException("test compile failed");
                     }
 

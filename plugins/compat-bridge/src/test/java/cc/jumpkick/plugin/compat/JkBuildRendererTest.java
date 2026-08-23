@@ -87,17 +87,35 @@ class JkBuildRendererTest {
     }
 
     @Test
-    void m2install_round_trips() {
+    void m2integration_opt_out_round_trips() {
         JkBuild model = JkBuild.of(JkBuild.Project.builder("com.example", "widget", "1.0.0")
                 .jdkMajor(25)
                 .java(25)
-                .m2install(true)
+                .m2integration(false)
                 .build());
         String out = JkBuildRenderer.render(model);
-        assertThat(out).contains("m2install = true");
+        assertThat(out).contains("[m2]").contains("integration = false");
+        assertThat(out).doesNotContain("install = false");
 
         JkBuild reparsed = JkBuildParser.parse(out);
+        assertThat(reparsed.project().m2integration()).isFalse();
         assertThat(reparsed.project().m2install()).isTrue();
+    }
+
+    @Test
+    void m2install_opt_out_round_trips() {
+        JkBuild model = JkBuild.of(JkBuild.Project.builder("com.example", "widget", "1.0.0")
+                .jdkMajor(25)
+                .java(25)
+                .m2install(false)
+                .build());
+        String out = JkBuildRenderer.render(model);
+        assertThat(out).contains("[m2]").contains("install = false");
+        assertThat(out).doesNotContain("integration = false");
+
+        JkBuild reparsed = JkBuildParser.parse(out);
+        assertThat(reparsed.project().m2install()).isFalse();
+        assertThat(reparsed.project().m2integration()).isTrue();
     }
 
     @Test

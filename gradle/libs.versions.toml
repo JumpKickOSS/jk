@@ -29,6 +29,7 @@ spotless = "4.6.2"
 st4 = "4.3.4"
 tomlj = "1.1.1"
 xz = "1.12"
+zinc = "2.0.4"
 
 [libraries]
 # foundations
@@ -71,6 +72,9 @@ kotlin-stdlib          = { module = "org.jetbrains.kotlin:kotlin-stdlib",       
 
 # Groovy compile worker (compile-time only; the runtime closure is resolved at runtime)
 groovy                 = { module = "org.apache.groovy:groovy",                     version.ref = "groovy" }
+
+# Java incremental compile worker (Zinc 2.x Java-only; runtime closure on the worker POM)
+zinc                   = { module = "org.scala-sbt:zinc_3",                         version.ref = "zinc" }
 
 # Format worker (Spotless engine — the formatter impls are resolved at runtime
 # via jk's own resolver, NOT bundled, so only spotless-lib is a compile dep).

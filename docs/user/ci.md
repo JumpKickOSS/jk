@@ -9,6 +9,7 @@ Caching only speeds the runner up.
     path: |
       ~/.cache/jk
       ~/.local/share/jk/store
+      ~/.m2/repository
       **/target/.jk
     key: jk-${{ runner.os }}-${{ hashFiles('jk-lock.toml') }}
     restore-keys: |
@@ -21,7 +22,8 @@ Caching only speeds the runner up.
 | Path | What it holds | Safe to restore? |
 |------|----------------|------------------|
 | Platform **cache** | Action index + cache CAS | **Yes** |
-| Platform **store** | Artifact CAS + `repos/` | **Yes** — primary warm-build win |
+| Platform **store** | `repos/` + `.jk` memos | **Yes** |
+| Maven **local repo** | Third-party jars when `[m2] integration` is on | **Yes** — primary warm-fetch win |
 | Shared **JDKs** | Managed JDKs | Yes if jobs share the same pin / OS |
 | `target/.jk/` | Project-local engine state, including **preflight memos** | **Yes** with the workspace |
 | Platform **state** runs | Run history + `jk-results.md` + `details.jsonl` | Optional |

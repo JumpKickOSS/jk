@@ -65,7 +65,9 @@ public final class JdkInstaller {
         }
         downloadAndExtractBuffered(pkg.downloadUri(), pkg.sha256(), pkg.filename(), pkg.archiveType(), target);
         JdkOwnership.mark(target);
-        return new InstalledJdk(identifier, target);
+        InstalledJdk installed = new InstalledJdk(identifier, target);
+        recordInventory(installed);
+        return installed;
     }
 
     /**
@@ -162,7 +164,17 @@ public final class JdkInstaller {
         } catch (IOException ignored) {
             // Pointer is a convenience; the install is already complete.
         }
-        return new InstalledJdk(installName, javaHome);
+        InstalledJdk installed = new InstalledJdk(installName, javaHome);
+        recordInventory(installed);
+        return installed;
+    }
+
+    private void recordInventory(InstalledJdk installed) {
+        try {
+            JdkInventory.of(registry.jdksRoot()).record(installed, true);
+        } catch (IOException ignored) {
+            // Inventory is bookkeeping; the install is already on disk.
+        }
     }
 
     private static Path javaHomeFor(JdkCatalog.Entry entry, Path target) {

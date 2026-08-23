@@ -65,6 +65,39 @@ public final class TasksCommand implements CliCommand {
                 Param.of("task", Arity.ZERO_OR_ONE, "Task name for show/inspect (e.g. package-jar)"));
     }
 
+    /**
+     * The effective action for {@code positionals}: {@code list}, {@code show}, {@code inspect}, or
+     * the raw token when it names none of them. Mirrors {@link #run}, including the
+     * {@code jk tasks <task>} shorthand for {@code show}, so {@link #scriptMode} and dispatch cannot
+     * disagree about which verb runs.
+     */
+    private static String action(List<String> positionals) {
+        if (positionals.isEmpty()) return "list";
+        String first = positionals.getFirst().trim().toLowerCase(Locale.ROOT);
+        if (first.equals("ls")) return "list";
+        if (first.equals("list") || first.equals("show") || first.equals("inspect")) return first;
+        return TaskCatalog.find(first).isPresent() ? "show" : first;
+    }
+
+    /**
+     * The task {@code show}/{@code inspect} applies to: the second positional, or the first under the
+     * {@code jk tasks <task>} shorthand. Null when the verb was spelled out with nothing after it.
+     * Only meaningful once {@link #action} resolved to one of those two verbs, so {@code positionals}
+     * is never empty here.
+     */
+    private static String taskName(List<String> positionals) {
+        String first = positionals.getFirst().trim().toLowerCase(Locale.ROOT);
+        if (!first.equals("show") && !first.equals("inspect")) return first;
+        return positionals.size() >= 2 ? positionals.get(1) : null;
+    }
+
+    /** {@code jk tasks show <task>} prints one absolute path per module, for command substitution. */
+    @Override
+    public boolean scriptMode(Invocation in) {
+        // list and inspect are human tables.
+        return "show".equals(action(in.positionals()));
+    }
+
     @Override
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
@@ -74,30 +107,21 @@ public final class TasksCommand implements CliCommand {
 
         try {
             List<String> pos = in.positionals();
-            String action = pos.isEmpty() ? "list" : pos.getFirst().trim().toLowerCase(Locale.ROOT);
-            // Allow `jk tasks package-jar` as shorthand for show when first token is a known task.
-            if (!action.equals("list") && !action.equals("show") && !action.equals("inspect") && !action.equals("ls")) {
-                if (TaskCatalog.find(action).isPresent()) {
-                    return showOrInspect("show", action, in, startDir, proj.buildFile());
-                }
-                cc.jumpkick.cli.tui.CommandWedge.printFail(
-                        "Tasks", "unknown action `" + action + "` (list | show | inspect)");
-                return Exit.USAGE;
-            }
-            if (action.equals("ls")) action = "list";
-
+            String action = action(pos);
             return switch (action) {
                 case "list" -> list(in, startDir, proj.buildFile());
                 case "show", "inspect" -> {
-                    if (pos.size() < 2) {
+                    String task = taskName(pos);
+                    if (task == null) {
                         cc.jumpkick.cli.tui.CommandWedge.printFail(
                                 "Tasks", action + " expects a task name (e.g. package-jar)");
                         yield Exit.USAGE;
                     }
-                    yield showOrInspect(action, pos.get(1), in, startDir, proj.buildFile());
+                    yield showOrInspect(action, task, in, startDir, proj.buildFile());
                 }
                 default -> {
-                    cc.jumpkick.cli.tui.CommandWedge.printFail("Tasks", "unknown action `" + action + "`");
+                    cc.jumpkick.cli.tui.CommandWedge.printFail(
+                            "Tasks", "unknown action `" + action + "` (list | show | inspect)");
                     yield Exit.USAGE;
                 }
             };

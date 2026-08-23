@@ -40,6 +40,7 @@ args = [
   "-H:+SharedArenaSupport",
   "--enable-native-access=ALL-UNNAMED",
   "--initialize-at-run-time=org.jline",
+  "--initialize-at-run-time=cc.jumpkick.cli.tui.WindowsUtf8",
   "-H:ExcludeResources=org/jline/nativ/.*",
 ]
 

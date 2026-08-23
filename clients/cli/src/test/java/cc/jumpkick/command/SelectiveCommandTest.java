@@ -24,6 +24,17 @@ class SelectiveCommandTest {
                 () -> Jk.execute("selective", "resolve", "-C", tempDir.toString(), "--modules", "api,worker"));
         assertThat(out).contains("api").contains("worker");
         assertThat(out).doesNotContain("libs/core");
+        // Script mode: the module list is the payload, so no envelope around it.
+        assertThat(out).doesNotStartWith("\n");
+    }
+
+    @Test
+    void prepare_settles_inside_the_envelope(@TempDir Path tempDir) throws Exception {
+        writeWorkspace(tempDir);
+        // prepare calls resolve() as a helper; that must not carry resolve's script mode over.
+        String out =
+                Capture.stdout(() -> Jk.execute("selective", "prepare", "--modules", "api", "-C", tempDir.toString()));
+        assertThat(out).startsWith("\n").endsWith("\n\n");
     }
 
     @Test

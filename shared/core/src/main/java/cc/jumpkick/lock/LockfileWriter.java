@@ -92,6 +92,9 @@ public final class LockfileWriter {
         if (lockfile.kotlin() != null) {
             out.append("kotlin = ").append(quote(lockfile.kotlin())).append('\n');
         }
+        if (lockfile.scala() != null) {
+            out.append("scala = ").append(quote(lockfile.scala())).append('\n');
+        }
         // The jk floor is preserved, never auto-bumped; a floor-less lock gets the format floor.
         String jkMin = lockfile.jkMin() != null && !lockfile.jkMin().isBlank() ? lockfile.jkMin() : FORMAT_FLOOR;
         out.append("jk-min = ").append(quote(jkMin)).append('\n');
@@ -195,14 +198,20 @@ public final class LockfileWriter {
             if (m.groovy() != null && !m.groovy().isBlank()) {
                 out.append("groovy  = ").append(quote(m.groovy())).append('\n');
             }
+            if (m.scala() != null && !m.scala().isBlank()) {
+                out.append("scala   = ").append(quote(m.scala())).append('\n');
+            }
             if (m.description() != null && !m.description().isBlank()) {
                 out.append("description = ").append(quote(m.description())).append('\n');
             }
             if (m.sources() != null && !m.sources().isBlank() && !"disabled".equals(m.sources())) {
                 out.append("sources = ").append(quote(m.sources())).append('\n');
             }
-            if (Boolean.TRUE.equals(m.m2install())) {
-                out.append("m2install = true\n");
+            if (Boolean.FALSE.equals(m.m2integration())) {
+                out.append("m2.integration = false\n");
+            }
+            if (Boolean.FALSE.equals(m.m2install())) {
+                out.append("m2.install = false\n");
             }
         }
 

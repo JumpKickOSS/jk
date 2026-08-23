@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -18,27 +19,51 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
- * Drives the {@code jk-java-compiler} plugin: runs javac in-process (under the project's JDK) with
- * annotation processors wrapped for provenance capture, and returns the diagnostics plus the
- * generated-file → originating-source mapping the incremental compiler needs for
- * annotation-processor incrementality.
+ * Drives the {@code jk-java-compiler} plugin. Inside a job request the same pull-mode JVM is
+ * reused for every module ({@link JavaCompilerHost}); otherwise this is a one-shot {@code @spec}
+ * fork.
  *
- * <p>Launched as {@code <javaHome>/bin/java -cp <workerJar>
- * cc.jumpkick.java.compiler.JavaIncrementalCompiler @<spec>}; the plugin streams {@value #PREFIX} JSONL
- * back on stdout. Mirrors {@link KotlincDriver}.
+ * <p>Launched as {@code java -cp <workerJar+POM>} {@code PluginMain --pull} or {@code @<spec>};
+ * streams {@value #PREFIX} JSONL on stdout.
  */
 public final class ForkedJavac {
 
-    private static final String PREFIX = "##JKJC:";
+    static final String PREFIX = "##JKJC:";
 
     private ForkedJavac() {}
 
     /**
      * @param generated generated source file → the input source file(s) it originated from
+     * @param compiledSources sources Zinc (or javac) actually compiled this invocation
      */
-    public record Result(boolean success, List<CompileResult.Diagnostic> diagnostics, Map<Path, Set<Path>> generated) {
+    public record Result(
+            boolean success,
+            List<CompileResult.Diagnostic> diagnostics,
+            Map<Path, Set<Path>> generated,
+            List<Path> compiledSources) {
         public Result {
             diagnostics = List.copyOf(diagnostics);
+            compiledSources = compiledSources == null ? List.of() : List.copyOf(compiledSources);
+            generated = generated == null ? Map.of() : Map.copyOf(generated); // copy like the other two (JK-2316)
+        }
+
+        public Result(boolean success, List<CompileResult.Diagnostic> diagnostics, Map<Path, Set<Path>> generated) {
+            this(success, diagnostics, generated, List.of());
+        }
+    }
+
+    /** One source Zinc would compile, with the analysis reason. */
+    public record Invalidation(Path source, String why) {}
+
+    /** Read-only Zinc invalidation forecast ({@code PLAN}). */
+    public record Plan(boolean full, String reason, List<Invalidation> invalidations) {
+        public Plan {
+            reason = reason == null ? "" : reason;
+            invalidations = invalidations == null ? List.of() : List.copyOf(invalidations);
+        }
+
+        public List<Path> sources() {
+            return invalidations.stream().map(Invalidation::source).toList();
         }
     }
 
@@ -51,11 +76,77 @@ public final class ForkedJavac {
             Path classOutput,
             Path sourceOutput,
             int release,
-            List<String> extraArgs) {}
+            List<String> extraArgs,
+            Path workdir,
+            String scalaVersion,
+            List<Path> compilerClasspath,
+            Path scalaLibraryJar,
+            Path scalaCompilerJar,
+            Path scalaBridgeJar) {
+        public Request(
+                Path javaHome,
+                Path workerJar,
+                List<Path> sources,
+                List<Path> classpath,
+                List<Path> processorPath,
+                Path classOutput,
+                Path sourceOutput,
+                int release,
+                List<String> extraArgs,
+                Path workdir) {
+            this(
+                    javaHome,
+                    workerJar,
+                    sources,
+                    classpath,
+                    processorPath,
+                    classOutput,
+                    sourceOutput,
+                    release,
+                    extraArgs,
+                    workdir,
+                    null,
+                    List.of(),
+                    null,
+                    null,
+                    null);
+        }
+
+        public Request(
+                Path javaHome,
+                Path workerJar,
+                List<Path> sources,
+                List<Path> classpath,
+                List<Path> processorPath,
+                Path classOutput,
+                Path sourceOutput,
+                int release,
+                List<String> extraArgs) {
+            this(
+                    javaHome,
+                    workerJar,
+                    sources,
+                    classpath,
+                    processorPath,
+                    classOutput,
+                    sourceOutput,
+                    release,
+                    extraArgs,
+                    null);
+        }
+    }
 
     public static Result compile(Request request) {
+        return JavaCompilerHost.compile(request);
+    }
+
+    public static Plan plan(Request request) {
+        return JavaCompilerHost.plan(request);
+    }
+
+    static Result oneshot(Request req) {
         try {
-            return run(request);
+            return run(req);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         } catch (InterruptedException e) {
@@ -64,24 +155,30 @@ public final class ForkedJavac {
         }
     }
 
+    static Plan oneshotPlan(Request req) {
+        try (JavaCompilerHost.Scope ignored = JavaCompilerHost.open()) {
+            return JavaCompilerHost.plan(req);
+        }
+    }
+
     private static Result run(Request req) throws IOException, InterruptedException {
         Path spec = writeSpec(req);
         try {
             List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
             Map<Path, Set<Path>> generated = new TreeMap<>();
+            List<Path> compiledSources = new ArrayList<>();
             String[] status = {null};
 
             // Fork the java-compiler plugin on jk's OWN runtime — the same rule as every
-            // plugin (requirements.md "plugin host"), and the same javac the non-AP path
-            // already uses in-process (ToolProvider on the engine JDK): --release supplies
-            // the project's target semantics. It's a thin, JDK-only plugin (the compile
-            // classpath travels in the spec, not on the plugin's classpath), so its own
-            // jar is the whole classpath.
+            // plugin (requirements.md "plugin host"). All compilation goes through this forked
+            // Zinc worker (there is no in-engine javac path); --release supplies the project's
+            // target semantics. It's a thin, JDK-only plugin (the compile classpath travels in
+            // the spec, not on the plugin's classpath), so its own jar is the whole classpath.
             boolean win = HostPlatform.isWindows();
             Path hostJavaHome = cc.jumpkick.jdk.JavaHomes.runningJavaHome();
             Path javaExe = hostJavaHome.resolve("bin").resolve(win ? "java.exe" : "java");
             // Thin worker + Maven runtime closure from its POM.
-            String workerCp = cc.jumpkick.engine.plugin.WorkerLaunchClasspath.resolve(req.workerJar());
+            String workerCp = workerClasspath(req);
             // AOT for this *java* process (ToolProvider host) — not bare `javac` launcher AOT.
             List<String> jvmFlags = new ArrayList<>(cc.jumpkick.engine.plugin.PluginAot.javaCompilerFlags(
                     hostJavaHome,
@@ -108,23 +205,41 @@ public final class ForkedJavac {
                         for (String s : Jsonl.strArray(json, "src")) origins.add(Path.of(s));
                         generated.put(gen, origins);
                     })
-                    .on(PluginProtocol.RESULT, json -> status[0] = Jsonl.str(json, "status"))
+                    .on(PluginProtocol.RESULT, json -> {
+                        status[0] = Jsonl.str(json, "status");
+                        for (String s : Jsonl.strArray(json, "compiled")) {
+                            compiledSources.add(Path.of(s));
+                        }
+                    })
                     .run(command);
             boolean success = exit == 0 && "OK".equals(status[0]);
-            return new Result(success, diagnostics, generated);
+            return new Result(success, diagnostics, generated, compiledSources);
         } finally {
             Files.deleteIfExists(spec);
         }
     }
 
-    private static Path writeSpec(Request req) throws IOException {
+    static Path writeSpec(Request req) throws IOException {
+        Map<String, Path> layout = new LinkedHashMap<>();
+        layout.put("classesDir", req.classOutput());
+        if (req.sourceOutput() != null) layout.put("sourceOutput", req.sourceOutput());
+        if (req.workdir() != null) layout.put("workdir", req.workdir());
         SpecWriter sw = new SpecWriter()
                 .op(PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
                 .configInt("release", req.release())
-                .layout(Map.of("classesDir", req.classOutput(), "sourceOutput", req.sourceOutput()));
+                .layout(layout);
+        if (req.scalaVersion() != null && !req.scalaVersion().isBlank()) {
+            sw.configString("scalaVersion", req.scalaVersion());
+        }
         for (Path s : req.sources()) sw.source(s);
         for (Path c : req.classpath()) sw.cp(c, PluginProtocol.ROLE_COMPILE);
         for (Path p : req.processorPath()) sw.cp(p, PluginProtocol.ROLE_PROCESSOR);
+        if (req.compilerClasspath() != null) {
+            for (Path p : req.compilerClasspath()) sw.cp(p, PluginProtocol.ROLE_COMPILER);
+        }
+        if (req.scalaLibraryJar() != null) sw.extra("scala-library", req.scalaLibraryJar());
+        if (req.scalaCompilerJar() != null) sw.extra("scala-compiler", req.scalaCompilerJar());
+        if (req.scalaBridgeJar() != null) sw.extra("scala-bridge", req.scalaBridgeJar());
         for (String a : req.extraArgs()) sw.arg(a);
         Path spec = Files.createTempFile("jk-javac-", ".spec");
         Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
@@ -135,8 +250,8 @@ public final class ForkedJavac {
      * Background AOT trainer: same {@code java -cp worker PluginMain @spec} shape as a real
      * compile, recording with {@code -XX:AOTCacheOutput} while compiling a synthetic Hello.java.
      */
-    private static List<String> trainerCommand(
-            Request req, String workerCp, Path hostJavaHome, Path aotOutput, Path scratch) throws IOException {
+    static List<String> trainerCommand(Request req, String workerCp, Path hostJavaHome, Path aotOutput, Path scratch)
+            throws IOException {
         return trainerCommandForOptimize(
                 hostJavaHome, workerCp, aotOutput, scratch, req.release() > 0 ? req.release() : 25);
     }
@@ -163,7 +278,13 @@ public final class ForkedJavac {
         SpecWriter sw = new SpecWriter()
                 .op(PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
                 .configInt("release", release)
-                .layout(Map.of("classesDir", classes, "sourceOutput", scratch.resolve("gen")))
+                .layout(Map.of(
+                        "classesDir",
+                        classes,
+                        "sourceOutput",
+                        scratch.resolve("gen"),
+                        "workdir",
+                        scratch.resolve("zinc-work")))
                 .source(src);
         Path trainSpec = scratch.resolve("train.spec");
         Files.write(trainSpec, sw.lines(), StandardCharsets.UTF_8);
@@ -176,5 +297,13 @@ public final class ForkedJavac {
         // thin worker jar alone would CNFE on PluginMain, silently never training.
         return cc.jumpkick.engine.plugin.PluginLoader.command(
                 javaExe, workerCp, jvmFlags, List.of("@" + trainSpec.toAbsolutePath()));
+    }
+
+    /**
+     * Thin worker + Zinc POM closure. Mixed Scala loads the compiler through a child classloader
+     * inside the worker; it is not on this JVM classpath so the AOT key stays Zinc-only.
+     */
+    static String workerClasspath(Request req) {
+        return cc.jumpkick.engine.plugin.WorkerLaunchClasspath.resolve(req.workerJar());
     }
 }

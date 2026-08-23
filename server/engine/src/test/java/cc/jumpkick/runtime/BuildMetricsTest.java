@@ -281,6 +281,48 @@ class BuildMetricsTest {
                 .isEqualTo(500);
     }
 
+    /**
+     * A Windows {@code Path.toString()} carries {@code \}. Both the fold and the lookup slash-key,
+     * so a caller holding either shape reaches the same row — normalizing only one side would
+     * orphan every row already on disk.
+     */
+    @Test
+    void dir_keys_are_slash_normalized_on_read_and_write(@TempDir Path dir) throws Exception {
+        Path f = file(dir);
+        String windows = "C:\\ws\\app";
+        String slashed = "C:/ws/app";
+        record(
+                f,
+                new BuildMetrics.Outcome(
+                        "build",
+                        windows,
+                        "g:app",
+                        true,
+                        false,
+                        900,
+                        List.of(new BuildMetrics.StepSample(windows, "compile-java", "SUCCESS", 400))),
+                NOW);
+        BuildMetrics.clearMemo(); // force a real re-read from disk
+        BuildMetrics m = BuildMetrics.load(f);
+
+        assertThat(m.invocation("build", slashed).orElseThrow().dir()).isEqualTo(slashed);
+        assertThat(m.step(slashed, "compile-java").orElseThrow().ok().totalMillis())
+                .isEqualTo(400);
+        assertThat(m.invocation("build", windows).orElseThrow().ok().totalMillis())
+                .isEqualTo(900);
+        assertThat(m.step(windows, "compile-java").orElseThrow().dir()).isEqualTo(slashed);
+        assertThat(BuildMetrics.sameBaseDir(windows, slashed + "#d3")).isTrue();
+
+        // A row persisted in the old `\` shape is re-keyed on read, not orphaned.
+        Files.writeString(f, Files.readString(f).replace(slashed, "C:\\\\ws\\\\app"));
+        BuildMetrics.clearMemo();
+        assertThat(BuildMetrics.load(f)
+                        .invocation("build", slashed)
+                        .orElseThrow()
+                        .dir())
+                .isEqualTo(slashed);
+    }
+
     @Test
     void corrupt_file_is_treated_as_empty_and_recording_recovers(@TempDir Path dir) throws Exception {
         Path f = file(dir);

@@ -252,6 +252,9 @@ public final class GlobalConfig {
         if (repos == null) return List.of();
         List<RepositorySpec> result = new ArrayList<>(repos.size());
         for (String name : repos.keySet()) {
+            if (RepositorySpec.JK_LOCAL.equals(name)) {
+                continue; // reserved first-party store — skip leniently in global config
+            }
             Object value = repos.get(name);
             String url;
             Optional<RepoCredential> credential = Optional.empty();

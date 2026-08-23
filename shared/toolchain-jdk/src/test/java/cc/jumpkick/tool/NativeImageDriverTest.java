@@ -3,9 +3,15 @@ package cc.jumpkick.tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.jar.JarFile;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class NativeImageDriverTest {
 
@@ -87,6 +93,78 @@ class NativeImageDriverTest {
         assertThat(NativeImageDriver.normalizeStepLabel("done")).isEqualTo("done");
         assertThat(NativeImageDriver.normalizeStepLabel("already…")).isEqualTo("already…");
         assertThat(NativeImageDriver.normalizeStepLabel("")).isEmpty();
+    }
+
+    @Test
+    void with_arg_file_rewrites_to_at_file_and_preserves_args(@TempDir Path tmp) throws Exception {
+        Path argFile = tmp.resolve("args.txt");
+        List<String> longCmd = new ArrayList<>();
+        longCmd.add(BIN.toString());
+        longCmd.add("-cp");
+        longCmd.add("a.jar" + File.pathSeparator + "b.jar");
+        longCmd.add("-o");
+        longCmd.add(tmp.resolve("out").toString());
+        longCmd.add("com.example.Main");
+
+        List<String> rewritten = NativeImageDriver.withArgFile(BIN, longCmd, argFile);
+        assertThat(rewritten).containsExactly(BIN.toString(), "@" + argFile.toAbsolutePath());
+        String body = Files.readString(argFile);
+        assertThat(body.lines())
+                .containsExactly(
+                        "-cp",
+                        "a.jar" + File.pathSeparator + "b.jar",
+                        "-o",
+                        tmp.resolve("out").toString(),
+                        "com.example.Main");
+    }
+
+    @Test
+    void arg_file_is_used_only_past_the_command_line_cap() {
+        List<String> shortCmd = List.of(BIN.toString(), "-cp", "app.jar", "-o", "out", "com.example.Main");
+        List<String> longCmd = new ArrayList<>(List.of(BIN.toString(), "-cp"));
+        longCmd.add("C:\\repo\\libs\\artifact-1.2.3.jar;".repeat(300));
+
+        String saved = System.getProperty("os.name");
+        try {
+            System.setProperty("os.name", "Windows 11");
+            assertThat(NativeImageDriver.needsArgFile(shortCmd)).isFalse();
+            assertThat(NativeImageDriver.needsArgFile(longCmd)).isTrue();
+            // POSIX has no command-line cap worth working around, so length never trips the gate.
+            System.setProperty("os.name", "Linux");
+            assertThat(NativeImageDriver.needsArgFile(longCmd)).isFalse();
+        } finally {
+            System.setProperty("os.name", saved);
+        }
+    }
+
+    @Test
+    void pathing_jar_lists_relativized_forward_slash_class_path_entries(@TempDir Path tmp) throws Exception {
+        Path outputDir = Files.createDirectories(tmp.resolve("build").resolve("native"));
+        Path libs = Files.createDirectories(tmp.resolve("libs"));
+        Path a = Files.createFile(libs.resolve("a.jar"));
+        Path b = Files.createFile(libs.resolve("b.jar"));
+
+        Path jar = NativeImageDriver.writePathingJar(outputDir, List.of(a, b));
+
+        assertThat(jar).isNotNull();
+        try (JarFile jf = new JarFile(jar.toFile())) {
+            assertThat(jf.getManifest().getMainAttributes().getValue("Class-Path"))
+                    .isEqualTo("../../libs/a.jar ../../libs/b.jar");
+        }
+    }
+
+    @Test
+    void pathing_jar_is_refused_when_an_entry_contains_a_space(@TempDir Path tmp) throws Exception {
+        Path outputDir = Files.createDirectories(tmp.resolve("build").resolve("native"));
+        Path spaced =
+                Files.createFile(Files.createDirectories(tmp.resolve("my libs")).resolve("a.jar"));
+
+        assertThat(NativeImageDriver.writePathingJar(outputDir, List.of(spaced)))
+                .isNull();
+        // Refusing must not leave a half-built jar for run()'s finally block to guess at.
+        try (Stream<Path> leftovers = Files.list(outputDir)) {
+            assertThat(leftovers).isEmpty();
+        }
     }
 
     private static Throwable catchThrowable(Runnable r) {

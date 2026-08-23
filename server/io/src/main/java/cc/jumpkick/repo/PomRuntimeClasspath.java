@@ -2,11 +2,13 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -26,13 +28,20 @@ import java.util.stream.Collectors;
  * <p>Walks the <em>effective</em> POM ({@link EffectivePomBuilder}: parent-chain properties, BOM
  * imports, {@code dependencyManagement} version/scope defaults) and follows compile/runtime
  * dependencies (transitives included; {@code provided} / {@code test} / {@code optional}
- * transitives skipped). Artifacts are taken from {@code repos/local}, {@code repos/jumpkick}, then
+ * transitives skipped). Artifacts are taken from {@code repos/jk-local}, {@code repos/jumpkick}, then
  * {@code repos/central}, fetching a miss from the HTTP remotes when the session is online.
  */
 public final class PomRuntimeClasspath {
 
-    private static final List<String> REPOS = List.of("local", "jumpkick", "central");
+    private static final List<String> REPOS = List.of(RepoArtifactResolver.JK_LOCAL, "jumpkick", "central");
     private static final Pattern VERSION = Pattern.compile("\\d+(?:[._-][A-Za-z0-9]+)*");
+
+    /**
+     * Product store the host engine uses. Sandboxed test JVMs ({@code JK_HOME} under {@code
+     * target/test-jk-home}) cannot see Zinc there; the host passes this so a workspace-built worker
+     * still resolves its POM closure.
+     */
+    public static final String HOST_STORE_PROPERTY = "jk.host.store";
 
     private PomRuntimeClasspath() {}
 
@@ -48,14 +57,16 @@ public final class PomRuntimeClasspath {
 
     private static final int RESOLVE_CACHE_MAX = 256;
 
-    static void clearResolveCacheForTests() {
+    public static void clearResolveCacheForTests() {
         RESOLVE_CACHE.clear();
         STORE_REPOS.clear();
     }
 
     /**
-     * Worker jar plus located compile/runtime jars. The POM is the sibling of the jar, or the
-     * installed POM for the jar's Maven coordinate in the artifact store.
+     * Worker jar plus located compile/runtime jars. The POM is the sibling of the jar, the
+     * installed POM for the jar's Maven coordinate in the artifact store, or — for a workspace
+     * {@code target/} worker — the host product store ({@link #HOST_STORE_PROPERTY} / unsandboxed
+     * default).
      *
      * @throws IllegalStateException if no POM exists or a declared runtime dep is missing
      */
@@ -65,7 +76,8 @@ public final class PomRuntimeClasspath {
         }
         Path worker = workerJar.toAbsolutePath().normalize();
         Path pom = pomFor(worker);
-        String key = pom == null ? null : resolveCacheKey(worker, pom);
+        Path extra = extraStoreFor(worker);
+        String key = pom == null ? null : resolveCacheKey(worker, pom, extra);
         if (key != null) {
             List<Path> hit = RESOLVE_CACHE.get(key);
             if (hit != null) {
@@ -80,20 +92,21 @@ public final class PomRuntimeClasspath {
                 RESOLVE_CACHE.remove(key);
             }
         }
-        List<Path> resolved = List.copyOf(resolve(worker, storeRepos(storeRootOf(worker))));
+        List<Path> resolved = List.copyOf(resolve(worker, reposFor(worker)));
         if (key != null && RESOLVE_CACHE.size() < RESOLVE_CACHE_MAX) {
             RESOLVE_CACHE.put(key, resolved);
         }
         return resolved;
     }
 
-    private static String resolveCacheKey(Path worker, Path pom) {
+    private static String resolveCacheKey(Path worker, Path pom, Path extra) {
         try {
             return worker + "|" + Files.size(worker) + "|"
                     + Files.getLastModifiedTime(worker).toMillis()
                     + "|" + pom + "|" + Files.size(pom) + "|"
                     + Files.getLastModifiedTime(pom).toMillis()
-                    + "|" + RepositorySpec.officialUrl();
+                    + "|" + RepositorySpec.officialUrl()
+                    + "|" + (extra == null ? "" : extra);
         } catch (IOException e) {
             return null; // unstatable — resolve uncached and let the real walk surface the error
         }
@@ -111,7 +124,7 @@ public final class PomRuntimeClasspath {
         Path pom = pomFor(worker);
         if (pom == null) {
             throw new IllegalStateException(
-                    "worker " + worker + " has no Maven POM; run `jk install` to publish jar+pom to repos/local");
+                    "worker " + worker + " has no Maven POM; run `jk install` to publish jar+pom to repos/jk-local");
         }
         List<Path> out = new ArrayList<>();
         out.add(worker);
@@ -153,48 +166,82 @@ public final class PomRuntimeClasspath {
     private static final int STORE_REPOS_MAX = 32;
 
     /**
-     * {@code repos/local} plus JumpKick and Central HTTP remotes, CAS-rooted at {@code storeRoot}.
+     * {@code repos/jk-local} plus JumpKick and Central HTTP remotes, CAS-rooted at {@code storeRoot}.
      * Local is a priority repo so {@code installLocal} artifacts outrank exclusive remote bindings.
      */
     static RepoGroup storeRepos(Path storeRoot) {
-        String key = storeRoot.toAbsolutePath().normalize() + "|" + RepositorySpec.officialUrl();
+        return storeRepos(storeRoot, null);
+    }
+
+    private static RepoGroup reposFor(Path worker) {
+        return storeRepos(storeRootOf(worker), extraStoreFor(worker));
+    }
+
+    static RepoGroup storeRepos(Path storeRoot, Path extraStore) {
+        Path extra = extraStore == null ? null : extraStore.toAbsolutePath().normalize();
+        String key = storeRoot.toAbsolutePath().normalize()
+                + "|"
+                + RepositorySpec.officialUrl()
+                + "|"
+                + (extra == null ? "" : extra);
         RepoGroup cached = STORE_REPOS.get(key);
         if (cached != null) return cached;
-        RepoGroup built = buildStoreRepos(storeRoot);
+        RepoGroup built = buildStoreRepos(storeRoot, extra);
         if (STORE_REPOS.size() < STORE_REPOS_MAX) {
             STORE_REPOS.putIfAbsent(key, built);
         }
         return built;
     }
 
-    private static RepoGroup buildStoreRepos(Path storeRoot) {
+    private static RepoGroup buildStoreRepos(Path storeRoot, Path extraStore) {
         Cas cas = new Cas(storeRoot);
         Http http = new Http();
-        MavenRepo local =
-                new MavenRepo("local", storeRoot.resolve("repos/local").toUri(), http, cas);
+        MavenRepo local = storeOnlyRepo(
+                RepoArtifactResolver.JK_LOCAL,
+                storeRoot
+                        .resolve("repos")
+                        .resolve(RepoArtifactResolver.JK_LOCAL)
+                        .toUri(),
+                http,
+                cas);
         // Launch-time resolution is overwhelmingly store-resident, but for unclaimed groups the
         // jumpkick specialist's warm mirror is only consulted at last resort — after central's
         // network leg. Prepending it as a priority store keeps warm forks off the network
         // entirely (and hermetic tests hermetic); a true miss still walks the remotes below.
         MavenRepo jumpkickStore =
-                new MavenRepo("jumpkick", storeRoot.resolve("repos/jumpkick").toUri(), http, cas);
-        MavenRepo jumpkick = new MavenRepo("jumpkick", RepositorySpec.officialUrl(), http, cas);
-        MavenRepo central = new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
+                storeOnlyRepo("jumpkick", storeRoot.resolve("repos/jumpkick").toUri(), http, cas);
+        MavenRepo jumpkick = storeOnlyRepo("jumpkick", RepositorySpec.officialUrl(), http, cas);
+        MavenRepo central = storeOnlyRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
         RepoGroup remotes =
                 new RepoGroup(List.of(jumpkick, central), List.of(RepositorySpec.JUMPKICK.groups(), List.of()));
-        return remotes.withReposPrepended(List.of(local, jumpkickStore));
+        List<MavenRepo> leading = new ArrayList<>();
+        leading.add(local);
+        leading.add(jumpkickStore);
+        if (extraStore != null && !extraStore.equals(storeRoot.toAbsolutePath().normalize())) {
+            leading.addAll(fileRepos(extraStore));
+        }
+        return remotes.withReposPrepended(leading);
     }
 
     /** File-only {@code local} / {@code jumpkick} / {@code central} under {@code storeRoot}. */
     static RepoGroup localRepos(Path storeRoot) {
+        return new RepoGroup(fileRepos(storeRoot));
+    }
+
+    private static List<MavenRepo> fileRepos(Path storeRoot) {
         Cas cas = new Cas(storeRoot);
         Http http = new Http();
         List<MavenRepo> repos = new ArrayList<>(REPOS.size());
         for (String name : REPOS) {
             Path dir = storeRoot.resolve("repos").resolve(name);
-            repos.add(new MavenRepo(name, dir.toUri(), http, cas));
+            repos.add(storeOnlyRepo(name, dir.toUri(), http, cas));
         }
-        return new RepoGroup(repos);
+        return repos;
+    }
+
+    /** Worker closures stay under {@code JK_STORE_DIR}; they do not write-through {@code ~/.m2}. */
+    private static MavenRepo storeOnlyRepo(String name, URI url, Http http, Cas cas) {
+        return new MavenRepo(name, url, http, cas, RepoCredential.ANONYMOUS, false);
     }
 
     static Path siblingPom(Path jar) {
@@ -208,7 +255,55 @@ public final class PomRuntimeClasspath {
         if (sibling != null && Files.isRegularFile(sibling)) return sibling;
         Coordinate coord = coordinateOf(worker);
         if (coord == null) return null;
-        return locate(storeRootOf(worker), MavenLayout.pomPath(coord)).orElse(null);
+        String rel = MavenLayout.pomPath(coord);
+        Path found = locate(storeRootOf(worker), rel).orElse(null);
+        if (found != null) return found;
+        Path extra = extraStoreFor(worker);
+        return extra == null ? null : locate(extra, rel).orElse(null);
+    }
+
+    /**
+     * Host product store for a workspace-built worker ({@code …/target/…/jk-*-VERSION.jar}) whose
+     * sandbox {@link JkDirs#store()} has no POM. {@code -Djk.host.store} from the test launcher
+     * wins; otherwise the platform store with {@code JK_HOME} ignored.
+     */
+    static Path extraStoreFor(Path worker) {
+        if (!isWorkspaceLayout(worker)) return null;
+        Path extra = configuredHostStore();
+        if (extra == null) extra = unsandboxedProductStore();
+        if (extra == null) return null;
+        Path live = storeRootOf(worker).toAbsolutePath().normalize();
+        return extra.equals(live) ? null : extra;
+    }
+
+    static Path configuredHostStore() {
+        String p = System.getProperty(HOST_STORE_PROPERTY);
+        if (p == null || p.isBlank()) return null;
+        Path path = Path.of(p).toAbsolutePath().normalize();
+        return Files.isDirectory(path) ? path : null;
+    }
+
+    static Path unsandboxedProductStore() {
+        Path path = JkDirs.of(
+                        name -> {
+                            if ("JK_HOME".equals(name) || "JK_DATA_DIR".equals(name)) return null;
+                            return System.getenv(name);
+                        },
+                        System.getProperty("user.home"))
+                .storeDir()
+                .toAbsolutePath()
+                .normalize();
+        return Files.isDirectory(path) ? path : null;
+    }
+
+    static boolean isWorkspaceLayout(Path worker) {
+        Path cur = worker.toAbsolutePath().normalize().getParent();
+        while (cur != null) {
+            Path name = cur.getFileName();
+            if (name != null && "target".equals(name.toString())) return true;
+            cur = cur.getParent();
+        }
+        return false;
     }
 
     /** Store root that owns {@code artifact} ({@code …/repos/…} parent), else {@link JkDirs#store()}. */
@@ -242,7 +337,9 @@ public final class PomRuntimeClasspath {
                     Path parent = cur.getParent();
                     if (parent != null
                             && "repos".equals(fileName(parent))
-                            && (n.equals("local") || n.equals("jumpkick") || n.equals("central"))) {
+                            && (RepoArtifactResolver.isFirstPartyStoreName(n)
+                                    || n.equals("jumpkick")
+                                    || n.equals("central"))) {
                         break;
                     }
                     if (!n.isEmpty()) groupSegs.add(0, n);

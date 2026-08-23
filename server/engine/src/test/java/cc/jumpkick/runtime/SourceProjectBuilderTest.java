@@ -18,6 +18,8 @@ import java.util.jar.JarInputStream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 @Tag("integration")
@@ -195,6 +197,7 @@ class SourceProjectBuilderTest {
         }
 
         @Test
+        @EnabledOnOs({OS.LINUX, OS.MAC}) // Windows looks for gradlew.bat; executable bit is ACL-based
         void prefers_an_executable_wrapper_over_path(@TempDir Path dir) throws Exception {
             Path wrapper = dir.resolve("gradlew");
             Files.writeString(wrapper, "#!/bin/sh\n");
@@ -204,6 +207,7 @@ class SourceProjectBuilderTest {
         }
 
         @Test
+        @EnabledOnOs({OS.LINUX, OS.MAC}) // Windows ACLs: setExecutable(false) does not clear isExecutable
         void rejects_a_non_executable_wrapper(@TempDir Path dir) throws Exception {
             Path wrapper = dir.resolve("gradlew");
             Files.writeString(wrapper, "#!/bin/sh\n");

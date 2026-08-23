@@ -35,7 +35,8 @@ prepare, schedule). Add a `WorkspaceTarget` + module filter. See
 ./gradlew classes
 ./gradlew :cli:installDist :engine:shadowJar   # thin JVM client + engine fat jar
 ./gradlew dist                                  # native client + engine jar → build/dist/
-./install.sh build/dist/jk                      # optional local install
+./install.sh build/dist/jk                      # optional local install (Unix)
+# Windows:  .\install.cmd build\dist\jk.exe     # bypasses Restricted execution policy
 ```
 
 ### Black-box examples (sibling repo)
@@ -113,7 +114,7 @@ jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/en
 ```
 
 The client never embeds the engine. Spawning uses
-`~/.local/share/jk/lib/jk-engine/` (or `$JK_HOME/lib/jk-engine/`) or `JK_ENGINE_EXE`.
+`~/.local/share/jk/lib/jk-engine/` (or `$JK_HOME/data/lib/jk-engine/`) or `JK_ENGINE_EXE`.
 
 | Still Gradle | Why |
 |---|---|

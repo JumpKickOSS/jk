@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -178,10 +179,13 @@ public final class LocalProjectBuilder {
                 p.java(),
                 p.kotlin(),
                 p.groovy(),
+                p.scala(),
                 p.sourcesMode(),
                 p.description(),
+                p.m2integration(),
                 p.m2install(),
-                p.layout());
+                p.layout(),
+                Set.of());
         return JkBuild.builder(overridden)
                 .dependencies(project.dependencies())
                 .repositories(project.repositories())

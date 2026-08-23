@@ -13,7 +13,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
@@ -79,6 +78,25 @@ class MavenRepoM2LookupTest {
     }
 
     @Test
+    void prefers_the_sha256_sidecar_over_sha1(@TempDir Path tmp) throws Exception {
+        // JK-2321: when the repo publishes .sha256, adopt an ~/.m2 hit on the strong digest and do
+        // NOT fall back to the collision-broken .sha1.
+        seedM2(tmp.resolve("m2"), REAL);
+        serve(
+                "/" + REL + ".sha256",
+                200,
+                cc.jumpkick.util.Hashing.sha256Hex(REAL).getBytes(StandardCharsets.UTF_8));
+        // A .sha1 handler that would REJECT (wrong hash) — if the code fell back to it, adoption fails.
+        serve("/" + REL + ".sha1", 200, "0".repeat(40).getBytes(StandardCharsets.UTF_8));
+        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tmp.resolve("store")));
+
+        MavenRepo.Fetched fetched = repo.fetchArtifact(coord());
+
+        assertThat(fetched.sha256()).isEqualTo(cc.jumpkick.util.Hashing.sha256Hex(REAL));
+        assertThat(hits).contains("/" + REL + ".sha256");
+    }
+
+    @Test
     void a_local_hit_confirmed_by_the_remote_checksum_skips_the_jar_transfer(@TempDir Path tmp) throws Exception {
         seedM2(tmp.resolve("m2"), REAL);
         serve("/" + REL + ".sha1", 200, sha1Of(REAL).getBytes(StandardCharsets.UTF_8));
@@ -94,62 +112,19 @@ class MavenRepoM2LookupTest {
     }
 
     @Test
-    void the_adopted_artifact_lands_in_the_store_the_same_as_a_download(@TempDir Path tmp) throws Exception {
-        seedM2(tmp.resolve("m2"), REAL);
+    void a_confirmed_m2_hit_is_the_classpath_file_and_does_not_copy_into_cas(@TempDir Path tmp) throws Exception {
+        Path m2 = tmp.resolve("m2");
+        seedM2(m2, REAL);
         serve("/" + REL + ".sha1", 200, sha1Of(REAL).getBytes(StandardCharsets.UTF_8));
         Path store = tmp.resolve("store");
         MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(store));
 
-        repo.fetchArtifact(coord());
-
-        // Same CAS blob and same repos/<name>/ view a normal fetch would have produced, so nothing
-        // downstream can tell the difference.
-        assertThat(new Cas(store).contains(cc.jumpkick.util.Hashing.sha256Hex(REAL)))
-                .isTrue();
-        assertThat(store.resolve("repos/test").resolve(REL)).exists();
-    }
-
-    @Test
-    void a_copy_is_made_by_default_so_the_blob_does_not_share_an_inode(@TempDir Path tmp) throws Exception {
-        // The default is copy: a hard link would leave the CAS blob sharing an inode with a file jk does
-        // not own, and any tool rewriting it in place would mutate content the CAS believes it hashed.
-        Path m2 = tmp.resolve("m2");
-        seedM2(m2, REAL);
-        serve("/" + REL + ".sha1", 200, sha1Of(REAL).getBytes(StandardCharsets.UTF_8));
-        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tmp.resolve("store")));
-
         MavenRepo.Fetched fetched = repo.fetchArtifact(coord());
 
-        Object blobKey = Files.readAttributes(fetched.cachePath(), BasicFileAttributes.class)
-                .fileKey();
-        Object m2Key =
-                Files.readAttributes(m2.resolve(REL), BasicFileAttributes.class).fileKey();
-        assertThat(blobKey).isNotEqualTo(m2Key);
-    }
-
-    @Test
-    void linking_is_opt_in_and_shares_the_inode(@TempDir Path tmp) throws Exception {
-        // The override trades the copy for a shared inode. Asserting the inode really is shared is the
-        // only way to know it does anything — a "link" mode that silently kept copying would look
-        // identical from the outside.
-        Path m2 = tmp.resolve("m2");
-        seedM2(m2, REAL);
-        serve("/" + REL + ".sha1", 200, sha1Of(REAL).getBytes(StandardCharsets.UTF_8));
-        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tmp.resolve("store")));
-
-        MavenRepo.Fetched fetched;
-        System.setProperty("jk.m2.link", "true");
-        try {
-            fetched = repo.fetchArtifact(coord());
-        } finally {
-            System.clearProperty("jk.m2.link");
-        }
-
-        Object blobKey = Files.readAttributes(fetched.cachePath(), BasicFileAttributes.class)
-                .fileKey();
-        Object m2Key =
-                Files.readAttributes(m2.resolve(REL), BasicFileAttributes.class).fileKey();
-        assertThat(blobKey).isEqualTo(m2Key);
+        assertThat(fetched.cachePath()).isEqualTo(m2.resolve(REL));
+        assertThat(new Cas(store).contains(cc.jumpkick.util.Hashing.sha256Hex(REAL)))
+                .isFalse();
+        assertThat(ArtifactMemo.jkPath(store.resolve("repos/test"), REL)).exists();
     }
 
     @Test
@@ -165,6 +140,8 @@ class MavenRepoM2LookupTest {
 
         assertThat(Files.readAllBytes(fetched.cachePath())).isEqualTo(REAL);
         assertThat(hits).contains("/" + REL); // the jar really was transferred
+        assertThat(Files.readAllBytes(tmp.resolve("m2").resolve(REL)))
+                .isEqualTo("a hand-built impostor".getBytes(StandardCharsets.UTF_8));
     }
 
     @Test

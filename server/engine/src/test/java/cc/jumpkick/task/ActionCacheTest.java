@@ -16,6 +16,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class ActionCacheTest {
@@ -84,6 +86,7 @@ class ActionCacheTest {
      * still reporting success.
      */
     @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC}) // Windows ACLs: isExecutable/setExecutable are not POSIX bits
     void restore_puts_the_executable_bit_back(@TempDir Path tempDir) throws IOException {
         Cas cas = new Cas(tempDir.resolve("cas"));
         ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
@@ -110,6 +113,7 @@ class ActionCacheTest {
 
     /** The bit is reapplied even when the target is byte-identical and therefore not re-copied. */
     @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC}) // Windows ACLs: isExecutable/setExecutable are not POSIX bits
     void restore_repairs_the_bit_on_an_unchanged_target(@TempDir Path tempDir) throws IOException {
         Cas cas = new Cas(tempDir.resolve("cas"));
         ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));

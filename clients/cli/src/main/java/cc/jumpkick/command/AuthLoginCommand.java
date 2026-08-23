@@ -45,7 +45,7 @@ public final class AuthLoginCommand implements CliCommand {
                 Opt.value("<SCOPE>", "OAuth scope; device flow only (per-provider default)", "--scope"),
                 Opt.value(
                                 "<dir>",
-                                "Override the credentials directory. Default: ~/.jk/credentials.",
+                                "Override the credentials directory. Default: <data>/credentials.",
                                 "--credentials-dir")
                         .hide());
     }

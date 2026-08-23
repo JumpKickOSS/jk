@@ -53,7 +53,11 @@ class NerdFontDetectCostTest {
     }
 
     @Test
+    @org.junit.jupiter.api.Tag("bench")
     void cold_detection_stays_inside_the_budget() {
+        // A wall-clock budget: flaky under CI load / cold JIT (10 ms vs an occasional 11 ms), so it
+        // runs in the bench tier, not the unit gate (JK-2314). The call-count assertions above are
+        // the deterministic unit coverage of the same no-I/O guarantee.
         // Real sources, real environment — this is the live per-launch path, not a stub.
         long start = System.nanoTime();
         NerdFontDetect.detect();

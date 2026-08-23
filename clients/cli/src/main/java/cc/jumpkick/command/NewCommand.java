@@ -67,7 +67,7 @@ public final class NewCommand implements CliCommand {
                 Opt.value("<group>", "Maven groupId (default: from git config).", "--group"),
                 // --jdk rides the GLOBAL option (same canonical key "jdk"); a local
                 // re-declaration would collide with it in the dispatcher.
-                Opt.value("<lang>", "Language: java | kotlin | groovy. Default: java.", "--lang"),
+                Opt.value("<lang>", "Language: java|kotlin|groovy|scala; default java", "--lang"),
                 Opt.flag("Executable project (default is a library).", "--executable")
                         .negate(),
                 Opt.flag("Assembly (fat) jar. Implies --executable.", "--assembly"),
@@ -129,7 +129,7 @@ public final class NewCommand implements CliCommand {
      */
     private ParentInfo parent;
 
-    /** Global {@code default-jdk} id from {@code ~/.jk/config/jk.toml}, or empty. */
+    /** Global default JDK id from the managed inventory, or empty. */
     private Optional<String> defaultJdk = Optional.empty();
 
     /** Inherited context from the parent project's identity keys. */
@@ -148,6 +148,10 @@ public final class NewCommand implements CliCommand {
 
         boolean groovy() {
             return info.groovy();
+        }
+
+        boolean scala() {
+            return info.scala();
         }
 
         /** The JDK toolchain version (which JDK runs the build). */
@@ -689,7 +693,11 @@ public final class NewCommand implements CliCommand {
                 ? parseLanguage(lang)
                 : (parent != null && parent.kotlin())
                         ? NewInputs.Language.KOTLIN
-                        : (parent != null && parent.groovy()) ? NewInputs.Language.GROOVY : NewInputs.Language.JAVA;
+                        : (parent != null && parent.groovy())
+                                ? NewInputs.Language.GROOVY
+                                : (parent != null && parent.scala())
+                                        ? NewInputs.Language.SCALA
+                                        : NewInputs.Language.JAVA;
         var isExecutable = Boolean.TRUE.equals(executable) || assembly || nativeImage;
         // Traditional (Maven) is the product default. --layout simple opts into the Mill-like tree.
         var resolvedLayout = (layoutFlag != null && !layoutFlag.isBlank()) ? layoutFlag.toLowerCase() : "traditional";
@@ -817,7 +825,7 @@ public final class NewCommand implements CliCommand {
     /** The user's global default JDK identifier, or empty (best-effort — never throws). */
     private static Optional<String> readDefaultJdk() {
         try {
-            return cc.jumpkick.jdk.GlobalDefaultJdk.current().currentIdentifier();
+            return cc.jumpkick.jdk.JdkInventory.current().defaultId();
         } catch (Exception ignored) {
             return Optional.empty();
         }

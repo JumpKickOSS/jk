@@ -111,13 +111,15 @@ public record NewInputs(
     public enum Language {
         JAVA,
         KOTLIN,
-        GROOVY;
+        GROOVY,
+        SCALA;
 
         public String hoconValue() {
             return switch (this) {
                 case JAVA -> "java";
                 case KOTLIN -> "kotlin";
                 case GROOVY -> "groovy";
+                case SCALA -> "scala";
             };
         }
 
@@ -126,6 +128,7 @@ public record NewInputs(
                 case JAVA -> "java";
                 case KOTLIN -> "kotlin";
                 case GROOVY -> "groovy";
+                case SCALA -> "scala";
             };
         }
     }

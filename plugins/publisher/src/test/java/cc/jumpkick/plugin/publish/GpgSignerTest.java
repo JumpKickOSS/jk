@@ -49,4 +49,17 @@ class GpgSignerTest {
         Files.writeString(empty, "");
         assertThatThrownBy(() -> GpgSigner.fromKeyFile(empty, new char[0])).isInstanceOf(IOException.class);
     }
+
+    @Test
+    void armored_output_is_lf_only() {
+        // Driven directly: on a POSIX host BouncyCastle already emits LF, so a round trip through
+        // sign() would pass with or without the rewrite.
+        byte[] crlf = "-----BEGIN PGP SIGNATURE-----\r\n\r\niQIz\r\n-----END PGP SIGNATURE-----\r\n"
+                .getBytes(StandardCharsets.US_ASCII);
+
+        byte[] lf = GpgSigner.lfOnly(crlf);
+
+        assertThat(new String(lf, StandardCharsets.US_ASCII))
+                .isEqualTo("-----BEGIN PGP SIGNATURE-----\n\niQIz\n-----END PGP SIGNATURE-----\n");
+    }
 }

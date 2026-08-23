@@ -31,5 +31,8 @@ public final class ToolDefaults {
     /** Default Groovy compiler version for scaffolds ({@code groovy}). Keep in sync with GroovyResolver.DEFAULT_VERSION. */
     public static final String GROOVY_DEFAULT_VERSION = "5.0.4";
 
+    /** Fallback Scala 3 compiler version when the lock has no pin. Keep in sync with ScalaResolver.DEFAULT_VERSION. */
+    public static final String SCALA_DEFAULT_VERSION = "3.8.4";
+
     private ToolDefaults() {}
 }

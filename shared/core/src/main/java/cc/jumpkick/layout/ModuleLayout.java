@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.layout;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Canonical module input roots.
@@ -21,7 +24,7 @@ import java.util.List;
  * </ul>
  *
  * <p><b>TRADITIONAL (Maven import):</b> {@code src/main/{java,kotlin,groovy,resources}},
- * {@code src/test/…}, {@code src/<suite>/{java,kotlin,resources}}.
+ * {@code src/test/…}, {@code src/<suite>/{java,kotlin,scala,groovy,resources}}.
  *
  * <p>Language is by file extension inside each source dir. Outputs remain under {@code target/}.
  * Flat-siblings ({@code test/} as source root, top-level {@code test-resources/}, {@code
@@ -50,19 +53,61 @@ public final class ModuleLayout {
     private ModuleLayout() {}
 
     /**
-     * Compact/SIMPLE layout. Honors an explicit {@code layout =} in {@code jk.toml} when present;
+     * Compact/SIMPLE layout. Honors an explicit {@code layout =} in {@code jk.toml} when present; a
+     * workspace member that omits the key inherits the workspace root's {@code layout} (mirroring the
+     * resolved project's inheritance, so raw-scan call sites don't disagree with compile — JK-2313);
      * otherwise probes the tree.
      */
     public static boolean isCompact(Path moduleDir) {
-        Path toml = moduleDir.resolve("jk.toml");
-        if (Files.isRegularFile(toml)) {
-            String layout = cc.jumpkick.config.TomlScan.scan(toml, "layout").get("layout");
-            if (layout != null) {
-                if ("traditional".equalsIgnoreCase(layout)) return false;
-                if ("simple".equalsIgnoreCase(layout)) return true;
+        Boolean local = explicitLayout(moduleDir);
+        if (local != null) return local;
+        try {
+            Optional<Path> root = cc.jumpkick.config.WorkspaceLocator.findRoot(moduleDir);
+            if (root.isPresent() && !root.get().equals(moduleDir)) {
+                Boolean inherited = explicitLayout(root.get());
+                if (inherited != null) return inherited;
             }
+        } catch (IOException ignored) {
+            // not in a workspace / unreadable root — fall through to the tree probe
         }
         return !SourceLayout.looksTraditional(moduleDir);
+    }
+
+    private record LayoutMemo(long mtime, long size, Boolean value) {}
+
+    // isCompact runs per module per build (and now walks to the workspace root); cache the per-file
+    // layout-key scan by (mtime,size) so repeated calls don't re-read jk.toml each time (JK-2327).
+    private static final ConcurrentHashMap<Path, LayoutMemo> LAYOUT_CACHE = new ConcurrentHashMap<>();
+
+    /**
+     * The explicit {@code layout} choice for a module dir: {@code TRUE} = simple, {@code FALSE} =
+     * traditional, {@code null} = no key or an unrecognized value (let the tree decide).
+     */
+    private static Boolean explicitLayout(Path dir) {
+        Path toml = dir.resolve("jk.toml");
+        if (!Files.isRegularFile(toml)) return null;
+        Path key = toml.toAbsolutePath().normalize();
+        long mtime;
+        long size;
+        try {
+            mtime = Files.getLastModifiedTime(toml).toMillis();
+            size = Files.size(toml);
+        } catch (IOException e) {
+            return scanLayout(toml);
+        }
+        LayoutMemo memo = LAYOUT_CACHE.get(key);
+        if (memo != null && memo.mtime() == mtime && memo.size() == size) return memo.value();
+        Boolean value = scanLayout(toml);
+        LAYOUT_CACHE.put(key, new LayoutMemo(mtime, size, value));
+        return value;
+    }
+
+    private static Boolean scanLayout(Path toml) {
+        String layout = cc.jumpkick.config.TomlScan.scan(toml, "layout").get("layout");
+        if (layout == null) return null;
+        if ("traditional".equalsIgnoreCase(layout)) return Boolean.FALSE;
+        if ("simple".equalsIgnoreCase(layout)) return Boolean.TRUE;
+        return null;
     }
 
     static boolean hasTraditionalDirs(Path moduleDir) {
@@ -77,6 +122,16 @@ public final class ModuleLayout {
     public static List<Path> mainGroovyRoots(Path moduleDir, boolean compact) {
         if (compact) return List.of(moduleDir.resolve("src"));
         return List.of(moduleDir.resolve("src/main/groovy"), moduleDir.resolve("src/main/java"));
+    }
+
+    /**
+     * Main Scala source roots. SIMPLE shares {@code src/} by extension; TRADITIONAL is
+     * {@code src/main/scala} plus {@code src/main/java} (stray {@code.scala} under the Java
+     * root compiles too, mirroring Kotlin and Groovy).
+     */
+    public static List<Path> mainScalaRoots(Path moduleDir, boolean compact) {
+        if (compact) return List.of(moduleDir.resolve("src"));
+        return List.of(moduleDir.resolve("src/main/scala"), moduleDir.resolve("src/main/java"));
     }
 
     /** Main resources directory (SIMPLE: {@code resources/}; TRADITIONAL: {@code src/main/resources}). */
@@ -136,6 +191,7 @@ public final class ModuleLayout {
             addIfDir(out, seen, moduleDir, "src/main/java", Kind.SOURCE);
             addIfDir(out, seen, moduleDir, "src/main/kotlin", Kind.SOURCE);
             addIfDir(out, seen, moduleDir, "src/main/groovy", Kind.SOURCE);
+            addIfDir(out, seen, moduleDir, "src/main/scala", Kind.SOURCE);
             addIfDir(out, seen, moduleDir, "src/main/resources", Kind.RESOURCE);
         }
         appendSuiteRoots(moduleDir, compact, seen, out);
@@ -167,6 +223,9 @@ public final class ModuleLayout {
             for (Path root : TestSuites.groovyRoots(moduleDir, compact, suite)) {
                 addAbs(out, seen, moduleDir, root, Kind.TEST);
             }
+            for (Path root : TestSuites.scalaRoots(moduleDir, compact, suite)) {
+                addAbs(out, seen, moduleDir, root, Kind.TEST);
+            }
             addAbs(out, seen, moduleDir, suiteResourcesDir(moduleDir, compact, suite), Kind.TEST_RESOURCE);
         }
     }
@@ -192,6 +251,7 @@ public final class ModuleLayout {
                     for (Path r : TestSuites.javaRoots(moduleDir, true, suite)) addDir(dirs, r);
                     for (Path r : TestSuites.kotlinRoots(moduleDir, true, suite)) addDir(dirs, r);
                     for (Path r : TestSuites.groovyRoots(moduleDir, true, suite)) addDir(dirs, r);
+                    for (Path r : TestSuites.scalaRoots(moduleDir, true, suite)) addDir(dirs, r);
                     addDir(dirs, suiteResourcesDir(moduleDir, true, suite));
                     // Also walk the suite module dir so new files under test/ are noticed even
                     // when only resources exist (test/resources).
@@ -219,6 +279,9 @@ public final class ModuleLayout {
             if (Files.isDirectory(r)) return true;
         }
         for (Path r : TestSuites.groovyRoots(moduleDir, compact, TestSuites.DEFAULT)) {
+            if (Files.isDirectory(r)) return true;
+        }
+        for (Path r : TestSuites.scalaRoots(moduleDir, compact, TestSuites.DEFAULT)) {
             if (Files.isDirectory(r)) return true;
         }
         return false;

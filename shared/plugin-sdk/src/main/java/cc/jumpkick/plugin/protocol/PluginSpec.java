@@ -32,6 +32,7 @@ public final class PluginSpec {
     private Path classesDir, sourceOutput, moduleDir, scratch, workdir, snapshotDir;
     private Path javaHome, artifactPath;
     private final List<Path> compileClasspath = new ArrayList<>();
+    private final List<Path> compilerClasspath = new ArrayList<>();
     private final List<Path> processorClasspath = new ArrayList<>();
     private final List<Path> friendPaths = new ArrayList<>();
     private final List<Path> runtimeClasspath = new ArrayList<>();
@@ -103,6 +104,7 @@ public final class PluginSpec {
                         case PluginProtocol.ROLE_PROCESSOR -> s.processorClasspath.add(p);
                         case PluginProtocol.ROLE_FRIEND -> s.friendPaths.add(p);
                         case PluginProtocol.ROLE_RUNTIME -> s.runtimeClasspath.add(p);
+                        case PluginProtocol.ROLE_COMPILER -> s.compilerClasspath.add(p);
                         default -> s.compileClasspath.add(p); // compile is the default role
                     }
                 }
@@ -208,6 +210,11 @@ public final class PluginSpec {
 
     public List<Path> compileClasspath() {
         return compileClasspath;
+    }
+
+    /** Scala compiler + bridge jars for mixed compile; empty on Java-only. */
+    public List<Path> compilerClasspath() {
+        return compilerClasspath;
     }
 
     public List<Path> processorClasspath() {

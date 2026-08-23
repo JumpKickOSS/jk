@@ -19,9 +19,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-2238: lock-pinned worker jars must resolve to Maven-layout paths (which carry a reachable
- * POM), never bare CAS blobs — except path pins, whose sha-verified blob is by contract a
- * self-contained classpath.
+ * Lock-pinned worker jars must resolve to Maven-layout paths (which carry a reachable POM), never
+ * bare CAS blobs — except path pins, whose sha-verified blob is by contract a self-contained
+ * classpath.
  */
 class PinnedWorkerJarTest {
 
@@ -39,9 +39,11 @@ class PinnedWorkerJarTest {
         Path resolved = PluginDescriptorOps.pinnedLayoutJar(new Cas(cache), MODULE, VERSION, hex)
                 .orElseThrow();
 
-        assertThat(resolved).isEqualTo(cache.resolve("repos/local").resolve(REL));
+        assertThat(resolved).isEqualTo(cache.resolve("repos/jk-local").resolve(REL));
         assertThat(resolved).isRegularFile();
-        assertThat(Files.isSameFile(resolved, blob)).as("hard link, not a copy").isTrue();
+        assertThat(Files.isSameFile(resolved, blob))
+                .as("copy, not a CAS hard link")
+                .isFalse();
         // Idempotent on a warm store.
         assertThat(PluginDescriptorOps.pinnedLayoutJar(new Cas(cache), MODULE, VERSION, hex))
                 .contains(resolved);
@@ -59,7 +61,7 @@ class PinnedWorkerJarTest {
                 .orElseThrow();
 
         assertThat(resolved).isEqualTo(cache.resolve("repos/jumpkick").resolve(REL));
-        assertThat(cache.resolve("repos/local").resolve(REL)).doesNotExist();
+        assertThat(cache.resolve("repos/jk-local").resolve(REL)).doesNotExist();
     }
 
     @Test

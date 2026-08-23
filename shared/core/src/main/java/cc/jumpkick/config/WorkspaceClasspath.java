@@ -156,7 +156,8 @@ public final class WorkspaceClasspath {
             if (missingSibDir != null
                     && !cc.jumpkick.layout.Languages.anySourceUnder(missingSibDir.resolve("src"), ".java")
                     && !cc.jumpkick.layout.Languages.anySourceUnder(missingSibDir.resolve("src"), ".kt")
-                    && !cc.jumpkick.layout.Languages.anySourceUnder(missingSibDir.resolve("src"), ".groovy")) {
+                    && !cc.jumpkick.layout.Languages.anySourceUnder(missingSibDir.resolve("src"), ".groovy")
+                    && !cc.jumpkick.layout.Languages.anySourceUnder(missingSibDir.resolve("src"), ".scala")) {
                 // Name the real cause: the sibling was never going to compile anything — its jar
                 // only appears once the module is scheduled and packages empty.
                 missingLabel = module + " has no sources — jk packages an empty jar for it once the"

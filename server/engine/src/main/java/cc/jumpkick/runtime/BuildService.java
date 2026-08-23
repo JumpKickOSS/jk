@@ -483,7 +483,7 @@ public final class BuildService {
         /** Metrics dir key: {@code path} or {@code path#dN} when dirty count known. */
         public String dirKey(Path entryDir) {
             if (entryDir == null) return "";
-            String base = entryDir.toString();
+            String base = BuildMetrics.slashKey(entryDir.toString());
             if (dirtyModules >= 0) return base + "#d" + dirtyModules;
             return base;
         }

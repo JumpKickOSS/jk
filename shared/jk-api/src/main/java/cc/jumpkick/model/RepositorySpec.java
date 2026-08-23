@@ -24,6 +24,13 @@ public record RepositorySpec(
             new RepositorySpec("central", URI.create("https://repo.maven.apache.org/maven2/"));
 
     /**
+     * Synthetic first-party install store under {@code repos/jk-local/} (workers, {@code jk
+     * install}). Not a remote — reserved in {@code [repositories]}; lockfile file-deps use the bare
+     * source {@code jk-local}.
+     */
+    public static final String JK_LOCAL = "jk-local";
+
+    /**
      * Groups that live on Google's Android Maven (not Maven Central). Applied as exclusive
      * bindings when the Google remote is present so warm multi-repo locks do not probe Central
      * for every {@code androidx.*} GAV.

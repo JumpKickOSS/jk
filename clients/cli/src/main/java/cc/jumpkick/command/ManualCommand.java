@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.docs.JkManual;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -22,10 +23,19 @@ public final class ManualCommand implements CliCommand {
         return "Print the JumpKick playbook for agents and new users";
     }
 
+    /**
+     * The playbook is consumed as a document (MCP, redirection into a file), so the bytes must match
+     * {@link JkManual#markdown()} exactly &mdash; em dashes and middots included.
+     */
+    @Override
+    public boolean scriptMode(Invocation in) {
+        return true;
+    }
+
     @Override
     public int run(Invocation in) {
-        System.out.print(JkManual.markdown());
-        System.out.flush();
+        CliOutput.outRaw(JkManual.markdown());
+        CliOutput.stdout().flush();
         return Exit.SUCCESS;
     }
 }

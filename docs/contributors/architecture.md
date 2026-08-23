@@ -48,15 +48,19 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   `drain-status` to the successor. The one exception is an *orphaned* engine (no endpoint pointer
   names it, so nothing can reach it), which exits once it has no in-flight jobs and no attached
   event stream.
+- **JDK inventory** — managed installs live in the IntelliJ shared root (`~/.jdks`); JumpKick's
+  record of them (`jk-jdks.toml`, fingerprints, Java/Graal defaults) and the JDK access log live
+  under the platform **state** dir (`$JK_STATE_DIR`, default `~/.local/state/jk`). No
+  `default-jdk` / `current-jdk` symlinks under data.
 - **Identity** — one engine per (state directory, artifact store) pair. The store is part of the
   identity hash because two invocations can share a state dir while disagreeing about where downloads
   belong; without it, `JK_STORE_DIR` silently did nothing. A machine can therefore hold several
   engines: `jk engine status` lists every resident engine this user owns (including other
   `JK_HOME`s and draining/ghost pids). `jk engine stop --all` stops **this home only** so a
   nested test suite cannot kill the host engine. `--pid` stops one explicitly.
-- **Versioning** — one live engine under `~/.local/share/jk/lib/jk-engine/` (or
-  `$JK_HOME/lib/jk-engine/`), with metadata in `~/.config/jk/jk-engine/config.toml` (or
-  `$JK_HOME/config/jk-engine/config.toml`), paired with the PATH `jk`. An upgrade parks the previous
+- **Versioning** — one live engine under `<data>/lib/jk-engine/` (`~/.local/share/jk/lib/jk-engine/`,
+  or `$JK_HOME/data/lib/jk-engine/`), with metadata in `<config>/jk-engine/config.toml`, paired with
+  the PATH `jk`. One engine is hosted at a time, so there is no per-version directory tree. An upgrade parks the previous
   jar as `<name>.jar.old` and the previous client as `jk.old` (`jk.exe.old` on Windows) until the
   displaced engine drains; GC deletes the parked files. Handshake detects skew and takes over.
   **Newer always wins**: the lock's
@@ -125,7 +129,7 @@ jk engine start
 # edit style.css / index.html / *.webp → hard-refresh the browser
 ```
 
-Relative `web-root` values resolve against the product home (data root, or `$JK_HOME` when set).
+Relative `web-root` values resolve against the data root (`~/.local/share/jk`, or `$JK_HOME/data`).
 Only files present under the root are overridden; anything missing still falls through to the jar.
 
 ### HTTP server knobs
@@ -195,7 +199,7 @@ Bootstrap build: **Java 25 + Gradle** (until self-hosting CI is complete). Runti
 | `shared/` | `jsonl`, `jk-api`, `plugin-sdk`, `core`, `client-io`, `toolchain-jdk`, `wire` | JSONL codec, client-safe contracts, config/lock, CLI I/O, JDK tools, wire |
 | `server/` | `io`, `resolver`, `toolchain`, `engine` | Repo fetch, PubGrub, import/export tools, build plan; `EngineMain` + fat jar packaging (never links CLI) |
 | `clients/` | `cli`, `web` | Slim wire client (native/JVM), dashboard SPA |
-| `plugins/` | `java-compiler`, `kotlin-compiler`, `groovy-compiler`, `test-runner`, `auditor`, `publisher`, `image-builder`, `formatter`, `compat-bridge`, `spring-boot`, `quarkus`, `grails`, `android`, `protobuf`, `minified` | First-party workers / build plugins |
+| `plugins/` | `java-compiler` (job-scoped Zinc worker; PLAN for `jk explain`), `kotlin-compiler`, `groovy-compiler`, `test-runner`, `auditor`, `publisher`, `image-builder`, `formatter`, `compat-bridge`, `spring-boot`, `quarkus`, `grails`, `android`, `protobuf`, `minified` | First-party workers / build plugins |
 
 **Layering:** `jsonl` → `{plugin-sdk, wire, cli}` ; `jk-api` → `core` → `{client-io, wire, …}` → server `{io, resolver, toolchain}` → `engine` → clients. Plugins depend on `plugin-sdk` (+ transitive `jsonl`), not on engine internals.
 
@@ -238,19 +242,17 @@ and exclusions stay GA-scoped.
 3. **Action cache** hit → restore outputs from the **cache CAS**; miss → run and store.
 4. Compilers and tests run in **forked plugin processes** sized by a shared memory plan.
 
-**Two-tier CAS** (separate roots, separate budgets):
+**Two storage tiers** (separate roots, separate budgets):
 
 | Tier | Root | Contents |
 |------|------|----------|
-| **Artifact store** | `~/.local/share/jk/store/` (`JK_STORE_DIR`) | Long-lived blobs under `sha256/…` + Maven-layout views under `repos/<name>/…` (deps, workers, installLocal) |
+| **Artifact store** | `<data>/store/` — `~/.local/share/jk/store/` or `$JK_HOME/data/store/` (`JK_STORE_DIR`) | Maven-layout jars under `repos/<name>/…` plus `.jk` memos; first-party workers under `repos/jk-local/`. The Maven local repository (`~/.m2/repository` by default) is the primary blob store when `[m2] integration` is on. |
 | **Cache** | `~/.cache/jk/` (`JK_CACHE_DIR`) | Action index (`actions/`) + rebuildable action payloads under `sha256/…` |
 
-Repo materialization **hard-links** store CAS blobs into `repos/<name>/` when the filesystem
-allows (one allocation) via portable NIO `Files.createLink`. GC unlinks **both** the store CAS
-path and matching `repos/` entries so space is reclaimed. Action payloads never share the
-artifact pool: deleting `~/.cache/jk` drops index and action blobs without touching deps.
-Ingest from build outputs / `~/.m2` is copy (or opt-in link for m2) so non-store trees never
-share identity with a hashed blob; writers inside either CAS must temp + atomic-replace.
+Dependency jars are real `*.jar` files. Compile classpaths never use hash-named CAS blobs.
+A digest-matching file in the Maven local repo is used in place; a mismatch is left untouched
+and the locked bytes live under `repos/<name>/`. Action-cache restore stays copy-not-link so
+compilers cannot mutate cached outputs. `jk storage nuke` does not delete `~/.m2`.
 
 ### Action keys and future remote cache (design)
 
@@ -263,7 +265,7 @@ keys** when adding a read-only remote later — only add an optional remote look
 | jk version | `jk:` in key material | Pin engine version for cross-machine hits |
 | Toolchain / release | `--release`, Kotlin target | Include JDK major when outputs are version-sensitive |
 | Sources | path + content SHA-256 | Prefer content-only relative paths for portability later |
-| Classpath / processors | CAS path (content-addressed) | Same hex blobs work remote |
+| Classpath / processors | lock digest (`file:<sha256>`) | Hex identity, independent of on-disk path |
 | Plugin / worker jar | worker hash in artifact keys | Must stay part of the key (upgrade invalidates) |
 | OS/arch | only when outputs are platform-specific | Omit for pure class jars |
 

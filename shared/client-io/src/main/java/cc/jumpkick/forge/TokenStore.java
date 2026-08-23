@@ -12,7 +12,7 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * Persists forge tokens, keyed by host, under {@code ~/.jk/credentials/}. One file per host
+ * Persists forge tokens, keyed by host, under {@code <data>/credentials/}. One file per host
  * (filename = sanitized host), each containing just the token. This generalizes the original
  * single-file {@code ~/.jk/github-token} design to the multi-provider, multi-host world: a
  * developer can be logged into {@code github.com}, a private GHE, and {@code codeberg.org} at once.
@@ -26,7 +26,7 @@ public final class TokenStore {
     private final Path dir;
 
     public TokenStore() {
-        this(JkDirs.home().resolve("credentials"));
+        this(JkDirs.data().resolve("credentials"));
     }
 
     /** Visible for tests — point the store at a scratch directory. */

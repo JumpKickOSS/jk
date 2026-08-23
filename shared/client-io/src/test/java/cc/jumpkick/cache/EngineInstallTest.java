@@ -48,6 +48,44 @@ class EngineInstallTest {
     }
 
     @Test
+    void survives_config_metadata_deletion_by_recovering_version_from_the_jar(@TempDir Path tmp) throws Exception {
+        // JK-2294: `jk self nuke --config` deletes <config>/jk-engine/config.toml but keeps the jar
+        // under product-lib. The engine must still resolve, recovering its version from the jar name.
+        Path home = Files.createDirectories(tmp.resolve("home"));
+        Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
+        EngineInstall store = install(home);
+        Path jar = Files.writeString(tmp.resolve("jk-engine-0.12.0.jar"), "engine-bytes");
+        store.materializeFromFiles("0.12.0", cas, jar);
+        assertThat(store.currentInstall()).isPresent();
+
+        Files.delete(store.configFile()); // config-nuke
+        assertThat(store.configFile()).doesNotExist();
+
+        var recovered = store.currentInstall();
+        assertThat(recovered).as("engine still resolves after config deletion").isPresent();
+        assertThat(recovered.orElseThrow().version()).isEqualTo("0.12.0");
+        assertThat(recovered.orElseThrow().engineJar()).hasContent("engine-bytes");
+    }
+
+    @Test
+    void a_jk_config_property_cannot_override_the_computed_engine_digest(@TempDir Path tmp) throws Exception {
+        // JK-2325: -Djk-config.engine-sha256=... must not poison the recorded digest.
+        Path home = Files.createDirectories(tmp.resolve("home"));
+        Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
+        EngineInstall store = install(home);
+        Path jar = Files.writeString(tmp.resolve("jk-engine-0.12.0.jar"), "engine-bytes");
+        String realSha = cc.jumpkick.util.Hashing.sha256Hex(jar);
+        System.setProperty("jk-config.engine-sha256", "deadbeef");
+        try {
+            store.materializeFromFiles("0.12.0", cas, jar);
+            JkDirs dirs = JkDirs.of(Map.of("JK_HOME", home.toString())::get, home.toString());
+            assertThat(AppInstallConfig.read(dirs, "jk-engine")).containsEntry("engine-sha256", realSha);
+        } finally {
+            System.clearProperty("jk-config.engine-sha256");
+        }
+    }
+
+    @Test
     void newest_is_the_live_install(@TempDir Path tmp) throws Exception {
         Path home = Files.createDirectories(tmp.resolve("home"));
         Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));

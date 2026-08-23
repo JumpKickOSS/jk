@@ -47,10 +47,11 @@ val slowTags = listOf("integration", "slow", "bench", "network")
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
-    // Isolate tests from the developer's real product layout. JK_HOME is a
-    // single-tree umbrella for product dirs (config, cache, store, state, …).
-    // Managed JDKs default to the shared IntelliJ root and are *not* relocated
-    // by JK_HOME — set JK_JDKS_DIR for hermetic JDK isolation.
+    // Isolate tests from the developer's real product layout. JK_HOME is a single-tree
+    // umbrella that mirrors the XDG shape: it relocates the five roots to
+    // $JK_HOME/{bin,cache,config,data,state}, so the store is $JK_HOME/data/store and the
+    // engine jar $JK_HOME/data/lib/jk-engine/. Managed JDKs default to the shared IntelliJ
+    // root and are *not* relocated by JK_HOME — set JK_JDKS_DIR for hermetic JDK isolation.
     val testJkHome = layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath
     environment("JK_HOME", testJkHome)
     environment("JK_JDKS_DIR", "$testJkHome/jdks")

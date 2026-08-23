@@ -3,15 +3,27 @@ package cc.jumpkick.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIOException;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class AtomicWritesTest {
+
+    /**
+     * Sum of {@code moveInto}'s seven back-off sleeps. A retrying move cannot finish faster than
+     * this, and a single failing rename cannot plausibly take this long — so the two tests below
+     * bracket the constant from either side.
+     */
+    private static final long BACK_OFF_SUM_MS = 5 + 10 + 15 + 20 + 25 + 30 + 35;
 
     @Test
     void replace_creates_parents_and_round_trips(@TempDir Path dir) throws IOException {
@@ -74,10 +86,75 @@ class AtomicWritesTest {
     }
 
     @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void move_into_does_not_retry_a_posix_permission_denial(@TempDir Path dir) throws IOException {
+        Path tmp = Files.writeString(dir.resolve("fresh.tmp"), "fresh");
+        Path locked = Files.createDirectory(dir.resolve("locked"));
+        Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("r-xr-xr-x"));
+        try {
+            assumeFalse(Files.isWritable(locked), "running as root — the mode bits deny nothing");
+
+            // One untimed failure first: class loading and JIT of the failing rename must not land
+            // inside the window, or a cold run measures the JVM rather than the back-off.
+            denyMove(tmp, locked.resolve("target"));
+
+            long start = System.nanoTime();
+            IOException thrown = denyMove(tmp, locked.resolve("target"));
+            long elapsedMs = (System.nanoTime() - start) / 1_000_000L;
+
+            assertThat(thrown).isInstanceOf(AccessDeniedException.class);
+            // EACCES is permanent: waiting cannot turn it into a success, and every caller
+            // (JdkInventory, LockfileWriter, …) would pay the wait.
+            assertThat(elapsedMs).as("failed without backing off").isLessThan(BACK_OFF_SUM_MS);
+        } finally {
+            Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwxr-xr-x"));
+        }
+    }
+
+    /**
+     * The Windows retry is gated on a live {@code os.name} read, so a spoofed host is the only way
+     * to reach it from Linux. It proves the gate, not that Windows recovers — a real transient
+     * sharing violation cannot be produced here.
+     */
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void move_into_retries_when_the_host_reports_windows(@TempDir Path dir) throws IOException {
+        Path tmp = Files.writeString(dir.resolve("fresh.tmp"), "fresh");
+        Path locked = Files.createDirectory(dir.resolve("locked"));
+        Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("r-xr-xr-x"));
+        String realOs = System.getProperty("os.name");
+        try {
+            assumeFalse(Files.isWritable(locked), "running as root — the mode bits deny nothing");
+            System.setProperty("os.name", "Windows 11");
+
+            long start = System.nanoTime();
+            IOException thrown = denyMove(tmp, locked.resolve("target"));
+            long elapsedMs = (System.nanoTime() - start) / 1_000_000L;
+
+            assertThat(thrown).isInstanceOf(AccessDeniedException.class);
+            assertThat(elapsedMs).as("exhausted the back-off before giving up").isGreaterThanOrEqualTo(BACK_OFF_SUM_MS);
+        } finally {
+            if (realOs == null) System.clearProperty("os.name");
+            else System.setProperty("os.name", realOs);
+            Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwxr-xr-x"));
+        }
+    }
+
+    @Test
     void replace_bytes_round_trips(@TempDir Path dir) throws IOException {
         Path target = dir.resolve("bytes.bin");
         byte[] payload = "raw".getBytes(StandardCharsets.UTF_8);
         AtomicWrites.replace(target, payload);
         assertThat(Files.readAllBytes(target)).isEqualTo(payload);
+    }
+
+    /** Runs a move that must fail, returning the exception so the caller can time the call alone. */
+    private static IOException denyMove(Path tmp, Path target) {
+        try {
+            AtomicWrites.moveInto(tmp, target);
+            return null;
+        } catch (IOException e) {
+            return e;
+        }
     }
 }

@@ -87,7 +87,14 @@ class ImageBuilderAppTreeTest {
                 "quarkus-run.jar");
 
         // hasAppTree skips the Boot-only exploded-classes refusal; training uses
-        // settle+SIGTERM for any server, not a per-framework exit flag.
-        assertThat(AotCacheTrainer.unsupportedReason(plan)).isNull();
+        // settle+SIGTERM for any server, not a per-framework exit flag. Hosts without a
+        // matching JVM or container runtime are still blocked — that is not a layout refusal.
+        String reason = AotCacheTrainer.unsupportedReason(plan);
+        if (AotCacheTrainer.containerRuntime(plan.config().dockerExecutable()) != null
+                || BaseJre.hostCanExecute(plan.config().platforms())) {
+            assertThat(reason).isNull();
+        } else {
+            assertThat(reason).doesNotContain("exploded-classes").contains("container runtime");
+        }
     }
 }

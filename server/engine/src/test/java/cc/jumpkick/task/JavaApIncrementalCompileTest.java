@@ -20,14 +20,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Annotation-processor-aware incremental compilation (slice 3b) end-to-end through {@link
- * JavaIncrementalCompile#run} against the real {@code jk-java-compiler} worker.
- *
- * <p>Exercises the new surface: the orphan-signal detection that flips a project into worker mode,
- * the provenance-arity gate that classifies <em>isolating</em> vs <em>aggregating</em> processors,
- * the incremental tier actually running for an isolating processor, and the safe full-rebuild
- * fallback for an aggregating one. The underlying dirty-set/ABI machinery is shared with {@link
- * JavaIncrementalCompileTest}.
+ * Annotation-processor-aware incremental compilation through {@link JavaCompile} and the Zinc
+ * worker: isolating processors stay incremental; aggregating processors force a full recompile.
  */
 @Tag("integration")
 class JavaApIncrementalCompileTest {
@@ -43,39 +37,24 @@ class JavaApIncrementalCompileTest {
         Path procDir = isolatingProcessor(dir);
         Project p = new Project(dir, worker, procDir);
 
-        // v1 — build 1 runs plain subprocess javac (no worker yet); the AP-generated
-        // WidgetGen.class is an "orphan" (no provenance) → project flagged source-gen.
+        // v1 — first build goes straight through the Zinc worker and establishes the analysis +
+        // provenance; the isolating processor generates app.WidgetGen.
         p.write("app/Widget.java", widget("one"));
-        JavaIncrementalCompile.Result b1 = p.build();
+        JavaCompile.Result b1 = p.build();
         assertThat(b1.success()).isTrue();
-        assertThat(p.apFlags()).contains("sourceGenAps=true");
+        assertThat(p.classFile("app/WidgetGen.class")).isRegularFile();
+        assertThat(Files.isRegularFile(p.stateDir.resolve("zinc"))).isTrue();
+        assertThat(Files.exists(p.stateDir.resolve("aggregating"))).isFalse();
 
-        // v2 — now in worker mode; no usable state yet → full compile via the worker,
-        // which captures provenance, attributes WidgetGen to Widget, and classifies the
-        // processor isolating.
         p.write("app/Widget.java", widget("two"));
-        JavaIncrementalCompile.Result b2 = p.build();
+        JavaCompile.Result b2 = p.build();
         assertThat(b2.success()).isTrue();
         assertThat(p.classFile("app/WidgetGen.class")).isRegularFile();
         assertThat(p.classFile("app/Widget.class")).isRegularFile();
-        assertThat(Files.isRegularFile(p.stateDir.resolve("java-incremental.txt")))
-                .isTrue();
-        assertThat(p.apFlags()).contains("isolating=true");
 
-        // A non-class sentinel distinguishes the tiers: the incremental tier restores the
-        // output dir (recursive wipe) before recompiling, so the sentinel vanishes; a full
-        // rebuild only deletes *.class and would leave it.
-        Path sentinel = p.out.resolve("INCREMENTAL_SENTINEL");
-        Files.writeString(sentinel, "x");
-
-        // v3 — body edit (ABI-stable): isolating + usable state → incremental tier.
         p.write("app/Widget.java", widget("three"));
-        JavaIncrementalCompile.Result b3 = p.build();
+        JavaCompile.Result b3 = p.build();
         assertThat(b3.success()).isTrue();
-        assertThat(Files.exists(sentinel))
-                .as("incremental tier restores (wipes) the output dir")
-                .isFalse();
-        // Never stale: the generated class is still present and Widget reflects the v3 edit.
         assertThat(p.classFile("app/WidgetGen.class")).isRegularFile();
         assertThat(p.invokeGreet()).isEqualTo("three");
     }
@@ -93,22 +72,58 @@ class JavaApIncrementalCompileTest {
 
         p.write("app/Alpha.java", "package app; @reg.Reg public class Alpha {}");
         p.write("app/Beta.java", "package app; @reg.Reg public class Beta {}");
-        p.build(); // build 1: detect (subprocess javac)
-
+        p.build();
         p.write("app/Alpha.java", "package app; @reg.Reg public class Alpha { int v; }");
-        p.build(); // build 2: worker full → arity-2 provenance
+        p.build();
         assertThat(p.classFile("app/Registry.class")).isRegularFile();
-        assertThat(p.apFlags()).contains("isolating=false");
+        assertThat(Files.isRegularFile(p.stateDir.resolve("aggregating"))).isTrue();
 
-        // Stays full: a sentinel placed before an edit survives (full deletes only *.class).
-        Path sentinel = p.out.resolve("FULL_SENTINEL");
-        Files.writeString(sentinel, "x");
         p.write("app/Beta.java", "package app; @reg.Reg public class Beta { int v; }");
         p.build();
-        assertThat(Files.exists(sentinel))
-                .as("aggregating project stays on full rebuilds")
+        assertThat(p.classFile("app/Registry.class")).isRegularFile();
+    }
+
+    /**
+     * JK-2286: when an isolating processor stops generating a file — its annotation was removed from
+     * the origin — the previously generated source and its class must be deleted, not left to ship in
+     * the jar. Zinc can't do this because generated files are not in its source set.
+     */
+    @Test
+    void removing_the_annotation_deletes_the_previously_generated_class(@TempDir Path dir) throws Exception {
+        Path worker = workerJar();
+        Path procDir = isolatingProcessor(dir);
+        Project p = new Project(dir, worker, procDir);
+
+        p.write("app/Widget.java", widget("one"));
+        assertThat(p.build().success()).isTrue();
+        assertThat(p.classFile("app/WidgetGen.class")).isRegularFile();
+
+        // Remove @gen.Gen: Widget recompiles, the processor generates nothing, WidgetGen must go.
+        p.write("app/Widget.java", "package app; public class Widget { public String greet() { return \"none\"; } }");
+        assertThat(p.build().success()).isTrue();
+        assertThat(p.classFile("app/Widget.class")).isRegularFile();
+        assertThat(p.classFile("app/WidgetGen.class"))
+                .as("stale generated class must be pruned once its annotation is removed")
+                .doesNotExist();
+    }
+
+    /**
+     * JK-2300: a processor that writes a file with no originating elements (arity 0 — a common
+     * META-INF/services writer) has unknown provenance and must be treated as aggregating (full
+     * rebuild), not silently classified isolating.
+     */
+    @Test
+    void zero_origin_generated_file_forces_full_rebuild() throws Exception {
+        Path dir = Files.createTempDirectory("jk-zero-origin");
+        Path worker = workerJar();
+        Path procDir = zeroOriginProcessor(dir);
+        Project p = new Project(dir, worker, procDir);
+
+        p.write("app/Alpha.java", "package app; @reg.Reg public class Alpha {}");
+        assertThat(p.build().success()).isTrue();
+        assertThat(Files.isRegularFile(p.stateDir.resolve("aggregating")))
+                .as("arity-0 provenance must classify the project as aggregating")
                 .isTrue();
-        assertThat(p.classFile("app/Registry.class")).isRegularFile(); // correct aggregate
     }
 
     // ---- harness ----------------------------------------------------------
@@ -159,11 +174,7 @@ class JavaApIncrementalCompileTest {
             return out.resolve(rel);
         }
 
-        String apFlags() throws IOException {
-            return Files.readString(stateDir.resolve("java-ap.txt"));
-        }
-
-        JavaIncrementalCompile.Result build() throws IOException {
+        JavaCompile.Result build() throws IOException {
             List<Path> sources = new ArrayList<>();
             try (var s = Files.walk(srcRoot)) {
                 for (Path p : (Iterable<Path>) s::iterator) {
@@ -181,9 +192,8 @@ class JavaApIncrementalCompileTest {
                     .processorPath(List.of(procDir))
                     .javaHome(Path.of(System.getProperty("java.home")))
                     .build();
-            var ap = new JavaIncrementalCompile.ApSetup(() -> workerJar, genSrc);
-            JavaIncrementalCompile.Result r =
-                    JavaIncrementalCompile.run("compile-main", req, "jk-test", true, cas, actionCache, stateDir, ap);
+            JavaCompile.Result r = JavaCompile.run(
+                    "compile-main", req, "jk-test", true, cas, actionCache, stateDir, workerJar, genSrc);
             assertThat(r.success()).as("compile succeeded: %s", r.diagnostics()).isTrue();
             return r;
         }
@@ -281,6 +291,47 @@ class JavaApIncrementalCompileTest {
                         }
                         """));
         registerProcessor(procDir, "reg.RegProc");
+        return procDir;
+    }
+
+    /** Writes a resource with NO originating elements (arity 0), like a META-INF/services writer. */
+    private static Path zeroOriginProcessor(Path dir) throws IOException {
+        Path procDir = dir.resolve("proc-zero");
+        compile(
+                procDir,
+                Map.of(
+                        "reg.Reg", """
+                        package reg;
+                        import java.lang.annotation.*;
+                        @Retention(RetentionPolicy.SOURCE) @Target(ElementType.TYPE)
+                        public @interface Reg {}
+                        """,
+                        "reg.ZeroProc", """
+                        package reg;
+                        import javax.annotation.processing.*;
+                        import javax.lang.model.SourceVersion;
+                        import javax.lang.model.element.*;
+                        import javax.tools.*;
+                        import java.io.*;
+                        import java.util.Set;
+                        @SupportedAnnotationTypes("reg.Reg")
+                        public class ZeroProc extends AbstractProcessor {
+                            private boolean done;
+                            public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
+                            public boolean process(Set<? extends TypeElement> a, RoundEnvironment r) {
+                                if (done || r.getElementsAnnotatedWith(Reg.class).isEmpty()) return true;
+                                done = true;
+                                try {
+                                    // No originating elements -> arity 0 (unknown provenance).
+                                    FileObject f = processingEnv.getFiler().createResource(
+                                            StandardLocation.CLASS_OUTPUT, "", "META-INF/services/app.Thing");
+                                    try (Writer w = f.openWriter()) { w.write("app.Alpha\\n"); }
+                                } catch (IOException ex) { throw new UncheckedIOException(ex); }
+                                return true;
+                            }
+                        }
+                        """));
+        registerProcessor(procDir, "reg.ZeroProc");
         return procDir;
     }
 

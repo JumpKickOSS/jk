@@ -145,6 +145,7 @@ public final class JshellCommand implements CliCommand {
         pb.directory(dir.toFile());
         cc.jumpkick.cli.tui.Interactivity.restoreForChildProcess();
         pb.inheritIO();
+        cc.jumpkick.cli.CliOutput.skipTrailingBlank();
         Process p = pb.start();
         int exit = p.waitFor();
         return exit;

@@ -76,6 +76,21 @@ class TasksCommandTest {
     }
 
     @Test
+    void show_prints_the_path_with_no_envelope(@TempDir Path tempDir) throws Exception {
+        run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
+        String out = Capture.stdout(() -> run("show", "package-jar", "-C", tempDir.toString()));
+        // The path is consumed by command substitution, so nothing may pad it.
+        assertThat(out).doesNotStartWith("\n").doesNotEndWith("\n\n");
+    }
+
+    @Test
+    void inspect_keeps_the_human_envelope(@TempDir Path tempDir) throws Exception {
+        run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
+        String out = Capture.stdout(() -> run("inspect", "compile-java", "-C", tempDir.toString()));
+        assertThat(out).startsWith("\n");
+    }
+
+    @Test
     void tasks_show_alias_for_package(@TempDir Path tempDir) throws Exception {
         run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
         String out = Capture.stdout(() -> run("tasks", "show", "package", "-C", tempDir.toString()));

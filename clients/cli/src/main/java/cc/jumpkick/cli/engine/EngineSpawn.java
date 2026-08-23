@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
-import cc.jumpkick.jdk.GlobalDefaultJdk;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
@@ -225,7 +226,7 @@ public final class EngineSpawn {
                         clientVersion,
                         isNativeImage(),
                         cc.jumpkick.config.SessionContext.current().offline())) {
-            System.err.println("jk: downloading the build engine (jk-engine-" + clientVersion + ".jar) ...");
+            CliOutput.err("jk: downloading the build engine (jk-engine-" + clientVersion + ".jar) ...");
             EngineJarFetcher.fetch(EngineJarFetcher.releasesBase(), clientVersion);
             resolved = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
         }
@@ -300,9 +301,9 @@ public final class EngineSpawn {
         String pin = cc.jumpkick.config.GlobalConfig.engineJdkPin().orElse("temurin-" + floor);
         Optional<EngineJdk> installed = findInstalledEngineJdk(pin);
         if (installed.isPresent()) return installed.get();
-        System.err.println("jk: installing the build engine's JDK (" + pin + ") ...");
+        CliOutput.err("jk: installing the build engine's JDK (" + pin + ") ...");
         try {
-            Path home = JdkEnsure.install(pin, System.err::println).home();
+            Path home = JdkEnsure.install(pin, CliOutput.stderr()::println).home();
             return probeEngineJdk(home)
                     .orElseThrow(() -> new IOException("engine JDK installed at " + home + " is unreadable"));
         } catch (InterruptedException e) {
@@ -316,8 +317,7 @@ public final class EngineSpawn {
         Optional<Pin> want = parsePin(pin);
         if (want.isEmpty()) return Optional.empty(); // unparseable pin → force the install path
         List<Path> homes = new ArrayList<>();
-        GlobalDefaultJdk defaults = GlobalDefaultJdk.current();
-        defaults.currentHome().ifPresent(homes::add);
+        JdkInventory defaults = JdkInventory.current();
         defaults.defaultHome().ifPresent(homes::add);
         try {
             homes.add(JavaHomes.runningJavaHome());
@@ -386,7 +386,7 @@ public final class EngineSpawn {
     /**
      * Which engine artifact a spawn chose. {@code EXE}: {@code path} is an executable whose {@code
      * main} IS the engine loop. {@code JAR}: {@code path} is the engine's fat jar under {@code
-     * $JK_HOME/lib/jk-engine/} (or {@code <data>/lib/jk-engine/}), launched as {@code
+     * <data>/lib/jk-engine/} ({@code $JK_HOME/data/lib/jk-engine/} under the umbrella), launched as {@code
      * <managed-jdk>/bin/java … -cp <path> cc.jumpkick.engine.EngineMain} — the engine is a plain JVM
      * app, never a native image. There is no client-binary FALLBACK: the slim client never hosts the
      * engine.
@@ -629,9 +629,13 @@ public final class EngineSpawn {
                 // Also forward AOT switches so nested engines honor JK_AOT_TRAIN / jk.aot.train,
                 // and jk.env.* layout overlays (JkDirs test seam) so a spawned engine resolves the
                 // same store/state the client did.
+                //
+                // Do not forward jk.plugin.class — that is a client/test-runner host signal that
+                // would load workspace/test plugin overlays inside the engine.
                 for (var e : System.getProperties().entrySet()) {
                     String key = String.valueOf(e.getKey());
                     if (!key.startsWith("jk.")) continue;
+                    if (key.equals("jk.plugin.class")) continue;
                     boolean jarOverride = key.endsWith(".jar");
                     boolean aotSwitch = key.equals("jk.aot.train") || key.equals("jk.worker.aot");
                     boolean envOverlay = key.startsWith("jk.env.");
@@ -705,8 +709,9 @@ public final class EngineSpawn {
                 "JK_STORE_DIR",
                 "JK_CACHE_DIR",
                 "JK_M2_LOCAL",
+                "JK_M2_INTEGRATION",
                 "JK_M2_LOOKUP",
-                "JK_M2_LINK",
+                "JK_M2_INSTALL",
                 "JK_CENTRAL_MIRROR")) {
             String v = System.getenv(key);
             if (v != null && !v.isBlank()) env.put(key, v);

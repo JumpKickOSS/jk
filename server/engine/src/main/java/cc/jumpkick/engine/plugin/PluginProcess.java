@@ -149,13 +149,28 @@ public final class PluginProcess {
     }
 
     /**
+     * As {@link #converse(List, String, BiConsumer, Consumer)} but WITHOUT taking a process-lifetime
+     * worker slot. The caller — the long-lived Zinc pull session — meters {@link PluginSlots} itself,
+     * once per in-flight COMPILE/PLAN exchange, so an idle resident worker does not pin a permit for
+     * the whole job and deadlock nested forks such as the test runner.
+     */
+    public static int converseNoSlot(
+            List<String> command,
+            String prefix,
+            BiConsumer<String, Conversation> onProtocol,
+            Consumer<String> onPassthrough)
+            throws IOException, InterruptedException {
+        ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
+        return converse(pb, prefix, onProtocol, onPassthrough, false, 0L);
+    }
+
+    /**
      * As {@link #converse(List, Map, Path, String, BiConsumer, Consumer)} with an inactivity
      * watchdog: when the child emits no output line for {@code idleTimeoutMs}, it is
-     * force-killed and the conversation ends with its (non-zero) exit code. {@code 0} = no
-     * watchdog — compiler workers are legitimately silent for long stretches; only callers
-     * whose protocol guarantees a heartbeat-ish cadence (the test runner's per-test events)
-     * should pass a window (JK-2202: a JLine tty probe hung a test worker — and the whole
-     * suite — for 3.5h with zero output).
+     * force-killed (process tree) and the conversation ends with its (non-zero) exit code.
+     * {@code 0} = no watchdog — compiler workers are legitimately silent for long stretches;
+     * only callers whose protocol guarantees a heartbeat-ish cadence (the test runner's
+     * per-test events) should pass a window.
      */
     public static int converse(
             List<String> command,
@@ -190,10 +205,10 @@ public final class PluginProcess {
         Thread watchdog = null;
         if (idleTimeoutMs > 0) {
             watchdog = Thread.ofVirtual().name("jk-worker-watchdog").unstarted(() -> {
-                while (process.isAlive()) {
+                while (process.isAlive() || hasLiveDescendant(process)) {
                     long idle = System.currentTimeMillis() - lastLineAt.get();
                     if (idle >= idleTimeoutMs) {
-                        process.destroyForcibly();
+                        forceStop(process);
                         return;
                     }
                     try {
@@ -254,7 +269,7 @@ public final class PluginProcess {
                     return process.waitFor();
                 }
                 if (isPipeClosed(e)) {
-                    process.destroyForcibly();
+                    forceStop(process);
                     int exit;
                     try {
                         exit = process.waitFor();
@@ -270,14 +285,35 @@ public final class PluginProcess {
         } finally {
             try {
                 if (watchdog != null) watchdog.interrupt();
-                if (process.isAlive()) {
-                    process.destroyForcibly();
+                if (process.isAlive() || hasLiveDescendant(process)) {
+                    forceStop(process);
                 }
             } finally {
                 cc.jumpkick.engine.JobWorkers.unregister(process);
             }
         }
         return process.waitFor();
+    }
+
+    /**
+     * Kill the worker and its descendants, then close the parent's read end so {@code readLine}
+     * cannot stay blocked on an orphan still holding the write end of the pipe.
+     */
+    private static void forceStop(Process process) {
+        cc.jumpkick.engine.JobWorkers.destroyTree(process);
+        try {
+            process.getInputStream().close();
+        } catch (IOException ignored) {
+            // Already closed / process gone.
+        }
+    }
+
+    private static boolean hasLiveDescendant(Process process) {
+        try {
+            return process.descendants().anyMatch(java.lang.ProcessHandle::isAlive);
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     /** {@code IOException} messages like {@code closed} / {@code Stream closed} from broken pipes. */

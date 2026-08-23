@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jsonl.Jsonl;
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -74,6 +75,42 @@ class PluginProcessTest {
         assertThat(exit).isZero();
         assertThat(ran).containsExactly("alpha", "beta", "gamma");
         assertThat(chatter).contains("plain chatter line");
+    }
+
+    @Test
+    void converseNoSlot_does_not_wait_for_a_worker_slot() {
+        // JK-2284: the Zinc pull session must not pin a PluginSlots permit for the worker's whole
+        // life, or a nested fork (the test runner) deadlocks at parallelism 1. converseNoSlot must
+        // proceed even while every permit is held elsewhere — converse() would block here forever.
+        PluginSlots.configure(1);
+        try (PluginSlots.Lease held = PluginSlots.acquire()) {
+            var ran = new ArrayList<String>();
+            var queue = new ArrayDeque<>(List.of("solo"));
+            org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(Duration.ofSeconds(30), () -> {
+                int exit = PluginProcess.converseNoSlot(
+                        cmd(),
+                        "##T:",
+                        (json, convo) -> {
+                            String e = Jsonl.str(json, "e");
+                            if ("ready".equals(e)) {
+                                String next = queue.pollFirst();
+                                if (next != null) {
+                                    convo.send("RUN " + next);
+                                } else {
+                                    convo.send("DONE");
+                                    convo.closeInput();
+                                }
+                            } else if ("ran".equals(e)) {
+                                ran.add(Jsonl.str(json, "what"));
+                            }
+                        },
+                        null);
+                assertThat(exit).isZero();
+            });
+            assertThat(ran).containsExactly("solo");
+        } finally {
+            PluginSlots.configure(0); // reopen the gate for other tests
+        }
     }
 
     @Test

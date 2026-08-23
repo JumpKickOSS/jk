@@ -130,14 +130,14 @@ public record JkHttpConfig(
                 : Runtime.getRuntime().availableProcessors();
     }
 
-    /** {@code web-root} resolved against the live {@link JkDirs#home()} when relative. */
+    /** {@code web-root} resolved against the live {@link JkDirs#data()} root when relative. */
     public Path webRootPath() {
-        return webRootPath(JkDirs.home());
+        return webRootPath(JkDirs.data());
     }
 
-    /** As {@link #webRootPath()} but against an explicit home dir — for tests. */
-    public Path webRootPath(Path homeDir) {
+    /** As {@link #webRootPath()} but against an explicit data root — for tests. */
+    public Path webRootPath(Path dataDir) {
         Path p = Path.of(webRoot);
-        return (p.isAbsolute() ? p : homeDir.resolve(p)).normalize();
+        return (p.isAbsolute() ? p : dataDir.resolve(p)).normalize();
     }
 }

@@ -5,6 +5,7 @@ import cc.jumpkick.jdk.HostPlatform;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,6 +14,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.jar.Attributes;
+import java.util.jar.JarOutputStream;
+import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -95,6 +99,9 @@ public final class NativeImageDriver {
     /** {@code [N/M] Some label...} — native-image step header (optional trailing timing columns). */
     private static final Pattern STEP_PATTERN = Pattern.compile("^\\[(\\d+)/(\\d+)]\\s+(.+?)(?:\\s{2,}.*)?$");
 
+    /** CreateProcess caps a command line near 8191 chars; leave room for the quoting we only estimate. */
+    private static final int ARG_FILE_THRESHOLD = 8000;
+
     private NativeImageDriver() {}
 
     /** Exec native-image with no progress listener and a discarded output sink; return its exit code. */
@@ -115,12 +122,14 @@ public final class NativeImageDriver {
      * <p>{@code listener} may be {@code null} — output still flows to {@code out} but no callbacks are
      * invoked. {@code out} may be {@code null} — output is then discarded. The sink is invoked from
      * the reader daemon threads, so callers must tolerate that.
+     *
+     * <p>On Windows an over-long command line is handed over as an {@code @argfile} and a multi-entry
+     * classpath as a pathing jar; both are temp files in the output directory, removed on the way
+     * out. A killed JVM leaves them behind.
      */
     public static int run(Request request, ProgressListener listener, Consumer<String> out)
             throws IOException, InterruptedException {
         Path binary = resolve(request.javaHome()).orElseThrow(() -> notFoundError(request.javaHome()));
-        List<String> command = buildCommand(binary, request);
-
         Files.createDirectories(request.outputPath().toAbsolutePath().getParent());
 
         // Do NOT use inheritIO() — it writes directly to fd 1/2, escaping the view
@@ -128,15 +137,97 @@ public final class NativeImageDriver {
         // caller's sink (the engine's TaskContext::output), which renders output
         // above the TUI progress bar. No System.out/err, no reliance on a stream swap.
         Consumer<String> sink = (out == null) ? line -> {} : out;
-        ProcessBuilder pb = new ProcessBuilder(command);
-        if (request.workingDir() != null) pb.directory(request.workingDir().toFile());
-        Process process = pb.start();
-        Thread fwdOut = forwardStdout(process.getInputStream(), listener, sink);
-        Thread fwdErr = forwardStream(process.getErrorStream(), sink);
-        int exit = process.waitFor();
-        fwdOut.join();
-        fwdErr.join();
-        return exit;
+        Path argFile = null;
+        Path pathingJar = null;
+        try {
+            Request effective = request;
+            // Windows: Graal's launcher re-execs java with our -cp, so the classpath also lands in
+            // a CreateProcess (~8191 chars) we never assemble and an outer @argfile cannot shorten.
+            // That inner command line is not measurable from here, which is why this is not
+            // length-gated the way needsArgFile is: any multi-entry classpath collapses.
+            if (HostPlatform.isWindows()
+                    && !request.verbatim()
+                    && request.classpath().size() > 1) {
+                pathingJar = writePathingJar(tempDir(request), request.classpath());
+                if (pathingJar != null) {
+                    effective = new Request(
+                            request.javaHome(),
+                            List.of(pathingJar),
+                            request.mainClass(),
+                            request.outputPath(),
+                            request.extraArgs(),
+                            request.shared(),
+                            request.workingDir(),
+                            request.verbatim());
+                }
+            }
+            List<String> command = buildCommand(binary, effective);
+            if (needsArgFile(command)) {
+                argFile = Files.createTempFile(tempDir(request), "ni-args-", ".txt");
+                command = withArgFile(binary, command, argFile);
+            }
+            ProcessBuilder pb = new ProcessBuilder(command);
+            if (effective.workingDir() != null)
+                pb.directory(effective.workingDir().toFile());
+            Process process = pb.start();
+            Thread fwdOut = forwardStdout(process.getInputStream(), listener, sink);
+            Thread fwdErr = forwardStream(process.getErrorStream(), sink);
+            int exit = process.waitFor();
+            fwdOut.join();
+            fwdErr.join();
+            return exit;
+        } finally {
+            if (argFile != null) Files.deleteIfExists(argFile);
+            if (pathingJar != null) Files.deleteIfExists(pathingJar);
+        }
+    }
+
+    /**
+     * Where the {@code @argfile} and pathing jar are written: the image's own output directory, so a
+     * relative {@code Class-Path} entry is short and nothing leaks into a shared temp dir.
+     */
+    private static Path tempDir(Request request) {
+        Path parent = request.outputPath().toAbsolutePath().getParent();
+        return parent != null ? parent : Path.of(".");
+    }
+
+    /**
+     * Windows only, and only once the command approaches the CreateProcess cap — a short invocation
+     * keeps a command line the user can copy out of a log and re-run.
+     */
+    static boolean needsArgFile(List<String> command) {
+        return HostPlatform.isWindows() && commandLineChars(command) > ARG_FILE_THRESHOLD;
+    }
+
+    /** Rough CreateProcess command-line length (quoted the way the JVM typically does). */
+    static int commandLineChars(List<String> command) {
+        int n = 0;
+        for (String a : command) {
+            n += a.length() + 3; // space + possible quotes
+        }
+        return n;
+    }
+
+    /**
+     * Rewrite {@code [binary, arg…]} to {@code [binary, @argFile]} after writing each arg on its own
+     * line (Java/Graal argfile form).
+     */
+    static List<String> withArgFile(Path binary, List<String> command, Path argFile) throws IOException {
+        StringBuilder body = new StringBuilder();
+        for (int i = 1; i < command.size(); i++) {
+            String a = command.get(i);
+            // Quote when the token has whitespace or is empty — matches javac @argfile rules.
+            if (a.isEmpty() || a.indexOf(' ') >= 0 || a.indexOf('\t') >= 0) {
+                body.append('"')
+                        .append(a.replace("\\", "\\\\").replace("\"", "\\\""))
+                        .append('"');
+            } else {
+                body.append(a);
+            }
+            body.append('\n');
+        }
+        Files.writeString(argFile, body.toString(), StandardCharsets.UTF_8);
+        return List.of(binary.toString(), "@" + argFile.toAbsolutePath());
     }
 
     /**
@@ -215,8 +306,9 @@ public final class NativeImageDriver {
      * Locate the {@code native-image} binary, trying in order:
      *
      * <ol>
-     *   <li>{@code <javaHome>/bin/native-image} — the project-pinned JDK
-     *   <li>{@code $GRAALVM_HOME/bin/native-image} — explicit GraalVM override
+     *   <li>Windows: {@code <javaHome>/lib/svm/bin/native-image.exe} (avoids {@code cmd.exe} length limits)
+     *   <li>{@code <javaHome>/bin/native-image[.cmd]} — the project-pinned JDK
+     *   <li>{@code $GRAALVM_HOME} equivalents
      *   <li>{@code native-image} on {@code $PATH}
      * </ol>
      *
@@ -228,15 +320,15 @@ public final class NativeImageDriver {
 
         // 1. Project-pinned JDK
         if (javaHome != null) {
-            Path p = javaHome.resolve("bin").resolve(exe);
-            if (Files.isRegularFile(p)) return Optional.of(p);
+            Optional<Path> pinned = resolveInHome(javaHome, win, exe);
+            if (pinned.isPresent()) return pinned;
         }
 
         // 2. $GRAALVM_HOME
         String graalHome = System.getenv("GRAALVM_HOME");
         if (graalHome != null && !graalHome.isBlank()) {
-            Path p = Path.of(graalHome).resolve("bin").resolve(exe);
-            if (Files.isRegularFile(p)) return Optional.of(p);
+            Optional<Path> fromEnv = resolveInHome(Path.of(graalHome), win, exe);
+            if (fromEnv.isPresent()) return fromEnv;
         }
 
         // 3. $PATH
@@ -247,15 +339,42 @@ public final class NativeImageDriver {
                 if (dir.isBlank()) continue;
                 Path p = Path.of(dir).resolve(exe);
                 if (Files.isRegularFile(p)) return Optional.of(p);
+                if (win) {
+                    // PATH entry may be bin/; also try sibling lib/svm/bin/native-image.exe
+                    Path svm = Path.of(dir)
+                            .resolveSibling("lib")
+                            .resolve("svm")
+                            .resolve("bin")
+                            .resolve("native-image.exe");
+                    if (Files.isRegularFile(svm)) return Optional.of(svm);
+                }
             }
         }
 
         return Optional.empty();
     }
 
-    /** Resolve {@code <javaHome>/bin/native-image} for the current OS (no fallback). */
+    private static Optional<Path> resolveInHome(Path home, boolean win, String exe) {
+        if (win) {
+            Path svmExe = home.resolve("lib").resolve("svm").resolve("bin").resolve("native-image.exe");
+            if (Files.isRegularFile(svmExe)) return Optional.of(svmExe);
+        }
+        Path p = home.resolve("bin").resolve(exe);
+        return Files.isRegularFile(p) ? Optional.of(p) : Optional.empty();
+    }
+
+    /**
+     * The {@code native-image} launcher inside {@code javaHome} alone — no {@code $GRAALVM_HOME} or
+     * {@code $PATH} fallback (see {@link #resolve}). On Windows an existing {@code
+     * lib/svm/bin/native-image.exe} wins over the {@code bin} entry, which is a {@code .cmd} shim
+     * bound by {@code cmd.exe}'s own command-line limit.
+     */
     public static Path nativeImageBinary(Path javaHome) {
         boolean win = HostPlatform.isWindows();
+        if (win) {
+            Path svmExe = javaHome.resolve("lib").resolve("svm").resolve("bin").resolve("native-image.exe");
+            if (Files.isRegularFile(svmExe)) return svmExe;
+        }
         return javaHome.resolve("bin").resolve(win ? "native-image.cmd" : "native-image");
     }
 
@@ -277,6 +396,45 @@ public final class NativeImageDriver {
             sb.append(classpath.get(i).toAbsolutePath());
         }
         return sb.toString();
+    }
+
+    /**
+     * Empty jar whose manifest {@code Class-Path} lists {@code classpath} relative to the jar's own
+     * directory, forward-slashed. Graal's driver resolves each entry as a plain filesystem path — not
+     * a {@code file:} URL. Keeps {@code -cp} to one short token so Windows CreateProcess stays under
+     * the length cap.
+     *
+     * <p>{@code null} when any entry contains a space: {@code Class-Path} is space-separated and no
+     * escaping survives a consumer that does not URL-decode. The caller then passes the full {@code
+     * -cp} — a command line that may be too long fails loudly, an entry that silently does not
+     * resolve does not.
+     */
+    static Path writePathingJar(Path dir, List<Path> classpath) throws IOException {
+        Path jarDir = dir.toAbsolutePath().normalize();
+        StringBuilder cp = new StringBuilder();
+        for (Path p : classpath) {
+            Path abs = p.toAbsolutePath().normalize();
+            String entry;
+            try {
+                entry = jarDir.relativize(abs).toString().replace('\\', '/');
+            } catch (IllegalArgumentException differentRoot) {
+                entry = abs.toString().replace('\\', '/');
+            }
+            if (entry.indexOf(' ') >= 0) return null;
+            if (!cp.isEmpty()) cp.append(' ');
+            cp.append(entry);
+        }
+        Files.createDirectories(dir);
+        Path jar = Files.createTempFile(dir, "ni-cp-", ".jar");
+        Manifest mf = new Manifest();
+        Attributes attrs = mf.getMainAttributes();
+        attrs.put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        attrs.putValue("Class-Path", cp.toString());
+        try (OutputStream out = Files.newOutputStream(jar);
+                JarOutputStream jos = new JarOutputStream(out, mf)) {
+            // manifest-only
+        }
+        return jar;
     }
 
     /** Parsed {@code [N/M] label…} header, or {@code null} when the line is not a step header. */

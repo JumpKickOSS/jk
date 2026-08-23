@@ -57,7 +57,8 @@ class DashboardCodeLinkTest {
         // Without a real project id under /tmp this may still be null — open a scope and
         // force project resolution only when key works; assert path+line encoding via fileUrl.
         try (var scope = DashboardCodeLink.open(Path.of("/ws"), Path.of("/ws/lib"))) {
-            assertThat(scope.checkoutDir().toString()).endsWith("/ws");
+            // Path.of("/ws") is drive-qualified on Windows (C:\ws).
+            assertThat(scope.checkoutDir().getFileName().toString()).isEqualTo("ws");
             assertThat(DashboardCodeLink.codePath(scope.checkoutDir(), scope.moduleDir(), "src/Foo.java"))
                     .isEqualTo("lib/src/Foo.java");
         }

@@ -92,9 +92,11 @@ public final class LockfileModules {
                 p.java() > 0 ? p.java() : null,
                 selectorRaw(p.kotlin()),
                 selectorRaw(p.groovy()),
+                selectorRaw(p.scala()),
                 p.description(),
                 sources,
-                p.m2install() ? Boolean.TRUE : null,
+                p.m2integration() ? null : Boolean.FALSE,
+                p.m2install() ? null : Boolean.FALSE,
                 null);
     }
 

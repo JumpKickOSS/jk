@@ -231,7 +231,11 @@ public final class ExecPlans {
                     layoutOf(build, dir, BuildLayout::testResultsDir),
                     testTags.includeTags(),
                     testTags.excludeTags(),
-                    hasLock && cc.jumpkick.lock.LockFreshness.isStale(dir, lockFile));
+                    hasLock && cc.jumpkick.lock.LockFreshness.isStale(dir, lockFile),
+                    build.project().isScala(),
+                    build.project().scala() == null
+                            ? ""
+                            : build.project().scala().raw());
         } catch (RuntimeException | IOException e) {
             return ProjectInfo.error(cc.jumpkick.util.Errors.text(e));
         }
@@ -288,8 +292,10 @@ public final class ExecPlans {
                     javaRelease,
                     p.kotlin(),
                     p.groovy(),
+                    p.scala(),
                     p.sourcesMode(),
                     p.description(),
+                    p.m2integration(),
                     p.m2install(),
                     p.layout(),
                     Set.of());
@@ -816,7 +822,7 @@ public final class ExecPlans {
 
     /**
      * {@code jk install}'s application half. Preference by what exists after the build: native
-     * binary → {@code ~/.local/bin}; else minified/fat → {@code $JK_HOME/lib/&lt;bin&gt;/} + {@code
+     * binary → {@code ~/.local/bin}; else minified/fat → {@code <data>/lib/&lt;bin&gt;/} + {@code
      * java -jar}; else thin jar stays in the local repo and the script uses {@code java -cp}.
      */
     private static ExecPlan installPlan(
@@ -872,8 +878,10 @@ public final class ExecPlans {
         }
 
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
-        Path repoJar =
-                JkStores.storeRootFor(cache).resolve("repos").resolve("local").resolve(MavenLayout.artifactPath(coord));
+        Path repoJar = JkStores.storeRootFor(cache)
+                .resolve("repos")
+                .resolve(cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL)
+                .resolve(MavenLayout.artifactPath(coord));
         if (!Files.isRegularFile(repoJar)) {
             repoJar = layout.mainJar();
         }

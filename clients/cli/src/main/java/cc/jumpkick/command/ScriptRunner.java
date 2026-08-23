@@ -155,6 +155,7 @@ final class ScriptRunner {
             command.addAll(args);
         }
         cc.jumpkick.cli.tui.Interactivity.restoreForChildProcess();
+        cc.jumpkick.cli.CliOutput.skipTrailingBlank();
         return new ProcessBuilder(command).inheritIO().start().waitFor();
     }
 
@@ -189,6 +190,7 @@ final class ScriptRunner {
         }
         command.addAll(args);
         cc.jumpkick.cli.tui.Interactivity.restoreForChildProcess();
+        cc.jumpkick.cli.CliOutput.skipTrailingBlank();
         return new ProcessBuilder(command).inheritIO().start().waitFor();
     }
 
@@ -247,6 +249,7 @@ final class ScriptRunner {
         command.add(mainClass);
         command.addAll(args);
         cc.jumpkick.cli.tui.Interactivity.restoreForChildProcess();
+        cc.jumpkick.cli.CliOutput.skipTrailingBlank();
         return new ProcessBuilder(command).inheritIO().start().waitFor();
     }
 

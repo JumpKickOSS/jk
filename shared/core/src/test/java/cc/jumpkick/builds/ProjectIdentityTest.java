@@ -5,26 +5,44 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class ProjectIdentityTest {
 
     @Test
-    void path_tier_is_stable_for_same_checkout(@TempDir Path dir) throws Exception {
-        Files.writeString(dir.resolve("jk.toml"), """
-                group = "com.example"
-                name = "demo"
-                version = "0.1.0"
-                """);
-        ProjectIdentity a = ProjectIdentity.resolve(dir);
-        ProjectIdentity b = ProjectIdentity.resolve(dir);
-        assertThat(a.id()).isEqualTo(b.id());
-        assertThat(a.source()).isEqualTo(ProjectIdentity.Source.PATH);
-        assertThat(a.coord()).isEqualTo("com.example:demo");
-        assertThat(ProjectIdentity.isValidId(a.id())).isTrue();
+    void path_tier_is_stable_for_same_checkout() throws Exception {
+        // Sandbox OUTSIDE the repo: the build's java.io.tmpdir is build/tmp, inside the checkout,
+        // so a plain @TempDir has the repo's .git as an ancestor and resolve() would pick the GIT
+        // tier instead of PATH (JK-2314).
+        Path dir = Files.createTempDirectory(Path.of(System.getProperty("user.home")), ".jk-pid-test-");
+        try {
+            Files.writeString(dir.resolve("jk.toml"), """
+                    group = "com.example"
+                    name = "demo"
+                    version = "0.1.0"
+                    """);
+            ProjectIdentity a = ProjectIdentity.resolve(dir);
+            ProjectIdentity b = ProjectIdentity.resolve(dir);
+            assertThat(a.id()).isEqualTo(b.id());
+            assertThat(a.source()).isEqualTo(ProjectIdentity.Source.PATH);
+            assertThat(a.coord()).isEqualTo("com.example:demo");
+            assertThat(ProjectIdentity.isValidId(a.id())).isTrue();
+        } finally {
+            try (var walk = Files.walk(dir)) {
+                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+                    try {
+                        Files.deleteIfExists(p);
+                    } catch (IOException ignored) {
+                        // best-effort cleanup
+                    }
+                });
+            }
+        }
     }
 
     @Test

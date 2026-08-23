@@ -28,6 +28,26 @@ class JkBuildParserTest {
             """;
 
     @Test
+    void m2_workspace_true_cannot_combine_with_explicit_keys() {
+        // JK-2323: silently returning (true,true) would discard the explicit integration = false.
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                        [m2]
+                        workspace = true
+                        integration = false
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("workspace = true");
+    }
+
+    @Test
+    void m2_must_be_a_table() {
+        // JK-2323: a scalar `m2` must be a clean parse error, not a raw tomlj type exception.
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "m2 = \"yes\"\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("must be a table");
+    }
+
+    @Test
     void dead_test_tag_keys_fail_with_a_migration_message() {
         // silently ignoring the renamed keys would run the tests the config excluded.
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
@@ -87,6 +107,7 @@ class JkBuildParserTest {
         assertThat(parsed.project().java()).isEqualTo(25);
         assertThat(parsed.project().isKotlin()).isFalse();
         assertThat(parsed.project().isGroovy()).isFalse();
+        assertThat(parsed.project().isScala()).isFalse();
         assertThat(parsed.mainClass()).isNull();
         assertThat(parsed.isApplication()).isFalse();
         assertThat(parsed.assembly()).isFalse();
@@ -124,6 +145,37 @@ class JkBuildParserTest {
         JkBuild parsed = JkBuildParser.parse(PROJECT.replace("java     = 25", "groovy   = \"\""));
         assertThat(parsed.project().isGroovy()).isFalse();
         assertThat(parsed.project().groovy()).isNull();
+        assertThat(parsed.project().languageName()).isEqualTo("java");
+    }
+
+    @Test
+    void parses_scala_version_pin() {
+        JkBuild parsed = JkBuildParser.parse("""
+                group    = "com.example"
+                name     = "widget"
+                version  = "1.0.0"
+                jdk      = 25
+                scala    = "=3.8.4"
+                """);
+        assertThat(parsed.project().isScala()).isTrue();
+        assertThat(parsed.project().languageName()).isEqualTo("scala");
+        assertThat(parsed.project().scala()).isInstanceOf(VersionSelector.Exact.class);
+        assertThat(((VersionSelector.Exact) parsed.project().scala()).version()).isEqualTo("3.8.4");
+    }
+
+    @Test
+    void bare_scala_version_floats_like_a_dependency() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT.replace("java     = 25", "scala    = \"3\""));
+        assertThat(parsed.project().isScala()).isTrue();
+        assertThat(parsed.project().scala()).isInstanceOf(VersionSelector.Caret.class);
+        assertThat(parsed.project().languageName()).isEqualTo("scala");
+    }
+
+    @Test
+    void blank_scala_version_means_not_a_scala_project() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT.replace("java     = 25", "scala    = \"\""));
+        assertThat(parsed.project().isScala()).isFalse();
+        assertThat(parsed.project().scala()).isNull();
         assertThat(parsed.project().languageName()).isEqualTo("java");
     }
 
@@ -1163,6 +1215,23 @@ class JkBuildParserTest {
     }
 
     @Test
+    void repositories_jk_local_is_reserved() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                [repositories]
+                jk-local = "https://example.invalid/maven/"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.jk-local is reserved")
+                .hasMessageContaining("repos/jk-local");
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                [repositories.jk-local]
+                url = "file:///tmp/repo"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.jk-local is reserved");
+    }
+
+    @Test
     void parses_inline_token_and_basic_credentials() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 [repositories.ghp]
@@ -1706,7 +1775,7 @@ class JkBuildParserTest {
         assertThat(parsed.features().byName().get("postgres").deps()).containsExactly("postgres-jdbc", "hikari");
     }
 
-    // --- application / native / m2install -----------------------------------
+    // --- application / native / m2integration -----------------------------------
 
     @Test
     void application_absent_means_not_an_application() {
@@ -1933,14 +2002,27 @@ class JkBuildParserTest {
     }
 
     @Test
-    void m2install_defaults_false_explicit_true_opts_in() {
-        assertThat(JkBuildParser.parse(PROJECT).project().m2install()).isFalse();
-        assertThat(JkBuildParser.parse(PROJECT + "m2install = true\n").project().m2install())
-                .isTrue();
-        assertThat(JkBuildParser.parse(PROJECT + "m2install = false\n")
+    void m2_table_defaults_true_explicit_false_opts_out() {
+        assertThat(JkBuildParser.parse(PROJECT).project().m2integration()).isTrue();
+        assertThat(JkBuildParser.parse(PROJECT).project().m2install()).isTrue();
+        assertThat(JkBuildParser.parse(PROJECT + "\n[m2]\nintegration = true\n")
                         .project()
-                        .m2install())
+                        .m2integration())
+                .isTrue();
+        assertThat(JkBuildParser.parse(PROJECT + "\n[m2]\nintegration = false\n")
+                        .project()
+                        .m2integration())
                 .isFalse();
+        JkBuild both = JkBuildParser.parse(PROJECT + "\n[m2]\nintegration = true\ninstall = false\n");
+        assertThat(both.project().m2integration()).isTrue();
+        assertThat(both.project().m2install()).isFalse();
+    }
+
+    @Test
+    void flat_m2integration_key_is_rejected() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "m2integration = false\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[m2]");
     }
 
     // ── splitEmbeddedUrl unit tests ──────────────────────────────────────────

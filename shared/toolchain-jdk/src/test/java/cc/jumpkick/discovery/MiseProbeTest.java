@@ -3,6 +3,7 @@ package cc.jumpkick.discovery;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.jdk.DirLinks;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkVendor;
 import java.nio.file.Files;
@@ -65,7 +66,7 @@ class MiseProbeTest {
 
         // mise sometimes maintains a `latest` symlink to the active version.
         // We must skip it so a single install doesn't appear twice in discover output.
-        Files.createSymbolicLink(javaDir.resolve("latest"), real);
+        DirLinks.replace(javaDir.resolve("latest"), real);
 
         List<JdkHit> hits = new MiseProbe(mise).discoverAllJdks();
         assertThat(hits).hasSize(1);

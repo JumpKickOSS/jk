@@ -76,12 +76,12 @@ public final class GraalResolver {
 
         // 2. The `jk jdk graal` default-graal pointer, if one is set and usable.
         try {
-            cc.jumpkick.jdk.GlobalDefaultJdk gd = cc.jumpkick.jdk.GlobalDefaultJdk.current();
+            cc.jumpkick.jdk.JdkInventory gd = cc.jumpkick.jdk.JdkInventory.current();
             Optional<Path> gh = gd.graalHome();
             if (gh.isPresent() && NativeImageDriver.resolve(gh.get()).isPresent()) {
                 return gh.get();
             }
-            Optional<String> gid = gd.graalIdentifier();
+            Optional<String> gid = gd.graalId();
             if (gid.isPresent()) {
                 Optional<InstalledJdk> byId = registry.find(gid.get());
                 if (byId.isPresent()
@@ -125,8 +125,8 @@ public final class GraalResolver {
     private Path offerOracleGraalVm(Path searchedJavaHome, JdkRegistry registry) {
         if (!assumeYes && !Confirm.isInteractiveTerminal()) {
             // Can't prompt — fail with the same actionable hint as the driver.
-            System.err.println(NativeImageDriver.notFoundError(searchedJavaHome).getMessage());
-            System.err.println("  Or pin a GraalVM with `graal = \"native\"` under [native], "
+            CliOutput.err(NativeImageDriver.notFoundError(searchedJavaHome).getMessage());
+            CliOutput.err("  Or pin a GraalVM with `graal = \"native\"` under [native], "
                     + "or pass --yes to install Oracle GraalVM automatically.");
             return null;
         }
@@ -137,7 +137,7 @@ public final class GraalResolver {
                             true)
                     .ask();
             if (!ok) {
-                System.err.println("Aborted — no GraalVM to build with. Pin one with "
+                CliOutput.err("Aborted — no GraalVM to build with. Pin one with "
                         + "`graal = \"native\"` or install: jk jdk install native");
                 return null;
             }
@@ -150,7 +150,7 @@ public final class GraalResolver {
         String os = HostPlatform.currentOs();
         String arch = HostPlatform.currentArch();
         if (!HostPlatform.supported()) {
-            System.err.println("jk native: this host ("
+            CliOutput.err("jk native: this host ("
                     + os
                     + "/"
                     + arch
@@ -166,26 +166,26 @@ public final class GraalResolver {
             }
             Optional<JdkCatalog.Entry> entry = JdkSelector.selectPreferred(catalog, effective, os, arch);
             if (entry.isEmpty()) {
-                System.err.println("jk native: no GraalVM matches " + spec + " on " + os + "/" + arch + ".");
+                CliOutput.err("jk native: no GraalVM matches " + spec + " on " + os + "/" + arch + ".");
                 return null;
             }
             JdkCatalog.Entry e = entry.get();
-            System.out.println(Theme.colorize("⬇", Theme.active().cyan())
+            CliOutput.out(Theme.colorize("⬇", Theme.active().cyan())
                     + " Installing GraalVM "
                     + Theme.colorize(e.installFolderName(), Theme.active().focused())
                     + " ("
                     + announce
                     + ")…");
             InstalledJdk installed = new JdkInstaller(new Http(), registry).install(e);
-            System.out.println(
+            CliOutput.out(
                     Theme.colorize(Glyphs.CHECK, Theme.active().success()) + " GraalVM ready: " + installed.home());
             return installed.home();
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-            System.err.println("jk native: GraalVM install interrupted.");
+            CliOutput.err("jk native: GraalVM install interrupted.");
             return null;
         } catch (Exception ex) {
-            System.err.println("jk native: failed to install GraalVM (" + spec + "): " + ex.getMessage());
+            CliOutput.err("jk native: failed to install GraalVM (" + spec + "): " + ex.getMessage());
             return null;
         }
     }

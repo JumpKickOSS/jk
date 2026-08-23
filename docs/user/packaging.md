@@ -92,8 +92,8 @@ Training (`jk train`) is **not** part of `jk build`. See [Dynamic surface](dynam
 
 ## `jk install` (project)
 
-Writes the thin jar and POM to the local repo (`repos/local`), then prefers a native
-binary in `~/.local/bin` if one exists, else a minified/fat jar under `$JK_HOME/lib/<name>/`
+Writes the thin jar and POM to the local repo (`repos/jk-local`), then prefers a native
+binary in `~/.local/bin` if one exists, else a minified/fat jar under `<data>/lib/<name>/`
 plus a `java -jar` script, else a thin `java -cp` script over the repo jars.
 
 Plugin workers (`jk-plugin.toml`) are those same repo jars — the engine rebuilds their

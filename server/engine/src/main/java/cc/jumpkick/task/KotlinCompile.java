@@ -108,7 +108,7 @@ public final class KotlinCompile {
             return new Result(true, "compiled-no-outputs", key, kr.diagnostics());
         }
         // Store on rebuild/force too: the work re-ran and must refresh the action pointer so
-        // the next non-rebuild explain sees CACHE_HIT (same as JavaIncrementalCompile). Only
+        // the next non-rebuild explain sees CACHE_HIT (same as JavaCompile). Only
         // ephemeral (verify-scratch) runs skip the write — their keys never recur.
         if (persist) actionCache.storeWithOutputs(taskId, key, Map.of(), outputs);
         return new Result(true, "compiled", key, kr.diagnostics());

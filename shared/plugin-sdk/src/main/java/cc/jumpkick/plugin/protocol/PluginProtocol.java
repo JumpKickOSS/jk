@@ -21,6 +21,9 @@ public final class PluginProtocol {
     public static final String OP_PACKAGE = "package";
     public static final String OP_COMMAND = "command";
     public static final String OP_COMPILE = "compile";
+    /** Read-only Zinc invalidation forecast (no class files written). */
+    public static final String OP_PLAN = "plan";
+
     public static final String OP_IMAGE = "image";
     public static final String OP_PUBLISH = "publish";
 
@@ -56,6 +59,9 @@ public final class PluginProtocol {
     public static final String FILE = "file"; // format per-file outcome
     public static final String WROTE = "wrote"; // compat import wrote a file
     public static final String RESULT = "result"; // terminal typed payload
+    /** Pull-protocol slot: the worker can accept one COMPILE/PLAN (or DONE). */
+    public static final String READY = "ready";
+
     public static final String ERROR = "error"; // {code,message}
 
     // ---- common field names ---------------------------------------------------------------
@@ -76,6 +82,9 @@ public final class PluginProtocol {
     public static final String ROLE_PROCESSOR = "processor";
     public static final String ROLE_FRIEND = "friend";
     public static final String ROLE_RUNTIME = "runtime";
+    /** Scala 3 compiler + bridge jars for mixed Java+Scala Zinc (not the project compile CP). */
+    public static final String ROLE_COMPILER = "compiler";
+
     public static final String FILE_NAME = "file";
     public static final String SNAPSHOT = "snapshot";
     public static final String CONTAINER = "container";

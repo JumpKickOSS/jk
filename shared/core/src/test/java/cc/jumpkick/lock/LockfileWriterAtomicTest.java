@@ -3,12 +3,14 @@ package cc.jumpkick.lock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -33,6 +35,14 @@ class LockfileWriterAtomicTest {
                     if (seen.artifacts().size() != artifacts) {
                         readerFailure.set(new AssertionError(
                                 "partial lock observed: " + seen.artifacts().size() + " of " + artifacts));
+                        return;
+                    }
+                } catch (AccessDeniedException denied) {
+                    // Windows briefly denies the open while AtomicWrites replaces the target, which
+                    // is not a torn read. On POSIX nothing denies a readable file, so a denial there
+                    // is a real defect and must still fail this test.
+                    if (!OS.WINDOWS.isCurrentOs()) {
+                        readerFailure.set(denied);
                         return;
                     }
                 } catch (Throwable t) {

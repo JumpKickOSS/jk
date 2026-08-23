@@ -13,6 +13,14 @@ import org.junit.jupiter.api.io.TempDir;
 /** Replay re-redaction of journal records written before write-time redaction. */
 class HttpHistoryApiTest {
 
+    /**
+     * Lexical {@code dir} scan does not unescape JSON, so fixtures use forward slashes — valid on
+     * Windows for {@link Path#of} and free of {@code \U} escapes inside JSON string literals.
+     */
+    private static String jsonDir(Path dir) {
+        return dir.toString().replace('\\', '/');
+    }
+
     @Test
     void records_persisted_before_write_time_redaction_replay_masked(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
@@ -29,7 +37,7 @@ class HttpHistoryApiTest {
                   "projectId": "abc",
                   "diagnostics": [{"severity": "error", "message": "leak s3cret-from-file here"}]
                 }
-                """.formatted(dir);
+                """.formatted(jsonDir(dir));
         String out = HttpHistoryApi.redactRecordJson(raw, new HashMap<>());
         assertThat(out).doesNotContain("s3cret-from-file").contains("***");
     }
@@ -46,7 +54,7 @@ class HttpHistoryApiTest {
                 """);
         Files.writeString(dir.resolve(".env"), "TOKEN=mcp-s3cret\n");
         String raw = """
-                {"id":"x","kind":"build","dir":"%s","diagnostics":[{"severity":"error","message":"leak mcp-s3cret"}]}""".formatted(dir);
+                {"id":"x","kind":"build","dir":"%s","diagnostics":[{"severity":"error","message":"leak mcp-s3cret"}]}""".formatted(jsonDir(dir));
         var out = HttpHistoryApi.redactRecords(List.of(raw, raw));
         assertThat(out).hasSize(2);
         assertThat(out.get(0)).doesNotContain("mcp-s3cret").contains("***");
@@ -74,7 +82,7 @@ class HttpHistoryApiTest {
                   "projectId": "abc",
                   "diagnostics": [{"severity": "error", "message": "leak %s here"}]
                 }
-                """.formatted(dir, escaped);
+                """.formatted(jsonDir(dir), escaped);
         String out = HttpHistoryApi.redactRecordJson(raw, new HashMap<>());
         assertThat(out).doesNotContain(escaped).contains("***");
     }
@@ -86,7 +94,8 @@ class HttpHistoryApiTest {
                 name = "demo"
                 version = "1"
                 """);
-        String raw = "{\"id\": \"x\", \"kind\": \"build\", \"dir\": \"" + dir + "\", \"projectId\": \"abc\"}";
+        // Forward slashes keep the fixture parseable and match the lexical scan's returned value.
+        String raw = "{\"id\": \"x\", \"kind\": \"build\", \"dir\": \"" + jsonDir(dir) + "\", \"projectId\": \"abc\"}";
         assertThat(HttpHistoryApi.redactRecordJson(raw, new HashMap<>())).isEqualTo(raw);
     }
 }

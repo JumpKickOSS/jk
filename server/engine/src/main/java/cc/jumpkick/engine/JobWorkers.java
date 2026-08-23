@@ -66,9 +66,9 @@ public final class JobWorkers {
      * Requests whose shutdown already ran. A cpu-pool thread still draining after cancel can call
      * {@link #register} concurrently with {@link #shutdownForRequest}; without the tombstone it
      * either re-created a {@code BY_REQUEST} entry nothing ever removes (leak + untracked live
-     * process) or added to the already-removed set after the kill loop (escaped worker) —
-     * JK-2096. Cleared on {@link #open} in case a request id is ever reused; clear-on-overflow
-     * bounds the set.
+     * process) or added to the already-removed set after the kill loop (escaped worker).
+     * Cleared on {@link #open} in case a request id is ever reused; clear-on-overflow bounds the
+     * set.
      */
     private static final Set<Long> TOMBSTONES = ConcurrentHashMap.newKeySet();
 
@@ -128,9 +128,17 @@ public final class JobWorkers {
         CURRENT.remove();
     }
 
+    /**
+     * Request id this thread's forks belong to, or {@code null} when no job scope is open
+     * (one-shot tests, probes).
+     */
+    public static Long currentRequestId() {
+        return CURRENT.get();
+    }
+
     /** Test seam: the request scope currently open on this thread, or {@code null}. */
     static Long currentScope() {
-        return CURRENT.get();
+        return currentRequestId();
     }
 
     /** Test seam: force the shared CPU pool's threads to exist under the caller's scope. */
@@ -230,7 +238,7 @@ public final class JobWorkers {
      * <p>On Windows, step 1 may already be terminal (no SIGTERM); step 2 still bounds our wait.
      */
     public static int shutdownForRequest(long requestId, long graceMs) {
-        // Tombstone FIRST so a register racing us kills its process on arrival (JK-2096).
+        // Tombstone FIRST so a register racing us kills its process on arrival.
         if (TOMBSTONES.size() >= MAX_TOMBSTONES) TOMBSTONES.clear();
         TOMBSTONES.add(requestId);
         Set<Process> set = BY_REQUEST.remove(requestId);
@@ -289,6 +297,16 @@ public final class JobWorkers {
         } catch (RuntimeException e) {
             return false;
         }
+    }
+
+    /**
+     * Force-kill {@code process} and every live descendant. Orphaned children can keep the parent's
+     * stdout pipe open after the root PID dies, so a lone {@link Process#destroyForcibly()} leaves
+     * readers blocked until those children exit.
+     */
+    public static void destroyTree(Process process) {
+        if (process == null) return;
+        signalTree(process, true);
     }
 
     /** SIGTERM (or SIGKILL when {@code force}) the process and every live descendant. */

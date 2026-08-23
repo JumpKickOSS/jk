@@ -25,6 +25,7 @@ class InstallPlansAlreadyInstalledTest {
         JkBuild project = JkBuild.builder(JkBuild.Project.builder("cc.jumpkick", "jk-foo", "1.0")
                         .jdkMajor(25)
                         .java(25)
+                        .m2install(false)
                         .build())
                 .build();
         BuildLayout layout = BuildLayout.of(mod, project);
@@ -60,6 +61,7 @@ class InstallPlansAlreadyInstalledTest {
         JkBuild project = JkBuild.builder(JkBuild.Project.builder("cc.jumpkick", "jk-foo", "1.0")
                         .jdkMajor(25)
                         .java(25)
+                        .m2install(false)
                         .build())
                 .build();
         BuildLayout layout = BuildLayout.of(mod, project);

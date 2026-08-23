@@ -21,9 +21,10 @@ import java.util.function.LongSupplier;
 
 /**
  * {@code jk storage} — manage the <strong>artifact store</strong> under {@code $JK_STORE_DIR}:
- * store CAS, {@code repos/} mirrors, and worker jars. Peer of {@code jk cache} (rebuildable action
- * outputs). Credentials stay under {@code jk repo login}/{@code logout}. Bare {@code jk storage}
- * prints this group's help (like {@code jk cache}).
+ * Maven-layout {@code repos/} and worker jars. Peer of {@code jk cache} (rebuildable action
+ * outputs). The Maven local repository is reported but never wiped. Credentials stay under
+ * {@code jk repo login}/{@code logout}. Bare {@code jk storage} prints this group's help (like
+ * {@code jk cache}).
  */
 public final class StorageCommand extends GroupCommand {
 
@@ -34,7 +35,7 @@ public final class StorageCommand extends GroupCommand {
 
     @Override
     public String description() {
-        return "Manage the artifact store (deps CAS, repos)";
+        return "Manage the artifact store (repos, workers)";
     }
 
     @Override
@@ -49,7 +50,7 @@ public final class StorageCommand extends GroupCommand {
     /**
      * Wipe every child of the artifact store root — or, with {@code dryRun}, count what a wipe
      * would remove without deleting. Shared by {@code jk storage nuke} and {@code jk self nuke
-     * --store}. Returns {@code [files, bytes]} (best-effort sizes).
+     * --data}. Returns {@code [files, bytes]} (best-effort sizes).
      */
     public static long[] wipeStore(Path storeRoot, boolean dryRun) throws IOException {
         var ack = cc.jumpkick.cli.engine.EngineClient.cacheInventory(
@@ -65,8 +66,8 @@ public final class StorageCommand extends GroupCommand {
     }
 
     /**
-     * Full store nuke with confirm / dry-run. Used by {@code jk storage nuke} and single-target
-     * {@code jk self nuke --store}.
+     * Full store nuke with confirm / dry-run. Used by {@code jk storage nuke} and by the store
+     * leg of {@code jk self nuke --data}.
      *
      * @param skipConfirm when true (multi-target self nuke already confirmed), do not prompt
      */
@@ -119,7 +120,7 @@ public final class StorageCommand extends GroupCommand {
         CliOutput.out("  " + storeRoot);
         CliOutput.stdout()
                 .printf(
-                        "  %s files, %s — CAS blobs, repo mirrors, and related store trees.%n",
+                        "  %s files, %s — Maven-layout repos, workers, and related store trees.%n",
                         CacheCommand.fmtCount(stats.files()), CacheCommand.fmtBytes(stats.bytes()));
         CliOutput.out("  Cache tier (action outputs) is kept. Credentials are kept (jk repo logout).");
         return cc.jumpkick.cli.tui.Confirm.of(bang + " Nuke the artifact store?", false)
@@ -138,6 +139,12 @@ public final class StorageCommand extends GroupCommand {
         @Override
         public String description() {
             return "Print the artifact store directory path";
+        }
+
+        /** A bare path for shell substitution — {@code ls "$(jk storage dir)"}. */
+        @Override
+        public boolean scriptMode(Invocation in) {
+            return true;
         }
 
         @Override
@@ -221,7 +228,7 @@ public final class StorageCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Sweep unreferenced CAS blobs and expired run logs";
+            return "Sweep unreferenced store objects and expired run logs";
         }
 
         @Override

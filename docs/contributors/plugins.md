@@ -175,7 +175,7 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
 
 | Path | Status |
 |---|---|
-| **First-party** plugins under `plugins/` | Ship with jk; `jk install` publishes them to `repos/local` |
+| **First-party** plugins under `plugins/` | Ship with jk; `jk install` publishes them to `repos/jk-local` |
 | **Private / vendored** jars (`[plugins]` + `sha256`) | Supported now — see below |
 | **Public third-party** SDK on Maven | **Not available** until ~1.0 SPI freeze (JK-1074) |
 | **Plugin marketplace / registry** | Intentionally deferred (product anti-goal pre-freeze) |

@@ -86,6 +86,36 @@ class MavenRepoTest {
     }
 
     @Test
+    void stale_mirror_copy_against_a_changed_pin_is_evicted_and_refetched(@TempDir Path tempDir) throws Exception {
+        // JK-2305: an internal repo republished the same GAV and the lock was re-pinned. The warm
+        // store copy (old bytes) must not dead-end sync — pass the pin so it is evicted and re-fetched.
+        Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
+        String relPath = MavenLayout.artifactPath(coord);
+
+        // Seed a stale store copy with old bytes.
+        byte[] oldBytes = "old-widget-bytes".getBytes(StandardCharsets.UTF_8);
+        Path stale = tempDir.resolve("stale.jar");
+        Files.write(stale, oldBytes);
+        RepoArtifactStore.forRepoName(tempDir, "test").materialize(relPath, stale, Hashing.sha256Hex(oldBytes));
+
+        // The repo now serves new bytes.
+        byte[] newBytes = "new-widget-bytes".getBytes(StandardCharsets.UTF_8);
+        serve("/" + relPath, 200, newBytes);
+        String newSha = Hashing.sha256Hex(newBytes);
+
+        // m2 off so only the store mirror is in play.
+        MavenRepo repo = new MavenRepo(
+                "test", base, new Http(), new Cas(tempDir), cc.jumpkick.credential.RepoCredential.ANONYMOUS, false);
+
+        // Without the pin: the stale mirror copy is served (the old dead-end behavior).
+        assertThat(repo.fetchArtifact(coord).sha256()).isEqualTo(Hashing.sha256Hex(oldBytes));
+
+        // With the pin: stale copy evicted, new bytes fetched.
+        MavenRepo.Fetched f = repo.fetchArtifact(coord, newSha, () -> false);
+        assertThat(f.sha256()).isEqualTo(newSha);
+    }
+
+    @Test
     void translates_404_to_typed_exception(@TempDir Path tempDir) {
         // No handler registered → 404 from the SimpleHttpServer fallback.
         MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir));
@@ -124,21 +154,19 @@ class MavenRepoTest {
     }
 
     @Test
-    void default_fetch_never_touches_m2(@TempDir Path tempDir, @TempDir Path m2) throws Exception {
+    void m2integration_false_keeps_jars_in_the_named_store(@TempDir Path tempDir, @TempDir Path m2) throws Exception {
         String previous = System.setProperty("jk.m2.local", m2.toString());
         try {
             byte[] jar = "fake-jar-bytes".getBytes(StandardCharsets.UTF_8);
             serve("/com/example/widget/1.0/widget-1.0.jar", 200, jar);
-            // mirrorToM2 defaults to false — no project has opted in.
-            MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir));
+            MavenRepo repo = new MavenRepo(
+                    "test", base, new Http(), new Cas(tempDir), cc.jumpkick.credential.RepoCredential.ANONYMOUS, false);
 
             Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
             repo.fetchArtifact(coord);
 
-            // Primary store: repos/<name>/ holds the real, human-readable jar.
             assertThat(RepoArtifactStore.forRepoName(tempDir, "test").locate(MavenLayout.artifactPath(coord)))
                     .isPresent();
-            // ~/.m2 (the temp dir standing in for it) is untouched.
             assertThat(m2.resolve(MavenLayout.artifactPath(coord))).doesNotExist();
         } finally {
             restoreM2Local(previous);
@@ -146,7 +174,7 @@ class MavenRepoTest {
     }
 
     @Test
-    void mirror_to_m2_true_also_populates_m2(@TempDir Path tempDir, @TempDir Path m2) throws Exception {
+    void m2integration_true_write_through_populates_m2(@TempDir Path tempDir, @TempDir Path m2) throws Exception {
         String previous = System.setProperty("jk.m2.local", m2.toString());
         try {
             byte[] jar = "fake-jar-bytes".getBytes(StandardCharsets.UTF_8);
@@ -155,13 +183,10 @@ class MavenRepoTest {
                     "test", base, new Http(), new Cas(tempDir), cc.jumpkick.credential.RepoCredential.ANONYMOUS, true);
 
             Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
-            repo.fetchArtifact(coord);
+            MavenRepo.Fetched fetched = repo.fetchArtifact(coord);
 
-            // Primary store, as always.
-            assertThat(RepoArtifactStore.forRepoName(tempDir, "test").locate(MavenLayout.artifactPath(coord)))
-                    .isPresent();
-            // Opt-in mirror: jar + Maven-compatible sidecars land in ~/.m2 too.
             Path m2Jar = m2.resolve(MavenLayout.artifactPath(coord));
+            assertThat(fetched.cachePath()).isEqualTo(m2Jar);
             assertThat(m2Jar).exists();
             assertThat(Files.readAllBytes(m2Jar)).isEqualTo(jar);
             assertThat(m2Jar.resolveSibling(m2Jar.getFileName() + ".sha1")).exists();

@@ -41,8 +41,8 @@ class JdkRegistryTest {
         Path bundle = tempDir.resolve("temurin-21");
         Path macHome = bundle.resolve("Contents").resolve("Home");
         Files.createDirectories(macHome.resolve("bin"));
-        Files.writeString(macHome.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(macHome.resolve("bin").resolve("javac"), "#!/fake");
+        Files.writeString(JdkFingerprint.java(macHome), "#!/fake");
+        Files.writeString(JdkFingerprint.javac(macHome), "#!/fake");
         Files.writeString(macHome.resolve("release"), "JAVA_VERSION=\"21\"\n");
         JdkOwnership.mark(bundle);
 
@@ -293,8 +293,8 @@ class JdkRegistryTest {
 
     private static void makeJdkInstall(Path home, String version, String implementor) throws IOException {
         Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
+        Files.writeString(JdkFingerprint.java(home), "#!/fake");
+        Files.writeString(JdkFingerprint.javac(home), "#!/fake");
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"" + implementor + "\"\n");
         JdkOwnership.mark(home);
@@ -302,9 +302,10 @@ class JdkRegistryTest {
 
     private static void makeGraalvmInstall(Path home, String version) throws IOException {
         Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
-        Files.writeString(home.resolve("bin").resolve("native-image"), "#!/fake");
+        Files.writeString(JdkFingerprint.java(home), "#!/fake");
+        Files.writeString(JdkFingerprint.javac(home), "#!/fake");
+        String nativeImage = HostPlatform.isWindows() ? "native-image.cmd" : "native-image";
+        Files.writeString(home.resolve("bin").resolve(nativeImage), "#!/fake");
         Files.writeString(
                 home.resolve("release"),
                 "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Oracle Corporation\"\n"

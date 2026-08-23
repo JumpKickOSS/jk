@@ -116,7 +116,6 @@ public final class ClasspathFingerprint {
     /** Content identity of a single entry (CAS blob, jar, classes dir, or missing). */
     public static String entry(Path p) throws IOException {
         String abs = p.toAbsolutePath().normalize().toString();
-        if (isCasPath(abs)) return "cas:" + abs; // path encodes content hash
         if (Files.isDirectory(p)) return "dir:" + hashTree(p);
         if (Files.isRegularFile(p)) {
             // Stat fast-path: an unchanged (size+mtime, settled) file keeps its memoized
@@ -174,10 +173,5 @@ public final class ClasspathFingerprint {
      */
     private static boolean isBuildMetadata(String name) {
         return FreshnessStamp.isStampFile(name);
-    }
-
-    /** A path under {@code .../sha256/AA/BB/<rest>} is a CAS blob (path = content). */
-    private static boolean isCasPath(String path) {
-        return path.contains("/sha256/") || path.contains("\\sha256\\");
     }
 }

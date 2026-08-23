@@ -37,7 +37,7 @@ Network errors are **fail-fast and quiet** (no retries). The next minute/12 h 
 
 | Artifact | Notes |
 |----------|--------|
-| **java-compiler-`<jk-version>`-*.aot** | ToolProvider javac worker (HotSpot 25+) — pre-trained on idle |
+| **java-compiler-`<jk-version>`-*.aot** | Zinc Java incremental worker (HotSpot 25+) — pre-trained on idle |
 | **engine-`<jk-version>`-*.aot** | Resident engine JAR (sidecar train; same GC / native-access as serve) |
 | **host-metrics.toml `[calibration]`** | HardwareProbe multi-probe for cold ETA |
 

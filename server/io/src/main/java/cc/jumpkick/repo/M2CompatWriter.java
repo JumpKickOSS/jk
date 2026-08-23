@@ -26,7 +26,8 @@ public final class M2CompatWriter {
      */
     public static StreamResult streamToM2(InputStream in, Path target) throws IOException {
         Files.createDirectories(target.getParent());
-        Path tmp = target.resolveSibling(target.getFileName() + ".part");
+        // Unique temp so concurrent writers of the same artifact don't share an inode (JK-2292).
+        Path tmp = Files.createTempFile(target.getParent(), "." + target.getFileName() + ".", ".part");
         MessageDigest sha256 = newDigest("SHA-256");
         MessageDigest sha1 = newDigest("SHA-1");
         MessageDigest md5 = newDigest("MD5");
@@ -106,15 +107,14 @@ public final class M2CompatWriter {
 
     /**
      * Copy {@code source} to {@code target} (atomic temp-rename), then compute and return the
-     * SHA-1 and MD5 of the bytes. Used when the artifact is already in the CAS and we need to
-     * mirror it into {@code ~/.m2}. Always a copy, never a hard link — jk doesn't control writes
-     * to {@code ~/.m2}, and a hard link would risk silently corrupting the CAS-backed original if
-     * something ever rewrote this file in place. I/O errors in the copy propagate; errors in
-     * sidecar writing are swallowed.
+     * SHA-1 and MD5 of the bytes. Always a copy, never a hard link — jk does not own writes to
+     * the Maven local repository. I/O errors in the copy propagate; errors in sidecar writing are
+     * swallowed.
      */
     public static MavenHashes copyToM2AndHash(Path source, Path target) throws IOException {
         Files.createDirectories(target.getParent());
-        Path tmp = target.resolveSibling(target.getFileName() + ".part");
+        // Unique temp so concurrent writers of the same artifact don't share an inode (JK-2292).
+        Path tmp = Files.createTempFile(target.getParent(), "." + target.getFileName() + ".", ".part");
         MessageDigest sha1 = newDigest("SHA-1");
         MessageDigest md5 = newDigest("MD5");
         try {

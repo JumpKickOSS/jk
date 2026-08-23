@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.command.ide.IdeChrome;
 import cc.jumpkick.command.ide.IdeGeneration;
 import cc.jumpkick.command.ide.IdeGenerator;
@@ -70,6 +71,12 @@ public final class IdeCommand implements CliCommand {
         return opts;
     }
 
+    /** {@code --print-model} is the IDE plugins' wire channel: raw JSON on stdout, byte-exact. */
+    @Override
+    public boolean scriptMode(Invocation in) {
+        return in.has("print-model");
+    }
+
     @Override
     public int run(Invocation in) throws Exception {
         // Machine path for IDE plugins: structured model without writing .iml/.vscode.
@@ -134,7 +141,7 @@ public final class IdeCommand implements CliCommand {
         try {
             var wire = IdeSupport.wireModel(in);
             // Raw wire JSON only — no TTY chrome (plugins parse stdout).
-            System.out.println(wire.encode());
+            CliOutput.out(wire.encode());
             return 0;
         } catch (IdeSupport.IdeException e) {
             if (e.getMessage() != null && !e.getMessage().isBlank()) {

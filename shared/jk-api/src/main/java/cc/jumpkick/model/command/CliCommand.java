@@ -50,6 +50,27 @@ public interface CliCommand extends Command {
     }
 
     /**
+     * True when <em>this</em> invocation's stdout is consumed by a program rather than read by a
+     * person: an {@code eval}'d shell script, a bare path, a token, wire JSON, a graph source.
+     *
+     * <p>The dispatcher consults this once, before {@link #run}, and it settles two things at the
+     * same time: no blank-line envelope around the command's stdout, and no Unicode&rarr;ASCII
+     * rewrite of it, so the payload reaches the consumer byte-for-byte as the command produced it.
+     * stderr is unaffected &mdash; diagnostics stay human-formatted and spaced even here.
+     *
+     * <p>Must be a pure read of {@code in}: no filesystem, no engine, no config resolution. It runs
+     * before the command does. When a verb or flag decides the mode ({@code jk activate
+     * &lt;shell&gt;} versus the bare installer, {@code jk ide --print-model}), share one resolver
+     * with {@link #run} so the two cannot disagree about which path is taken.
+     *
+     * <p>Every override that can return true is a row in the script-mode allowlist in
+     * {@code docs/contributors/tui.md}.
+     */
+    default boolean scriptMode(Invocation in) {
+        return false;
+    }
+
+    /**
      * Execute with the parsed arguments; return the process exit code (0 = success). Parent commands
      * typically print help and return a usage exit code when invoked without a subcommand.
      */

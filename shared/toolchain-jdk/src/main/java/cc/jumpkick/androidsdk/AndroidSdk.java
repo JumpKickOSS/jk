@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.androidsdk;
 
+import cc.jumpkick.jdk.DirLinks;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -10,7 +11,8 @@ import java.util.function.Function;
 
 /**
  * Android SDK root: reuse {@code ANDROID_HOME}/{@code ANDROID_SDK_ROOT}/Studio defaults, else
- * {@code ~/.jk/android-sdk}. Foreign roots are symlinked under {@code JK_HOME} / platform product layout for a stable path.
+ * {@code <data>/android-sdk}. A foreign root is linked there (POSIX symlink; Windows junction) so the
+ * path handed to the toolchain stays stable.
  */
 public final class AndroidSdk {
 
@@ -28,7 +30,7 @@ public final class AndroidSdk {
         if (override != null && !override.isBlank()) {
             return new AndroidSdk(Files.createDirectories(Path.of(override)));
         }
-        return resolve(System::getenv, JkDirs.home().resolve("android-sdk"));
+        return resolve(System::getenv, JkDirs.data().resolve("android-sdk"));
     }
 
     /** Explicit-env seam for tests. */
@@ -40,9 +42,9 @@ public final class AndroidSdk {
         if (discovered != null) {
             Files.createDirectories(managedRoot.getParent());
             try {
-                Files.createSymbolicLink(managedRoot, discovered);
+                DirLinks.replace(managedRoot, discovered);
             } catch (IOException | UnsupportedOperationException e) {
-                // No symlinks (odd FS) — use the discovered root directly.
+                // No links (odd FS) — use the discovered root directly.
                 return new AndroidSdk(discovered);
             }
             return new AndroidSdk(managedRoot);

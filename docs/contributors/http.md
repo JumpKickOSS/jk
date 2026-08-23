@@ -348,11 +348,11 @@ Two storage surfaces (CLI parity: `jk cache usage` / `jk storage usage`), not on
 | Surface | Bytes | Budget field |
 | --- | --- | --- |
 | **Cache tier** | action index + cache CAS + format stamps → `cacheBytes` / `actionCacheBytes` | `cacheMaxBytes` / `actionMaxBytes` (`[cache] max-cache-size-gb`, default 4 GiB / 8 GiB on CI) |
-| **Artifact store** | store CAS + `repos/` mirrors + run logs → `artifactStorageBytes` | `maxBytes` (`[cache] max-store-size-gb`, default 6 GiB / 12 GiB on CI) |
+| **Artifact store** | jk-owned `repos/` + workers → `artifactStorageBytes`; Maven local is `mavenLocalBytes` (unbudgeted) | `maxBytes` (`[cache] max-store-size-gb`, default 6 GiB / 12 GiB on CI) |
 
 Full REST also exposes `actionsCount`/`actionsBytes` (index), `cacheCasCount`/`cacheCasBytes`
 (cache CAS), and store section fields. **Live SSE (thin):** `{ "thin": true, cacheBytes,
-cacheMaxBytes, actionCacheBytes, actionMaxBytes, artifactStorageBytes, maxBytes,
+cacheMaxBytes, actionCacheBytes, actionMaxBytes, artifactStorageBytes, mavenLocalBytes, maxBytes,
 lastPrunedMillis }` — enough for the footer; change-gated on MiB quanta.
 
 **REST (full):** section counts (`casCount`, `actionsCount`, …) for the Status panels. Prefer the two surfaces for UI; `totalBytes` is the combined sum.

@@ -66,6 +66,16 @@ public final class PluginClient {
         return PluginProcess.converse(command, prefix, onMessage, passthrough);
     }
 
+    /**
+     * As {@link #converse(List, BiConsumer)} but the child does not hold a {@link PluginSlots} worker
+     * slot for its lifetime; the caller meters slots per exchange (see {@link
+     * PluginProcess#converseNoSlot}).
+     */
+    public int converseNoSlot(List<String> command, BiConsumer<String, PluginProcess.Conversation> onMessage)
+            throws IOException, InterruptedException {
+        return PluginProcess.converseNoSlot(command, prefix, onMessage, passthrough);
+    }
+
     private void dispatch(String json) {
         String t = Jsonl.str(json, TYPE);
         Consumer<String> handler = t != null ? handlers.get(t) : null;

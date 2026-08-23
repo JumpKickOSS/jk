@@ -80,4 +80,27 @@ class NewJkBuildRendererTest {
         String toml = NewJkBuildRenderer.render(inputs);
         assertThat(toml).doesNotContain("layout");
     }
+
+    @Test
+    void scala_lang_emits_scala_selector() {
+        NewInputs inputs = new NewInputs(
+                "com.example",
+                "demo",
+                "25",
+                25,
+                25,
+                Optional.empty(),
+                Optional.of("com.example.Main"),
+                false,
+                false,
+                NewInputs.Language.SCALA,
+                "traditional",
+                Optional.empty(),
+                List.of(),
+                true,
+                Path.of("/tmp/demo"));
+        String toml = NewJkBuildRenderer.render(inputs);
+        assertThat(toml).contains("scala    = \"latest\"");
+        assertThat(toml).doesNotContain("java     =");
+    }
 }

@@ -129,6 +129,7 @@ public final class CacheInventoryOps {
         Path repos = storeRoot.resolve("repos");
 
         Set<Object> seen = new HashSet<>();
+        DiskUsage.SameFileKeys sameFile = new DiskUsage.SameFileKeys();
         long jarFiles = 0, jarBytes = 0;
         long execFiles = 0, execBytes = 0;
         long ociFiles = 0, ociBytes = 0;
@@ -143,8 +144,7 @@ public final class CacheInventoryOps {
                         continue;
                     }
                     if (!attrs.isRegularFile()) continue;
-                    Object key = attrs.fileKey();
-                    if (key == null) key = p.toAbsolutePath().normalize();
+                    Object key = identityKey(p, attrs, sameFile);
                     long size = seen.add(key) ? attrs.size() : 0L;
                     switch (sniffArtifactKind(p)) {
                         case EXECUTABLE -> {
@@ -164,17 +164,25 @@ public final class CacheInventoryOps {
             }
         }
 
-        Stat reposExtra = walkExclusiveAdding(repos, seen);
+        Stat reposExtra = walkExclusiveAdding(repos, seen, sameFile);
         jarFiles += reposExtra.files;
         jarBytes += reposExtra.bytes;
-        Stat workers = walkExclusiveAdding(lib, seen);
+        // One sameFile across all three walks, or a repos link to a CAS blob counts twice.
+        Stat workers = walkExclusiveAdding(lib, seen, sameFile);
         long totalFiles = jarFiles + execFiles + ociFiles + workers.files;
         long totalBytes = jarBytes + execBytes + ociBytes + workers.bytes;
+        DiskUsage.Stats mavenLocal;
+        try {
+            mavenLocal = DiskUsage.of(cc.jumpkick.repo.M2Dirs.localRepository());
+        } catch (Exception e) {
+            mavenLocal = new DiskUsage.Stats(0, 0);
+        }
         List<String> stats = List.of(
                 pack("jars", jarFiles, jarBytes),
                 pack("executables", execFiles, execBytes),
                 pack("oci", ociFiles, ociBytes),
-                pack("workers", workers.files, workers.bytes));
+                pack("workers", workers.files, workers.bytes),
+                pack("maven-local", mavenLocal.files(), mavenLocal.bytes()));
         return CacheInventoryAck.usage("store-usage", stats, totalFiles, totalBytes);
     }
 
@@ -226,8 +234,8 @@ public final class CacheInventoryOps {
 
     private static CacheInventoryAck wipeStore(Path storeRoot, boolean dryRun) throws IOException {
         if (storeRoot == null || !Files.isDirectory(storeRoot)) return CacheInventoryAck.wipe(0, 0);
-        // Unique-inode bytes (POSIX ino/dev or Windows fileKey) — CAS + repos hard links must not
-        // inflate "freed" when the same blob is linked under sha256/ and repos/.
+        // Unique-inode bytes (POSIX ino/dev or Windows fileKey) so leftover hard links under
+        // sha256/ and repos/ are not counted twice.
         DiskUsage.Stats stats = DiskUsage.of(storeRoot);
         if (!dryRun) {
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(storeRoot)) {
@@ -240,15 +248,17 @@ public final class CacheInventoryOps {
     }
 
     private static List<String> repoNames(Path reposRoot) {
-        if (!Files.isDirectory(reposRoot)) return List.of("central", "local");
+        if (!Files.isDirectory(reposRoot)) {
+            return List.of("central", cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL);
+        }
         try (var s = Files.list(reposRoot)) {
             List<String> names = s.filter(Files::isDirectory)
                     .map(p -> p.getFileName().toString())
                     .sorted()
                     .toList();
-            return names.isEmpty() ? List.of("central", "local") : names;
+            return names.isEmpty() ? List.of("central", cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL) : names;
         } catch (IOException e) {
-            return List.of("central", "local");
+            return List.of("central", cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL);
         }
     }
 
@@ -373,7 +383,8 @@ public final class CacheInventoryOps {
 
     private record Stat(long files, long bytes) {}
 
-    private static Stat walkExclusiveAdding(Path dir, Set<Object> seenKeys) throws IOException {
+    private static Stat walkExclusiveAdding(Path dir, Set<Object> seenKeys, DiskUsage.SameFileKeys sameFile)
+            throws IOException {
         if (dir == null || !Files.isDirectory(dir)) return new Stat(0, 0);
         long files = 0;
         long bytes = 0;
@@ -387,11 +398,19 @@ public final class CacheInventoryOps {
                 }
                 if (!attrs.isRegularFile()) continue;
                 files++;
-                Object key = attrs.fileKey();
-                if (key == null) key = p.toAbsolutePath().normalize();
+                Object key = identityKey(p, attrs, sameFile);
                 if (seenKeys.add(key)) bytes += attrs.size();
             }
         }
         return new Stat(files, bytes);
+    }
+
+    /**
+     * Stable identity for hard-link dedupe: {@link BasicFileAttributes#fileKey()} where the
+     * provider has one, else the {@link DiskUsage.SameFileKeys} stand-in.
+     */
+    private static Object identityKey(Path path, BasicFileAttributes attrs, DiskUsage.SameFileKeys sameFile) {
+        Object key = attrs.fileKey();
+        return key != null ? key : sameFile.identity(path, attrs.size());
     }
 }

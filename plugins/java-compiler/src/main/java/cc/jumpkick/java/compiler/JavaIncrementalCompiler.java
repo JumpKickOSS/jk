@@ -6,20 +6,20 @@ import cc.jumpkick.plugin.PluginManifest;
 import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.net.URLClassLoader;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.ServiceLoader;
 import java.util.Set;
-import javax.annotation.processing.Processor;
 
 /**
- * Child-JVM {@link InProcessJavac} worker: runs under the project JDK and streams diagnostics,
- * AP provenance, and status as JSONL.
+ * Child-JVM Java compile worker: Zinc incremental compile, streaming diagnostics, AP provenance,
+ * and status as JSONL. {@code --pull} keeps the JVM for many COMPILE/PLAN specs on one job.
  */
 public final class JavaIncrementalCompiler implements Plugin {
 
@@ -30,8 +30,11 @@ public final class JavaIncrementalCompiler implements Plugin {
 
     @Override
     public int run(List<String> args, ProtocolWriter out) throws Exception {
+        if (args.size() == 1 && "--pull".equals(args.get(0))) {
+            return pull(out);
+        }
         if (args.size() != 1) {
-            System.err.println("usage: jk-java-compiler <spec-file>|@<spec-file>");
+            System.err.println("usage: jk-java-compiler <spec-file>|@<spec-file>|--pull");
             return 2;
         }
         String specArg = args.get(0);
@@ -39,46 +42,141 @@ public final class JavaIncrementalCompiler implements Plugin {
         return compileSpec(Path.of(spec), out);
     }
 
+    /**
+     * Job-scoped loop: emit {@code ready}, read {@code COMPILE}/{@code PLAN} {@code <spec>} or
+     * {@code DONE} from stdin. Stays up across modules so Zinc and AOT are paid once per job.
+     */
+    static int pull(ProtocolWriter out) throws Exception {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+        int worst = 0;
+        while (true) {
+            out.emit(PluginReply.ready());
+            String line = in.readLine();
+            if (line == null) return worst;
+            String cmd = line.trim();
+            if (cmd.isEmpty()) continue;
+            if ("DONE".equals(cmd)) return worst;
+            int space = cmd.indexOf(' ');
+            String op = space < 0 ? cmd : cmd.substring(0, space);
+            String spec = space < 0 ? "" : cmd.substring(space + 1).trim();
+            if (spec.isEmpty()) {
+                out.emit(PluginReply.error("usage", "COMPILE|PLAN <spec-file>"));
+                worst = Math.max(worst, 2);
+                continue;
+            }
+            int code =
+                    switch (op) {
+                        case "COMPILE" -> compileSpec(Path.of(spec), out);
+                        case "PLAN" -> planSpec(Path.of(spec), out);
+                        default -> {
+                            out.emit(PluginReply.error("unknown", op));
+                            yield 2;
+                        }
+                    };
+            // Keep the worst (highest) exit code: a later compile error (1) must not overwrite an
+            // earlier usage/unknown error (2) — JK-2316.
+            worst = Math.max(worst, code);
+        }
+    }
+
     /** Run a compile from {@code specFile}, emitting JSONL to {@code out}; returns the exit code. */
     static int compileSpec(Path specFile, ProtocolWriter out) throws Exception {
         PluginSpec spec = PluginSpec.read(specFile);
-        List<Processor> processors = loadProcessors(spec.processorClasspath());
+        Path workdir = spec.workdir();
+        boolean tempWork = workdir == null;
+        if (tempWork) workdir = Files.createTempDirectory("jk-zinc-");
+        try {
+            int release = (int) spec.config().intValue("release", 0);
+            String scalaVersion = spec.config().stringOpt("scalaVersion").orElse(null);
+            ZincJavaCompiler.Result r =
+                    (scalaVersion != null && !spec.compilerClasspath().isEmpty())
+                            ? ZincJavaCompiler.compileMixed(
+                                    spec.sources(),
+                                    spec.compileClasspath(),
+                                    spec.classesDir(),
+                                    workdir,
+                                    spec.sourceOutput(),
+                                    release,
+                                    spec.args(),
+                                    spec.processorClasspath(),
+                                    scalaVersion,
+                                    spec.compilerClasspath(),
+                                    spec.extra("scala-bridge").orElse(null),
+                                    spec.extra("scala-library").orElse(null),
+                                    spec.extra("scala-compiler").orElse(null))
+                            : ZincJavaCompiler.compileJava(
+                                    spec.sources(),
+                                    spec.compileClasspath(),
+                                    spec.classesDir(),
+                                    workdir,
+                                    spec.sourceOutput(),
+                                    release,
+                                    spec.args(),
+                                    spec.processorClasspath());
+            for (ZincJavaCompiler.Diag d : r.diagnostics()) {
+                out.emit(PluginReply.diagnostic(d.kind(), d.file(), (int) d.line(), (int) d.col(), d.message()));
+            }
+            for (Map.Entry<Path, Set<Path>> e : r.generated().entrySet()) {
+                out.emit(PluginReply.provenance(
+                        e.getKey().toString(),
+                        e.getValue().stream().map(Path::toString).toList()));
+            }
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("status", r.success() ? "OK" : "ERROR");
+            fields.put(
+                    "compiled",
+                    r.compiledSources().stream()
+                            .map(p -> p.toAbsolutePath().normalize().toString())
+                            .toList());
+            out.emit(PluginReply.result(fields));
+            return r.success() ? 0 : 1;
+        } finally {
+            if (tempWork) {
+                deleteTree(workdir);
+            }
+        }
+    }
 
-        InProcessJavac.Result r = InProcessJavac.compile(
+    static int planSpec(Path specFile, ProtocolWriter out) throws Exception {
+        PluginSpec spec = PluginSpec.read(specFile);
+        Path workdir = spec.workdir();
+        int release = (int) spec.config().intValue("release", 0);
+        ZincJavaCompiler.Plan plan = ZincJavaCompiler.planJava(
                 spec.sources(),
                 spec.compileClasspath(),
                 spec.classesDir(),
+                workdir,
                 spec.sourceOutput(),
-                (int) spec.config().intValue("release", 0),
+                release,
                 spec.args(),
-                processors);
-
-        for (InProcessJavac.Diag d : r.diagnostics()) {
-            out.emit(PluginReply.diagnostic(d.kind(), d.file(), (int) d.line(), (int) d.col(), d.message()));
+                spec.processorClasspath());
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("status", "OK");
+        fields.put("outcome", plan.full() ? "full" : "incremental");
+        fields.put("reason", plan.reason());
+        List<String> compiled = new ArrayList<>();
+        List<String> whys = new ArrayList<>();
+        for (ZincJavaCompiler.Invalidation i : plan.invalidations()) {
+            compiled.add(i.source().toAbsolutePath().normalize().toString());
+            whys.add(i.why());
         }
-        for (Map.Entry<Path, Set<Path>> e : r.generated().entrySet()) {
-            out.emit(PluginReply.provenance(
-                    e.getKey().toString(),
-                    e.getValue().stream().map(Path::toString).toList()));
-        }
-        out.emit(PluginReply.result(Map.of("status", r.success() ? "OK" : "ERROR")));
-        return r.success() ? 0 : 1;
+        fields.put("compiled", compiled);
+        fields.put("whys", whys);
+        out.emit(PluginReply.result(fields));
+        return 0;
     }
 
-    /** ServiceLoader-discover annotation processors from the processor path (jars/dirs). */
-    private static List<Processor> loadProcessors(List<Path> processorPath) {
-        if (processorPath.isEmpty()) return List.of();
-        URL[] urls = new URL[processorPath.size()];
-        for (int i = 0; i < processorPath.size(); i++) {
-            try {
-                urls[i] = processorPath.get(i).toUri().toURL();
-            } catch (MalformedURLException e) {
-                throw new IllegalArgumentException("bad processor path entry: " + processorPath.get(i), e);
-            }
+    private static void deleteTree(Path workdir) {
+        if (workdir == null) return;
+        try (var walk = Files.walk(workdir)) {
+            walk.sorted((a, b) -> b.getNameCount() - a.getNameCount()).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (Exception ignored) {
+                }
+            });
+        } catch (Exception ignored) {
+            // temp workdir is best-effort
         }
-        URLClassLoader loader = new URLClassLoader(urls, JavaIncrementalCompiler.class.getClassLoader());
-        List<Processor> processors = new ArrayList<>();
-        for (Processor p : ServiceLoader.load(Processor.class, loader)) processors.add(p);
-        return processors;
     }
 }

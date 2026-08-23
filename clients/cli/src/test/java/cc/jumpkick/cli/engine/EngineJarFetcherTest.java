@@ -22,7 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The spawn path's engine-jar self-heal ({@link EngineJarFetcher}): download from the release
  * layout ({@code releases/<version>/jk-engine-<version>.jar} + {@code SHA256SUMS}), verify,
- * ingest into the CAS, and install under {@code $JK_HOME/lib/jk-engine/}. The
+ * ingest into the CAS, and install under {@code <data>/lib/jk-engine/}. The
  * wiring INTO {@code spawn()} is native-client-only and stays manual-verification territory,
  * like the spawn itself (see {@code EngineClientTest}).
  */

@@ -192,10 +192,13 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
                 out.print(Ansi.SHOW_CURSOR);
             }
             if (chip != null) {
-                CommandWedge.envelopeStart(stderr ? CliOutput.stderr() : out);
                 String line = chip.renderLine(RenderContext.current());
-                if (stderr) CliOutput.err(line);
-                else out.println(line);
+                if (stderr) {
+                    CliOutput.err(line); // opens the stderr envelope itself
+                } else {
+                    CommandWedge.envelopeStart(out);
+                    out.println(line);
+                }
             }
             out.flush();
         }

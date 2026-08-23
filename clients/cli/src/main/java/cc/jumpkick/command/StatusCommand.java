@@ -84,8 +84,7 @@ public final class StatusCommand implements CliCommand {
             if (lockCode != 0) return lockCode;
         }
 
-        try (var analyzing =
-                live ? CommandWedge.analyzing(CliOutput.stdout(), "Status", "Analyzing status...") : null) {
+        try (var analyzing = live ? CommandWedge.analyzingStdout("Status", "Analyzing status...") : null) {
             rows = EngineClient.metrics(paths, globalOnly ? null : cwd.toString()).stream()
                     .filter(l -> EngineProtocol.METRICS_ENTRY.equals(EngineProtocol.typeOf(l)))
                     .toList();
@@ -254,7 +253,7 @@ public final class StatusCommand implements CliCommand {
             if (!Files.isDirectory(root) && !Files.isDirectory(storeRoot)) {
                 return new CacheSnapshot("—", "0", "0");
             }
-            // Exclusive sizes: hard-linked repos/ + sha256/ share one allocation (not 2×).
+            // Exclusive sizes: leftover shared inodes under repos/ + sha256/ counted once.
             CacheCommand.SectionStats s = CacheCommand.sectionStats(root);
             return new CacheSnapshot(
                     CacheCommand.fmtBytes(s.totalBytes()),

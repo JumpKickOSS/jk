@@ -48,7 +48,7 @@ class CompileTestProcessorTest {
                 21,
                 List.of(),
                 Path.of(System.getProperty("java.home")),
-                null,
+                dir.resolve("gen"),
                 new Cas(dir.resolve("cas")),
                 dir.resolve("cache"));
 
@@ -80,7 +80,7 @@ class CompileTestProcessorTest {
                 21,
                 List.of(),
                 Path.of(System.getProperty("java.home")),
-                null,
+                dir.resolve("gen"),
                 new Cas(dir.resolve("cas")),
                 dir.resolve("cache"));
 

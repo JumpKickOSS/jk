@@ -9,13 +9,13 @@ import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.ActiveJavac;
-import cc.jumpkick.jdk.GlobalDefaultJdk;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.IntellijJdkDir;
 import cc.jumpkick.jdk.JdkCatalog;
 import cc.jumpkick.jdk.JdkCatalogClient;
 import cc.jumpkick.jdk.JdkHit;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.jdk.JdkVendor;
@@ -141,25 +141,14 @@ public final class JdkListCommand implements CliCommand {
         // Match the default / native rows by the recorded HOME path (unique per
         // install) rather than the vendor-major identifier (which two installs
         // under different roots can share).
-        GlobalDefaultJdk gd = GlobalDefaultJdk.current();
+        JdkInventory gd = JdkInventory.of(jdksRoot);
         Path defaultHome = gd.defaultHome().orElse(null);
         Path graalHome = gd.graalHome().orElse(null);
-        // Legacy configs recorded only the identifier (no home). Resolve it via
-        // the registry — jk-managed installs win probe order, so exactly one row
-        // is marked; a re-run of `jk jdk default` then records the exact home.
-        try {
-            if (defaultHome == null) {
-                defaultHome = gd.currentIdentifier()
-                        .flatMap(id -> findHome(registry, id))
-                        .orElse(null);
-            }
-            if (graalHome == null) {
-                graalHome = gd.graalIdentifier()
-                        .flatMap(id -> findHome(registry, id))
-                        .orElse(null);
-            }
-        } catch (IOException ignored) {
-            // malformed config — leave both null (no row marked)
+        if (defaultHome == null) {
+            defaultHome = gd.defaultId().flatMap(id -> findHome(registry, id)).orElse(null);
+        }
+        if (graalHome == null) {
+            graalHome = gd.graalId().flatMap(id -> findHome(registry, id)).orElse(null);
         }
         // Catalog (feed / cache) is always consulted so lagging point releases can
         // be marked outdated!. --all additionally surfaces available download rows.

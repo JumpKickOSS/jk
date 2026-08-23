@@ -8,6 +8,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.PluginJarNotFoundException;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -19,7 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Worker-jar location: system-property override → repos/local/ → repos/central/ → clear error.
+ * Worker-jar location: system-property override → repos/jk-local/ → repos/central/ → clear error.
  *
  * <p>Tests use a temp cache root so the developer's real ~/.cache/jk is never touched. The
  * coordinate-based lookup resolves {@code cc.jumpkick:jk-kotlin-compiler:<version>} from the named
@@ -33,14 +34,14 @@ class KotlinPluginSetupTest {
             "cc/jumpkick/jk-kotlin-compiler/" + VERSION + "/jk-kotlin-compiler-" + VERSION + ".jar";
 
     @Test
-    void locates_worker_in_repos_local(@TempDir Path dir) throws IOException {
+    void locates_worker_in_repos_jk_local(@TempDir Path dir) throws IOException {
         Cas cas = new Cas(dir);
-        // Populate repos/local/ with a stand-in worker jar + sidecar.
-        RepoArtifactStore local = new RepoArtifactStore(dir, "local");
-        Path artifact = dir.resolve("repos/local").resolve(M2_PATH);
+        // Populate repos/jk-local/ with a stand-in worker jar + sidecar.
+        RepoArtifactStore local = new RepoArtifactStore(dir, RepoArtifactResolver.JK_LOCAL);
+        Path artifact = dir.resolve("repos/jk-local").resolve(M2_PATH);
         Files.createDirectories(artifact.getParent());
         Files.writeString(artifact, "stand-in worker jar");
-        Files.writeString(Path.of(artifact + ".sha256"), "deadbeef");
+        local.writeMemo(M2_PATH, artifact, cc.jumpkick.util.Hashing.sha256Hex(artifact));
 
         withoutOverride(() -> assertThat(PluginJar.KOTLIN_COMPILER.locate(cas)).isEqualTo(artifact));
     }

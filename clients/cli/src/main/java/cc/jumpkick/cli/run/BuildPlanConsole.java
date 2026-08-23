@@ -221,13 +221,21 @@ public final class BuildPlanConsole {
      * plan's name and steps, instead of duplicating this switch. Non-interactive plans only.
      */
     public static BuildPlanListener chooseConsoleListener(String planName, List<Task> steps, Mode mode) {
+        return chooseConsoleListener(planName, planName, steps, mode);
+    }
+
+    /**
+     * As {@link #chooseConsoleListener(String, List, Mode)} with a distinct header command and tree
+     * module label (e.g. {@code Update} / {@code Updating versions}).
+     */
+    public static BuildPlanListener chooseConsoleListener(String command, String module, List<Task> steps, Mode mode) {
         return switch (mode) {
             case QUIET -> new SilentListener(System.out, System.err);
             case JSON -> new JsonlListener(System.out);
             case VERBOSE -> new VerboseListener(System.out, System.err);
             case AUTO ->
                 isInteractiveTerminal()
-                        ? new CommandManagerListener(System.out, planName, planName, steps, true)
+                        ? new CommandManagerListener(System.out, command, module, steps, true)
                         : new SilentListener(System.out, System.err);
         };
     }

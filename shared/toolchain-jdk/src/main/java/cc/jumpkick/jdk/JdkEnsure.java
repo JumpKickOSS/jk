@@ -121,11 +121,11 @@ public final class JdkEnsure {
             JdkInstallListener progress)
             throws IOException, InterruptedException {
         JdkRegistry registry = jdksDirOverride != null ? new JdkRegistry(jdksDirOverride) : new JdkRegistry();
-        GlobalDefaultJdk defaults = GlobalDefaultJdk.current();
+        JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
         int latestLts = JdkLts.OFFLINE_LATEST_LTS;
 
         // Walk the one canonical resolution order (--jdk / JK_JDK / .jdk-version /
-        // jk-lock.toml / project.jdk / project.java-floor / current / default / env / PATH).
+        // jk-lock.toml / project.jdk / project.java-floor / default / env / PATH).
         JdkResolution.Request req = new JdkResolution.Request(
                 projectDir,
                 cc.jumpkick.config.SessionContext.current().jdkSpec(),
@@ -160,9 +160,8 @@ public final class JdkEnsure {
         // de-facto default — but only when no default is set yet, and only for
         // the bootstrap case (a named project pin must not hijack the global
         // default). r.tier() == DEFAULT marks the bootstrap path.
-        if (r.tier() == JdkResolution.Tier.DEFAULT
-                && defaults.currentIdentifier().isEmpty()) {
-            defaults.set(installed);
+        if (r.tier() == JdkResolution.Tier.DEFAULT && defaults.defaultId().isEmpty()) {
+            defaults.setDefault(installed);
         }
         return new Outcome(Optional.of(installed), Source.INSTALLED, spec);
     }

@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -9,7 +10,7 @@ import java.util.Map;
  * Builds {@link PluginProtocol} reply lines (plugin→engine) as JSONL strings. A plugin emits them
  * through its {@link ProtocolWriter} ({@code out.emit(PluginReply.finding(...))}), so no plugin
  * hand-writes the wire JSON. Value types are serialized by shape: {@link String} quoted, numbers
- * and booleans raw.
+ * and booleans raw, {@link List} as a JSON string array.
  */
 public final class PluginReply {
 
@@ -64,6 +65,11 @@ public final class PluginReply {
         return "{\"t\":\"wrote\",\"path\":" + Jsonl.quote(path) + "}";
     }
 
+    /** Pull-protocol: the worker can accept one {@code COMPILE}/{@code PLAN} (or {@code DONE}). */
+    public static String ready() {
+        return "{\"t\":\"ready\"}";
+    }
+
     /** A terminal typed result payload; {@code fields} serialized by shape. */
     public static String result(Map<String, Object> fields) {
         StringBuilder b = new StringBuilder("{\"t\":\"result\"");
@@ -80,6 +86,11 @@ public final class PluginReply {
 
     private static String value(Object v) {
         if (v instanceof Boolean || v instanceof Number) return String.valueOf(v);
+        if (v instanceof List<?> list) {
+            List<String> strs = new ArrayList<>();
+            for (Object o : list) strs.add(String.valueOf(o));
+            return Jsonl.array(strs);
+        }
         return Jsonl.quote(String.valueOf(v));
     }
 }

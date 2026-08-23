@@ -7,9 +7,9 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
-import cc.jumpkick.jdk.GlobalDefaultJdk;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkHit;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkLts;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkVendor;
@@ -63,7 +63,7 @@ public final class JdkDefaultCommand implements CliCommand {
         boolean lts = in.isSet("lts");
         Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
-        GlobalDefaultJdk defaults = GlobalDefaultJdk.current();
+        JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
 
         if (lts) {
             if (spec != null && !spec.isBlank()) {
@@ -89,7 +89,7 @@ public final class JdkDefaultCommand implements CliCommand {
         return 0;
     }
 
-    static boolean applyLts(JdkRegistry registry, GlobalDefaultJdk defaults, PrintStream out, PrintStream err)
+    static boolean applyLts(JdkRegistry registry, JdkInventory defaults, PrintStream out, PrintStream err)
             throws IOException {
         List<JdkHit> hits = registry.listHits();
         List<JdkHit> ltsHits = new ArrayList<>();
@@ -109,9 +109,9 @@ public final class JdkDefaultCommand implements CliCommand {
         return true;
     }
 
-    private static void applyDefault(JdkHit hit, GlobalDefaultJdk defaults, PrintStream out) throws IOException {
+    private static void applyDefault(JdkHit hit, JdkInventory defaults, PrintStream out) throws IOException {
         String identifier = JdkRegistry.identifierFor(hit.home());
-        defaults.set(new InstalledJdk(identifier, hit.home()));
+        defaults.setDefault(new InstalledJdk(identifier, hit.home()));
         cc.jumpkick.jdk.JdkAccessLedger.atDefaultPath().touch(hit);
         String name = Theme.colorize(renderDisplayName(hit), Theme.active().focused());
         String message = "Default JDK set to " + name + ": " + JdkRender.coord(hit.source(), identifier);

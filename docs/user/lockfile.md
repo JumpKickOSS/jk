@@ -72,7 +72,8 @@ managed GAs while the platform is active. Unpinned `latest` still prefers the ne
 
 `jk lock` is the trust boundary. For each POM/artifact download JumpKick:
 
-1. Streams bytes into the content-addressed store and computes SHA-256 locally.
+1. Streams bytes, computes SHA-256 locally, and stores a Maven-layout `*.jar` (Maven
+   local repo when `[m2] integration` is on and the slot is empty or already equal).
 2. Fetches the repository’s published sidecar (`.sha256`, else `.sha1`) when present and
    **fails closed** on mismatch.
 3. If no sidecar exists, pins TOFU-style and may report how many artifacts lacked a checksum.

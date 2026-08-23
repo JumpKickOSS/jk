@@ -71,6 +71,8 @@ class NewParentDirGuessTest {
     void longest_common_prefix() {
         Path a = Path.of("/home/u/src/a");
         Path b = Path.of("/home/u/src/b");
-        assertThat(NewParentDirGuess.longestCommonPrefix(a, b)).isEqualTo(Path.of("/home/u/src"));
+        // longestCommonPrefix absolute-normalizes; match that on Windows (drive letter) and Unix.
+        assertThat(NewParentDirGuess.longestCommonPrefix(a, b))
+                .isEqualTo(Path.of("/home/u/src").toAbsolutePath().normalize());
     }
 }

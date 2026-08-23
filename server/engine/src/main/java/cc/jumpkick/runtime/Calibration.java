@@ -2,7 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.jdk.GlobalDefaultJdk;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkLts;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkResolution;
@@ -1009,7 +1009,7 @@ public final class Calibration {
             JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
             var req = new JdkResolution.Request(
                     null, SessionContext.current().jdkSpec(), System.getenv("JK_JDK"), null, null, 0, System::getenv);
-            var r = JdkResolution.resolve(req, registry, GlobalDefaultJdk.current(), JdkLts.OFFLINE_LATEST_LTS);
+            var r = JdkResolution.resolve(req, registry, JdkInventory.current(), JdkLts.OFFLINE_LATEST_LTS);
             return r.jdk().map(cc.jumpkick.jdk.InstalledJdk::home);
         } catch (Exception e) {
             return Optional.empty();

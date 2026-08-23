@@ -157,11 +157,14 @@ public final class GitSourceResolution {
                 lock.resolutionAlgorithm(),
                 lock.jdk(),
                 lock.kotlin(),
+                lock.scala(),
                 out,
                 lock.plugins(),
                 lock.sdk(),
                 lock.modules(),
-                lock.jkMin());
+                lock.jkMin(),
+                lock.manifestsSha256(),
+                lock.projectId());
     }
 
     private static String ga(String nameOrKey) {

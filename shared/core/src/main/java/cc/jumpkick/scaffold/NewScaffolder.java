@@ -410,6 +410,7 @@ public final class NewScaffolder {
             case JAVA -> writeJavaSample(inputs);
             case KOTLIN -> writeKotlinSample(inputs);
             case GROOVY -> writeGroovySample(inputs);
+            case SCALA -> writeScalaSample(inputs);
         }
     }
 
@@ -467,6 +468,22 @@ public final class NewScaffolder {
         Files.writeString(testDir.resolve("CalcTest.groovy"), renderGroovyCalcTest(pkg), StandardCharsets.UTF_8);
         if (inputs.isRunnable()) {
             Files.writeString(srcDir.resolve(MAIN_CLASS + ".groovy"), renderGroovyMain(pkg), StandardCharsets.UTF_8);
+        }
+    }
+
+    private static void writeScalaSample(NewInputs inputs) throws IOException {
+        boolean simple = inputs.isSimpleLayout();
+        String pkg = simple ? "" : inputs.group();
+        String pkgPath = pkg.isEmpty() ? "" : "/" + pkg.replace('.', '/');
+        Path srcDir = inputs.directory().resolve((simple ? "src" : "src/main/scala") + pkgPath);
+        Path testDir = inputs.directory().resolve((simple ? "test/src" : "src/test/scala") + pkgPath);
+        Files.createDirectories(srcDir);
+        Files.createDirectories(testDir);
+
+        Files.writeString(srcDir.resolve("Calc.scala"), renderScalaCalc(pkg), StandardCharsets.UTF_8);
+        Files.writeString(testDir.resolve("CalcTest.scala"), renderScalaCalcTest(pkg), StandardCharsets.UTF_8);
+        if (inputs.isRunnable()) {
+            Files.writeString(srcDir.resolve(MAIN_CLASS + ".scala"), renderScalaMain(pkg), StandardCharsets.UTF_8);
         }
     }
 
@@ -626,5 +643,34 @@ public final class NewScaffolder {
     /** {@code "package <pkg>\n\n"}, or empty for the package-less (compact Kotlin/Groovy) case. */
     private static String pkgHeaderKt(String pkg) {
         return pkg.isEmpty() ? "" : "package " + pkg + "\n\n";
+    }
+
+    private static String renderScalaMain(String pkg) {
+        return pkgHeaderKt(pkg) + """
+                object Main:
+                  def main(args: Array[String]): Unit =
+                    val value = 5
+                    val calc = Calc()
+                    println(s"Hello, world! 5 * 2 = ${calc.doubleValue(value)}")
+                """;
+    }
+
+    private static String renderScalaCalc(String pkg) {
+        return pkgHeaderKt(pkg) + """
+                class Calc:
+                  def doubleValue(value: Int): Int = value * 2
+                """;
+    }
+
+    private static String renderScalaCalcTest(String pkg) {
+        return pkgHeaderKt(pkg) + """
+                import org.junit.jupiter.api.Assertions.assertEquals
+                import org.junit.jupiter.api.Test
+
+                class CalcTest:
+                  @Test
+                  def doubleValueReturnsTwiceTheInput(): Unit =
+                    assertEquals(10, Calc().doubleValue(5))
+                """;
     }
 }

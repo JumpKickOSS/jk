@@ -32,7 +32,7 @@ public final class RepoLogoutCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(Opt.value(
                         "<dir>",
-                        "Override the credentials directory. Default: ~/.jk/repo-credentials.",
+                        "Override the credentials directory. Default: <data>/repo-credentials.",
                         "--credentials-dir")
                 .hide());
     }

@@ -58,11 +58,21 @@ public final class ActivateCommand implements CliCommand {
         return List.of();
     }
 
+    /** True for {@code jk activate <shell>}, false for the bare rc-block installer. */
+    private static boolean printsScript(Invocation in) {
+        return !in.positionals().isEmpty() && !in.positionals().getFirst().isBlank();
+    }
+
+    /** {@code eval "$(jk activate bash)"} feeds stdout straight to the shell. */
+    @Override
+    public boolean scriptMode(Invocation in) {
+        return printsScript(in);
+    }
+
     @Override
     public int run(Invocation in) throws IOException {
-        String shellName = in.positionals().isEmpty() ? null : in.positionals().get(0);
-        if (shellName != null && !shellName.isBlank()) {
-            return printScript(shellName);
+        if (printsScript(in)) {
+            return printScript(in.positionals().getFirst());
         }
         return runInstaller(in.isSet("yes"));
     }

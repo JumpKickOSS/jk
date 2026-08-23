@@ -515,7 +515,7 @@ public final class LockOrchestrator {
             packages.add(new Lockfile.Artifact(
                     dep.module(),
                     version,
-                    "local",
+                    cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL,
                     "sha256:" + dep.sha256(),
                     null,
                     new ArrayList<>(tags),
@@ -1045,7 +1045,7 @@ public final class LockOrchestrator {
         // NoClassDefFoundError: groovy/lang/GroovyObject.
         cc.jumpkick.layout.Languages langs = projectDir != null
                 ? cc.jumpkick.layout.Languages.resolve(p, projectDir)
-                : new cc.jumpkick.layout.Languages(true, p.isKotlin(), p.isGroovy());
+                : new cc.jumpkick.layout.Languages(true, p.isKotlin(), p.isGroovy(), p.isScala());
         // Only when the language has actual sources (src/ or plugin-contributed roots like
         // grails-app/): a bare `kotlin = "2.1.0"` pin on a sourceless module pins the COMPILER
         // (lock.kotlin) but produces no classes — injecting its runtime made such locks fail
@@ -1055,6 +1055,9 @@ public final class LockOrchestrator {
         }
         if (langs.kotlin() && hasLangSources(projectDir, ".kt")) {
             addRuntime(bomConstraints, mainDeduped, added, "org.jetbrains.kotlin:kotlin-stdlib", p.kotlin(), "2");
+        }
+        if (langs.scala() && hasLangSources(projectDir, ".scala")) {
+            addRuntime(bomConstraints, mainDeduped, added, "org.scala-lang:scala3-library_3", p.scala(), "3");
         }
         return added;
     }
@@ -1177,11 +1180,14 @@ public final class LockOrchestrator {
                 lock.resolutionAlgorithm(),
                 lock.jdk(),
                 lock.kotlin(),
+                lock.scala(),
                 updated,
                 lock.plugins(),
                 lock.sdk(),
                 lock.modules(),
-                lock.jkMin());
+                lock.jkMin(),
+                lock.manifestsSha256(),
+                lock.projectId());
     }
 
     /** BFS through the resolved graph starting from {@code roots}. */

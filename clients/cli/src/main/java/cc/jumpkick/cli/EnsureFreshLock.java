@@ -136,7 +136,7 @@ public final class EnsureFreshLock {
                 spinner.update(message);
                 outcome = EngineClient.runLock(EnginePaths.current(), req, quiet);
             } else if (showOwn) {
-                try (Spinner ignored = CommandWedge.analyzing(CliOutput.stdout(), chip, message)) {
+                try (Spinner ignored = CommandWedge.analyzingStdout(chip, message)) {
                     outcome = EngineClient.runLock(EnginePaths.current(), req, quiet);
                 }
             } else {

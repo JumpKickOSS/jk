@@ -102,7 +102,7 @@ jk install
 ```
 
 Each worker's thin jar and POM land in
-`~/.local/share/jk/store/repos/local/cc/jumpkick/jk-<name>/<ver>/` (Maven layout;
+`~/.local/share/jk/store/repos/jk-local/cc/jumpkick/jk-<name>/<ver>/` (Maven layout;
 same as Gradle `installLocal`). Launch rebuilds the runtime classpath from that POM
 and the jars already in the local repo.
 
@@ -115,7 +115,7 @@ with Gradle and install workers with `jk install`:
 ```bash
 ./gradlew dist installLocal
 ./install.sh build/dist/jk
-jk install   # after a pure-jk build, refreshes repos/local workers
+jk install   # after a pure-jk build, refreshes repos/jk-local workers
 ```
 
 ```text

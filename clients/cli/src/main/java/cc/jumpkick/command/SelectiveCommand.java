@@ -70,6 +70,21 @@ public final class SelectiveCommand implements CliCommand {
                 Param.of("verb", Arity.ZERO_OR_ONE, "with run: build | test"));
     }
 
+    /** The action positional, lowercased: {@code resolve | prepare | run}, or {@code ""}. */
+    private static String action(Invocation in) {
+        return in.positionals().isEmpty()
+                ? ""
+                : in.positionals().getFirst().trim().toLowerCase(Locale.ROOT);
+    }
+
+    /** {@code jk selective resolve} prints one module path per line (or {@code --json}) for a CI step to read. */
+    @Override
+    public boolean scriptMode(Invocation in) {
+        // prepare/run reuse resolve() as a helper and settle with a human wedge, so the mode cannot
+        // be decided inside it.
+        return "resolve".equals(action(in));
+    }
+
     @Override
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
@@ -81,7 +96,7 @@ public final class SelectiveCommand implements CliCommand {
             cc.jumpkick.cli.tui.CommandWedge.printFail("Selective", "expected resolve | prepare | run");
             return Exit.USAGE;
         }
-        String action = in.positionals().getFirst().trim().toLowerCase(Locale.ROOT);
+        String action = action(in);
         String since = in.value("since").or(() -> in.value("affected-since")).orElse(null);
         String modules = in.value("modules").orElse(null);
         boolean json = in.isSet("json");

@@ -4,10 +4,12 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.compile.JavacLint;
 import cc.jumpkick.config.ImageConfigParser;
 import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.WorkspaceClasspath;
+import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -19,7 +21,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FreshnessStamp;
-import cc.jumpkick.task.JavaIncrementalCompile;
+import cc.jumpkick.task.JavaCompile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -80,6 +82,26 @@ public final class TaskForecaster {
             boolean skipTests,
             WorkspaceTarget target,
             Set<Path> terminalDirs) {
+        Path workerJar = null;
+        try {
+            workerJar = PluginJar.JAVA_COMPILER.locateStored(cas);
+        } catch (RuntimeException ignored) {
+            // forecast without a worker still uses action-cache + zinc-file presence
+        }
+        try (JavaCompilerHost.Scope ignored = JavaCompilerHost.open()) {
+            return forecastModules(graph, cas, actionCache, cache, skipTests, target, terminalDirs, workerJar);
+        }
+    }
+
+    private static List<TaskForecast.Module> forecastModules(
+            BuildGraph.Result graph,
+            Cas cas,
+            ActionCache actionCache,
+            Path cache,
+            boolean skipTests,
+            WorkspaceTarget target,
+            Set<Path> terminalDirs,
+            Path workerJar) {
         List<TaskForecast.Module> out = new ArrayList<>();
         // --force/--rerun bypasses jk's build caches, so every step runs — the forecast must say
         // so too (otherwise the plan tree renders "Fully Cached" while the ETA, which honors force,
@@ -109,7 +131,17 @@ public final class TaskForecaster {
                     depDirtiness(u, graph.edges().getOrDefault(u.dir(), Set.of()), dirty, dirByCoord, dirByName);
             long t0 = Perf.start();
             TaskForecast.Module m = forecastModule(
-                    u, dep, force, skipTests, cas, actionCache, cache, restoredJarShas, target, terminalDirs);
+                    u,
+                    dep,
+                    force,
+                    skipTests,
+                    cas,
+                    actionCache,
+                    cache,
+                    restoredJarShas,
+                    target,
+                    terminalDirs,
+                    workerJar);
             Perf.end("forecast " + u.coord(), t0);
             // Seed main-output dirtiness for *compile* consumers only when this module's
             // consumed jar/classes will change — not when only test-scope work is dirty.
@@ -272,7 +304,8 @@ public final class TaskForecaster {
             Path cache,
             Map<Path, String> restoredJarShas,
             WorkspaceTarget target,
-            Set<Path> terminalDirs) {
+            Set<Path> terminalDirs,
+            Path workerJar) {
         if (dep == null) dep = DepDirtiness.NONE;
         boolean compileDepDirty = dep.compileDepDirty();
         boolean testDepDirty = dep.testDepDirty();
@@ -382,8 +415,14 @@ public final class TaskForecaster {
                     Path stateDir =
                             cache.resolve("actions").resolve("incremental-java").resolve(taskId);
                     long tc = Perf.start();
-                    var pred = JavaIncrementalCompile.predict(
-                            taskId, req, BuildIdentity.cacheKeyVersion(), actionCache, stateDir);
+                    var pred = JavaCompile.predict(
+                            taskId,
+                            req,
+                            BuildIdentity.cacheKeyVersion(),
+                            actionCache,
+                            stateDir,
+                            workerJar,
+                            layout.generatedSourcesDir("annotations"));
                     Perf.end("  predict-compile-main", tc);
                     compileMainKey = pred.actionKey();
                     steps.add(compileStep("compile-main", pred, compileDepDirty || force));
@@ -500,8 +539,14 @@ public final class TaskForecaster {
                     Path stateDir =
                             cache.resolve("actions").resolve("incremental-java").resolve(taskId);
                     long tt = Perf.start();
-                    var pred = JavaIncrementalCompile.predict(
-                            taskId, req, BuildIdentity.cacheKeyVersion(), actionCache, stateDir);
+                    var pred = JavaCompile.predict(
+                            taskId,
+                            req,
+                            BuildIdentity.cacheKeyVersion(),
+                            actionCache,
+                            stateDir,
+                            workerJar,
+                            layout.generatedSourcesDir("annotations", "test"));
                     Perf.end("  predict-compile-test", tt);
                     TaskForecast.Task p = compileStep("compile-test", pred, false);
                     steps.add(p);
@@ -563,10 +608,7 @@ public final class TaskForecaster {
             boolean testResourceDrift = false;
             Boolean knownResourceDrift = null;
             if (!compileDirty && Files.isDirectory(layout.classesDir())) {
-                boolean mainOut = resourcesOutOfSync(
-                        cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), layout.classesDir());
-                boolean pluginManifestOut = !mainOut && pluginManifestOutOfSync(dir, layout.classesDir());
-                mainResourceDrift = mainOut || pluginManifestOut;
+                mainResourceDrift = mainResourcesOutOfSync(dir, compact, layout.classesDir());
                 knownResourceDrift = mainResourceDrift;
                 if (haveTests && !skipTests && !testDirty && Files.isDirectory(layout.testClassesDir())) {
                     Path resTest = cc.jumpkick.layout.ModuleLayout.testResourcesDir(dir, compact);
@@ -613,7 +655,8 @@ public final class TaskForecaster {
                 // every module forecast permanent "repackage", cascade depDirty, and price a full
                 // monorepo rebuild (~3.5m) while live builds hit the package cache and SKIPPED.
                 PluginBuild.Declarations pkgDecls = BuildPlanner.pluginDeclarationsFor(project, layout, cache);
-                List<Path> contributed = BuildPlanner.existingContributedDirs(pkgDecls, layout);
+                List<Path> contributed = new ArrayList<>(BuildPlanner.existingContributedDirs(pkgDecls, layout));
+                contributed.addAll(PlannerSupport.workerCodecClassDirs(dir, project));
                 String contribTok = BuildPlanner.contributionsToken(contributed);
                 List<String> tokens = List.of(
                         "classes:" + classesTok,
@@ -711,7 +754,7 @@ public final class TaskForecaster {
                         cc.jumpkick.run.TaskNames.WRITE_IMAGE, TaskForecast.Status.RUN, "image side-effect", null));
             }
 
-            // ---- cache-install — jk install terminal. Skip when repos/local already has this
+            // ---- cache-install — jk install terminal. Skip when repos/jk-local already has this
             // jar (matching SHA) and its POM. A packaged-but-never-installed module still runs.
             if (target == WorkspaceTarget.INSTALL && terminalDirs.contains(dir)) {
                 boolean jarDirty = steps.stream()
@@ -830,10 +873,26 @@ public final class TaskForecaster {
 
     /** Main resource roots (or a module-root {@code jk-plugin.toml}) differ from copies under {@code classesDir}. */
     static boolean mainResourcesOutOfSync(Path dir, boolean compact, Path classesDir) {
+        if (flattenedPluginCatalogPresent(classesDir)) return true;
         if (resourcesOutOfSync(cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), classesDir)) {
             return true;
         }
         return pluginManifestOutOfSync(dir, classesDir);
+    }
+
+    /**
+     * True when main classes still hold test-only flattened plugin manifests. Those files are
+     * not in {@code src/main/resources}, so {@link #resourcesOutOfSync} cannot see them.
+     */
+    static boolean flattenedPluginCatalogPresent(Path classesDir) {
+        Path catalog = classesDir.resolve(Path.of("cc", "jumpkick", "plugin", "manifest"));
+        if (!Files.isDirectory(catalog)) return false;
+        try (var stream = Files.list(catalog)) {
+            return stream.anyMatch(
+                    p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(".jk-plugin.toml"));
+        } catch (IOException e) {
+            return true;
+        }
     }
 
     /**
@@ -1002,9 +1061,8 @@ public final class TaskForecaster {
         }
     }
 
-    /** Map a {@link JavaIncrementalCompile.Prediction} to a step, honoring upstream dirtiness. */
-    private static TaskForecast.Task compileStep(
-            String name, JavaIncrementalCompile.Prediction pred, boolean compileDepDirty) {
+    /** Map a {@link JavaCompile.Prediction} to a step, honoring upstream dirtiness. */
+    private static TaskForecast.Task compileStep(String name, JavaCompile.Prediction pred, boolean compileDepDirty) {
         return switch (pred.outcome()) {
             case CACHE_HIT ->
                 // Only force RUN when a *compile-scope* sibling is dirty (action key still sees
@@ -1016,6 +1074,8 @@ public final class TaskForecaster {
                 String detail = pred.reason() != null && !pred.reason().isBlank()
                         ? pred.reason()
                         : count(pred.sourceCount(), "source") + " changed";
+                String files = fileHint(pred.sources());
+                if (!files.isEmpty()) detail = detail + " (" + files + ")";
                 yield new TaskForecast.Task(name, TaskForecast.Status.PARTIAL, "compile · " + detail, null);
             }
             case FULL -> {
@@ -1126,5 +1186,18 @@ public final class TaskForecaster {
 
     private static String count(int n, String noun) {
         return n + " " + noun + (n == 1 ? "" : "s");
+    }
+
+    private static String fileHint(List<Path> sources) {
+        if (sources == null || sources.isEmpty()) return "";
+        int n = sources.size();
+        int show = Math.min(n, 4);
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < show; i++) {
+            if (i > 0) b.append(", ");
+            b.append(sources.get(i).getFileName());
+        }
+        if (n > show) b.append(", +").append(n - show);
+        return b.toString();
     }
 }

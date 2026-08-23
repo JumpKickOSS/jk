@@ -34,6 +34,12 @@ public final class VscodeCommand implements CliCommand {
         return delegate.options();
     }
 
+    /** Dispatch consults the command it resolved, so an alias has to answer for its delegate. */
+    @Override
+    public boolean scriptMode(Invocation in) {
+        return delegate.scriptMode(in);
+    }
+
     @Override
     public int run(Invocation in) throws Exception {
         return delegate.run(in);

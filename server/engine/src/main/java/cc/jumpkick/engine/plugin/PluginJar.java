@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkVersion;
@@ -25,7 +26,7 @@ import java.util.Optional;
 /**
  * Registry of jk's child-JVM plugin jars. Locates each by Maven coordinate
  * ({@code cc.jumpkick:<artifactId>:<version>}), in order: {@code -D} jar property, then local cache
- * stores ({@code repos/local}, {@code repos/jumpkick}, {@code repos/central}), then a one-shot
+ * stores ({@code repos/jk-local}, {@code repos/jumpkick}, {@code repos/central}), then a one-shot
  * fetch from the official JumpKick Maven repository into {@code repos/jumpkick/}.
  */
 public enum PluginJar {
@@ -102,7 +103,7 @@ public enum PluginJar {
         String coordinate = "cc.jumpkick:" + artifactId + ":" + JkVersion.VERSION;
         List<Path> checked = new ArrayList<>();
 
-        for (String repoName : List.of("local", OFFICIAL_REPO, "central")) {
+        for (String repoName : List.of(cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL, OFFICIAL_REPO, "central")) {
             RepoArtifactStore store = new RepoArtifactStore(cacheRoot, repoName);
             var result = store.locate(relPath);
             if (result.isPresent()) return result.get();
@@ -134,7 +135,7 @@ public enum PluginJar {
             Path jar = Path.of(override);
             return Files.isRegularFile(jar) ? jar : null;
         }
-        for (String repoName : List.of("local", OFFICIAL_REPO, "central")) {
+        for (String repoName : List.of(cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL, OFFICIAL_REPO, "central")) {
             var result = new RepoArtifactStore(cas.root(), repoName).locate(relativePath());
             if (result.isPresent()) return result.get();
         }
@@ -195,12 +196,23 @@ public enum PluginJar {
             }
             sha = published.toLowerCase();
         }
-        Path casBlob = cas.put(bytes, sha);
         RepoArtifactStore store = RepoArtifactStore.forRepoName(cas.root(), OFFICIAL_REPO);
-        store.materialize(relPath, casBlob, sha);
-        String pomSha = Hashing.sha256Hex(pomBody);
-        store.materialize(pomRel, cas.put(pomBody, pomSha), pomSha);
-        Path localJar = store.locate(relPath).orElseThrow();
+        Files.createDirectories(cas.root());
+        Path tmpJar = Files.createTempFile(cas.root(), ".worker-", ".jar");
+        Path tmpPom = Files.createTempFile(cas.root(), ".worker-", ".pom");
+        try {
+            Files.write(tmpJar, bytes);
+            store.materialize(relPath, tmpJar, sha);
+            String pomSha = Hashing.sha256Hex(pomBody);
+            Files.write(tmpPom, pomBody);
+            store.materialize(pomRel, tmpPom, pomSha);
+        } finally {
+            Files.deleteIfExists(tmpJar);
+            Files.deleteIfExists(tmpPom);
+        }
+        Path localJar = store.locate(relPath)
+                .orElseThrow(() -> new IOException("could not materialize official worker jar " + relPath + " under "
+                        + store.root() + " (store write failed — check disk space and permissions)"));
         fetchOfficialClosure(cas, http, base, localJar);
         return localJar;
     }
@@ -215,8 +227,10 @@ public enum PluginJar {
         if (coord == null) {
             throw new IOException("cannot parse Maven coordinate of official worker jar " + workerJar);
         }
-        MavenRepo official = new MavenRepo(OFFICIAL_REPO, base, http, cas);
-        MavenRepo central = new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
+        // Worker closures stay under JK_STORE_DIR (repos/jumpkick, repos/central) — not ~/.m2.
+        MavenRepo official = new MavenRepo(OFFICIAL_REPO, base, http, cas, RepoCredential.ANONYMOUS, false);
+        MavenRepo central = new MavenRepo(
+                "central", RepositorySpec.MAVEN_CENTRAL.url(), http, cas, RepoCredential.ANONYMOUS, false);
         RepoGroup repos = RepoGroup.of(central).withReposPrepended(List.of(official));
         PomRuntimeClasspath.fetchRuntimeClosure(coord, repos);
     }

@@ -24,6 +24,7 @@ public final class NewJkBuildRenderer {
             case JAVA -> sb.append("java     = ").append(inputs.javaRelease()).append('\n');
             case KOTLIN -> sb.append("kotlin   = \"").append(LATEST).append("\"\n");
             case GROOVY -> sb.append("groovy   = \"").append(LATEST).append("\"\n");
+            case SCALA -> sb.append("scala    = \"").append(LATEST).append("\"\n");
         }
         inputs.kotlinModuleName()
                 .ifPresent(m -> sb.append("module   = \"").append(m).append("\"\n"));

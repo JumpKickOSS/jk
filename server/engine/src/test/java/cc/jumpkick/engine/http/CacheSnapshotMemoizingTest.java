@@ -67,4 +67,16 @@ class CacheSnapshotMemoizingTest {
         memo.get();
         assertThat(walks.get()).isEqualTo(2);
     }
+
+    @Test
+    void render_reads_captured_maven_stats_instead_of_walking() {
+        // JK-2293: toJson/toThinJson must read the captured Maven-local stats, not walk ~/.m2 on
+        // the render / SSE connect path. A snapshot carrying known values must render exactly those.
+        CacheSnapshot snap =
+                new CacheSnapshot(1, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0, 42L, 424242L);
+        assertThat(snap.mavenLocalBytes()).isEqualTo(424242L);
+        assertThat(snap.mavenLocalCount()).isEqualTo(42L);
+        assertThat(snap.toJson().toString()).contains("\"mavenLocalBytes\":424242", "\"mavenLocalCount\":42");
+        assertThat(snap.toThinJson().toString()).contains("\"mavenLocalBytes\":424242");
+    }
 }

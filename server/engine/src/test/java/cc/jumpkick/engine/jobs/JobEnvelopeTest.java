@@ -9,6 +9,7 @@ import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.StringReader;
@@ -123,7 +124,7 @@ class JobEnvelopeTest {
         JobEnvelope env = new JobEnvelope(host);
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        String line = "{\"type\":\"build-request\",\"dir\":" + cc.jumpkick.jsonl.Jsonl.quote(dir.toString()) + "}";
+        String line = "{\"type\":\"build-request\",\"dir\":" + Jsonl.quote(dir.toString()) + "}";
         env.submit(
                 line,
                 JobRequest.workspace("build", "jk-test-", (l, tok, w) -> {

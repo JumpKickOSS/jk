@@ -24,8 +24,7 @@ import java.util.Map;
  * <li>jk version
  * <li>{@code --release} and any extra javac options
  * <li>each source file's SHA-256 (so editing a file invalidates the key)
- * <li>each classpath entry's path — CAS paths already incorporate the content hash, so the file
- * name itself is enough to capture the dependency.
+ * <li>each classpath entry's content identity ({@code file:<sha256>} / directory tree hash)
  * </ul>
  */
 public final class ActionKey {
@@ -60,6 +59,15 @@ public final class ActionKey {
         pp.sort(Comparator.comparing(Path::toString));
         for (Path entry : pp) {
             appendCpToken(sb, "pp:", entry);
+        }
+
+        if (request.mixedScala()) {
+            sb.append("scala:").append(request.scalaVersion()).append('\n');
+            List<Path> scp = new ArrayList<>(request.compilerClasspath());
+            scp.sort(Comparator.comparing(Path::toString));
+            for (Path entry : scp) {
+                appendCpToken(sb, "sc:", entry);
+            }
         }
 
         return Hashing.sha256Hex(sb.toString());
@@ -186,7 +194,6 @@ public final class ActionKey {
             result.put(abs.toString(), FileHashMemo.contentHash(abs));
         }
         for (Path cp : request.classpath()) {
-            // CAS path when possible so repos/ vs sha256/ dual views do not fork the key.
             result.put("cp:" + FreshnessStamp.identityKey(cp), "");
         }
         for (Path pp : request.processorPath()) {
@@ -197,19 +204,12 @@ public final class ActionKey {
         return result;
     }
 
-    /** Sorted source lines for action material — one content hash per path via {@link FileHashMemo}. */
     /**
-     * One classpath/processorpath token. Jar entries are identified by path alone (CAS layout
-     * encodes content); directory entries additionally carry a tree hash — a directory path
-     * says nothing about its contents.
+     * One classpath/processorpath token. Identity is content (lock digest / file hash), not the
+     * on-disk path — the same jar may live under the Maven local repo or {@code repos/<name>/}.
      */
     private static void appendCpToken(StringBuilder sb, String prefix, Path entry) throws IOException {
-        Path p = FreshnessStamp.identityKey(entry);
-        sb.append(prefix).append(p);
-        if (Files.isDirectory(p)) {
-            sb.append('=').append(ClasspathFingerprint.entry(p));
-        }
-        sb.append('\n');
+        sb.append(prefix).append(ClasspathFingerprint.entry(entry)).append('\n');
     }
 
     private static void appendSources(StringBuilder sb, List<Path> sources) throws IOException {

@@ -492,7 +492,7 @@ public final class EffortWeights {
         if (stepCounts == null) stepCounts = Map.of();
         int weight = 0;
         int testWeight = 0;
-        String mod = dir == null ? "" : dir.toString();
+        String mod = dir == null ? "" : BuildMetrics.slashKey(dir.toString());
         int wWorkers = Math.max(1, testWorkers);
         for (String raw : runningSteps) {
             String step = metricsStepName(raw);
@@ -843,10 +843,7 @@ public final class EffortWeights {
                     project.project() != null ? project.project().javaRelease() : 0,
                     System::getenv);
             var r = cc.jumpkick.jdk.JdkResolution.resolve(
-                    req,
-                    registry,
-                    cc.jumpkick.jdk.GlobalDefaultJdk.current(),
-                    cc.jumpkick.jdk.JdkLts.OFFLINE_LATEST_LTS);
+                    req, registry, cc.jumpkick.jdk.JdkInventory.current(), cc.jumpkick.jdk.JdkLts.OFFLINE_LATEST_LTS);
             return (r.jdk().isEmpty() && r.wouldInstall()) ? JDK_DOWNLOAD : SKIP;
         } catch (Exception e) {
             return SKIP;

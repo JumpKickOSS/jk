@@ -71,8 +71,14 @@ final class AotCacheTrainer {
 
     /** Why an AOT cache cannot be trained for this image, or null when it can. */
     static String unsupportedReason(ImageBuilder.Plan plan) {
-        // The runtime probe applies to every layout — an app tree trains in a container exactly
-        // like a jar layout when the host cannot execute the image's JVM.
+        // Layout refusals first — they are intrinsic and more actionable than "no docker".
+        if (!plan.hasAppTree() && plan.classesDir() != null && !BootLayout.isBootJar(plan.mainJar())) {
+            return "this module's image is an exploded-classes layout and its main artifact is not a"
+                    + " Spring Boot jar, so there is nothing to unpack into a trainable shape. A CDS"
+                    + " dump refuses any classpath entry that is a directory (JDK-8329980, Won't"
+                    + " Fix)";
+        }
+        // An app tree (and jar layouts) still need a matching host JVM or a container runtime.
         if (containerRuntime(plan.config().dockerExecutable()) == null
                 && !BaseJre.hostCanExecute(plan.config().platforms())) {
             return "this host can neither run the image's JVM directly (it builds for "
@@ -82,13 +88,6 @@ final class AotCacheTrainer {
                     + ") nor find a container runtime (docker, podman, nerdctl). The cache is only"
                     + " valid for the exact JVM build that produced it, so training needs one or the"
                     + " other";
-        }
-        if (plan.hasAppTree()) return null;
-        if (plan.classesDir() != null && !BootLayout.isBootJar(plan.mainJar())) {
-            return "this module's image is an exploded-classes layout and its main artifact is not a"
-                    + " Spring Boot jar, so there is nothing to unpack into a trainable shape. A CDS"
-                    + " dump refuses any classpath entry that is a directory (JDK-8329980, Won't"
-                    + " Fix)";
         }
         return null;
     }
@@ -418,8 +417,17 @@ final class AotCacheTrainer {
     private static boolean onPath(String exe) {
         String path = System.getenv("PATH");
         if (path == null) return false;
+        boolean windows =
+                System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
         for (String dir : path.split(java.io.File.pathSeparator)) {
-            if (Files.isExecutable(Path.of(dir, exe))) return true;
+            Path base = Path.of(dir, exe);
+            if (Files.isExecutable(base)) return true;
+            // Windows PATHEXT: docker.exe / docker.cmd, not a bare "docker" file.
+            if (windows
+                    && (Files.isExecutable(Path.of(dir, exe + ".exe"))
+                            || Files.isExecutable(Path.of(dir, exe + ".cmd")))) {
+                return true;
+            }
         }
         return false;
     }

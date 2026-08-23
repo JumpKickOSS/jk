@@ -6,22 +6,21 @@ import java.io.File
  * Gradle-side mirrors of [cc.jumpkick.util.JkDirs] platform defaults (buildSrc cannot depend on :core). Keep in sync
  * when layout resolution changes.
  *
- * Resolution order for product dirs: role env → JK_HOME umbrella → XDG / Known Folders.
+ * Resolution order for the roots: role env → JK_HOME umbrella → XDG / Known Folders. Everything else derives from a
+ * root, identically in every mode — JK_HOME mirrors the XDG shape rather than flattening it.
  */
 object JkLayoutPaths {
 
+    /** Always {@code <data>/store} — {@code $JK_HOME/data/store} under the umbrella. */
     fun storeRoot(): File {
         nonBlank(System.getenv("JK_STORE_DIR"))?.let {
             return File(it)
         }
-        nonBlank(System.getenv("JK_HOME"))?.let {
-            return File(it).resolve("store")
-        }
-        nonBlank(System.getenv("JK_DATA_DIR"))?.let {
-            return File(it).resolve("store")
-        }
         return dataRoot().resolve("store")
     }
+
+    /** The live engine jar / installed app jars: {@code <data>/lib}. */
+    fun productLibRoot(): File = dataRoot().resolve("lib")
 
     fun dataRoot(): File {
         nonBlank(System.getenv("JK_DATA_DIR"))?.let {
@@ -64,32 +63,58 @@ object JkLayoutPaths {
     }
 
     /**
-     * Preferred client binaries for dogfood tasks (installLocal materialize). First existing / executable wins; callers
-     * may still fall back to bare {@code "jk"} on PATH.
+     * Preferred client binaries for dogfood tasks (installLocal materialize). First existing runnable wins; callers may
+     * still fall back to bare {@code "jk"} on PATH.
+     *
+     * Order: `:cli:installDist` → native `build/dist` (when present) → platform bin dir. installDist leads because it
+     * is the task installLocal depends on, so the `:cli:installDist installLocal` dogfood path cannot pick up a stale
+     * `build/dist` binary from an earlier `dist` run. On Windows, the installDist extensionless `jk` file is a Unix
+     * shell script and must not be chosen (CreateProcess error 193).
      */
-    fun clientCandidates(rootProjectDir: File, cliInstallDistJk: File?): List<File> {
+    fun clientCandidates(rootProjectDir: File, cliInstallDistBin: File?): List<File> {
         val list = mutableListOf<File>()
-        if (cliInstallDistJk != null) list.add(cliInstallDistJk)
-        list.add(File(rootProjectDir, "build/dist/jk"))
+        if (cliInstallDistBin != null) {
+            val bin = if (cliInstallDistBin.isDirectory) cliInstallDistBin else cliInstallDistBin.parentFile
+            if (bin != null) {
+                if (isWindows()) {
+                    list.add(File(bin, "jk.bat"))
+                    list.add(File(bin, "jk.cmd"))
+                } else {
+                    list.add(File(bin, "jk"))
+                }
+            }
+        }
+
+        // Ship-layout native binary, when `./gradlew dist` already produced it.
         list.add(File(rootProjectDir, "build/dist/jk.exe"))
-        list.add(File(binDir(), if (isWindows()) "jk.exe" else "jk"))
-        list.add(File(binDir(), "jk"))
-        return list
+        list.add(File(rootProjectDir, "build/dist/jk"))
+
+        if (isWindows()) {
+            list.add(File(binDir(), "jk.exe"))
+            list.add(File(binDir(), "jk.bat"))
+            list.add(File(binDir(), "jk.cmd"))
+        } else {
+            list.add(File(binDir(), "jk"))
+        }
+        return list.distinct()
     }
 
-    fun resolveClient(rootProjectDir: File, cliInstallDistJk: File?): String? {
-        for (c in clientCandidates(rootProjectDir, cliInstallDistJk)) {
-            if (
-                c.isFile &&
-                    (c.canExecute() ||
-                        c.name.endsWith(".exe", ignoreCase = true) ||
-                        c.name.endsWith(".bat", ignoreCase = true))
-            ) {
-                return c.absolutePath
-            }
+    fun resolveClient(rootProjectDir: File, cliInstallDistBin: File?): String? {
+        for (c in clientCandidates(rootProjectDir, cliInstallDistBin)) {
+            if (isRunnableClient(c)) return c.absolutePath
         }
         // PATH fallback — ProcessBuilder("jk") when available
         return null
+    }
+
+    /** True when [file] can be started with {@link ProcessBuilder} on this OS. */
+    fun isRunnableClient(file: File): Boolean {
+        if (!file.isFile) return false
+        val name = file.name.lowercase()
+        if (name.endsWith(".exe") || name.endsWith(".bat") || name.endsWith(".cmd")) return true
+        // Windows: extensionless Gradle Application `jk` is a #!/bin/sh script — not a Win32 app.
+        if (isWindows()) return false
+        return file.canExecute()
     }
 
     private fun userHome(): String = System.getProperty("user.home")

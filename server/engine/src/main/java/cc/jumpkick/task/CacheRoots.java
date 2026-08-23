@@ -14,7 +14,7 @@ import java.util.stream.Stream;
 
 /**
  * Collects CAS shas named by on-disk roots ({@code actions/keys}, {@code actions/synced},
- * {@code tools/envs}, local-repo {@code .sha256} sidecars) so the sweep can drop unreferenced
+ * {@code tools/envs}, local-repo {@code .jk} memos) so the sweep can drop unreferenced
  * objects. Pattern-based: any CAS-looking path counts as reachable.
  */
 public final class CacheRoots {
@@ -48,21 +48,21 @@ public final class CacheRoots {
         if (Files.isDirectory(toolsDir.resolve("envs"))) {
             scanTextFilesRecursively(toolsDir.resolve("envs"), cas, refs, Set.of());
         }
-        // repos/local is a PUBLISH DESTINATION (installLocal / jk publish local), not a derived
-        // cache: a freshly published dev artifact is legitimately unreferenced by any action or
-        // sync manifest until the first build consumes it, and the sweep must not eat it in that
-        // window (it once deleted every just-installed worker jar). Its .sha256 sidecars are
-        // therefore roots. Other repos/<name> stores are re-fetchable mirrors and stay sweepable.
-        Path localRepo = cas.root().resolve("repos").resolve("local");
+        // repos/jk-local is a PUBLISH DESTINATION (installLocal / jk publish local), not a derived
+        // cache: a freshly published worker is legitimately unreferenced by any action until the
+        // first build consumes it. Its .jk memos are roots so a leftover store-CAS copy of those
+        // bytes is not swept. Maven-layout files themselves are never deleted by CAS sweep.
+        Path localRepo = cas.root().resolve("repos").resolve(cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL);
         if (Files.isDirectory(localRepo)) {
             try (Stream<Path> stream = Files.walk(localRepo)) {
                 for (Path file : (Iterable<Path>) stream::iterator) {
-                    if (!Files.isRegularFile(file) || !file.toString().endsWith(".sha256")) continue;
-                    try {
-                        addExplicitShaTokens(Files.readString(file, StandardCharsets.UTF_8), refs);
-                    } catch (IOException ignored) {
-                        // unreadable sidecar — its artifact simply isn't protected
+                    if (!Files.isRegularFile(file)
+                            || !file.getFileName().toString().endsWith(".jk")) {
+                        continue;
                     }
+                    cc.jumpkick.repo.ArtifactMemo.read(file)
+                            .map(cc.jumpkick.repo.ArtifactMemo::sha256)
+                            .ifPresent(refs::add);
                 }
             }
         }

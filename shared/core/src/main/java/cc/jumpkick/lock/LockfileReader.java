@@ -47,7 +47,9 @@ public final class LockfileReader {
         if (cached != null && cached.size() == attrs.size() && cached.modified().equals(attrs.lastModifiedTime())) {
             return cached.value();
         }
-        TomlParseResult result = Toml.parse(file);
+        // Read the whole file, then parse: the handle is open only for the read, so a concurrent
+        // AtomicWrites.replace on Windows is not blocked by Toml.parse(Path) holding the target open.
+        TomlParseResult result = Toml.parse(Files.readString(file));
         Lockfile lockfile = fromResult(result, file.toString());
         // Clear-on-overflow (same bound as ProjectIds): one parsed Lockfile — potentially MBs —
         // per distinct lockfile path the process ever read, forever.
@@ -93,6 +95,7 @@ public final class LockfileReader {
         }
         if (jkMin != null && jkMin.isBlank()) jkMin = null;
         String kotlin = result.getString("kotlin"); // optional, resolved Kotlin compiler version
+        String scala = result.getString("scala"); // optional, resolved Scala 3 compiler version
 
         List<Lockfile.Artifact> artifacts = new ArrayList<>();
         TomlArray artifactArray = result.getArray("artifact");
@@ -144,7 +147,11 @@ public final class LockfileReader {
                     if (raw instanceof Long l) java = l.intValue();
                     else if (raw instanceof Integer n) java = n;
                 }
-                Boolean m2 = t.contains("m2install") ? t.getBoolean("m2install") : null;
+                TomlTable m2Table = t.getTable("m2");
+                Boolean m2 =
+                        m2Table != null && m2Table.contains("integration") ? m2Table.getBoolean("integration") : null;
+                Boolean m2install =
+                        m2Table != null && m2Table.contains("install") ? m2Table.getBoolean("install") : null;
                 modules.add(new Lockfile.ModuleEntry(
                         path,
                         group,
@@ -154,9 +161,11 @@ public final class LockfileReader {
                         java,
                         t.getString("kotlin"),
                         t.getString("groovy"),
+                        t.getString("scala"),
                         t.getString("description"),
                         t.getString("sources"),
                         m2,
+                        m2install,
                         t.getString("layout")));
             }
         }
@@ -170,6 +179,7 @@ public final class LockfileReader {
                 resolutionAlgorithm,
                 jdk,
                 kotlin,
+                scala,
                 artifacts,
                 plugins,
                 sdk,

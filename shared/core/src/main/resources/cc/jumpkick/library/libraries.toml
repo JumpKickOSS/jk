@@ -167,9 +167,12 @@ quarkus-bootstrap-core       = "io.quarkus:quarkus-bootstrap-core"
 quarkus-bootstrap-maven-resolver = "io.quarkus:quarkus-bootstrap-maven-resolver"
 quarkus-bootstrap-app-model  = "io.quarkus:quarkus-bootstrap-app-model"
 
-# Kotlin / Groovy toolchains
+# Kotlin / Groovy / Scala toolchains
 kotlin-build-tools-api       = "org.jetbrains.kotlin:kotlin-build-tools-api"
 groovy                       = "org.apache.groovy:groovy"
+scala3-compiler              = "org.scala-lang:scala3-compiler_3"
+scala3-sbt-bridge            = "org.scala-lang:scala3-sbt-bridge"
+zinc                         = "org.scala-sbt:zinc_3"
 
 # Git
 jgit                         = "org.eclipse.jgit:org.eclipse.jgit"

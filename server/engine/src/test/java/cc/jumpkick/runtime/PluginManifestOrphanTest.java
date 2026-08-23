@@ -9,10 +9,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-2267: deleting a module-root {@code jk-plugin.toml} must count as manifest drift while its
- * copy still sits under classes/ — otherwise the jar keeps describing a plugin that no longer
- * exists until a clean build (the JK-2174 orphan, regressed when extra-resources' reconciliation
- * was dropped).
+ * A deleted module-root {@code jk-plugin.toml} (or leftover flattened catalog files) must count
+ * as resource drift while copies still sit under classes/ — otherwise the jar keeps describing
+ * a plugin that no longer exists until a clean build.
  */
 class PluginManifestOrphanTest {
 
@@ -30,5 +29,29 @@ class PluginManifestOrphanTest {
         assertThat(TaskForecaster.pluginManifestOutOfSync(module, classes))
                 .as("neither side present — in sync")
                 .isFalse();
+    }
+
+    @Test
+    void leftover_flattened_catalog_is_out_of_sync_and_stripped(@TempDir Path tmp) throws Exception {
+        Path module = Files.createDirectories(tmp.resolve("mod"));
+        Path classes = Files.createDirectories(tmp.resolve("classes"));
+        Path catalog = Files.createDirectories(classes.resolve(Path.of("cc", "jumpkick", "plugin", "manifest")));
+        Path toml = catalog.resolve("spring-boot.jk-plugin.toml");
+        Path scaffold = Files.createDirectories(catalog.resolve("spring-boot").resolve("scaffold"));
+        Files.writeString(toml, "[plugin]\nid = \"spring-boot\"\n");
+        Files.writeString(scaffold.resolve("Hello.java.tmpl"), "class Hello {}");
+        Path keepClass = catalog.resolve("Keep.class");
+        Files.write(keepClass, new byte[] {0});
+
+        assertThat(TaskForecaster.flattenedPluginCatalogPresent(classes)).isTrue();
+        assertThat(TaskForecaster.mainResourcesOutOfSync(module, false, classes))
+                .isTrue();
+
+        assertThat(PlannerResources.stripFlattenedPluginCatalog(classes)).isTrue();
+        assertThat(toml).doesNotExist();
+        assertThat(scaffold).doesNotExist();
+        assertThat(keepClass).exists();
+        assertThat(TaskForecaster.flattenedPluginCatalogPresent(classes)).isFalse();
+        assertThat(PlannerResources.stripFlattenedPluginCatalog(classes)).isFalse();
     }
 }

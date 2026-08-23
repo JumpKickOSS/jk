@@ -102,6 +102,39 @@ class JavaIncrementalCompilerTest {
         assertThat(classOut.resolve("app/WidgetGen.class")).isRegularFile();
     }
 
+    @Test
+    void zinc_compile_emits_compiled_source_list(@TempDir Path dir) throws Exception {
+        Path src = dir.resolve("src/a/Hello.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, "package a; public class Hello { public int n() { return 1; } }");
+        Path classOut = dir.resolve("classes");
+        Path workdir = dir.resolve("zinc-work");
+        Path spec = dir.resolve("spec.txt");
+        Files.write(
+                spec,
+                new cc.jumpkick.plugin.protocol.SpecWriter()
+                        .op(cc.jumpkick.plugin.protocol.PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
+                        .configInt("release", 25)
+                        .layout(Map.of("classesDir", classOut, "sourceOutput", dir.resolve("gen"), "workdir", workdir))
+                        .source(src.toAbsolutePath())
+                        .lines());
+
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        int code = JavaIncrementalCompiler.compileSpec(
+                spec,
+                new cc.jumpkick.plugin.protocol.ProtocolWriter(
+                        new PrintStream(buf, true, StandardCharsets.UTF_8), "##JKJC:"));
+        String out = buf.toString(StandardCharsets.UTF_8);
+
+        assertThat(code).isZero();
+        assertThat(out).contains("\"t\":\"result\"");
+        assertThat(out).contains("\"status\":\"OK\"");
+        assertThat(out).contains("\"compiled\":[");
+        assertThat(out).contains("Hello.java");
+        assertThat(classOut.resolve("a/Hello.class")).isRegularFile();
+        assertThat(workdir.resolve("zinc")).isRegularFile();
+    }
+
     private static void compile(Path outDir, Map<String, String> sources) throws IOException {
         Path srcDir = outDir.resolve("_src");
         Files.createDirectories(outDir);

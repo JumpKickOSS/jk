@@ -3,7 +3,12 @@ description = "JumpKick's Java compiler plugin"
 
 [dependencies]
 jk-plugin-sdk.workspace = true
+# Compile + worker POM runtime (thin jar). Matches Gradle implementation(libs.zinc).
+zinc = "2.0.4"
 
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"
+# Mixed Java+Scala tests; not on the production worker classpath (AOT key stays Zinc-only).
+scala3-compiler = "3.8.4"
+scala3-sbt-bridge = "3.8.4"

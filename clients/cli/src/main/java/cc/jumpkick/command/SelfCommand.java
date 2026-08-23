@@ -28,7 +28,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * {@code jk self} — self-update: install under {@code $JK_HOME/lib/jk-engine/} (parking the previous
+ * {@code jk self} — self-update: install under {@code <data>/lib/jk-engine/} (parking the previous
  * jar as {@code .old}), flip PATH {@code jk} (parking {@code jk.old} / {@code jk.exe.old}), start
  * the new engine (graceful drain). {@code --now} stops the old engine first.
  */
@@ -117,7 +117,7 @@ public final class SelfCommand extends GroupCommand {
 
     /**
      * {@code jk self materialize <client-bin> <engine-jar>} — hidden install-time seam: ingest a
-     * local dist's engine jar into the CAS and install under {@code $JK_HOME/lib/jk-engine/}.
+     * local dist's engine jar into the CAS and install under {@code <data>/lib/jk-engine/}.
      * install.sh calls this through the freshly-installed client. The client-bin argument is the
      * PATH binary already written by the installer (not copied into the product lib).
      */
@@ -130,7 +130,7 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Install the engine jar under $JK_HOME/lib/jk-engine from local artifacts";
+            return "Install the engine jar under <data>/lib/jk-engine from local artifacts";
         }
 
         @Override

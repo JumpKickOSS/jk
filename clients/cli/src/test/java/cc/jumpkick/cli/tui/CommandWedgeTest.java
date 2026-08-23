@@ -2,12 +2,23 @@
 package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.testing.MainSources;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.NerdFontCaps;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 class CommandWedgeTest {
@@ -54,20 +65,69 @@ class CommandWedgeTest {
     }
 
     @Test
+    void analyzing_stdout_is_suppressed_when_stdout_is_machine_consumed() {
+        // JK-2330: `jk bsp serve` hands stdout to BspServer as the JSON-RPC frame channel, and
+        // `jk explain --graph` writes graph source there. A spinner would put cursor ANSI in both.
+        var out = new ByteArrayOutputStream();
+        var prev = System.out;
+        try {
+            System.setOut(new PrintStream(out, true, StandardCharsets.UTF_8));
+            CliOutput.beginCommand(true);
+            assertThat(CommandWedge.analyzingStdout("BSP", "Locking…")).isNull();
+        } finally {
+            System.setOut(prev);
+        }
+        assertThat(out.toString(StandardCharsets.UTF_8)).isEmpty();
+        assertThat(CliOutput.envelopeStarted()).isFalse();
+        CliOutput.beginCommand(false);
+    }
+
+    @Test
+    void no_source_animates_straight_onto_cli_output_stdout() {
+        // The interactivity gate callers rely on asks whether stdout is a *terminal*, which a
+        // pty-allocating IDE or CI runner answers yes to while still parsing every byte. Only
+        // analyzingStdout consults scriptMode, so routing around it reopens JK-2330.
+        Optional<Path> mainOpt = MainSources.locate();
+        assumeTrue(mainOpt.isPresent(), "cli main sources not adjacent to test classpath — skip scan");
+        Path main = mainOpt.get();
+        Pattern anti = Pattern.compile("analyzing\\(\\s*CliOutput\\.stdout\\(\\)");
+        Path wedge = main.resolve("cc/jumpkick/cli/tui/CommandWedge.java");
+        List<String> offenders = new ArrayList<>();
+        try (Stream<Path> walk = Files.walk(main)) {
+            walk.filter(p -> p.toString().endsWith(".java"))
+                    .filter(p -> !p.equals(wedge))
+                    .forEach(p -> {
+                        try {
+                            if (anti.matcher(Files.readString(p)).find()) {
+                                offenders.add(main.relativize(p).toString());
+                            }
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        assertThat(offenders)
+                .as("call CommandWedge.analyzingStdout(command, message) instead")
+                .isEmpty();
+    }
+
+    @Test
     void envelope_start_is_idempotent_until_reset() {
-        CommandWedge.resetEnvelope();
-        assertThat(CommandWedge.envelopeStarted()).isFalse();
+        CliOutput.beginCommand(false);
+        assertThat(CliOutput.envelopeStarted()).isFalse();
         CommandWedge.envelopeStart();
-        assertThat(CommandWedge.envelopeStarted()).isTrue();
+        assertThat(CliOutput.envelopeStarted()).isTrue();
         CommandWedge.envelopeStart(); // no second blank side effect on flag
-        assertThat(CommandWedge.envelopeStarted()).isTrue();
-        CommandWedge.resetEnvelope();
-        assertThat(CommandWedge.envelopeStarted()).isFalse();
+        assertThat(CliOutput.envelopeStarted()).isTrue();
+        CliOutput.beginCommand(false);
+        assertThat(CliOutput.envelopeStarted()).isFalse();
     }
 
     @Test
     void printFail_opens_stderr_envelope_once() {
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var err = new ByteArrayOutputStream();
         var prev = System.err;
         try {
@@ -90,7 +150,7 @@ class CommandWedgeTest {
 
     @Test
     void printOk_opens_stdout_envelope_once() {
-        CommandWedge.resetEnvelope();
+        CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         var prev = System.out;
         try {
@@ -104,6 +164,27 @@ class CommandWedgeTest {
         assertThat(out).startsWith("\n");
         assertThat(out).doesNotStartWith("\n\n");
         assertThat(out).contains("Add").contains("ok");
+    }
+
+    @Test
+    void printLine_opens_stdout_envelope_once() {
+        CliOutput.beginCommand(false);
+        var buf = new ByteArrayOutputStream();
+        var prev = System.out;
+        try {
+            System.setOut(new PrintStream(buf, true, StandardCharsets.UTF_8));
+            CommandWedge.printLine("wedge-one");
+            CommandWedge.printLine("wedge-two");
+        } finally {
+            System.setOut(prev);
+        }
+        String out = buf.toString(StandardCharsets.UTF_8);
+        assertThat(out).startsWith("\n");
+        assertThat(out).doesNotStartWith("\n\n");
+        assertThat(out).contains("wedge-one").contains("wedge-two");
+        long leadingBlanks = 0;
+        for (int i = 0; i < out.length() && out.charAt(i) == '\n'; i++) leadingBlanks++;
+        assertThat(leadingBlanks).isEqualTo(1);
     }
 
     @Test

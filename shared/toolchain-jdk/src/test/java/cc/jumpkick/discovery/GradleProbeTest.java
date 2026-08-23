@@ -3,6 +3,7 @@ package cc.jumpkick.discovery;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jdk.JdkHit;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -34,8 +35,8 @@ class GradleProbeTest {
 
     private static void makeJdk(Path home, String version) throws IOException {
         Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake\n");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake\n");
+        Files.writeString(JdkFingerprint.java(home), "#!/fake\n");
+        Files.writeString(JdkFingerprint.javac(home), "#!/fake\n");
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
     }

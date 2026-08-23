@@ -6,7 +6,6 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.http.Http;
-import cc.jumpkick.jdk.GlobalDefaultJdk;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.IntellijJdkDir;
@@ -15,6 +14,7 @@ import cc.jumpkick.jdk.JdkCatalogClient;
 import cc.jumpkick.jdk.JdkGarbage;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInstaller;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.jdk.StableJdkPointer;
@@ -173,13 +173,9 @@ public final class JdkUpdateCommand implements CliCommand {
 
     private boolean apply(JdkRegistry registry, List<Update> updates) {
         JdkInstaller installer = new JdkInstaller(new Http(), registry);
-        GlobalDefaultJdk defaults = GlobalDefaultJdk.current();
-        Optional<String> currentDefault;
-        try {
-            currentDefault = defaults.currentIdentifier();
-        } catch (IOException e) {
-            currentDefault = Optional.empty();
-        }
+        JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
+        Optional<String> currentDefault = defaults.defaultId();
+        Optional<String> graalDefault = defaults.graalId();
 
         Map<String, InstalledJdk> built = new HashMap<>(); // dedupe installs by target folder
         int updated = 0;
@@ -203,7 +199,15 @@ public final class JdkUpdateCommand implements CliCommand {
                     new JdkGarbage(registry.jdksRoot()).enqueue(IntellijJdkDir.installDirOf(u.old.home()));
                 }
                 if (currentDefault.isPresent() && currentDefault.get().equals(oldId)) {
-                    defaults.set(newJdk);
+                    defaults.setDefault(newJdk);
+                    currentDefault = Optional.of(newJdk.identifier());
+                }
+                if (graalDefault.isPresent() && graalDefault.get().equals(oldId)) {
+                    defaults.setGraal(newJdk);
+                    graalDefault = Optional.of(newJdk.identifier());
+                }
+                if (!oldId.equals(newJdk.identifier())) {
+                    defaults.remove(oldId);
                 }
                 // Progress detail (one line per JDK); the command settles with a wedge below.
                 CliOutput.out(Theme.colorize(Glyphs.CHECK, Theme.active().completedStep())

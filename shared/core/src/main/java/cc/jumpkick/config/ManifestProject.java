@@ -29,9 +29,9 @@ public final class ManifestProject {
             "java",
             "kotlin",
             "groovy",
+            "scala",
             "sources",
             "description",
-            "m2install",
             "layout",
             "id",
             "module");
@@ -107,6 +107,14 @@ public final class ManifestProject {
             groovy = parseGroovyVersion(root);
         }
 
+        VersionSelector scala;
+        if (isWorkspaceInherit(root, "scala") || (!workspaceRoot && !root.contains("scala"))) {
+            inherits.add(JkBuild.ProjectInherit.SCALA);
+            scala = null;
+        } else {
+            scala = parseScalaVersion(root);
+        }
+
         // sources = true → PUBLISH; sources = "always" → ALWAYS; absent/false → DISABLED
         // description is special: omit stays null (no auto-inherit). Explicit description.workspace = true ok.
         JkBuild.SourcesMode sourcesMode;
@@ -133,14 +141,9 @@ public final class ManifestProject {
             description = root.getString("description");
         }
 
-        boolean m2install;
-        if (isWorkspaceInherit(root, "m2install") || (!workspaceRoot && !root.contains("m2install"))) {
-            inherits.add(JkBuild.ProjectInherit.M2INSTALL);
-            m2install = false;
-        } else {
-            // m2install defaults to false: ~/.cache/jk is primary. true mirrors into ~/.m2.
-            m2install = Boolean.TRUE.equals(root.getBoolean("m2install"));
-        }
+        M2Flags m2 = parseM2(root, workspaceRoot, inherits);
+        boolean m2integration = m2.integration;
+        boolean m2install = m2.install;
 
         JkBuild.Layout layout;
         if (isWorkspaceInherit(root, "layout") || (!workspaceRoot && !root.contains("layout"))) {
@@ -158,7 +161,80 @@ public final class ManifestProject {
         }
 
         return new JkBuild.Project(
-                group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, layout, inherits);
+                group,
+                name,
+                version,
+                jdk,
+                java,
+                kotlin,
+                groovy,
+                scala,
+                sourcesMode,
+                description,
+                m2integration,
+                m2install,
+                layout,
+                inherits);
+    }
+
+    private record M2Flags(boolean integration, boolean install) {}
+
+    /**
+     * {@code [m2] integration} / {@code [m2] install} (both default true). A module may inherit
+     * the whole table ({@code [m2] workspace = true}) or either key.
+     */
+    private static M2Flags parseM2(
+            TomlTable root, boolean workspaceRoot, java.util.EnumSet<JkBuild.ProjectInherit> inherits) {
+        if (root.contains("m2integration") || root.contains("m2install")) {
+            throw new JkBuildParseException(
+                    "m2integration / m2install moved under [m2] — use `integration` and `install`");
+        }
+        if (root.contains("m2") && !root.isTable("m2")) {
+            throw new JkBuildParseException("`m2` must be a table — use [m2] with integration/install keys");
+        }
+        TomlTable m2 = root.isTable("m2") ? root.getTable("m2") : null;
+        if (m2 != null) {
+            for (String k : m2.keySet()) {
+                if (!"integration".equals(k) && !"install".equals(k) && !"workspace".equals(k)) {
+                    throw new JkBuildParseException("[m2] unknown key `" + k + "` — expected integration, install");
+                }
+            }
+        }
+        if (m2 != null && m2.contains("workspace") && isWorkspaceInherit(root, "m2")) {
+            if (m2.contains("integration") || m2.contains("install")) {
+                throw new JkBuildParseException(
+                        "[m2] workspace = true cannot be combined with explicit integration/install"
+                                + " — drop one (JK-2323)");
+            }
+            inherits.add(JkBuild.ProjectInherit.M2INTEGRATION);
+            inherits.add(JkBuild.ProjectInherit.M2INSTALL);
+            return new M2Flags(true, true);
+        }
+        return new M2Flags(
+                parseM2Bool(root, "integration", workspaceRoot, JkBuild.ProjectInherit.M2INTEGRATION, inherits),
+                parseM2Bool(root, "install", workspaceRoot, JkBuild.ProjectInherit.M2INSTALL, inherits));
+    }
+
+    private static boolean parseM2Bool(
+            TomlTable root,
+            String key,
+            boolean workspaceRoot,
+            JkBuild.ProjectInherit inherit,
+            java.util.EnumSet<JkBuild.ProjectInherit> inherits) {
+        // Guard the type: a top-level `m2 = "yes"` must surface as a clean parse error, not a raw
+        // tomlj type exception from getTable (JK-2323).
+        TomlTable m2 = root.isTable("m2") ? root.getTable("m2") : null;
+        boolean present = m2 != null && m2.contains(key);
+        if ((m2 != null && isWorkspaceInherit(m2, key)) || (!workspaceRoot && !present)) {
+            inherits.add(inherit);
+            return true;
+        }
+        if (!present) return true;
+        Boolean value = m2.getBoolean(key);
+        if (value == null) {
+            throw new JkBuildParseException("[m2]." + key + " must be true or false");
+        }
+        return value;
     }
 
     /**
@@ -337,6 +413,21 @@ public final class ManifestProject {
         String raw = root.getString("groovy");
         if (raw == null) {
             throw new JkBuildParseException("groovy must be a version string, e.g. \"5.0.4\"");
+        }
+        if (raw.isBlank()) return null;
+        return VersionSelector.parseFloating(raw);
+    }
+
+    /**
+     * {@code scala} is a Scala compiler version selector (string), parsed the same way as a
+     * floating dependency version: bare {@code 3} → caret, {@code =3.8.4} pins. Absent →
+     * {@code null} (not a Scala project).
+     */
+    static VersionSelector parseScalaVersion(TomlTable root) {
+        if (!root.contains("scala")) return null;
+        String raw = root.getString("scala");
+        if (raw == null) {
+            throw new JkBuildParseException("scala must be a version string, e.g. \"3\"");
         }
         if (raw.isBlank()) return null;
         return VersionSelector.parseFloating(raw);

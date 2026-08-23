@@ -64,7 +64,9 @@ public record ProjectInfo(
         String testResultsDir,
         List<String> testIncludeTags,
         List<String> testExcludeTags,
-        boolean lockStale) {
+        boolean lockStale,
+        boolean scala,
+        String scalaVersion) {
 
     /** The {@code group:name} display coordinate. */
     public String coord() {
@@ -122,7 +124,9 @@ public record ProjectInfo(
                 "",
                 List.of(),
                 List.of(),
-                false);
+                false,
+                false,
+                "");
     }
 
     public String encode() {
@@ -176,6 +180,8 @@ public record ProjectInfo(
                 + ",\"testIncludeTags\":" + EngineProtocol.quoteArray(testIncludeTags)
                 + ",\"testExcludeTags\":" + EngineProtocol.quoteArray(testExcludeTags)
                 + ",\"lockStale\":" + lockStale
+                + ",\"scala\":" + scala
+                + ",\"scalaVersion\":" + Jsonl.quote(scalaVersion)
                 + "}";
     }
 
@@ -231,7 +237,9 @@ public record ProjectInfo(
                 orEmpty(Jsonl.str(line, "testResultsDir")),
                 Jsonl.strArray(line, "testIncludeTags"),
                 Jsonl.strArray(line, "testExcludeTags"),
-                Jsonl.bool(line, "lockStale", false));
+                Jsonl.bool(line, "lockStale", false),
+                Jsonl.bool(line, "scala", false),
+                orEmpty(Jsonl.str(line, "scalaVersion")));
     }
 
     /** {@code ,"key":true|false} when set; empty string when unset (tri-state). */

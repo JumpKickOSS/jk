@@ -127,6 +127,9 @@ val springBootWorkerJar by configurations.creating {
 val androidWorkerJar by configurations.creating {
     isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
 }
+val javaCompilerWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
 dependencies {
     kotlinWorkerJar(project(":kotlin-compiler"))
     groovyWorkerJar(project(":groovy-compiler"))
@@ -137,6 +140,7 @@ dependencies {
     compatBridgeWorkerJar(project(":compat-bridge"))
     springBootWorkerJar(project(":spring-boot"))
     androidWorkerJar(project(":android"))
+    javaCompilerWorkerJar(project(":java-compiler"))
 }
 
 // Unique short UDS state dir for this test task run. UDS sun_path is ~108 bytes;
@@ -151,6 +155,14 @@ val cliTestStateDir =
 val cliTestStateDirShort =
         file(
                 "/tmp/jk-cli-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")
+
+// @TempDir root for the integration tier. It MUST live outside the repo checkout: the shared
+// convention points java.io.tmpdir at build/tmp (inside clients/cli, which has its own jk.toml),
+// so @TempDir project dirs would find — and the "promote to workspace" tests would MUTATE — the
+// real repo's jk.toml (JK-2329). A short /tmp path also keeps UDS socket paths under sun_path.
+val cliTestTmpDirShort =
+        file(
+                "/tmp/jk-cli-tmp-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")
 
 // Unit vs integration (suite performance):
 // :cli:test — pure unit (TUI/args/jsonl); NO engine spawn tax
@@ -191,8 +203,10 @@ tasks.named<Test>("integrationTest") {
             ":engine:shadowJar",
             kotlinWorkerJar, groovyWorkerJar, testRunnerJar, auditorWorkerJar, publisherWorkerJar,
             imageBuilderWorkerJar, compatBridgeWorkerJar, springBootWorkerJar, androidWorkerJar,
+            javaCompilerWorkerJar,
             ":kotlin-compiler:stageWorkerRepo",
             ":groovy-compiler:stageWorkerRepo",
+            ":java-compiler:stageWorkerRepo",
             ":test-runner:stageWorkerRepo",
             ":auditor:stageWorkerRepo",
             ":publisher:stageWorkerRepo",
@@ -217,16 +231,20 @@ tasks.named<Test>("integrationTest") {
     systemProperty(
             "junit.jupiter.tempdir.factory.default",
             "cc.jumpkick.cli.engine.JkTempDirFactory")
+    // Override the shared build/tmp (inside the repo) so @TempDir lands outside the checkout.
+    systemProperty("java.io.tmpdir", cliTestTmpDirShort.absolutePath)
     doFirst {
+        cliTestTmpDirShort.mkdirs()
         cliTestStateDirShort.mkdirs()
         environment("JK_STATE_DIR", cliTestStateDirShort.absolutePath)
         val testJkHome = layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath
         environment("JK_HOME", testJkHome)
         environment("JK_JDKS_DIR", "$testJkHome/jdks")
-        val store = file("$testJkHome/store")
+        val store = file("$testJkHome/data/store") // JK_HOME mirrors XDG: store is <data>/store
         listOf(
                         ":kotlin-compiler",
                         ":groovy-compiler",
+                        ":java-compiler",
                         ":test-runner",
                         ":auditor",
                         ":publisher",
@@ -244,6 +262,7 @@ tasks.named<Test>("integrationTest") {
         systemProperty("jk.engine.jar", engineJar.absolutePath)
         systemProperty("jk.kotlin.plugin.jar", kotlinWorkerJar.singleFile.absolutePath)
         systemProperty("jk.groovy.plugin.jar", groovyWorkerJar.singleFile.absolutePath)
+        systemProperty("jk.java.plugin.jar", javaCompilerWorkerJar.singleFile.absolutePath)
         systemProperty("jk.test.runner.jar", testRunnerJar.singleFile.absolutePath)
         systemProperty("jk.auditor.plugin.jar", auditorWorkerJar.singleFile.absolutePath)
         systemProperty("jk.publisher.plugin.jar", publisherWorkerJar.singleFile.absolutePath)
@@ -254,6 +273,7 @@ tasks.named<Test>("integrationTest") {
     }
     doLast {
         cliTestStateDirShort.deleteRecursively()
+        cliTestTmpDirShort.deleteRecursively()
     }
 }
 
@@ -312,6 +332,9 @@ graalvmNative {
         // on the binary's classpath, so jline is the only contributor left:
         // its FFM Linker/Arena lookups must run at image-runtime regardless.
         buildArgs.add("--initialize-at-run-time=org.jline")
+        // WindowsUtf8 binds Kernel32 via FFM at first enable() — keep that off the
+        // image-build heap so downcalls resolve against the running process.
+        buildArgs.add("--initialize-at-run-time=cc.jumpkick.cli.tui.WindowsUtf8")
         // jline-native ships a resource-config with a broad "org/jline/nativ/.*"
         // pattern that embeds ALL platform native libs (Windows DLLs, Linux/macOS/
         // FreeBSD .so/.dylib for every arch) as image resources. jk uses the FFM

@@ -43,7 +43,7 @@ public final class TestSupport {
         try (Stream<Path> walk = Files.walk(testSrcDir)) {
             for (Path file : (Iterable<Path>) walk.filter(Files::isRegularFile).filter(p -> {
                 String n = p.getFileName().toString();
-                return n.endsWith(".java") || n.endsWith(".kt") || n.endsWith(".groovy");
+                return n.endsWith(".java") || n.endsWith(".kt") || n.endsWith(".groovy") || n.endsWith(".scala");
             })::iterator) {
                 try {
                     String content = Files.readString(file);
@@ -70,6 +70,7 @@ public final class TestSupport {
             roots.addAll(cc.jumpkick.layout.TestSuites.javaRoots(moduleDir, compact, suite));
             roots.addAll(cc.jumpkick.layout.TestSuites.kotlinRoots(moduleDir, compact, suite));
             roots.addAll(cc.jumpkick.layout.TestSuites.groovyRoots(moduleDir, compact, suite));
+            roots.addAll(cc.jumpkick.layout.TestSuites.scalaRoots(moduleDir, compact, suite));
         }
         for (Path r : roots) total += estimateTestCount(r);
         return total;
@@ -94,6 +95,7 @@ public final class TestSupport {
             roots.addAll(cc.jumpkick.layout.TestSuites.javaRoots(moduleDir, compact, suite));
             roots.addAll(cc.jumpkick.layout.TestSuites.kotlinRoots(moduleDir, compact, suite));
             roots.addAll(cc.jumpkick.layout.TestSuites.groovyRoots(moduleDir, compact, suite));
+            roots.addAll(cc.jumpkick.layout.TestSuites.scalaRoots(moduleDir, compact, suite));
         }
         for (Path r : roots) total += estimateTestCount(r);
         return total;
@@ -110,6 +112,7 @@ public final class TestSupport {
             roots.addAll(cc.jumpkick.layout.TestSuites.javaRoots(moduleDir, compact, suite));
             roots.addAll(cc.jumpkick.layout.TestSuites.kotlinRoots(moduleDir, compact, suite));
             roots.addAll(cc.jumpkick.layout.TestSuites.groovyRoots(moduleDir, compact, suite));
+            roots.addAll(cc.jumpkick.layout.TestSuites.scalaRoots(moduleDir, compact, suite));
         }
         for (Path r : roots) total += estimateTestClassCount(r);
         return total;
@@ -122,7 +125,7 @@ public final class TestSupport {
         try (Stream<Path> walk = Files.walk(testSrcDir)) {
             for (Path file : (Iterable<Path>) walk.filter(Files::isRegularFile).filter(p -> {
                 String n = p.getFileName().toString();
-                return n.endsWith(".java") || n.endsWith(".kt") || n.endsWith(".groovy");
+                return n.endsWith(".java") || n.endsWith(".kt") || n.endsWith(".groovy") || n.endsWith(".scala");
             })::iterator) {
                 try {
                     String content = Files.readString(file);
@@ -148,6 +151,7 @@ public final class TestSupport {
         out.addAll(cc.jumpkick.layout.TestSuites.collectJavaSources(moduleDir, compact, suites));
         out.addAll(cc.jumpkick.layout.TestSuites.collectKotlinSources(moduleDir, compact, suites));
         out.addAll(cc.jumpkick.layout.TestSuites.collectGroovySources(moduleDir, compact, suites));
+        out.addAll(cc.jumpkick.layout.TestSuites.collectScalaSources(moduleDir, compact, suites));
         return new java.util.ArrayList<>(out);
     }
 
@@ -578,11 +582,8 @@ public final class TestSupport {
 
     /**
      * Compile test sources with action-cache lookup. Mirrors the compile-main step: same task ID /
-     * classpath / output-dir shape, and — crucially — the same {@code processorPath} + {@link
-     * cc.jumpkick.task.JavaIncrementalCompile.ApSetup} wiring, so annotation processors (Lombok,
-     * Immutables, …) run over test sources too. Modern javac only runs processors named by {@code
-     * -processorpath}; without it, a test class using {@code @Getter} would fail to find its
-     * generated modules even though main compilation handled the same annotation.
+     * classpath / output-dir shape, and the same {@code processorPath} + Zinc worker, so annotation
+     * processors (Lombok, Immutables, …) run over test sources too.
      */
     public static boolean compileWithCache(
             TaskContext ctx,
@@ -594,12 +595,50 @@ public final class TestSupport {
             int release,
             List<String> javacArgs,
             Path javaHome,
-            cc.jumpkick.task.JavaIncrementalCompile.ApSetup ap,
+            Path generatedSourceDir,
             Cas cas,
             Path cacheRoot)
             throws IOException {
+        return compileWithCache(
+                ctx,
+                taskId,
+                srcDir,
+                outputDir,
+                classpath,
+                processorPath,
+                release,
+                javacArgs,
+                javaHome,
+                generatedSourceDir,
+                cas,
+                cacheRoot,
+                List.of(),
+                null);
+    }
 
-        List<Path> sources = CompileSupport.collectJavaSources(srcDir);
+    public static boolean compileWithCache(
+            TaskContext ctx,
+            String taskId,
+            Path srcDir,
+            Path outputDir,
+            List<Path> classpath,
+            List<Path> processorPath,
+            int release,
+            List<String> javacArgs,
+            Path javaHome,
+            Path generatedSourceDir,
+            Cas cas,
+            Path cacheRoot,
+            List<Path> extraSources,
+            ScalaCompile.Setup scala)
+            throws IOException {
+
+        List<Path> sources = new ArrayList<>(CompileSupport.collectJavaSources(srcDir));
+        if (extraSources != null) {
+            for (Path p : extraSources) {
+                if (!sources.contains(p)) sources.add(p);
+            }
+        }
         if (sources.isEmpty()) {
             Files.createDirectories(outputDir);
             return true;
@@ -608,15 +647,22 @@ public final class TestSupport {
         // Project-qualify so the `tasks/<taskId>` pointer is unique per module
         // (display labels keep the plain base name).
         String cacheTaskId = ActionKey.qualifiedTaskId(taskId, outputDir);
-        CompileRequest request = CompileRequest.builder()
+        CompileRequest.CompileRequestBuilder req = CompileRequest.builder()
                 .sources(sources)
                 .classpath(classpath)
                 .outputDir(outputDir)
                 .release(release)
                 .extraOptions(javacArgs)
                 .javaHome(javaHome)
-                .processorPath(processorPath)
-                .build();
+                .processorPath(processorPath);
+        if (scala != null) {
+            req.scalaVersion(scala.version())
+                    .compilerClasspath(scala.compilerClasspath())
+                    .scalaLibraryJar(scala.libraryJar())
+                    .scalaCompilerJar(scala.compilerJar())
+                    .scalaBridgeJar(scala.bridgeJar());
+        }
+        CompileRequest request = req.build();
         // Action payloads live in the cache CAS; callers may pass the artifact CAS for classpath.
         ActionCache actionCache = new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
         boolean useCache = !cc.jumpkick.config.SessionContext.current().config().rebuildOr(false);
@@ -624,7 +670,7 @@ public final class TestSupport {
                 cacheRoot.resolve("actions").resolve("incremental-java").resolve(cacheTaskId);
 
         // Reweight the bar slice from the real request: a CAS hit is a cheap
-        // restore (3), else a full compile. Same key JavaIncrementalCompile uses.
+        // restore (3), else a full compile. Same key JavaCompile uses.
         if (useCache) {
             try {
                 boolean restores = actionCache
@@ -636,7 +682,12 @@ public final class TestSupport {
             }
         }
         ctx.label(taskId + ": " + sources.size() + " sources");
-        cc.jumpkick.task.JavaIncrementalCompile.Result r = cc.jumpkick.task.JavaIncrementalCompile.run(
+        Path gen = generatedSourceDir != null
+                ? generatedSourceDir
+                : cacheRoot.resolve("generated").resolve(cacheTaskId);
+        Files.createDirectories(gen);
+        Path workerJar = cc.jumpkick.engine.plugin.PluginJar.JAVA_COMPILER.locate(cas);
+        cc.jumpkick.task.JavaCompile.Result r = cc.jumpkick.task.JavaCompile.run(
                 cacheTaskId,
                 request,
                 BuildIdentity.cacheKeyVersion(),
@@ -644,7 +695,8 @@ public final class TestSupport {
                 actionCache.cas(),
                 actionCache,
                 stateDir,
-                ap);
+                workerJar,
+                gen);
         // Surface javac diagnostics by severity — errors fail, warnings (e.g.
         // deprecation/unchecked) are shown but don't. Mirrors the main-compile
         // step so test sources report warnings the same way.

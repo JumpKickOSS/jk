@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.jdk.HostPlatform;
 import java.io.IOException;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
@@ -9,6 +12,9 @@ import org.jline.terminal.TerminalBuilder;
 /**
  * Interactive probes split: {@link #canPrompt()} (controlling TTY for input) vs {@link
  * #stdoutIsTty()} (animate stdout). {@code CI}/{@code JK_NONINTERACTIVE}/{@code TERM=dumb} force off.
+ *
+ * <p>jk opens exactly one JLine system terminal, always through {@link #systemTerminalBuilder()};
+ * the Windows console's own encoding is {@link WindowsUtf8}'s business, not JLine's.
  */
 public final class Interactivity {
 
@@ -89,12 +95,7 @@ public final class Interactivity {
             // nativeSignals(false): JLine's default is SIG_DFL for INT/TERM/…, which
             // overwrites {@link GlobalCancel}'s pretty Ctrl-C handler. Wizards that need
             // JLine to own SIGINT call {@code terminal.handle} themselves.
-            probe = TerminalBuilder.builder()
-                    .system(true)
-                    .dumb(true)
-                    .graphemeCluster(false)
-                    .nativeSignals(false)
-                    .build();
+            probe = systemTerminalBuilder().dumb(true).build();
             GlobalCancel.install();
             String type = probe.getType();
             if (Terminal.TYPE_DUMB.equals(type) || Terminal.TYPE_DUMB_COLOR.equals(type)) {
@@ -247,5 +248,30 @@ public final class Interactivity {
      */
     public static boolean stdoutIsTty() {
         return System.console() != null && !forcedNonInteractive();
+    }
+
+    /**
+     * The charset to force on JLine's byte bridges, or {@code null} to let JLine decide. Only
+     * Windows needs forcing: JLine auto-detects the console code page, which there is the OEM page
+     * (CP437/…) and mangles the Unicode chrome WriteConsoleW would otherwise carry through. On
+     * POSIX the same auto-detect reads {@code LANG}/{@code LC_ALL} and is right — overriding it
+     * would mojibake a latin-1 terminal and mis-decode typed keys.
+     */
+    static Charset terminalEncodingOrNull() {
+        return HostPlatform.isWindows() ? StandardCharsets.UTF_8 : null;
+    }
+
+    /**
+     * Shared {@link TerminalBuilder} options for jk's one system terminal: no grapheme probe, no
+     * JLine native signal takeover, and a forced encoding only where JLine's detection is wrong.
+     */
+    static TerminalBuilder systemTerminalBuilder() {
+        TerminalBuilder builder =
+                TerminalBuilder.builder().system(true).graphemeCluster(false).nativeSignals(false);
+        Charset encoding = terminalEncodingOrNull();
+        if (encoding != null) {
+            builder.encoding(encoding).stdinEncoding(encoding).stdoutEncoding(encoding);
+        }
+        return builder;
     }
 }
