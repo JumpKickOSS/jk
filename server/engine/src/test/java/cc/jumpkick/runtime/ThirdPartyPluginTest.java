@@ -186,8 +186,64 @@ class ThirdPartyPluginTest {
         assertThat(report.output()).containsExactly("hello from the plugin worker");
     }
 
+    /**
+     * Pin-is-law for the plugin sync path (JK-2341): the pinned fetch overload never serves a
+     * warm hit that disagrees with the pin, and when the remote itself serves different bytes the
+     * returned digest exposes the mismatch — the caller-side compare in SyncPlans.syncPlugins is
+     * what keeps those bytes out of the CAS.
+     */
+    @Test
+    void pinned_fetch_exposes_bytes_that_disagree_with_the_lock_pin(@TempDir Path tmp) throws Exception {
+        // Distinct version: JkStores.cas ignores its argument and serves the ambient shared store,
+        // so sharing VERSION with the end-to-end test would cross-feed its coordinate a jar this
+        // test fetched without the sibling POM.
+        String version = VERSION + "1";
+        Path repo = publishFixture(tmp.resolve("repo"), version);
+        Path jar = repo.resolve(GROUP.replace('.', '/'))
+                .resolve(ARTIFACT)
+                .resolve(version)
+                .resolve(ARTIFACT + "-" + version + ".jar");
+        String hex = cc.jumpkick.util.Hashing.sha256Hex(jar);
+
+        Files.writeString(tmp.resolve("jk.toml"), """
+                name = "demo"
+                group = "com.demo"
+                version = "0.1.0"
+
+                [m2]
+                integration = false
+                install = false
+
+                [repositories]
+                fixture = "%s"
+                """.formatted(repo.toUri()));
+        JkBuild build = JkBuildParser.parse(tmp.resolve("jk.toml"));
+        Cas cas = cc.jumpkick.cache.JkStores.cas(tmp.resolve("cache"));
+        RepoGroup repos = RepoGroupBuilder.buildFor(build, null, cas);
+        Coordinate coord = Coordinate.of(GROUP, ARTIFACT, version);
+
+        // Matching pin: cold then warm, both return bytes hashing to the pin.
+        assertThat(repos.tryFetchArtifact(coord, hex).orElseThrow().fetched().sha256())
+                .isEqualToIgnoringCase(hex);
+        assertThat(repos.tryFetchArtifact(coord, hex).orElseThrow().fetched().sha256())
+                .isEqualToIgnoringCase(hex);
+
+        // A pin the remote cannot satisfy: the warm mirror hit must not be blessed into the
+        // answer; the re-fetched bytes carry their true digest, which disagrees with the pin —
+        // exactly the signal syncPlugins refuses to putFile.
+        String wrongPin = "0".repeat(64);
+        var refetched = repos.tryFetchArtifact(coord, wrongPin);
+        assertThat(refetched).isPresent();
+        assertThat(refetched.orElseThrow().fetched().sha256()).isEqualToIgnoringCase(hex);
+        assertThat(refetched.orElseThrow().fetched().sha256()).isNotEqualToIgnoringCase(wrongPin);
+    }
+
     /** Compile the fixture main, jar it with the manifest, publish to a Maven-layout dir. */
     private static Path publishFixture(Path repo) throws Exception {
+        return publishFixture(repo, VERSION);
+    }
+
+    private static Path publishFixture(Path repo, String version) throws Exception {
         Path src = Files.createTempDirectory("hello-plugin-src");
         Path srcFile = src.resolve("HelloPluginMain.java");
         Files.writeString(srcFile, MAIN);
@@ -195,8 +251,8 @@ class ThirdPartyPluginTest {
         if (rc != 0) throw new IllegalStateException("fixture compile failed");
 
         Path dir = Files.createDirectories(
-                repo.resolve(GROUP.replace('.', '/')).resolve(ARTIFACT).resolve(VERSION));
-        Path jar = dir.resolve(ARTIFACT + "-" + VERSION + ".jar");
+                repo.resolve(GROUP.replace('.', '/')).resolve(ARTIFACT).resolve(version));
+        Path jar = dir.resolve(ARTIFACT + "-" + version + ".jar");
         Manifest mf = new Manifest();
         mf.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
         mf.getMainAttributes().put(Attributes.Name.MAIN_CLASS, "HelloPluginMain");
@@ -209,11 +265,11 @@ class ThirdPartyPluginTest {
             jos.write(Files.readAllBytes(src.resolve("HelloPluginMain.class")));
             jos.closeEntry();
         }
-        Files.writeString(dir.resolve(ARTIFACT + "-" + VERSION + ".pom"), """
+        Files.writeString(dir.resolve(ARTIFACT + "-" + version + ".pom"), """
                 <project><modelVersion>4.0.0</modelVersion>
                 <groupId>%s</groupId><artifactId>%s</artifactId><version>%s</version>
                 </project>
-                """.formatted(GROUP, ARTIFACT, VERSION));
+                """.formatted(GROUP, ARTIFACT, version));
         return repo;
     }
 }
