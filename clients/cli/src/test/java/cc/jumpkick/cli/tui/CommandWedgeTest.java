@@ -107,6 +107,27 @@ class CommandWedgeTest {
     }
 
     @Test
+    void printLine_opens_stdout_envelope_once() {
+        CommandWedge.resetEnvelope();
+        var buf = new ByteArrayOutputStream();
+        var prev = System.out;
+        try {
+            System.setOut(new PrintStream(buf, true, StandardCharsets.UTF_8));
+            CommandWedge.printLine("wedge-one");
+            CommandWedge.printLine("wedge-two");
+        } finally {
+            System.setOut(prev);
+        }
+        String out = buf.toString(StandardCharsets.UTF_8);
+        assertThat(out).startsWith("\n");
+        assertThat(out).doesNotStartWith("\n\n");
+        assertThat(out).contains("wedge-one").contains("wedge-two");
+        long leadingBlanks = 0;
+        for (int i = 0; i < out.length() && out.charAt(i) == '\n'; i++) leadingBlanks++;
+        assertThat(leadingBlanks).isEqualTo(1);
+    }
+
+    @Test
     void analyzing_returns_live_wedge_spinner() {
         var buf = new ByteArrayOutputStream();
         try (Spinner s = CommandWedge.analyzing(

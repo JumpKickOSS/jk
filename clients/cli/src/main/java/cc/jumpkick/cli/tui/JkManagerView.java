@@ -75,7 +75,8 @@ final class JkManagerView {
      * command label (typically {@code Run}); {@code tail} is the pre-styled message.
      *
      * <p>{@code jk run} prints its own single separator before {@code inheritIO} (no settle
-     * trailing blank — settles never add one; see {@link JkManager#settle}).
+     * trailing blank — settles never add one; {@link cc.jumpkick.cli.CliOutput#closeEnvelope} does
+     * after the command returns).
      */
     public void finishBuildPlanExec(String tail, List<String> above) {
         m.settle(JkWedge.work(m.planName(), tail).renderLine(m.headerContext()), above);

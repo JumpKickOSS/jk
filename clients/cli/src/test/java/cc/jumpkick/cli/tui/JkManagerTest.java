@@ -153,7 +153,7 @@ class JkManagerTest {
         var cm = JkManager.plan(stream(buf), "Build", false);
         cm.finishSuccess("ok took 1s");
         String out = buf.toString(StandardCharsets.UTF_8);
-        // Leading blank at construct; settle line is last (no trailing blank before prompt).
+        // Leading blank at construct; settle does not close the envelope (dispatch does).
         assertThat(out).startsWith("\n");
         assertThat(out).doesNotEndWith("\n\n");
         assertThat(out).endsWith("\n");

@@ -16,9 +16,9 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
- * Guards the blank-line envelope rule: never print a rendered {@link CommandWedge} fail/ok/working
- * chip via raw {@code CliOutput} — use {@code printFail}/{@code printOk}/{@code printWorking} (or
- * {@code envelopeStart} + body) so the leading blank cannot be skipped.
+ * Style guard: fail/ok/working chips should use {@code printFail}/{@code printOk}/{@code
+ * printWorking} so they land on the right stream with the right glyph. The leading blank itself
+ * is owned by {@link cc.jumpkick.cli.CliOutput} — raw {@code CliOutput.out(wedgeLine)} is fine.
  *
  * <p>Source discovery must not rely on process CWD — under {@code jk build} the engine worker
  * cwd is often {@code ~/.local/state/jk/engine/}, not the module or monorepo root.

@@ -81,6 +81,7 @@ public final class AuthTokenCommand implements CliCommand {
                     + target.kind().id());
             return 1;
         }
+        CliOutput.skipEnvelope();
         CliOutput.out(token.get().value());
         return 0;
     }

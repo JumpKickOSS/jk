@@ -116,6 +116,7 @@ public final class SelectiveCommand implements CliCommand {
         }
         if (into != null) into.addAll(selectedDirs);
         List<String> rels = toRelPaths(dir, selectedDirs);
+        CliOutput.skipEnvelope();
         if (json) {
             CliOutput.out("{\"modules\":["
                     + String.join(",", rels.stream().map(SelectiveCommand::q).toList()) + "]}");

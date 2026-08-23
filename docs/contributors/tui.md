@@ -117,14 +117,18 @@ Settle wipes the live region, so those lines do not remain after the result chip
 
 ### Blank-line envelope (JK-1373)
 
-Every **wedge-bearing** human command prints:
+Every **human** command prints:
 
 1. Exactly **one blank line before** the **first** chrome of the invocation — whichever comes first: prep spinner (`EnsureFreshLock` / `CommandWedge.analyzing`), open spinner, live `JkManager` bar, or settle chip  
-2. **No** automatic blank after the last settle line (extra empty row before the shell prompt)
+2. Exactly **one blank line after** the **last** chrome when the command exits (breathing room before the shell prompt)
 
-`CommandWedge.envelopeStart()` is **idempotent per leaf command**. Dispatch calls `CommandWedge.resetEnvelope()` before `run`. Spinners, `JkManager`, `JdkDownloadBar`, wizards (`markEnvelopeStarted` after their own leading blank), and the `print*` helpers all open the envelope, so conditional paths (cache-hit vs rebuild, lock freshen before explain) cannot skip or double the blank.
+`CliOutput` owns the rule. The first `out` / `err` / `stdout()` / `stderr()` write of a leaf command inserts the leading blank. Dispatch calls `CommandWedge.resetEnvelope()` before `run` and `CliOutput.closeEnvelope()` after (including on exception, after the error line). Settles do **not** print the trailing blank — `jk run` must hand off to `inheritIO` with no gap; the close happens after the child returns.
 
-Helpers:
+Spinners, `JkManager`, `JdkDownloadBar`, and wizards (`markEnvelopeStarted` after their own leading blank) share the same flag, so conditional paths (cache-hit vs rebuild, lock freshen before explain) cannot skip or double the blanks.
+
+Commands do **not** have to remember `envelopeStart` / `printOk` for the blank to appear. `CliOutput.out(JkWedge.chipLine(…))` is enough.
+
+Helpers (wedge *formatting*, not envelope enforcement):
 
 - One-shot success: `CommandWedge.printOk(command, message)`  
 - One-shot failure: `CommandWedge.printFail(command, message)`  
@@ -134,11 +138,11 @@ Helpers:
 - Live plans: `JkManager` opens the leading blank if prep has not already  
 - **Exec handoff** (`jk run`): command may print a single separator before `inheritIO`  
 
-Optional blank lines **between** chrome and follow-up tips (e.g. after `jk add`) are fine — that is content spacing, not a trailing envelope.
+Optional blank lines **between** chrome and follow-up tips (e.g. after `jk add`) are fine — that is content spacing, not the closing envelope.
 
-**Script-mode** commands must **not** use the envelope (paths, tokens, shell hooks, `jk --version`).
+**Script-mode** stdout must call `CliOutput.skipEnvelope()` before printing (paths, tokens, shell hooks). Dispatch already skips for `--output json` / `jsonl`. `jk --version` writes `System.out` directly and is outside the envelope.
 
-**Do not** print raw `JkWedge.chipLine` / `CommandWedge.ok` / `CommandWedge.fail` via `CliOutput` without a `print*` helper or `envelopeStart` — that is how the fully-cached `jk build` fast path skipped the blank.
+Do **not** write human chrome with raw `System.out.println` — that bypasses `CliOutput` and skips the blank.
 
 ## Script-mode allowlist (no wedge)
 
@@ -152,11 +156,13 @@ These commands intentionally emit only machine-consumable stdout:
 | `jk jdk home` | `export JAVA_HOME=…` | `eval "$(jk jdk home)"` |
 | `jk auth token [provider]` | Single-line token | scripts / curl |
 | `jk show` / `jk tasks show` | Absolute path (or `coord\tpath`) | command substitution |
-| `jk tool dir` | Tools root path | installers |
+| `jk tool dir` / `jk cache dir` / `jk storage dir` | Path | scripts / installers |
+| `jk manual` | Playbook markdown | agents / MCP |
 | `jk --version` / `-V` | `jk <version>` | CI |
 | `jk explain --graph dot\|mermaid` | Graph source | `dot` / editors |
 | `jk selective resolve` (+ `--json`) | Paths or JSON | CI selective plans |
 | `jk bsp serve` | JSON-RPC on stdio | IDE BSP client |
+| `jk ide --print-model` | Wire JSON | IDE plugins |
 
 Adding a new exception requires updating this table.
 
@@ -261,9 +267,9 @@ Under `--output json` / `jsonl`, suppress human chrome (no envelope, no wedge). 
 
 ## Checklist for new commands
 
-1. Is this **script-mode** (eval / path / token / protocol)? If yes: plain stdout only; document here.  
+1. Is this **script-mode** (eval / path / token / protocol)? If yes: plain stdout only; call `CliOutput.skipEnvelope()` before printing; document here.  
 2. Otherwise: settle with **CommandWedge** (or table/tree/wizard that includes wedge chrome).  
-3. Apply the **blank-line envelope**.  
+3. Print through **`CliOutput`** (the leading blank is automatic). Call `CliOutput.skipEnvelope()` only for machine-consumed stdout.  
 4. Bounded work → bar; indeterminate → spinner; always settle to a **static** icon.  
 5. Verify **nerd / ansi / plain** (`--no-ansi`) look intentional.  
 6. Agents: document JSONL events if you add machine-visible facts.
@@ -273,7 +279,7 @@ Under `--output json` / `jsonl`, suppress human chrome (no envelope, no wedge). 
 | Concern | Location |
 |---------|----------|
 | Styled text | `cli/tui/RichText.java` — markup (`[bold]`, `[#hex]`, `[link url]`, theme tokens) |
-| Settled wedge | `cli/tui/JkWedge.java` (`CommandWedge` is envelope + printOk) |
+| Settled wedge | `cli/tui/JkWedge.java` (`CommandWedge` is print helpers; `CliOutput` owns the envelope) |
 | Pill | `cli/tui/Pill.java` — nerd `label` / ansi padded / plain `[label]` |
 | Coord | `cli/tui/Coord.java` + `theme/Coords` RichText factories |
 | Code | `SourceCode.java` / `JavaCode` / `KotlinCode` / `GroovyCode` |

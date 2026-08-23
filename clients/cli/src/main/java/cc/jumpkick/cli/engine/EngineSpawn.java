@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
@@ -225,7 +226,7 @@ public final class EngineSpawn {
                         clientVersion,
                         isNativeImage(),
                         cc.jumpkick.config.SessionContext.current().offline())) {
-            System.err.println("jk: downloading the build engine (jk-engine-" + clientVersion + ".jar) ...");
+            CliOutput.err("jk: downloading the build engine (jk-engine-" + clientVersion + ".jar) ...");
             EngineJarFetcher.fetch(EngineJarFetcher.releasesBase(), clientVersion);
             resolved = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
         }
@@ -300,9 +301,9 @@ public final class EngineSpawn {
         String pin = cc.jumpkick.config.GlobalConfig.engineJdkPin().orElse("temurin-" + floor);
         Optional<EngineJdk> installed = findInstalledEngineJdk(pin);
         if (installed.isPresent()) return installed.get();
-        System.err.println("jk: installing the build engine's JDK (" + pin + ") ...");
+        CliOutput.err("jk: installing the build engine's JDK (" + pin + ") ...");
         try {
-            Path home = JdkEnsure.install(pin, System.err::println).home();
+            Path home = JdkEnsure.install(pin, CliOutput.stderr()::println).home();
             return probeEngineJdk(home)
                     .orElseThrow(() -> new IOException("engine JDK installed at " + home + " is unreadable"));
         } catch (InterruptedException e) {

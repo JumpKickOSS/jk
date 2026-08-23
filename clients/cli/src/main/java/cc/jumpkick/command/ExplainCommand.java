@@ -685,6 +685,7 @@ public final class ExplainCommand implements CliCommand {
             cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "Explain", "wrote " + out.toAbsolutePath().normalize());
         } else {
+            CliOutput.skipEnvelope();
             CliOutput.out(graph.endsWith("\n") ? graph.substring(0, graph.length() - 1) : graph);
         }
         return 0;

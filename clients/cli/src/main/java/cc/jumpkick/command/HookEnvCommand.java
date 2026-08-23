@@ -54,6 +54,7 @@ public final class HookEnvCommand implements CliCommand {
         var out = new StringBuilder();
         var snapshot = JkDiff.EnvSnapshot.fromSystem();
         emit(shell.get(), target, prevDiff, snapshot, out);
+        CliOutput.skipEnvelope();
         CliOutput.outRaw(String.valueOf(out));
         return 0;
     }

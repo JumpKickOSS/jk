@@ -32,6 +32,7 @@ public final class ToolDirCommand implements CliCommand {
     @Override
     public int run(Invocation in) {
         Path toolsDir = in.value("tools-dir").map(Path::of).orElse(null);
+        CliOutput.skipEnvelope();
         CliOutput.out(
                 String.valueOf(toolsDir != null ? toolsDir : JkDirs.cache().resolve("tools")));
         return 0;

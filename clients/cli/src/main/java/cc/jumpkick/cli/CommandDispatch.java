@@ -311,7 +311,9 @@ public final class CommandDispatch {
         }
         try {
             // One leading chrome blank per leaf command (prep spinner + settle share it).
+            // JSON/JSONL stdout is machine-consumed — skip so the first line stays parseable.
             cc.jumpkick.cli.tui.CommandWedge.resetEnvelope();
+            if (GlobalOptions.outputIsJson(in)) CliOutput.skipEnvelope();
             // Hidden global -y/--yes: skip Confirm prompts for this leaf command only.
             cc.jumpkick.cli.tui.Confirm.setAssumeYes(in.isSet("yes"));
             try {
@@ -328,6 +330,9 @@ public final class CommandDispatch {
             String msg = e.getMessage() != null ? e.getMessage() : e.toString();
             System.err.println(HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi) + " " + msg);
             return 1;
+        } finally {
+            // Trailing blank after the last chrome — settles do not print this (exec handoff).
+            CliOutput.closeEnvelope();
         }
     }
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.docs.JkManual;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -24,8 +25,9 @@ public final class ManualCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) {
-        System.out.print(JkManual.markdown());
-        System.out.flush();
+        CliOutput.skipEnvelope();
+        CliOutput.outRaw(JkManual.markdown());
+        CliOutput.stdout().flush();
         return Exit.SUCCESS;
     }
 }

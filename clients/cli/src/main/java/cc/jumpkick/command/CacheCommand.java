@@ -386,6 +386,7 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public int run(Invocation in) {
+            CliOutput.skipEnvelope();
             CliOutput.out(String.valueOf(resolveCacheRoot(
                     in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null))));
             return 0;

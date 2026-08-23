@@ -151,6 +151,7 @@ public final class TrustCommand extends GroupCommand {
                 CliOutput.out("No trusted sources. Add one with `jk trust add <url-prefix>`"
                         + " or `jk trust plugin <coordinate>`.");
             } else {
+                CliOutput.skipEnvelope();
                 for (String p : prefixes) CliOutput.out(p);
                 for (String p : plugins) CliOutput.out("plugin " + p);
             }

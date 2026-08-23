@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.DrainView;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkWedge;
@@ -56,7 +56,7 @@ public final class EngineStopCommand implements CliCommand {
         EnginePaths.Paths paths = EnginePaths.current();
         Optional<EngineClient.Status> before = EngineClient.status(cc.jumpkick.engine.EnginePaths.activeSocket(paths));
         if (before.isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printOk("Engine", "not running");
+            CommandWedge.printOk("Engine", "not running");
             return Exit.SUCCESS;
         }
         long started = before.get().startedAtMillis();
@@ -76,7 +76,7 @@ public final class EngineStopCommand implements CliCommand {
             return confirmGone(before.get().pid(), started);
         }
         if (!BuildPlanConsole.isInteractiveTerminal()) {
-            cc.jumpkick.cli.tui.CommandWedge.printOk(
+            CommandWedge.printOk(
                     "Engine", "shutdown scheduled (" + jobs + " job" + (jobs == 1 ? "" : "s") + " will finish first)");
             return Exit.SUCCESS;
         }
@@ -93,17 +93,15 @@ public final class EngineStopCommand implements CliCommand {
      */
     private int confirmGone(long pid, long started) {
         if (EngineFleet.waitForExit(pid)) {
-            CliOutput.out(stoppedWedge(elapsed(started)));
+            CommandWedge.printLine(stoppedWedge(elapsed(started)));
             return Exit.SUCCESS;
         }
         EngineClient.hardKill(pid);
         if (EngineFleet.waitForExit(pid)) {
-            cc.jumpkick.cli.tui.CommandWedge.printOk(
-                    "Engine", "Engine stopped after a hard kill (it did not exit on request).");
+            CommandWedge.printOk("Engine", "Engine stopped after a hard kill (it did not exit on request).");
             return Exit.SUCCESS;
         }
-        cc.jumpkick.cli.tui.CommandWedge.printOk(
-                "Engine", "Engine pid " + pid + " did NOT exit, even after a hard kill.");
+        CommandWedge.printOk("Engine", "Engine pid " + pid + " did NOT exit, even after a hard kill.");
         return Exit.FAILURE;
     }
 
@@ -118,12 +116,12 @@ public final class EngineStopCommand implements CliCommand {
         try {
             pid = Long.parseLong(raw.trim());
         } catch (NumberFormatException e) {
-            cc.jumpkick.cli.tui.CommandWedge.printOk("Engine", "not a pid: " + raw);
+            CommandWedge.printOk("Engine", "not a pid: " + raw);
             return Exit.FAILURE;
         }
         Optional<EngineFleet.StopResult> result = EngineFleet.stopByPid(pid, now);
         if (result.isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printOk("Engine", "no running engine with pid " + pid);
+            CommandWedge.printOk("Engine", "no running engine with pid " + pid);
             return Exit.FAILURE;
         }
         return report(List.of(result.get()));
@@ -138,7 +136,7 @@ public final class EngineStopCommand implements CliCommand {
      */
     private int report(List<EngineFleet.StopResult> results) {
         if (results.isEmpty()) {
-            cc.jumpkick.cli.tui.CommandWedge.printOk("Engine", "no engines running");
+            CommandWedge.printOk("Engine", "no engines running");
             return Exit.SUCCESS;
         }
         int stopped = 0;
@@ -166,7 +164,7 @@ public final class EngineStopCommand implements CliCommand {
                     .append(" did NOT exit: pid ")
                     .append(survived);
         }
-        cc.jumpkick.cli.tui.CommandWedge.printOk("Engine", msg.toString());
+        CommandWedge.printOk("Engine", msg.toString());
         return survived.isEmpty() ? Exit.SUCCESS : Exit.FAILURE;
     }
 

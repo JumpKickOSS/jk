@@ -76,6 +76,18 @@ public final class GlobalOptions {
      * stays parseable.
      */
     public boolean outputIsJson() {
+        return outputIsJson(output);
+    }
+
+    /**
+     * True when this invocation asked for machine-readable JSON/JSONL on stdout — used by
+     * dispatch to skip the human blank-line envelope before {@code run}.
+     */
+    public static boolean outputIsJson(Invocation in) {
+        return outputIsJson(in.value("output").orElse(null));
+    }
+
+    static boolean outputIsJson(String output) {
         String resolved = output;
         if (resolved == null || resolved.isBlank()) {
             resolved = System.getenv("JK_OUTPUT");

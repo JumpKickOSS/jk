@@ -330,7 +330,7 @@ class OutputWindowTest {
         // Settle chip is preceded by a blank (separator under process scrollback).
         assertThat(out).contains("\n\n");
         assertThat(out).contains("built");
-        assertThat(out).doesNotEndWith("\n\n"); // no trailing blank before prompt
+        assertThat(out).doesNotEndWith("\n\n"); // settle does not close the envelope (dispatch does)
         cm.close();
     }
 

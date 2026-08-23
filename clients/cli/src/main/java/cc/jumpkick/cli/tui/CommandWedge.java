@@ -6,7 +6,6 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import java.io.PrintStream;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Human-facing settled command result chrome.
@@ -28,13 +27,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <h2>Blank-line envelope</h2>
  *
- * <p>Human wedge-bearing commands print exactly <strong>one blank line before</strong> the first
- * chrome line of the invocation (prep spinner, live bar, or settle chip — whichever comes first).
- * {@link #envelopeStart()} is idempotent for the life of a command ({@link #resetEnvelope} at
- * dispatch). Do <strong>not</strong> add a trailing blank after the settle line. Spinners,
- * {@link JkManager}, {@link JdkDownloadBar}, and the {@code print*} helpers ({@link #printOk},
- * {@link #printFail}, {@link #printWorking}, {@link #printLine}, …) all open the envelope.
- * Script-mode commands (paths, tokens, shell hooks) must not use the envelope.
+ * <p>Human commands print exactly <strong>one blank line before</strong> the first chrome line of
+ * the invocation and <strong>one blank line after</strong> the last chrome when the command
+ * exits. {@link cc.jumpkick.cli.CliOutput} owns that rule: the first stdout/stderr write inserts
+ * the leading blank; dispatch calls {@link cc.jumpkick.cli.CliOutput#closeEnvelope()} after
+ * {@code run}. Do <strong>not</strong> add a trailing blank in settles — {@code jk run} hands
+ * off to {@code inheritIO} with no gap. Machine-consumed stdout must call
+ * {@link cc.jumpkick.cli.CliOutput#skipEnvelope()} before printing.
  *
  * <p>Colors: blue/work chip for {@link #working}, green for {@link #ok}, red for {@link #fail}.
  * Subprocess streams go <em>before</em> the wedge; engine detail after (or details.jsonl).
@@ -45,22 +44,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class CommandWedge {
 
-    /**
-     * Once true, {@link #envelopeStart()} is a no-op until {@link #resetEnvelope()}. Reset at the
-     * start of each leaf command so prep lock wedges and main settles share one leading blank.
-     */
-    private static final AtomicBoolean ENVELOPE_STARTED = new AtomicBoolean(false);
-
     private CommandWedge() {}
 
     /** Clear the per-command envelope flag — call from command dispatch before {@code run}. */
     public static void resetEnvelope() {
-        ENVELOPE_STARTED.set(false);
+        CliOutput.resetEnvelope();
     }
 
     /** True after the leading blank has been printed for this command. */
     public static boolean envelopeStarted() {
-        return ENVELOPE_STARTED.get();
+        return CliOutput.envelopeStarted();
     }
 
     /** Green check chip + message (done successfully). */
@@ -118,11 +111,11 @@ public final class CommandWedge {
 
     /**
      * Leading blank of the human chrome envelope on stdout — at most once per command (see
-     * {@link #resetEnvelope}). Safe to call from every chrome entry (spinner, bar, settle). There
-     * is no matching trailing blank.
+     * {@link #resetEnvelope}). Safe to call from every chrome entry (spinner, bar, settle). The
+     * matching trailing blank is {@link cc.jumpkick.cli.CliOutput#closeEnvelope()}, from dispatch.
      */
     public static void envelopeStart() {
-        envelopeStart(CliOutput.stdout());
+        CliOutput.ensureLeadingBlank();
     }
 
     /**
@@ -130,9 +123,7 @@ public final class CommandWedge {
      * or {@link JkManager}'s sink).
      */
     public static void envelopeStart(PrintStream out) {
-        if (ENVELOPE_STARTED.compareAndSet(false, true)) {
-            out.println();
-        }
+        CliOutput.ensureLeadingBlank(out);
     }
 
     /**
@@ -141,7 +132,7 @@ public final class CommandWedge {
      * {@link #envelopeStart} calls do not insert a second blank.
      */
     public static void markEnvelopeStarted() {
-        ENVELOPE_STARTED.set(true);
+        CliOutput.markEnvelopeStarted();
     }
 
     /**
@@ -235,8 +226,6 @@ public final class CommandWedge {
      * error chrome (warn line + fail wedge) can open the envelope before the first line.
      */
     public static void envelopeStartErr() {
-        if (ENVELOPE_STARTED.compareAndSet(false, true)) {
-            CliOutput.err();
-        }
+        CliOutput.ensureLeadingBlankErr();
     }
 }

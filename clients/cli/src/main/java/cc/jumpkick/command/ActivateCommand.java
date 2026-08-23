@@ -76,6 +76,7 @@ public final class ActivateCommand implements CliCommand {
         }
         ensureJkxLauncher();
         // stdout is eval'd shell code — PATH ensure + hooks + completions; keep silent aside from that.
+        CliOutput.skipEnvelope();
         CliOutput.outRaw(shell.get().fullActivateScript(resolveJkExe(), JkDirs.binDir(), JkDirs.data(), home()));
         return 0;
     }

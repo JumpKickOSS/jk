@@ -46,6 +46,7 @@ public final class JdkHomeCommand implements CliCommand {
                             + " (write `.jdk-version` via `jk jdk use <spec>`)");
             return Exit.CONFIG;
         }
+        CliOutput.skipEnvelope();
         CliOutput.out("export JAVA_HOME=" + shellQuote(jdk.get().home().toString()));
         return 0;
     }

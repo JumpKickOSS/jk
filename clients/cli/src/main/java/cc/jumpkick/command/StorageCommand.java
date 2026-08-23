@@ -143,6 +143,7 @@ public final class StorageCommand extends GroupCommand {
 
         @Override
         public int run(Invocation in) {
+            CliOutput.skipEnvelope();
             CliOutput.out(String.valueOf(JkStores.store()));
             return 0;
         }

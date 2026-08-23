@@ -194,6 +194,7 @@ public final class TasksCommand implements CliCommand {
                             "Show", "task `" + task.name() + "` has no primary output path");
                     return Exit.CONFIG;
                 }
+                CliOutput.skipEnvelope();
                 if (modules.size() > 1) {
                     CliOutput.out(coord + "\t" + out.get());
                 } else {
