@@ -151,18 +151,33 @@ val cliTestStateDir =
                 .get()
                 .asFile
                 .also { it.mkdirs() }
-// Prefer a short path when build dir is a deep worktree (UDS sun_path ~108 bytes).
+// Prefer a short path when build dir is a deep worktree (UDS sun_path ~108 bytes). Derived from
+// the platform tmpdir — the literal "/tmp" resolves to <drive>:\tmp on Windows — falling back to
+// /tmp only when the platform tmpdir itself is too long to keep socket paths under sun_path.
+val shortTmpRoot: File = run {
+    val sys = File(System.getProperty("java.io.tmpdir", "/tmp"))
+    if (sys.absolutePath.length <= 60) sys else File("/tmp")
+}
 val cliTestStateDirShort =
-        file(
-                "/tmp/jk-cli-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")
+        shortTmpRoot.resolve(
+                "jk-cli-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")
 
 // @TempDir root for the integration tier. It MUST live outside the repo checkout: the shared
 // convention points java.io.tmpdir at build/tmp (inside clients/cli, which has its own jk.toml),
 // so @TempDir project dirs would find — and the "promote to workspace" tests would MUTATE — the
 // real repo's jk.toml (JK-2329). A short /tmp path also keeps UDS socket paths under sun_path.
 val cliTestTmpDirShort =
-        file(
-                "/tmp/jk-cli-tmp-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")
+        shortTmpRoot.resolve(
+                "jk-cli-tmp-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")
+
+// Sandbox cleanup must run when the tier FAILS too — doLast is skipped on failure, and failed
+// runs are exactly the ones that leave the most litter under the tmp root.
+val cleanCliTestSandboxes by tasks.registering {
+    doLast {
+        cliTestStateDirShort.deleteRecursively()
+        cliTestTmpDirShort.deleteRecursively()
+    }
+}
 
 // Unit vs integration (suite performance):
 // :cli:test — pure unit (TUI/args/jsonl); NO engine spawn tax
@@ -271,10 +286,7 @@ tasks.named<Test>("integrationTest") {
         systemProperty("jk.spring-boot.plugin.jar", springBootWorkerJar.singleFile.absolutePath)
         systemProperty("jk.android.plugin.jar", androidWorkerJar.singleFile.absolutePath)
     }
-    doLast {
-        cliTestStateDirShort.deleteRecursively()
-        cliTestTmpDirShort.deleteRecursively()
-    }
+    finalizedBy(cleanCliTestSandboxes)
 }
 
 graalvmNative {
