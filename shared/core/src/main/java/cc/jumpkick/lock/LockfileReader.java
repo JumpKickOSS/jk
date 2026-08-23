@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.lock;
 
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -192,7 +193,7 @@ public final class LockfileReader {
     private static Lockfile.Artifact toArtifact(TomlTable table) {
         String name = requireString(table, "name");
         String version = requireString(table, "version");
-        String source = requireString(table, "source");
+        String source = normalizeSource(requireString(table, "source"));
         String checksum = table.getString("checksum");
         String path = table.getString("path");
         String pinnedBy = table.getString("pinned-by"); // optional
@@ -227,6 +228,16 @@ public final class LockfileReader {
         String sourcesChecksum = table.getString("sources"); // optional
         return new Lockfile.Artifact(
                 name, version, source, checksum, path, scopes, deps, pinnedBy, git, sourcesChecksum);
+    }
+
+    /**
+     * Lockfiles written before the jk-local rename mark first-party file-dep entries with the bare
+     * source {@code "local"}. A user remote named {@code local} always serializes with its URL
+     * ({@code "local+file://…"}), so the bare form is unambiguous — fold it to the current marker
+     * rather than making every consumer accept both.
+     */
+    private static String normalizeSource(String source) {
+        return "local".equals(source) ? RepositorySpec.JK_LOCAL : source;
     }
 
     private static String requireString(TomlParseResult result, String key) {
