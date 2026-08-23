@@ -86,8 +86,11 @@ public final class MvnCommand implements CliCommand {
         ProcessBuilder pb =
                 new ProcessBuilder(command).directory(projectDir.toFile()).inheritIO();
         PassthroughEnv.apply(pb.environment(), jdk.map(InstalledJdk::home).orElse(null));
+        Process p = pb.start();
+        // Skip the gap only once the exec actually started — a failed start() still owns
+        // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();
-        return pb.start().waitFor();
+        return p.waitFor();
     }
 
     /**

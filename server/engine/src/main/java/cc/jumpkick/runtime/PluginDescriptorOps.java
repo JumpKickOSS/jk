@@ -19,7 +19,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.zip.ZipEntry;
@@ -108,7 +108,15 @@ public final class PluginDescriptorOps {
     static Optional<Path> pinnedLayoutJar(Cas cas, String module, String version, String sha256Hex) {
         String rel = MavenLayout.artifactPath(Coordinate.ofModule(module, version));
         Path storeRoot = cas.root();
-        for (String repoName : pluginRepoProbeOrder(storeRoot)) {
+        // Fixed stores first; the repos/ directory listing is paid only on a miss — this runs
+        // per plugin per parse, and the common case lands in the first probe.
+        for (String repoName : FIXED_PROBE_ORDER) {
+            Optional<Path> stored =
+                    RepoArtifactStore.forRepoName(storeRoot, repoName).locate(rel, sha256Hex);
+            if (stored.isPresent()) return stored;
+        }
+        for (String repoName : listedRepoNames(storeRoot)) {
+            if (FIXED_PROBE_ORDER.contains(repoName)) continue;
             Optional<Path> stored =
                     RepoArtifactStore.forRepoName(storeRoot, repoName).locate(rel, sha256Hex);
             if (stored.isPresent()) return stored;
@@ -120,26 +128,26 @@ public final class PluginDescriptorOps {
         return local.locate(rel, sha256Hex);
     }
 
+    /** First-party / official / Central — the stores that answer nearly every pinned lookup. */
+    private static final List<String> FIXED_PROBE_ORDER =
+            List.of(RepoArtifactResolver.JK_LOCAL, PluginJar.OFFICIAL_REPO, "central");
+
     /**
-     * Prefer first-party / official / Central, then every other {@code repos/<name>/} directory so a
-     * user-declared remote (e.g. {@code local}) is still found with its sibling POM.
+     * Every other {@code repos/<name>/} directory, so a user-declared remote (e.g. {@code local})
+     * is still found with its sibling POM. Listed only when the fixed stores missed.
      */
-    private static List<String> pluginRepoProbeOrder(Path storeRoot) {
-        LinkedHashSet<String> names = new LinkedHashSet<>();
-        names.add(RepoArtifactResolver.JK_LOCAL);
-        names.add(PluginJar.OFFICIAL_REPO);
-        names.add("central");
+    private static List<String> listedRepoNames(Path storeRoot) {
         Path repos = storeRoot.resolve("repos");
-        if (Files.isDirectory(repos)) {
-            try (var stream = Files.list(repos)) {
-                stream.filter(Files::isDirectory)
-                        .map(p -> p.getFileName().toString())
-                        .forEach(names::add);
-            } catch (IOException ignored) {
-                // best-effort directory listing
-            }
+        if (!Files.isDirectory(repos)) return List.of();
+        List<String> names = new ArrayList<>();
+        try (var stream = Files.list(repos)) {
+            stream.filter(Files::isDirectory)
+                    .map(p -> p.getFileName().toString())
+                    .forEach(names::add);
+        } catch (IOException ignored) {
+            // best-effort directory listing
         }
-        return List.copyOf(names);
+        return names;
     }
 
     /** The declaration whose materialized manifest carries {@code pluginId}, or empty. */

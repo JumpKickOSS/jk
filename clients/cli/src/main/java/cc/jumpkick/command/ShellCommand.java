@@ -79,8 +79,10 @@ public final class ShellCommand implements CliCommand {
 
         var javaHome = target.vars().get(JkEnv.JAVA_HOME);
         CliOutput.out("Entering jk shell with JAVA_HOME=" + javaHome);
-        CliOutput.skipTrailingBlank();
         Process p = pb.start();
+        // Skip the gap only once the exec actually started — a failed start() still owns
+        // the terminal, and its error wedge has earned the envelope's trailing blank.
+        CliOutput.skipTrailingBlank();
         return p.waitFor();
     }
 }

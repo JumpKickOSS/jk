@@ -220,8 +220,11 @@ public final class RunCommand {
         cc.jumpkick.cli.tui.Interactivity.restoreForChildProcess();
         // The program's own stdout is the last thing on this terminal — `jk run > app.out` must
         // not collect jk's closing blank.
+        Process p = new ProcessBuilder(command).inheritIO().start();
+        // Skip the gap only once the exec actually started — a failed start() still owns
+        // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();
-        return new ProcessBuilder(command).inheritIO().start().waitFor();
+        return p.waitFor();
     }
 
     /**
