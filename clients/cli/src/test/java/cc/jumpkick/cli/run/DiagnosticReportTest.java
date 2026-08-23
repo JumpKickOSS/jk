@@ -8,16 +8,15 @@ import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.terminal.Style;
 import java.nio.file.Path;
-import org.jline.utils.AttributedString;
-import org.jline.utils.AttributedStyle;
 import org.junit.jupiter.api.Test;
 
 /** Phase-pill diagnostic reports for non-test-failure errors. */
 class DiagnosticReportTest {
 
     private static String plain(String s) {
-        return AttributedString.stripAnsi(s == null ? "" : s);
+        return cc.jumpkick.terminal.Width.stripAnsi(s == null ? "" : s);
     }
 
     @Test
@@ -119,7 +118,7 @@ class DiagnosticReportTest {
             Theme t = Theme.active();
             // Black on amber chip body. Pill axis: half-circle caps around bare label;
             // without it, Badge.pill pads the label with spaces.
-            AttributedStyle blackOnAmber = t.withBackground(t.bright(0, 0, 0), Rgb.hex(0xFFB800));
+            Style blackOnAmber = t.withBackground(t.bright(0, 0, 0), Rgb.hex(0xFFB800));
             String body = GlobalConfig.nerdFont().pill() ? "Compile Java" : " Compile Java ";
             assertThat(report).contains(Theme.colorize(body, blackOnAmber));
         }

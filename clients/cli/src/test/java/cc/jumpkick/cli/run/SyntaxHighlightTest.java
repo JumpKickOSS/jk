@@ -4,8 +4,7 @@ package cc.jumpkick.cli.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.theme.Theme;
-import org.jline.utils.AttributedString;
-import org.jline.utils.AttributedStyle;
+import cc.jumpkick.terminal.Style;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -17,7 +16,7 @@ class SyntaxHighlightTest {
     private static final String ESC = "\u001b";
 
     private static String plain(String s) {
-        return AttributedString.stripAnsi(s);
+        return cc.jumpkick.terminal.Width.stripAnsi(s);
     }
 
     @Test
@@ -84,7 +83,7 @@ class SyntaxHighlightTest {
         // "new" is a keyword; underline the 'e' (index 1) within it.
         String src = "new Foo()";
         String out = SyntaxHighlight.highlight(src, 1);
-        AttributedStyle kw = Theme.active().synKeyword();
+        Style kw = Theme.active().synKeyword();
         assertThat(out)
                 .contains(Theme.colorize("n", kw)) // un-underlined keyword head
                 .contains(Theme.colorize("e", kw.underline())) // caret char: color + underline

@@ -78,6 +78,7 @@ import cc.jumpkick.model.command.Command;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.terminal.Ansi;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;

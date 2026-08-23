@@ -42,7 +42,7 @@ stay clean. Long tools (e.g. `native-image`) stream into this channel live — n
 
 | Action | Behavior |
 |--------|----------|
-| **Ctrl-O** | Toggle process-output peek. When **on**: buffered lines are committed above a full-width braille rule (`⠒… ↑ output ↑ …⠒`); only the rule + wedge/tree is the live region (normal spinner line-diff). New output lifts that small region, appends one line, and repaints the wedge — no full-screen redraw. When **off**: the rule is **replaced by a blank line** (not deleted); already-printed lines stay in scrollback. Always keep either the rule or that blank between process output and the wedge. Opening the controlling TTY for this key listener must **not** install JLine's default native {@code SIG_DFL} handlers — those replace {@code GlobalCancel}'s Ctrl-C intercept. |
+| **Ctrl-O** | Toggle process-output peek. When **on**: buffered lines are committed above a full-width braille rule (`⠒… ↑ output ↑ …⠒`); only the rule + wedge/tree is the live region (normal spinner line-diff). New output lifts that small region, appends one line, and repaints the wedge — no full-screen redraw. When **off**: the rule is **replaced by a blank line** (not deleted); already-printed lines stay in scrollback. Always keep either the rule or that blank between process output and the wedge. The listener uses `:cli-terminal` `InputMode.PLAN_KEYS` (ISIG on) so Ctrl-C stays `GlobalCancel`'s SIGINT. |
 | **`[config] build-output = true`** (or `JK_BUILD_OUTPUT=true`) | Start with the peek **open** on live plans. Default **`false`** (hidden until Ctrl-O or force-show). Machine or project `[config]`. |
 | **Failed tool/worker** (non-zero sub-process exit, e.g. `native-image`) | Force-opens the pane while the plan is still live. |
 | **Test failures** | Do **not** force-open — curated test-failure chrome owns that path. |
@@ -62,13 +62,12 @@ way to push bytes back into the tty input queue (`TIOCSTI` is root-gated or comp
 modern kernels). Accepted as the cost of the peek; piped/non-TTY runs install no listener and
 are unaffected.
 
-**Settle must unblock JLine's stdin reader.** Timed key reads park a JLine NonBlocking I/O thread
-in a blocking `read()` on FD 0. On macOS, `FileInputStream.close()` does not interrupt that wait.
-Once ICANON is restored, the line discipline only delivers input after newline — so the hang
-requires **Enter** specifically (other keys buffer until newline). `Wizard.restoreCooked` /
-`unblockBlockingInput` force non-canonical `VMIN=0`/`VTIME=0` and pulse `O_NONBLOCK` on FD 0
-*before* restoring cooked mode; `Interactivity.prepareProcessExit` wakes, restores, and closes the
-shared terminal before `System.exit` so JLine's shutdown closer is already deregistered.
+**Settle restores `:cli-terminal` modes, never process fds.** The controlling TTY is a process
+singleton (`Terminals.controlling()`). `ModeGuard` pop returns `COOKED`; `close()` on the session
+restores original attrs and does **not** close native fds or drop `isLive`. Only
+`Terminals.shutdown()` (from `Jk.main` finally and `GlobalCancel`) closes fds. Timed reads are
+clock-driven `poll` / `WaitForSingleObject` with `O_NONBLOCK` POSIX `read` — no helper thread,
+no FD 0. Prompt/Confirm paint stays on stderr.
 
 ### Module-selection caption
 

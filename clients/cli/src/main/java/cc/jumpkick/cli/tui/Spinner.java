@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.Ansi;
+import cc.jumpkick.cli.Osc;
 import cc.jumpkick.cli.theme.Gradient;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.terminal.Ansi;
+import cc.jumpkick.terminal.Style;
 import java.io.PrintStream;
-import org.jline.utils.AttributedStyle;
 
 /**
  * Single-line animated spinner for indeterminate CLI work. A solid circle glyph ({@value
@@ -94,15 +95,15 @@ public final class Spinner implements AutoCloseable {
 
     // Prefer gated helpers so --no-osc suppresses taskbar OSC without muting the spinner glyphs.
     private static String oscIndeterminate() {
-        return Ansi.taskbarIndeterminate();
+        return Osc.taskbarIndeterminate();
     }
 
     private static String oscClear() {
-        return Ansi.taskbarClear();
+        return Osc.taskbarClear();
     }
 
     private final PrintStream out;
-    private final AttributedStyle[] frameColors;
+    private final Style[] frameColors;
     private final Object lock = new Object();
     private final boolean silent;
     /** Non-null when painting as a CommandWedge chip ({@link #showWedge}). */
@@ -289,8 +290,7 @@ public final class Spinner implements AutoCloseable {
      * One frame of the live CommandWedge: pulse circle + command on the blue chip, powerline (or
      * plain) cap, then the message. Package-private for tests.
      */
-    static String renderWedgeFrame(
-            int frame, String command, String message, NerdFontCaps nerdFont, AttributedStyle[] pulseFg) {
+    static String renderWedgeFrame(int frame, String command, String message, NerdFontCaps nerdFont, Style[] pulseFg) {
         RenderContext ctx = RenderContext.current().withCaps(nerdFont).withFrame(frame);
         return new JkWedge(
                         Icon.spinner(), command == null ? "" : command, RichText.ansi(message == null ? "" : message))
@@ -320,7 +320,7 @@ public final class Spinner implements AutoCloseable {
      * Open-terminal pulse (no chip background): brand blue at the ends of the cycle, almost-black
      * blue at the midpoint.
      */
-    static AttributedStyle[] buildOpenPulseStyles(int n) {
+    static Style[] buildOpenPulseStyles(int n) {
         return buildPulseStyles(n, PULSE_OPEN_BRIGHT, PULSE_OPEN_DIM);
     }
 
@@ -329,21 +329,21 @@ public final class Spinner implements AutoCloseable {
      * (typically the chip blue) at the midpoint — same as historical behavior so the glyph stays
      * readable on the blue background.
      */
-    static AttributedStyle[] buildChipPulseStyles(int n, Rgb dim) {
+    static Style[] buildChipPulseStyles(int n, Rgb dim) {
         return buildPulseStyles(n, PULSE_CHIP_BRIGHT, dim);
     }
 
     private record PulseKey(int n, Rgb bright, Rgb dim, Theme theme) {}
 
     /** A handful of (frame-count, color-pair) combos exist; live renders ask every frame. */
-    private static final java.util.concurrent.ConcurrentHashMap<PulseKey, AttributedStyle[]> PULSE_CACHE =
+    private static final java.util.concurrent.ConcurrentHashMap<PulseKey, Style[]> PULSE_CACHE =
             new java.util.concurrent.ConcurrentHashMap<>();
 
     /** Pulse styles: {@code bright} at the ends of the cycle, {@code dim} at the midpoint. */
-    static AttributedStyle[] buildPulseStyles(int n, Rgb bright, Rgb dim) {
+    static Style[] buildPulseStyles(int n, Rgb bright, Rgb dim) {
         return PULSE_CACHE.computeIfAbsent(new PulseKey(n, bright, dim, Theme.active()), k -> {
             Gradient gradient = new Gradient(k.bright(), k.dim());
-            AttributedStyle[] a = new AttributedStyle[k.n()];
+            Style[] a = new Style[k.n()];
             for (int i = 0; i < k.n(); i++) {
                 a[i] = k.theme().bright(gradient.at(pulseWave(i, k.n())));
             }

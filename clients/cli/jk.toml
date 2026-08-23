@@ -10,7 +10,7 @@ jk-client-io.workspace = true
 jk-toolchain-jdk.workspace = true
 jk-engine-api.workspace = true
 jk-jsonl.workspace = true
-jline-terminal-ffm = "latest"
+jk-cli-terminal.workspace = true
 
 [provided-dependencies]
 graalvm-nativeimage = "latest"
@@ -37,11 +37,8 @@ args = [
   "--gc=serial",
   "-R:MaxHeapSize=134217728",
   "-R:MinHeapSize=25165824",
-  "-H:+SharedArenaSupport",
   "--enable-native-access=ALL-UNNAMED",
-  "--initialize-at-run-time=org.jline",
-  "--initialize-at-run-time=cc.jumpkick.cli.tui.WindowsUtf8",
-  "-H:ExcludeResources=org/jline/nativ/.*",
+  "--initialize-at-run-time=cc.jumpkick.terminal.windows.WindowsUtf8",
 ]
 
 [test]

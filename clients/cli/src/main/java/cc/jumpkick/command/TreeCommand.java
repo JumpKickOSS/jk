@@ -301,7 +301,7 @@ public final class TreeCommand implements CliCommand {
     }
 
     private static RichText rootCoord(String rootLine) {
-        String vis = org.jline.utils.AttributedString.stripAnsi(rootLine == null ? "" : rootLine)
+        String vis = cc.jumpkick.terminal.Width.stripAnsi(rootLine == null ? "" : rootLine)
                 .strip();
         if (vis.startsWith("● ")) vis = vis.substring(2);
         else if (vis.startsWith("* ")) vis = vis.substring(2);

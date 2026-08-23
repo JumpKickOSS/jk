@@ -2,7 +2,7 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.theme.Theme;
-import org.jline.utils.AttributedStyle;
+import cc.jumpkick.terminal.Style;
 
 /**
  * A small "chip" / "pill" label — black text on a gray background, used for {@code jk tree}'s scope
@@ -29,7 +29,7 @@ public final class Badge {
      * caps are painted with {@code caps} — pass a style whose <em>foreground</em> matches the chip's
      * background so they read as rounded edges.
      */
-    public static String pill(String label, boolean pillCaps, AttributedStyle body, AttributedStyle caps) {
+    public static String pill(String label, boolean pillCaps, Style body, Style caps) {
         if (pillCaps) {
             return Theme.colorize(Glyphs.PILL_LEFT_NERD, caps)
                     + Theme.colorize(label, body)

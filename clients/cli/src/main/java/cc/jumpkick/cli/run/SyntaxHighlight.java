@@ -3,10 +3,10 @@ package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.terminal.Style;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.jline.utils.AttributedStyle;
 
 /**
  * Single-line Java/Kotlin highlighter for compiler-diagnostic snippets (Prism-inspired ordered
@@ -258,7 +258,7 @@ public final class SyntaxHighlight {
      * neighbours stay plainly colored.
      */
     private static void emit(StringBuilder out, String src, int s, int e, Role role, int caretCol, Rgb bg) {
-        AttributedStyle style = styleFor(role);
+        Style style = styleFor(role);
         if (bg != null) style = Theme.active().withBackground(style, bg);
         if (caretCol < s || caretCol >= e) {
             out.append(Theme.colorize(src.substring(s, e), style));
@@ -270,7 +270,7 @@ public final class SyntaxHighlight {
     }
 
     /** Map a token {@link Role} onto the active theme's style. */
-    static AttributedStyle styleFor(Role role) {
+    static Style styleFor(Role role) {
         Theme t = Theme.active();
         return switch (role) {
             case KEYWORD -> t.synKeyword();
@@ -284,7 +284,7 @@ public final class SyntaxHighlight {
             case NAMESPACE -> t.synNamespace();
             case PUNCTUATION -> t.synPunctuation();
             case PATH -> t.path();
-            case PLAIN -> AttributedStyle.DEFAULT;
+            case PLAIN -> Style.EMPTY;
         };
     }
 }

@@ -211,7 +211,7 @@ public final class AppWatchLoop {
     private Process startApp(cc.jumpkick.engine.protocol.ExecPlan plan, List<String> appArgs) throws IOException {
         List<String> command = new ArrayList<>(plan.argv());
         command.addAll(appArgs);
-        cc.jumpkick.cli.tui.Interactivity.restoreForChildProcess();
+        cc.jumpkick.terminal.Terminals.restoreForChild();
         return new ProcessBuilder(command)
                 .directory(Path.of(plan.workingDir()).toFile())
                 .inheritIO()

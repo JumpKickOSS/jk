@@ -1,0 +1,14 @@
+{
+  "reflection": [
+    {
+      "type": "sun.misc.Signal",
+      "methods": [
+        { "name": "<init>", "parameterTypes": ["java.lang.String"] },
+        { "name": "handle", "parameterTypes": ["sun.misc.Signal", "sun.misc.SignalHandler"] }
+      ]
+    },
+    {
+      "type": "sun.misc.SignalHandler"
+    }
+  ]
+}

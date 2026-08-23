@@ -3,7 +3,7 @@ package cc.jumpkick.cli.theme;
 
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.model.Coordinate;
-import org.jline.utils.AttributedStyle;
+import cc.jumpkick.terminal.Style;
 
 /**
  * Themed rendering of Maven coordinates ({@code group:artifact:version}) and library short-names.
@@ -13,22 +13,22 @@ public final class Coords {
     private Coords() {}
 
     /** group segment — the theme's coordinate-group color. */
-    public static AttributedStyle groupStyle() {
+    public static Style groupStyle() {
         return Theme.active().coordGroup();
     }
 
     /** artifact/name segment — bold bright-cyan ({@link Theme#coordName()}). */
-    public static AttributedStyle artifactStyle() {
+    public static Style artifactStyle() {
         return Theme.active().coordName();
     }
 
     /** version segment — the theme's coordinate-version color. */
-    public static AttributedStyle versionStyle() {
+    public static Style versionStyle() {
         return Theme.active().coordVersion();
     }
 
     /** artifact short-name (dependency library) — bright-cyan. */
-    public static AttributedStyle shortNameStyle() {
+    public static Style shortNameStyle() {
         return Theme.active().brightCyan();
     }
 

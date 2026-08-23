@@ -3,8 +3,8 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.terminal.Ansi;
 import org.junit.jupiter.api.Test;
 
 class RichTextRenderTest {

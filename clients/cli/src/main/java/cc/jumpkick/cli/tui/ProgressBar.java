@@ -4,7 +4,7 @@ package cc.jumpkick.cli.tui;
 import cc.jumpkick.cli.theme.Gradient;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
-import org.jline.utils.AttributedStyle;
+import cc.jumpkick.terminal.Style;
 
 /**
  * Embeddable segmented progress bar string renderer (no cursor/terminal state). Filled blocks use a
@@ -24,7 +24,7 @@ public final class ProgressBar {
     static final char EMPTY_CHAR = '▱';
 
     private final Gradient gradient;
-    private final AttributedStyle[] fillColors;
+    private final Style[] fillColors;
 
     /** Bar in the default green → bright-green progress gradient. */
     public ProgressBar() {
@@ -101,10 +101,10 @@ public final class ProgressBar {
             }
             return;
         }
-        AttributedStyle brightest = fillColors[SEGMENTS - 1];
+        Style brightest = fillColors[SEGMENTS - 1];
         for (int i = 0; i < SEGMENTS; i++) {
             char c;
-            AttributedStyle color;
+            Style color;
             if (i < full) { // whole cell
                 c = FULL_BLOCK;
                 color = fillColors[SEGMENTS - fill + i];
@@ -157,13 +157,13 @@ public final class ProgressBar {
      */
     public String renderBar(long numerator, long denominator, int segments) {
         if (segments <= 0) return "";
-        AttributedStyle[] colors = segments == SEGMENTS ? fillColors : buildGradient(segments, gradient);
+        Style[] colors = segments == SEGMENTS ? fillColors : buildGradient(segments, gradient);
         int fill = (int) Math.round(fraction(numerator, denominator) * segments);
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < segments; i++) {
             boolean isFilled = i < fill;
             char c = isFilled ? FILLED_CHAR : EMPTY_CHAR;
-            AttributedStyle style = isFilled ? colors[segments - fill + i] : colors[0];
+            Style style = isFilled ? colors[segments - fill + i] : colors[0];
             sb.append(Theme.colorize(String.valueOf(c), style));
         }
         return sb.toString();
@@ -174,8 +174,7 @@ public final class ProgressBar {
      * use {@code emptyStyle}. For contexts where a gradient isn't appropriate (e.g. utilization rows
      * that want a solid fill color and a distinct track color).
      */
-    public static String renderBar(
-            long numerator, long denominator, int segments, AttributedStyle fillStyle, AttributedStyle emptyStyle) {
+    public static String renderBar(long numerator, long denominator, int segments, Style fillStyle, Style emptyStyle) {
         if (segments <= 0) return "";
         int fill = (int) Math.round(fraction(numerator, denominator) * segments);
         StringBuilder sb = new StringBuilder();
@@ -186,8 +185,8 @@ public final class ProgressBar {
         return sb.toString();
     }
 
-    private static AttributedStyle[] buildGradient(int n, Gradient gradient) {
-        AttributedStyle[] a = new AttributedStyle[n];
+    private static Style[] buildGradient(int n, Gradient gradient) {
+        Style[] a = new Style[n];
         for (int i = 0; i < n; i++) {
             double t = n <= 1 ? 0.0 : (double) i / (n - 1);
             a[i] = Theme.active().bright(gradient.at(t));
@@ -195,7 +194,7 @@ public final class ProgressBar {
         return a;
     }
 
-    private AttributedStyle percentStyle(int pct) {
+    private Style percentStyle(int pct) {
         double t = Math.max(0.0, Math.min(1.0, (double) pct / 100.0));
         return Theme.active().bright(gradient.at(t)).bold();
     }

@@ -23,6 +23,7 @@ modules = [
   "server/engine",
   # Clients
   "clients/cli",
+  "clients/cli-terminal",
   "clients/web",
   # Plugins/Workers
   "plugins/test-runner",

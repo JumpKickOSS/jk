@@ -1,19 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.terminal.Styled;
 import java.util.function.Function;
-import org.jline.utils.AttributedString;
 
 /**
  * One radio/multi-select option. Optional {@code hint}/{@code hintFn} suffix; optional
  * {@code richLabelFn} for multi-style labels (focused flag in the {@code Boolean} arg).
  */
 public record Choice(
-        String id,
-        String label,
-        String hint,
-        Function<Answers, String> hintFn,
-        Function<Boolean, AttributedString> richLabelFn) {
+        String id, String label, String hint, Function<Answers, String> hintFn, Function<Boolean, Styled> richLabelFn) {
 
     public Choice {
         if (hint == null) hint = "";
@@ -32,13 +28,12 @@ public record Choice(
     }
 
     /** Rich-label factory — caller supplies focused/unfocused renderings. */
-    public static Choice rich(String id, String fallbackLabel, Function<Boolean, AttributedString> richLabelFn) {
+    public static Choice rich(String id, String fallbackLabel, Function<Boolean, Styled> richLabelFn) {
         return new Choice(id, fallbackLabel, "", null, richLabelFn);
     }
 
     /** Rich-label factory with a hint suffix. */
-    public static Choice rich(
-            String id, String fallbackLabel, String hint, Function<Boolean, AttributedString> richLabelFn) {
+    public static Choice rich(String id, String fallbackLabel, String hint, Function<Boolean, Styled> richLabelFn) {
         return new Choice(id, fallbackLabel, hint, null, richLabelFn);
     }
 

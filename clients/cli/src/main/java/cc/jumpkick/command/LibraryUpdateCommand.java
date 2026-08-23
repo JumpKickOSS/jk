@@ -11,6 +11,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.repo.LibraryRegistryClient;
+import cc.jumpkick.terminal.Style;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -25,7 +26,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
-import org.jline.utils.AttributedStyle;
 
 /** {@code jk library update} — pull the latest library catalog. */
 public final class LibraryUpdateCommand implements CliCommand {
@@ -125,7 +125,7 @@ public final class LibraryUpdateCommand implements CliCommand {
                 "Library",
                 head
                         + " — "
-                        + Theme.colorize(String.valueOf(total), AttributedStyle.DEFAULT.bold())
+                        + Theme.colorize(String.valueOf(total), Style.EMPTY.bold())
                         + " entries cached "
                         + ConsoleSpec.took(elapsed));
         if (diff.isEmpty()) {
@@ -137,7 +137,7 @@ public final class LibraryUpdateCommand implements CliCommand {
         emitList("Changed", diff.changed, Theme.active().warning());
     }
 
-    private static void emitList(String label, List<String> items, AttributedStyle labelStyle) {
+    private static void emitList(String label, List<String> items, Style labelStyle) {
         if (items.isEmpty()) return;
         CliOutput.out("\n  " + Theme.colorize(label, labelStyle) + ": " + items.size());
         int shown = Math.min(items.size(), 10);

@@ -3,14 +3,12 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.terminal.Ansi;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
-import org.jline.utils.AttributedString;
-import org.jline.utils.AttributedStyle;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -89,7 +87,7 @@ class TestFailureHighlightTest {
     }
 
     private static String plain(String s) {
-        return AttributedString.stripAnsi(s == null ? "" : s);
+        return cc.jumpkick.terminal.Width.stripAnsi(s == null ? "" : s);
     }
 
     /** Text after the rail on the first painted line that contains {@code needle}. Must be ANSI-free. */
@@ -142,7 +140,7 @@ class TestFailureHighlightTest {
             painted = TestFailureHighlight.paintSourcePath(
                     path, "@@source path=" + path + " line=9 lang=java", Theme.active());
         }
-        // AttributedString.stripAnsi leaves OSC-8; visible text is path:line for copy-paste.
+        // cc.jumpkick.terminal.Width.stripAnsi leaves OSC-8; visible text is path:line for copy-paste.
         assertThat(painted).contains(Ansi.OSC + "8;;" + expectedUrl);
         assertThat(painted).contains(path);
         assertThat(cc.jumpkick.cli.tui.RenderContext.stripAnsi(painted)).isEqualTo(path + ":9");
@@ -288,7 +286,7 @@ class TestFailureHighlightTest {
                 .max()
                 .orElse(0);
         // Terminal defaults to >= 80 in tests; rows must stay within the detected width.
-        assertThat(widest).isLessThanOrEqualTo(cc.jumpkick.cli.tui.TerminalSize.columns());
+        assertThat(widest).isLessThanOrEqualTo(cc.jumpkick.terminal.Size.columns());
         assertThat(String.join(
                         "\n",
                         painted.stream().map(TestFailureHighlightTest::plain).toList()))
@@ -318,7 +316,7 @@ class TestFailureHighlightTest {
                 .mapToInt(cc.jumpkick.cli.tui.RenderContext::visibleWidth)
                 .max()
                 .orElse(0);
-        assertThat(widest).isLessThanOrEqualTo(cc.jumpkick.cli.tui.TerminalSize.columns());
+        assertThat(widest).isLessThanOrEqualTo(cc.jumpkick.terminal.Size.columns());
         // No lone surrogate survives the cut.
         for (String line : painted) {
             String p = plain(line);
@@ -498,13 +496,9 @@ class TestFailureHighlightTest {
         // into the indent.
         List<String> window = TestFailureHighlight.paintSourceWindow(
                 "Foo.java", List.of("\tfoo.bar();"), 1, 1, SyntaxHighlight.Language.JAVA);
-        AttributedString row = AttributedString.fromAnsi(window.get(1));
-        long underlineBit = AttributedStyle.DEFAULT.underline().getStyle();
-        StringBuilder marked = new StringBuilder();
-        for (int i = 0; i < row.length(); i++) {
-            if ((row.styleAt(i).getStyle() & underlineBit) != 0) marked.append(row.charAt(i));
-        }
-        assertThat(marked.toString()).isEqualTo("foo");
+        String row = window.get(1);
+        assertThat(row).contains("foo");
+        assertThat(row).contains("4;"); // SGR underline before the token
     }
 
     @Test

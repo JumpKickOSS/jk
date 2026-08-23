@@ -24,7 +24,7 @@ class HelpWidthTest {
     /** Visible columns of one help line once ANSI chrome is stripped (wcwidth-aware). */
     private static int visibleColumns(String line) {
         String stripped = TestAnsi.strip(line);
-        return new org.jline.utils.AttributedString(stripped).columnLength();
+        return cc.jumpkick.terminal.Width.columns(stripped);
     }
 
     private static void check(String screenName, String help, List<String> violations) {

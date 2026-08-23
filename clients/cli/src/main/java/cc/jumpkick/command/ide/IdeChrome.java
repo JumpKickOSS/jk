@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.ide;
 
-import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.Osc;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -15,6 +15,7 @@ import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Tree;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.runtime.WorkspaceProgressTracker;
+import cc.jumpkick.terminal.Ansi;
 import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -188,7 +189,7 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
             LiveRegion.clearActive(this);
             if (animate && Theme.active().isAnsi()) {
                 wipe();
-                out.print(Ansi.taskbarClear());
+                out.print(Osc.taskbarClear());
                 out.print(Ansi.SHOW_CURSOR);
             }
             if (chip != null) {
@@ -244,7 +245,7 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
             out.print('\n');
         }
         if (prev > lines.size()) out.print(Ansi.ERASE_DISPLAY_TO_END);
-        out.print(Ansi.taskbarIndeterminate());
+        out.print(Osc.taskbarIndeterminate());
         out.flush();
         lastLines = lines;
         linesDrawn = lines.size();
@@ -277,7 +278,7 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
             LiveRegion.clearActive(this);
             if (animate && Theme.active().isAnsi()) {
                 wipe();
-                out.print(Ansi.taskbarClear());
+                out.print(Osc.taskbarClear());
                 out.print(Ansi.SHOW_CURSOR);
                 out.println(JkWedge.fail(COMMAND, "canceled by user").renderLine(RenderContext.current()));
                 out.flush();
@@ -297,7 +298,7 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
             LiveRegion.clearActive(this);
             if (animate && Theme.active().isAnsi()) {
                 wipe();
-                out.print(Ansi.taskbarClear());
+                out.print(Osc.taskbarClear());
                 out.print(Ansi.SHOW_CURSOR);
             }
             out.flush();

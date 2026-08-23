@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.Ansi;
+import cc.jumpkick.cli.Osc;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.terminal.Ansi;
+import cc.jumpkick.terminal.Size;
+import cc.jumpkick.terminal.Style;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import org.jline.utils.AttributedStyle;
 import org.jspecify.annotations.NullMarked;
 
 /** Finish / plain-chrome / plan-paint collaborator for {@link JkManager}. */
@@ -146,7 +148,7 @@ final class JkManagerView {
             if (m.animate && Theme.active().isAnsi()) {
                 if (m.planMode) m.wipeRegion();
                 else m.freezeSpinnerLine();
-                m.out.print(Ansi.taskbarClear());
+                m.out.print(Osc.taskbarClear());
                 m.out.print(Ansi.SHOW_CURSOR);
                 m.out.flush();
             } else if (m.animate && !Theme.active().isAnsi()) {
@@ -190,7 +192,7 @@ final class JkManagerView {
                 // mode replaces the whole region (cursor lands on the first wiped row).
                 if (m.planMode) m.wipeRegion();
                 else m.freezeSpinnerLine();
-                m.out.print(Ansi.taskbarClear());
+                m.out.print(Osc.taskbarClear());
                 m.out.print(Ansi.SHOW_CURSOR);
             } else if (m.animate && !Theme.active().isAnsi()) {
                 // Plain multi-line: mandatory done line before the settle wedge.
@@ -530,7 +532,7 @@ final class JkManagerView {
         m.out.print(m.label);
         m.out.print(m.ELLIPSIS);
         m.out.print(Ansi.ERASE_LINE_TO_END);
-        m.out.print(Ansi.taskbarIndeterminate());
+        m.out.print(Osc.taskbarIndeterminate());
     }
 
     /**
@@ -630,7 +632,7 @@ final class JkManagerView {
      * below the live region. Line-diff only rewrites changed rows (spinner header most frames).
      */
     void paintBuildPlan() {
-        syncTerminalSize();
+        syncSize();
         long elapsed = m.elapsedMillis();
         List<String> lines = m.renderBuildPlanLines(m.width, elapsed);
         int colBudget = JkManagerColor.rowColumnBudget(m.width);
@@ -651,7 +653,7 @@ final class JkManagerView {
         }
         if (prev > lines.size()) m.out.print(Ansi.ERASE_DISPLAY_TO_END);
         long[] bd = m.displayBar(elapsed);
-        m.out.print(Ansi.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
+        m.out.print(Osc.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
         if (m.animate && !Theme.active().isAnsi() && bd[1] > 0) {
             synchronized (m.lock) {
                 m.ensurePlainProgressStarted(bd[0], bd[1]);
@@ -668,7 +670,7 @@ final class JkManagerView {
      */
     void openPeekPaint() {
         if (!m.animate || !Theme.active().isAnsi()) return;
-        syncTerminalSize();
+        syncSize();
         List<String> chrome = renderChromeLines(m.width, m.elapsedMillis());
         int budget = OutputWindow.displayBudget(m.height, chrome.size());
         // Uncommitted only: lines from an earlier open (dump or live appends) are already
@@ -700,7 +702,7 @@ final class JkManagerView {
      */
     void closePeekPaint() {
         if (!m.animate || !Theme.active().isAnsi()) return;
-        syncTerminalSize();
+        syncSize();
         int up = Math.min(m.lastLines.size(), OutputWindow.maxRegionLines(m.height));
         if (up > 0) {
             m.out.print(Ansi.cursorUp(up));
@@ -717,7 +719,7 @@ final class JkManagerView {
      * wedge. Does not redraw prior process lines. Must hold {@code m.lock}.
      */
     private void liftEmitRepaintLive(String text) {
-        syncTerminalSize();
+        syncSize();
         int colBudget = JkManagerColor.rowColumnBudget(m.width);
         String painted = JkManagerColor.truncateVisible(text, colBudget);
         int up = Math.min(m.lastLines.size(), OutputWindow.maxRegionLines(m.height));
@@ -750,7 +752,7 @@ final class JkManagerView {
         m.linesDrawn = live.size();
         paintedCols = m.width;
         long[] bd = m.displayBar(m.elapsedMillis());
-        m.out.print(Ansi.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
+        m.out.print(Osc.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
     }
 
     /**
@@ -793,10 +795,10 @@ final class JkManagerView {
      * column change with a live region, wipe first — after a shrink the terminal may have reflowed
      * the old paint onto more physical rows than {@code lastLines.size()}.
      */
-    private void syncTerminalSize() {
-        int[] size = TerminalSize.size();
-        int cols = size[1] > 0 ? size[1] : m.width;
-        int rows = size[0] > 0 ? size[0] : m.height;
+    private void syncSize() {
+        Size.Window size = Size.current();
+        int cols = size.cols() > 0 ? size.cols() : m.width;
+        int rows = size.rows() > 0 ? size.rows() : m.height;
         if (cols == m.width && rows == m.height) return;
         if (cols != m.width && !m.lastLines.isEmpty()) {
             wipeReflowedRegion(paintedCols > 0 ? paintedCols : m.width, cols);
@@ -871,7 +873,7 @@ final class JkManagerView {
 
     /** Wedge header + tree + completions (no rule, no process lines). */
     List<String> renderChromeLines(int cols, long elapsedMillis) {
-        AttributedStyle dim = Theme.active().darkGray();
+        Style dim = Theme.active().darkGray();
         List<String> chrome = new ArrayList<>();
         RenderContext frameCtx = RenderContext.current().withWidth(cols);
         boolean hasScopeHint = !m.scopeHintVerb.isEmpty() && !m.scopeHintNames.isEmpty();
@@ -989,7 +991,7 @@ final class JkManagerView {
     private String renderWorkRow(String module, String displayPhase, boolean failed, String detail) {
         Theme t = Theme.active();
         String icon;
-        AttributedStyle phaseStyle;
+        Style phaseStyle;
         if (failed) {
             icon = Theme.colorize(Glyphs.CROSS, t.error());
             phaseStyle = t.error();
