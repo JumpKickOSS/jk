@@ -130,8 +130,9 @@ bypassing would re-fire on every idle boundary, since a prune that ends under pr
 under pressure however often it runs.
 
 Under budget and inside every window there is nothing to evict, so `jk cache clean`
-reclaims only leaked temps, expired format stamps, stale timings and unreferenced blobs —
-it can legitimately report “Nothing to clean up.” on a cache that used to free gigabytes.
+reclaims only leaked temps, unreferenced blobs, whatever the small derived tiers have aged
+out of their own windows and caps, and anything under the cache root that jk no longer
+writes — it can legitimately report “Nothing to clean up.” on a large cache.
 
 ## What is never pruned
 

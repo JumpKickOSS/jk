@@ -154,8 +154,8 @@ public final class CachePlans {
     }
 
     /**
-     * Build the store-sweep plan ({@code jk storage clean}): leaked download temps and run-log TTL
-     * rotation. Garbage-only — the store's artifacts are never collected.
+     * Build the store-sweep plan ({@code jk storage clean}): leaked download temps. Garbage-only
+     * — the store's artifacts are never collected.
      */
     public static BuildPlan sweepBuildPlan(Path root, boolean dryRun) {
         Task sweepStep = Task.builder("sweep")

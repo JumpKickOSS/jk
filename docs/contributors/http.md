@@ -349,6 +349,7 @@ Two storage surfaces (CLI parity: `jk cache usage` / `jk storage usage`), not on
 | --- | --- | --- |
 | **Action cache** | key records + cache CAS → `actionCacheBytes` (format stamps and incremental state excluded — own retention) | `actionMaxBytes` (`[cache] max-cache-size-gb`, default 4 GiB / 8 GiB on CI) |
 | **Incremental state** | Zinc analysis under `actions/incremental-*` → `incrementalBytes` | `incrementalMaxBytes` (`[cache] incremental-max-size-gb`, default 512 MiB) |
+| **Derived caches** | every other tier under the cache root (hash memos, format indexes, extracted trees, ABI snapshots, materialised path repos) → `derivedCount`/`derivedBytes`, apparent bytes | none — bounded by count or supersession, so no `*MaxBytes` field: see `CacheReportBoundsTest` |
 | **Artifact store** | jk-owned `repos/` + workers → `artifactStorageBytes`; Maven local is `mavenLocalBytes` | none — the store is never size-pruned |
 
 Incremental state is its own surface because it is bounded on its own denominator; folding it
@@ -356,8 +357,8 @@ into `actionsBytes` would make the action-cache bar measure one tier against ano
 line. `actionsCount`/`actionsBytes` therefore exclude it.
 
 Full REST also exposes `actionsCount`/`actionsBytes` (index), `cacheCasCount`/`cacheCasBytes`
-(cache CAS), `incrementalCount`/`incrementalBytes`/`incrementalMaxBytes`, and store section
-fields. **Live SSE (thin):** `{ "thin": true, actionCacheBytes,
+(cache CAS), `incrementalCount`/`incrementalBytes`/`incrementalMaxBytes`,
+`derivedCount`/`derivedBytes`, and store section fields. **Live SSE (thin):** `{ "thin": true, actionCacheBytes,
 actionMaxBytes, artifactStorageBytes, mavenLocalBytes, lastPrunedMillis }` — enough for the
 footer; change-gated on MiB quanta.
 

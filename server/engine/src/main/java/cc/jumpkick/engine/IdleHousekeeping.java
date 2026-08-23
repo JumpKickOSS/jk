@@ -241,7 +241,10 @@ public final class IdleHousekeeping {
             FileLock pruneLock = lockChan.tryLock();
             if (pruneLock == null) return;
             try {
-                cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.CachePlans.pruneBuildPlan(cache, false, false);
+                // Scratch is a single ambient directory, not a per-root one: sweeping it while
+                // pruning some other cache root would reach outside the root asked for.
+                boolean ambient = cache.equals(cc.jumpkick.util.JkDirs.cache());
+                cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.CachePlans.pruneBuildPlan(cache, false, ambient);
                 cc.jumpkick.run.BuildPlanResult result = plan.run();
                 if (result.success()) {
                     cc.jumpkick.task.CachePruneScheduler.write(

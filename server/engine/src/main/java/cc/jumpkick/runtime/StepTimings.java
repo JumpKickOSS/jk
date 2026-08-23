@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -326,7 +325,6 @@ public final class StepTimings {
     // --- IO -----------------------------------------------------------------
 
     private static StepTimings readFile(Path f) {
-        migrateLegacyIfNeeded(f);
         Map<String, Entry> m = new HashMap<>();
         try {
             if (Files.isRegularFile(f)) {
@@ -350,29 +348,6 @@ public final class StepTimings {
             // unreadable/corrupt ledger → treat as cold
         }
         return new StepTimings(m);
-    }
-
-    /**
-     * One-shot move of the pre-state location {@code ~/.cache/jk/timings.toml} into
-     * {@link #defaultFile()} when the state path is empty.
-     */
-    private static void migrateLegacyIfNeeded(Path f) {
-        try {
-            Path dest = defaultFile().toAbsolutePath().normalize();
-            if (!f.toAbsolutePath().normalize().equals(dest)) return;
-            if (Files.isRegularFile(dest)) return;
-            Path legacy = JkDirs.cache().resolve("timings.toml");
-            if (!Files.isRegularFile(legacy)) return;
-            Files.createDirectories(dest.getParent());
-            try {
-                Files.move(legacy, dest, StandardCopyOption.ATOMIC_MOVE);
-            } catch (IOException e) {
-                Files.copy(legacy, dest, StandardCopyOption.REPLACE_EXISTING);
-                Files.deleteIfExists(legacy);
-            }
-        } catch (Exception ignored) {
-            // best-effort migration
-        }
     }
 
     private static String render(Map<String, Entry> m) {

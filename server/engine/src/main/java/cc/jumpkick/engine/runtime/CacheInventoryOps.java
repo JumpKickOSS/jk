@@ -110,11 +110,11 @@ public final class CacheInventoryOps {
         }
 
         DiskUsage.Stats stamps = DiskUsage.of(cacheRoot.resolve("format-stamps"));
-        // Total is the action cache — the exact bytes the budget bounds and `jk cache clean`
-        // prunes. Format stamps and hash memos live under the same root but have their own
-        // retention, so a whole-root walk would report a total nothing can reclaim. Zinc
-        // analysis state is under actions/ but carries its own budget, so it is subtracted out and
-        // reported beside the total rather than inside it.
+        // Total is the action cache — the exact bytes the budget bounds. Every other tier under
+        // this root is bounded on its own terms (see CacheTier), so folding them in would measure
+        // one tier's usage against another tier's line; they are reported beside the total as
+        // `stamps` and `derived`. Zinc analysis sits under actions/ and comes out for the same
+        // reason: its own budget, its own row.
         DiskUsage.Stats[] budgeted = DiskUsage.exclusive(cacheRoot.resolve("actions"), cacheRoot.resolve("sha256"));
         DiskUsage.Stats incremental = incrementalStats(cacheRoot.resolve("actions"));
         DiskUsage.Stats derived = derivedStats(cacheRoot);
