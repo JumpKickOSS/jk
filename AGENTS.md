@@ -217,18 +217,43 @@ tighten comments that still state a live invariant.
 
 ## Code formatting (mandatory before every commit)
 
-**Hard requirement — not optional.** Before creating **any** git commit (including `git commit`, amend, or any equivalent commit action), every agent **must** run:
+**Hard requirement — not optional.** Before creating **any** git commit
+(including `git commit`, amend, or any equivalent commit action), every
+agent **must** run:
 
 ```bash
 jk format
 ```
 
+`jk format` is Spotless + OpenRewrite over the **whole tree**, not just
+files you touched. Trust its output. Long-hand FQCNs and similar agent
+noise are why this exists.
+
 Rules:
 
-- Run `jk format` after you have finished creating or modifying source files and **before** you stage a commit. This covers **all** languages the command supports, including Java, Kotlin, Groovy, and any other files it formats.
-- **Do not** proceed with `git commit` (or amend / any equivalent) until `jk format` has **successfully completed**.
-- If `jk format` fails, **fix the issues and re-run `jk format`** until it succeeds. Do not skip, defer, or commit around a failed format run.
-- This applies to every commit an agent creates in this repository. Unformatted source must not enter git history.
+- Run `jk format` after you have finished creating or modifying source
+  files and **before** you stage a commit. This covers **all** languages
+  the command supports, including Java, Kotlin, Groovy, and any other
+  files it formats.
+- **Do not** proceed with `git commit` (or amend / any equivalent) until
+  `jk format` has **successfully completed**.
+- If `jk format` fails, **fix the issues and re-run `jk format`** until
+  it succeeds. Do not skip, defer, or commit around a failed format run.
+- Unformatted source must not enter git history.
+
+**Unrelated files will often change. Keep them.** Another agent skipped
+format or wrote long-hand; `jk format` is catching up. That is expected.
+Do **not** `git restore` those diffs, panic, or treat them as a reason to
+veto or skip the commit.
+
+Land it as two commits when the format set is wider than your change:
+
+1. Your work (already formatted) as one commit.
+2. Leftover format-only files as a second commit (`jk format`).
+
+Do not mix them if you can avoid it. **Do not drop the second commit.**
+Leaving the tree unformatted is not an option; formatting is everyone's
+job, including leftover from the last agent.
 
 ## Git workflow (private repo)
 
