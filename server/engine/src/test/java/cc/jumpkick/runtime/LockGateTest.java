@@ -4,6 +4,9 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -26,18 +29,20 @@ class LockGateTest {
         AtomicInteger maxInside = new AtomicInteger();
         CountDownLatch start = new CountDownLatch(1);
         CountDownLatch done = new CountDownLatch(threads);
+        List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
         for (int i = 0; i < threads; i++) {
             new Thread(() -> {
                         try {
-                            start.await();
+                            assertThat(start.await(30, TimeUnit.SECONDS)).isTrue();
                             synchronized (LockGate.monitorFor(tmp)) {
                                 int now = inside.incrementAndGet();
                                 maxInside.accumulateAndGet(now, Math::max);
+                                // Hold the monitor: a second holder is only observable as overlap.
                                 Thread.sleep(5);
                                 inside.decrementAndGet();
                             }
-                        } catch (InterruptedException ignored) {
-                            Thread.currentThread().interrupt();
+                        } catch (Throwable e) {
+                            failures.add(e); // nothing else would ever see it
                         } finally {
                             done.countDown();
                         }
@@ -46,6 +51,7 @@ class LockGateTest {
         }
         start.countDown();
         assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
+        assertThat(failures).isEmpty();
         assertThat(maxInside.get()).isEqualTo(1);
     }
 }

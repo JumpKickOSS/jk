@@ -7,12 +7,12 @@ import cc.jumpkick.engine.protocol.EngineProtocol;
 import java.io.BufferedWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class WireEventSinkTest {
@@ -65,18 +65,18 @@ class WireEventSinkTest {
         int perThread = 200;
         CountDownLatch start = new CountDownLatch(1);
         CountDownLatch done = new CountDownLatch(threads);
-        AtomicInteger failures = new AtomicInteger();
+        List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
         try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
             for (int t = 0; t < threads; t++) {
                 final int id = t;
                 pool.execute(() -> {
                     try {
-                        start.await();
+                        assertThat(start.await(30, TimeUnit.SECONDS)).isTrue();
                         for (int i = 0; i < perThread; i++) {
                             sink.emit(new EngineEvent.StepFinish("mod-" + id, "ensure-jdk", "resolve", "SUCCESS", i));
                         }
-                    } catch (Exception e) {
-                        failures.incrementAndGet();
+                    } catch (Throwable e) {
+                        failures.add(e); // a pool task's throw is invisible to the main thread
                     } finally {
                         done.countDown();
                     }
@@ -86,7 +86,7 @@ class WireEventSinkTest {
             assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
         }
         bw.flush();
-        assertThat(failures.get()).isZero();
+        assertThat(failures).isEmpty();
         List<String> lines = new ArrayList<>();
         for (String line : sw.toString().split("\n", -1)) {
             if (!line.isEmpty()) lines.add(line);

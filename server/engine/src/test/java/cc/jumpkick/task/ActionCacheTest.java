@@ -14,6 +14,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
@@ -285,30 +286,30 @@ class ActionCacheTest {
 
         int threads = 8;
         int rounds = 40;
-        ExecutorService pool = Executors.newFixedThreadPool(threads);
         CountDownLatch start = new CountDownLatch(1);
         AtomicReference<Throwable> fail = new AtomicReference<>();
-        List<Future<?>> futures = new ArrayList<>();
-        for (int t = 0; t < threads; t++) {
-            final int id = t;
-            futures.add(pool.submit(() -> {
-                try {
-                    start.await();
-                    for (int i = 0; i < rounds; i++) {
-                        String key = "k" + (i % 4);
-                        String task = "task-" + id;
-                        cache.storeWithOutputs(task, key, Map.of("s", "1"), Map.of("a.class", "deadbeef"));
-                        cache.lookup(key); // must not throw on partial write
-                        cache.lastFor(task);
+        try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
+            List<Future<?>> futures = new ArrayList<>();
+            for (int t = 0; t < threads; t++) {
+                final int id = t;
+                futures.add(pool.submit(() -> {
+                    try {
+                        assertThat(start.await(30, TimeUnit.SECONDS)).isTrue();
+                        for (int i = 0; i < rounds; i++) {
+                            String key = "k" + (i % 4);
+                            String task = "task-" + id;
+                            cache.storeWithOutputs(task, key, Map.of("s", "1"), Map.of("a.class", "deadbeef"));
+                            cache.lookup(key); // must not throw on partial write
+                            cache.lastFor(task);
+                        }
+                    } catch (Throwable e) {
+                        fail.compareAndSet(null, e);
                     }
-                } catch (Throwable e) {
-                    fail.compareAndSet(null, e);
-                }
-            }));
+                }));
+            }
+            start.countDown();
+            for (var f : futures) f.get(60, TimeUnit.SECONDS);
         }
-        start.countDown();
-        for (var f : futures) f.get();
-        pool.shutdown();
         if (fail.get() != null) {
             throw new AssertionError("torn metadata observed", fail.get());
         }

@@ -3,6 +3,9 @@ package cc.jumpkick.engine.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
@@ -16,12 +19,20 @@ class CacheSnapshotMemoizingTest {
 
     @Test
     void memoizing_single_flights_concurrent_gets() throws Exception {
+        int n = 8;
         AtomicInteger walks = new AtomicInteger();
+        CountDownLatch callersArrived = new CountDownLatch(n);
         CacheSnapshot.Memoizing memo = CacheSnapshot.memoizing(
                 () -> {
                     walks.incrementAndGet();
                     try {
-                        Thread.sleep(80);
+                        // Coalescing is only exercised while the walk is in flight, so hold it until
+                        // every caller has reached get(); the short tail covers the unobservable gap
+                        // between reaching get() and parking on the memo's lock.
+                        assertThat(callersArrived.await(30, TimeUnit.SECONDS))
+                                .as("all callers reach get() before the walk returns")
+                                .isTrue();
+                        Thread.sleep(50);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
@@ -29,22 +40,24 @@ class CacheSnapshotMemoizingTest {
                 },
                 60_000);
 
-        int n = 8;
         CyclicBarrier start = new CyclicBarrier(n);
         CountDownLatch done = new CountDownLatch(n);
+        List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
         for (int i = 0; i < n; i++) {
             Thread.ofVirtual().start(() -> {
                 try {
-                    start.await(2, TimeUnit.SECONDS);
+                    start.await(30, TimeUnit.SECONDS);
+                    callersArrived.countDown();
                     assertThat(memo.get()).isSameAs(SNAP);
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
+                } catch (Throwable e) {
+                    failures.add(e); // a throw here would die in the virtual thread unseen
                 } finally {
                     done.countDown();
                 }
             });
         }
-        assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(done.await(60, TimeUnit.SECONDS)).isTrue();
+        assertThat(failures).isEmpty();
         assertThat(walks.get()).isEqualTo(1);
         memo.get();
         assertThat(walks.get()).isEqualTo(1);

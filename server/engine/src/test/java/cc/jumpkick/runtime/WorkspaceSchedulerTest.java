@@ -46,6 +46,15 @@ class WorkspaceSchedulerTest {
     private record Trace(int peakConcurrency, List<String> completionOrder, int sinkCalls, int maxBatch) {}
 
     private static Trace trace(int maxConcurrency) {
+        return trace(maxConcurrency, false);
+    }
+
+    /**
+     * {@code rendezvousMidLevel} makes {@code b} and {@code c} — the diamond's only level that may
+     * run at once — wait for each other before releasing their slots. A peak of 2 is then a fact,
+     * not a bet that both threads get scheduled inside the same hold window on a loaded host.
+     */
+    private static Trace trace(int maxConcurrency, boolean rendezvousMidLevel) {
         AtomicInteger inFlight = new AtomicInteger();
         AtomicInteger peak = new AtomicInteger();
         List<String> completed = Collections.synchronizedList(new ArrayList<>());
@@ -58,8 +67,11 @@ class WorkspaceSchedulerTest {
                 unit -> {
                     int now = inFlight.incrementAndGet();
                     peak.accumulateAndGet(now, Math::max);
+                    if (rendezvousMidLevel && ("b".equals(unit) || "c".equals(unit))) {
+                        awaitInFlight(inFlight, 2);
+                    }
                     try {
-                        Thread.sleep(40); // hold the slot so genuine overlap is observable
+                        Thread.sleep(40); // hold the slot: over-admission is only visible as overlap
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
@@ -77,6 +89,18 @@ class WorkspaceSchedulerTest {
         return new Trace(peak.get(), new ArrayList<>(completed), sinkCalls[0], maxBatch[0]);
     }
 
+    /** Park until {@code inFlight} reaches {@code target}; on timeout the peak assertion reports it. */
+    private static void awaitInFlight(AtomicInteger inFlight, int target) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        try {
+            while (inFlight.get() < target && System.nanoTime() < deadline) {
+                Thread.sleep(1);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     @Test
     void cancel_drains_in_flight_units_before_returning() {
         // JK-2097: cancel(true) settled the futures instantly while suppliers kept running, so
@@ -87,6 +111,7 @@ class WorkspaceSchedulerTest {
         // Determinism: "fast" only flips cancel once "slow" is genuinely in flight — a
         // not-yet-started "slow" would be (correctly) no-op'd by the admission gate instead.
         CountDownLatch slowStarted = new CountDownLatch(1);
+        AtomicBoolean cancelledWhileSlowRan = new AtomicBoolean();
         Object result = WorkspaceScheduler.run(
                 List.of("fast", "slow"),
                 WorkspaceSchedulerTest::p,
@@ -94,7 +119,7 @@ class WorkspaceSchedulerTest {
                 unit -> {
                     if ("fast".equals(unit)) {
                         try {
-                            slowStarted.await(5, TimeUnit.SECONDS);
+                            cancelledWhileSlowRan.set(slowStarted.await(10, TimeUnit.SECONDS));
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
                         }
@@ -103,6 +128,8 @@ class WorkspaceSchedulerTest {
                     }
                     slowStarted.countDown();
                     try {
+                        // Elapsed time IS the property: an early return can only be caught while
+                        // "slow" is provably still running, and only the drain can close that gap.
                         Thread.sleep(300);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
@@ -114,6 +141,9 @@ class WorkspaceSchedulerTest {
                 2,
                 cancelled::get);
         assertThat(result).isNull();
+        assertThat(cancelledWhileSlowRan)
+                .as("the fixture must cancel while \"slow\" is in flight, else nothing is drained")
+                .isTrue();
         assertThat(slowFinished).isTrue();
     }
 
@@ -143,10 +173,10 @@ class WorkspaceSchedulerTest {
                 artifactsReady.run();
                 try {
                     // Hold "up" open (its test phase) until "down" has demonstrably started.
-                    assertThat(downStarted.await(5, TimeUnit.SECONDS))
+                    assertThat(downStarted.await(10, TimeUnit.SECONDS))
                             .as("dependent must start while upstream is still running")
                             .isTrue();
-                    releaseUp.await(5, TimeUnit.SECONDS);
+                    assertThat(releaseUp.await(10, TimeUnit.SECONDS)).isTrue();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
@@ -155,8 +185,10 @@ class WorkspaceSchedulerTest {
                 // Admission contract: never before the publish.
                 assertThat(upPublished.getCount()).isZero();
                 downStarted.countDown();
-                releaseUp.countDown();
+                // Record before the release, for the same reason as the publish above: releaseUp is
+                // what lets "up" append its own finish, so "down" must already be on record.
                 order.add("finish:down");
+                releaseUp.countDown();
             }
             return unit;
         };
@@ -258,7 +290,7 @@ class WorkspaceSchedulerTest {
 
     @Test
     void unbounded_batches_per_level_and_preserves_order() {
-        Trace t = trace(0);
+        Trace t = trace(0, true);
         assertThat(t.peakConcurrency()).isEqualTo(2); // the {b, c} level runs both at once
         assertDependencyOrder(t.completionOrder());
         // Batch-per-level cadence: levels [a], [b, c], [d] → 3 sink calls, one batch of size 2.

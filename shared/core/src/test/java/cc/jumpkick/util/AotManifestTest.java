@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -251,6 +253,7 @@ class AotManifestTest {
         try {
             var start = new CountDownLatch(1);
             var done = new CountDownLatch(n);
+            List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
             for (int i = 0; i < n; i++) {
                 AotManifest.upsert(
                         dir, AotManifest.Entry.builder("doomed-" + i + ".aot").build());
@@ -259,7 +262,7 @@ class AotManifestTest {
                 final int id = i;
                 pool.execute(() -> {
                     try {
-                        start.await();
+                        assertThat(start.await(30, TimeUnit.SECONDS)).isTrue();
                         // Interleave upserts with removes: both must serialize losslessly.
                         AotManifest.upsert(
                                 dir,
@@ -268,8 +271,8 @@ class AotManifestTest {
                                         .status("ready")
                                         .build());
                         AotManifest.remove(dir, "doomed-" + id + ".aot");
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
+                    } catch (Throwable e) {
+                        failures.add(e); // a pool task's throw would otherwise only skew the counts
                     } finally {
                         done.countDown();
                     }
@@ -277,6 +280,7 @@ class AotManifestTest {
             }
             start.countDown();
             assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
+            assertThat(failures).isEmpty();
         } finally {
             pool.shutdownNow();
         }

@@ -7,6 +7,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
@@ -95,7 +99,7 @@ class IoLedgerTest {
         IoLedger.open(run);
         Thread forked = new Thread(() -> IoLedger.currentOrNew().remoteDown(64));
         forked.start();
-        forked.join();
+        assertThat(forked.join(Duration.ofSeconds(30))).isTrue();
 
         assertThat(run.totals().remoteDown()).isEqualTo(64);
     }
@@ -107,16 +111,17 @@ class IoLedgerTest {
         int perThread = 500;
         CountDownLatch start = new CountDownLatch(1);
         CountDownLatch done = new CountDownLatch(threads);
+        List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
         for (int t = 0; t < threads; t++) {
             new Thread(() -> {
                         try {
-                            start.await();
+                            assertThat(start.await(30, TimeUnit.SECONDS)).isTrue();
                             for (int i = 0; i < perThread; i++) {
                                 io.localUp(3);
                                 io.remoteDown(1);
                             }
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
+                        } catch (Throwable e) {
+                            failures.add(e); // nothing else would ever see it
                         } finally {
                             done.countDown();
                         }
@@ -124,7 +129,8 @@ class IoLedgerTest {
                     .start();
         }
         start.countDown();
-        assertThat(done.await(20, TimeUnit.SECONDS)).isTrue();
+        assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
+        assertThat(failures).isEmpty();
 
         assertThat(io.totals().localUp()).isEqualTo(3L * threads * perThread);
         assertThat(io.totals().remoteDown()).isEqualTo((long) threads * perThread);
