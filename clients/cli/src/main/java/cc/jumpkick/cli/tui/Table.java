@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.terminal.Style;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -126,7 +127,7 @@ public final class Table implements Widget {
     static String headerCell(String text, boolean ansi) {
         String s = text == null ? "" : text;
         if (s.isEmpty() || !ansi) return s;
-        return Theme.colorize(s, org.jline.utils.AttributedStyle.DEFAULT.italic());
+        return Theme.colorize(s, Style.EMPTY.italic());
     }
 
     public static int visibleWidth(String s) {
@@ -628,8 +629,7 @@ public final class Table implements Widget {
         cc.jumpkick.cli.theme.Rgb band = banded ? theme.darkBlackColor() : null;
         String outerBar = ansi ? Theme.colorize("│", theme.darkGray()) : "|";
         String innerBar = banded ? Theme.colorize("│", theme.withBackground(theme.darkGray(), band)) : outerBar;
-        String sp =
-                banded ? Theme.colorize(" ", theme.withBackground(org.jline.utils.AttributedStyle.DEFAULT, band)) : " ";
+        String sp = banded ? Theme.colorize(" ", theme.withBackground(Style.EMPTY, band)) : " ";
         String leftPad = banded && ctx.pill() ? Theme.colorize(Glyphs.PILL_LEFT_NERD, theme.bright(band)) : sp;
         String rightPad = banded && ctx.pill() ? Theme.colorize(Glyphs.PILL_RIGHT_NERD, theme.bright(band)) : sp;
         var sb = new StringBuilder(outerBar);

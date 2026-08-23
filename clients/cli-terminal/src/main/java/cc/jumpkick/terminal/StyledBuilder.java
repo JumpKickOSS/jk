@@ -8,6 +8,10 @@ import java.util.List;
 public final class StyledBuilder {
     private final List<Styled.Span> spans = new ArrayList<>();
 
+    public StyledBuilder append(String text) {
+        return append(text, Style.EMPTY);
+    }
+
     public StyledBuilder append(String text, Style style) {
         spans.add(new Styled.Span(text, style));
         return this;

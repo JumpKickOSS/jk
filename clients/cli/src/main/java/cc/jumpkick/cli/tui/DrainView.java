@@ -7,12 +7,12 @@ import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.terminal.InputMode;
 import cc.jumpkick.terminal.Key;
 import cc.jumpkick.terminal.ModeGuard;
+import cc.jumpkick.terminal.Style;
 import cc.jumpkick.terminal.TerminalSession;
 import cc.jumpkick.terminal.Terminals;
 import java.io.PrintWriter;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.jline.utils.AttributedStyle;
 
 /**
  * Live two-line TUI for {@code jk engine stop} drain (job count + elapsed; Ctrl-X forces kill via
@@ -128,7 +128,7 @@ public final class DrainView implements LiveRegion, AutoCloseable {
                 "Draining " + n + " job" + (n == 1 ? "" : "s") + "… " + elapsed);
         String hint = Theme.colorize(
                         "Wait for jobs to finish, or press ", Theme.active().dim())
-                + Theme.colorize("Ctrl-X", AttributedStyle.DEFAULT.bold())
+                + Theme.colorize("Ctrl-X", Style.EMPTY.bold())
                 + Theme.colorize(" to kill the engine now", Theme.active().dim());
         return new String[] {l1, hint};
     }

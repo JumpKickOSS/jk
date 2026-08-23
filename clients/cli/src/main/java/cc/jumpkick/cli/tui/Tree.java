@@ -4,7 +4,6 @@ package cc.jumpkick.cli.tui;
 import cc.jumpkick.cli.theme.Theme;
 import java.util.ArrayList;
 import java.util.List;
-import org.jline.utils.AttributedString;
 
 /**
  * A tree of pills, labels, and hanging rich text. Title and root are optional so the same widget
@@ -255,7 +254,7 @@ public final class Tree implements Widget {
 
     private static Parsed parsePainted(String line) {
         if (line == null || line.isEmpty()) return null;
-        String vis = AttributedString.stripAnsi(line);
+        String vis = cc.jumpkick.terminal.Width.stripAnsi(line);
         int origin = 0;
         if (startsWithConnector(vis, 1) && vis.startsWith(" ")) origin = 1;
         int i = origin;

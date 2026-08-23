@@ -2,10 +2,11 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
+import cc.jumpkick.cli.Osc;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.terminal.Style;
 import java.io.PrintStream;
-import org.jline.utils.AttributedStyle;
 
 /**
  * Animated JDK download progress bar styled like the {@code jk build} plan header: the blue plan
@@ -24,7 +25,7 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
     private final String displayName; // "Eclipse Temurin 26"
     private final NerdFontCaps nerdFont;
     private final boolean silent;
-    private final AttributedStyle[] failColors;
+    private final Style[] failColors;
 
     private int frame;
     private long numerator;
@@ -70,7 +71,7 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         this.numerator = bytesDownloaded;
         this.denominator = total;
         if (total > 0) {
-            out.print(Ansi.taskbarProgress((int) Math.min(100, bytesDownloaded * 100L / total)));
+            out.print(Osc.taskbarProgress((int) Math.min(100, bytesDownloaded * 100L / total)));
         }
     }
 
@@ -109,7 +110,7 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         LiveRegion.clearActive(this);
         if (silent) return;
         if (drawn) out.print(Ansi.CLEAR_LINE);
-        out.print(Ansi.taskbarClear());
+        out.print(Osc.taskbarClear());
         out.print(Ansi.SHOW_CURSOR);
         out.flush();
     }
@@ -131,7 +132,7 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         for (int i = 0; i < ProgressBar.SEGMENTS; i++) {
             out.print(Theme.colorize(String.valueOf(ProgressBar.FILLED_CHAR), failColors[i]));
         }
-        out.print(Ansi.taskbarClear());
+        out.print(Osc.taskbarClear());
         out.print(Ansi.SHOW_CURSOR);
         out.flush();
         return true;

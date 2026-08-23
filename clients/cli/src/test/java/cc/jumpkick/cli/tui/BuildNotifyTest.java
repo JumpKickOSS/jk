@@ -3,8 +3,8 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.Osc;
 import cc.jumpkick.config.JkConfig;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -74,10 +74,10 @@ class BuildNotifyTest {
         var noOsc = cc.jumpkick.config.JkConfig.empty().withNoOsc(Optional.of(true));
         cc.jumpkick.config.SessionContext.runWhere(
                 cc.jumpkick.config.Session.defaults().withConfig(noOsc), () -> {
-                    assertThat(Ansi.oscEnabled()).isFalse();
-                    assertThat(Ansi.desktopNotify("JumpKick Build", "hello")).isEmpty();
-                    assertThat(Ansi.windowTitle("x")).isEmpty();
-                    assertThat(Ansi.taskbarIndeterminate()).isEmpty();
+                    assertThat(Osc.oscEnabled()).isFalse();
+                    assertThat(Osc.desktopNotify("JumpKick Build", "hello")).isEmpty();
+                    assertThat(Osc.windowTitle("x")).isEmpty();
+                    assertThat(Osc.taskbarIndeterminate()).isEmpty();
                 });
     }
 }

@@ -4,8 +4,7 @@ package cc.jumpkick.cli.tui;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
-import java.util.regex.Pattern;
-import org.jline.utils.AttributedString;
+import cc.jumpkick.terminal.Width;
 
 /**
  * How to paint a widget: theme, the three human modes, terminal width, and an optional animator
@@ -89,64 +88,17 @@ public record RenderContext(Theme theme, boolean ansi, NerdFontCaps nerd, int wi
         return new RenderContext(theme, ansi, nerd, newWidth, frame);
     }
 
-    /**
-     * OSC sequences (hyperlinks, taskbar progress): {@code ESC ] … (BEL | ESC \)}. The {@code \z}
-     * alternative also strips a sequence truncated upstream (a tool line clipped mid-OSC) — its
-     * payload must measure as zero columns, not as the URL's length.
-     */
-    private static final Pattern OSC_SEQUENCE =
-            Pattern.compile("\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\|\\z)");
-
-    /**
-     * Index just past the escape sequence starting at {@code i} ({@code s.charAt(i)} is ESC):
-     * CSI {@code ESC [ … final}, OSC {@code ESC ] … (BEL | ESC \)} — an unterminated OSC consumes
-     * to end-of-string — else the two-char {@code ESC x} form. The one escape scanner shared by
-     * the width/truncation helpers, so a private copy can never again learn only CSI and count a
-     * hyperlink's URL as columns.
-     */
     public static int skipEscape(String s, int i) {
-        if (i + 1 >= s.length()) return s.length();
-        char n = s.charAt(i + 1);
-        if (n == '[') {
-            int j = i + 2;
-            while (j < s.length()) {
-                char c = s.charAt(j++);
-                if (c >= '@' && c <= '~') break;
-            }
-            return j;
-        }
-        if (n == ']') {
-            int j = i + 2;
-            while (j < s.length()) {
-                char c = s.charAt(j);
-                if (c == '\u0007') return j + 1;
-                if (c == '\u001b') {
-                    return (j + 1 < s.length() && s.charAt(j + 1) == '\\') ? j + 2 : j;
-                }
-                j++;
-            }
-            return s.length();
-        }
-        return i + 2;
+        return Width.skipEscape(s, i);
     }
 
-    /**
-     * Strip CSI and OSC alike. JLine's {@code AttributedString.stripAnsi} leaves OSC bytes in
-     * place, so an OSC-8 hyperlink would otherwise inflate measured width by its URL plus escape
-     * bytes.
-     */
+    /** Strip CSI and OSC alike (unterminated OSC consumes to end). */
     public static String stripAnsi(String s) {
-        if (s == null) return "";
-        String noOsc = s.indexOf('\u001b') < 0 ? s : OSC_SEQUENCE.matcher(s).replaceAll("");
-        return AttributedString.stripAnsi(noOsc);
+        return Width.stripAnsi(s);
     }
 
-    /**
-     * Visible terminal columns: CSI/OSC stripped, then wcwidth (CJK = 2). Shared by every widget
-     * that pads cells or fills a title bar.
-     */
+    /** Visible terminal columns: CSI/OSC stripped, then wcwidth (CJK = 2). */
     public static int visibleWidth(String s) {
-        if (s == null || s.isEmpty()) return 0;
-        return new AttributedString(stripAnsi(s)).columnLength();
+        return Width.columns(s);
     }
 }

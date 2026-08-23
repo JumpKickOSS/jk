@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.terminal.Signals;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.GroupLayout;
@@ -13,7 +14,6 @@ import java.lang.invoke.MethodHandle;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
-import org.jline.utils.Signals;
 
 /**
  * Process-wide terminal-size cache. The probe uses Panama FFM system calls —

@@ -6,6 +6,9 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.terminal.InputMode;
 import cc.jumpkick.terminal.Key;
 import cc.jumpkick.terminal.ModeGuard;
+import cc.jumpkick.terminal.Style;
+import cc.jumpkick.terminal.Styled;
+import cc.jumpkick.terminal.StyledBuilder;
 import cc.jumpkick.terminal.TerminalSession;
 import java.io.PrintWriter;
 import java.time.Duration;
@@ -17,9 +20,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import org.jline.utils.AttributedString;
-import org.jline.utils.AttributedStringBuilder;
-import org.jline.utils.AttributedStyle;
 
 /**
  * Interactive wizard: {@link InputMode#PROMPT}, incremental redraw of the active step only, no
@@ -129,9 +129,9 @@ public final class Wizard {
         writer.print(Ansi.cursorPrevLine(2)); // up 2 lines, col 1 — lands at the active ╰
         writer.print(Ansi.cursorForward(INDENT_COLS + RAIL_PREFIX_WIDTH)); // skip past "╰──"
         writer.print(Ansi.ERASE_DISPLAY_TO_END); // erase residue beyond
-        var line = new AttributedStringBuilder()
+        var line = new StyledBuilder()
                 .append(" " + Glyphs.CROSS + " " + message, Theme.active().error()) // leading space separates from ╰──
-                .toAttributedString();
+                .build();
         writer.print(line.toAnsi());
         writer.println();
         writer.flush();
@@ -338,7 +338,7 @@ public final class Wizard {
         return RenderContext.stripAnsi(s).length();
     }
 
-    private static List<AttributedString> summarize(WizardStep step, Map<String, Object> answers) {
+    private static List<Styled> summarize(WizardStep step, Map<String, Object> answers) {
         var answerStyle = Theme.active().settled().italic();
         return switch (step) {
             case WizardStep.InputStep is ->
@@ -358,7 +358,7 @@ public final class Wizard {
                 for (var c : ms.choicesFor(Answers.of(answers))) {
                     byId.put(c.id(), c.label());
                 }
-                var labels = new ArrayList<AttributedString>();
+                var labels = new ArrayList<Styled>();
                 for (var v : selected) {
                     labels.add(answerLine(byId.getOrDefault(v, v), answerStyle));
                 }
@@ -371,11 +371,11 @@ public final class Wizard {
         };
     }
 
-    private static AttributedString answerLine(String text, AttributedStyle textStyle) {
-        return new AttributedStringBuilder()
+    private static Styled answerLine(String text, Style textStyle) {
+        return new StyledBuilder()
                 .append("➜ ", Theme.active().brightGreen())
                 .append(text, textStyle)
-                .toAttributedString();
+                .build();
     }
 
     private static String labelFor(WizardStep.RadioStep step, Map<String, Object> answers) {
@@ -389,8 +389,8 @@ public final class Wizard {
         return id;
     }
 
-    private static AttributedString plain(String text, AttributedStyle style) {
-        return new AttributedStringBuilder().append(text, style).toAttributedString();
+    private static Styled plain(String text, Style style) {
+        return new StyledBuilder().append(text, style).build();
     }
 
     /**
@@ -663,7 +663,7 @@ public final class Wizard {
             }
         }
 
-        List<AttributedString> render() {
+        List<Styled> render() {
             return switch (step) {
                 case WizardStep.InputStep is -> renderInput(is);
                 case WizardStep.RadioStep rs -> renderRadio(rs);
@@ -672,12 +672,12 @@ public final class Wizard {
             };
         }
 
-        private List<AttributedString> renderInput(WizardStep.InputStep is) {
+        private List<Styled> renderInput(WizardStep.InputStep is) {
             return ansiLines(
                     new TextInput(input.toString(), is.placeholder(), true, error).render(RenderContext.current()));
         }
 
-        private List<AttributedString> renderRadio(WizardStep.RadioStep rs) {
+        private List<Styled> renderRadio(WizardStep.RadioStep rs) {
             var choices = rs.choicesFor(snapshot);
             var buttons = new ArrayList<RadioButton>();
             for (int i = 0; i < choices.size(); i++) {
@@ -693,16 +693,15 @@ public final class Wizard {
             var lines = new ArrayList<>(
                     ansiLines(new RadioButtonGroup(buttons, rs.orientation()).render(RenderContext.current())));
             if (rs.hasCustomOption() && rs.orientation() == Orientation.VERTICAL && !error.isEmpty()) {
-                lines.add(new AttributedString(
-                        Theme.colorize(error, Theme.active().error())));
+                lines.add(Styled.of(Theme.colorize(error, Theme.active().error()), Style.EMPTY));
             }
             return lines;
         }
 
-        private static List<AttributedString> ansiLines(List<String> lines) {
-            var out = new ArrayList<AttributedString>(lines.size());
+        private static List<Styled> ansiLines(List<String> lines) {
+            var out = new ArrayList<Styled>(lines.size());
             for (String line : lines) {
-                out.add(new AttributedString(line));
+                out.add(Styled.of(line, Style.EMPTY));
             }
             return out;
         }
@@ -711,7 +710,7 @@ public final class Wizard {
          * Render the editable free-form field: the placeholder as dim italic example text while empty
          * (overwrite-able), or the typed text in the focused/dim style once the user starts typing.
          */
-        private void appendCustomField(AttributedStringBuilder sb, boolean focused, String placeholder) {
+        private void appendCustomField(StyledBuilder sb, boolean focused, String placeholder) {
             if (input.length() == 0) {
                 sb.append(placeholder, Theme.active().darkGray().italic());
             } else {
@@ -721,25 +720,25 @@ public final class Wizard {
             }
         }
 
-        private void appendError(List<AttributedString> lines) {
+        private void appendError(List<Styled> lines) {
             if (!error.isEmpty()) {
-                lines.add(new AttributedStringBuilder()
+                lines.add(new StyledBuilder()
                         .append(error, Theme.active().error())
-                        .toAttributedString());
+                        .build());
             }
         }
 
-        private static void appendHint(AttributedStringBuilder sb, String hint) {
+        private static void appendHint(StyledBuilder sb, String hint) {
             if (hint == null || hint.isEmpty()) return;
             sb.append("  ");
             sb.append(hint, Theme.active().darkGray());
         }
 
-        private List<AttributedString> renderMulti(WizardStep.MultiSelectStep ms) {
-            var lines = new ArrayList<AttributedString>();
+        private List<Styled> renderMulti(WizardStep.MultiSelectStep ms) {
+            var lines = new ArrayList<Styled>();
             List<Choice> visible = multiVisible(ms);
             if (ms.filterable() && ms.orientation() == Orientation.VERTICAL) {
-                var fsb = new AttributedStringBuilder()
+                var fsb = new StyledBuilder()
                         .append("filter: ", Theme.active().darkGray())
                         .append(
                                 filter.length() == 0 ? "(type to search)" : filter.toString(),
@@ -752,7 +751,7 @@ public final class Wizard {
                                     selected.size() + " selected",
                                     Theme.active().completedStep());
                 }
-                lines.add(fsb.toAttributedString());
+                lines.add(fsb.build());
             }
             if (ms.orientation() == Orientation.VERTICAL) {
                 // Cap rows so tall catalogs stay usable under type-to-filter.
@@ -763,7 +762,7 @@ public final class Wizard {
                     var isFocused = i == focus;
                     var isChecked = selected.contains(c.id());
                     if (c.richLabelFn() != null) {
-                        var sb = new AttributedStringBuilder()
+                        var sb = new StyledBuilder()
                                 .append(
                                         isChecked ? Rail.CHECKBOX_ON : Rail.CHECKBOX_OFF,
                                         isChecked
@@ -774,7 +773,7 @@ public final class Wizard {
                                 .append("  ")
                                 .append(c.richLabelFn().apply(isFocused));
                         appendHint(sb, c.hintFor(snapshot));
-                        lines.add(sb.toAttributedString());
+                        lines.add(sb.build());
                     } else {
                         lines.addAll(ansiLines(new Checkbox(c.label(), isChecked, isFocused, c.hintFor(snapshot))
                                 .render(RenderContext.current())));
@@ -782,11 +781,11 @@ public final class Wizard {
                     shown++;
                 }
                 if (visible.size() > maxShow) {
-                    lines.add(new AttributedStringBuilder()
+                    lines.add(new StyledBuilder()
                             .append(
                                     "  … +" + (visible.size() - maxShow) + " more (type to filter)",
                                     Theme.active().darkGray().italic())
-                            .toAttributedString());
+                            .build());
                 }
                 if (ms.hasCustomOption()) {
                     var isFocused = focus == visible.size();
@@ -797,14 +796,12 @@ public final class Wizard {
                             : (isFocused
                                     ? Theme.active().activeStep()
                                     : Theme.active().darkGray());
-                    var sb = new AttributedStringBuilder()
-                            .append(glyph, glyphStyle)
-                            .append("  ");
+                    var sb = new StyledBuilder().append(glyph, glyphStyle).append("  ");
                     appendCustomField(sb, isFocused, ms.customPlaceholder());
-                    lines.add(sb.toAttributedString());
+                    lines.add(sb.build());
                 }
             } else {
-                var sb = new AttributedStringBuilder();
+                var sb = new StyledBuilder();
                 for (var i = 0; i < visible.size(); i++) {
                     var c = visible.get(i);
                     var isFocused = i == focus;
@@ -825,14 +822,14 @@ public final class Wizard {
                         sb.append("  ");
                     }
                 }
-                lines.add(sb.toAttributedString());
+                lines.add(sb.build());
             }
             return lines;
         }
 
-        private List<AttributedString> renderOutput(WizardStep.OutputStep os) {
+        private List<Styled> renderOutput(WizardStep.OutputStep os) {
             var pieces = os.render().apply(Answers.of(Map.of()));
-            var lines = new ArrayList<AttributedString>();
+            var lines = new ArrayList<Styled>();
             for (var s : pieces) {
                 lines.add(plain(s, Theme.active().darkGray()));
             }

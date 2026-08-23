@@ -2,11 +2,11 @@
 package cc.jumpkick.cli;
 
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.terminal.Style;
 import java.io.PrintStream;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.jline.utils.AttributedStyle;
 
 /**
  * The help-screen painter for jk's model-driven rendering path. Paints from a {@link CommandModel}
@@ -21,10 +21,10 @@ public final class HelpRenderer {
 
     /**
      * Wrap {@code text} in the SGR for {@code style} when {@code ansi} is true, delegating to {@link
-     * Theme#colorize(String, AttributedStyle)} so the canonical attribute-leading byte order is owned
+     * Theme#colorize(String, Style)} so the canonical attribute-leading byte order is owned
      * by the theme layer. When {@code ansi} is false the text is returned unstyled.
      */
-    static String paint(String text, AttributedStyle style, boolean ansi) {
+    static String paint(String text, Style style, boolean ansi) {
         return ansi ? Theme.colorize(text, style) : text;
     }
 

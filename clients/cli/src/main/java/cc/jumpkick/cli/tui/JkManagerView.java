@@ -2,11 +2,12 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
+import cc.jumpkick.cli.Osc;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.terminal.Style;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import org.jline.utils.AttributedStyle;
 import org.jspecify.annotations.NullMarked;
 
 /** Finish / plain-chrome / plan-paint collaborator for {@link JkManager}. */
@@ -146,7 +147,7 @@ final class JkManagerView {
             if (m.animate && Theme.active().isAnsi()) {
                 if (m.planMode) m.wipeRegion();
                 else m.freezeSpinnerLine();
-                m.out.print(Ansi.taskbarClear());
+                m.out.print(Osc.taskbarClear());
                 m.out.print(Ansi.SHOW_CURSOR);
                 m.out.flush();
             } else if (m.animate && !Theme.active().isAnsi()) {
@@ -190,7 +191,7 @@ final class JkManagerView {
                 // mode replaces the whole region (cursor lands on the first wiped row).
                 if (m.planMode) m.wipeRegion();
                 else m.freezeSpinnerLine();
-                m.out.print(Ansi.taskbarClear());
+                m.out.print(Osc.taskbarClear());
                 m.out.print(Ansi.SHOW_CURSOR);
             } else if (m.animate && !Theme.active().isAnsi()) {
                 // Plain multi-line: mandatory done line before the settle wedge.
@@ -530,7 +531,7 @@ final class JkManagerView {
         m.out.print(m.label);
         m.out.print(m.ELLIPSIS);
         m.out.print(Ansi.ERASE_LINE_TO_END);
-        m.out.print(Ansi.taskbarIndeterminate());
+        m.out.print(Osc.taskbarIndeterminate());
     }
 
     /**
@@ -651,7 +652,7 @@ final class JkManagerView {
         }
         if (prev > lines.size()) m.out.print(Ansi.ERASE_DISPLAY_TO_END);
         long[] bd = m.displayBar(elapsed);
-        m.out.print(Ansi.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
+        m.out.print(Osc.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
         if (m.animate && !Theme.active().isAnsi() && bd[1] > 0) {
             synchronized (m.lock) {
                 m.ensurePlainProgressStarted(bd[0], bd[1]);
@@ -750,7 +751,7 @@ final class JkManagerView {
         m.linesDrawn = live.size();
         paintedCols = m.width;
         long[] bd = m.displayBar(m.elapsedMillis());
-        m.out.print(Ansi.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
+        m.out.print(Osc.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
     }
 
     /**
@@ -871,7 +872,7 @@ final class JkManagerView {
 
     /** Wedge header + tree + completions (no rule, no process lines). */
     List<String> renderChromeLines(int cols, long elapsedMillis) {
-        AttributedStyle dim = Theme.active().darkGray();
+        Style dim = Theme.active().darkGray();
         List<String> chrome = new ArrayList<>();
         RenderContext frameCtx = RenderContext.current().withWidth(cols);
         boolean hasScopeHint = !m.scopeHintVerb.isEmpty() && !m.scopeHintNames.isEmpty();
@@ -989,7 +990,7 @@ final class JkManagerView {
     private String renderWorkRow(String module, String displayPhase, boolean failed, String detail) {
         Theme t = Theme.active();
         String icon;
-        AttributedStyle phaseStyle;
+        Style phaseStyle;
         if (failed) {
             icon = Theme.colorize(Glyphs.CROSS, t.error());
             phaseStyle = t.error();

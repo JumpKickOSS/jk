@@ -8,8 +8,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import org.jline.utils.AttributedString;
-import org.jline.utils.AttributedStyle;
 
 /**
  * Styled inline text as a span list — <em>what</em> to show, not SGR. Markup is a constructor
@@ -48,7 +46,7 @@ public final class RichText {
     /** Unstyled text. Does not parse markup — use {@link #parse} for tags. */
     public static RichText plain(String text) {
         if (text == null || text.isEmpty()) return EMPTY;
-        return new RichText(List.of(new Span(text, Style.EMPTY, null, false)));
+        return new RichText(List.of(new Span(text, MarkupStyle.EMPTY, null, false)));
     }
 
     /**
@@ -57,7 +55,7 @@ public final class RichText {
      */
     public static RichText ansi(String alreadyStyled) {
         if (alreadyStyled == null || alreadyStyled.isEmpty()) return EMPTY;
-        return new RichText(List.of(new Span(alreadyStyled, Style.EMPTY, null, true)));
+        return new RichText(List.of(new Span(alreadyStyled, MarkupStyle.EMPTY, null, true)));
     }
 
     public static RichText of(RichText... parts) {
@@ -111,13 +109,13 @@ public final class RichText {
     private static String paint(Span span, RenderContext ctx) {
         String text = span.text;
         if (span.prestyled) {
-            if (!ctx.ansi()) return PlainAscii.transform(AttributedString.stripAnsi(text));
+            if (!ctx.ansi()) return PlainAscii.transform(cc.jumpkick.terminal.Width.stripAnsi(text));
             return text;
         }
         if (!ctx.ansi()) {
             return PlainAscii.transform(text);
         }
-        AttributedStyle style = span.style.toAttributed(ctx.theme());
+        cc.jumpkick.terminal.Style style = span.style.toAttributed(ctx.theme());
         String painted = Theme.colorize(text, style);
         if (span.linkUrl != null && !span.linkUrl.isBlank()) {
             return Ansi.hyperlink(span.linkUrl, painted);
@@ -173,7 +171,7 @@ public final class RichText {
 
     private static void flush(StringBuilder buf, List<Tag> stack, List<Span> spans) {
         if (buf.isEmpty()) return;
-        Style style = Style.EMPTY;
+        MarkupStyle style = MarkupStyle.EMPTY;
         String link = null;
         for (Tag tag : stack) {
             style = style.merge(tag.style);
@@ -195,16 +193,16 @@ public final class RichText {
                 throw new ParseException(index, raw, "[link] requires a URL");
             }
             String url = trimmed.substring(parts[0].length()).trim();
-            return new Tag(raw, Style.EMPTY, url);
+            return new Tag(raw, MarkupStyle.EMPTY, url);
         }
-        Style style = Style.EMPTY;
+        MarkupStyle style = MarkupStyle.EMPTY;
         for (String part : parts) {
             style = applyToken(style, part, index, raw);
         }
         return new Tag(raw, style, null);
     }
 
-    private static Style applyToken(Style style, String token, int index, String raw) {
+    private static MarkupStyle applyToken(MarkupStyle style, String token, int index, String raw) {
         String key = token.toLowerCase(Locale.ROOT);
         return switch (key) {
             case "bold" -> style.withBold();
@@ -236,9 +234,9 @@ public final class RichText {
         return Integer.parseInt(hex, 16);
     }
 
-    private record Span(String text, Style style, String linkUrl, boolean prestyled) {}
+    private record Span(String text, MarkupStyle style, String linkUrl, boolean prestyled) {}
 
-    private record Tag(String raw, Style style, String linkUrl) {}
+    private record Tag(String raw, MarkupStyle style, String linkUrl) {}
 
     private sealed interface Color permits NamedColor, HexColor {}
 
@@ -246,36 +244,36 @@ public final class RichText {
 
     private record HexColor(int rgb) implements Color {}
 
-    private record Style(Color fg, boolean bold, boolean italic, boolean underline, boolean dim, boolean strike) {
+    private record MarkupStyle(Color fg, boolean bold, boolean italic, boolean underline, boolean dim, boolean strike) {
 
-        static final Style EMPTY = new Style(null, false, false, false, false, false);
+        static final MarkupStyle EMPTY = new MarkupStyle(null, false, false, false, false, false);
 
-        Style withFg(Color color) {
-            return new Style(color, bold, italic, underline, dim, strike);
+        MarkupStyle withFg(Color color) {
+            return new MarkupStyle(color, bold, italic, underline, dim, strike);
         }
 
-        Style withBold() {
-            return new Style(fg, true, italic, underline, dim, strike);
+        MarkupStyle withBold() {
+            return new MarkupStyle(fg, true, italic, underline, dim, strike);
         }
 
-        Style withItalic() {
-            return new Style(fg, bold, true, underline, dim, strike);
+        MarkupStyle withItalic() {
+            return new MarkupStyle(fg, bold, true, underline, dim, strike);
         }
 
-        Style withUnderline() {
-            return new Style(fg, bold, italic, true, dim, strike);
+        MarkupStyle withUnderline() {
+            return new MarkupStyle(fg, bold, italic, true, dim, strike);
         }
 
-        Style withDim() {
-            return new Style(fg, bold, italic, underline, true, strike);
+        MarkupStyle withDim() {
+            return new MarkupStyle(fg, bold, italic, underline, true, strike);
         }
 
-        Style withStrike() {
-            return new Style(fg, bold, italic, underline, dim, true);
+        MarkupStyle withStrike() {
+            return new MarkupStyle(fg, bold, italic, underline, dim, true);
         }
 
-        Style merge(Style over) {
-            return new Style(
+        MarkupStyle merge(MarkupStyle over) {
+            return new MarkupStyle(
                     over.fg != null ? over.fg : fg,
                     bold || over.bold,
                     italic || over.italic,
@@ -284,12 +282,12 @@ public final class RichText {
                     strike || over.strike);
         }
 
-        AttributedStyle toAttributed(Theme theme) {
-            AttributedStyle s =
+        cc.jumpkick.terminal.Style toAttributed(Theme theme) {
+            cc.jumpkick.terminal.Style s =
                     switch (fg) {
                         case HexColor(int rgb) -> theme.bright(Rgb.hex(rgb));
                         case NamedColor(String token) -> theme.styleNamed(token);
-                        case null -> AttributedStyle.DEFAULT;
+                        case null -> cc.jumpkick.terminal.Style.EMPTY;
                     };
             if (bold) s = s.bold();
             if (italic) s = s.italic();

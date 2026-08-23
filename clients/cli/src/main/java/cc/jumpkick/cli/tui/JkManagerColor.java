@@ -4,9 +4,9 @@ package cc.jumpkick.cli.tui;
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.jdk.JdkProgressLabel;
+import cc.jumpkick.terminal.Style;
 import java.util.Locale;
 import java.util.regex.Pattern;
-import org.jline.utils.AttributedStyle;
 import org.jspecify.annotations.NullMarked;
 
 /** Token coloring and format helpers for JkManager tree/header rows. */
@@ -143,10 +143,10 @@ public final class JkManagerColor {
      */
     static String colorProseDetail(String text, Theme t) {
         if (text == null || text.isEmpty()) return "";
-        AttributedStyle gray = t.midGray(); // #A0A0A0 — ordinary gray, not dim chrome
-        AttributedStyle number = t.warning(); // yellow counts (e.g. "Compiling N sources")
-        AttributedStyle path = t.path();
-        AttributedStyle hash = t.darkGray(); // slightly dimmer than body — cache key hex
+        Style gray = t.midGray(); // #A0A0A0 — ordinary gray, not dim chrome
+        Style number = t.warning(); // yellow counts (e.g. "Compiling N sources")
+        Style path = t.path();
+        Style hash = t.darkGray(); // slightly dimmer than body — cache key hex
         StringBuilder out = new StringBuilder(text.length() + 64);
         int i = 0;
         int n = text.length();
@@ -606,7 +606,7 @@ public final class JkManagerColor {
                 // One code point per step (never splitting a surrogate pair), wcwidth columns.
                 int cp = s.codePointAt(i);
                 int cpLen = Character.charCount(cp);
-                int w = org.jline.utils.WCWidth.wcwidth(cp);
+                int w = cc.jumpkick.terminal.Width.wcwidth(cp);
                 if (w < 0) {
                     // C0/C1 controls (stray tab/backspace/CR in a step message — @DisplayName
                     // content flows in unsanitized). Emitting one at weight 0 advances real
@@ -668,7 +668,7 @@ public final class JkManagerColor {
                 continue;
             }
             int cp = s.codePointAt(i);
-            if (org.jline.utils.WCWidth.wcwidth(cp) > 0) return true;
+            if (cc.jumpkick.terminal.Width.wcwidth(cp) > 0) return true;
             i += Character.charCount(cp);
         }
         return false;

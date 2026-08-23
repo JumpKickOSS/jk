@@ -2,10 +2,11 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
+import cc.jumpkick.cli.Osc;
 import cc.jumpkick.cli.theme.Gradient;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.terminal.Style;
 import java.io.PrintStream;
-import org.jline.utils.AttributedStyle;
 
 /**
  * Single-line progress bar widget ({@code ▰…▱… 62%: status}) for long IO (JDK download/install).
@@ -45,11 +46,11 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
     // silently swallow the sequence in their OSC parser.
 
     private final PrintStream out;
-    private final AttributedStyle[] segmentColors;
-    private final AttributedStyle[] failColors;
+    private final Style[] segmentColors;
+    private final Style[] failColors;
 
     /** Empty glyphs take the gradient's left-most (darkest) color, not a neutral dim. */
-    private final AttributedStyle emptyStyle;
+    private final Style emptyStyle;
 
     private final boolean silent;
 
@@ -96,7 +97,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         String percentStr = String.format("%3d%%", clamped);
         String statusStr = status == null ? "" : status;
 
-        out.print(Ansi.taskbarProgress(clamped));
+        out.print(Osc.taskbarProgress(clamped));
         if (!drawn) {
             renderInitial(filled, clamped, percentStr, statusStr);
         } else {
@@ -121,7 +122,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         // before any progress) would stay in the transcript next to
         // the failure summary that follows.
         if (drawn) out.print(Ansi.CLEAR_LINE);
-        out.print(Ansi.taskbarClear());
+        out.print(Osc.taskbarClear());
         out.print(SHOW_CURSOR);
         out.flush();
     }
@@ -144,7 +145,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
             return;
         }
         out.print(Ansi.CLEAR_LINE); // clear the bar line
-        out.print(Ansi.taskbarClear());
+        out.print(Osc.taskbarClear());
         out.print(SHOW_CURSOR);
         out.println(message);
         out.flush();
@@ -173,7 +174,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         // wouldn't reappear.
         drawn = false;
         renderInitial(lastFilled, lastPercentVal, lastPercent, lastStatus);
-        out.print(Ansi.taskbarProgress((int) Math.round(lastFilled * 100.0 / SEGMENTS)));
+        out.print(Osc.taskbarProgress((int) Math.round(lastFilled * 100.0 / SEGMENTS)));
         out.flush();
         drawn = true;
     }
@@ -191,7 +192,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         closed = true;
         LiveRegion.clearActive(this);
         if (silent) return;
-        AttributedStyle strikeStyle = Theme.active().dim().crossedOut();
+        Style strikeStyle = Theme.active().dim().crossedOut();
         out.print("\r");
         out.print(Theme.colorize(
                 Glyphs.cross() + " Failed", Theme.active().error().bold()));
@@ -209,7 +210,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         out.print(SEPARATOR);
         out.print(Theme.colorize(lastStatus, strikeStyle));
         out.print(Ansi.ERASE_LINE_TO_END); // wipe any residue past the (shorter) status
-        out.print(Ansi.taskbarClear());
+        out.print(Osc.taskbarClear());
         out.print(SHOW_CURSOR);
         out.println();
         out.flush();
@@ -225,8 +226,8 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         closed = true;
         LiveRegion.clearActive(this);
         if (silent) return false;
-        AttributedStyle redStyle = Theme.active().error();
-        AttributedStyle strikeStyle = Theme.active().dim().crossedOut();
+        Style redStyle = Theme.active().error();
+        Style strikeStyle = Theme.active().dim().crossedOut();
         out.print("\r");
         char filled = filledChar();
         char empty = emptyChar();
@@ -239,7 +240,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         out.print(SEPARATOR);
         out.print(Theme.colorize(lastStatus, strikeStyle));
         out.print(Ansi.ERASE_LINE_TO_END); // wipe any residue past the (shorter) cancel status
-        out.print(Ansi.taskbarClear());
+        out.print(Osc.taskbarClear());
         out.print(SHOW_CURSOR);
         out.flush();
         // Cursor is left mid-line with no newline; GlobalCancel prints the
@@ -284,7 +285,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         for (int i = from; i < to; i++) {
             boolean isFilled = i < filled;
             char c = isFilled ? full : empty;
-            AttributedStyle style = isFilled ? filledColor(i, filled) : emptyStyle;
+            Style style = isFilled ? filledColor(i, filled) : emptyStyle;
             out.print(Theme.colorize(String.valueOf(c), style));
         }
     }
@@ -296,7 +297,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
      * (magenta). With {@code filled} small only the orange tail of the gradient shows; the magenta
      * head appears as the bar fills, so the band looks pushed rightward by the frontier.
      */
-    private AttributedStyle filledColor(int i, int filled) {
+    private Style filledColor(int i, int filled) {
         return segmentColors[SEGMENTS - filled + i];
     }
 
@@ -309,12 +310,12 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         out.print(Ansi.cursorToColumn(col));
     }
 
-    static AttributedStyle[] buildGradient(int n) {
+    static Style[] buildGradient(int n) {
         return buildGradient(n, Theme.active().progressGradient());
     }
 
-    static AttributedStyle[] buildGradient(int n, Gradient gradient) {
-        AttributedStyle[] a = new AttributedStyle[n];
+    static Style[] buildGradient(int n, Gradient gradient) {
+        Style[] a = new Style[n];
         for (int i = 0; i < n; i++) {
             double t = n <= 1 ? 0.0 : (double) i / (n - 1);
             a[i] = Theme.active().bright(gradient.at(t));
@@ -322,7 +323,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         return a;
     }
 
-    private AttributedStyle percentStyle(int pct) {
+    private Style percentStyle(int pct) {
         double t = Math.max(0.0, Math.min(1.0, (double) pct / 100.0));
         return Theme.active().bright(Theme.active().progressGradient().at(t)).bold();
     }

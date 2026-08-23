@@ -23,6 +23,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.scaffold.NewInputs;
+import cc.jumpkick.terminal.Style;
 import cc.jumpkick.terminal.TerminalSession;
 import cc.jumpkick.terminal.Terminals;
 import cc.jumpkick.util.JkDirs;
@@ -1075,7 +1076,7 @@ public final class NewCommand implements CliCommand {
 
     private static String successLine(NewInputs inputs, Module module, boolean isInit) {
         NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
-        org.jline.utils.AttributedStyle accent = Theme.active().brightCyan().bold();
+        Style accent = Theme.active().brightCyan().bold();
         if (module != null) {
             String message = "New module "
                     + Theme.colorize(inputs.name(), accent)

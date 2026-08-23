@@ -178,8 +178,8 @@ class SpinnerProgressBarTest {
         var colors = SpinnerProgressBar.buildGradient(20);
         assertThat(colors).hasSize(20);
         // Jk Dark indigo #3F51B5 → bright-magenta #E040FB.
-        String first = colors[0].toAnsi();
-        String last = colors[19].toAnsi();
+        String first = colors[0].sgrBody();
+        String last = colors[19].sgrBody();
         assertThat(first).isEqualTo("38;2;61;155;255"); // blue start
         assertThat(last).isEqualTo("38;2;221;89;255"); // neon violet end
     }

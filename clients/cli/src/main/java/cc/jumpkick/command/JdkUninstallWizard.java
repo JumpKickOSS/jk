@@ -9,13 +9,13 @@ import cc.jumpkick.cli.tui.WizardStep;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkVendor;
+import cc.jumpkick.terminal.Styled;
+import cc.jumpkick.terminal.StyledBuilder;
 import cc.jumpkick.terminal.TerminalSession;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.jline.utils.AttributedString;
-import org.jline.utils.AttributedStringBuilder;
 
 /**
  * TUI for {@code jk jdk uninstall} when no argument is supplied.
@@ -70,18 +70,18 @@ final class JdkUninstallWizard {
 
     /**
      * Render-only: {@code source/identifier - Vendor Product} as a mixed-style {@link
-     * AttributedString}.
+     * Styled}.
      *
      * <p>When {@code focused} is {@code true}: source bold-yellow, identifier bold-white. When {@code
      * false}: same colors with the bold dropped, so only the row the user's cursor is sitting on
      * stands out. The trailing vendor metadata is always dark-gray; vendor block omitted when
      * unknown.
      */
-    static AttributedString richLabel(JdkHit hit, String identifier, boolean focused) {
+    static Styled richLabel(JdkHit hit, String identifier, boolean focused) {
         var sourceStyle =
                 focused ? Theme.active().warning().bold() : Theme.active().warning();
         var idStyle = focused ? Theme.active().focused() : Theme.active().plainWhite();
-        var sb = new AttributedStringBuilder();
+        var sb = new StyledBuilder();
         sb.append(hit.source(), sourceStyle);
         sb.append("/", idStyle);
         sb.append(identifier, idStyle);
@@ -89,7 +89,7 @@ final class JdkUninstallWizard {
             sb.append(" - ", Theme.active().darkGray());
             sb.append(hit.vendor().displayName(), Theme.active().darkGray());
         }
-        return sb.toAttributedString();
+        return sb.build();
     }
 
     /** Unique key for one row: {@code <source>/<identifier>}. */

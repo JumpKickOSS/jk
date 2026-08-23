@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
+import cc.jumpkick.cli.Osc;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
@@ -13,6 +14,7 @@ import cc.jumpkick.runtime.progress.WeightedProgressStrategy;
 import cc.jumpkick.terminal.InputMode;
 import cc.jumpkick.terminal.Key;
 import cc.jumpkick.terminal.ModeGuard;
+import cc.jumpkick.terminal.Style;
 import cc.jumpkick.terminal.TerminalSession;
 import cc.jumpkick.terminal.Terminals;
 import java.io.ByteArrayOutputStream;
@@ -24,7 +26,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.jline.utils.AttributedStyle;
 
 /**
  * Live console for long-running commands: simple pulse-circle task mode, or plan mode (header
@@ -87,7 +88,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     volatile String solveLabel = "";
 
     /** Open pulse (blue↔dark blue) — tree rows and simple spinner lines, no chip background. */
-    final AttributedStyle[] openPulseColors = Spinner.buildOpenPulseStyles(PULSE_FRAMES);
+    final Style[] openPulseColors = Spinner.buildOpenPulseStyles(PULSE_FRAMES);
 
     /** Chip pulse (white↔chip blue) — plan header pill only; FG sits on solid chip BG. */
     final Object lock = new Object();
@@ -417,7 +418,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             // Only an interactive ANSI terminal gets OSC 0 — under pipes/--quiet (!animate)
             // or no-ANSI mode (--no-ansi, TERM=dumb, CI) the escapes would land verbatim in
             // the output stream.
-            if (done || !animate || !Theme.active().isAnsi() || !Ansi.oscEnabled()) return;
+            if (done || !animate || !Theme.active().isAnsi() || !Osc.oscEnabled()) return;
             windowTitleBase = title == null ? "" : title;
             windowTitleActive = !windowTitleBase.isEmpty();
             windowTitleLastGlyph = null; // force immediate emit with current fill glyph
@@ -435,7 +436,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         String glyph = Spinner.fillGlyph(frame);
         if (glyph.equals(windowTitleLastGlyph)) return;
         windowTitleLastGlyph = glyph;
-        out.print(Ansi.windowTitle(glyph + " " + windowTitleBase));
+        out.print(Osc.windowTitle(glyph + " " + windowTitleBase));
     }
 
     /** Clear a title set by {@link #setWindowTitle}, if any. */
@@ -444,7 +445,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         windowTitleActive = false;
         windowTitleBase = "";
         windowTitleLastGlyph = null;
-        out.print(Ansi.windowTitleClear());
+        out.print(Osc.windowTitleClear());
     }
 
     /** Register a not-yet-started step row with a humanized display name. */
@@ -999,7 +1000,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
                 if (Theme.active().isAnsi()) {
                     flushVisibleOutputToScrollback();
                     wipeRegion();
-                    out.print(Ansi.taskbarClear());
+                    out.print(Osc.taskbarClear());
                     out.print(Ansi.SHOW_CURSOR);
                 } else {
                     printPlainDone();
@@ -1012,7 +1013,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             }
             if (Theme.active().isAnsi()) {
                 freezeSpinnerLine();
-                out.print(Ansi.taskbarClear());
+                out.print(Osc.taskbarClear());
                 out.print(Ansi.SHOW_CURSOR);
             } else {
                 printPlainDone();
@@ -1037,7 +1038,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             }
             if (Theme.active().isAnsi()) {
                 wipeRegion();
-                out.print(Ansi.taskbarClear());
+                out.print(Osc.taskbarClear());
                 out.print(Ansi.SHOW_CURSOR);
             } else {
                 printPlainDone();

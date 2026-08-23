@@ -7,11 +7,11 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Badge;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.terminal.Style;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.jline.utils.AttributedStyle;
 
 /**
  * Styles the plain-text test-failure block emitted by the engine ({@code TestSupport.renderFailures})
@@ -132,8 +132,8 @@ public final class TestFailureHighlight {
             return "[Test] Failure" + m + " > " + count + " test" + (plural ? "s" : "") + " failed";
         }
         // Same red/white chip as DiagnosticReport Compile Java failures.
-        AttributedStyle body = t.withBackground(t.bright(255, 255, 255), t.planFailColor());
-        AttributedStyle caps = t.bright(t.planFailColor());
+        Style body = t.withBackground(t.bright(255, 255, 255), t.planFailColor());
+        Style caps = t.bright(t.planFailColor());
         String pill = Badge.pill("Test", GlobalConfig.nerdFont().pill(), body, caps);
         StringBuilder sb = new StringBuilder();
         // "Failure" is mid-gray — the FAILED badge carries the error color.
@@ -611,16 +611,15 @@ public final class TestFailureHighlight {
     private static String paintSrcLine(
             SrcRow row, int maxCode, SyntaxHighlight.Language language, Theme t, Rgb paneBg) {
         Rgb lineBg = row.error ? ERROR_LINE_BG : paneBg;
-        AttributedStyle numStyle = row.error ? t.error() : t.dim();
+        Style numStyle = row.error ? t.error() : t.dim();
         String gutter = Theme.colorize(String.format("%4s", row.num), t.withBackground(numStyle, lineBg));
         String gutterRail = Theme.colorize("│", t.withBackground(t.darkGray(), lineBg));
-        String gap = Theme.colorize(" ", t.withBackground(AttributedStyle.DEFAULT, lineBg));
+        String gap = Theme.colorize(" ", t.withBackground(Style.EMPTY, lineBg));
         String code = row.code;
         String codePainted = paintCode(row, language, lineBg, t);
         int pad = Math.max(0, maxCode - columns(code));
         if (code.isEmpty() && pad == 0) pad = 1;
-        String padPainted =
-                pad > 0 ? Theme.colorize(" ".repeat(pad), t.withBackground(AttributedStyle.DEFAULT, lineBg)) : "";
+        String padPainted = pad > 0 ? Theme.colorize(" ".repeat(pad), t.withBackground(Style.EMPTY, lineBg)) : "";
         return gutter + gutterRail + gap + codePainted + padPainted;
     }
 
@@ -634,7 +633,7 @@ public final class TestFailureHighlight {
         }
         int to = identifierEnd(code, mark);
         String left = mark > 0 ? SyntaxHighlight.highlight(code.substring(0, mark), language, lineBg) : "";
-        AttributedStyle err = t.error().bold().underline();
+        Style err = t.error().bold().underline();
         String mid = Theme.colorize(code.substring(mark, to), t.withBackground(err, lineBg));
         String right = to < code.length() ? SyntaxHighlight.highlight(code.substring(to), language, lineBg) : "";
         return left + mid + right;

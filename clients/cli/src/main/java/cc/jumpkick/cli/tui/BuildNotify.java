@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.Osc;
 import cc.jumpkick.config.JkConfig;
 import java.io.PrintStream;
 import java.util.ArrayList;
@@ -48,7 +48,7 @@ public final class BuildNotify {
         // Suppress when progress chrome is off, OSC is off, or stdout is JSONL (OSC would corrupt
         // the machine stream).
         if (global.noProgress || global.noOsc || global.outputIsJson()) return false;
-        if (!Ansi.oscEnabled()) return false;
+        if (!Osc.oscEnabled()) return false;
         JkConfig.NotifyChoice policy = global.notify == null ? JkConfig.NotifyChoice.AUTO : global.notify;
         return switch (policy) {
             case NEVER -> false;
@@ -105,7 +105,7 @@ public final class BuildNotify {
             long estimateMs,
             long elapsedMs) {
         if (out == null || !shouldNotify(global, estimateMs, elapsedMs)) return;
-        String seq = Ansi.desktopNotify(TITLE, message(outcome, groupArtifact, elapsedMs));
+        String seq = Osc.desktopNotify(TITLE, message(outcome, groupArtifact, elapsedMs));
         if (seq.isEmpty()) return;
         out.print(seq);
         out.flush();

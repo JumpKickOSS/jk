@@ -48,6 +48,11 @@ public final class Styled {
         return Width.columns(toAnsi());
     }
 
+    @Override
+    public String toString() {
+        return plain();
+    }
+
     List<Span> spans() {
         return spans;
     }

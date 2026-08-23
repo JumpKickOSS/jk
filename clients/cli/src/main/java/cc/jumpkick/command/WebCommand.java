@@ -16,10 +16,10 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.terminal.Style;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
-import org.jline.utils.AttributedStyle;
 
 /**
  * {@code jk web} — ensure the engine is up, print the authenticated dashboard URL (OSC-8 clickable
@@ -74,8 +74,7 @@ public final class WebCommand implements CliCommand {
         CommandWedge.envelopeStart();
         CliOutput.out(JkWedge.chipLine(Glyphs.PLAY, "Web", GlobalConfig.nerdFont(), "JumpKick Web Interface"));
         CliOutput.out("");
-        CliOutput.out(
-                Theme.colorize("  Open the URL below if a browser did not launch:", AttributedStyle.DEFAULT.italic()));
+        CliOutput.out(Theme.colorize("  Open the URL below if a browser did not launch:", Style.EMPTY.italic()));
         // OSC-8 hyperlink + path color — same treatment as `jk engine status` Web UI line.
         String visible = Theme.colorize(url, t.path());
         CliOutput.out("  " + Ansi.hyperlink(url, visible));

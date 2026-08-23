@@ -10,11 +10,11 @@ import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.terminal.Style;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import org.jline.utils.AttributedStyle;
 import org.junit.jupiter.api.Test;
 
 /** Plan-mode header pill, work-tree rows, and resize/reflow repaint behavior of the JkManager component. */
@@ -51,7 +51,7 @@ class JkManagerTreeTest {
         String header = cm.renderBuildPlanLines(120, 0).get(0);
         // Pill: pulse circle + name + powerline cap.
         assertThat(TestAnsi.strip(header)).contains(Spinner.PULSE_GLYPH + " Build " + Glyphs.SEGMENT_END_NERD);
-        AttributedStyle chip = Theme.active().planChip();
+        Style chip = Theme.active().planChip();
         assertThat(header).startsWith(Theme.colorize(" ", chip));
         assertThat(header).contains(Theme.colorize("Build", chip));
         // Cap: FG = chip blue; BG = bar lead color.
