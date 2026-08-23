@@ -3,6 +3,7 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.jsonl.Jsonl;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -26,8 +27,8 @@ class BuildJobFingerprintTest {
         String b = BuildJobFingerprint.of("build", dir.toString(), true, false, false, false, null, null, null);
         assertThat(a).isNotEqualTo(b);
         // OfRequest for build is project-scoped — rebuild must not allow a second concurrent writer.
-        String lineA = "{\"dir\":\"" + dir.toString().replace("\\", "\\\\") + "\",\"rebuild\":false}";
-        String lineB = "{\"dir\":\"" + dir.toString().replace("\\", "\\\\") + "\",\"rebuild\":true}";
+        String lineA = "{\"dir\":" + Jsonl.quote(dir.toString()) + ",\"rebuild\":false}";
+        String lineB = "{\"dir\":" + Jsonl.quote(dir.toString()) + ",\"rebuild\":true}";
         assertThat(BuildJobFingerprint.ofRequest("build", lineA))
                 .isEqualTo(BuildJobFingerprint.ofRequest("build", lineB));
         assertThat(BuildJobFingerprint.ofProject("build", dir.toString()))
@@ -58,9 +59,10 @@ class BuildJobFingerprintTest {
         Files.createDirectories(dir);
         // Flag churn must not open a second concurrent slot for build-like kinds.
         String nativeA = BuildJobFingerprint.ofRequest(
-                "native", "{\"type\":\"native-request\",\"dir\":\"" + dir + "\",\"rebuild\":false}");
+                "native",
+                "{\"type\":\"native-request\",\"dir\":" + Jsonl.quote(dir.toString()) + ",\"rebuild\":false}");
         String nativeB = BuildJobFingerprint.ofRequest(
-                "native", "{\"type\":\"native-request\",\"dir\":\"" + dir + "\",\"rebuild\":true}");
+                "native", "{\"type\":\"native-request\",\"dir\":" + Jsonl.quote(dir.toString()) + ",\"rebuild\":true}");
         assertThat(nativeA).isEqualTo(nativeB);
         assertThat(BuildJobFingerprint.ofProject("native", dir.toString())).isEqualTo(nativeA);
 

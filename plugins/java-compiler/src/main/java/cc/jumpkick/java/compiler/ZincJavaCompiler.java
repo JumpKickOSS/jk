@@ -10,8 +10,11 @@ import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -284,7 +287,7 @@ public final class ZincJavaCompiler {
                 // No usable previous analysis ⇒ a full compile. Zinc only deletes removed-source
                 // products when it has a prior analysis to diff against, so a full compile must start
                 // from a clean class output or renamed/removed/no-longer-generated classes linger and
-                // ship in the jar (JK-2287).
+                // ship in the jar.
                 deleteClassFiles(classOutput);
             }
             PreviousResult previous = prev.isPresent()
@@ -298,7 +301,7 @@ public final class ZincJavaCompiler {
             }
             // Delete generated sources/classes whose (recompiled) origin no longer generates them —
             // e.g. an @Gen annotation was removed. Zinc can't do this: generated files aren't in its
-            // source set, so their class files are unattributed products it never prunes (JK-2286).
+            // source set, so their class files are unattributed products it never prunes.
             reconcileGeneratedOutputs(
                     workdir, sourceOutput, classOutput, javac.compiledSources(), provenance.generated);
             if (provenance.aggregating()) {
@@ -306,7 +309,7 @@ public final class ZincJavaCompiler {
             } else {
                 Files.deleteIfExists(workdir.resolve("aggregating"));
             }
-            store.set(AnalysisContents.create(compiled.analysis(), compiled.setup()));
+            persistAnalysis(store, analysisFile, AnalysisContents.create(compiled.analysis(), compiled.setup()));
             return new Result(true, reporter.diagnostics(), javac.compiledSources(), provenance.generated);
         } catch (IOException e) {
             return new Result(false, List.of(new Diag("ERROR", null, 0, 0, e.getMessage())), List.of());
@@ -328,22 +331,112 @@ public final class ZincJavaCompiler {
         }
     }
 
+    /** Windows may deny a delete or a replace while another handle lingers; POSIX EACCES is permanent. */
+    private static final int LOCK_ATTEMPTS = 8;
+
     /**
      * Read the persisted Zinc analysis, tolerating corruption. A truncated file or a schema bump
-     * (e.g. a Zinc dependency upgrade) makes {@link AnalysisStore#get()} throw; rather than failing
-     * every build of the module until a manual {@code --rebuild}, delete the unreadable file and
-     * report "no analysis" so the caller falls through to a clean full compile (JK-2288).
+     * (e.g. a Zinc dependency upgrade) must not fail every build until a manual {@code --rebuild}:
+     * delete the unreadable file and report "no analysis" so the caller falls through to a clean
+     * full compile.
+     *
+     * <p>Unreadability surfaces either way — a thrown parse error, or an empty {@link Optional} over
+     * a file that plainly exists — and both mean the same thing, so both delete it. Left in place it
+     * is a file every later {@code store.set} must replace and no read can ever use.
      */
     private static Optional<AnalysisContents> readAnalysis(AnalysisStore store, Path analysisFile) {
         try {
-            return store.get();
+            Optional<AnalysisContents> got = store.get();
+            if (got.isEmpty() && Files.isRegularFile(analysisFile)) {
+                tryDeleteAnalysis(analysisFile);
+            }
+            return got;
         } catch (RuntimeException e) {
+            tryDeleteAnalysis(analysisFile);
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * {@code store.set}, retried while Windows refuses to replace the analysis file because another
+     * handle still holds it. Zinc's Scala {@code set} declares no checked exceptions yet lets {@code
+     * IO.move}'s {@link IOException} escape at runtime, so the catch has to be {@link Exception} for
+     * the retry to see it at all.
+     */
+    private static void persistAnalysis(AnalysisStore store, Path analysisFile, AnalysisContents contents)
+            throws IOException {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                store.set(contents);
+                return;
+            } catch (Exception e) {
+                if (!isWindows() || !isSharingViolation(e) || attempt == LOCK_ATTEMPTS) {
+                    if (e instanceof RuntimeException re) throw re;
+                    throw e instanceof IOException io ? io : new IOException(e);
+                }
+                tryDeleteAnalysis(analysisFile);
+                sleepBriefly(attempt);
+            }
+        }
+    }
+
+    /**
+     * A Windows sharing denial, recognised by exception type: the system message is localized, so
+     * matching its English text would silently never fire on a German or Japanese host. Only asked
+     * on Windows — a POSIX {@link AccessDeniedException} is EACCES and permanent.
+     */
+    private static boolean isSharingViolation(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof FileSystemException) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Remove the analysis file. On POSIX one {@code deleteIfExists} is the whole story. Windows may
+     * deny the delete while another handle lingers, so rename it out of the way — allowed where
+     * deleting is not — and retry when even that is refused.
+     */
+    private static void tryDeleteAnalysis(Path analysisFile) {
+        for (int attempt = 1; ; attempt++) {
             try {
                 Files.deleteIfExists(analysisFile);
+                return;
+            } catch (AccessDeniedException denied) {
+                if (!isWindows() || renameAside(analysisFile) || attempt == LOCK_ATTEMPTS) return;
+                sleepBriefly(attempt);
             } catch (IOException ignored) {
-                // best effort — a full compile will overwrite it anyway
+                return; // best effort — a full compile overwrites it anyway
             }
-            return Optional.empty();
+        }
+    }
+
+    /** Move {@code file} aside so a fresh one can take its name; false when even that is denied. */
+    private static boolean renameAside(Path file) {
+        Path junk = file.resolveSibling(file.getFileName() + ".stale-" + System.nanoTime());
+        try {
+            Files.move(file, junk, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            return false;
+        }
+        try {
+            Files.deleteIfExists(junk);
+        } catch (IOException ignored) {
+            junk.toFile().deleteOnExit();
+        }
+        return true;
+    }
+
+    /** {@code os.name} read live so a test can spoof it; this module cannot see {@code HostPlatform}. */
+    private static boolean isWindows() {
+        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+    }
+
+    private static void sleepBriefly(int attempt) {
+        try {
+            Thread.sleep(5L * attempt);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -491,7 +584,7 @@ public final class ZincJavaCompiler {
         }
 
         // Normalize the current source set once — the deleted-source scan below is otherwise
-        // O(previous × current) with a normalize() per pair (JK-2298).
+        // O(previous × current) with a normalize() per pair.
         HashSet<Path> currentNorm = new HashSet<>();
         for (Path s : sources) {
             if (s != null) currentNorm.add(s.toAbsolutePath().normalize());
@@ -643,8 +736,8 @@ public final class ZincJavaCompiler {
     /**
      * Cache the Scala compiler (ScalaInstance + classloaders + bridge) per compiler-classpath so a
      * multi-module job pays scalac warm-up once and does not leak an unclosed URLClassLoader per
-     * module (JK-2297). Keyed by version + classpath; scoped to the per-job worker process, which
-     * exits at job end, reclaiming the loaders.
+     * module. Keyed by version + classpath; scoped to the per-job worker process, which exits at
+     * job end, reclaiming the loaders.
      */
     private static final Map<String, xsbti.compile.ScalaCompiler> SCALAC_CACHE = new ConcurrentHashMap<>();
 
@@ -894,7 +987,7 @@ public final class ZincJavaCompiler {
         private final JavaCompiler delegate;
         private final FileConverter converter;
         private final List<Path> compiledSources = new ArrayList<>();
-        private final HashSet<Path> seen = new HashSet<>(); // O(1) dedup instead of O(n) contains (JK-2298)
+        private final HashSet<Path> seen = new HashSet<>(); // O(1) dedup instead of O(n) contains
 
         RecordingJavaCompiler(JavaCompiler delegate, FileConverter converter) {
             this.delegate = delegate;

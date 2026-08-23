@@ -12,8 +12,11 @@ import org.junit.jupiter.api.io.TempDir;
 
 class IntellijSdkRegistrarTest {
 
+    private static final Path T25_HOME =
+            Path.of("/home/x/.jk/jdks/temurin-25").toAbsolutePath().normalize();
+    private static final String T25_HOME_SLASH = T25_HOME.toString().replace('\\', '/');
     private static final IntellijSdkRegistrar.SdkEntry T25 =
-            new IntellijSdkRegistrar.SdkEntry("jk-temurin-25", Path.of("/home/x/.jk/jdks/temurin-25"), "25.0.3");
+            new IntellijSdkRegistrar.SdkEntry("jk-temurin-25", T25_HOME, "25.0.3");
 
     @Test
     void creates_table_when_absent(@TempDir Path tmp) throws IOException {
@@ -29,8 +32,8 @@ class IntellijSdkRegistrarTest {
                 .contains("ProjectJdkTable")
                 .contains("jk-temurin-25")
                 .contains("JavaSDK")
-                .contains("/home/x/.jk/jdks/temurin-25")
-                .contains("jrt:///home/x/.jk/jdks/temurin-25!/");
+                .contains(T25_HOME_SLASH)
+                .contains("jrt://" + T25_HOME_SLASH + "!/");
     }
 
     @Test
@@ -48,7 +51,7 @@ class IntellijSdkRegistrarTest {
                 .register(List.of(new IntellijSdkRegistrar.SdkEntry("jk-graalvm-25", home, "25.0.3")));
 
         String xml = Files.readString(jb.resolve("IntelliJIdea2025.1/options/jdk.table.xml"));
-        String h = home.toAbsolutePath().normalize().toString();
+        String h = home.toAbsolutePath().normalize().toString().replace('\\', '/');
         assertThat(xml)
                 .contains("jrt://" + h + "!/java.base")
                 .contains("jrt://" + h + "!/java.desktop")
@@ -85,8 +88,13 @@ class IntellijSdkRegistrarTest {
         // Re-register with a new home → updates in place.
         r.register(List.of(new IntellijSdkRegistrar.SdkEntry("jk-temurin-25", Path.of("/jdks2/temurin-25"), "25.0.4")));
         xml = Files.readString(table);
-        assertThat(xml).contains("/jdks2/temurin-25");
-        assertThat(xml).doesNotContain("/home/x/.jk/jdks/temurin-25");
+        String updated = Path.of("/jdks2/temurin-25")
+                .toAbsolutePath()
+                .normalize()
+                .toString()
+                .replace('\\', '/');
+        assertThat(xml).contains(updated);
+        assertThat(xml).doesNotContain(T25_HOME_SLASH);
         assertThat(count(xml, "jk-temurin-25")).isEqualTo(1);
         assertThat(xml).contains("corretto-21");
     }

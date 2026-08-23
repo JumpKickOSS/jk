@@ -15,7 +15,7 @@
 #   JK_RELEASES_URL  Override the release site root (mirrors).
 #   JK_VERSION       Install a specific version instead of the latest.
 #   JK_INSTALL_DIR   Override the install directory (default: ~/.local/bin,
-#                    or $XDG_BIN_HOME / $JK_BIN_DIR when set).
+#                    or $JK_BIN_DIR / $JK_HOME/bin / $XDG_BIN_HOME when set).
 #   JK_BIN_DIR       Same as JK_INSTALL_DIR (product layout env).
 #   JK_HOME          Optional single-tree umbrella; mirrors the XDG layout
 #                    ($JK_HOME/{bin,cache,config,data,state}). (tests/CI)
@@ -28,6 +28,11 @@ if [ -n "${JK_INSTALL_DIR:-}" ]; then
   INSTALL_DIR="$JK_INSTALL_DIR"
 elif [ -n "${JK_BIN_DIR:-}" ]; then
   INSTALL_DIR="$JK_BIN_DIR"
+elif [ -n "${JK_HOME:-}" ]; then
+  # Under the umbrella, bin is one of the five roots. `jk activate` writes
+  # $JK_HOME/bin/jk into the shell profile and `jk self update` replaces the binary
+  # there, so installing anywhere else leaves both pointing at nothing.
+  INSTALL_DIR="${JK_HOME}/bin"
 elif [ -n "${XDG_BIN_HOME:-}" ]; then
   INSTALL_DIR="$XDG_BIN_HOME"
 else
@@ -104,7 +109,7 @@ fi
 
 # Release artifacts are named jk-<os>-<arch> — the same vocabulary jk itself
 # uses (HostPlatform): linux|macos × x86_64|aarch64. Windows uses
-# scripts/install.ps1; its download half waits on the release layout.
+# install.ps1 (irm|iex); this script never runs there.
 detect_target() {
   local os arch
   case "$(uname -s)" in
@@ -121,8 +126,8 @@ detect_target() {
 }
 
 # Archive format for auto URL resolution: Linux/macOS releases are .xz
-# only (docs/releases.md). Windows uses scripts/install.ps1 and a .zip —
-# this script never runs there. JK_ARCHIVE_URL / a local file may still be
+# only (docs/releases.md). Windows uses install.ps1 and a .zip — this
+# script never runs there. JK_ARCHIVE_URL / a local file may still be
 # .zip. Missing xz must not fall through to a .zip we do not host.
 #
 # Stock macOS ships no xz binary; its /usr/bin/compression_tool decodes the

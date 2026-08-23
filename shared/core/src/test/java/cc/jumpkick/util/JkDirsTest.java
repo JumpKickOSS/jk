@@ -83,6 +83,20 @@ class JkDirsTest {
     }
 
     @Test
+    void windows_jk_home_umbrella_mirrors_the_xdg_shape() {
+        // install.ps1 resolves the same roots by hand and cannot be run here; this is that contract.
+        Path jkHome = Path.of("C:\\opt\\jk");
+        JkDirs dirs = JkDirs.of(Map.of("JK_HOME", jkHome.toString())::get, "C:\\Users\\me", "Windows 11");
+        assertThat(dirs.dataDir()).isEqualTo(jkHome.resolve("data"));
+        assertThat(dirs.cacheDir()).isEqualTo(jkHome.resolve("cache"));
+        assertThat(dirs.stateDir()).isEqualTo(jkHome.resolve("state"));
+        assertThat(dirs.configDir()).isEqualTo(jkHome.resolve("config"));
+        assertThat(dirs.binDirectory()).isEqualTo(jkHome.resolve("bin"));
+        assertThat(dirs.storeDir()).isEqualTo(jkHome.resolve("data").resolve("store"));
+        assertThat(dirs.productLibDir()).isEqualTo(jkHome.resolve("data").resolve("lib"));
+    }
+
+    @Test
     void xdg_env_vars_are_honored_on_unix() {
         Map<String, String> env = Map.of(
                 "XDG_CONFIG_HOME", "/x/config",

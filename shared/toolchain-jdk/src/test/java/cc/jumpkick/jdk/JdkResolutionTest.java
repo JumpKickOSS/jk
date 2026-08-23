@@ -114,7 +114,7 @@ class JdkResolutionTest {
         // System package layout: java + release, no javac (Fedora/RHEL headless JRE).
         Path jre = tmp.resolve("java-25-openjdk");
         Files.createDirectories(jre.resolve("bin"));
-        Files.writeString(jre.resolve("bin").resolve("java"), "#!/fake");
+        Files.writeString(JdkFingerprint.java(jre), "#!/fake");
         Files.writeString(jre.resolve("release"), "JAVA_VERSION=\"25.0.4\"\nIMPLEMENTOR=\"Red Hat, Inc.\"\n");
 
         JdkInventory gdj = gdj(tmp);
@@ -142,8 +142,8 @@ class JdkResolutionTest {
     private static Path makeJdk(Path jdksRoot, String dirName) throws IOException {
         Path home = jdksRoot.resolve(dirName);
         Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
+        Files.writeString(JdkFingerprint.java(home), "#!/fake");
+        Files.writeString(JdkFingerprint.javac(home), "#!/fake");
         String version = dirName.substring(dirName.indexOf('-') + 1);
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");

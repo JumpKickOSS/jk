@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -22,6 +23,25 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class CompileSpecTest {
 
+    private static final boolean WINDOWS =
+            System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+
+    /**
+     * Synthetic path root for specs. {@code SpecWriter} serializes {@link Path#toAbsolutePath()};
+     * use {@code /tmp} on Unix and {@code %USERPROFILE%\Temp} on Windows (not {@code C:\tmp}).
+     */
+    private static Path root() {
+        return WINDOWS ? Path.of(System.getProperty("user.home"), "Temp") : Path.of("/tmp");
+    }
+
+    private static Path path(String first, String... more) {
+        return root().resolve(Path.of(first, more));
+    }
+
+    private static File file(String first, String... more) {
+        return path(first, more).toAbsolutePath().normalize().toFile();
+    }
+
     @Test
     void parses_all_keys_and_repeatables(@TempDir Path dir) throws IOException {
         CompileSpec s = parse(
@@ -29,35 +49,30 @@ class CompileSpecTest {
                 new SpecWriter()
                         .op(PluginProtocol.OP_COMPILE, null, "jk-kotlin-compiler")
                         .layout(Map.of(
-                                "classesDir",
-                                Path.of("/tmp/out"),
-                                "workdir",
-                                Path.of("/tmp/work"),
-                                "snapshotDir",
-                                Path.of("/tmp/snaps")))
+                                "classesDir", path("out"), "workdir", path("work"), "snapshotDir", path("snaps")))
                         .configString("jvmTarget", "25")
                         .configString("moduleName", "main")
                         .configString("languageVersion", "2.4")
                         .configString("apiVersion", "2.4")
-                        .source(Path.of("/src/A.kt"))
-                        .source(Path.of("/src/B.kt"))
-                        .cp(Path.of("/libs/stdlib.jar"), PluginProtocol.ROLE_COMPILE)
-                        .cp(Path.of("/libs/dep.jar"), PluginProtocol.ROLE_COMPILE)
-                        .cp(Path.of("/build/classes/other"), PluginProtocol.ROLE_FRIEND)
+                        .source(path("src", "A.kt"))
+                        .source(path("src", "B.kt"))
+                        .cp(path("libs", "stdlib.jar"), PluginProtocol.ROLE_COMPILE)
+                        .cp(path("libs", "dep.jar"), PluginProtocol.ROLE_COMPILE)
+                        .cp(path("build", "classes", "other"), PluginProtocol.ROLE_FRIEND)
                         .arg("-no-stdlib")
                         .arg("-Xfoo"));
 
-        assertThat(s.outputDir).isEqualTo(new File("/tmp/out"));
-        assertThat(s.workingDir).isEqualTo(new File("/tmp/work"));
-        assertThat(s.snapshotDir).isEqualTo(new File("/tmp/snaps"));
+        assertThat(s.outputDir).isEqualTo(file("out"));
+        assertThat(s.workingDir).isEqualTo(file("work"));
+        assertThat(s.snapshotDir).isEqualTo(file("snaps"));
         assertThat(s.incremental()).isTrue();
         assertThat(s.jvmTarget).isEqualTo("25");
         assertThat(s.moduleName).isEqualTo("main");
         assertThat(s.languageVersion).isEqualTo("2.4");
         assertThat(s.apiVersion).isEqualTo("2.4");
-        assertThat(s.sources).containsExactly(new File("/src/A.kt"), new File("/src/B.kt"));
-        assertThat(s.classpath).containsExactly(new File("/libs/stdlib.jar"), new File("/libs/dep.jar"));
-        assertThat(s.friendPaths).containsExactly(new File("/build/classes/other"));
+        assertThat(s.sources).containsExactly(file("src", "A.kt"), file("src", "B.kt"));
+        assertThat(s.classpath).containsExactly(file("libs", "stdlib.jar"), file("libs", "dep.jar"));
+        assertThat(s.friendPaths).containsExactly(file("build", "classes", "other"));
         assertThat(s.extraArgs).containsExactly("-no-stdlib", "-Xfoo");
     }
 
@@ -67,9 +82,9 @@ class CompileSpecTest {
                 dir,
                 new SpecWriter()
                         .op(PluginProtocol.OP_COMPILE, null, "jk-kotlin-compiler")
-                        .layout(Map.of("classesDir", Path.of("/tmp/out")))
+                        .layout(Map.of("classesDir", path("out")))
                         .configString("jvmTarget", "25")
-                        .source(Path.of("/src/A.kt")));
+                        .source(path("src", "A.kt")));
         assertThat(s.incremental()).isFalse();
     }
 
@@ -79,11 +94,11 @@ class CompileSpecTest {
                 dir,
                 new SpecWriter()
                         .op(PluginProtocol.OP_COMPILE, null, "jk-kotlin-compiler")
-                        .layout(Map.of("classesDir", Path.of("/tmp/with space/out")))
+                        .layout(Map.of("classesDir", path("with space", "out")))
                         .configString("jvmTarget", "25")
-                        .source(Path.of("/tmp/with space/A.kt")));
-        assertThat(s.outputDir).isEqualTo(new File("/tmp/with space/out"));
-        assertThat(s.sources).containsExactly(new File("/tmp/with space/A.kt"));
+                        .source(path("with space", "A.kt")));
+        assertThat(s.outputDir).isEqualTo(file("with space", "out"));
+        assertThat(s.sources).containsExactly(file("with space", "A.kt"));
     }
 
     @Test
@@ -93,7 +108,7 @@ class CompileSpecTest {
                         new SpecWriter()
                                 .op(PluginProtocol.OP_COMPILE, null, "jk-kotlin-compiler")
                                 .configString("jvmTarget", "25")
-                                .source(Path.of("/a.kt"))))
+                                .source(path("a.kt"))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("classesDir");
 
@@ -101,7 +116,16 @@ class CompileSpecTest {
                         dir,
                         new SpecWriter()
                                 .op(PluginProtocol.OP_COMPILE, null, "jk-kotlin-compiler")
-                                .layout(Map.of("classesDir", Path.of("/o")))
+                                .layout(Map.of("classesDir", path("o")))
+                                .source(path("a.kt"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("jvmTarget");
+
+        assertThatThrownBy(() -> parse(
+                        dir,
+                        new SpecWriter()
+                                .op(PluginProtocol.OP_COMPILE, null, "jk-kotlin-compiler")
+                                .layout(Map.of("classesDir", path("o")))
                                 .configString("jvmTarget", "25")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("source");
@@ -113,14 +137,14 @@ class CompileSpecTest {
                 dir,
                 new SpecWriter()
                         .op(PluginProtocol.OP_COMPILE, null, "jk-kotlin-compiler")
-                        .layout(Map.of("classesDir", Path.of("/o"), "workdir", Path.of("/w")))
+                        .layout(Map.of("classesDir", path("o"), "workdir", path("w")))
                         .configString("jvmTarget", "25")
                         .configString("moduleName", "main")
                         .configString("languageVersion", "2.4")
-                        .source(Path.of("/a.kt"))
-                        .cp(Path.of("/libs/x.jar"), PluginProtocol.ROLE_COMPILE)
-                        .cp(Path.of("/f1"), PluginProtocol.ROLE_FRIEND)
-                        .cp(Path.of("/f2"), PluginProtocol.ROLE_FRIEND)
+                        .source(path("a.kt"))
+                        .cp(path("libs", "x.jar"), PluginProtocol.ROLE_COMPILE)
+                        .cp(path("f1"), PluginProtocol.ROLE_FRIEND)
+                        .cp(path("f2"), PluginProtocol.ROLE_FRIEND)
                         .arg("-no-stdlib"));
 
         List<String> args = KotlinCompiler.buildArgs(s);
@@ -129,8 +153,10 @@ class CompileSpecTest {
         assertThat(args).containsSequence("-jvm-target", "25");
         assertThat(args).containsSequence("-module-name", "main");
         assertThat(args).containsSequence("-language-version", "2.4");
-        assertThat(args).containsSequence("-classpath", "/libs/x.jar");
-        assertThat(args).contains("-Xfriend-paths=/f1,/f2");
+        assertThat(args).containsSequence("-classpath", file("libs", "x.jar").getPath());
+        assertThat(args)
+                .contains("-Xfriend-paths=" + file("f1").getPath() + ","
+                        + file("f2").getPath());
         assertThat(args).contains("-Xuse-fir-ic"); // required by the FIR IC runner
         assertThat(args).endsWith("-no-stdlib"); // free ARGs appended verbatim
     }
@@ -141,9 +167,9 @@ class CompileSpecTest {
                 dir,
                 new SpecWriter()
                         .op(PluginProtocol.OP_COMPILE, null, "jk-kotlin-compiler")
-                        .layout(Map.of("classesDir", Path.of("/o")))
+                        .layout(Map.of("classesDir", path("o")))
                         .configString("jvmTarget", "25")
-                        .source(Path.of("/a.kt")));
+                        .source(path("a.kt")));
         assertThat(KotlinCompiler.buildArgs(s)).doesNotContain("-Xuse-fir-ic");
     }
 

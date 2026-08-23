@@ -87,8 +87,8 @@ tasks.shadowJar {
  * ({@code ~/.local/share/jk/lib/…} or {@code $JK_HOME/data/lib/…}), and bounce the resident daemon so local dogfood
  * picks up engine-side first-party plugin tables without a hand copy.
  *
- * Client resolution (first hit wins): `:cli:installDist` bin, `build/dist/jk`, platform bin dir
- * (`~/.local/bin/jk`), then PATH `jk`.
+ * Client resolution (first hit wins): `:cli:installDist` bin (`jk` / `jk.bat`), then `build/dist/jk[.exe]` when
+ * present, platform bin dir, then PATH `jk`.
  */
 tasks.register("installLocal") {
     group = "distribution"
@@ -97,18 +97,18 @@ tasks.register("installLocal") {
     // Client must exist before materialize: `./gradlew dist installLocal` used to race
     // installLocal (only dependsOn shadowJar) ahead of nativeCompile/dist, so resolveClient
     // fell through to bare `jk` and failed on clean CI runners with no PATH install.
-    // installDist is the thin client (no Graal); dist's native binary is preferred when
-    // already present via resolveClient order, but is not a hard dependency here.
+    // installDist is the thin-JVM client (no Graal) and leads resolveClient's order, so this task cannot
+    // pick up a stale native binary from an earlier `dist` run.
     dependsOn(":cli:installDist")
     doLast {
         val engineJar =
             tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar").get().archiveFile
                 .get()
                 .asFile
-        val installDistJk =
-            rootProject.project(":cli").layout.buildDirectory.file("install/jk/bin/jk").get().asFile
+        val installDistBin =
+            rootProject.project(":cli").layout.buildDirectory.dir("install/jk/bin").get().asFile
         val client =
-            JkLayoutPaths.resolveClient(rootProject.projectDir, installDistJk)
+            JkLayoutPaths.resolveClient(rootProject.projectDir, installDistBin)
                 ?: "jk"
         fun runJk(vararg args: String) {
             val cmd = listOf(client) + args.toList()

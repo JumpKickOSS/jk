@@ -1008,7 +1008,7 @@ public final class McpHandler {
         if (dir == null || dir.isBlank()) throw new McpError(-32602, "jk_bind requires arguments.dir");
         String abs;
         try {
-            abs = PathUtil.resolveUserPath(dir).toString();
+            abs = dirKey(dir);
         } catch (RuntimeException e) {
             throw new McpError(-32602, "invalid dir: " + e.getMessage());
         }
@@ -1023,7 +1023,7 @@ public final class McpHandler {
         String dir = resolveDir(args, true);
         String abs;
         try {
-            abs = PathUtil.resolveUserPath(dir).toString();
+            abs = dirKey(dir);
         } catch (RuntimeException e) {
             abs = dir;
         }
@@ -1565,6 +1565,33 @@ public final class McpHandler {
             throw new McpError(-32602, "requires arguments.dir (or jk_bind first)");
         }
         return dir;
+    }
+
+    /**
+     * The journal key for a caller-supplied directory. Journal and bind keys are strings, not host
+     * paths: an already-absolute key keeps its shape, so {@code /ws} does not acquire a drive letter
+     * on Windows ({@code resolveUserPath} would make it {@code C:\ws}), while {@code ~} and relative
+     * input still resolve against the host. {@code ..} collapses either way — a key still reading
+     * {@code /ws/../other} matches no journal row.
+     *
+     * <p>Every tool that looks a project up by directory keys it through here, or {@code jk_bind}
+     * and {@code jk_project} answer differently for the same argument.
+     */
+    static String dirKey(String dir) {
+        return isAbsoluteDirKey(dir)
+                ? McpHistoryViews.normalizeDir(Path.of(dir.strip()).normalize().toString())
+                : McpHistoryViews.normalizeDir(PathUtil.resolveUserPath(dir).toString());
+    }
+
+    /** True for journal-style absolute keys: leading {@code /} or {@code C:\…} / {@code C:/…}. */
+    private static boolean isAbsoluteDirKey(String dir) {
+        if (dir == null || dir.isBlank()) return false;
+        String s = dir.strip();
+        if (s.startsWith("/") || s.startsWith("\\")) return true;
+        return s.length() >= 3
+                && Character.isLetter(s.charAt(0))
+                && s.charAt(1) == ':'
+                && (s.charAt(2) == '/' || s.charAt(2) == '\\');
     }
 
     private static int intArg(Object raw, int fallback, int min, int max) {

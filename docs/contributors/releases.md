@@ -20,7 +20,8 @@ coordinates together (search for the old version string).
 |-------|------|
 | **GCS** | Object storage for release blobs (`gs://jumpkick/releases/<ver>/…`) |
 | **Firebase CDN** | Public edge for `https://jumpkick.build` (wire later on Blaze) |
-| **install.sh** | Fetches `https://jumpkick.build/releases/…` once Firebase fronts the bucket |
+| **install.sh** | Fetches `https://jumpkick.build/releases/…` (Linux / macOS) |
+| **install.ps1** | Fetches the Windows `.zip` from the same tree (`irm … \| iex`) |
 
 The product only knows `https://jumpkick.build/releases/`. Hosting 302s that prefix to
 the current object store (GCS today). Override with `JK_RELEASES_URL` for a mirror
@@ -30,6 +31,12 @@ or an air-gapped origin — never bake a bucket hostname into the client.
 curl -fsSL https://jumpkick.build/install.sh | bash
 # air-gap / mirror:
 export JK_RELEASES_URL=https://mirror.example/releases
+```
+
+```powershell
+irm https://jumpkick.build/install.ps1 | iex
+# air-gap / mirror:
+$env:JK_RELEASES_URL = "https://mirror.example/releases"
 ```
 
 Layout under the bucket (and under the CDN path `/releases`):
@@ -50,11 +57,12 @@ releases/
     SHA256SUMS.sig          # base64 Ed25519 signature over SHA256SUMS bytes
 ```
 
-`install.sh` and the Unix `jk` wrapper fetch `jk-<os>-<arch>.xz`. `jk.bat` / install.ps1
-fetch the Windows `.zip`. `jk self update` prefers `.xz` on every OS (the engine jar
-inflates; the native CLI does not link tukaani) and falls back to `.zip` on Windows
-when the sums have no xz entry. All three read `latest/VERSION`, then fetch **only**
-from that version directory so a mid-install publish cannot mix artifacts.
+`install.sh` and the Unix `jk` wrapper fetch `jk-<os>-<arch>.xz`. `jk.bat` /
+`install.ps1` fetch the Windows `.zip`. `jk self update` prefers `.xz` on every OS
+(the engine jar inflates; the native CLI does not link tukaani) and falls back to
+`.zip` on Windows when the sums have no xz entry. All three read `latest/VERSION`,
+then fetch **only** from that version directory so a mid-install publish cannot mix
+artifacts.
 
 Wire Firebase Hosting (or Firebase CDN / load balancer) so `jumpkick.build/releases/*` is
 served from the GCS prefix `releases/*` (custom domain + backend bucket, or Hosting rewrites

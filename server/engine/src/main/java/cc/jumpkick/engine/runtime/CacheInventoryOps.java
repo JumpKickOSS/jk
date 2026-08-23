@@ -129,6 +129,7 @@ public final class CacheInventoryOps {
         Path repos = storeRoot.resolve("repos");
 
         Set<Object> seen = new HashSet<>();
+        DiskUsage.SameFileKeys sameFile = new DiskUsage.SameFileKeys();
         long jarFiles = 0, jarBytes = 0;
         long execFiles = 0, execBytes = 0;
         long ociFiles = 0, ociBytes = 0;
@@ -143,8 +144,7 @@ public final class CacheInventoryOps {
                         continue;
                     }
                     if (!attrs.isRegularFile()) continue;
-                    Object key = attrs.fileKey();
-                    if (key == null) key = p.toAbsolutePath().normalize();
+                    Object key = identityKey(p, attrs, sameFile);
                     long size = seen.add(key) ? attrs.size() : 0L;
                     switch (sniffArtifactKind(p)) {
                         case EXECUTABLE -> {
@@ -164,10 +164,11 @@ public final class CacheInventoryOps {
             }
         }
 
-        Stat reposExtra = walkExclusiveAdding(repos, seen);
+        Stat reposExtra = walkExclusiveAdding(repos, seen, sameFile);
         jarFiles += reposExtra.files;
         jarBytes += reposExtra.bytes;
-        Stat workers = walkExclusiveAdding(lib, seen);
+        // One sameFile across all three walks, or a repos link to a CAS blob counts twice.
+        Stat workers = walkExclusiveAdding(lib, seen, sameFile);
         long totalFiles = jarFiles + execFiles + ociFiles + workers.files;
         long totalBytes = jarBytes + execBytes + ociBytes + workers.bytes;
         DiskUsage.Stats mavenLocal;
@@ -382,7 +383,8 @@ public final class CacheInventoryOps {
 
     private record Stat(long files, long bytes) {}
 
-    private static Stat walkExclusiveAdding(Path dir, Set<Object> seenKeys) throws IOException {
+    private static Stat walkExclusiveAdding(Path dir, Set<Object> seenKeys, DiskUsage.SameFileKeys sameFile)
+            throws IOException {
         if (dir == null || !Files.isDirectory(dir)) return new Stat(0, 0);
         long files = 0;
         long bytes = 0;
@@ -396,11 +398,19 @@ public final class CacheInventoryOps {
                 }
                 if (!attrs.isRegularFile()) continue;
                 files++;
-                Object key = attrs.fileKey();
-                if (key == null) key = p.toAbsolutePath().normalize();
+                Object key = identityKey(p, attrs, sameFile);
                 if (seenKeys.add(key)) bytes += attrs.size();
             }
         }
         return new Stat(files, bytes);
+    }
+
+    /**
+     * Stable identity for hard-link dedupe: {@link BasicFileAttributes#fileKey()} where the
+     * provider has one, else the {@link DiskUsage.SameFileKeys} stand-in.
+     */
+    private static Object identityKey(Path path, BasicFileAttributes attrs, DiskUsage.SameFileKeys sameFile) {
+        Object key = attrs.fileKey();
+        return key != null ? key : sameFile.identity(path, attrs.size());
     }
 }

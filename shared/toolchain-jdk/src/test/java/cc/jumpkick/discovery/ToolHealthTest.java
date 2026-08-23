@@ -3,6 +3,7 @@ package cc.jumpkick.discovery;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.jdk.JdkFingerprint;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -61,7 +62,7 @@ class ToolHealthTest {
     @Test
     void missing_binary_fails_health_check(@TempDir Path tempDir) throws Exception {
         Path home = mavenLayout(tempDir, "3.9.9");
-        Files.delete(home.resolve("bin").resolve("mvn"));
+        Files.delete(ToolHealth.requiredBinary(ToolSpec.maven("3.9.9"), home));
         assertThat(ToolHealth.isHealthy(ToolSpec.maven("3.9.9"), home)).isFalse();
     }
 
@@ -75,7 +76,7 @@ class ToolHealthTest {
     @Test
     void jre_without_javac_fails_jdk_health_check(@TempDir Path tempDir) throws Exception {
         Path home = jdkLayout(tempDir, "25.0.4", "Red Hat, Inc.");
-        Files.delete(home.resolve("bin").resolve("javac"));
+        Files.delete(JdkFingerprint.javac(home));
         assertThat(ToolHealth.hasJavac(home)).isFalse();
         assertThat(ToolHealth.isHealthy(ToolSpec.jdk("25.0.4", null), home)).isFalse();
         assertThat(ProbeSupport.discoverJdk(home, "system")).isEmpty();
@@ -86,8 +87,8 @@ class ToolHealthTest {
     static Path jdkLayout(Path root, String version, String implementor) throws Exception {
         Path home = root.resolve("jdk-" + version);
         Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/bin/sh\n");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/bin/sh\n");
+        Files.writeString(ToolHealth.requiredBinary(ToolSpec.jdk(version, null), home), "#!/bin/sh\n");
+        Files.writeString(JdkFingerprint.javac(home), "#!/bin/sh\n");
         Files.writeString(
                 home.resolve("release"),
                 "JAVA_VERSION=\"" + version + "\"\n" + "IMPLEMENTOR=\"" + implementor + "\"\n");
@@ -98,7 +99,7 @@ class ToolHealthTest {
         Path home = root.resolve("apache-maven-" + version);
         Files.createDirectories(home.resolve("bin"));
         Files.createDirectories(home.resolve("lib"));
-        Files.writeString(home.resolve("bin").resolve("mvn"), "#!/bin/sh\n");
+        Files.writeString(ToolHealth.requiredBinary(ToolSpec.maven(version), home), "#!/bin/sh\n");
         Files.writeString(home.resolve("lib").resolve("maven-core-" + version + ".jar"), "");
         return home;
     }
@@ -107,7 +108,7 @@ class ToolHealthTest {
         Path home = root.resolve("gradle-" + version);
         Files.createDirectories(home.resolve("bin"));
         Files.createDirectories(home.resolve("lib"));
-        Files.writeString(home.resolve("bin").resolve("gradle"), "#!/bin/sh\n");
+        Files.writeString(ToolHealth.requiredBinary(ToolSpec.gradle(version), home), "#!/bin/sh\n");
         Files.writeString(home.resolve("lib").resolve("gradle-launcher-" + version + ".jar"), "");
         return home;
     }
@@ -116,7 +117,7 @@ class ToolHealthTest {
         Path home = root.resolve("kotlinc");
         Files.createDirectories(home.resolve("bin"));
         Files.createDirectories(home.resolve("lib"));
-        Files.writeString(home.resolve("bin").resolve("kotlinc"), "#!/bin/sh\n");
+        Files.writeString(ToolHealth.requiredBinary(ToolSpec.kotlin(manifestVersion), home), "#!/bin/sh\n");
 
         // Build a kotlin-compiler.jar with the manifest the probe reads.
         Manifest mf = new Manifest();

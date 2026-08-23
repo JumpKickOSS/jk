@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class ToolTargetTest {
@@ -20,13 +22,23 @@ class ToolTargetTest {
 
     @Test
     void existing_paths_beat_remote_interpretations(@TempDir Path tmp) throws Exception {
-        Path weird = tmp.resolve("gh:weird-dir");
+        Path weird = tmp.resolve("gh-weird-dir");
         Files.createDirectories(weird);
         assertThat(ToolTarget.classify(weird.toString())).isInstanceOf(ToolTarget.Directory.class);
 
         Path plain = tmp.resolve("notes.txt");
         Files.writeString(plain, "x");
         assertThat(ToolTarget.classify(plain.toString())).isInstanceOf(ToolTarget.UnsupportedFile.class);
+    }
+
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void an_existing_path_holding_a_colon_is_not_read_as_a_coordinate(@TempDir Path tmp) throws Exception {
+        // Only POSIX can hold this directory — a colon is illegal in a Windows filename — yet the
+        // path is also the shape the GAV rule claims, so it is the sharpest test of the ordering.
+        Path colon = tmp.resolve("gh:weird-dir");
+        Files.createDirectories(colon);
+        assertThat(ToolTarget.classify(colon.toString())).isInstanceOf(ToolTarget.Directory.class);
     }
 
     @Test

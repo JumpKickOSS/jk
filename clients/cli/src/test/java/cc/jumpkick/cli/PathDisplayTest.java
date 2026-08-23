@@ -73,9 +73,9 @@ class PathDisplayTest {
             Files.createDirectories(project.resolve(".git"));
             Path outside = tmp.resolve("elsewhere/Other.java");
 
-            // No shared anchor with the project -> absolute.
+            // No shared anchor with the project -> absolute (forward slashes in display).
             assertThat(PathDisplay.of(outside, project))
-                    .isEqualTo(outside.toAbsolutePath().normalize().toString());
+                    .isEqualTo(outside.toAbsolutePath().normalize().toString().replace('\\', '/'));
         } finally {
             try (var walk = Files.walk(tmp)) {
                 walk.sorted(Comparator.reverseOrder()).forEach(p -> {

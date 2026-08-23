@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
@@ -32,7 +33,9 @@ class DiagnosticReportTest {
         // Build an absolute path under the real project root so PathDisplay can relativize on any
         // machine (a hard-coded foreign home path stays absolute outside all anchors).
         String rel = "target/shared/plugin-sdk/lib/jk-plugin-sdk-0.12.0.jar";
-        String abs = Path.of(rel).toAbsolutePath().normalize().toString();
+        Path absPath = Path.of(rel).toAbsolutePath().normalize();
+        String abs = absPath.toString();
+        String display = PathDisplay.of(absPath);
         String msg = "sibling not built — cc.jumpkick:jk-plugin-sdk (expected at " + abs + ")";
         String report = DiagnosticReport.renderError("parse-build", "workspace", msg);
         String plain = plain(report);
@@ -41,9 +44,10 @@ class DiagnosticReportTest {
         assertThat(plain).contains("Failure");
         assertThat(plain).contains("sibling not built");
         assertThat(plain).contains("cc.jumpkick:jk-plugin-sdk");
-        // Project-relative path, not absolute workspace path.
-        assertThat(plain).contains(rel);
+        // Project-relative path (forward slashes), not absolute workspace path.
+        assertThat(plain).contains(display);
         assertThat(plain).doesNotContain(abs);
+        assertThat(plain).doesNotContain(abs.replace('\\', '/'));
         // No legacy Error banner.
         assertThat(plain).doesNotContain("Error [parse-build]");
         assertThat(plain).doesNotContain("✘ Error");
@@ -52,7 +56,7 @@ class DiagnosticReportTest {
         if (Theme.active().isAnsi()) {
             assertThat(report).contains(DiagnosticReport.RAIL);
             assertThat(report).contains(Coords.ga("cc.jumpkick", "jk-plugin-sdk"));
-            assertThat(report).contains(Theme.colorize(rel, Theme.active().path()));
+            assertThat(report).contains(Theme.colorize(display, Theme.active().path()));
         }
     }
 

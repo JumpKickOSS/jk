@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -22,6 +23,25 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class CompileSpecTest {
 
+    private static final boolean WINDOWS =
+            System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+
+    /**
+     * Synthetic path root for specs. {@code SpecWriter} serializes {@link Path#toAbsolutePath()};
+     * use {@code /tmp} on Unix and {@code %USERPROFILE%\Temp} on Windows (not {@code C:\tmp}).
+     */
+    private static Path root() {
+        return WINDOWS ? Path.of(System.getProperty("user.home"), "Temp") : Path.of("/tmp");
+    }
+
+    private static Path path(String first, String... more) {
+        return root().resolve(Path.of(first, more));
+    }
+
+    private static File file(String first, String... more) {
+        return path(first, more).toAbsolutePath().normalize().toFile();
+    }
+
     @Test
     void parses_all_keys_and_repeatables(@TempDir Path dir) throws IOException {
         CompileSpec s = parse(
@@ -29,29 +49,33 @@ class CompileSpecTest {
                 new SpecWriter()
                         .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
                         .layout(Map.of(
-                                "classesDir", Path.of("/tmp/out"),
-                                "workdir", Path.of("/tmp/work")))
-                        .extra("stubsOut", Path.of("/tmp/stubs"))
+                                "classesDir", path("out"),
+                                "workdir", path("work")))
+                        .extra("stubsOut", path("stubs"))
                         .configString("jvmTarget", "25")
-                        .configList("javaSourceRoots", List.of("/src/java", "/gen/java"))
-                        .source(Path.of("/src/A.groovy"))
-                        .source(Path.of("/src/B.java"))
-                        .cp(Path.of("/libs/dep.jar"), PluginProtocol.ROLE_COMPILE)
-                        .cp(Path.of("/libs/other.jar"), PluginProtocol.ROLE_COMPILE)
+                        .configList(
+                                "javaSourceRoots",
+                                List.of(
+                                        path("src", "java").toString(),
+                                        path("gen", "java").toString()))
+                        .source(path("src", "A.groovy"))
+                        .source(path("src", "B.java"))
+                        .cp(path("libs", "dep.jar"), PluginProtocol.ROLE_COMPILE)
+                        .cp(path("libs", "other.jar"), PluginProtocol.ROLE_COMPILE)
                         .arg("--parameters")
                         .arg("--enable-preview"));
 
-        assertThat(s.outputDir).isEqualTo(new File("/tmp/out"));
-        assertThat(s.workDir).isEqualTo(new File("/tmp/work"));
-        assertThat(s.stubsOut).isEqualTo(new File("/tmp/stubs"));
+        assertThat(s.outputDir).isEqualTo(file("out"));
+        assertThat(s.workDir).isEqualTo(file("work"));
+        assertThat(s.stubsOut).isEqualTo(file("stubs"));
         assertThat(s.jvmTarget).isEqualTo("25");
-        assertThat(s.javaSourceRoots).containsExactly(new File("/src/java"), new File("/gen/java"));
-        assertThat(s.sources).containsExactly(new File("/src/A.groovy"), new File("/src/B.java"));
-        assertThat(s.classpath).containsExactly(new File("/libs/dep.jar"), new File("/libs/other.jar"));
+        assertThat(s.javaSourceRoots).containsExactly(file("src", "java"), file("gen", "java"));
+        assertThat(s.sources).containsExactly(file("src", "A.groovy"), file("src", "B.java"));
+        assertThat(s.classpath).containsExactly(file("libs", "dep.jar"), file("libs", "other.jar"));
         assertThat(s.extraArgs).containsExactly("--parameters", "--enable-preview");
         assertThat(s.joint()).isTrue();
-        assertThat(s.javaSources()).containsExactly(new File("/src/B.java"));
-        assertThat(s.groovySources()).containsExactly(new File("/src/A.groovy"));
+        assertThat(s.javaSources()).containsExactly(file("src", "B.java"));
+        assertThat(s.groovySources()).containsExactly(file("src", "A.groovy"));
     }
 
     @Test
@@ -60,9 +84,9 @@ class CompileSpecTest {
                 dir,
                 new SpecWriter()
                         .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
-                        .layout(Map.of("classesDir", Path.of("/tmp/out")))
+                        .layout(Map.of("classesDir", path("out")))
                         .configString("jvmTarget", "25")
-                        .source(Path.of("/src/A.groovy")));
+                        .source(path("src", "A.groovy")));
         assertThat(s.workDir).isNull();
         assertThat(s.stubsOut).isNull();
         assertThat(s.javaSourceRoots).isEmpty();
@@ -75,11 +99,11 @@ class CompileSpecTest {
                 dir,
                 new SpecWriter()
                         .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
-                        .layout(Map.of("classesDir", Path.of("/tmp/with space/out")))
+                        .layout(Map.of("classesDir", path("with space", "out")))
                         .configString("jvmTarget", "25")
-                        .source(Path.of("/tmp/with space/A.groovy")));
-        assertThat(s.outputDir).isEqualTo(new File("/tmp/with space/out"));
-        assertThat(s.sources).containsExactly(new File("/tmp/with space/A.groovy"));
+                        .source(path("with space", "A.groovy")));
+        assertThat(s.outputDir).isEqualTo(file("with space", "out"));
+        assertThat(s.sources).containsExactly(file("with space", "A.groovy"));
     }
 
     @Test
@@ -89,7 +113,7 @@ class CompileSpecTest {
                         new SpecWriter()
                                 .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
                                 .configString("jvmTarget", "25")
-                                .source(Path.of("/a.groovy"))))
+                                .source(path("a.groovy"))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("classesDir");
 
@@ -97,8 +121,8 @@ class CompileSpecTest {
                         dir,
                         new SpecWriter()
                                 .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
-                                .layout(Map.of("classesDir", Path.of("/o")))
-                                .source(Path.of("/a.groovy"))))
+                                .layout(Map.of("classesDir", path("o")))
+                                .source(path("a.groovy"))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("jvmTarget");
 
@@ -106,7 +130,7 @@ class CompileSpecTest {
                         dir,
                         new SpecWriter()
                                 .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
-                                .layout(Map.of("classesDir", Path.of("/o")))
+                                .layout(Map.of("classesDir", path("o")))
                                 .configString("jvmTarget", "25")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("source");

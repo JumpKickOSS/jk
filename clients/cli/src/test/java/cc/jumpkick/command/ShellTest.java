@@ -164,8 +164,9 @@ class ShellTest {
     void activation_lines_use_absolute_command_outside_home() {
         Path home = Path.of("/home/u");
         Path jk = Path.of("/opt/jk/bin/jk");
+        String jkSlash = jk.toAbsolutePath().normalize().toString().replace('\\', '/');
         assertThat(new ZshShell().activationLine(new ZshShell().commandExpr(jk, home)))
-                .isEqualTo("eval \"$(\"/opt/jk/bin/jk\" activate zsh)\"");
+                .isEqualTo("eval \"$(\"" + jkSlash + "\" activate zsh)\"");
     }
 
     @Test
@@ -192,7 +193,9 @@ class ShellTest {
     void shell_path_expr_prefers_home() {
         Path home = Path.of("/home/u");
         assertThat(ShellPathExpr.posix(home.resolve(".local/bin"), home)).isEqualTo("$HOME/.local/bin");
-        assertThat(ShellPathExpr.posix(Path.of("/opt/bin"), home)).isEqualTo("/opt/bin");
+        String optSlash =
+                Path.of("/opt/bin").toAbsolutePath().normalize().toString().replace('\\', '/');
+        assertThat(ShellPathExpr.posix(Path.of("/opt/bin"), home)).isEqualTo(optSlash);
         assertThat(ShellPathExpr.posixCommand(home.resolve(".local/bin/jk"), home))
                 .isEqualTo("\"$HOME/.local/bin/jk\"");
     }

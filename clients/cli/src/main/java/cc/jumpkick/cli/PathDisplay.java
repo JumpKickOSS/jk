@@ -40,14 +40,6 @@ public final class PathDisplay {
     }
 
     /**
-     * Display {@code target} relative to the closest of {the working dir, workspace root, git repo
-     * root} that contains it, else absolute.
-     *
-     * @param target the path to render (relative paths resolve against the JVM cwd)
-     * @param workingDir the command's working directory (see {@link GlobalOptions#workingDir()}); may
-     *     be {@code null} to use the JVM cwd
-     */
-    /**
      * Display {@code target} relative to the closest anchor, using the JVM working directory as the
      * "working dir" anchor. Convenient for static helpers with no {@link GlobalOptions} in scope —
      * the workspace-root and git-root anchors don't depend on the working dir, so a path inside the
@@ -57,11 +49,20 @@ public final class PathDisplay {
         return of(target, null);
     }
 
+    /**
+     * Display {@code target} relative to the closest of {the working dir, workspace root, git repo
+     * root} that contains it, else absolute. Always forward-slashed whatever the host separator is,
+     * so one project reads the same in output, diagnostics and docs on every OS.
+     *
+     * @param target the path to render (relative paths resolve against the JVM cwd)
+     * @param workingDir the command's working directory (see {@link GlobalOptions#workingDir()}); may
+     *     be {@code null} to use the JVM cwd
+     */
     public static String of(Path target, Path workingDir) {
         Path abs = target.toAbsolutePath().normalize();
         Path anchor = closestAnchor(abs, workingDir);
-        if (anchor == null) return abs.toString();
-        String rel = anchor.relativize(abs).toString();
+        if (anchor == null) return abs.toString().replace('\\', '/');
+        String rel = anchor.relativize(abs).toString().replace('\\', '/');
         return rel.isEmpty() ? "." : rel;
     }
 

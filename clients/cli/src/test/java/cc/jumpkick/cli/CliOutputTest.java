@@ -8,7 +8,6 @@ import cc.jumpkick.cli.testing.NoAnsi;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -230,33 +229,29 @@ class CliOutputTest {
     }
 
     @Test
-    void console_charset_prefers_the_stream_property_then_native_encoding() {
-        String key = "jk.test.stdout.encoding";
-        String previous = System.getProperty(key);
+    void envelope_stream_encodes_with_the_charset_system_out_uses() {
+        // stdout() writes finished bytes past System.out's encoder, so it has to encode with that
+        // stream's charset. Taking it from a property instead is how a Windows console flipped to
+        // UTF-8 still received CP437 bytes: the property kept the pre-flip name.
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        PrintStream previous = System.out;
         try {
-            System.setProperty(key, "ISO-8859-1");
-            assertThat(CliOutput.consoleCharset(key)).isEqualTo(StandardCharsets.ISO_8859_1);
-
-            System.clearProperty(key);
-            String nativeEncoding = System.getProperty("native.encoding");
-            Charset fallback = nativeEncoding == null ? Charset.defaultCharset() : Charset.forName(nativeEncoding);
-            assertThat(CliOutput.consoleCharset(key)).isEqualTo(fallback);
-
-            // A console name the JVM does not know must not blow up the whole CLI.
-            System.setProperty(key, "definitely-not-a-charset");
-            assertThat(CliOutput.consoleCharset(key)).isEqualTo(fallback);
+            System.setOut(new PrintStream(buffer, true, StandardCharsets.ISO_8859_1));
+            CliOutput.beginCommand(true); // script mode: bytes only, no envelope blank
+            PrintStream out = CliOutput.stdout();
+            out.print("caf\u00e9");
+            out.flush();
         } finally {
-            if (previous == null) System.clearProperty(key);
-            else System.setProperty(key, previous);
+            System.setOut(previous);
         }
+        assertThat(buffer.toByteArray()).isEqualTo("caf\u00e9".getBytes(StandardCharsets.ISO_8859_1));
     }
 
     @Test
     void line_writes_hand_the_console_stream_a_string_to_encode() {
-        // Every byte-exactness assertion in the suite decodes a captured stdout, which holds only
-        // while the capture stream's own encoder produced those bytes. Routing these helpers
-        // through stdout() instead would encode with the console charset ahead of the capture, and
-        // the assertions would quietly start depending on the machine's console.
+        // out()/outRaw() hand System.out a string, leaving that stream's own encoder as the only
+        // one in the chain: a plain line write has no reason to take stdout()'s byte path, with its
+        // extra encoder and its first-write envelope hook.
         var recorder = new RecordingStream();
         PrintStream prev = System.out;
         try {

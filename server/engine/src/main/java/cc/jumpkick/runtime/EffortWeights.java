@@ -492,7 +492,7 @@ public final class EffortWeights {
         if (stepCounts == null) stepCounts = Map.of();
         int weight = 0;
         int testWeight = 0;
-        String mod = dir == null ? "" : dir.toString();
+        String mod = dir == null ? "" : BuildMetrics.slashKey(dir.toString());
         int wWorkers = Math.max(1, testWorkers);
         for (String raw : runningSteps) {
             String step = metricsStepName(raw);

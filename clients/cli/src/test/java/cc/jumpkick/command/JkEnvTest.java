@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jdk.InstalledJdk;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkOwnership;
 import cc.jumpkick.jdk.JdkRegistry;
@@ -44,11 +45,7 @@ class JkEnvTest {
         // pointing at it.
         var jdksRoot = tempDir.resolve("jdks");
         var jdkHome = jdksRoot.resolve("temurin-25.0.3");
-        Files.createDirectories(jdkHome.resolve("bin"));
-        Files.writeString(jdkHome.resolve("bin").resolve("java"), "#!/fake\n");
-        Files.writeString(jdkHome.resolve("bin").resolve("javac"), "#!/fake\n");
-        Files.writeString(jdkHome.resolve("release"), "JAVA_VERSION=\"25.0.3\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
-        JdkOwnership.mark(jdkHome);
+        fakeJdk(jdkHome);
 
         var project = tempDir.resolve("project");
         Files.createDirectories(project);
@@ -64,7 +61,7 @@ class JkEnvTest {
         // real path, not the raw @TempDir.
         var realJdkHome = jdkHome.toRealPath();
         assertThat(target.isActive()).isTrue();
-        assertThat(target.projectRoot()).contains(project);
+        assertThat(target.projectRoot()).contains(project.toAbsolutePath().normalize());
         assertThat(target.vars().get("JAVA_HOME")).isEqualTo(realJdkHome.toString());
         assertThat(target.vars().get("PATH"))
                 .isEqualTo(realJdkHome.resolve("bin") + File.pathSeparator + "/usr/bin:/bin");
@@ -75,8 +72,8 @@ class JkEnvTest {
         var jdksRoot = tempDir.resolve("jdks");
         var jdkHome = jdksRoot.resolve("graalvm-jdk-25");
         Files.createDirectories(jdkHome.resolve("bin"));
-        Files.writeString(jdkHome.resolve("bin").resolve("java"), "#!/fake\n");
-        Files.writeString(jdkHome.resolve("bin").resolve("javac"), "#!/fake\n");
+        Files.writeString(JdkFingerprint.java(jdkHome), "#!/fake\n");
+        Files.writeString(JdkFingerprint.javac(jdkHome), "#!/fake\n");
         Files.writeString(
                 jdkHome.resolve("release"),
                 "JAVA_VERSION=\"25.0.0\"\nIMPLEMENTOR=\"Oracle Corporation\"\nIMPLEMENTOR_VERSION=\"Oracle GraalVM 25\"\n");
@@ -175,11 +172,11 @@ class JkEnvTest {
         return inv;
     }
 
-    /** Stand up a fake jk-managed JDK install (bin/java + release) and return its home. */
+    /** Stand up a fake jk-managed JDK install (bin/java, bin/javac, release) and return its home. */
     private static Path fakeJdk(Path home) throws IOException {
         Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake\n");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake\n");
+        Files.writeString(JdkFingerprint.java(home), "#!/fake\n");
+        Files.writeString(JdkFingerprint.javac(home), "#!/fake\n");
         Files.writeString(home.resolve("release"), "JAVA_VERSION=\"25.0.3\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
         JdkOwnership.mark(home);
         return home;

@@ -86,9 +86,19 @@ public final class GpgSigner {
             try (ArmoredOutputStream aos = new ArmoredOutputStream(baos)) {
                 sig.encode(aos);
             }
-            return baos.toByteArray();
+            // RFC 4880 ASCII armor is LF-terminated; BouncyCastle may emit CRLF on Windows.
+            return lfOnly(baos.toByteArray());
         } catch (PGPException e) {
             throw new IOException("GPG signing failed: " + e.getMessage(), e);
         }
+    }
+
+    /** Drop CR so {@code .asc} bytes are identical across hosts. */
+    static byte[] lfOnly(byte[] armored) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream(armored.length);
+        for (byte b : armored) {
+            if (b != '\r') out.write(b);
+        }
+        return out.toByteArray();
     }
 }

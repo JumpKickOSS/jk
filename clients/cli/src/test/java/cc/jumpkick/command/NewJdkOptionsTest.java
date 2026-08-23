@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkOwnership;
 import cc.jumpkick.jdk.JdkRegistry;
@@ -97,8 +98,8 @@ class NewJdkOptionsTest {
 
     private static void makeJdkFixture(Path home, String version) throws IOException {
         Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
+        Files.writeString(JdkFingerprint.java(home), "#!/fake");
+        Files.writeString(JdkFingerprint.javac(home), "#!/fake");
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
         JdkOwnership.mark(home);

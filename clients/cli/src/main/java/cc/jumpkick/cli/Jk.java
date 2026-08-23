@@ -2,6 +2,7 @@
 package cc.jumpkick.cli;
 
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.WindowsUtf8;
 import cc.jumpkick.command.*;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkConfigLoader;
@@ -45,6 +46,9 @@ public final class Jk {
             Map.entry("check", List.of("compile"))); // pre-v1.0 name of the compile-only verb
 
     public static void main(String[] args) {
+        // Windows: CP_UTF8 + UTF-8 System.out/err before any chrome. OEM CP437 otherwise
+        // turns ● into ΓùÅ. Must run before the first println.
+        WindowsUtf8.enable();
         // Invoked as `jkx` (hardlink/link to this binary): behave exactly like
         // `jk tool run …` in every case — including --help — so the alias has
         // one mental model.

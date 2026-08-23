@@ -11,6 +11,8 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class CleanCommandTest {
@@ -62,6 +64,7 @@ class CleanCommandTest {
     }
 
     @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC}) // PosixFilePermissions — undeletable-dir lock is POSIX-only
     void delete_stats_do_not_double_count_across_retry_walks(@TempDir Path tempDir) throws IOException {
         Path root = Files.createDirectories(tempDir.resolve("target"));
         // "zz.txt" sorts after "locked/…" in the reverse-order walk, so it is deleted (and must be

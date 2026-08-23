@@ -72,6 +72,12 @@ public final class JdkFingerprint {
         return javaHome.resolve("bin").resolve(exe);
     }
 
+    /** {@code bin/java} (or {@code java.exe}) under {@code javaHome}. */
+    public static Path java(Path javaHome) {
+        String exe = HostPlatform.isWindows() ? "java.exe" : "java";
+        return javaHome.resolve("bin").resolve(exe);
+    }
+
     /**
      * True when {@code dir} is a {@link StableJdkPointer} alias rather than the install itself: a
      * POSIX symlink, or a directory whose resolved name differs from the name on disk (Windows

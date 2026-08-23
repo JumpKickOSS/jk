@@ -38,8 +38,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <p>{@link #out}/{@link #err} and their raw forms hand {@link System#out}/{@link System#err} a
  * string, so that stream's own encoder produces the bytes: the console's on a terminal, a
- * redirect's under capture. {@link #stdout()}/{@link #stderr()} instead write finished bytes past
- * that encoder, which is why they carry the console charset themselves.
+ * redirect's under capture. {@link #stdout()}/{@link #stderr()} write finished bytes <em>past</em>
+ * that encoder, so they encode with the charset of the very stream they were opened over rather
+ * than with a system property. The bytes therefore cannot disagree with {@link System#out} however
+ * it was installed — a Windows UTF-8 console bootstrap, {@code JkManager.captureOutput}, a test
+ * harness.
  *
  * <h2>Handing the terminal to a child</h2>
  *
@@ -49,16 +52,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * #skipTrailingBlank()} at the handoff to suppress it.
  */
 public final class CliOutput {
-
-    /**
-     * Charset {@link System#out} encodes with. Resolved once: {@link #stdout()} writes finished
-     * bytes past {@code System.out}'s encoder, so it must produce the same bytes the console
-     * expects.
-     */
-    private static final Charset STDOUT_CHARSET = consoleCharset("stdout.encoding");
-
-    /** Charset {@link System#err} encodes with; see {@link #STDOUT_CHARSET}. */
-    private static final Charset STDERR_CHARSET = consoleCharset("stderr.encoding");
 
     /**
      * Once true, the leading blank has been printed for this command. Reset at dispatch so prep
@@ -233,7 +226,7 @@ public final class CliOutput {
      * machine-consumed.
      */
     public static PrintStream stdout() {
-        return new EnvelopeStream(false);
+        return EnvelopeStream.open(false);
     }
 
     /**
@@ -241,31 +234,7 @@ public final class CliOutput {
      * string writes are ASCII-rewritten under plain mode — stderr is human even in script mode.
      */
     public static PrintStream stderr() {
-        return new EnvelopeStream(true);
-    }
-
-    /**
-     * Charset {@link System#out} / {@link System#err} encode with: {@code property} ({@code
-     * stdout.encoding} / {@code stderr.encoding}, set by the JVM from the console), then {@code
-     * native.encoding}, then the JVM default. Unknown or unsupported names fall through. {@link
-     * #stdout()} hands finished bytes to {@code System.out.write(byte[],int,int)}, which does not
-     * re-encode, so this stream must produce the console's bytes or Unicode chrome renders as
-     * mojibake on a cp1252 / cp437 console.
-     */
-    static Charset consoleCharset(String property) {
-        Charset declared = charsetOrNull(System.getProperty(property));
-        if (declared != null) return declared;
-        Charset nativeEncoding = charsetOrNull(System.getProperty("native.encoding"));
-        return nativeEncoding != null ? nativeEncoding : Charset.defaultCharset();
-    }
-
-    private static Charset charsetOrNull(String name) {
-        if (name == null || name.isBlank()) return null;
-        try {
-            return Charset.forName(name.trim());
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
+        return EnvelopeStream.open(true);
     }
 
     /**
@@ -289,14 +258,25 @@ public final class CliOutput {
     /**
      * The stream behind {@link #stdout()} / {@link #stderr()}. Rewrites Unicode chrome to ASCII
      * under plain mode (never for machine stdout), opens the envelope on the first write, and
-     * encodes with the console's charset. One stream does all three so every {@link PrintStream}
-     * path shares one hook and there is exactly one encoder in the chain.
+     * encodes with the charset of the stream it writes to. One stream does all three so every
+     * {@link PrintStream} path shares one hook and there is exactly one encoder in the chain.
      */
     private static final class EnvelopeStream extends PrintStream implements PlainAscii.Rewriting {
         private final boolean err;
 
-        EnvelopeStream(boolean err) {
-            super(new LiveSystemStream(err), true, err ? STDERR_CHARSET : STDOUT_CHARSET);
+        /**
+         * Takes sink and charset from one and the same {@link System#out}/{@link System#err}
+         * observation. These bytes reach that stream already encoded, so reading the charset off
+         * anything else — a property, a later {@code System.setOut} — is how a UTF-8 console ends
+         * up printing OEM bytes. A factory because Java forbids statements before {@code super(…)}.
+         */
+        private static EnvelopeStream open(boolean err) {
+            LiveSystemStream sink = new LiveSystemStream(err);
+            return new EnvelopeStream(sink, sink.target.charset(), err);
+        }
+
+        private EnvelopeStream(LiveSystemStream sink, Charset cs, boolean err) {
+            super(sink, true, cs);
             this.err = err;
         }
 

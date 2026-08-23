@@ -38,8 +38,11 @@ class ZincJavaCompilerMixedTest {
 
     @Test
     void named_classpath_jars_are_visible_to_scalac(@TempDir Path dir) throws Exception {
-        Path named = dir.resolve("junit-jupiter-api.jar");
-        Files.copy(junitJupiterApiJar(), named);
+        // Keep the named jar outside @TempDir: Zinc holds jar locks on Windows and JUnit's
+        // TempDir cleanup would fail deleting a file still open by the compiler.
+        Path named = Files.createTempFile("jk-named-junit-jupiter-api-", ".jar");
+        named.toFile().deleteOnExit();
+        Files.copy(junitJupiterApiJar(), named, StandardCopyOption.REPLACE_EXISTING);
         Project p = new Project(dir);
         p.write("T.scala", """
                 import org.junit.jupiter.api.Test

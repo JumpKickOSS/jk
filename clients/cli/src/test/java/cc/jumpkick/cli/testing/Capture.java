@@ -15,6 +15,14 @@ import java.util.function.IntSupplier;
 public final class Capture {
     private Capture() {}
 
+    /**
+     * Line terminators normalized to {@code \n}. Chrome assertions are about content, not about
+     * which terminator the host's {@code println} emits — {@code \r\n} on Windows.
+     */
+    private static String lf(String captured) {
+        return captured.replace("\r\n", "\n");
+    }
+
     public static String stdout(Runnable body) {
         PrintStream original = System.out;
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
@@ -24,7 +32,7 @@ public final class Capture {
         } finally {
             System.setOut(original);
         }
-        return buffer.toString(StandardCharsets.UTF_8);
+        return lf(buffer.toString(StandardCharsets.UTF_8));
     }
 
     /**
@@ -45,7 +53,7 @@ public final class Capture {
         } finally {
             System.setErr(original);
         }
-        return buffer.toString(StandardCharsets.UTF_8);
+        return lf(buffer.toString(StandardCharsets.UTF_8));
     }
 
     /** Overload for exit-code-returning bodies; the exit code is discarded. */
@@ -74,7 +82,7 @@ public final class Capture {
             System.setOut(originalOut);
             System.setErr(originalErr);
         }
-        return new Streams(out.toString(StandardCharsets.UTF_8), err.toString(StandardCharsets.UTF_8));
+        return new Streams(lf(out.toString(StandardCharsets.UTF_8)), lf(err.toString(StandardCharsets.UTF_8)));
     }
 
     /** Overload for exit-code-returning bodies; the exit code is discarded. */

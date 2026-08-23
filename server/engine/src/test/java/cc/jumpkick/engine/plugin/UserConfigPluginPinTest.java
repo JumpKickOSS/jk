@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.util.Hashing;
+import cc.jumpkick.util.MinimalToml;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -17,8 +18,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-2253: a user-config plugin pin that cannot be honored is a loud error — silently running
- * the shipped plugin instead is wrong code with no diagnostic.
+ * A user-config plugin pin that cannot be honored is a loud error — silently running the shipped
+ * plugin instead is wrong code with no diagnostic.
  */
 class UserConfigPluginPinTest {
 
@@ -40,10 +41,11 @@ class UserConfigPluginPinTest {
     @Test
     void missing_pinned_jar_is_a_loud_error(@TempDir Path tmp) throws Exception {
         Path config = tmp.resolve("config.toml");
-        Files.writeString(config, """
+        Files.writeString(
+                config, """
                 [plugins]
-                acme = { path = "%s", sha256 = "%s" }
-                """.formatted(tmp.resolve("gone.jar"), "ab".repeat(32)));
+                acme = { path = %s, sha256 = "%s" }
+                """.formatted(MinimalToml.quote(tmp.resolve("gone.jar").toString()), "ab".repeat(32)));
         System.setProperty("jk.env.JK_CONFIG_FILE", config.toString());
 
         assertThatThrownBy(BuiltInPluginJars::installUserConfig)
@@ -60,8 +62,8 @@ class UserConfigPluginPinTest {
         Path config = tmp.resolve("config.toml");
         Files.writeString(config, """
                 [plugins]
-                acme = { path = "%s", sha256 = "%s" }
-                """.formatted(jar, declared));
+                acme = { path = %s, sha256 = "%s" }
+                """.formatted(MinimalToml.quote(jar.toString()), declared));
         System.setProperty("jk.env.JK_CONFIG_FILE", config.toString());
 
         assertThatThrownBy(BuiltInPluginJars::installUserConfig)
@@ -76,8 +78,8 @@ class UserConfigPluginPinTest {
         Path config = tmp.resolve("config.toml");
         Files.writeString(config, """
                 [plugins]
-                acme = { path = "%s", sha256 = "%s" }
-                """.formatted(jar, Hashing.sha256Hex(jar)));
+                acme = { path = %s, sha256 = "%s" }
+                """.formatted(MinimalToml.quote(jar.toString()), Hashing.sha256Hex(jar)));
         System.setProperty("jk.env.JK_CONFIG_FILE", config.toString());
 
         BuiltInPluginJars.installUserConfig();

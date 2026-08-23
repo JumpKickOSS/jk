@@ -620,11 +620,12 @@ public final class BuildEta {
             // Same path, any dirty-count for this kind — the write side always shapes the
             // key (path#dN), so merge across shapes instead of an exact bare lookup that
             // reads a never-written key.
-            BuildMetrics.Stats shapes = metrics.okAcrossShapes(kind, entryDir.toString());
+            BuildMetrics.Stats shapes = metrics.okAcrossShapes(kind, BuildMetrics.slashKey(entryDir.toString()));
             if (shapes.count() > 0) return shapes;
             // Fall back to plain "build" for the path (pre-1156 rows).
             if (!"build".equals(kind)) {
-                var legacy = metrics.invocation("build", entryDir.toString()).map(BuildMetrics.Entry::ok);
+                var legacy = metrics.invocation("build", BuildMetrics.slashKey(entryDir.toString()))
+                        .map(BuildMetrics.Entry::ok);
                 if (legacy.isPresent() && legacy.get().count() > 0) return legacy.get();
             }
         }

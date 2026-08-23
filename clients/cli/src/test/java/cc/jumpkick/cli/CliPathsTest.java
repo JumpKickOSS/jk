@@ -17,6 +17,8 @@ class CliPathsTest {
 
     @Test
     void absolute_flags_pass_through_normalized() {
-        assertThat(CliPaths.abs("/tmp/a/../b")).isEqualTo(Path.of("/tmp/b"));
+        // Absolute + normalize — on Windows "/tmp/…" becomes drive-qualified (C:\tmp\…).
+        assertThat(CliPaths.abs("/tmp/a/../b"))
+                .isEqualTo(Path.of("/tmp/a/../b").toAbsolutePath().normalize());
     }
 }

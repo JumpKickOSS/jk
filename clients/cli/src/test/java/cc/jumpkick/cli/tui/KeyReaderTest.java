@@ -3,7 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.io.StringReader;
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import org.jline.utils.NonBlocking;
 import org.jline.utils.NonBlockingReader;
@@ -12,8 +12,8 @@ import org.junit.jupiter.api.Test;
 class KeyReaderTest {
 
     private static NonBlockingReader reader(byte[] bytes) {
-        var src = new String(bytes, StandardCharsets.ISO_8859_1);
-        return NonBlocking.nonBlocking("test", new StringReader(src));
+        // Byte stream — StringReader + peek() is flaky for CSI sequences on some hosts.
+        return NonBlocking.nonBlocking("test", new ByteArrayInputStream(bytes), StandardCharsets.ISO_8859_1);
     }
 
     @Test

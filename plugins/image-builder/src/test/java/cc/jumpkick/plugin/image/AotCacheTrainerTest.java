@@ -41,7 +41,7 @@ class AotCacheTrainerTest {
                 .contains("directory");
     }
 
-    /** A packager tree (Quarkus) is always a trainable shape. */
+    /** A packager tree (Quarkus) is never refused for layout — only for host/runtime. */
     @Test
     void a_packager_app_tree_is_never_refused_for_layout() {
         ImageBuilder.Plan appTree = new ImageBuilder.Plan(
@@ -57,7 +57,17 @@ class AotCacheTrainerTest {
                 Path.of("/w/target/quarkus-app"),
                 "quarkus-run.jar");
         assertThat(appTree.hasAppTree()).isTrue();
-        assertThat(AotCacheTrainer.unsupportedReason(appTree)).isNull();
+        String reason = AotCacheTrainer.unsupportedReason(appTree);
+        if (canTrainOnThisHost(appTree)) {
+            assertThat(reason).isNull();
+        } else {
+            assertThat(reason).doesNotContain("exploded-classes").contains("container runtime");
+        }
+    }
+
+    private static boolean canTrainOnThisHost(ImageBuilder.Plan plan) {
+        return AotCacheTrainer.containerRuntime(plan.config().dockerExecutable()) != null
+                || BaseJre.hostCanExecute(plan.config().platforms());
     }
 
     /**

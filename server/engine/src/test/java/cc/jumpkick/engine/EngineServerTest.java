@@ -1177,7 +1177,7 @@ class EngineServerTest {
                 HttpRequest.newBuilder(URI.create(url + "api/build"))
                         .header("Authorization", "Bearer " + token)
                         .header("X-Jk-Engine-Epoch", "from-a-previous-engine")
-                        .POST(HttpRequest.BodyPublishers.ofString("{\"dir\":\"" + project + "\"}"))
+                        .POST(HttpRequest.BodyPublishers.ofString("{\"dir\":" + Jsonl.quote(project.toString()) + "}"))
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
         assertThat(staleEpoch.statusCode())
@@ -1188,8 +1188,9 @@ class EngineServerTest {
                 HttpRequest.newBuilder(URI.create(url + "api/build"))
                         .header("Authorization", "Bearer " + token)
                         .header("X-Jk-Engine-Epoch", epoch)
-                        .POST(HttpRequest.BodyPublishers.ofString(
-                                "{\"dir\":\"" + stateDir.resolve("no-such-project") + "\"}"))
+                        .POST(HttpRequest.BodyPublishers.ofString("{\"dir\":"
+                                + Jsonl.quote(
+                                        stateDir.resolve("no-such-project").toString()) + "}"))
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
         assertThat(rejected.statusCode()).isEqualTo(400); // validation runs before any thread forks
@@ -1198,14 +1199,14 @@ class EngineServerTest {
                 HttpRequest.newBuilder(URI.create(url + "api/build"))
                         .header("Authorization", "Bearer " + token)
                         .header("X-Jk-Engine-Epoch", epoch)
-                        .POST(HttpRequest.BodyPublishers.ofString("{\"dir\":\"" + project + "\"}"))
+                        .POST(HttpRequest.BodyPublishers.ofString("{\"dir\":" + Jsonl.quote(project.toString()) + "}"))
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
         assertThat(accepted.statusCode()).isEqualTo(202);
         assertThat(accepted.body()).contains("\"jid\":");
 
         String startData = awaitSseData(lines, "request-start");
-        assertThat(startData).contains("\"kind\":\"build\"").contains(project.toString());
+        assertThat(startData).contains("\"kind\":\"build\"").contains(Jsonl.quote(project.toString()));
         String finishData = awaitSseData(lines, "request-finish");
         assertThat(finishData).contains("\"success\":false").contains("\"millis\":");
 

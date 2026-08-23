@@ -33,9 +33,10 @@ public final class HostPlatform {
     /**
      * Returns {@code true} when the current JVM is running on Windows.
      *
-     * <p>Callers should use this rather than inlining {@code System.getProperty("os.name",
-     * "").toLowerCase(Locale.ROOT).contains("win")} which appears in many places and is inconsistent
-     * about locale.
+     * <p>Every module that can see {@code :toolchain-jdk} should ask here rather than inline its own
+     * {@code os.name} test. Those that cannot — {@code :core}, and the deliberately dependency-free
+     * worker jars ({@code :java-compiler}, {@code :image-builder}, …) — read {@code os.name} live
+     * just as this does, so a test that spoofs the property flips them and this together.
      */
     public static boolean isWindows() {
         return "windows".equals(currentOs());
