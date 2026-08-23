@@ -60,7 +60,7 @@ public final class McpHistoryViews {
     }
 
     public static String normalizeDir(String dir) {
-        String s = dir.replace('\\', '/');
+        String s = cc.jumpkick.util.DirKeys.key(dir);
         while (s.endsWith("/") && s.length() > 1) s = s.substring(0, s.length() - 1);
         return s;
     }
