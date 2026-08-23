@@ -48,7 +48,9 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
      * --no-progress} is set, returns a silent no-op instance.
      */
     public static JdkDownloadBar show(PrintStream out, String displayName) {
-        boolean silent = cc.jumpkick.config.SessionContext.current().config().noProgressOr(false);
+        // Script mode is no-progress — see the same rule on Spinner's constructor (JK-2330).
+        boolean silent = cc.jumpkick.config.SessionContext.current().config().noProgressOr(false)
+                || cc.jumpkick.cli.CliOutput.scriptMode();
         NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
         JdkDownloadBar db = new JdkDownloadBar(out, displayName, nerdFont, silent);
         // Leading blank of the human chrome envelope (idempotent per command).
@@ -78,7 +80,9 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
      * returned handle when installation completes.
      */
     public static JdkDownloadBar showInstalling(PrintStream out, String displayName) {
-        boolean silent = cc.jumpkick.config.SessionContext.current().config().noProgressOr(false);
+        // Script mode is no-progress — see the same rule on Spinner's constructor (JK-2330).
+        boolean silent = cc.jumpkick.config.SessionContext.current().config().noProgressOr(false)
+                || cc.jumpkick.cli.CliOutput.scriptMode();
         NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
         JdkDownloadBar db = new JdkDownloadBar(out, displayName, nerdFont, silent);
         db.installing = true;

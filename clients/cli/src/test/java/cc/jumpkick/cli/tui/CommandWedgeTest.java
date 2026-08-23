@@ -83,6 +83,31 @@ class CommandWedgeTest {
     }
 
     @Test
+    void spinner_and_download_bar_are_silent_in_script_mode() {
+        // JK-2350: JK_OUTPUT=json puts every command in script mode, but Spinner.show and
+        // JdkDownloadBar.show gated only on --no-progress — jdk install / clean / new animated
+        // cursor ANSI and OSC into a machine-consumed stdout. The rule now lives on the
+        // primitives, so no call site can route around it.
+        var out = new ByteArrayOutputStream();
+        var sink = new PrintStream(out, true, StandardCharsets.UTF_8);
+        CliOutput.beginCommand(true);
+        try {
+            try (Spinner s = Spinner.show(sink, "Cleaning...")) {
+                s.update("still cleaning");
+            }
+            try (JdkDownloadBar db = JdkDownloadBar.show(sink, "Temurin 26")) {
+                db.update(50, 100);
+            }
+            try (JdkDownloadBar db = JdkDownloadBar.showInstalling(sink, "Temurin 26")) {
+                db.update(80, 100);
+            }
+        } finally {
+            CliOutput.beginCommand(false);
+        }
+        assertThat(out.toString(StandardCharsets.UTF_8)).isEmpty();
+    }
+
+    @Test
     void no_source_animates_straight_onto_cli_output_stdout() {
         // The interactivity gate callers rely on asks whether stdout is a *terminal*, which a
         // pty-allocating IDE or CI runner answers yes to while still parsing every byte. Only

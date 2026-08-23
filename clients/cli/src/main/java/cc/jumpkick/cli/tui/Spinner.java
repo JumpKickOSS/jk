@@ -163,7 +163,11 @@ public final class Spinner implements AutoCloseable {
         this.message = message == null ? "" : message;
         this.wedgeCommand = wedge ? (wedgeCommand == null ? "" : wedgeCommand) : null;
         this.nerdFont = wedge ? cc.jumpkick.config.GlobalConfig.nerdFont() : NerdFontCaps.NONE;
-        this.silent = cc.jumpkick.config.SessionContext.current().config().noProgressOr(false);
+        // Script mode is no-progress: cursor-control ANSI/OSC and heartbeat lines must never
+        // enter a stream a program is parsing (JK-2330's rule, applied at the primitive so no
+        // call site can route around it the way Spinner.show(CliOutput.stdout()) did).
+        this.silent = cc.jumpkick.config.SessionContext.current().config().noProgressOr(false)
+                || cc.jumpkick.cli.CliOutput.scriptMode();
         if (wedge) {
             // Glyph FG breathes white↔chip blue; BG applied per frame in step().
             this.frameColors = buildChipPulseStyles(PULSE_FRAMES, Theme.active().planBadgeColor());
