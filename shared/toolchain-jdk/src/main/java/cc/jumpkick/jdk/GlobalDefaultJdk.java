@@ -6,7 +6,6 @@ import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -198,13 +197,11 @@ public final class GlobalDefaultJdk {
     }
 
     private void writeSymlink(Path symlink, Path target) throws IOException {
-        Files.createDirectories(symlink.getParent());
-        Files.deleteIfExists(symlink);
         try {
-            Files.createSymbolicLink(symlink, target);
-        } catch (UnsupportedOperationException | FileSystemException ignored) {
-            // Symlinks unsupported (Windows w/o dev mode, fs without link
-            // support). The config record is the authoritative channel.
+            // POSIX symlink; Windows junction (no elevation). Config remains authoritative if this fails.
+            DirLinks.replace(symlink, target);
+        } catch (UnsupportedOperationException | IOException ignored) {
+            // Link unsupported or mklink failed — config record is the authoritative channel.
         }
     }
 

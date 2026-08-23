@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.Coordinate;
@@ -169,8 +170,10 @@ public final class ToolRunCommand implements CliCommand {
                 if (suffixHits.size() > 1) {
                     // Two modules share the leaf: picking whichever is declared first silently
                     // runs the wrong one — name the candidates instead.
-                    String candidates =
-                            suffixHits.stream().map(d -> wsRoot(d, start)).collect(Collectors.joining(", "));
+                    Path root = wsRoot;
+                    String candidates = suffixHits.stream()
+                            .map(d -> PathDisplay.of(d, root))
+                            .collect(Collectors.joining(", "));
                     throw new AmbiguousModuleTarget("`" + want + "` matches several workspace modules (" + candidates
                             + ") — use the full module path");
                 }
@@ -187,17 +190,6 @@ public final class ToolRunCommand implements CliCommand {
 
     private static List<String> workspaceModules(Path jkToml) {
         return cc.jumpkick.config.TomlScan.scan(jkToml, "workspace.modules").stringArray("workspace.modules");
-    }
-
-    /** Render a module dir relative to its workspace for an error message. */
-    private static String wsRoot(Path moduleDir, Path start) {
-        try {
-            return cc.jumpkick.config.WorkspaceLocator.findRoot(start)
-                    .map(r -> r.relativize(moduleDir).toString())
-                    .orElse(moduleDir.toString());
-        } catch (Exception e) {
-            return moduleDir.toString();
-        }
     }
 
     /** {@code jk run <leaf>} matched more than one workspace module. */

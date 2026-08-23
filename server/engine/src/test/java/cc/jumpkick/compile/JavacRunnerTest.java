@@ -197,8 +197,10 @@ class JavacRunnerTest {
 
     @Test
     void diagnostic_renders_with_location() {
-        CompileResult.Diagnostic d = new CompileResult.Diagnostic(
-                CompileResult.Severity.ERROR, Path.of("src/Foo.java"), 12, 7, "missing semicolon");
-        assertThat(d.render()).isEqualTo("error: src/Foo.java:12:7: missing semicolon");
+        Path file = Path.of("src/Foo.java");
+        CompileResult.Diagnostic d =
+                new CompileResult.Diagnostic(CompileResult.Severity.ERROR, file, 12, 7, "missing semicolon");
+        // Path.toString() uses the platform separator (backslash on Windows).
+        assertThat(d.render()).isEqualTo("error: " + file + ":12:7: missing semicolon");
     }
 }

@@ -131,7 +131,8 @@ public final class CommandWedge {
      */
     public static void envelopeStart(PrintStream out) {
         if (ENVELOPE_STARTED.compareAndSet(false, true)) {
-            out.println();
+            // Literal LF so captured chrome is stable across Windows (\r\n) and POSIX.
+            out.print("\n");
         }
     }
 
@@ -236,7 +237,8 @@ public final class CommandWedge {
      */
     public static void envelopeStartErr() {
         if (ENVELOPE_STARTED.compareAndSet(false, true)) {
-            CliOutput.err();
+            // Literal LF — CliOutput.err() uses println() which is CRLF on Windows.
+            CliOutput.errRaw("\n");
         }
     }
 }

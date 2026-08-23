@@ -103,7 +103,7 @@ fi
 
 # Release artifacts are named jk-<os>-<arch> — the same vocabulary jk itself
 # uses (HostPlatform): linux|macos × x86_64|aarch64. Windows uses
-# scripts/install.ps1; its download half waits on the release layout.
+# install.ps1 (irm|iex); this script never runs there.
 detect_target() {
   local os arch
   case "$(uname -s)" in
@@ -120,8 +120,8 @@ detect_target() {
 }
 
 # Archive format for auto URL resolution: Linux/macOS releases are .xz
-# only (docs/releases.md). Windows uses scripts/install.ps1 and a .zip —
-# this script never runs there. JK_ARCHIVE_URL / a local file may still be
+# only (docs/releases.md). Windows uses install.ps1 and a .zip — this
+# script never runs there. JK_ARCHIVE_URL / a local file may still be
 # .zip. Missing xz must not fall through to a .zip we do not host.
 #
 # Stock macOS ships no xz binary; its /usr/bin/compression_tool decodes the
@@ -230,7 +230,7 @@ fi
 
 # The engine ships as a single fat jar, jk-engine-<version>.jar (see
 # docs/architecture.md "Ship layout" / client+engine split; the engine is a JVM app,
-# not a second native binary). The live copy is $JK_HOME/lib/jk-engine/
+# not a second native binary). The live copy is under $JK_HOME/lib/jk-engine/
 # (or <data>/lib/jk-engine/) — materialized below for local dists;
 # download installs self-fetch it on first engine spawn.
 if [ -n "$LOCAL_FILE" ]; then
@@ -351,7 +351,7 @@ fi
 # Pre-pay the engine's cold-start costs now so the first real build doesn't:
 # `jk engine start` installs the JDK that hosts the engine when none
 # qualifies, and on a download install triggers the client's own engine-jar
-# fetch (which writes $JK_HOME/lib/jk-engine/). The engine serves immediately
+# fetch (which writes under $JK_HOME/lib/jk-engine/). The engine serves immediately
 # and manages its own AOT training sidecar off to the side
 # (docs/architecture.md), so ONE start is the whole warm-up. Best-effort by
 # design: a failed warm-up never fails the install. Skipped only for a local

@@ -103,7 +103,7 @@ fi
 
 # Release artifacts are named jk-<os>-<arch> — the same vocabulary jk itself
 # uses (HostPlatform): linux|macos × x86_64|aarch64. Windows uses
-# scripts/install.ps1; its download half waits on the release layout.
+# install.ps1 (irm|iex); this script never runs there.
 detect_target() {
   local os arch
   case "$(uname -s)" in
@@ -120,8 +120,8 @@ detect_target() {
 }
 
 # Archive format for auto URL resolution: Linux/macOS releases are .xz
-# only (docs/releases.md). Windows uses scripts/install.ps1 and a .zip —
-# this script never runs there. JK_ARCHIVE_URL / a local file may still be
+# only (docs/releases.md). Windows uses install.ps1 and a .zip — this
+# script never runs there. JK_ARCHIVE_URL / a local file may still be
 # .zip. Missing xz must not fall through to a .zip we do not host.
 #
 # Stock macOS ships no xz binary; its /usr/bin/compression_tool decodes the

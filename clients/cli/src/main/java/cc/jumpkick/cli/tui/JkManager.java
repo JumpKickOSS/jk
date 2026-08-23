@@ -1429,10 +1429,11 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Restore the real {@code System.out}/{@code System.err} and flush any trailing partial line
-     * above the region. Idempotent — called by the {@link OutputScope}, and defensively when the
-     * region settles (so a Ctrl-C mid-plan hands the streams back before {@link GlobalCancel}
-     * prints).
+     * Restore the pre-capture {@code System.out}/{@code System.err} and flush any trailing partial
+     * line above the region. Idempotent — called by the {@link OutputScope}, and defensively when
+     * the region settles (so a Ctrl-C mid-plan hands the streams back before {@link GlobalCancel}
+     * prints). After {@link Interactivity#installAnsiTerminalStreams}, the saved streams are the
+     * JLine-backed chrome writers — restore must return those, not the primordial JVM streams.
      */
     void restoreStreams() {
         LineSink toFlush = null;

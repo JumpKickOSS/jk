@@ -17,6 +17,10 @@ import java.io.PrintStream;
  *
  * <p>Under {@code --no-ansi}, string writes run through {@link PlainAscii} so ellipsis, bullets,
  * and pulse circles in free-form messages become ASCII without each command hand-substituting.
+ *
+ * <p>On Windows, {@link cc.jumpkick.cli.tui.WindowsUtf8} retargets {@link System#out} to UTF-8 after
+ * setting the console to code page 65001. Prefer this class (or {@link System#out}) for human chrome
+ * — do not open ad-hoc byte streams to the console with a mismatched charset.
  */
 public final class CliOutput {
 

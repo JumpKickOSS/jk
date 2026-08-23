@@ -34,8 +34,9 @@ class GradleProbeTest {
 
     private static void makeJdk(Path home, String version) throws IOException {
         Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake\n");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake\n");
+        boolean win = cc.jumpkick.jdk.HostPlatform.isWindows();
+        Files.writeString(home.resolve("bin").resolve(win ? "java.exe" : "java"), "#!/fake\n");
+        Files.writeString(home.resolve("bin").resolve(win ? "javac.exe" : "javac"), "#!/fake\n");
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
     }

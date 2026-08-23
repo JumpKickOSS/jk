@@ -12,6 +12,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class Giter8ApplyTest {
@@ -104,6 +106,7 @@ class Giter8ApplyTest {
     }
 
     @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
     void symlinked_template_entries_are_skipped_not_dereferenced(@TempDir Path tmp) throws Exception {
         Path secret = tmp.resolve("id_ed25519");
         Files.writeString(secret, "PRIVATE KEY MATERIAL\n");

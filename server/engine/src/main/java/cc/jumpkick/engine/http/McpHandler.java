@@ -1008,7 +1008,13 @@ public final class McpHandler {
         if (dir == null || dir.isBlank()) throw new McpError(-32602, "jk_bind requires arguments.dir");
         String abs;
         try {
-            abs = PathUtil.resolveUserPath(dir).toString();
+            // Journal/bind keys are strings: keep leading-/ and drive-letter forms as keys
+            // (normalize separators only). Resolving "/ws" through Path on Windows yields
+            // "C:/ws" and breaks fixtures that use POSIX-style absolute dir keys.
+            abs = McpHistoryViews.normalizeDir(dir);
+            if (!isAbsoluteDirKey(dir)) {
+                abs = McpHistoryViews.normalizeDir(PathUtil.resolveUserPath(dir).toString());
+            }
         } catch (RuntimeException e) {
             throw new McpError(-32602, "invalid dir: " + e.getMessage());
         }
@@ -1565,6 +1571,17 @@ public final class McpHandler {
             throw new McpError(-32602, "requires arguments.dir (or jk_bind first)");
         }
         return dir;
+    }
+
+    /** True for journal-style absolute keys: leading {@code /} or {@code C:\…} / {@code C:/…}. */
+    private static boolean isAbsoluteDirKey(String dir) {
+        if (dir == null || dir.isBlank()) return false;
+        String s = dir.strip();
+        if (s.startsWith("/") || s.startsWith("\\")) return true;
+        return s.length() >= 3
+                && Character.isLetter(s.charAt(0))
+                && s.charAt(1) == ':'
+                && (s.charAt(2) == '/' || s.charAt(2) == '\\');
     }
 
     private static int intArg(Object raw, int fallback, int min, int max) {

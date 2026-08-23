@@ -605,7 +605,8 @@ public final class JkResultsMarkdown {
     }
 
     private static String pathOr(@Nullable Path path, String fallback) {
-        return path == null ? fallback : path.toString();
+        // Forward slashes in the markdown report so display paths match across OSes.
+        return path == null ? fallback : path.toString().replace('\\', '/');
     }
 
     private static String leaf(String dir) {

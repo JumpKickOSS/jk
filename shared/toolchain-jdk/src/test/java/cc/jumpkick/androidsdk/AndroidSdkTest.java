@@ -45,8 +45,9 @@ class AndroidSdkTest {
         Files.createDirectories(studio.resolve("platforms"));
         Path managed = tmp.resolve("jk").resolve("android-sdk");
         AndroidSdk linked = AndroidSdk.resolve(var -> "ANDROID_HOME".equals(var) ? studio.toString() : null, managed);
-        assertThat(Files.isSymbolicLink(managed)).isTrue();
+        // Symlink (POSIX) or junction (Windows) — resolve is the cross-platform check.
         assertThat(linked.root().toRealPath()).isEqualTo(studio.toRealPath());
+        assertThat(managed.toRealPath()).isEqualTo(studio.toRealPath());
 
         // Nothing discovered: the managed root is created.
         Path managed2 = tmp.resolve("jk2").resolve("android-sdk");

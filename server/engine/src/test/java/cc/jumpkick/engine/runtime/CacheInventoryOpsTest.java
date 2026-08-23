@@ -65,8 +65,8 @@ class CacheInventoryOpsTest {
 
     @Test
     void store_usage_counts_the_requested_store_not_the_ambient_one(@TempDir Path tmp) throws Exception {
-        // JK-2161: usage must count the same tree wipe-store would remove — the client
-        // resolves JK_STORE_DIR from ITS environment and sends it in the request.
+        // usage must count the same tree wipe-store would remove — the client resolves
+        // JK_STORE_DIR from ITS environment and sends it in the request.
         Path cache = Files.createDirectories(tmp.resolve("cache"));
         Path store = Files.createDirectories(tmp.resolve("client-store"));
         Path blob = Files.createDirectories(store.resolve("sha256/ab")).resolve("cd");
@@ -83,8 +83,8 @@ class CacheInventoryOpsTest {
 
     @Test
     void blob_shared_with_an_unbucketed_key_still_counts(@TempDir Path cache) throws Exception {
-        // JK-2161: an unbucketed key must not consume the shared-sha dedup set, or the
-        // count would depend on directory-stream order.
+        // An unbucketed key must not consume the shared-sha dedup set, or the count would
+        // depend on directory-stream order.
         String sha = "a".repeat(64);
         Path blob = Files.createDirectories(cache.resolve("sha256/aa/aa")).resolve("a".repeat(60));
         Files.writeString(blob, "jar-bytes");
@@ -140,6 +140,7 @@ class CacheInventoryOpsTest {
     void store_usage_counts_hardlinked_blobs_once(@TempDir Path tmp) throws Exception {
         Path cache = Files.createDirectories(tmp.resolve("cache"));
         Path store = tmp.resolve("store");
+        org.junit.jupiter.api.Assumptions.assumeTrue(probeHardLink(store), "hard links required");
         Path original = Files.createDirectories(store.resolve("sha256/ab")).resolve("cd");
         Files.write(original, new byte[] {'P', 'K', 3, 4, 1, 2, 3, 4, 5, 6});
         Files.createLink(store.resolve("sha256/ab/alias"), original);
@@ -153,8 +154,8 @@ class CacheInventoryOpsTest {
     }
 
     private static Path m2Artifact(Path storeRoot, String repo, String rel) throws Exception {
-        // repos/ lives under the STORE root (JK-2176) — the same tree production reaches
-        // via RepoArtifactStore.forRepoName(cas.root(), name).
+        // repos/ lives under the STORE root — the same tree production reaches via
+        // RepoArtifactStore.forRepoName(cas.root(), name).
         Path f = storeRoot.resolve("repos").resolve(repo).resolve(rel);
         Files.createDirectories(f.getParent());
         Files.writeString(f, "jar-bytes");

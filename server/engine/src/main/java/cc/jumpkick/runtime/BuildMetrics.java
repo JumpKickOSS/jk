@@ -265,7 +265,7 @@ public final class BuildMetrics {
                 String body = key.substring("invocation.".length(), key.length() - ".wall-ms".length());
                 int dot = body.indexOf('.');
                 String kind = dot < 0 ? body : body.substring(0, dot);
-                String dir = dot < 0 ? "" : body.substring(dot + 1);
+                String dir = slashKey(dot < 0 ? "" : body.substring(dot + 1));
                 String ik = kind + SEP + dir;
                 if (!hostOnly || !inv.containsKey(ik)) {
                     inv.put(ik, new Entry(kind, dir, null, null, ok, Stats.EMPTY, Stats.EMPTY, now));
@@ -302,7 +302,7 @@ public final class BuildMetrics {
         String body = key.substring("module.".length(), key.length() - ".wall-ms".length());
         int at = body.indexOf(marker);
         if (at <= 0) return;
-        String dir = body.substring(0, at);
+        String dir = slashKey(body.substring(0, at));
         String task = body.substring(at + marker.length());
         if (task.isEmpty()) return;
         String sk = dir + SEP + task;
@@ -317,7 +317,7 @@ public final class BuildMetrics {
 
     /** The invocation aggregate for {@code (kind, dir)}; {@code dir ""} = the global tier. */
     public Optional<Entry> invocation(String kind, String dir) {
-        return Optional.ofNullable(invocations.get(kind + SEP + dir));
+        return Optional.ofNullable(invocations.get(kind + SEP + slashKey(dir)));
     }
 
     /**
@@ -341,18 +341,26 @@ public final class BuildMetrics {
 
     /** True when {@code candidate} is {@code dir} or a {@code dir#dN} shape of it. */
     public static boolean sameBaseDir(String dir, String candidate) {
-        return dir.equals(candidate) || dir.equals(baseDir(candidate));
+        String a = slashKey(dir);
+        String b = slashKey(candidate);
+        return a.equals(b) || a.equals(baseDir(b));
     }
 
     /** Strip a trailing {@code #dN} shape suffix{@code path#d3} → {@code path}. */
     public static String baseDir(String dir) {
         if (dir == null) return "";
-        int i = dir.lastIndexOf("#d");
-        if (i <= 0) return dir;
-        for (int j = i + 2; j < dir.length(); j++) {
-            if (!Character.isDigit(dir.charAt(j))) return dir;
+        String s = slashKey(dir);
+        int i = s.lastIndexOf("#d");
+        if (i <= 0) return s;
+        for (int j = i + 2; j < s.length(); j++) {
+            if (!Character.isDigit(s.charAt(j))) return s;
         }
-        return i + 2 == dir.length() ? dir : dir.substring(0, i);
+        return i + 2 == s.length() ? s : s.substring(0, i);
+    }
+
+    /** Forward-slash form of a metrics dir key (stable across OSes). */
+    public static String slashKey(String dir) {
+        return dir == null ? "" : dir.replace('\\', '/');
     }
 
     /**
@@ -365,7 +373,7 @@ public final class BuildMetrics {
 
     /** The step aggregate for {@code (dir, step)}; {@code dir ""} = the global tier. */
     public Optional<Entry> step(String dir, String step) {
-        return Optional.ofNullable(steps.get(dir + SEP + step));
+        return Optional.ofNullable(steps.get(slashKey(dir) + SEP + step));
     }
 
     /** Every row, stable-ordered: invocation rows by (kind, dir), then step rows by (dir, step). */
@@ -459,9 +467,10 @@ public final class BuildMetrics {
 
     private static void foldInvocation(
             Map<String, Entry> inv, String kind, String dir, String coord, Outcome o, long nowMillis) {
-        String k = kind + SEP + dir;
-        Entry e = inv.getOrDefault(
-                k, new Entry(kind, dir, coord, null, Stats.EMPTY, Stats.EMPTY, Stats.EMPTY, nowMillis));
+        String d = slashKey(dir);
+        String k = kind + SEP + d;
+        Entry e =
+                inv.getOrDefault(k, new Entry(kind, d, coord, null, Stats.EMPTY, Stats.EMPTY, Stats.EMPTY, nowMillis));
         Stats ok = e.ok(), failed = e.failed(), cancelled = e.cancelled();
         // Cancelled wins over success: a truncated Ctrl-C wall must never train the ok bucket that
         // ETA priors read (even if a racy outcome reported success). Failed stays separate.
@@ -470,21 +479,21 @@ public final class BuildMetrics {
         else failed = failed.plus(o.millis());
         // A freshly-learned coord upgrades a row that predates one (label only, never a key).
         String label = coord != null ? coord : e.coord();
-        inv.put(k, new Entry(kind, dir, label, null, ok, failed, cancelled, nowMillis));
+        inv.put(k, new Entry(kind, d, label, null, ok, failed, cancelled, nowMillis));
     }
 
     private static void foldStep(
             Map<String, Entry> ph, String dir, String step, String bucket, long millis, long nowMillis) {
-        String k = dir + SEP + step;
-        Entry e =
-                ph.getOrDefault(k, new Entry(null, dir, null, step, Stats.EMPTY, Stats.EMPTY, Stats.EMPTY, nowMillis));
+        String d = slashKey(dir);
+        String k = d + SEP + step;
+        Entry e = ph.getOrDefault(k, new Entry(null, d, null, step, Stats.EMPTY, Stats.EMPTY, Stats.EMPTY, nowMillis));
         Stats ok = e.ok(), failed = e.failed(), cancelled = e.cancelled();
         switch (bucket) {
             case "ok" -> ok = ok.plus(millis);
             case "failed" -> failed = failed.plus(millis);
             default -> cancelled = cancelled.plus(millis);
         }
-        ph.put(k, new Entry(null, dir, null, step, ok, failed, cancelled, nowMillis));
+        ph.put(k, new Entry(null, d, null, step, ok, failed, cancelled, nowMillis));
     }
 
     /** Maps a {@code TaskStatus} name to a stats bucket; null = don't record (SKIPPED, non-terminal). */
@@ -618,10 +627,11 @@ public final class BuildMetrics {
     private static Entry readEntry(Object row, boolean invocation) {
         if (!(row instanceof Map<?, ?> o)) return null;
         String kind = str(o.get("kind"));
-        String dir = str(o.get("dir"));
+        String rawDir = str(o.get("dir"));
         String step = str(o.get("task"));
         if (step == null) step = str(o.get("step"));
-        if (dir == null || (invocation ? kind == null : step == null)) return null;
+        if (rawDir == null || (invocation ? kind == null : step == null)) return null;
+        String dir = slashKey(rawDir);
         return new Entry(
                 invocation ? kind : null,
                 dir,

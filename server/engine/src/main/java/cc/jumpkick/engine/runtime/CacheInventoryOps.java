@@ -20,9 +20,11 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /** Cache/store inventory for {@code jk cache usage}, {@code jk storage usage}, and {@code jk repo}. */
@@ -129,6 +131,7 @@ public final class CacheInventoryOps {
         Path repos = storeRoot.resolve("repos");
 
         Set<Object> seen = new HashSet<>();
+        Map<Long, List<Path>> bySize = new HashMap<>();
         long jarFiles = 0, jarBytes = 0;
         long execFiles = 0, execBytes = 0;
         long ociFiles = 0, ociBytes = 0;
@@ -143,8 +146,7 @@ public final class CacheInventoryOps {
                         continue;
                     }
                     if (!attrs.isRegularFile()) continue;
-                    Object key = attrs.fileKey();
-                    if (key == null) key = p.toAbsolutePath().normalize();
+                    Object key = identityKey(p, attrs, bySize);
                     long size = seen.add(key) ? attrs.size() : 0L;
                     switch (sniffArtifactKind(p)) {
                         case EXECUTABLE -> {
@@ -164,10 +166,11 @@ public final class CacheInventoryOps {
             }
         }
 
-        Stat reposExtra = walkExclusiveAdding(repos, seen);
+        Stat reposExtra = walkExclusiveAdding(repos, seen, bySize);
         jarFiles += reposExtra.files;
         jarBytes += reposExtra.bytes;
-        Stat workers = walkExclusiveAdding(lib, seen);
+        // (bySize shared so repos hard-links to CAS blobs are not double-counted)
+        Stat workers = walkExclusiveAdding(lib, seen, bySize);
         long totalFiles = jarFiles + execFiles + ociFiles + workers.files;
         long totalBytes = jarBytes + execBytes + ociBytes + workers.bytes;
         DiskUsage.Stats mavenLocal;
@@ -382,7 +385,8 @@ public final class CacheInventoryOps {
 
     private record Stat(long files, long bytes) {}
 
-    private static Stat walkExclusiveAdding(Path dir, Set<Object> seenKeys) throws IOException {
+    private static Stat walkExclusiveAdding(Path dir, Set<Object> seenKeys, Map<Long, List<Path>> bySize)
+            throws IOException {
         if (dir == null || !Files.isDirectory(dir)) return new Stat(0, 0);
         long files = 0;
         long bytes = 0;
@@ -396,11 +400,36 @@ public final class CacheInventoryOps {
                 }
                 if (!attrs.isRegularFile()) continue;
                 files++;
-                Object key = attrs.fileKey();
-                if (key == null) key = p.toAbsolutePath().normalize();
+                Object key = identityKey(p, attrs, bySize);
                 if (seenKeys.add(key)) bytes += attrs.size();
             }
         }
         return new Stat(files, bytes);
+    }
+
+    /**
+     * Stable identity for hard-link dedupe. Prefer {@link BasicFileAttributes#fileKey()}; when null
+     * (Windows), reuse the first path that {@link Files#isSameFile} matches among same-size files.
+     */
+    private static Object identityKey(Path path, BasicFileAttributes attrs, Map<Long, List<Path>> bySize)
+            throws IOException {
+        Object key = attrs.fileKey();
+        if (key != null) return key;
+        long size = attrs.size();
+        List<Path> cands = bySize.get(size);
+        if (cands != null) {
+            for (Path c : cands) {
+                try {
+                    if (Files.isSameFile(path, c)) return c;
+                } catch (IOException ignored) {
+                    // unreadable candidate
+                }
+            }
+        } else {
+            cands = new ArrayList<>(2);
+            bySize.put(size, cands);
+        }
+        cands.add(path);
+        return path;
     }
 }

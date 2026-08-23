@@ -41,8 +41,9 @@ class JdkRegistryTest {
         Path bundle = tempDir.resolve("temurin-21");
         Path macHome = bundle.resolve("Contents").resolve("Home");
         Files.createDirectories(macHome.resolve("bin"));
-        Files.writeString(macHome.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(macHome.resolve("bin").resolve("javac"), "#!/fake");
+        boolean win = HostPlatform.isWindows();
+        Files.writeString(macHome.resolve("bin").resolve(win ? "java.exe" : "java"), "#!/fake");
+        Files.writeString(macHome.resolve("bin").resolve(win ? "javac.exe" : "javac"), "#!/fake");
         Files.writeString(macHome.resolve("release"), "JAVA_VERSION=\"21\"\n");
         JdkOwnership.mark(bundle);
 
@@ -293,8 +294,9 @@ class JdkRegistryTest {
 
     private static void makeJdkInstall(Path home, String version, String implementor) throws IOException {
         Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
+        boolean win = HostPlatform.isWindows();
+        Files.writeString(home.resolve("bin").resolve(win ? "java.exe" : "java"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve(win ? "javac.exe" : "javac"), "#!/fake");
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"" + implementor + "\"\n");
         JdkOwnership.mark(home);
@@ -302,9 +304,10 @@ class JdkRegistryTest {
 
     private static void makeGraalvmInstall(Path home, String version) throws IOException {
         Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
-        Files.writeString(home.resolve("bin").resolve("native-image"), "#!/fake");
+        boolean win = HostPlatform.isWindows();
+        Files.writeString(home.resolve("bin").resolve(win ? "java.exe" : "java"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve(win ? "javac.exe" : "javac"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve(win ? "native-image.cmd" : "native-image"), "#!/fake");
         Files.writeString(
                 home.resolve("release"),
                 "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Oracle Corporation\"\n"

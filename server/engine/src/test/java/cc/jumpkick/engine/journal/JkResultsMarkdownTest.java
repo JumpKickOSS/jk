@@ -222,7 +222,7 @@ class JkResultsMarkdownTest {
         assertThat(Files.readString(run.resolve("jk-results.md"))).contains("# jk results — OK");
         assertThat(Files.readString(latest)).contains("# jk results — OK");
         assertThat(Files.readString(latest))
-                .contains(run.resolve("details.jsonl").toString());
+                .contains(run.resolve("details.jsonl").toString().replace('\\', '/'));
     }
 
     @Test

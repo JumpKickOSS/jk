@@ -25,8 +25,9 @@ class JUnitLauncherWorkerEnvTest {
         assertThat(w1.get("JK_STATE_DIR")).isEqualTo("/tmp/jk-cli-abc-w1");
         // Shared store/home stays shared — only engine identity splits.
         assertThat(w0.get("JK_HOME")).isEqualTo("/x/test-jk-home");
-        assertThat(w0.get("TMPDIR")).isEqualTo("/tmp/t0");
-        assertThat(w1.get("TMPDIR")).isEqualTo("/tmp/t1");
+        // TMPDIR is a real OS path — compare via Path so Windows separators match.
+        assertThat(w0.get("TMPDIR")).isEqualTo(Path.of("/tmp/t0").toString());
+        assertThat(w1.get("TMPDIR")).isEqualTo(Path.of("/tmp/t1").toString());
     }
 
     @Test

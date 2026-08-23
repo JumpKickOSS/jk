@@ -3,7 +3,9 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.jdk.DirLinks;
 import cc.jumpkick.jdk.GlobalDefaultJdk;
+import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JdkOwnership;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.lock.Lockfile;
@@ -43,11 +45,7 @@ class JkEnvTest {
         // pointing at it.
         var jdksRoot = tempDir.resolve("jdks");
         var jdkHome = jdksRoot.resolve("temurin-25.0.3");
-        Files.createDirectories(jdkHome.resolve("bin"));
-        Files.writeString(jdkHome.resolve("bin").resolve("java"), "#!/fake\n");
-        Files.writeString(jdkHome.resolve("bin").resolve("javac"), "#!/fake\n");
-        Files.writeString(jdkHome.resolve("release"), "JAVA_VERSION=\"25.0.3\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
-        JdkOwnership.mark(jdkHome);
+        fakeJdk(jdkHome);
 
         var project = tempDir.resolve("project");
         Files.createDirectories(project);
@@ -63,7 +61,7 @@ class JkEnvTest {
         // real path, not the raw @TempDir.
         var realJdkHome = jdkHome.toRealPath();
         assertThat(target.isActive()).isTrue();
-        assertThat(target.projectRoot()).contains(project);
+        assertThat(target.projectRoot()).contains(project.toAbsolutePath().normalize());
         assertThat(target.vars().get("JAVA_HOME")).isEqualTo(realJdkHome.toString());
         assertThat(target.vars().get("PATH"))
                 .isEqualTo(realJdkHome.resolve("bin") + File.pathSeparator + "/usr/bin:/bin");
@@ -74,8 +72,9 @@ class JkEnvTest {
         var jdksRoot = tempDir.resolve("jdks");
         var jdkHome = jdksRoot.resolve("graalvm-jdk-25");
         Files.createDirectories(jdkHome.resolve("bin"));
-        Files.writeString(jdkHome.resolve("bin").resolve("java"), "#!/fake\n");
-        Files.writeString(jdkHome.resolve("bin").resolve("javac"), "#!/fake\n");
+        boolean win = HostPlatform.isWindows();
+        Files.writeString(jdkHome.resolve("bin").resolve(win ? "java.exe" : "java"), "#!/fake\n");
+        Files.writeString(jdkHome.resolve("bin").resolve(win ? "javac.exe" : "javac"), "#!/fake\n");
         Files.writeString(
                 jdkHome.resolve("release"),
                 "JAVA_VERSION=\"25.0.0\"\nIMPLEMENTOR=\"Oracle Corporation\"\nIMPLEMENTOR_VERSION=\"Oracle GraalVM 25\"\n");
@@ -170,7 +169,7 @@ class JkEnvTest {
         Files.createDirectories(data);
         var configFile = data.resolve("config.toml");
         Files.writeString(configFile, "default-jdk = \"temurin-21.0.5\"\n");
-        Files.createSymbolicLink(data.resolve("current-jdk"), current);
+        DirLinks.replace(data.resolve("current-jdk"), current);
         var defaults = new GlobalDefaultJdk(data.resolve("default-jdk"), data.resolve("current-jdk"), configFile);
 
         var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", defaults);
@@ -200,8 +199,9 @@ class JkEnvTest {
     /** Stand up a fake jk-managed JDK install (bin/java + release) and return its home. */
     private static Path fakeJdk(Path home) throws IOException {
         Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake\n");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake\n");
+        boolean win = HostPlatform.isWindows();
+        Files.writeString(home.resolve("bin").resolve(win ? "java.exe" : "java"), "#!/fake\n");
+        Files.writeString(home.resolve("bin").resolve(win ? "javac.exe" : "javac"), "#!/fake\n");
         Files.writeString(home.resolve("release"), "JAVA_VERSION=\"25.0.3\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
         JdkOwnership.mark(home);
         return home;

@@ -63,8 +63,9 @@ class JdkResolverTest {
      */
     private static void makeJdkInstall(Path home, String version) throws IOException {
         Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
+        boolean win = HostPlatform.isWindows();
+        Files.writeString(home.resolve("bin").resolve(win ? "java.exe" : "java"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve(win ? "javac.exe" : "javac"), "#!/fake");
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
         JdkOwnership.mark(home);

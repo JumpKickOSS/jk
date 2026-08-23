@@ -492,7 +492,8 @@ public final class EffortWeights {
         if (stepCounts == null) stepCounts = Map.of();
         int weight = 0;
         int testWeight = 0;
-        String mod = dir == null ? "" : dir.toString();
+        // Forward-slash keys so Path.toString on Windows still hits metrics recorded with `/`.
+        String mod = dir == null ? "" : dir.toString().replace('\\', '/');
         int wWorkers = Math.max(1, testWorkers);
         for (String raw : runningSteps) {
             String step = metricsStepName(raw);

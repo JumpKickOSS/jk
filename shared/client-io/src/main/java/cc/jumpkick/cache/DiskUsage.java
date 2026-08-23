@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -46,8 +48,8 @@ public final class DiskUsage {
      * link — later trees add 0 bytes for that key. Put store {@code sha256/} before {@code repos/}
      * so leftover shared inodes are not counted twice.
      *
-     * <p>Missing or unreadable roots contribute zeros. A null {@code fileKey} on the fallback
-     * path (rare providers) falls back to the absolute path so accounting never drops a file.
+     * <p>Missing or unreadable roots contribute zeros. When {@code fileKey} is null (common on
+     * Windows), hard links are deduplicated via {@link Files#isSameFile} grouped by size.
      */
     public static Stats[] exclusive(List<Path> roots) throws IOException {
         Objects.requireNonNull(roots, "roots");
@@ -121,10 +123,10 @@ public final class DiskUsage {
                 if (!attrs.isRegularFile()) continue;
                 files++;
                 Object key = attrs.fileKey();
-                if (key == null) {
-                    key = p.toAbsolutePath().normalize();
-                }
-                if (seen.addObject(key)) {
+                if (key != null) {
+                    if (seen.addObject(key)) bytes += attrs.size();
+                } else if (seen.addSameFile(p, attrs.size())) {
+                    // Windows often returns a null fileKey; isSameFile still detects hard links.
                     bytes += attrs.size();
                 }
             }
@@ -134,12 +136,13 @@ public final class DiskUsage {
 
     /**
      * Cross-root seen-set: a primitive open-addressed {@code (dev, ino)} long set on unix,
-     * an object set of {@code fileKey}s elsewhere. ~8 bytes per multi-linked file instead of a
-     * boxed key + node per file.
+     * an object set of {@code fileKey}s elsewhere, and an {@link Files#isSameFile} size-bucket
+     * fallback when {@code fileKey} is null (Windows).
      */
     private static final class SeenLinks {
         boolean unixSupported = true;
         private Set<Object> objects; // fallback platforms only, lazily created
+        private Map<Long, List<Path>> bySize; // null-fileKey hard-link dedupe
         private long[] slots = new long[1 << 10];
         private int used;
         private boolean hasZero;
@@ -169,6 +172,26 @@ public final class DiskUsage {
         boolean addObject(Object key) {
             if (objects == null) objects = new HashSet<>();
             return objects.add(key);
+        }
+
+        /** {@code true} when {@code path} is a new inode (count its bytes). */
+        boolean addSameFile(Path path, long size) throws IOException {
+            if (bySize == null) bySize = new HashMap<>();
+            List<Path> cands = bySize.get(size);
+            if (cands != null) {
+                for (Path c : cands) {
+                    try {
+                        if (Files.isSameFile(path, c)) return false;
+                    } catch (IOException ignored) {
+                        // unreadable candidate — treat as distinct
+                    }
+                }
+            } else {
+                cands = new ArrayList<>(2);
+                bySize.put(size, cands);
+            }
+            cands.add(path);
+            return true;
         }
 
         private void grow() {

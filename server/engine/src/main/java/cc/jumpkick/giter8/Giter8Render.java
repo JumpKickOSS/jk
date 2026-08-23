@@ -2,6 +2,7 @@
 package cc.jumpkick.giter8;
 
 import java.io.IOException;
+import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -9,6 +10,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
+import org.stringtemplate.v4.AutoIndentWriter;
 import org.stringtemplate.v4.ST;
 import org.stringtemplate.v4.STGroup;
 import org.stringtemplate.v4.misc.STMessage;
@@ -65,8 +67,13 @@ final class Giter8Render {
         }
         String out;
         try {
-            out = st.render();
-        } catch (RuntimeException e) {
+            // ST's default writer uses line.separator; scaffolds must stay LF on every OS.
+            StringWriter buf = new StringWriter(template.length() + 64);
+            // Explicit LF so scaffolds are identical across OSes (default uses line.separator).
+            AutoIndentWriter wr = new AutoIndentWriter(buf, "\n");
+            st.write(wr);
+            out = buf.toString();
+        } catch (IOException | RuntimeException e) {
             throw new IOException("giter8 template failed: " + e.getMessage(), e);
         }
         if (!errors.isEmpty()) {

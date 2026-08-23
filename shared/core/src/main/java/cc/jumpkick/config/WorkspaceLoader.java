@@ -54,7 +54,7 @@ public final class WorkspaceLoader {
         if (!bad.isEmpty()) {
             throw new JkBuildParseException("workspace modules missing jk.toml: " + bad);
         }
-        checkArtifactCollisions(root, modules);
+        checkArtifactCollisions(workspaceRoot, root, modules);
         return modules;
     }
 
@@ -88,7 +88,7 @@ public final class WorkspaceLoader {
      * <p>Modules and the workspace root itself can collide (a workspace root that's <i>also</i> a
      * runnable project is rare but legal, so we include the root in the uniqueness set).
      */
-    private static void checkArtifactCollisions(JkBuild root, Map<Path, JkBuild> modules) {
+    private static void checkArtifactCollisions(Path workspaceRoot, JkBuild root, Map<Path, JkBuild> modules) {
         Map<String, Path> claimed = new LinkedHashMap<>();
         record Entry(Path dir, JkBuild build) {}
         List<Entry> all = new ArrayList<>(modules.size() + 1);
@@ -109,8 +109,8 @@ public final class WorkspaceLoader {
             // value was null".
             if (claimed.containsKey(key)) {
                 Path previous = claimed.get(key);
-                String prevLabel = previous == null ? "<workspace root>" : previous.toString();
-                String thisLabel = e.dir == null ? "<workspace root>" : e.dir.toString();
+                String prevLabel = moduleLabel(workspaceRoot, previous);
+                String thisLabel = moduleLabel(workspaceRoot, e.dir);
                 throw new JkBuildParseException("workspace artifact collision: `"
                         + key
                         + ".jar` would be "
@@ -124,5 +124,12 @@ public final class WorkspaceLoader {
             }
             claimed.put(key, e.dir);
         }
+    }
+
+    /** Workspace-relative path with {@code /} separators, or {@code <workspace root>}. */
+    private static String moduleLabel(Path workspaceRoot, Path moduleDir) {
+        if (moduleDir == null) return "<workspace root>";
+        Path rel = workspaceRoot.relativize(moduleDir);
+        return rel.toString().replace('\\', '/');
     }
 }

@@ -248,7 +248,8 @@ public final class AggregatedMetrics {
 
     public static String sanitize(String s) {
         if (s == null) return "unknown";
-        return s.replaceAll("[^a-zA-Z0-9._:/-]+", "_");
+        // Forward slashes first so Windows paths stay one key family with Unix.
+        return s.replace('\\', '/').replaceAll("[^a-zA-Z0-9._:/-]+", "_");
     }
 
     private static void parseProjectFile(

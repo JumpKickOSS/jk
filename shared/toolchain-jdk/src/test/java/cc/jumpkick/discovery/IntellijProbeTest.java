@@ -38,8 +38,9 @@ class IntellijProbeTest {
     void discover_finds_a_flat_jdk_install(@TempDir Path tempDir) throws IOException {
         Path install = tempDir.resolve("temurin-21");
         Files.createDirectories(install.resolve("bin"));
-        Files.writeString(install.resolve("bin").resolve("java"), "#!/fake\n");
-        Files.writeString(install.resolve("bin").resolve("javac"), "#!/fake\n");
+        boolean win = cc.jumpkick.jdk.HostPlatform.isWindows();
+        Files.writeString(install.resolve("bin").resolve(win ? "java.exe" : "java"), "#!/fake\n");
+        Files.writeString(install.resolve("bin").resolve(win ? "javac.exe" : "javac"), "#!/fake\n");
         Files.writeString(install.resolve("release"), "JAVA_VERSION=\"21.0.5\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
 
         List<JdkHit> hits = new IntellijProbe(tempDir).discoverAllJdks();
@@ -52,8 +53,9 @@ class IntellijProbeTest {
         Path bundle = tempDir.resolve("temurin-21.jdk");
         Path realHome = bundle.resolve("Contents").resolve("Home");
         Files.createDirectories(realHome.resolve("bin"));
-        Files.writeString(realHome.resolve("bin").resolve("java"), "#!/fake\n");
-        Files.writeString(realHome.resolve("bin").resolve("javac"), "#!/fake\n");
+        boolean win = cc.jumpkick.jdk.HostPlatform.isWindows();
+        Files.writeString(realHome.resolve("bin").resolve(win ? "java.exe" : "java"), "#!/fake\n");
+        Files.writeString(realHome.resolve("bin").resolve(win ? "javac.exe" : "javac"), "#!/fake\n");
         Files.writeString(realHome.resolve("release"), "JAVA_VERSION=\"21.0.5\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
 
         List<JdkHit> hits = new IntellijProbe(tempDir).discoverAllJdks();

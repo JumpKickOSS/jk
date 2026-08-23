@@ -1,7 +1,14 @@
 # Install
 
 ```bash
+# Linux / macOS
 curl -fsSL https://jumpkick.build/install.sh | bash
+jk --help
+```
+
+```powershell
+# Windows (PowerShell 5.1+ / PowerShell 7+)
+irm https://jumpkick.build/install.ps1 | iex
 jk --help
 ```
 
@@ -9,8 +16,19 @@ The installer puts **`jk`** and **`jkx`** on your PATH. JumpKick requires **JDK 
 run and will install one if needed. After that, prefer `java = N` in `jk.toml` for
 language level — [Concepts](concepts.md).
 
-Windows: `%USERPROFILE%\.local\bin`. Developer builds of this repository:
-[Contributing](../../CONTRIBUTING.md).
+Windows PATH install dir: `%USERPROFILE%\.local\bin`. `install.ps1` prepends that
+directory to your **User PATH** (visible from cmd and PowerShell) and runs
+`jk activate --yes` for profile hooks. Local dogfood from this repository (after
+`.\gradlew dist`):
+
+```powershell
+.\install.cmd build\dist\jk.exe
+# or, if you prefer invoking PowerShell directly:
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 build\dist\jk.exe
+```
+
+(`.\install.ps1` alone often fails under the default **Restricted** execution policy;
+`install.cmd` and `irm | iex` do not.) See [Contributing](../../CONTRIBUTING.md).
 
 Self-update of an installed binary: `jk self update` (verifies the release). Release
 layout and signing: [contributor releases](../contributors/releases.md).
@@ -115,7 +133,8 @@ eval "$("$HOME/.local/bin/jk" activate zsh)"
 
 | URL | Role |
 |-----|------|
-| `https://jumpkick.build/install.sh` | Installer |
+| `https://jumpkick.build/install.sh` | Installer (Linux / macOS) |
+| `https://jumpkick.build/install.ps1` | Installer (Windows / PowerShell) |
 | `https://jumpkick.build/releases/` | Native client + engine jar |
 | `https://jumpkick.build/repo/` | First-party Maven repo (workers, `cc.jumpkick.*`) |
 

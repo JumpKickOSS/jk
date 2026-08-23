@@ -65,7 +65,7 @@ class MiseProbeTest {
 
         // mise sometimes maintains a `latest` symlink to the active version.
         // We must skip it so a single install doesn't appear twice in discover output.
-        Files.createSymbolicLink(javaDir.resolve("latest"), real);
+        cc.jumpkick.jdk.DirLinks.replace(javaDir.resolve("latest"), real);
 
         List<JdkHit> hits = new MiseProbe(mise).discoverAllJdks();
         assertThat(hits).hasSize(1);

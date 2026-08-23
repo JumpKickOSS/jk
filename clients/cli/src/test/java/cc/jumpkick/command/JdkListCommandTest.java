@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.command.JdkListCommand.Row;
 import cc.jumpkick.command.JdkListCommand.Status;
+import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JdkCatalog;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkVendor;
@@ -156,8 +157,9 @@ class JdkListCommandTest {
 
     private static void makeJdkInstall(Path home, String version) throws IOException {
         Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
+        boolean win = HostPlatform.isWindows();
+        Files.writeString(home.resolve("bin").resolve(win ? "java.exe" : "java"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve(win ? "javac.exe" : "javac"), "#!/fake");
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
     }

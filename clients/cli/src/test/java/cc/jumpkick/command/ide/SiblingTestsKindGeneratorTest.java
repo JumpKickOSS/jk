@@ -121,6 +121,11 @@ class SiblingTestsKindGeneratorTest {
         assertThat(classpath).containsOnlyOnce("path=\"/widget-core\"");
         assertThat(classpath)
                 .contains("<classpathentry combineaccessrules=\"false\" kind=\"src\" path=\"/widget-core\"/>");
-        assertThat(classpath).contains(core.testClassesDir().toAbsolutePath().toString());
+        assertThat(classpath)
+                .contains(core.testClassesDir()
+                        .toAbsolutePath()
+                        .normalize()
+                        .toString()
+                        .replace('\\', '/'));
     }
 }

@@ -86,7 +86,8 @@ public final class RemainingWork {
                 synth.add(new ModuleWorkCost(c.dir(), c.prereqs(), Math.max(1, c.weight()), c.testWeight()));
             }
             if (synth.isEmpty()) {
-                synth.add(new ModuleWorkCost(Path.of("<history-seed>"), null, 1, 0));
+                // Sentinel dir — must be a legal Path on every OS (Windows rejects `<`/`>`).
+                synth.add(new ModuleWorkCost(Path.of("__history-seed__"), null, 1, 0));
             }
             long idealSynth = WorkSchedule.schedule(synth, concurrency, serial, parallelTests);
             double w2 = idealSynth > 0 ? (double) r0 / (double) idealSynth : r0;

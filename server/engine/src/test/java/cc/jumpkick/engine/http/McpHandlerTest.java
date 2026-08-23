@@ -4,6 +4,7 @@ package cc.jumpkick.engine.http;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -319,12 +320,16 @@ class McpHandlerTest {
     void publish_import_and_install_ride_jk_run(@org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
         // The thin aliases pin the kind and go through the one runResult path.
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":21,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_publish\",\"arguments\":{\"dir\":\"" + dir + "\",\"wait\":false}}}");
+                + "\"params\":{\"name\":\"jk_publish\",\"arguments\":{\"dir\":"
+                + Jsonl.quote(dir.toString())
+                + ",\"wait\":false}}}");
         assertThat(body).contains("\"kind\":\"publish\"");
         assertThat(body).contains("\"jid\"");
 
         String install = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":22,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_import\",\"arguments\":{\"dir\":\"" + dir + "\",\"wait\":false}}}");
+                + "\"params\":{\"name\":\"jk_import\",\"arguments\":{\"dir\":"
+                + Jsonl.quote(dir.toString())
+                + ",\"wait\":false}}}");
         assertThat(install).contains("\"kind\":\"import\"");
     }
 
@@ -347,7 +352,9 @@ class McpHandlerTest {
                 gson = { group = "com.google.code.gson", version = "2.11.0" }
                 """);
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":24,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_graph\",\"arguments\":{\"dir\":\"" + dir + "\"}}}");
+                + "\"params\":{\"name\":\"jk_graph\",\"arguments\":{\"dir\":"
+                + Jsonl.quote(dir.toString())
+                + "}}}");
         assertThat(body).contains("\"type\":\"graph\"");
         assertThat(body).contains("gson");
         assertThat(body).contains("\"kind\":\"module\"");
@@ -369,8 +376,9 @@ class McpHandlerTest {
         Files.createDirectories(run);
         Files.writeString(run.resolve("jk-results.md"), "# jk results — FAIL\ncompile boom\n");
         Files.writeString(run.resolve("details.jsonl"), "{}\n");
-        String rec = "{\"id\":\"run-1\",\"kind\":\"build\",\"dir\":\"" + dir
-                + "\",\"success\":false,\"exitCode\":1,\"running\":false}";
+        String rec = "{\"id\":\"run-1\",\"kind\":\"build\",\"dir\":"
+                + Jsonl.quote(dir.toString())
+                + ",\"success\":false,\"exitCode\":1,\"running\":false}";
         McpHandler h = new McpHandler(
                 () -> new StatusSnapshot(
                         "0.12.0",
@@ -425,8 +433,9 @@ class McpHandlerTest {
                 run.resolve("details.jsonl"),
                 "{\"schema\":1,\"type\":\"error\",\"message\":\"boom\"}\n"
                         + "{\"schema\":1,\"type\":\"task-finish\",\"task\":\"compile\"}\n");
-        String rec = "{\"id\":\"run-1\",\"kind\":\"build\",\"dir\":\"" + dir
-                + "\",\"success\":false,\"exitCode\":1,\"running\":false}";
+        String rec = "{\"id\":\"run-1\",\"kind\":\"build\",\"dir\":"
+                + Jsonl.quote(dir.toString())
+                + ",\"success\":false,\"exitCode\":1,\"running\":false}";
         McpHandler h = new McpHandler(
                 () -> new StatusSnapshot(
                         "0.12.0",
@@ -485,8 +494,9 @@ class McpHandlerTest {
         assertThat(templates).contains("builtinLayouts");
 
         String preview = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":27,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_new\",\"arguments\":{\"name\":\"demo\",\"parentDir\":\""
-                + parent + "\",\"preview\":true}}}");
+                + "\"params\":{\"name\":\"jk_new\",\"arguments\":{\"name\":\"demo\",\"parentDir\":"
+                + Jsonl.quote(parent.toString())
+                + ",\"preview\":true}}}");
         assertThat(preview).contains("new-preview");
         assertThat(preview).contains("jk.toml");
         // Preview never touches the target.

@@ -20,7 +20,9 @@ class ToolTargetTest {
 
     @Test
     void existing_paths_beat_remote_interpretations(@TempDir Path tmp) throws Exception {
-        Path weird = tmp.resolve("gh:weird-dir");
+        // Colon is illegal in Windows filenames; the gh:… git shorthand is covered when the path
+        // does not exist (see git_syntax_classifies_as_git).
+        Path weird = tmp.resolve("gh-weird-dir");
         Files.createDirectories(weird);
         assertThat(ToolTarget.classify(weird.toString())).isInstanceOf(ToolTarget.Directory.class);
 

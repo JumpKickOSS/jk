@@ -230,8 +230,10 @@ class JkHttpConfigTest {
 
     @Test
     void absolute_web_root_ignores_home(@TempDir Path tempDir) {
-        JkHttpConfig c = new JkHttpConfig("127.0.0.1", 8910, 16, 16, "/srv/jk-web", JkHttpConfig.Mcp.DEFAULTS);
-        assertThat(c.webRootPath(tempDir)).isEqualTo(Path.of("/srv/jk-web"));
+        // Platform-absolute (drive root on Windows, "/" on Unix) — Path.of("/…") is not absolute on Windows.
+        Path absolute = tempDir.getRoot().resolve("srv").resolve("jk-web");
+        JkHttpConfig c = new JkHttpConfig("127.0.0.1", 8910, 16, 16, absolute.toString(), JkHttpConfig.Mcp.DEFAULTS);
+        assertThat(c.webRootPath(tempDir)).isEqualTo(absolute.normalize());
     }
 
     @Test

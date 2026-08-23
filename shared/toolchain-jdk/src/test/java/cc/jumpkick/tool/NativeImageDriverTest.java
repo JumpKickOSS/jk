@@ -3,9 +3,13 @@ package cc.jumpkick.tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class NativeImageDriverTest {
 
@@ -87,6 +91,35 @@ class NativeImageDriverTest {
         assertThat(NativeImageDriver.normalizeStepLabel("done")).isEqualTo("done");
         assertThat(NativeImageDriver.normalizeStepLabel("already…")).isEqualTo("already…");
         assertThat(NativeImageDriver.normalizeStepLabel("")).isEmpty();
+    }
+
+    @Test
+    void with_arg_file_rewrites_to_at_file_and_preserves_args(@TempDir Path tmp) throws Exception {
+        Path argFile = tmp.resolve("args.txt");
+        List<String> longCmd = new ArrayList<>();
+        longCmd.add(BIN.toString());
+        longCmd.add("-cp");
+        longCmd.add("a.jar" + File.pathSeparator + "b.jar");
+        longCmd.add("-o");
+        longCmd.add(tmp.resolve("out").toString());
+        longCmd.add("com.example.Main");
+
+        List<String> rewritten = NativeImageDriver.withArgFile(BIN, longCmd, argFile);
+        assertThat(rewritten).containsExactly(BIN.toString(), "@" + argFile.toAbsolutePath());
+        String body = Files.readString(argFile);
+        assertThat(body.lines())
+                .containsExactly(
+                        "-cp",
+                        "a.jar" + File.pathSeparator + "b.jar",
+                        "-o",
+                        tmp.resolve("out").toString(),
+                        "com.example.Main");
+    }
+
+    @Test
+    void command_line_chars_grows_with_args() {
+        assertThat(NativeImageDriver.commandLineChars(List.of("ni", "-cp", "x")))
+                .isGreaterThan(5);
     }
 
     private static Throwable catchThrowable(Runnable r) {

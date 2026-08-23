@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
 import java.net.BindException;
 import java.net.Socket;
@@ -35,6 +36,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -162,6 +165,11 @@ class HttpEngineServerTest {
 
     private String token() throws IOException {
         return Files.readString(tokenFile).trim();
+    }
+
+    /** Path as a query value — Windows backslashes must be percent-encoded for {@link URI#create}. */
+    private static String encDir(Path dir) {
+        return URLEncoder.encode(dir.toString(), UTF_8);
     }
 
     private HttpResponse<String> get(String path, String... headers) throws IOException, InterruptedException {
@@ -631,7 +639,7 @@ class HttpEngineServerTest {
         assertThat(missing.statusCode()).isEqualTo(400);
         assertThat(missing.body()).contains("missing");
 
-        HttpResponse<String> resp = get("/api/project/graph?dir=" + ws, "Authorization", "Bearer " + token());
+        HttpResponse<String> resp = get("/api/project/graph?dir=" + encDir(ws), "Authorization", "Bearer " + token());
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.headers().firstValue("Content-Type")).contains("application/json; charset=utf-8");
         assertThat(resp.body())
@@ -658,7 +666,7 @@ class HttpEngineServerTest {
                 [dependencies]
                 leaf = { group = "com.foo", name = "leaf", version = "1.0" }
                 """);
-        String soloBody = get("/api/project/graph?dir=" + solo, "Authorization", "Bearer " + token())
+        String soloBody = get("/api/project/graph?dir=" + encDir(solo), "Authorization", "Bearer " + token())
                 .body();
         assertThat(soloBody)
                 .contains("\"workspace\":false")
@@ -690,7 +698,7 @@ class HttpEngineServerTest {
                 """);
 
         String body = get(
-                        "/api/project/graph?dir=" + solo + "&scopes="
+                        "/api/project/graph?dir=" + encDir(solo) + "&scopes="
                                 + URLEncoder.encode("main,test", StandardCharsets.UTF_8),
                         "Authorization",
                         "Bearer " + token())
@@ -719,21 +727,23 @@ class HttpEngineServerTest {
                 [workspace]
                 modules = ["gone"]
                 """);
-        HttpResponse<String> broken = get("/api/project/graph?dir=" + ws, "Authorization", "Bearer " + token());
+        HttpResponse<String> broken = get("/api/project/graph?dir=" + encDir(ws), "Authorization", "Bearer " + token());
         assertThat(broken.statusCode()).isEqualTo(422);
         assertThat(broken.body()).contains("error").contains("gone");
 
         Path bad = stateDir.resolve("bad-toml");
         Files.createDirectories(bad);
         Files.writeString(bad.resolve("jk.toml"), "not [ valid toml ===");
-        HttpResponse<String> malformed = get("/api/project/graph?dir=" + bad, "Authorization", "Bearer " + token());
+        HttpResponse<String> malformed =
+                get("/api/project/graph?dir=" + encDir(bad), "Authorization", "Bearer " + token());
         assertThat(malformed.statusCode()).isEqualTo(422);
         assertThat(malformed.body()).contains("error");
 
         // An ABSENT jk.toml stays a 200 empty graph — a deleted checkout is not an error.
         Path empty = stateDir.resolve("no-toml");
         Files.createDirectories(empty);
-        HttpResponse<String> absent = get("/api/project/graph?dir=" + empty, "Authorization", "Bearer " + token());
+        HttpResponse<String> absent =
+                get("/api/project/graph?dir=" + encDir(empty), "Authorization", "Bearer " + token());
         assertThat(absent.statusCode()).isEqualTo(200);
         assertThat(absent.body()).contains("\"nodes\":[]");
     }
@@ -830,7 +840,7 @@ class HttpEngineServerTest {
             assertThat(missing.statusCode()).isEqualTo(400);
             assertThat(missing.body()).contains("missing");
 
-            HttpResponse<String> dirOnly = get("/api/project/file?dir=" + checkout + "&path=src/Main.java");
+            HttpResponse<String> dirOnly = get("/api/project/file?dir=" + encDir(checkout) + "&path=src/Main.java");
             assertThat(dirOnly.statusCode()).isEqualTo(400);
             assertThat(dirOnly.body()).contains("missing");
 
@@ -1148,12 +1158,12 @@ class HttpEngineServerTest {
         Files.writeString(stateDir.resolve("workspace/jk.toml"), "");
         Files.writeString(stateDir.resolve("workspace/README.md"), "not a dir");
         HttpResponse<String> resp =
-                get("/api/fs?dir=" + stateDir.resolve("workspace"), "Authorization", "Bearer " + token());
+                get("/api/fs?dir=" + encDir(stateDir.resolve("workspace")), "Authorization", "Bearer " + token());
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.body())
                 .contains("\"dirs\":[\"module-a\",\"module-b\"]")
                 .contains("\"hasJkToml\":true")
-                .contains("\"parent\":\"" + stateDir + "\"");
+                .contains("\"parent\":" + Jsonl.quote(stateDir.toString()));
     }
 
     @Test
@@ -1166,7 +1176,7 @@ class HttpEngineServerTest {
                                 "Bearer " + token())
                         .statusCode())
                 .isEqualTo(400);
-        assertThat(get("/api/fs?dir=" + stateDir.resolve("no-such-dir"), "Authorization", "Bearer " + token())
+        assertThat(get("/api/fs?dir=" + encDir(stateDir.resolve("no-such-dir")), "Authorization", "Bearer " + token())
                         .statusCode())
                 .isEqualTo(400);
     }
@@ -1258,6 +1268,7 @@ class HttpEngineServerTest {
     }
 
     @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC}) // Windows ACLs: getPosixFilePermissions is unsupported
     void token_file_is_owner_only() throws IOException {
         assertThat(token()).isNotEmpty();
         assertThat(Files.getPosixFilePermissions(tokenFile))
@@ -1289,7 +1300,7 @@ class HttpEngineServerTest {
             restarted.start();
             assertThat(token()).isEqualTo(original); // file unchanged
             HttpResponse<String> resp = client.send(
-                    HttpRequest.newBuilder(URI.create(restarted.url() + "api/fs?dir=" + stateDir))
+                    HttpRequest.newBuilder(URI.create(restarted.url() + "api/fs?dir=" + encDir(stateDir)))
                             .header("Authorization", "Bearer " + original)
                             .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
                             .build(),

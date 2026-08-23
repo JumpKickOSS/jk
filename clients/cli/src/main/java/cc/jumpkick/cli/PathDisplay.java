@@ -60,8 +60,9 @@ public final class PathDisplay {
     public static String of(Path target, Path workingDir) {
         Path abs = target.toAbsolutePath().normalize();
         Path anchor = closestAnchor(abs, workingDir);
-        if (anchor == null) return abs.toString();
-        String rel = anchor.relativize(abs).toString();
+        // Forward slashes in human-facing output (stable across OSes; matches diagnostics/docs).
+        if (anchor == null) return abs.toString().replace('\\', '/');
+        String rel = anchor.relativize(abs).toString().replace('\\', '/');
         return rel.isEmpty() ? "." : rel;
     }
 

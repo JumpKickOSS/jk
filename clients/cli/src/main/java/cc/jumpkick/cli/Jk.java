@@ -45,6 +45,9 @@ public final class Jk {
             Map.entry("check", List.of("compile"))); // pre-v1.0 name of the compile-only verb
 
     public static void main(String[] args) {
+        // Windows: CP_UTF8 + UTF-8 System.out/err before any chrome. OEM CP437 otherwise
+        // turns ● into ΓùÅ. Must run before the first println.
+        cc.jumpkick.cli.tui.WindowsUtf8.enable();
         // Invoked as `jkx` (hardlink/link to this binary): behave exactly like
         // `jk tool run …` in every case — including --help — so the alias has
         // one mental model.
@@ -87,6 +90,9 @@ public final class Jk {
         // -q/--quiet must take effect before any println happens. Apply it now
         // based on the resolved config (which already knows about env/file/CLI layers).
         Quietable.applyIfQuiet(cc.jumpkick.config.SessionContext.current().config());
+        // Interactive ANSI TTY: open the shared JLine terminal (wizards / VTP). On Windows,
+        // WindowsUtf8 already owns UTF-8 System.out — this must not re-wrap it.
+        cc.jumpkick.cli.tui.Interactivity.installAnsiTerminalStreams(args);
         String[] rewritten = rewriteAlias(args);
         // Every command is now on the CliCommand model; CommandDispatch handles all
         // dispatch. The fallback below handles bare `jk` + --help + --version.

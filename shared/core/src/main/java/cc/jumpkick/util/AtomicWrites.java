@@ -3,6 +3,7 @@ package cc.jumpkick.util;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,6 +14,9 @@ import java.nio.file.StandardCopyOption;
  * {@code .tmp} sibling, never a torn target.
  */
 public final class AtomicWrites {
+
+    /** Windows briefly denies REPLACE when another handle still has the target open. */
+    private static final int MOVE_ATTEMPTS = 8;
 
     private AtomicWrites() {}
 
@@ -39,11 +43,22 @@ public final class AtomicWrites {
      * fallback). The temp file must live in {@code target}'s directory.
      */
     public static void moveInto(Path tmp, Path target) throws IOException {
-        try {
-            Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+        IOException last = null;
+        for (int attempt = 1; attempt <= MOVE_ATTEMPTS; attempt++) {
+            try {
+                try {
+                    Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                } catch (AtomicMoveNotSupportedException e) {
+                    Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+                }
+                return;
+            } catch (AccessDeniedException e) {
+                last = e;
+                if (attempt == MOVE_ATTEMPTS) break;
+                sleepBriefly(attempt);
+            }
         }
+        throw last;
     }
 
     /**
@@ -56,6 +71,14 @@ public final class AtomicWrites {
             Files.move(staging, target, StandardCopyOption.ATOMIC_MOVE);
         } catch (AtomicMoveNotSupportedException e) {
             Files.move(staging, target);
+        }
+    }
+
+    private static void sleepBriefly(int attempt) {
+        try {
+            Thread.sleep(Math.min(50L, 5L * attempt));
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
         }
     }
 }

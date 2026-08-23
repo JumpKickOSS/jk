@@ -147,7 +147,7 @@ class JdkAccessLedgerTest {
         Path file = tempDir.resolve(".jk-access.log");
         Path real = Files.createDirectories(tempDir.resolve("temurin-21.0.5"));
         Path link = tempDir.resolve("temurin-21");
-        Files.createSymbolicLink(link, real);
+        DirLinks.replace(link, real);
 
         JdkAccessLedger ledger = new JdkAccessLedger(file);
         ledger.touch(real, "21.0.5", "Eclipse Temurin");

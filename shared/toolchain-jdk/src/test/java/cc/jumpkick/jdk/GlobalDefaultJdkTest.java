@@ -22,11 +22,9 @@ class GlobalDefaultJdkTest {
         GlobalDefaultJdk gdj = new GlobalDefaultJdk(defaultSymlink, currentSymlink, configFile);
         gdj.set(new InstalledJdk("temurin-21.0.5", jdkHome));
 
-        assertThat(Files.isSymbolicLink(defaultSymlink)).isTrue();
-        assertThat(Files.readSymbolicLink(defaultSymlink)).isEqualTo(jdkHome);
-        // current-jdk mirrors default on set().
-        assertThat(Files.isSymbolicLink(currentSymlink)).isTrue();
-        assertThat(Files.readSymbolicLink(currentSymlink)).isEqualTo(jdkHome);
+        // Symlink (POSIX) or junction (Windows) — resolve, don't require Files.isSymbolicLink.
+        assertThat(defaultSymlink.toRealPath()).isEqualTo(jdkHome.toRealPath());
+        assertThat(currentSymlink.toRealPath()).isEqualTo(jdkHome.toRealPath());
         assertThat(Files.readString(configFile)).contains("default-jdk = \"temurin-21.0.5\"");
     }
 
@@ -82,8 +80,8 @@ class GlobalDefaultJdkTest {
         gdj.set(new InstalledJdk("temurin-21", first));
         gdj.set(new InstalledJdk("temurin-25", second));
 
-        assertThat(Files.readSymbolicLink(defaultSymlink)).isEqualTo(second);
-        assertThat(Files.readSymbolicLink(currentSymlink)).isEqualTo(second);
+        assertThat(defaultSymlink.toRealPath()).isEqualTo(second.toRealPath());
+        assertThat(currentSymlink.toRealPath()).isEqualTo(second.toRealPath());
         assertThat(Files.readString(configFile))
                 .contains("default-jdk = \"temurin-25\"")
                 .doesNotContain("temurin-21");
@@ -101,8 +99,8 @@ class GlobalDefaultJdkTest {
         gdj.set(new InstalledJdk("temurin-25", defaultHome));
         gdj.setCurrent(new InstalledJdk("temurin-21", projectHome));
 
-        assertThat(Files.readSymbolicLink(defaultSymlink)).isEqualTo(defaultHome);
-        assertThat(Files.readSymbolicLink(currentSymlink)).isEqualTo(projectHome);
+        assertThat(defaultSymlink.toRealPath()).isEqualTo(defaultHome.toRealPath());
+        assertThat(currentSymlink.toRealPath()).isEqualTo(projectHome.toRealPath());
         // The config record is untouched by setCurrent.
         assertThat(Files.readString(configFile))
                 .contains("default-jdk = \"temurin-25\"")
@@ -141,8 +139,8 @@ class GlobalDefaultJdkTest {
 
         GlobalDefaultJdk gdj = new GlobalDefaultJdk(defaultSymlink, currentSymlink, configFile);
         gdj.set(new InstalledJdk("temurin-21", jdkHome));
-        assertThat(Files.isSymbolicLink(defaultSymlink)).isTrue();
-        assertThat(Files.isSymbolicLink(currentSymlink)).isTrue();
+        assertThat(defaultSymlink.toRealPath()).isEqualTo(jdkHome.toRealPath());
+        assertThat(currentSymlink.toRealPath()).isEqualTo(jdkHome.toRealPath());
 
         gdj.clear();
 

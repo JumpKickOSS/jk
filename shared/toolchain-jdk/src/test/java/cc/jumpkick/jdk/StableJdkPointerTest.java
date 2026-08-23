@@ -15,8 +15,9 @@ class StableJdkPointerTest {
         Path home = root.resolve(name);
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\n");
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
+        boolean win = HostPlatform.isWindows();
+        Files.writeString(home.resolve("bin").resolve(win ? "java.exe" : "java"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve(win ? "javac.exe" : "javac"), "#!/fake");
         return home;
     }
 
@@ -29,7 +30,7 @@ class StableJdkPointerTest {
 
         ptr.ensure("temurin-25", p3);
         Path link = jdks.resolve("temurin-25");
-        assertThat(Files.isSymbolicLink(link)).isTrue();
+        // Junction on Windows is not Files.isSymbolicLink; resolve is the cross-platform check.
         assertThat(link.toRealPath()).isEqualTo(p3.toRealPath());
 
         // Idempotent: a second ensure at the same target is a no-op.
@@ -68,7 +69,8 @@ class StableJdkPointerTest {
 
         ptr.ensure("graalvm-jdk-25", install);
 
-        assertThat(install.resolve("bin/java")).exists();
+        assertThat(install.resolve("bin").resolve(HostPlatform.isWindows() ? "java.exe" : "java"))
+                .exists();
         assertThat(Files.isSymbolicLink(install)).isFalse();
     }
 

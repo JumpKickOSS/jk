@@ -15,7 +15,6 @@ import java.util.Map;
 import java.util.Optional;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
-import org.jline.terminal.TerminalBuilder;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
@@ -75,11 +74,7 @@ public final class Wizard {
             // nativeSignals(false): do not replace {@link GlobalCancel} with SIG_DFL.
             // {@link #run} calls {@code terminal.handle(INT, …)} when the wizard should
             // own Ctrl-C, then re-installs GlobalCancel in {@code finally}.
-            terminal = TerminalBuilder.builder()
-                    .system(true)
-                    .graphemeCluster(false)
-                    .nativeSignals(false)
-                    .build();
+            terminal = Interactivity.systemTerminalBuilder().build();
             GlobalCancel.install();
         }
         var attrs = terminal.getAttributes();

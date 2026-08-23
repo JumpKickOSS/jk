@@ -1,18 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.theme.Theme;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
+import org.jline.utils.WriterOutputStream;
 
 /**
  * Interactive probes split: {@link #canPrompt()} (controlling TTY for input) vs {@link
  * #stdoutIsTty()} (animate stdout). {@code CI}/{@code JK_NONINTERACTIVE}/{@code TERM=dumb} force off.
+ *
+ * <p>Windows glyph/CSI correctness is owned by {@link WindowsUtf8} (console CP 65001 + UTF-8
+ * {@link System#out}). {@link #installAnsiTerminalStreams(String[])} opens the shared JLine system
+ * terminal for wizards / VTP fallback; it does <em>not</em> re-wrap {@link System#out} once
+ * {@link WindowsUtf8} has run. The WriterOutputStream→{@code writer()} bridge remains only as a
+ * fallback when UTF-8 console enablement did not apply.
+ *
+ * <p>Do not wrap {@link Terminal#output()} with a PrintStream using {@link Terminal#encoding()}:
+ * JLine may bind {@code output()} to the console OEM code page (CP437/…) while Java string writes
+ * are UTF-8, which decodes pulse glyphs like {@code ●} into mojibake ({@code ΓùÅ}).
  */
 public final class Interactivity {
 
     private Interactivity() {}
+
+    /** UTF-8 bridge for {@link System#out} → {@link Terminal#writer()} (WriteConsoleW on Windows). */
+    static final Charset ANSI_STDOUT_CHARSET = StandardCharsets.UTF_8;
 
     // canPrompt() builds a JLine system terminal to probe the controlling terminal, which is not
     // free and emits capability queries — cache the verdict for the life of the process.
@@ -25,6 +43,15 @@ public final class Interactivity {
     // cleared by takeSharedTerminal() once a caller assumes ownership (and the duty to close it).
     private static Terminal sharedTerminal;
     private static Attributes sharedSaved;
+
+    /** True after {@link #installAnsiTerminalStreams(String[])} has replaced {@link System#out}. */
+    private static boolean ansiStreamsInstalled;
+
+    /**
+     * Strong ref to the terminal whose {@link Terminal#output()} backs the replaced {@link
+     * System#out}. Survives {@link #takeSharedTerminal()} clearing {@link #sharedTerminal}.
+     */
+    private static Terminal ansiStreamsTerminal;
 
     /** {@code saved} with only ECHO suppressed — canonical mode and VMIN/VTIME are preserved. */
     static Attributes quietAttributes(Attributes saved) {
@@ -89,12 +116,9 @@ public final class Interactivity {
             // nativeSignals(false): JLine's default is SIG_DFL for INT/TERM/…, which
             // overwrites {@link GlobalCancel}'s pretty Ctrl-C handler. Wizards that need
             // JLine to own SIGINT call {@code terminal.handle} themselves.
-            probe = TerminalBuilder.builder()
-                    .system(true)
-                    .dumb(true)
-                    .graphemeCluster(false)
-                    .nativeSignals(false)
-                    .build();
+            // encoding(UTF-8): do not inherit the Windows OEM console code page for the
+            // terminal's byte bridges — WriteConsoleW is Unicode; OEM CP poisons glyphs.
+            probe = systemTerminalBuilder().dumb(true).build();
             GlobalCancel.install();
             String type = probe.getType();
             if (Terminal.TYPE_DUMB.equals(type) || Terminal.TYPE_DUMB_COLOR.equals(type)) {
@@ -247,5 +271,100 @@ public final class Interactivity {
      */
     public static boolean stdoutIsTty() {
         return System.console() != null && !forcedNonInteractive();
+    }
+
+    /**
+     * Shared {@link TerminalBuilder} options for jk's one system terminal: UTF-8 encodings (avoid
+     * Windows OEM code-page auto-detect), no grapheme probe, no JLine native signal takeover.
+     */
+    static TerminalBuilder systemTerminalBuilder() {
+        return TerminalBuilder.builder()
+                .system(true)
+                .encoding(ANSI_STDOUT_CHARSET)
+                .stdinEncoding(ANSI_STDOUT_CHARSET)
+                .stdoutEncoding(ANSI_STDOUT_CHARSET)
+                .graphemeCluster(false)
+                .nativeSignals(false);
+    }
+
+    /**
+     * {@link PrintStream} that UTF-8-encodes string writes into a {@link WriterOutputStream} over
+     * {@code t.writer()}. Round-trips Unicode to WriteConsoleW on Windows even when JLine's own
+     * {@link Terminal#output()} was built against an OEM code page.
+     */
+    static PrintStream newAnsiStdoutStream(Terminal t) {
+        return new PrintStream(new WriterOutputStream(t.writer(), ANSI_STDOUT_CHARSET), true, ANSI_STDOUT_CHARSET);
+    }
+
+    /**
+     * Prepare interactive ANSI stdout. Idempotent. No-op when stdout is not a TTY, ANSI is off,
+     * quiet, or primary stdout is machine JSON.
+     *
+     * <p>When {@link WindowsUtf8} already enabled the UTF-8 console, leave {@link System#out} alone
+     * (do not re-bridge through JLine — that path was the mojibake failure mode) and only open the
+     * shared system terminal for wizards / VTP. Otherwise fall back to a UTF-8 PrintStream over
+     * {@link Terminal#writer()} ({@code WriteConsoleW} on Windows).
+     *
+     * @param args raw or rewritten argv (for {@code --output} detection); may be null
+     * @return {@code true} when interactive ANSI stdout is ready
+     */
+    public static synchronized boolean installAnsiTerminalStreams(String[] args) {
+        if (ansiStreamsInstalled) return true;
+        if (!stdoutIsTty()) return false;
+        if (!Theme.colorEnabled()) return false;
+        if (cc.jumpkick.config.SessionContext.current().config().quietOr(false)) return false;
+        if (jsonStdoutRequested(args)) return false;
+        // Shared system terminal: wizards + VTP. Safe even when WindowsUtf8 already set CP_UTF8.
+        if (!canPrompt()) return false;
+        Terminal t = sharedTerminal;
+        if (t == null) return false;
+        if (WindowsUtf8.isEnabled()) {
+            // Console is UTF-8; keep the FileDescriptor-backed UTF-8 System.out from WindowsUtf8.
+            ansiStreamsTerminal = t;
+            ansiStreamsInstalled = true;
+            return true;
+        }
+        System.setOut(newAnsiStdoutStream(t));
+        ansiStreamsTerminal = t; // strong ref; survives takeSharedTerminal()
+        ansiStreamsInstalled = true;
+        return true;
+    }
+
+    /** {@code true} after a successful {@link #installAnsiTerminalStreams(String[])}. */
+    public static boolean ansiTerminalStreamsInstalled() {
+        return ansiStreamsInstalled;
+    }
+
+    /**
+     * Test-only: forget the install flag and drop the strong terminal ref. Does not restore the
+     * primordial {@link System#out} (tests inject their own streams).
+     */
+    static synchronized void resetAnsiTerminalStreams() {
+        ansiStreamsInstalled = false;
+        ansiStreamsTerminal = null;
+    }
+
+    /** {@code --output json|jsonl}, {@code -O json|jsonl}, or {@code JK_OUTPUT=json|jsonl}. */
+    static boolean jsonStdoutRequested(String[] args) {
+        String env = System.getenv("JK_OUTPUT");
+        if (isJsonOutputToken(env)) return true;
+        if (args == null) return false;
+        for (int i = 0; i < args.length; i++) {
+            String a = args[i];
+            if ("--output".equals(a) || "-O".equals(a)) {
+                if (i + 1 < args.length && isJsonOutputToken(args[++i])) return true;
+            } else if (a.startsWith("--output=")) {
+                if (isJsonOutputToken(a.substring("--output=".length()))) return true;
+            } else if (a.startsWith("-O=") && isJsonOutputToken(a.substring(3))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isJsonOutputToken(String value) {
+        if (value == null || value.isBlank()) return false;
+        String v = value.trim();
+        return v.equalsIgnoreCase("json") || v.equalsIgnoreCase("jsonl");
     }
 }

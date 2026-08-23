@@ -4,6 +4,7 @@ package cc.jumpkick.engine.http.mcp;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -76,12 +77,14 @@ class McpManifestTest {
                 "0.12.0");
         Path dir = tempProject();
         String applied = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_manifest\",\"arguments\":{\"dir\":\"" + dir + "\","
-                + "\"java\":21,\"apply\":true}}}");
+                + "\"params\":{\"name\":\"jk_manifest\",\"arguments\":{\"dir\":"
+                + Jsonl.quote(dir.toString())
+                + ",\"java\":21,\"apply\":true}}}");
         assertThat(applied).contains("jk_run kind=lock");
         String preview = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"jk_manifest\",\"arguments\":{\"dir\":\"" + dir + "\","
-                + "\"java\":25,\"apply\":false}}}");
+                + "\"params\":{\"name\":\"jk_manifest\",\"arguments\":{\"dir\":"
+                + Jsonl.quote(dir.toString())
+                + ",\"java\":25,\"apply\":false}}}");
         assertThat(preview).doesNotContain("jk_run kind=lock");
     }
 

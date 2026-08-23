@@ -12,7 +12,9 @@ import org.jline.utils.NonBlockingReader;
  */
 public final class KeyReader {
 
-    private static final long ESC_PEEK_MS = 50L;
+    // Long enough that a CSI follow-up is not lost when the test/worker scheduler is busy
+    // (50ms was flaky under parallel Windows jk test workers — bare Escape instead of Down).
+    private static final long ESC_PEEK_MS = 250L;
 
     private KeyReader() {}
 

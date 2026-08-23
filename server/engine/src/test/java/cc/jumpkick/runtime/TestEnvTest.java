@@ -46,8 +46,8 @@ class TestEnvTest {
                 """);
         var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project));
 
-        assertThat(env.get("JK_HOME"))
-                .isEqualTo(tmp.resolve("target/mine").toAbsolutePath().toString());
+        assertThat(Path.of(env.get("JK_HOME")))
+                .isEqualTo(tmp.resolve("target/mine").toAbsolutePath().normalize());
         assertThat(env.get("JK_HTTP_ENABLED")).isEqualTo("false");
         // The default the module didn't mention survives.
         assertThat(env.get("JK_M2_LOCAL")).endsWith("test-m2");

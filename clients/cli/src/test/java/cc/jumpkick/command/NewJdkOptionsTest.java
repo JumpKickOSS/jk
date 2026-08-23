@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkOwnership;
 import cc.jumpkick.jdk.JdkRegistry;
@@ -97,8 +98,9 @@ class NewJdkOptionsTest {
 
     private static void makeJdkFixture(Path home, String version) throws IOException {
         Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
+        boolean win = HostPlatform.isWindows();
+        Files.writeString(home.resolve("bin").resolve(win ? "java.exe" : "java"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve(win ? "javac.exe" : "javac"), "#!/fake");
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
         JdkOwnership.mark(home);

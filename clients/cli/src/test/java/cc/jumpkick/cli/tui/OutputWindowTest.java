@@ -157,7 +157,9 @@ class OutputWindowTest {
         cm.writeAbove("first");
         cm.writeAbove("");
         cm.writeAbove("second");
-        assertThat(buf.toString(StandardCharsets.UTF_8)).contains("first\n\nsecond\n");
+        // Normalize CRLF from PrintStream on Windows.
+        String out = buf.toString(StandardCharsets.UTF_8).replace("\r\n", "\n");
+        assertThat(out).contains("first\n\nsecond\n");
         cm.close();
     }
 

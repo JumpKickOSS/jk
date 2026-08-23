@@ -3,6 +3,7 @@ package cc.jumpkick.lock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,6 +36,8 @@ class LockfileWriterAtomicTest {
                                 "partial lock observed: " + seen.artifacts().size() + " of " + artifacts));
                         return;
                     }
+                } catch (AccessDeniedException denied) {
+                    // Windows: briefly denied while AtomicWrites replaces the target — not a torn read.
                 } catch (Throwable t) {
                     readerFailure.set(t);
                     return;

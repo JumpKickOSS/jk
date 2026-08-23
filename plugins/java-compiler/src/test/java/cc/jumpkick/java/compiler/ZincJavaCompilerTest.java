@@ -74,7 +74,7 @@ class ZincJavaCompilerTest {
 
     @Test
     void full_recompile_without_analysis_deletes_a_removed_sources_class(@TempDir Path dir) throws Exception {
-        // JK-2287: an analysis-less full compile (aggregating-AP wipe, or a jk-version bump that
+        // An analysis-less full compile (aggregating-AP wipe, or a jk-version bump that
         // cleared state) must start from a clean class output, or a removed source's .class lingers.
         Project p = new Project(dir);
         p.write("a/A.java", "package a; public class A {}");
@@ -92,12 +92,14 @@ class ZincJavaCompilerTest {
 
     @Test
     void corrupt_analysis_falls_back_to_a_full_compile(@TempDir Path dir) throws Exception {
-        // JK-2288: a truncated/incompatible analysis file must not fail every build persistently.
+        // A truncated/incompatible analysis file must not fail every build persistently.
         Project p = new Project(dir);
         p.write("a/A.java", "package a; public class A {}");
         assertThat(p.compile().success()).isTrue();
 
-        Files.writeString(p.workdir.resolve("zinc"), "not a valid zinc analysis store");
+        Path zinc = p.workdir.resolve("zinc");
+        Files.delete(zinc);
+        Files.writeString(zinc, "not a valid zinc analysis store");
 
         ZincJavaCompiler.Result r = p.compile();
         assertThat(r.success()).as(r.diagnostics().toString()).isTrue();

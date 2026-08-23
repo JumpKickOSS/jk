@@ -332,6 +332,9 @@ graalvmNative {
         // on the binary's classpath, so jline is the only contributor left:
         // its FFM Linker/Arena lookups must run at image-runtime regardless.
         buildArgs.add("--initialize-at-run-time=org.jline")
+        // WindowsUtf8 binds Kernel32 via FFM at first enable() — keep that off the
+        // image-build heap so downcalls resolve against the running process.
+        buildArgs.add("--initialize-at-run-time=cc.jumpkick.cli.tui.WindowsUtf8")
         // jline-native ships a resource-config with a broad "org/jline/nativ/.*"
         // pattern that embeds ALL platform native libs (Windows DLLs, Linux/macOS/
         // FreeBSD .so/.dylib for every arch) as image resources. jk uses the FFM

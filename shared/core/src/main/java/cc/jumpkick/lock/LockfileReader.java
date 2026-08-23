@@ -47,7 +47,9 @@ public final class LockfileReader {
         if (cached != null && cached.size() == attrs.size() && cached.modified().equals(attrs.lastModifiedTime())) {
             return cached.value();
         }
-        TomlParseResult result = Toml.parse(file);
+        // Read bytes then parse: keeps the file handle open only for the short read, so a concurrent
+        // AtomicWrites.replace on Windows is not blocked by Toml.parse(Path) holding the target open.
+        TomlParseResult result = Toml.parse(Files.readString(file));
         Lockfile lockfile = fromResult(result, file.toString());
         // Clear-on-overflow (same bound as ProjectIds): one parsed Lockfile — potentially MBs —
         // per distinct lockfile path the process ever read, forever.

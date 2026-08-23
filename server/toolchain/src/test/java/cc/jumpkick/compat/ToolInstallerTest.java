@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.http.Http;
+import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.util.Hashing;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
@@ -53,10 +54,12 @@ class ToolInstallerTest {
 
     @Test
     void installs_zip_and_flattens_top_level_dir(@TempDir Path tempDir) throws Exception {
+        // Real Maven zips ship both POSIX and Windows launchers.
         byte[] zip = buildZip(
                 "apache-maven-3.9.9",
                 Map.of(
                         "bin/mvn", "#!/bin/sh\necho mvn\n",
+                        "bin/mvn.cmd", "@echo mvn\r\n",
                         "conf/settings.xml", "<settings/>\n"));
         served.put("/maven.zip", zip);
 
@@ -70,12 +73,14 @@ class ToolInstallerTest {
         assertThat(installed.home()).isEqualTo(tempDir.resolve("tools/maven/3.9.9"));
         assertThat(installed.home().resolve("bin/mvn")).exists();
         assertThat(installed.home().resolve("conf/settings.xml")).exists();
-        assertThat(installed.binary()).isEqualTo(installed.home().resolve("bin/mvn"));
+        Path expectedBin = installed.home().resolve("bin").resolve(HostPlatform.isWindows() ? "mvn.cmd" : "mvn");
+        assertThat(installed.binary()).isEqualTo(expectedBin);
     }
 
     @Test
     void bin_launcher_is_marked_executable(@TempDir Path tempDir) throws Exception {
-        byte[] zip = buildZip("gradle-9.5.1", Map.of("bin/gradle", "#!/bin/sh\n"));
+        byte[] zip =
+                buildZip("gradle-9.5.1", Map.of("bin/gradle", "#!/bin/sh\n", "bin/gradle.bat", "@echo gradle\r\n"));
         served.put("/gradle.zip", zip);
 
         ToolInstaller installer = new ToolInstaller(new Http(), new ToolRegistry(tempDir.resolve("tools")));
@@ -93,7 +98,7 @@ class ToolInstallerTest {
 
     @Test
     void sha256_mismatch_aborts_install(@TempDir Path tempDir) throws Exception {
-        byte[] zip = buildZip("apache-maven-3.9.9", Map.of("bin/mvn", "#!/bin/sh\n"));
+        byte[] zip = buildZip("apache-maven-3.9.9", Map.of("bin/mvn", "#!/bin/sh\n", "bin/mvn.cmd", "@echo mvn\r\n"));
         served.put("/maven.zip", zip);
 
         ToolInstaller installer = new ToolInstaller(new Http(), new ToolRegistry(tempDir.resolve("tools")));
@@ -108,7 +113,7 @@ class ToolInstallerTest {
 
     @Test
     void second_install_is_idempotent(@TempDir Path tempDir) throws Exception {
-        byte[] zip = buildZip("apache-maven-3.9.9", Map.of("bin/mvn", "#!/bin/sh\n"));
+        byte[] zip = buildZip("apache-maven-3.9.9", Map.of("bin/mvn", "#!/bin/sh\n", "bin/mvn.cmd", "@echo mvn\r\n"));
         served.put("/maven.zip", zip);
 
         ToolInstaller installer = new ToolInstaller(new Http(), new ToolRegistry(tempDir.resolve("tools")));
