@@ -45,30 +45,40 @@ public final class JdkVerifyCommand implements CliCommand {
             CommandWedge.printOk("JDK", "No managed JDKs to verify.");
             return 0;
         }
-        boolean allOk = true;
+        boolean anyFailure = false;
+        boolean anyUnhashed = false;
         CommandWedge.envelopeStart();
         for (Finding f : findings) {
             if (f.ok()) {
                 CliOutput.out("ok        " + f.id());
+            } else if (f.kind() == Finding.Kind.UNHASHED) {
+                // A missing fingerprint is a baseline gap, not evidence of tampering — the
+                // migration deliberately records rows unhashed so the shell hook stays fast, so
+                // every upgrader's first verify hits this. Warn and point at --repair.
+                anyUnhashed = true;
+                String detail = f.detail() == null ? "" : " — " + f.detail();
+                CliOutput.out("unhashed  " + f.id() + detail);
             } else {
-                allOk = false;
+                anyFailure = true;
                 String label =
                         switch (f.kind()) {
-                            case UNHASHED -> "unhashed";
                             case UNTRACKED -> "untracked";
                             case MISSING -> "missing";
-                            case UNOWNED -> "unowned";
                             case TAMPERED -> "tampered";
-                            case OK -> "ok";
+                            case UNHASHED, OK -> "ok"; // handled above
                         };
                 String detail = f.detail() == null ? "" : " — " + f.detail();
                 CliOutput.out(label + "  " + f.id() + detail);
             }
         }
-        if (allOk) {
+        if (!anyFailure) {
             CommandWedge.printOk(
                     "JDK",
-                    findings.size() == 1 ? "1 managed JDK verified." : findings.size() + " managed JDKs verified.");
+                    anyUnhashed
+                            ? "verified; some fingerprints not baselined yet (run `jk jdk verify --repair` to record them)."
+                            : (findings.size() == 1
+                                    ? "1 managed JDK verified."
+                                    : findings.size() + " managed JDKs verified."));
             return 0;
         }
         CommandWedge.printFail(

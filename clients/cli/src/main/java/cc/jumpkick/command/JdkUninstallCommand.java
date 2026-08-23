@@ -316,7 +316,12 @@ public final class JdkUninstallCommand implements CliCommand {
                 .execute(ctx -> {
                     ctx.label("reconcile default JDK pointer");
                     try {
+                        // Independent pointers reconcile independently: the graal-default can be
+                        // the victim while a different (surviving) java default is set — the old
+                        // tail call from reconcileDefaultAfterRemoval never ran in that case,
+                        // leaving graal-default dangling at a removed row.
                         reconcileDefaultAfterRemoval(registry, defaults, victims);
+                        reconcileGraalAfterRemoval(registry, defaults, victims);
                     } catch (IOException e) {
                         ctx.error("reconcile", e.getMessage());
                         throw new RuntimeException(e);
@@ -451,7 +456,6 @@ public final class JdkUninstallCommand implements CliCommand {
                                 Theme.active().warning()));
             }
         }
-        reconcileGraalAfterRemoval(registry, defaults, victims);
     }
 
     private static void reconcileGraalAfterRemoval(JdkRegistry registry, JdkInventory defaults, List<JdkHit> victims)
@@ -472,6 +476,9 @@ public final class JdkUninstallCommand implements CliCommand {
                                 Comparator.reverseOrder()));
         if (next.isEmpty()) {
             defaults.clearGraal();
+            CliOutput.out(Theme.colorize(
+                    "(no remaining GraalVM — graal default cleared)",
+                    Theme.active().normalGray()));
             return;
         }
         JdkHit hit = next.get();

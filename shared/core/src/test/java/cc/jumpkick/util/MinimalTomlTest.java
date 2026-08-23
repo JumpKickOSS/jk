@@ -40,4 +40,25 @@ class MinimalTomlTest {
     void empty_string_is_two_quotes() {
         assertThat(MinimalToml.quote("")).isEqualTo("\"\"");
     }
+
+    @Test
+    void unquote_is_the_inverse_of_quote() {
+        for (String value : new String[] {
+            "C:\\Users\\dev\\jdk-25",
+            "\\\\server\\share\\jdk",
+            "he said \"hi\"",
+            "tab\there\nand newline",
+            "control:\u0001",
+            "plain"
+        }) {
+            assertThat(MinimalToml.unquote(MinimalToml.quote(value))).isEqualTo(value);
+        }
+    }
+
+    @Test
+    void unquote_keeps_literal_strings_and_unquoted_scalars_verbatim() {
+        assertThat(MinimalToml.unquote("'C:\\raw\\path'")).isEqualTo("C:\\raw\\path");
+        assertThat(MinimalToml.unquote("bare # trailing comment")).isEqualTo("bare");
+        assertThat(MinimalToml.unquote("\"unknown \\q escape\"")).isEqualTo("unknown \\q escape");
+    }
 }
