@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.Osc;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
@@ -11,9 +10,11 @@ import cc.jumpkick.runtime.progress.HeaderProgressState;
 import cc.jumpkick.runtime.progress.HeaderProgressStrategy;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
 import cc.jumpkick.runtime.progress.WeightedProgressStrategy;
+import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.InputMode;
 import cc.jumpkick.terminal.Key;
 import cc.jumpkick.terminal.ModeGuard;
+import cc.jumpkick.terminal.Size;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.terminal.TerminalSession;
 import cc.jumpkick.terminal.Terminals;
@@ -63,7 +64,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
 
     /**
      * Terminal columns. Seeded at plan start; {@link JkManagerView#paintBuildPlan()} re-reads
-     * {@link TerminalSize} each frame so a mid-build SIGWINCH updates truncation budgets without
+     * {@link Size} each frame so a mid-build SIGWINCH updates truncation budgets without
      * waiting for the next plan.
      */
     int width;
@@ -297,9 +298,9 @@ public final class JkManager implements AutoCloseable, LiveRegion {
      */
     public static JkManager plan(PrintStream out, String name, boolean animate) {
         // Probe here — a plan start is a natural boundary — never from the frame-render path.
-        int[] size = animate ? TerminalSize.refresh() : new int[] {DEFAULT_HEIGHT, DEFAULT_WIDTH};
-        JkManager cm = new JkManager(out, animate, true, size[1]);
-        cm.height = size[0];
+        Size.Window size = animate ? Size.refresh() : new Size.Window(DEFAULT_HEIGHT, DEFAULT_WIDTH);
+        JkManager cm = new JkManager(out, animate, true, size.cols());
+        cm.height = size.rows();
         cm.name = name;
         cm.startNanos = System.nanoTime();
         LiveRegion.setActive(cm);

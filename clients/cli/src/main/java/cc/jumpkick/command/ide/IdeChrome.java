@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.ide;
 
-import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.Osc;
 import cc.jumpkick.cli.theme.Theme;
@@ -16,6 +15,7 @@ import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Tree;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.runtime.WorkspaceProgressTracker;
+import cc.jumpkick.terminal.Ansi;
 import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.ArrayList;

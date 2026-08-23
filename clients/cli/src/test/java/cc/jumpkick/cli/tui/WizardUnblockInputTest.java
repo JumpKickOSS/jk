@@ -2,7 +2,6 @@
 package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 
 import cc.jumpkick.terminal.InputMode;
 import cc.jumpkick.terminal.MemoryTerminal;
@@ -13,7 +12,7 @@ import java.io.ByteArrayOutputStream;
 import org.junit.jupiter.api.Test;
 
 /**
- * ModeGuard pop restores COOKED. StdinWake remains until JK-2377 and must stay safe without a tty.
+ * ModeGuard pop restores COOKED.
  */
 class WizardUnblockInputTest {
 
@@ -28,10 +27,5 @@ class WizardUnblockInputTest {
             assertThat(tty.mode()).isEqualTo(InputMode.COOKED);
             assertThat(tty.isLive()).isTrue();
         }
-    }
-
-    @Test
-    void stdin_wake_pulse_is_safe_without_a_tty() {
-        assertThatCode(StdinWake::pulseNonBlocking).doesNotThrowAnyException();
     }
 }

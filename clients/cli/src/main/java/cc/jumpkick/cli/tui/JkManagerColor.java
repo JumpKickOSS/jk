@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.jdk.JdkProgressLabel;
+import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Style;
 import java.util.Locale;
 import java.util.regex.Pattern;

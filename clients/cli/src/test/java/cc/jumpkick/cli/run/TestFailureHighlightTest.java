@@ -3,9 +3,9 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.terminal.Ansi;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -286,7 +286,7 @@ class TestFailureHighlightTest {
                 .max()
                 .orElse(0);
         // Terminal defaults to >= 80 in tests; rows must stay within the detected width.
-        assertThat(widest).isLessThanOrEqualTo(cc.jumpkick.cli.tui.TerminalSize.columns());
+        assertThat(widest).isLessThanOrEqualTo(cc.jumpkick.terminal.Size.columns());
         assertThat(String.join(
                         "\n",
                         painted.stream().map(TestFailureHighlightTest::plain).toList()))
@@ -316,7 +316,7 @@ class TestFailureHighlightTest {
                 .mapToInt(cc.jumpkick.cli.tui.RenderContext::visibleWidth)
                 .max()
                 .orElse(0);
-        assertThat(widest).isLessThanOrEqualTo(cc.jumpkick.cli.tui.TerminalSize.columns());
+        assertThat(widest).isLessThanOrEqualTo(cc.jumpkick.terminal.Size.columns());
         // No lone surrogate survives the cut.
         for (String line : painted) {
             String p = plain(line);

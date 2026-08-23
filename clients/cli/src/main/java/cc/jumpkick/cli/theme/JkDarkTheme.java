@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.theme;
 
-import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.tui.Rail;
+import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Style;
 
 /**

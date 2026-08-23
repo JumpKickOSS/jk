@@ -23,12 +23,6 @@ dependencies {
     implementation(project(":jsonl"))
     implementation(project(":cli-terminal"))
 
-    // JLine 4 FFM terminal provider for Theme/AttributedStyle (JK-2376 drops this).
-    // FFM backend requires JDK 22+; the GraalVM-compiled binary embeds the
-    // FFM downcalls natively. Reflection/resource hints live under
-    // src/main/resources/META-INF/native-image/org.jline/jline-terminal-ffm/.
-    implementation(libs.jline.terminal.ffm)
-
     // ProcessProperties.getArgumentVectorProgramName for argv[0] `jkx` dispatch
     // (Argv0). compileOnly: inside the image the builder provides the implementation;
     // on a JVM every use is gated behind the imagecode property so the class never loads.
@@ -52,6 +46,7 @@ val checkCliRuntimeClasspath by tasks.registering {
                     || n.startsWith("jk-plugin-sdk")
                     || n.startsWith("maven-artifact")
                     || n.startsWith("plexus-utils")
+                    || n.startsWith("jline")
         }
         if (forbidden.isNotEmpty()) {
             throw GradleException(
@@ -330,38 +325,13 @@ graalvmNative {
         buildArgs.add("--gc=serial")
         buildArgs.add("-R:MaxHeapSize=134217728")
         buildArgs.add("-R:MinHeapSize=25165824")
-        // JLine 4 FFM's signal handler uses Arena.ofShared, gated behind this
-        // flag in GraalVM 25. Without it the wizard crashes on Signal.INT setup.
-        buildArgs.add("-H:+SharedArenaSupport")
         // Silence the FFM "restricted method" runtime warning. Without this,
         // every wizard invocation prints a 4-line WARNING block before the UI.
         buildArgs.add("--enable-native-access=ALL-UNNAMED")
-        // (No engine code in this image: the engine role — and its setsid(2)
-        // downcall — lives in the JVM-hosted engine, shipped as jars by :engine.)
-        // Push heavy deps to lazy init. Build-time <clinit> is faster at
-        // runtime but blows up .svm_heap with cached objects we may never
-        // touch. The crypto/SBOM/git/Jib closures (bouncycastle, sigstore,
-        // grpc, cyclonedx, spdx, jgit, com.google) live in forked workers, not
-        // on the binary's classpath, so jline is the only contributor left:
-        // its FFM Linker/Arena lookups must run at image-runtime regardless.
-        buildArgs.add("--initialize-at-run-time=org.jline")
         // WindowsUtf8 binds Kernel32 via FFM at first enable() — keep that off the
         // image-build heap so downcalls resolve against the running process.
         buildArgs.add("--initialize-at-run-time=cc.jumpkick.terminal.windows.WindowsUtf8")
-        // jline-native ships a resource-config with a broad "org/jline/nativ/.*"
-        // pattern that embeds ALL platform native libs (Windows DLLs, Linux/macOS/
-        // FreeBSD .so/.dylib for every arch) as image resources. jk uses the FFM
-        // terminal provider exclusively; the JNI/JNA fallback (JLineNativeLoader,
-        // CLibrary, Kernel32, etc.) is reachable via jline-terminal's AbstractPty
-        // but never exercised at runtime. Exclude those cross-platform binaries
-        // with -H:ExcludeResources so they are not baked into the image heap.
-        buildArgs.add("-H:ExcludeResources=org/jline/nativ/.*")
     }
 
 }
-
-// JLine 4 FFM terminal provider ships native-image hints; we supplement them
-// at src/main/resources/META-INF/native-image/org.jline/jline-terminal-ffm/
-// with reflection-config.json and resource-config.json bootstrapped via the
-// GraalVM tracing agent against the JVM wizard (see plan §8d).
 

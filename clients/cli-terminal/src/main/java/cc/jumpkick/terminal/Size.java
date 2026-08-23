@@ -25,7 +25,7 @@ public final class Size {
         public static final Window DEFAULT = new Window(DEFAULT_HEIGHT, DEFAULT_WIDTH);
     }
 
-    static Supplier<Window> probe = Size::probeOs;
+    public static Supplier<Window> probe = Size::probeOs;
 
     private static volatile Window cached;
     private static volatile boolean winchAttempted;
@@ -61,11 +61,11 @@ public final class Size {
         return s;
     }
 
-    static void reset() {
+    public static void reset() {
         cached = null;
     }
 
-    static void onResize() {
+    public static void onResize() {
         resizeGeneration.incrementAndGet();
         cached = null;
     }
@@ -93,7 +93,7 @@ public final class Size {
         return envSize();
     }
 
-    static Window envSize() {
+    public static Window envSize() {
         return new Window(envInt("LINES", DEFAULT_HEIGHT), envInt("COLUMNS", DEFAULT_WIDTH));
     }
 

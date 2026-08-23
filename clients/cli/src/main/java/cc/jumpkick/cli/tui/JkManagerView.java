@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.Osc;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.terminal.Ansi;
+import cc.jumpkick.terminal.Size;
 import cc.jumpkick.terminal.Style;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -631,7 +632,7 @@ final class JkManagerView {
      * below the live region. Line-diff only rewrites changed rows (spinner header most frames).
      */
     void paintBuildPlan() {
-        syncTerminalSize();
+        syncSize();
         long elapsed = m.elapsedMillis();
         List<String> lines = m.renderBuildPlanLines(m.width, elapsed);
         int colBudget = JkManagerColor.rowColumnBudget(m.width);
@@ -669,7 +670,7 @@ final class JkManagerView {
      */
     void openPeekPaint() {
         if (!m.animate || !Theme.active().isAnsi()) return;
-        syncTerminalSize();
+        syncSize();
         List<String> chrome = renderChromeLines(m.width, m.elapsedMillis());
         int budget = OutputWindow.displayBudget(m.height, chrome.size());
         // Uncommitted only: lines from an earlier open (dump or live appends) are already
@@ -701,7 +702,7 @@ final class JkManagerView {
      */
     void closePeekPaint() {
         if (!m.animate || !Theme.active().isAnsi()) return;
-        syncTerminalSize();
+        syncSize();
         int up = Math.min(m.lastLines.size(), OutputWindow.maxRegionLines(m.height));
         if (up > 0) {
             m.out.print(Ansi.cursorUp(up));
@@ -718,7 +719,7 @@ final class JkManagerView {
      * wedge. Does not redraw prior process lines. Must hold {@code m.lock}.
      */
     private void liftEmitRepaintLive(String text) {
-        syncTerminalSize();
+        syncSize();
         int colBudget = JkManagerColor.rowColumnBudget(m.width);
         String painted = JkManagerColor.truncateVisible(text, colBudget);
         int up = Math.min(m.lastLines.size(), OutputWindow.maxRegionLines(m.height));
@@ -794,10 +795,10 @@ final class JkManagerView {
      * column change with a live region, wipe first — after a shrink the terminal may have reflowed
      * the old paint onto more physical rows than {@code lastLines.size()}.
      */
-    private void syncTerminalSize() {
-        int[] size = TerminalSize.size();
-        int cols = size[1] > 0 ? size[1] : m.width;
-        int rows = size[0] > 0 ? size[0] : m.height;
+    private void syncSize() {
+        Size.Window size = Size.current();
+        int cols = size.cols() > 0 ? size.cols() : m.width;
+        int rows = size.rows() > 0 ? size.rows() : m.height;
         if (cols == m.width && rows == m.height) return;
         if (cols != m.width && !m.lastLines.isEmpty()) {
             wipeReflowedRegion(paintedCols > 0 ? paintedCols : m.width, cols);

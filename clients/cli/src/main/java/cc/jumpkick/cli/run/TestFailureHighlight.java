@@ -356,7 +356,7 @@ public final class TestFailureHighlight {
         // Clamp to the terminal: one over-long source line otherwise pads EVERY row past the
         // width, wrapping continuation rows without the rail and spilling the band.
         // Tabs expand first — the pad math is column-based, and a raw '\t' misaligns the band end.
-        int budget = Math.max(40, cc.jumpkick.cli.tui.TerminalSize.columns() - ROW_OVERHEAD);
+        int budget = Math.max(40, cc.jumpkick.terminal.Size.columns() - ROW_OVERHEAD);
         List<SrcRow> rows = new ArrayList<>();
         int maxCode = 0;
         for (int i = 1; i < markers.size(); i++) {
@@ -416,7 +416,7 @@ public final class TestFailureHighlight {
             String note) {
         if (displayPath == null) displayPath = "";
         Theme t = Theme.active();
-        int budget = Math.max(40, cc.jumpkick.cli.tui.TerminalSize.columns() - ROW_OVERHEAD);
+        int budget = Math.max(40, cc.jumpkick.terminal.Size.columns() - ROW_OVERHEAD);
         int n = fileLines == null ? 0 : fileLines.size();
         int err = Math.max(1, errorLine);
         // A lone snippet (file unread) still wears the real diagnostic line number.

@@ -4,6 +4,7 @@ package cc.jumpkick.cli.tui;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.terminal.Size;
 import cc.jumpkick.terminal.Width;
 
 /**
@@ -34,7 +35,7 @@ public record RenderContext(Theme theme, boolean ansi, NerdFontCaps nerd, int wi
 
     /**
      * Snapshot of the process-wide theme / nerd caps / terminal columns. Called on every
-     * animation frame, so the width comes from the {@link TerminalSize} cache — never a fresh
+     * animation frame, so the width comes from the {@link Size} cache — never a fresh
      * probe — and the caps come from {@link GlobalConfig#nerdFont()}, which memoizes for the life
      * of the process rather than re-detecting per frame.
      */
@@ -42,7 +43,7 @@ public record RenderContext(Theme theme, boolean ansi, NerdFontCaps nerd, int wi
         Theme theme = Theme.active();
         boolean ansi = theme.isAnsi();
         NerdFontCaps caps = ansi ? GlobalConfig.nerdFont() : NerdFontCaps.NONE;
-        return new RenderContext(theme, ansi, caps, TerminalSize.columns(), 0);
+        return new RenderContext(theme, ansi, caps, Size.columns(), 0);
     }
 
     /** True when the solid powerline triangles {@code U+E0B0} / {@code U+E0B2} may be painted. */

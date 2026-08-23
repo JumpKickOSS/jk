@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.theme.Coords;
@@ -19,6 +18,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.tool.JarManifest;
 import java.io.IOException;
 import java.net.URI;
