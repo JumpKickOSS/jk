@@ -5,7 +5,13 @@ rem optional jk-min floor, else the latest published release verified against th
 rem SHA256SUMS. The lock pins inputs, not the operator.
 setlocal enabledelayedexpansion
 
-if "%JK_HOME%"=="" set "JK_HOME=%USERPROFILE%\.jk"
+rem Bin dir resolution mirrors install.ps1 / JkDirs (JK_INSTALL_DIR > JK_BIN_DIR >
+rem JK_HOME\bin > %USERPROFILE%\.local\bin) - the wrapper must not invent its own layout.
+set "BIN_DIR="
+if not "%JK_INSTALL_DIR%"=="" set "BIN_DIR=%JK_INSTALL_DIR%"
+if "%BIN_DIR%"=="" if not "%JK_BIN_DIR%"=="" set "BIN_DIR=%JK_BIN_DIR%"
+if "%BIN_DIR%"=="" if not "%JK_HOME%"=="" set "BIN_DIR=%JK_HOME%\bin"
+if "%BIN_DIR%"=="" set "BIN_DIR=%USERPROFILE%\.local\bin"
 if "%JK_RELEASES_URL%"=="" set "JK_RELEASES_URL=https://jumpkick.build/releases"
 set "DIR=%~dp0"
 
@@ -15,12 +21,12 @@ if exist "%DIR%jk-lock.toml" (
   if defined LINE for /f tokens^=2^ delims^=^" %%V in ("!LINE!") do set "FLOOR=%%V"
 )
 
-set "BIN=%JK_HOME%\bin\jk.exe"
+set "BIN=%BIN_DIR%\jk.exe"
 set "USEINSTALLED="
 if exist "%BIN%" (
   set "INSTALLED="
-  if exist "%JK_HOME%\bin\VERSION" (
-    for /f "usebackq delims=" %%V in (`type "%JK_HOME%\bin\VERSION"`) do set "INSTALLED=%%V"
+  if exist "%BIN_DIR%\VERSION" (
+    for /f "usebackq delims=" %%V in (`type "%BIN_DIR%\VERSION"`) do set "INSTALLED=%%V"
   )
   if "%FLOOR%"=="" set "USEINSTALLED=1"
   if not defined INSTALLED set "USEINSTALLED=1"
@@ -52,10 +58,10 @@ if not "%SUMCHECK%"=="ok" (
 )
 powershell -NoProfile -Command "Expand-Archive '!TMP!\%FILE%' '!TMP!'" || exit /b 1
 for /f "delims=" %%F in ('dir /b /s "!TMP!\*.exe"') do set "CLIENT=%%F"
-mkdir "%JK_HOME%\bin" 2>nul
+mkdir "%BIN_DIR%" 2>nul
 if exist "%BIN%" move /y "%BIN%" "%BIN%.old" >nul 2>&1
 copy /y "!CLIENT!" "%BIN%" >nul
-echo %VERSION%> "%JK_HOME%\bin\VERSION"
+echo %VERSION%> "%BIN_DIR%\VERSION"
 del /f /q "%BIN%.old" >nul 2>&1
 rmdir /s /q "!TMP!"
 

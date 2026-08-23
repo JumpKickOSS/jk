@@ -28,7 +28,8 @@ class WrapperTemplateTest {
         // The two frozen dependencies: the release layout and the lock's optional floor.
         assertThat(sh).contains("latest/VERSION").contains("SHA256SUMS");
         assertThat(sh).contains("\"jk-min = \"*").contains("$SEARCH/jk-lock.toml");
-        assertThat(sh).contains("$JK_HOME/bin/jk");
+        // Bin resolution mirrors install.sh/JkDirs; the wrapper never invents ~/.jk.
+        assertThat(sh).contains("$BIN_DIR/jk").contains("XDG_BIN_HOME").doesNotContain("$HOME/.jk");
         // Downloads verify against the release's own sums — never a sha read from the lock.
         assertThat(sh).doesNotContain("\"jk = \"*").doesNotContain("sha256 = ");
         // Newest installed wins when it satisfies the floor; a stale channel is a hard error.
@@ -46,7 +47,7 @@ class WrapperTemplateTest {
         assertThat(bat).contains("latest/VERSION").contains("SHA256SUMS");
         assertThat(bat).contains("jk-min");
         assertThat(bat).doesNotContain("\"jk = \"").doesNotContain("sha256 = ");
-        assertThat(bat).contains("%JK_HOME%\\bin\\jk.exe");
+        assertThat(bat).contains("%BIN_DIR%\\jk.exe").doesNotContain("%USERPROFILE%\\.jk");
         // Windows wrapper matches install.ps1: .zip (no system xz). Not .exe.zip.
         assertThat(bat).contains("jk-windows-x86_64.zip");
         assertThat(bat).doesNotContain(".exe.zip").doesNotContain(".xz");
