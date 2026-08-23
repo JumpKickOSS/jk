@@ -17,9 +17,11 @@ public final class Capture {
 
     /**
      * Line terminators normalized to {@code \n}. Chrome assertions are about content, not about
-     * which terminator the host's {@code println} emits — {@code \r\n} on Windows.
+     * which terminator the host's {@code println} emits — {@code \r\n} on Windows. Use this when a
+     * test reads a {@link ByteArrayOutputStream} that a {@link PrintStream} wrote, rather than
+     * going through {@link #stdout} / {@link #stderr} / {@link #both}.
      */
-    private static String lf(String captured) {
+    public static String lf(String captured) {
         return captured.replace("\r\n", "\n");
     }
 

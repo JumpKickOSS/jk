@@ -154,9 +154,12 @@ final class ScriptRunner {
             command.add("--");
             command.addAll(args);
         }
-        cc.jumpkick.cli.tui.Interactivity.restoreForChildProcess();
+        cc.jumpkick.terminal.Terminals.restoreForChild();
+        Process p = new ProcessBuilder(command).inheritIO().start();
+        // Skip the gap only once the exec actually started — a failed start() still owns
+        // the terminal, and its error wedge has earned the envelope's trailing blank.
         cc.jumpkick.cli.CliOutput.skipTrailingBlank();
-        return new ProcessBuilder(command).inheritIO().start().waitFor();
+        return p.waitFor();
     }
 
     // --- .jar ------------------------------------------------------------
@@ -189,9 +192,12 @@ final class ScriptRunner {
             command.add(prep.mainClass());
         }
         command.addAll(args);
-        cc.jumpkick.cli.tui.Interactivity.restoreForChildProcess();
+        cc.jumpkick.terminal.Terminals.restoreForChild();
+        Process p = new ProcessBuilder(command).inheritIO().start();
+        // Skip the gap only once the exec actually started — a failed start() still owns
+        // the terminal, and its error wedge has earned the envelope's trailing blank.
         cc.jumpkick.cli.CliOutput.skipTrailingBlank();
-        return new ProcessBuilder(command).inheritIO().start().waitFor();
+        return p.waitFor();
     }
 
     // --- shared helpers --------------------------------------------------
@@ -248,9 +254,12 @@ final class ScriptRunner {
         command.add(joinClasspath(full));
         command.add(mainClass);
         command.addAll(args);
-        cc.jumpkick.cli.tui.Interactivity.restoreForChildProcess();
+        cc.jumpkick.terminal.Terminals.restoreForChild();
+        Process p = new ProcessBuilder(command).inheritIO().start();
+        // Skip the gap only once the exec actually started — a failed start() still owns
+        // the terminal, and its error wedge has earned the envelope's trailing blank.
         cc.jumpkick.cli.CliOutput.skipTrailingBlank();
-        return new ProcessBuilder(command).inheritIO().start().waitFor();
+        return p.waitFor();
     }
 
     private static String joinClasspath(List<Path> paths) {

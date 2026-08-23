@@ -417,8 +417,8 @@ public final class EngineProtocol {
     public static final String TOOL_RESOLVE_REQUEST = "tool-resolve-request";
 
     /**
-     * Client → server: cache maintenance ({@code prune}/{@code purge}/{@code gc}) at an idle
-     * boundary under {@code.prune.lock}; may emit {@link #PRUNE_WAIT} first.
+     * Client → server: cache maintenance ({@code prune}/{@code purge}/{@code sweep}/{@code clear})
+     * at an idle boundary under {@code.prune.lock}; may emit {@link #PRUNE_WAIT} first.
      */
     public static final String CACHE_PRUNE_REQUEST = "cache-prune-request";
 

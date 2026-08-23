@@ -103,12 +103,12 @@ class JobEnvelopeTest {
                 }),
                 new JobTransport.FireAndForget());
         assertThat(jid).isPositive();
-        assertThat(ran.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(ran.await(30, TimeUnit.SECONDS)).isTrue();
         // Await the WHOLE teardown, not just the finish flag: the detached worker appends
         // teardownOrder entries after finished++ lands, and containsExactly iterating the live
         // synchronizedList mid-append flaked under parallel suite load (the "expected X to
         // contain exactly X" failure). Snapshot before asserting.
-        long deadline = System.currentTimeMillis() + 5_000;
+        long deadline = System.currentTimeMillis() + 30_000;
         while ((host.finished == 0 || host.teardownOrder.size() < 2) && System.currentTimeMillis() < deadline) {
             Thread.sleep(10);
         }
@@ -130,14 +130,16 @@ class JobEnvelopeTest {
                 JobRequest.workspace("build", "jk-test-", (l, tok, w) -> {
                     started.countDown();
                     try {
-                        release.await(5, TimeUnit.SECONDS);
+                        // Generous: the first build must still be in flight when the duplicate is
+                        // submitted, and the main thread always releases it in its finally.
+                        release.await(30, TimeUnit.SECONDS);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
                     return null;
                 }),
                 new JobTransport.FireAndForget());
-        assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(started.await(30, TimeUnit.SECONDS)).isTrue();
         try {
             org.assertj.core.api.Assertions.assertThatThrownBy(() -> env.submit(
                             line,

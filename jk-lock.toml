@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "6f98e27dd5ba6660d17fa708e569e1ea388d3bb8740cc6c2f5db89f91fca8867"
+manifests-sha256 = "b0fa870dd152fa9ad919fc4cbd0f393d3fa487183a7e795ce52cfa200f192253"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [[artifact]]
@@ -1788,16 +1788,6 @@ deps = [
 ]
 
 [[artifact]]
-name     = "org.jline:jline-terminal-ffm:jar:"
-version  = "4.3.1"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:2913cea48e5eac3e0763f5838059701b05c19d6dc41e829aee16a06364a340d6"
-scopes   = ["main"]
-deps = [
-  "org.jline:jline-terminal:jar:@4.3.1",
-]
-
-[[artifact]]
 name     = "org.jline:jline-terminal-jni:jar:"
 version  = "4.3.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -2542,6 +2532,14 @@ name    = "jk-cli"
 version = "0.12.0"
 java    = 25
 description = "The CLI (and primary) client for interacting with the JumpKick build system"
+
+[[module]]
+path    = "clients/cli-terminal"
+group   = "cc.jumpkick"
+name    = "jk-cli-terminal"
+version = "0.12.0"
+java    = 25
+description = "Controlling TTY, VT style, and keys for the native CLI"
 
 [[module]]
 path    = "clients/web"

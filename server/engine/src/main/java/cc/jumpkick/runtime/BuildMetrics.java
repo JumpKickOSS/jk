@@ -358,9 +358,9 @@ public final class BuildMetrics {
         return i + 2 == s.length() ? s : s.substring(0, i);
     }
 
-    /** Forward-slash form of a metrics dir key (stable across OSes). */
+    /** Canonical metrics dir key: forward slashes + folded drive-letter case (see DirKeys). */
     public static String slashKey(String dir) {
-        return dir == null ? "" : dir.replace('\\', '/');
+        return dir == null ? "" : cc.jumpkick.util.DirKeys.key(dir);
     }
 
     /**

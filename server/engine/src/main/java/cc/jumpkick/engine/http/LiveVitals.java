@@ -280,14 +280,13 @@ public final class LiveVitals implements AutoCloseable {
         }
     }
 
-    /** Dual-surface cache fingerprint (1 MiB quanta on each surface + budgets). */
-    record PresentCache(long actionMib, long artifactMib, long actionMaxMib, long storeMaxMib) {
+    /** Dual-surface cache fingerprint (1 MiB quanta on each surface + the cache budget). */
+    record PresentCache(long actionMib, long artifactMib, long actionMaxMib) {
         static PresentCache of(CacheSnapshot c) {
             return new PresentCache(
                     c.actionCacheBytes() / (1024L * 1024L),
                     c.artifactStorageBytes() / (1024L * 1024L),
-                    c.actionMaxBytes() / (1024L * 1024L),
-                    c.maxBytes() / (1024L * 1024L));
+                    c.actionMaxBytes() / (1024L * 1024L));
         }
     }
 }

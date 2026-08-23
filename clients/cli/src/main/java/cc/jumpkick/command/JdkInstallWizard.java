@@ -7,6 +7,7 @@ import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.cli.tui.WizardStep;
 import cc.jumpkick.jdk.JdkCatalog;
 import cc.jumpkick.jdk.JdkSelector;
+import cc.jumpkick.terminal.TerminalSession;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,7 +16,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import org.jline.terminal.Terminal;
 
 /**
  * 3-step TUI for {@code jk jdk install} when no {@code <spec>} was given. Asks for major version
@@ -73,7 +73,8 @@ final class JdkInstallWizard {
         }
     }
 
-    public static Optional<Result> run(JdkCatalog catalog, String os, String arch, boolean showAll, Terminal terminal) {
+    public static Optional<Result> run(
+            JdkCatalog catalog, String os, String arch, boolean showAll, TerminalSession terminal) {
         List<VendorOption> vendors = vendorsFor(catalog, os, arch, showAll);
         if (vendors.isEmpty()) {
             return Optional.empty();

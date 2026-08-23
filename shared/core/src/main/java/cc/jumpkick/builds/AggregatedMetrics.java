@@ -248,8 +248,9 @@ public final class AggregatedMetrics {
 
     public static String sanitize(String s) {
         if (s == null) return "unknown";
-        // Forward slashes first so Windows paths stay one key family with Unix.
-        return s.replace('\\', '/').replaceAll("[^a-zA-Z0-9._:/-]+", "_");
+        // Forward slashes first so Windows paths stay one key family with Unix; a POSIX
+        // backslash name is NOT a separator and folds to '_' like any other odd character.
+        return cc.jumpkick.util.DirKeys.slashes(s).replaceAll("[^a-zA-Z0-9._:/-]+", "_");
     }
 
     private static void parseProjectFile(

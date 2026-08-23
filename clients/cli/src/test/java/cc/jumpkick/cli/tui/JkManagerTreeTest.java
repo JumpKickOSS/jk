@@ -5,16 +5,17 @@ import static cc.jumpkick.cli.tui.JkManagerTestSupport.stream;
 import static cc.jumpkick.cli.tui.JkManagerTestSupport.stripAll;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.terminal.Ansi;
+import cc.jumpkick.terminal.Size;
+import cc.jumpkick.terminal.Style;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import org.jline.utils.AttributedStyle;
 import org.junit.jupiter.api.Test;
 
 /** Plan-mode header pill, work-tree rows, and resize/reflow repaint behavior of the JkManager component. */
@@ -51,7 +52,7 @@ class JkManagerTreeTest {
         String header = cm.renderBuildPlanLines(120, 0).get(0);
         // Pill: pulse circle + name + powerline cap.
         assertThat(TestAnsi.strip(header)).contains(Spinner.PULSE_GLYPH + " Build " + Glyphs.SEGMENT_END_NERD);
-        AttributedStyle chip = Theme.active().planChip();
+        Style chip = Theme.active().planChip();
         assertThat(header).startsWith(Theme.colorize(" ", chip));
         assertThat(header).contains(Theme.colorize("Build", chip));
         // Cap: FG = chip blue; BG = bar lead color.
@@ -80,7 +81,7 @@ class JkManagerTreeTest {
         // ERASE_DISPLAY_TO_END — otherwise the first two columns (the spinner glyph)
         // of the top line survive.
         String raw = buf.toString(StandardCharsets.UTF_8);
-        assertThat(raw).contains("\r" + cc.jumpkick.cli.Ansi.ERASE_DISPLAY_TO_END);
+        assertThat(raw).contains("\r" + cc.jumpkick.terminal.Ansi.ERASE_DISPLAY_TO_END);
     }
 
     @Test
@@ -195,12 +196,12 @@ class JkManagerTreeTest {
 
     @Test
     void paint_picks_up_terminal_resize_and_rewrites_truncated_rows() {
-        // Mid-build maximize: SIGWINCH clears TerminalSize's cache. Paint must re-read size
+        // Mid-build maximize: SIGWINCH clears Size's cache. Paint must re-read size
         // and force a full rewrite so a long test name is not left clipped.
-        var savedProbe = TerminalSize.probe;
+        var savedProbe = Size.probe;
         try {
-            TerminalSize.probe = () -> new int[] {24, 40};
-            TerminalSize.reset();
+            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 40);
+            Size.reset();
 
             var buf = new ByteArrayOutputStream();
             // animate=true so tick paints; package ctor avoids starting the animator thread.
@@ -220,8 +221,8 @@ class JkManagerTreeTest {
             assertThat(narrow).doesNotContain(longName);
 
             // Same as the SIGWINCH handler: drop the cache; next paint pays one re-probe.
-            TerminalSize.probe = () -> new int[] {24, 160};
-            TerminalSize.reset();
+            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 160);
+            Size.reset();
             buf.reset();
             cm.tick();
 
@@ -237,8 +238,8 @@ class JkManagerTreeTest {
                     .asString()
                     .doesNotContain("…");
         } finally {
-            TerminalSize.probe = savedProbe;
-            TerminalSize.reset();
+            Size.probe = savedProbe;
+            Size.reset();
         }
     }
 
@@ -261,10 +262,10 @@ class JkManagerTreeTest {
     void shrink_wipe_climbs_only_the_logical_rows_on_clipping_terminals() {
         // on a clipping terminal the wipe must be exactly lastLines.size() rows —
         // the reflow estimate overshoots into (and erases) completed output above the region.
-        var savedProbe = TerminalSize.probe;
+        var savedProbe = Size.probe;
         try {
-            TerminalSize.probe = () -> new int[] {24, 80};
-            TerminalSize.reset();
+            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 80);
+            Size.reset();
             var buf = new ByteArrayOutputStream();
             var cm = new JkManager(stream(buf), true, true, 80);
             cm.height = 24;
@@ -276,8 +277,8 @@ class JkManagerTreeTest {
             cm.tick();
             int drawn = cm.view.renderBuildPlanLines(80, 0).size();
 
-            TerminalSize.probe = () -> new int[] {24, 40};
-            TerminalSize.reset();
+            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 40);
+            Size.reset();
             buf.reset();
 
             TerminalReflow.force(false); // clipping terminal
@@ -286,12 +287,12 @@ class JkManagerTreeTest {
             assertThat(clipped).contains(Ansi.cursorUp(drawn));
 
             // Reflowing terminal: same shrink climbs the (larger) estimated physical height.
-            TerminalSize.probe = () -> new int[] {24, 80};
-            TerminalSize.reset();
+            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 80);
+            Size.reset();
             TerminalReflow.force(true);
             cm.tick(); // repaint at 80 again
-            TerminalSize.probe = () -> new int[] {24, 40};
-            TerminalSize.reset();
+            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 40);
+            Size.reset();
             List<String> last = cm.view.renderBuildPlanLines(80, 0);
             int estimate = Math.max(JkManagerView.physicalRowsAfterReflow(last, 80, 40), last.size());
             buf.reset();
@@ -299,8 +300,8 @@ class JkManagerTreeTest {
             assertThat(buf.toString(StandardCharsets.UTF_8)).contains(Ansi.cursorUp(estimate));
         } finally {
             TerminalReflow.force(null);
-            TerminalSize.probe = savedProbe;
-            TerminalSize.reset();
+            Size.probe = savedProbe;
+            Size.reset();
         }
     }
 
@@ -308,10 +309,10 @@ class JkManagerTreeTest {
     void write_above_after_a_shrink_wipes_with_post_resize_geometry() {
         // writeAbove used pre-resize linesDrawn for its erase; the reflow-aware sync
         // must run first so no orphan rows survive above the emitted line.
-        var savedProbe = TerminalSize.probe;
+        var savedProbe = Size.probe;
         try {
-            TerminalSize.probe = () -> new int[] {24, 80};
-            TerminalSize.reset();
+            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 80);
+            Size.reset();
             var buf = new ByteArrayOutputStream();
             var cm = new JkManager(stream(buf), true, true, 80);
             cm.height = 24;
@@ -323,8 +324,8 @@ class JkManagerTreeTest {
             cm.tick();
             List<String> last = cm.view.renderBuildPlanLines(80, 0);
 
-            TerminalSize.probe = () -> new int[] {24, 40};
-            TerminalSize.reset();
+            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 40);
+            Size.reset();
             TerminalReflow.force(true);
             int estimate = Math.max(JkManagerView.physicalRowsAfterReflow(last, 80, 40), last.size());
             buf.reset();
@@ -339,17 +340,17 @@ class JkManagerTreeTest {
             assertThat(estimate).isGreaterThan(0); // reflow estimate still computed above
         } finally {
             TerminalReflow.force(null);
-            TerminalSize.probe = savedProbe;
-            TerminalSize.reset();
+            Size.probe = savedProbe;
+            Size.reset();
         }
     }
 
     @Test
     void renderBuildPlanLines_uses_its_cols_argument_not_a_second_terminal_read() {
         // One width sample per frame: a SIGWINCH landing between paintBuildPlan's size sync and
-        // the tree render must not leak a second TerminalSize read into row content while the
+        // the tree render must not leak a second Size read into row content while the
         // truncation budget, paintedCols, and the reflow-wipe estimate still use the sample.
-        var savedProbe = TerminalSize.probe;
+        var savedProbe = Size.probe;
         try {
             var buf = new ByteArrayOutputStream();
             var cm = new JkManager(stream(buf), true, true, 120);
@@ -360,15 +361,15 @@ class JkManagerTreeTest {
             cm.stepRunning("cc.jumpkick:jk-cli", "compile", "compile");
             cm.stepMessage("cc.jumpkick:jk-cli", "compile", "compiling 42 sources");
 
-            TerminalSize.probe = () -> new int[] {24, 200};
-            TerminalSize.reset();
+            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 200);
+            Size.reset();
             List<String> sampled = cm.renderBuildPlanLines(120, 4_000);
-            TerminalSize.probe = () -> new int[] {24, 30};
-            TerminalSize.reset();
+            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 30);
+            Size.reset();
             assertThat(cm.renderBuildPlanLines(120, 4_000)).isEqualTo(sampled);
         } finally {
-            TerminalSize.probe = savedProbe;
-            TerminalSize.reset();
+            Size.probe = savedProbe;
+            Size.reset();
         }
     }
 
@@ -390,10 +391,10 @@ class JkManagerTreeTest {
         // Shrink reflows long painted lines onto extra physical rows. cursorUp(logical) then
         // undershoots and the next header stacks under the orphan. Wipe must cursor-up by the
         // reflow estimate (≥ logical) and erase before painting the narrower region.
-        var savedProbe = TerminalSize.probe;
+        var savedProbe = Size.probe;
         try {
-            TerminalSize.probe = () -> new int[] {24, 120};
-            TerminalSize.reset();
+            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 120);
+            Size.reset();
 
             var buf = new ByteArrayOutputStream();
             var cm = new JkManager(stream(buf), true, true, 120);
@@ -409,23 +410,23 @@ class JkManagerTreeTest {
             assertThat(painted).isNotEmpty();
             int expectedUp = Math.max(JkManagerView.physicalRowsAfterReflow(painted, 120, 50), painted.size());
 
-            TerminalSize.probe = () -> new int[] {24, 50};
-            TerminalSize.reset();
+            Size.probe = () -> new cc.jumpkick.terminal.Size.Window(24, 50);
+            Size.reset();
             buf.reset();
             cm.tick();
 
             assertThat(cm.width()).isEqualTo(50);
             String raw = buf.toString(StandardCharsets.UTF_8);
             // Wipe path: cursor-up by physical reflow rows, then erase-display-to-end, then paint.
-            assertThat(raw).contains(cc.jumpkick.cli.Ansi.cursorUp(expectedUp));
-            assertThat(raw).contains("\r" + cc.jumpkick.cli.Ansi.ERASE_DISPLAY_TO_END);
+            assertThat(raw).contains(cc.jumpkick.terminal.Ansi.cursorUp(expectedUp));
+            assertThat(raw).contains("\r" + cc.jumpkick.terminal.Ansi.ERASE_DISPLAY_TO_END);
             // Only one Build header in the post-shrink frame (not a stacked orphan + new paint).
             String visible = TestAnsi.strip(raw);
             long buildHeaders = visible.lines().filter(l -> l.contains("Build")).count();
             assertThat(buildHeaders).isEqualTo(1);
         } finally {
-            TerminalSize.probe = savedProbe;
-            TerminalSize.reset();
+            Size.probe = savedProbe;
+            Size.reset();
         }
     }
 }

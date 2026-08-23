@@ -16,13 +16,13 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.resolver.Versions;
+import cc.jumpkick.terminal.Style;
 import cc.jumpkick.util.JkDirs;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import org.jline.utils.AttributedStyle;
 
 /**
  * {@code jk outdated} — read-only report of declared deps with newer versions than {@code jk-lock.toml}
@@ -188,7 +188,7 @@ public final class OutdatedCommand implements CliCommand {
         int n = headers.size();
 
         List<String[]> cellRows = new ArrayList<>();
-        List<AttributedStyle[]> styleRows = new ArrayList<>();
+        List<Style[]> styleRows = new ArrayList<>();
         List<Boolean> dividerBefore = new ArrayList<>();
         String prevModule = null;
         boolean first = true;
@@ -196,7 +196,7 @@ public final class OutdatedCommand implements CliCommand {
             boolean newGroup = workspace && !r.moduleLabel().equals(prevModule);
             dividerBefore.add(!first && newGroup);
             String[] cells = new String[n];
-            AttributedStyle[] styles = new AttributedStyle[n];
+            Style[] styles = new Style[n];
             int c = 0;
             if (workspace) {
                 cells[c] = newGroup ? r.moduleLabel() : "";
@@ -234,7 +234,7 @@ public final class OutdatedCommand implements CliCommand {
         for (int i = 0; i < cellRows.size(); i++) {
             if (dividerBefore.get(i)) table.row(Table.Row.separator());
             String[] cells = cellRows.get(i);
-            AttributedStyle[] styles = styleRows.get(i);
+            Style[] styles = styleRows.get(i);
             RichText[] rich = new RichText[n];
             for (int c = 0; c < n; c++) {
                 rich[c] = styledCell(cells[c], styles[c]);
@@ -244,7 +244,7 @@ public final class OutdatedCommand implements CliCommand {
         return table.render(RenderContext.current());
     }
 
-    private static RichText styledCell(String text, AttributedStyle style) {
+    private static RichText styledCell(String text, Style style) {
         if (style == null || !Theme.active().isAnsi()) return RichText.plain(text);
         return RichText.ansi(Theme.colorize(text, style));
     }

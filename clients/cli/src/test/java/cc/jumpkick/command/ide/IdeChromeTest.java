@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.tui.RichText;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -76,7 +77,7 @@ class IdeChromeTest {
             chrome.note(IdeChrome.restartNote());
             chrome.succeed(IdeChrome.projectReady("widget"));
         }
-        String raw = buf.toString(StandardCharsets.UTF_8);
+        String raw = Capture.lf(buf.toString(StandardCharsets.UTF_8));
         String visible = TestAnsi.strip(raw);
         assertThat(visible).contains("Note").contains("restart your IDE");
         assertThat(visible).contains("The widget project is ready");

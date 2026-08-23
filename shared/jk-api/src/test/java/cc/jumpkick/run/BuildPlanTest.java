@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -193,30 +194,37 @@ class BuildPlanTest {
     void independent_async_phases_run_in_parallel() throws InterruptedException {
         CountDownLatch sawBothRunning = new CountDownLatch(2);
         CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger released = new AtomicInteger();
         var plan = BuildPlan.builder("parallel")
                 .addTask(Task.builder("a")
                         .kind(TaskKind.IO)
                         .execute(ctx -> {
                             sawBothRunning.countDown();
-                            release.await();
+                            if (release.await(30, TimeUnit.SECONDS)) released.incrementAndGet();
                         })
                         .build())
                 .addTask(Task.builder("b")
                         .kind(TaskKind.IO)
                         .execute(ctx -> {
                             sawBothRunning.countDown();
-                            release.await();
+                            if (release.await(30, TimeUnit.SECONDS)) released.incrementAndGet();
                         })
                         .build())
                 .build();
 
         Thread runner = new Thread(plan::run);
         runner.start();
-        // Both steps must have entered execute() concurrently — proves
-        // the IO pool dispatched them in parallel, not sequentially.
-        assertThat(sawBothRunning.await(2, TimeUnit.SECONDS)).isTrue();
-        release.countDown();
-        runner.join(2000);
+        try {
+            // Both steps must have entered execute() concurrently — proves
+            // the IO pool dispatched them in parallel, not sequentially.
+            assertThat(sawBothRunning.await(10, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            release.countDown(); // an unmet expectation must not strand the tasks, and the runner
+        }
+        assertThat(runner.join(Duration.ofSeconds(10))).isTrue();
+        assertThat(released)
+                .as("both steps left execute() through the release, not a timeout")
+                .hasValue(2);
     }
 
     @Test
@@ -357,20 +365,23 @@ class BuildPlanTest {
                         .kind(TaskKind.IO)
                         .execute(ctx -> {
                             started.countDown();
-                            while (!ctx.cancelled()) {
+                            // Bounded: an unpropagated cancel would otherwise spin this task — and
+                            // the runner thread joining it — for the life of the JVM.
+                            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+                            while (!ctx.cancelled() && System.nanoTime() < deadline) {
                                 Thread.sleep(10);
                             }
-                            sawCancelled.countDown();
+                            if (ctx.cancelled()) sawCancelled.countDown();
                         })
                         .build())
                 .build();
 
         Thread runner = new Thread(plan::run);
         runner.start();
-        assertThat(started.await(2, TimeUnit.SECONDS)).isTrue();
+        assertThat(started.await(10, TimeUnit.SECONDS)).isTrue();
         plan.requestCancel();
-        assertThat(sawCancelled.await(2, TimeUnit.SECONDS)).isTrue();
-        runner.join(2000);
+        assertThat(sawCancelled.await(10, TimeUnit.SECONDS)).isTrue();
+        assertThat(runner.join(Duration.ofSeconds(10))).isTrue();
         assertThat(plan.snapshot().cancelled()).isTrue();
     }
 

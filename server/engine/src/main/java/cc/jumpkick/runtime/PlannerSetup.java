@@ -129,8 +129,6 @@ public final class PlannerSetup {
                     }
 
                     Lockfile lock = ctx.require(LOCKFILE);
-                    // Reading the lock keeps its deps fresh against the 90-day cache GC.
-                    cc.jumpkick.task.AccessLedger.atDefaultPath().touchLock(lock);
 
                     Profile profile = CompileSupport.resolveProfile(project.profiles(), in.profileName());
                     // Default lint (deprecation/unchecked) unless [build] lint = false;

@@ -4,6 +4,7 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.terminal.Style;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -29,9 +30,7 @@ class BoxTableRenderTest {
     void header_cells_are_italic_when_ansi() {
         if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) return;
         String cell = Table.headerCell("Name");
-        assertThat(cell)
-                .isEqualTo(
-                        cc.jumpkick.cli.theme.Theme.colorize("Name", org.jline.utils.AttributedStyle.DEFAULT.italic()));
+        assertThat(cell).isEqualTo(cc.jumpkick.cli.theme.Theme.colorize("Name", Style.EMPTY.italic()));
         // Full table: header row (index 2) carries italic; body does not restyle plain cells.
         List<String> out = Table.render("T", List.of("Name"), List.of(List.of("alpha")));
         assertThat(out.get(2)).contains(Table.headerCell("Name"));
@@ -50,7 +49,7 @@ class BoxTableRenderTest {
 
     /** Visible terminal columns of a line once ANSI chrome is stripped (wcwidth-aware). */
     private static int visibleColumns(String s) {
-        return new org.jline.utils.AttributedString(TestAnsi.strip(s)).columnLength();
+        return cc.jumpkick.terminal.Width.columns(TestAnsi.strip(s));
     }
 
     private static void assertUniformWidth(List<String> out) {

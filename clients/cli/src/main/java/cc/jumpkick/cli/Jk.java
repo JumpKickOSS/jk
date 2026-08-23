@@ -2,10 +2,10 @@
 package cc.jumpkick.cli;
 
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.WindowsUtf8;
 import cc.jumpkick.command.*;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkConfigLoader;
+import cc.jumpkick.terminal.Terminals;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -48,7 +48,7 @@ public final class Jk {
     public static void main(String[] args) {
         // Windows: CP_UTF8 + UTF-8 System.out/err before any chrome. OEM CP437 otherwise
         // turns ● into ΓùÅ. Must run before the first println.
-        WindowsUtf8.enable();
+        Terminals.bootstrap();
         // Invoked as `jkx` (hardlink/link to this binary): behave exactly like
         // `jk tool run …` in every case — including --help — so the alias has
         // one mental model.
@@ -71,7 +71,7 @@ public final class Jk {
             // on the exception path, where the JVM's default handler still runs those hooks. On
             // macOS, JLine's terminal closer otherwise blocks until a key arrives after
             // interactive plans (Ctrl-O key listener / canPrompt probe).
-            cc.jumpkick.cli.tui.Interactivity.prepareProcessExit();
+            Terminals.shutdown();
         }
         System.exit(code);
     }

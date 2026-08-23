@@ -13,7 +13,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class CachePruneSchedulerTest {
 
-    private static final JkCacheConfig ON = new JkCacheConfig(true, 6.0, 7, 30, 4.0);
+    private static final JkCacheConfig ON = new JkCacheConfig(true, 7, 4.0, 0.5);
 
     @Test
     void should_run_when_stamp_missing(@TempDir Path cacheRoot) throws IOException {

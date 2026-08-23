@@ -61,8 +61,9 @@ public final class PathDisplay {
     public static String of(Path target, Path workingDir) {
         Path abs = target.toAbsolutePath().normalize();
         Path anchor = closestAnchor(abs, workingDir);
-        if (anchor == null) return abs.toString().replace('\\', '/');
-        String rel = anchor.relativize(abs).toString().replace('\\', '/');
+        // DirKeys rewrites only real Windows paths — a POSIX file named a\b displays verbatim.
+        if (anchor == null) return cc.jumpkick.util.DirKeys.slashes(abs.toString());
+        String rel = cc.jumpkick.util.DirKeys.slashes(anchor.relativize(abs).toString());
         return rel.isEmpty() ? "." : rel;
     }
 

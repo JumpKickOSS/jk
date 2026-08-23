@@ -7,8 +7,6 @@ import cc.jumpkick.runtime.BuildMetrics;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -104,7 +102,7 @@ public final class IdleHousekeeping {
     }
 
     /** 12-hour feed-refresh hook. Does not consult {@code .last-pruned}. */
-    public void enqueueScheduledCacheGc() {
+    public void enqueueScheduledCachePrune() {
         if (shuttingDown.getAsBoolean()) return;
         var config = cc.jumpkick.config.JkCacheConfig.resolve();
         if (config.autoPrune()) {
@@ -186,12 +184,15 @@ public final class IdleHousekeeping {
     /**
      * Drop process-wide memos whose payoff is intra-build so the trailing GC has something to
      * reclaim: pool-thread hash caches (keys embed nano-mtime, so rebuilds mint new
-     * entries forever), resolve memos (rebuilt cheaply from the on-disk caches), the metrics
-     * aggregate, and any unclaimed test-wall snapshots. All are optimisations, never correctness.
+     * entries forever), resolve memos (rebuilt cheaply from the on-disk caches), the action-cache
+     * last-use stamp memo (so a long-lived engine re-stamps rather than freezing the ranking), the
+     * metrics aggregate, and any unclaimed test-wall snapshots. All are optimisations, never
+     * correctness.
      */
     private static void dropHeapResidue() {
         try {
             cc.jumpkick.task.FileHashMemo.clearAllThreadCaches();
+            cc.jumpkick.task.ActionCache.clearStampCache();
             cc.jumpkick.resolve.ResolveProcessCacheControl.clearAll();
             BuildMetrics.clearSessionAggregatesMemo();
             cc.jumpkick.runtime.TestClassWalls.takeAll();
@@ -240,15 +241,17 @@ public final class IdleHousekeeping {
             FileLock pruneLock = lockChan.tryLock();
             if (pruneLock == null) return;
             try {
-                var config = cc.jumpkick.config.JkCacheConfig.resolve();
-                cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.CachePlans.pruneBuildPlan(
-                        cache, config.recordTtlDays(), false, false, false);
+                // Scratch is a single ambient directory, not a per-root one: sweeping it while
+                // pruning some other cache root would reach outside the root asked for.
+                boolean ambient = cache.equals(cc.jumpkick.util.JkDirs.cache());
+                cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.CachePlans.pruneBuildPlan(cache, false, ambient);
                 cc.jumpkick.run.BuildPlanResult result = plan.run();
                 if (result.success()) {
-                    Files.writeString(
-                            cache.resolve(cc.jumpkick.task.CachePruneScheduler.LAST_PRUNED_FILE),
-                            Long.toString(clock.getAsLong()),
-                            StandardCharsets.UTF_8);
+                    cc.jumpkick.task.CachePruneScheduler.write(
+                            cache,
+                            clock.getAsLong(),
+                            plan.get(cc.jumpkick.runtime.CachePlans.FINAL_ACTION_BYTES)
+                                    .orElse(-1L));
                     log.accept("jk engine: idle-boundary cache prune removed "
                             + plan.get(cc.jumpkick.runtime.CachePlans.FILES).orElse(0L)
                             + " files ("

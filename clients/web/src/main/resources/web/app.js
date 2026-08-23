@@ -2198,29 +2198,18 @@ export const appOptions = {
 
     // ---- Status view storage panels (/api/cache + live `cache` SSE) ----
 
-    /** Cache-tier bytes (CLI: jk cache usage) — index + cache CAS + stamps. */
+    /** Action-cache bytes (CLI: jk cache usage) — action index + cache CAS. */
     actionCacheBytes() {
-      const c = this.cache;
-      if (!c) return null;
-      if (c.cacheBytes != null) return c.cacheBytes;
-      if (c.actionCacheBytes != null) return c.actionCacheBytes;
-      return (c.actionsBytes || 0) + (c.cacheCasBytes || 0) + (c.formatStampsBytes || 0);
+      return this.cache?.actionCacheBytes ?? null;
     },
 
     actionMaxBytes() {
-      const c = this.cache;
-      if (!c) return null;
-      if (c.cacheMaxBytes != null) return c.cacheMaxBytes;
-      return c.actionMaxBytes != null ? c.actionMaxBytes : null;
+      return this.cache?.actionMaxBytes ?? null;
     },
 
-    /** Artifact store: store CAS + repos/workers + run logs (CLI: jk storage). */
+    /** Artifact store: store CAS + worker jars (CLI: jk storage usage). Never budgeted. */
     artifactStorageBytes() {
-      const c = this.cache;
-      if (!c) return null;
-      if (c.artifactStorageBytes != null) return c.artifactStorageBytes;
-      // Run logs are state (not storage) — match jk storage usage.
-      return (c.casBytes || 0) + (c.workerJarsBytes || 0);
+      return this.cache?.artifactStorageBytes ?? null;
     },
 
     actionCacheUtilizationPercent() {
@@ -2228,18 +2217,6 @@ export const appOptions = {
       const max = this.actionMaxBytes();
       if (used == null || !max || max <= 0) return 0;
       return Math.min(100, Math.round((100 * used) / max));
-    },
-
-    artifactStorageUtilizationPercent() {
-      const c = this.cache;
-      const used = this.artifactStorageBytes();
-      if (!c || used == null || !c.maxBytes || c.maxBytes <= 0) return 0;
-      return Math.min(100, Math.round((100 * used) / c.maxBytes));
-    },
-
-    /** @deprecated combined meter — prefer action / artifact helpers */
-    cacheUtilizationPercent() {
-      return this.artifactStorageUtilizationPercent();
     },
 
     prunedAgo() {
@@ -2253,11 +2230,11 @@ export const appOptions = {
     count(n) {
       return n == null ? '—' : n.toLocaleString();
     },
-    /** Format-stamp count cap (512k default / 1M on CI); from API or local fallback. */
+    /** Format-stamp count cap; from the API, or the local fallback below. */
     formatStampsMax() {
       const m = this.cache?.formatStampsMax;
       if (m != null && m > 0) return m;
-      return 512000;
+      return 65536;
     },
     formatStampsMaxLabel() {
       return this.formatStampsMax().toLocaleString();
@@ -2268,6 +2245,13 @@ export const appOptions = {
       const max = this.formatStampsMax();
       if (n == null || max <= 0) return '—';
       return ((100 * n) / max).toFixed(1);
+    },
+    /** Zinc analysis state vs its own budget — never the action budget; the two are separate tiers. */
+    incrementalUsedPct() {
+      const used = this.cache?.incrementalBytes;
+      const max = this.cache?.incrementalMaxBytes;
+      if (used == null || !max || max <= 0) return '—';
+      return Math.min(100, (100 * used) / max).toFixed(1);
     },
 
     // ---- the Status view's build-stats section (running aggregates from /api/metrics) ----
@@ -2599,6 +2583,10 @@ export const appOptions = {
     // System RAM reads naturally in GiB (total / available physical memory the engine's OS reports).
     gib(bytes) {
       return bytes == null || bytes < 0 ? '—' : (bytes / 1073741824).toFixed(1) + ' GiB';
+    },
+    // The incremental tier is budgeted in the hundreds of MiB, where gib() rounds everything to 0.0.
+    mib(bytes) {
+      return bytes == null || bytes < 0 ? '—' : (bytes / 1048576).toFixed(1) + ' MiB';
     },
     // Header / about: whole-host CPU utilisation from /api/status systemCpuLoad ∈ [0,1].
     // The bean returns -1 until the first sample; show an em-dash rather than "0%".

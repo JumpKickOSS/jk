@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.theme;
 
-import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.tui.Rail;
-import org.jline.utils.AttributedString;
-import org.jline.utils.AttributedStringBuilder;
-import org.jline.utils.AttributedStyle;
+import cc.jumpkick.terminal.Ansi;
+import cc.jumpkick.terminal.Style;
 
 /**
  * The "Jk Dark" color scheme — a neon dark palette synced from the jk web dashboard, and the default {@link Theme}
  * implementation. The palette constants map jk's semantic roles (error, success, active accent, …)
- * onto named colors; the instance methods turn those roles into {@link AttributedStyle}s. jk emits
+ * onto named colors; the instance methods turn those roles into {@link Style}s. jk emits
  * foreground colors only, so {@link #BACKGROUND}, {@link #CURSOR}, and the selection colors are
  * carried for completeness but not applied by current output.
  *
@@ -102,17 +100,17 @@ public final class JkDarkTheme implements Theme {
     private static final Gradient FAILURE_GRADIENT = new Gradient(FAILURE_GRADIENT_START, FAILURE_GRADIENT_END);
 
     /** Apply a foreground color unless the resolved {@code --color} choice disables it. */
-    private static AttributedStyle withColor(AttributedStyle base, int r, int g, int b) {
+    private static Style withColor(Style base, int r, int g, int b) {
         return Theme.colorEnabled() ? base.foreground(r, g, b) : base;
     }
 
-    /** {@link Rgb} overload of {@link #withColor(AttributedStyle, int, int, int)}. */
-    private static AttributedStyle withColor(AttributedStyle base, Rgb c) {
+    /** {@link Rgb} overload of {@link #withColor(Style, int, int, int)}. */
+    private static Style withColor(Style base, Rgb c) {
         return withColor(base, c.r(), c.g(), c.b());
     }
 
     /** Apply a background color unless {@code --color} disables it. */
-    private static AttributedStyle withBg(AttributedStyle base, Rgb c) {
+    private static Style withBg(Style base, Rgb c) {
         return Theme.colorEnabled() ? base.background(c.r(), c.g(), c.b()) : base;
     }
 
@@ -129,18 +127,18 @@ public final class JkDarkTheme implements Theme {
     }
 
     @Override
-    public AttributedStyle dim() {
-        return AttributedStyle.DEFAULT.faint();
+    public Style dim() {
+        return Style.EMPTY.faint();
     }
 
     @Override
-    public AttributedStyle darkGray() {
-        return withColor(AttributedStyle.DEFAULT, BRIGHT_BLACK);
+    public Style darkGray() {
+        return withColor(Style.EMPTY, BRIGHT_BLACK);
     }
 
     @Override
-    public AttributedStyle darkBlack() {
-        return withColor(AttributedStyle.DEFAULT, DARK_BLACK);
+    public Style darkBlack() {
+        return withColor(Style.EMPTY, DARK_BLACK);
     }
 
     @Override
@@ -149,18 +147,18 @@ public final class JkDarkTheme implements Theme {
     }
 
     @Override
-    public AttributedStyle midGray() {
-        return withColor(AttributedStyle.DEFAULT, MID_GRAY);
+    public Style midGray() {
+        return withColor(Style.EMPTY, MID_GRAY);
     }
 
     @Override
-    public AttributedStyle normalGray() {
-        return withColor(AttributedStyle.DEFAULT, PRIMARY_LIGHT);
+    public Style normalGray() {
+        return withColor(Style.EMPTY, PRIMARY_LIGHT);
     }
 
     @Override
-    public AttributedStyle gray() {
-        return withColor(AttributedStyle.DEFAULT, GRAY);
+    public Style gray() {
+        return withColor(Style.EMPTY, GRAY);
     }
 
     @Override
@@ -169,122 +167,122 @@ public final class JkDarkTheme implements Theme {
     }
 
     @Override
-    public AttributedStyle activeStep() {
-        return withColor(AttributedStyle.DEFAULT, BRIGHT_CYAN);
+    public Style activeStep() {
+        return withColor(Style.EMPTY, BRIGHT_CYAN);
     }
 
     @Override
-    public AttributedStyle completedStep() {
-        return withColor(AttributedStyle.DEFAULT, NORMAL_GREEN);
+    public Style completedStep() {
+        return withColor(Style.EMPTY, NORMAL_GREEN);
     }
 
     @Override
-    public AttributedStyle focused() {
-        return withColor(AttributedStyle.DEFAULT.bold(), BRIGHT_WHITE);
+    public Style focused() {
+        return withColor(Style.EMPTY.bold(), BRIGHT_WHITE);
     }
 
     @Override
-    public AttributedStyle settled() {
-        return withColor(AttributedStyle.DEFAULT, FOREGROUND);
+    public Style settled() {
+        return withColor(Style.EMPTY, FOREGROUND);
     }
 
     @Override
-    public AttributedStyle plainWhite() {
+    public Style plainWhite() {
         return settled();
     }
 
     @Override
-    public AttributedStyle brightWhite() {
-        return withColor(AttributedStyle.DEFAULT, BRIGHT_WHITE);
+    public Style brightWhite() {
+        return withColor(Style.EMPTY, BRIGHT_WHITE);
     }
 
     @Override
-    public AttributedStyle completedPrompt() {
+    public Style completedPrompt() {
         return gray();
     }
 
     @Override
-    public AttributedStyle error() {
-        return withColor(AttributedStyle.DEFAULT, NORMAL_RED);
+    public Style error() {
+        return withColor(Style.EMPTY, NORMAL_RED);
     }
 
     @Override
-    public AttributedStyle success() {
-        return withColor(AttributedStyle.DEFAULT.bold(), NORMAL_GREEN);
+    public Style success() {
+        return withColor(Style.EMPTY.bold(), NORMAL_GREEN);
     }
 
     @Override
-    public AttributedStyle warning() {
-        return withColor(AttributedStyle.DEFAULT, NORMAL_YELLOW);
+    public Style warning() {
+        return withColor(Style.EMPTY, NORMAL_YELLOW);
     }
 
     @Override
-    public AttributedStyle blue() {
-        return withColor(AttributedStyle.DEFAULT, BRIGHT_BLUE);
+    public Style blue() {
+        return withColor(Style.EMPTY, BRIGHT_BLUE);
     }
 
     @Override
-    public AttributedStyle indigo() {
-        return withColor(AttributedStyle.DEFAULT, INDIGO);
+    public Style indigo() {
+        return withColor(Style.EMPTY, INDIGO);
     }
 
     @Override
-    public AttributedStyle primary() {
-        return withColor(AttributedStyle.DEFAULT, PRIMARY);
+    public Style primary() {
+        return withColor(Style.EMPTY, PRIMARY);
     }
 
     @Override
-    public AttributedStyle cyan() {
-        return withColor(AttributedStyle.DEFAULT, NORMAL_CYAN);
+    public Style cyan() {
+        return withColor(Style.EMPTY, NORMAL_CYAN);
     }
 
     @Override
-    public AttributedStyle black() {
-        return withColor(AttributedStyle.DEFAULT, NORMAL_BLACK);
+    public Style black() {
+        return withColor(Style.EMPTY, NORMAL_BLACK);
     }
 
     @Override
-    public AttributedStyle brightGreen() {
-        return withColor(AttributedStyle.DEFAULT, BRIGHT_GREEN);
+    public Style brightGreen() {
+        return withColor(Style.EMPTY, BRIGHT_GREEN);
     }
 
     @Override
-    public AttributedStyle brightCyan() {
-        return withColor(AttributedStyle.DEFAULT, BRIGHT_CYAN);
+    public Style brightCyan() {
+        return withColor(Style.EMPTY, BRIGHT_CYAN);
     }
 
     @Override
-    public AttributedStyle coordGroup() {
-        return withColor(AttributedStyle.DEFAULT, NORMAL_CYAN); // cyan
+    public Style coordGroup() {
+        return withColor(Style.EMPTY, NORMAL_CYAN); // cyan
     }
 
     @Override
-    public AttributedStyle coordName() {
+    public Style coordName() {
         // Bold bright-cyan — matches Coords.richGa artifact / plan-tree module names.
-        return withColor(AttributedStyle.DEFAULT.bold(), BRIGHT_CYAN);
+        return withColor(Style.EMPTY.bold(), BRIGHT_CYAN);
     }
 
     @Override
-    public AttributedStyle coordVersion() {
-        return withColor(AttributedStyle.DEFAULT, COORD_VERSION);
+    public Style coordVersion() {
+        return withColor(Style.EMPTY, COORD_VERSION);
     }
 
     @Override
-    public AttributedStyle scopeBadge() {
+    public Style scopeBadge() {
         // Pure-black text on gray — the shared badge/chip across the TUIs.
-        return withBg(withColor(AttributedStyle.DEFAULT, CHIP_TEXT), GRAY);
+        return withBg(withColor(Style.EMPTY, CHIP_TEXT), GRAY);
     }
 
     @Override
-    public AttributedStyle cyanBadge() {
+    public Style cyanBadge() {
         // Pure-black text on the cyan chip (the ▶ arrow is painted in NORMAL_CYAN — the
         // chip background — by the caller).
-        return withBg(withColor(AttributedStyle.DEFAULT, CHIP_TEXT), NORMAL_CYAN);
+        return withBg(withColor(Style.EMPTY, CHIP_TEXT), NORMAL_CYAN);
     }
 
     @Override
-    public AttributedStyle planBadge() {
-        return withBg(withColor(AttributedStyle.DEFAULT, CHIP_FG), HEADER_BLUE);
+    public Style planBadge() {
+        return withBg(withColor(Style.EMPTY, CHIP_FG), HEADER_BLUE);
     }
 
     @Override
@@ -293,8 +291,8 @@ public final class JkDarkTheme implements Theme {
     }
 
     @Override
-    public AttributedStyle indigoBadge() {
-        return withBg(withColor(AttributedStyle.DEFAULT, CHIP_FG), PRIMARY_DARK);
+    public Style indigoBadge() {
+        return withBg(withColor(Style.EMPTY, CHIP_FG), PRIMARY_DARK);
     }
 
     @Override
@@ -309,18 +307,18 @@ public final class JkDarkTheme implements Theme {
     private static final Rgb CHIP_FG = Rgb.hex(0xFFFFFF);
 
     @Override
-    public AttributedStyle planChip() {
-        return withBg(withColor(AttributedStyle.DEFAULT, CHIP_FG), HEADER_BLUE);
+    public Style planChip() {
+        return withBg(withColor(Style.EMPTY, CHIP_FG), HEADER_BLUE);
     }
 
     @Override
-    public AttributedStyle planSuccessChip() {
-        return withBg(withColor(AttributedStyle.DEFAULT, CHIP_FG), PIPELINE_GREEN);
+    public Style planSuccessChip() {
+        return withBg(withColor(Style.EMPTY, CHIP_FG), PIPELINE_GREEN);
     }
 
     @Override
-    public AttributedStyle planFailureChip() {
-        return withBg(withColor(AttributedStyle.DEFAULT, CHIP_FG), NORMAL_RED);
+    public Style planFailureChip() {
+        return withBg(withColor(Style.EMPTY, CHIP_FG), NORMAL_RED);
     }
 
     @Override
@@ -334,115 +332,115 @@ public final class JkDarkTheme implements Theme {
     }
 
     @Override
-    public AttributedStyle withBackground(AttributedStyle base, Rgb bg) {
+    public Style withBackground(Style base, Rgb bg) {
         return withBg(base, bg);
     }
 
     @Override
-    public AttributedStyle brightYellow() {
-        return withColor(AttributedStyle.DEFAULT, BRIGHT_YELLOW);
+    public Style brightYellow() {
+        return withColor(Style.EMPTY, BRIGHT_YELLOW);
     }
 
     @Override
-    public AttributedStyle bright(int r, int g, int b) {
-        return withColor(AttributedStyle.DEFAULT, r, g, b);
+    public Style bright(int r, int g, int b) {
+        return withColor(Style.EMPTY, r, g, b);
     }
 
     @Override
-    public AttributedStyle bright(Rgb c) {
-        return withColor(AttributedStyle.DEFAULT, c);
+    public Style bright(Rgb c) {
+        return withColor(Style.EMPTY, c);
     }
 
     // --- help-semantic styles --------------------------------------------
 
     @Override
-    public AttributedStyle sectionHeading() {
-        return withColor(AttributedStyle.DEFAULT.bold(), NORMAL_GREEN);
+    public Style sectionHeading() {
+        return withColor(Style.EMPTY.bold(), NORMAL_GREEN);
     }
 
     @Override
-    public AttributedStyle commandName() {
-        return withColor(AttributedStyle.DEFAULT.bold(), NORMAL_CYAN);
+    public Style commandName() {
+        return withColor(Style.EMPTY.bold(), NORMAL_CYAN);
     }
 
     @Override
-    public AttributedStyle paramLabel() {
-        return withColor(AttributedStyle.DEFAULT, NORMAL_CYAN);
+    public Style paramLabel() {
+        return withColor(Style.EMPTY, NORMAL_CYAN);
     }
 
     @Override
-    public AttributedStyle highlight() {
-        return withColor(AttributedStyle.DEFAULT, NORMAL_YELLOW);
+    public Style highlight() {
+        return withColor(Style.EMPTY, NORMAL_YELLOW);
     }
 
     @Override
-    public AttributedStyle path() {
-        return withColor(AttributedStyle.DEFAULT, PATH);
+    public Style path() {
+        return withColor(Style.EMPTY, PATH);
     }
 
     /** Neon orange for inline shell commands — web --warn amber warmed toward --err red (the web has no orange). */
     public static final Rgb SHELL_ORANGE = Rgb.hex(0xFF8329);
 
     @Override
-    public AttributedStyle shell() {
-        return withColor(AttributedStyle.DEFAULT, SHELL_ORANGE); // neon orange
+    public Style shell() {
+        return withColor(Style.EMPTY, SHELL_ORANGE); // neon orange
     }
 
     // --- syntax-highlight styles -----------------------------------------
 
     @Override
-    public AttributedStyle synKeyword() {
-        return withColor(AttributedStyle.DEFAULT, GH_KEYWORD);
+    public Style synKeyword() {
+        return withColor(Style.EMPTY, GH_KEYWORD);
     }
 
     @Override
-    public AttributedStyle synType() {
-        return withColor(AttributedStyle.DEFAULT, GH_TYPE);
+    public Style synType() {
+        return withColor(Style.EMPTY, GH_TYPE);
     }
 
     @Override
-    public AttributedStyle synFunction() {
-        return withColor(AttributedStyle.DEFAULT, GH_FUNCTION);
+    public Style synFunction() {
+        return withColor(Style.EMPTY, GH_FUNCTION);
     }
 
     @Override
-    public AttributedStyle synConstant() {
-        return withColor(AttributedStyle.DEFAULT, GH_CONSTANT);
+    public Style synConstant() {
+        return withColor(Style.EMPTY, GH_CONSTANT);
     }
 
     @Override
-    public AttributedStyle synString() {
-        return withColor(AttributedStyle.DEFAULT, GH_STRING);
+    public Style synString() {
+        return withColor(Style.EMPTY, GH_STRING);
     }
 
     @Override
-    public AttributedStyle synNumber() {
-        return withColor(AttributedStyle.DEFAULT, GH_CONSTANT);
+    public Style synNumber() {
+        return withColor(Style.EMPTY, GH_CONSTANT);
     }
 
     @Override
-    public AttributedStyle synComment() {
-        return withColor(AttributedStyle.DEFAULT, GH_COMMENT);
+    public Style synComment() {
+        return withColor(Style.EMPTY, GH_COMMENT);
     }
 
     @Override
-    public AttributedStyle synAnnotation() {
-        return withColor(AttributedStyle.DEFAULT, GH_FUNCTION);
+    public Style synAnnotation() {
+        return withColor(Style.EMPTY, GH_FUNCTION);
     }
 
     @Override
-    public AttributedStyle synNamespace() {
-        return withColor(AttributedStyle.DEFAULT, GH_COMMENT);
+    public Style synNamespace() {
+        return withColor(Style.EMPTY, GH_COMMENT);
     }
 
     @Override
-    public AttributedStyle synPunctuation() {
-        return withColor(AttributedStyle.DEFAULT, GH_COMMENT);
+    public Style synPunctuation() {
+        return withColor(Style.EMPTY, GH_COMMENT);
     }
 
     @Override
-    public AttributedStyle errorLabel() {
-        return withColor(AttributedStyle.DEFAULT.bold(), NORMAL_RED);
+    public Style errorLabel() {
+        return withColor(Style.EMPTY.bold(), NORMAL_RED);
     }
 
     /** Legacy 16-color bright-green accent for {@code tip:} lines. */
@@ -480,28 +478,6 @@ public final class JkDarkTheme implements Theme {
     }
 
     @Override
-    public AttributedString gradientHeader(String text) {
-        var sb = new AttributedStringBuilder();
-        var codepoints = text.codePoints().toArray();
-        var n = codepoints.length;
-        if (n == 0) {
-            return sb.toAttributedString();
-        }
-        if (!Theme.colorEnabled()) {
-            // Drop the gradient entirely; bold still distinguishes the header.
-            return sb.append(text, AttributedStyle.DEFAULT.bold()).toAttributedString();
-        }
-        for (var i = 0; i < n; i++) {
-            var t = n == 1 ? 0.0 : (double) i / (n - 1);
-            Rgb c = TITLE_GRADIENT.at(t);
-            sb.append(
-                    new String(Character.toChars(codepoints[i])),
-                    AttributedStyle.DEFAULT.bold().foreground(c.r(), c.g(), c.b()));
-        }
-        return sb.toAttributedString();
-    }
-
-    @Override
     public String gradientHeaderAnsi(String text) {
         if (text.isEmpty()) return "";
         if (!Theme.colorEnabled()) return Ansi.sgr("1") + text + Ansi.RESET;
@@ -519,7 +495,7 @@ public final class JkDarkTheme implements Theme {
     }
 
     @Override
-    public AttributedStyle railStyle(Rail.StepState state, Rail.RailGlyph glyph) {
+    public Style railStyle(Rail.StepState state, Rail.RailGlyph glyph) {
         return switch (glyph) {
             case BULLET, OPEN, MID, CLOSE ->
                 switch (state) {

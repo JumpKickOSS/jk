@@ -18,8 +18,8 @@ import java.util.function.Consumer;
  * self-heal and short-name resolution. Fail-fast, quiet, no retries — next 12 h cycle or engine
  * restart will try again.
  *
- * <p>Cache layout matches CLI {@code Giter8Git} keys under {@code ~/.jk/cache/templates/} (and
- * XDG {@link JkDirs#cache()}{@code /templates} as a secondary root when present).
+ * <p>Clones land under {@link JkDirs#templates()} ({@code <store>/templates}), one subdirectory
+ * per source cache key.
  */
 public final class OfficialTemplatesFreshen {
 
@@ -105,7 +105,7 @@ public final class OfficialTemplatesFreshen {
      */
     static void refresh(JkTemplatesConfig config, Consumer<String> log) throws IOException {
         JkTemplatesConfig cfg = config == null ? JkTemplatesConfig.defaults() : config;
-        Path cacheRoot = primaryCacheRoot();
+        Path cacheRoot = JkDirs.templates();
         Files.createDirectories(cacheRoot);
         List<String> refs = new ArrayList<>();
         refs.add(officialRef(cfg));
@@ -222,13 +222,6 @@ public final class OfficialTemplatesFreshen {
         } catch (IOException e) {
             return false;
         }
-    }
-
-    /** Prefer legacy {@code ~/.jk/cache/templates} (CLI Giter8Git), else XDG cache. */
-    public static Path primaryCacheRoot() {
-        Path legacy = Path.of(System.getProperty("user.home"), ".jk", "cache", "templates");
-        if (Files.isDirectory(legacy.getParent()) || Files.isDirectory(legacy)) return legacy;
-        return JkDirs.cache().resolve("templates");
     }
 
     private static boolean isEmptyDir(Path dir) throws IOException {

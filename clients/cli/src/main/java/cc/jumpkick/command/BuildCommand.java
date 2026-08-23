@@ -412,8 +412,6 @@ public final class BuildCommand implements CliCommand {
                             // to m.plan directly) since an engine-hosted module's plan is a
                             // client-side reconstruction that's never run — only the returned
                             // listener is driven by wire-replayed events.
-                            var log = cc.jumpkick.cli.run.EventLogListener.open(
-                                    m.cache(), m.plan().name());
                             cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                                     cc.jumpkick.cli.run.JsonlShape.moduleStart(
                                             m.dir().toString(), m.coord()),
@@ -421,8 +419,7 @@ public final class BuildCommand implements CliCommand {
                             if (json) {
                                 // Live step/progress events for agents (same shape as single-module jsonl).
                                 // Workspace member: no aggregate-rider writes (engine snapshot owns it).
-                                return cc.jumpkick.cli.run.CompositeBuildPlanListener.of(
-                                        new cc.jumpkick.cli.run.JsonlListener(System.out, false), log);
+                                return new cc.jumpkick.cli.run.JsonlListener(System.out, false);
                             }
                             List<String> buf = Collections.synchronizedList(new ArrayList<>());
                             buffers.put(m.dir(), buf);
@@ -445,8 +442,7 @@ public final class BuildCommand implements CliCommand {
                                 }
                             };
                             var mirror = sessionMirror();
-                            return cc.jumpkick.cli.run.CompositeBuildPlanListener.of(
-                                    cc.jumpkick.cli.run.CompositeBuildPlanListener.of(outLis, mirror), log);
+                            return cc.jumpkick.cli.run.CompositeBuildPlanListener.of(outLis, mirror);
                         }
 
                         @Override
@@ -642,8 +638,6 @@ public final class BuildCommand implements CliCommand {
                 public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
                     // Composed into the returned listener, not attached to m.plan directly — see
                     // the headless path's onModuleStart above for why.
-                    var log = cc.jumpkick.cli.run.EventLogListener.open(
-                            m.cache(), m.plan().name());
                     List<String> buf = Collections.synchronizedList(new ArrayList<>());
                     buffers.put(m.dir(), buf);
                     // Step tree + output only; aggregate bar is engine-owned.
@@ -653,8 +647,7 @@ public final class BuildCommand implements CliCommand {
                     cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                             cc.jumpkick.cli.run.JsonlShape.moduleStart(m.dir().toString(), m.coord()), false);
                     var mirror = sessionMirror();
-                    return cc.jumpkick.cli.run.CompositeBuildPlanListener.of(
-                            cc.jumpkick.cli.run.CompositeBuildPlanListener.of(lis, mirror), log);
+                    return cc.jumpkick.cli.run.CompositeBuildPlanListener.of(lis, mirror);
                 }
 
                 @Override
@@ -1209,8 +1202,8 @@ public final class BuildCommand implements CliCommand {
     private static final ConcurrentHashMap<String, ProjectInfo> PROJECT_INFO_MEMO = new ConcurrentHashMap<>();
 
     private static String projectInfoKey(Path dir, String modules, String affectedSince, boolean counts) {
-        return dir.toAbsolutePath().normalize() + " " + (modules == null ? "" : modules) + " "
-                + (affectedSince == null ? "" : affectedSince) + " " + counts;
+        return dir.toAbsolutePath().normalize() + "\0" + (modules == null ? "" : modules) + "\0"
+                + (affectedSince == null ? "" : affectedSince) + "\0" + counts;
     }
 
     /** Drop memoized summaries — call after a lock refresh or any manifest edit mid-run. */

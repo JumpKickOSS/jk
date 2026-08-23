@@ -23,8 +23,8 @@ class JdkUninstallWizardTest {
 
         // Focused emits the BOLD SGR (\033[1m... or composed with color); plain
         // does not. Check the ANSI to make sure only the focused row is bold.
-        assertThat(focused.toAnsi()).contains(";1m");
-        assertThat(plain.toAnsi()).doesNotContain(";1m");
+        assertThat(focused.toAnsi()).contains("1;");
+        assertThat(plain.toAnsi()).doesNotContain("1;");
     }
 
     @Test

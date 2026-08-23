@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.theme;
 
-import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.tui.PlainAscii;
 import cc.jumpkick.cli.tui.Rail;
 import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.terminal.Style;
 import java.util.Locale;
-import org.jline.utils.AttributedString;
-import org.jline.utils.AttributedStyle;
 
 /**
  * Color/style provider for TUI, plan, and help renderers. Access via {@link #active()};
@@ -18,16 +16,16 @@ public interface Theme {
 
     // --- style getters ----------------------------------------------------
 
-    AttributedStyle dim();
+    Style dim();
 
     /** Inactive/completed rail glyphs (┌ │ └) and completed step prompts — Jk Dark bright black. */
-    AttributedStyle darkGray();
+    Style darkGray();
 
     /**
      * 40% darker than {@link #darkGray()} (bright black) — the dimmest gray, for ultra-low-emphasis
      * filler.
      */
-    AttributedStyle darkBlack();
+    Style darkBlack();
 
     /** The {@link #darkBlack()} color as an {@link Rgb} — for use as a background fill. */
     Rgb darkBlackColor();
@@ -36,115 +34,115 @@ public interface Theme {
      * Neutral mid-gray body text ({@code #A0A0A0}) — ordinary gray between black and white. Use for
      * default step/detail prose; not the dim "bright black" rail color ({@link #darkGray()}).
      */
-    AttributedStyle midGray();
+    Style midGray();
 
     /** De-emphasised body text adjacent to bright labels — Jk Dark primary-light. */
-    AttributedStyle normalGray();
+    Style normalGray();
 
     /** Medium gray — the shared badge/chip background (and its powerline caps). */
-    AttributedStyle gray();
+    Style gray();
 
     /** The {@link #gray()} color as an {@link Rgb} — chip fill and the powerline cap that closes it. */
     Rgb grayColor();
 
     /** Active rail / step bullet — bright cyan highlight. */
-    AttributedStyle activeStep();
+    Style activeStep();
 
-    AttributedStyle completedStep();
+    Style completedStep();
 
     /** Bold + bright white; used for focused option labels and the input buffer. */
-    AttributedStyle focused();
+    Style focused();
 
     /** Plain foreground (not bold, not dim); used for settled answer text. */
-    AttributedStyle settled();
+    Style settled();
 
     /** Alias for {@link #settled} — plain white with no weight modifier. */
-    AttributedStyle plainWhite();
+    Style plainWhite();
 
     /** Bright white with no weight modifier (unlike {@link #focused}, which is bold). */
-    AttributedStyle brightWhite();
+    Style brightWhite();
 
     /**
      * Dark gray (same as the inactive rail glyphs). Used for the prompt line of a step once it has
      * been settled — the gray de-emphasises the question against the focused-white text of the active
      * step, while matching the rail's color above and below.
      */
-    AttributedStyle completedPrompt();
+    Style completedPrompt();
 
     /** Red; used for inline error messages and cancellation closers (distinct from the accent). */
-    AttributedStyle error();
+    Style error();
 
     /** Bold + green; used for success-banner text. */
-    AttributedStyle success();
+    Style success();
 
     /** Yellow; used to call attention to state like "default" / current selection. */
-    AttributedStyle warning();
+    Style warning();
 
     /** Blue — used elsewhere; no longer a gradient endpoint. */
-    AttributedStyle blue();
+    Style blue();
 
     /** Material indigo ({@code #3F51B5}) — the web {@code --indigo} token. */
-    AttributedStyle indigo();
+    Style indigo();
 
     /** Brand primary — neon electric blue, the brand base color (Jk Dark primary, {@code #3D9BFF}). */
-    AttributedStyle primary();
+    Style primary();
 
     /** Cyan — used to label structural keys like scopes (Jk Dark cyan). */
-    AttributedStyle cyan();
+    Style cyan();
 
     /**
      * Black — the darkest palette color; used for low-emphasis filler like dotted leaders (Jk Dark
      * normal black).
      */
-    AttributedStyle black();
+    Style black();
 
     /** Bright green — used for the settled-answer arrow and "➜" prefixes. */
-    AttributedStyle brightGreen();
+    Style brightGreen();
 
     /** Bright cyan — used for artifact short-names in coordinate output. */
-    AttributedStyle brightCyan();
+    Style brightCyan();
 
     // --- coordinate-segment styles ---------------------------------------
     // The three roles of a printed group:artifact:version coordinate.
 
     /** Coordinate group segment — cyan (Jk Dark cyan {@code #00D4E0}). */
-    AttributedStyle coordGroup();
+    Style coordGroup();
 
     /** Coordinate artifact/name segment — bold bright-cyan (Jk Dark bright cyan {@code #00F0FF}). */
-    AttributedStyle coordName();
+    Style coordName();
 
     /** Coordinate version segment — midpoint between bright-cyan and white ({@code #82F7F8}). */
-    AttributedStyle coordVersion();
+    Style coordVersion();
 
     /**
      * Chip / pill badge (jk tree scope sections, jk explain Fully Cached / Rebuild) — black on a
      * bright-black background.
      */
-    AttributedStyle scopeBadge();
+    Style scopeBadge();
 
     /** Header segment (jk explain's "Build Plan for …") — near-black on a cyan background. */
-    AttributedStyle cyanBadge();
+    Style cyanBadge();
 
     /** {@code jk explain} "Build Plan" header chip — white on dark royal blue ({@code #0F4786}). */
-    AttributedStyle planBadge();
+    Style planBadge();
 
     /** The dark royal blue behind {@link #planBadge()} — for the powerline cap. */
     Rgb planBadgeColor();
 
     /** Wizard title chip — white on the deep brand blue ({@code #124A8C}), for AA contrast. */
-    AttributedStyle indigoBadge();
+    Style indigoBadge();
 
     /** The deep blue behind {@link #indigoBadge()} — for the powerline cap. */
     Rgb indigoBadgeColor();
 
     /** The live build plan chip (spinner + command) — white on dark royal blue ({@code #0F4786}). */
-    AttributedStyle planChip();
+    Style planChip();
 
     /** The settled success chip ({@code ✓ Build}) — white on green. */
-    AttributedStyle planSuccessChip();
+    Style planSuccessChip();
 
     /** The settled failure chip ({@code ‼ Build}) — white on red. */
-    AttributedStyle planFailureChip();
+    Style planFailureChip();
 
     /** The green behind {@link #planSuccessChip()} — foreground of the powerline cap. */
     Rgb planChipColor();
@@ -158,80 +156,80 @@ public interface Theme {
      * name sit on the bar gradient's left-most color, and the U+E0B0 cap pairs that same color (as
      * foreground) with the bar's lead color (as background) so it tapers the pill into the bar.
      */
-    AttributedStyle withBackground(AttributedStyle base, Rgb bg);
+    Style withBackground(Style base, Rgb bg);
 
     /** Bright yellow — used for the {@code default} JDK status. */
-    AttributedStyle brightYellow();
+    Style brightYellow();
 
-    AttributedStyle bright(int r, int g, int b);
+    Style bright(int r, int g, int b);
 
     /** {@link Rgb} overload of {@link #bright(int, int, int)}. */
-    AttributedStyle bright(Rgb c);
+    Style bright(Rgb c);
 
     // --- help-semantic styles --------------------------------------------
 
     /** Section heading in help output — bold green. */
-    AttributedStyle sectionHeading();
+    Style sectionHeading();
 
     /** Command name in help output — bold cyan. */
-    AttributedStyle commandName();
+    Style commandName();
 
     /** Parameter/option label in help output — cyan. */
-    AttributedStyle paramLabel();
+    Style paramLabel();
 
     /** Inline highlight in help output — yellow. */
-    AttributedStyle highlight();
+    Style highlight();
 
     /** Filesystem paths (relative or absolute) shown to the user — periwinkle. */
-    AttributedStyle path();
+    Style path();
 
     /** Shell commands and command-lines shown to the user — neon orange ({@code #FF8329}). */
-    AttributedStyle shell();
+    Style shell();
 
     // --- syntax-highlight styles (compiler-diagnostic source snippets) ----
     // GitHub dark-theme palette, so highlighted snippets read like github.com.
 
     /** Language keyword (public, class, fun, return, …) — GitHub red {@code #ff7b72}. */
-    AttributedStyle synKeyword();
+    Style synKeyword();
 
     /** Type / class name (Capitalized identifier) — GitHub orange {@code #ffa657}. */
-    AttributedStyle synType();
+    Style synType();
 
     /** Function / method name (identifier before {@code (}) — GitHub purple {@code #d2a8ff}. */
-    AttributedStyle synFunction();
+    Style synFunction();
 
     /** Named constant (ALL_CAPS identifier) — GitHub blue {@code #79c0ff}. */
-    AttributedStyle synConstant();
+    Style synConstant();
 
     /** String / char / text-block literal — GitHub light-blue {@code #a5d6ff}. */
-    AttributedStyle synString();
+    Style synString();
 
     /** Numeric literal — GitHub blue {@code #79c0ff}. */
-    AttributedStyle synNumber();
+    Style synNumber();
 
     /** Line/block comment — GitHub gray {@code #8b949e}. */
-    AttributedStyle synComment();
+    Style synComment();
 
     /** Annotation use ({@code @Test}, {@code @Override}, …) — GitHub purple {@code #d2a8ff}. */
-    AttributedStyle synAnnotation();
+    Style synAnnotation();
 
     /**
      * Namespace / package qualifier (the {@code java.util} in {@code java.util.List}, the package
      * segments of a stack-frame class) — GitHub gray {@code #8b949e}, so the qualifier recedes behind
      * the simple type name.
      */
-    AttributedStyle synNamespace();
+    Style synNamespace();
 
     /** Punctuation ({@code ; . , : ( ) [ ] { }}) — GitHub gray {@code #8b949e}. */
-    AttributedStyle synPunctuation();
+    Style synPunctuation();
 
     /** Error label/prefix — bold red. */
-    AttributedStyle errorLabel();
+    Style errorLabel();
 
     /**
      * The {@code tip:} suggestion accent in error blocks, as a raw SGR parameter body (no {@code
      * ESC[} / {@code m}). This is a legacy 16-color accent (bright green) that does not round-trip
-     * byte-identically through {@link AttributedStyle#toAnsi()}, so it is sourced as a literal body
+     * byte-identically through {@link Style#toAnsi()}, so it is sourced as a literal body
      * here — keeping the color choice in the theme layer, not in the renderer.
      */
     String tip();
@@ -239,7 +237,7 @@ public interface Theme {
     /**
      * The {@code --help} hint accent in error blocks, as a raw SGR parameter body (no {@code ESC[} /
      * {@code m}). A legacy 16-color accent (bold bright cyan); see {@link #tip()} for why it is a
-     * literal body rather than an {@link AttributedStyle}.
+     * literal body rather than an {@link Style}.
      */
     String helpHint();
 
@@ -257,20 +255,14 @@ public interface Theme {
     /** Gradient a failed progress bar repaints in. */
     Gradient failureGradient();
 
-    /** Per-codepoint truecolor lerp across {@link #titleGradient()}, bold on each char. */
-    AttributedString gradientHeader(String text);
-
     /**
-     * Same gradient as {@link #gradientHeader(String)} but returned as a raw ANSI string with {@code
-     * 1;38;2;R;G;B} (bold-first truecolor) in every per-codepoint SGR sequence. Use this when you
-     * need the bold attribute stamped on each char's SGR — {@link AttributedString#toAnsi} emits bold
-     * only on the first char's SGR and relies on persistence, which can look not-bold against vivid
-     * gradient colors on some terminal renderings.
+     * Per-codepoint truecolor lerp across {@link #titleGradient()}, bold stamped on every cell
+     * ({@code 1;38;2;R;G;B}).
      */
     String gradientHeaderAnsi(String text);
 
     /** Maps (state, glyph) to the style used to render that rail glyph. */
-    AttributedStyle railStyle(Rail.StepState state, Rail.RailGlyph glyph);
+    Style railStyle(Rail.StepState state, Rail.RailGlyph glyph);
 
     // --- static, theme-independent helpers --------------------------------
 
@@ -329,7 +321,7 @@ public interface Theme {
      * red} → error). Underscores and case are ignored. Returns {@code null} for unknown names
      * (hex colors are not looked up here).
      */
-    default AttributedStyle styleNamedOrNull(String name) {
+    default Style styleNamedOrNull(String name) {
         if (name == null || name.isBlank()) return null;
         String key = name.trim().toLowerCase(Locale.ROOT).replace('_', '-');
         return switch (key) {
@@ -366,8 +358,8 @@ public interface Theme {
     }
 
     /** {@link #styleNamedOrNull} or {@link IllegalArgumentException} for an unknown token. */
-    default AttributedStyle styleNamed(String name) {
-        AttributedStyle style = styleNamedOrNull(name);
+    default Style styleNamed(String name) {
+        Style style = styleNamedOrNull(name);
         if (style == null) {
             throw new IllegalArgumentException("unknown style name: " + name);
         }
@@ -375,62 +367,11 @@ public interface Theme {
     }
 
     /**
-     * Wrap {@code text} in the ANSI SGR codes for {@code style} so the result can be written to a
-     * {@code PrintStream} / {@code System.out} verbatim. Bypasses {@link
-     * org.jline.utils.AttributedString#toAnsi()} — that path rewrites single-line box-drawing glyphs
-     * to ASCII when called without a terminal, which mangles widgets that use box characters.
-     *
-     * <p>Emits jk's canonical <em>attribute-leading</em> SGR order: every text-attribute code (bold
-     * {@code 1}, faint {@code 2}, italic {@code 3}, underline {@code 4}, …) is placed <em>before</em>
-     * the truecolor {@code 38;2;r;g;b}/{@code 48;2;r;g;b} color group. jline's {@link
-     * AttributedStyle#toAnsi()} emits the color group first and the attributes last; we re-order so
-     * the bytes match jk's historical output (e.g. {@code 1;38;2;0;188;212} rather than {@code
-     * 38;2;0;188;212;1}). Terminals ignore SGR parameter order, so this is visually identical for
-     * every consumer — it just makes one canonical byte order across the module.
+     * Wrap {@code text} in attribute-leading SGR. Never rewrites glyphs. {@code --no-ansi} goes
+     * through {@link PlainAscii}.
      */
-    static String colorize(String text, AttributedStyle style) {
-        // No-ANSI mode (--no-ansi / TERM=dumb / CI=true|1): strip ALL ANSI sequences
-        // including bold/italic, and rewrite Unicode chrome (… → ..., • → -, ● → *) so
-        // free-form messages stay ASCII. --color never and NO_COLOR only strip color but
-        // preserve text attributes — they do NOT reach this early-return.
+    static String colorize(String text, Style style) {
         if (!Theme.active().isAnsi()) return PlainAscii.transform(text);
-        String sgr = style.toAnsi();
-        // A style with no attributes renders as a blank SGR body (JLine emits a
-        // single space, not ""), which would otherwise produce a stray `\033[ m`.
-        if (sgr.isBlank()) return text;
-        return Ansi.CSI + attributeLeading(sgr) + "m" + text + Ansi.RESET;
-    }
-
-    /**
-     * Re-order a {@code ;}-separated SGR body so the truecolor color group(s) ({@code 38;2;r;g;b} /
-     * {@code 48;2;r;g;b}) come last and every other (attribute) code keeps its original relative
-     * order in front. jline emits color-first/attribute-last; jk's canonical order is
-     * attribute-first.
-     */
-    private static String attributeLeading(String body) {
-        String[] params = body.split(";");
-        StringBuilder attrs = new StringBuilder();
-        StringBuilder colors = new StringBuilder();
-        for (int i = 0; i < params.length; ) {
-            String p = params[i];
-            // A truecolor group is "38;2;r;g;b" (fg) or "48;2;r;g;b" (bg): five
-            // params. Move the whole group to the color tail; everything else is
-            // an attribute and stays in front, in order.
-            if ((p.equals("38") || p.equals("48")) && i + 1 < params.length && params[i + 1].equals("2")) {
-                int end = Math.min(i + 5, params.length);
-                for (int j = i; j < end; j++) {
-                    if (colors.length() > 0) colors.append(';');
-                    colors.append(params[j]);
-                }
-                i = end;
-            } else {
-                if (attrs.length() > 0) attrs.append(';');
-                attrs.append(p);
-                i++;
-            }
-        }
-        if (attrs.length() == 0) return colors.toString();
-        if (colors.length() == 0) return attrs.toString();
-        return attrs + ";" + colors;
+        return style.render(text);
     }
 }

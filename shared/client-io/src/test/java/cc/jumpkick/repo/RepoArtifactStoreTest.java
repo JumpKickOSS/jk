@@ -7,7 +7,6 @@ import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -55,6 +54,65 @@ class RepoArtifactStoreTest {
     }
 
     @Test
+    void legacy_local_store_is_folded_into_jk_local(@TempDir Path dir) throws IOException {
+        RepoArtifactStore.clearLegacyMigrationMemoForTest();
+        Path cache = dir.resolve("cache");
+        Path legacy = cache.resolve("repos/local/com/example/app/1.0/app-1.0.jar");
+        Files.createDirectories(legacy.getParent());
+        Files.writeString(legacy, "pre-rename-bytes");
+
+        new RepoArtifactStore(cache, "central"); // any store construction migrates
+
+        assertThat(cache.resolve("repos/local")).doesNotExist();
+        assertThat(cache.resolve("repos/jk-local/com/example/app/1.0/app-1.0.jar"))
+                .exists()
+                .content()
+                .isEqualTo("pre-rename-bytes");
+        assertThat(RepoArtifactStore.legacyLocalPending(cache)).isFalse();
+    }
+
+    @Test
+    void legacy_merge_keeps_the_jk_local_copy_on_collision(@TempDir Path dir) throws IOException {
+        RepoArtifactStore.clearLegacyMigrationMemoForTest();
+        Path cache = dir.resolve("cache");
+        Path legacyDup = cache.resolve("repos/local/g/a/1/a-1.jar");
+        Path legacyOnly = cache.resolve("repos/local/g/b/1/b-1.jar");
+        Path kept = cache.resolve("repos/jk-local/g/a/1/a-1.jar");
+        Files.createDirectories(legacyDup.getParent());
+        Files.createDirectories(legacyOnly.getParent());
+        Files.createDirectories(kept.getParent());
+        Files.writeString(legacyDup, "old-copy");
+        Files.writeString(legacyOnly, "only-in-legacy");
+        Files.writeString(kept, "new-copy");
+
+        RepoArtifactStore.migrateLegacyLocal(cache);
+
+        assertThat(kept).content().isEqualTo("new-copy");
+        assertThat(cache.resolve("repos/jk-local/g/b/1/b-1.jar")).content().isEqualTo("only-in-legacy");
+        assertThat(cache.resolve("repos/local")).doesNotExist();
+    }
+
+    @Test
+    void user_remote_named_local_after_the_rename_is_never_migrated(@TempDir Path dir) throws IOException {
+        RepoArtifactStore.clearLegacyMigrationMemoForTest();
+        Path cache = dir.resolve("cache");
+        // First contact with a clean store stamps the rename marker...
+        new RepoArtifactStore(cache, "central");
+        // ...then a user remote actually named "local" fills its own mirror.
+        Path mirror = cache.resolve("repos/local/g/a/1/a-1.jar");
+        Files.createDirectories(mirror.getParent());
+        Files.writeString(mirror, "user-remote-bytes");
+
+        // A fresh process constructs stores again: the marker keeps the mirror in place.
+        RepoArtifactStore.clearLegacyMigrationMemoForTest();
+        new RepoArtifactStore(cache, "local");
+
+        assertThat(mirror).content().isEqualTo("user-remote-bytes");
+        assertThat(cache.resolve("repos/jk-local/g/a/1/a-1.jar")).doesNotExist();
+        assertThat(RepoArtifactStore.legacyLocalPending(cache)).isFalse();
+    }
+
+    @Test
     void evict_removes_the_artifact_and_its_memo(@TempDir Path dir) throws IOException {
         Path cache = dir.resolve("cache");
         Path source = dir.resolve("src.jar");
@@ -72,38 +130,6 @@ class RepoArtifactStoreTest {
         assertThat(ArtifactMemo.jkPath(cache.resolve("repos/central"), rel)).doesNotExist();
         assertThat(source).exists();
         assertThat(store.evict(rel)).isFalse();
-    }
-
-    @Test
-    void evict_repos_down_to_budget_drops_coldest_and_spares_jk_local(@TempDir Path dir) throws IOException {
-        // The repos/ tree must be size-bounded — evict coldest third-party jars first,
-        // keep repos/jk-local (first-party, no re-fetch source).
-        Path cache = dir.resolve("cache");
-        RepoArtifactStore central = new RepoArtifactStore(cache, "central");
-        Path a = mkjar(dir, "a", 10_000);
-        Path b = mkjar(dir, "b", 10_000);
-        central.materialize("g/a/1/a-1.jar", a, Hashing.sha256Hex(a));
-        central.materialize("g/b/1/b-1.jar", b, Hashing.sha256Hex(b));
-        // First-party under repos/jk-local must never be evicted.
-        RepoArtifactStore.writeToLocalStore(cache, "g/local/1/local-1.jar", mkjar(dir, "local", 10_000));
-
-        // a is colder than b.
-        Map<String, Long> atimes = Map.of(Hashing.sha256Hex(a), 1_000L, Hashing.sha256Hex(b), 9_000L);
-
-        // Budget fits one 10k jar → the coldest third-party (a) is evicted, b kept.
-        var report = RepoArtifactStore.evictReposDownTo(cache, 12_000, atimes, false);
-        assertThat(report.deleted()).isEqualTo(1);
-        assertThat(central.contains("g/a/1/a-1.jar")).isFalse();
-        assertThat(central.contains("g/b/1/b-1.jar")).isTrue();
-        assertThat(cache.resolve("repos/jk-local/g/local/1/local-1.jar")).exists();
-    }
-
-    private static Path mkjar(Path dir, String name, int size) throws IOException {
-        Path f = dir.resolve(name + ".jar");
-        byte[] bytes = new byte[size];
-        for (int i = 0; i < size; i++) bytes[i] = (byte) (name.charAt(0) + i);
-        Files.write(f, bytes);
-        return f;
     }
 
     @Test

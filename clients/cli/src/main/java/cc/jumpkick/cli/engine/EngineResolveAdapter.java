@@ -199,62 +199,80 @@ final class EngineResolveAdapter {
             List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
             BuildPlanListener listener = null;
 
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String type = EngineProtocol.typeOf(line);
-                if (type == null) continue;
-                switch (type) {
-                    case EngineProtocol.LOCK_MODULE -> {
-                        currentDir = Jsonl.str(line, "dir");
-                        currentCoord = Jsonl.str(line, "coord");
-                        steps = new ArrayList<>();
-                        diagnostics = new ArrayList<>();
-                        listener = null;
+            try {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String type = EngineProtocol.typeOf(line);
+                    if (type == null) continue;
+                    switch (type) {
+                        case EngineProtocol.LOCK_MODULE -> {
+                            currentDir = Jsonl.str(line, "dir");
+                            currentCoord = Jsonl.str(line, "coord");
+                            steps = new ArrayList<>();
+                            diagnostics = new ArrayList<>();
+                            listener = null;
+                        }
+                        case EngineProtocol.PLAN_TASK ->
+                            steps.add(Task.builder(Jsonl.str(line, "name"))
+                                    .label(Jsonl.str(line, "label"))
+                                    .phase(wireGroup(Jsonl.str(line, "stage")))
+                                    .build());
+                        case EngineProtocol.PLAN_DONE ->
+                            listener = handler.onModuleStart(currentDir, currentCoord, steps);
+                        case EngineProtocol.LOCK_PACKAGE ->
+                            handler.onPackage(
+                                    Jsonl.str(line, "dir"),
+                                    Jsonl.str(line, "name"),
+                                    Jsonl.str(line, "version"),
+                                    Jsonl.intValue(line, "total", -1));
+                        case EngineProtocol.BUILDPLAN_FINISH -> {
+                            BuildPlanResult result = new BuildPlanResult(
+                                    planName,
+                                    Jsonl.bool(line, "success", false),
+                                    Duration.ZERO,
+                                    List.of(),
+                                    List.of(),
+                                    diagnostics,
+                                    false,
+                                    false);
+                            if (listener != null) listener.planFinish(result);
+                            listener = null; // settled — the catch below must not settle it twice
+                            handler.onModuleFinish(
+                                    currentDir,
+                                    result,
+                                    new EngineRequests.LockCounts(
+                                            Jsonl.longValue(line, "lockPackages", -1),
+                                            Jsonl.longValue(line, "lockSources", -1),
+                                            Jsonl.longValue(line, "lockPlugins", -1)));
+                        }
+                        case EngineProtocol.LOCK_FINISH -> {
+                            return new EngineRequests.LockOutcome(
+                                    Jsonl.bool(line, "success", false),
+                                    Jsonl.intValue(line, "exitCode", 1),
+                                    Jsonl.strArray(line, "errors"),
+                                    Jsonl.intValue(line, "refreshed", -1));
+                        }
+                        case EngineProtocol.ERROR ->
+                            throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
+                        default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
                     }
-                    case EngineProtocol.PLAN_TASK ->
-                        steps.add(Task.builder(Jsonl.str(line, "name"))
-                                .label(Jsonl.str(line, "label"))
-                                .phase(wireGroup(Jsonl.str(line, "stage")))
-                                .build());
-                    case EngineProtocol.PLAN_DONE -> listener = handler.onModuleStart(currentDir, currentCoord, steps);
-                    case EngineProtocol.LOCK_PACKAGE ->
-                        handler.onPackage(
-                                Jsonl.str(line, "dir"),
-                                Jsonl.str(line, "name"),
-                                Jsonl.str(line, "version"),
-                                Jsonl.intValue(line, "total", -1));
-                    case EngineProtocol.BUILDPLAN_FINISH -> {
-                        BuildPlanResult result = new BuildPlanResult(
-                                planName,
-                                Jsonl.bool(line, "success", false),
-                                Duration.ZERO,
-                                List.of(),
-                                List.of(),
-                                diagnostics,
-                                false,
-                                false);
-                        if (listener != null) listener.planFinish(result);
-                        handler.onModuleFinish(
-                                currentDir,
-                                result,
-                                new EngineRequests.LockCounts(
-                                        Jsonl.longValue(line, "lockPackages", -1),
-                                        Jsonl.longValue(line, "lockSources", -1),
-                                        Jsonl.longValue(line, "lockPlugins", -1)));
-                    }
-                    case EngineProtocol.LOCK_FINISH -> {
-                        return new EngineRequests.LockOutcome(
-                                Jsonl.bool(line, "success", false),
-                                Jsonl.intValue(line, "exitCode", 1),
-                                Jsonl.strArray(line, "errors"),
-                                Jsonl.intValue(line, "refreshed", -1));
-                    }
-                    case EngineProtocol.ERROR ->
-                        throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
-                    default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
                 }
+                throw disconnected();
+            } catch (IOException | RuntimeException e) {
+                // An in-flight module's live region must settle before the error propagates:
+                // planFinish dismisses the pinned region and restores the captured System.out,
+                // or the failure prints interleaved with a still-animating region and the
+                // terminal is left mid-frame with stdout redirected.
+                if (listener != null) {
+                    try {
+                        listener.planFinish(new BuildPlanResult(
+                                planName, false, Duration.ZERO, List.of(), List.of(), diagnostics, false, false));
+                    } catch (RuntimeException settling) {
+                        e.addSuppressed(settling);
+                    }
+                }
+                throw e;
             }
-            throw disconnected();
         }
     }
 

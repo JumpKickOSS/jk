@@ -263,7 +263,6 @@ public final class LockFlow {
         // Freeze resolved first-party project identity (incl. workspace-inherited fields).
         lock = cc.jumpkick.lock.LockfileModules.stamp(lock, lockDir);
         LockfileWriter.write(lock, lockFile, manifestsSha);
-        cc.jumpkick.task.AccessLedger.atDefaultPath().touchLock(lock);
         return new Result(0, null, lock, effective, moduleCount, workspaceLock, lockDir);
     }
 

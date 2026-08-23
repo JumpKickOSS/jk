@@ -122,13 +122,7 @@ public final class EffectiveUserConfig {
                 "cache.max-cache-size-gb",
                 JkCacheConfig.formatGb(d.maxCacheSizeGb()),
                 JkCacheConfig.formatGb(e.maxCacheSizeGb()));
-        add(
-                out,
-                "cache.max-store-size-gb",
-                JkCacheConfig.formatGb(d.maxStoreSizeGb()),
-                JkCacheConfig.formatGb(e.maxStoreSizeGb()));
         add(out, "cache.prune-interval-days", d.pruneIntervalDays(), e.pruneIntervalDays());
-        add(out, "cache.record-ttl-days", d.recordTtlDays(), e.recordTtlDays());
     }
 
     private static void addHistory(List<Row> out, Path file, Function<String, String> env) {

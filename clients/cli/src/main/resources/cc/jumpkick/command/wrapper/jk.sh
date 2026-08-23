@@ -7,7 +7,24 @@
 # operator — there is no version pin here and none in jk-lock.toml.
 set -eu
 
-JK_HOME="${JK_HOME:-$HOME/.jk}"
+# Where jk lives / gets installed — the SAME resolution as install.sh and JkDirs
+# (JK_INSTALL_DIR > JK_BIN_DIR > $JK_HOME/bin > XDG bin > data-home sibling > ~/.local/bin).
+# The wrapper must never invent its own layout: it used to cache into ~/.jk/bin — a root
+# JkDirs never resolves — shadowing the real install forever, so `jk self update` (which
+# replaces the bin-dir binary) never reached wrapper users.
+if [ -n "${JK_INSTALL_DIR:-}" ]; then
+  BIN_DIR="$JK_INSTALL_DIR"
+elif [ -n "${JK_BIN_DIR:-}" ]; then
+  BIN_DIR="$JK_BIN_DIR"
+elif [ -n "${JK_HOME:-}" ]; then
+  BIN_DIR="$JK_HOME/bin"
+elif [ -n "${XDG_BIN_HOME:-}" ]; then
+  BIN_DIR="$XDG_BIN_HOME"
+elif [ -n "${XDG_DATA_HOME:-}" ]; then
+  BIN_DIR="$(dirname "$XDG_DATA_HOME")/bin"
+else
+  BIN_DIR="$HOME/.local/bin"
+fi
 RELEASES="${JK_RELEASES_URL:-https://jumpkick.build/releases}"
 case "$0" in */*) DIR="${0%/*}" ;; *) DIR="." ;; esac
 
@@ -39,14 +56,23 @@ ver_ge() {
   [ "$HI" = "$A" ]
 }
 
-BIN="$JK_HOME/bin/jk"
+BIN="$BIN_DIR/jk"
 if [ -x "$BIN" ]; then
   INSTALLED=""
-  if [ -f "$JK_HOME/bin/VERSION" ]; then
-    INSTALLED="$(tr -d '[:space:]' < "$JK_HOME/bin/VERSION")"
+  if [ -f "$BIN_DIR/VERSION" ]; then
+    INSTALLED="$(tr -d '[:space:]' < "$BIN_DIR/VERSION")"
   fi
   if [ -z "$FLOOR" ] || [ -z "$INSTALLED" ] || ver_ge "$INSTALLED" "$FLOOR"; then
     exec "$BIN" "$@"
+  fi
+fi
+# A jk already on PATH (an install.sh layout the env vars above didn't name) beats a
+# bootstrap download; a current jk enforces the lock floor itself. Never re-exec the very
+# binary the floor check above just rejected.
+if command -v jk >/dev/null 2>&1; then
+  PATH_JK="$(command -v jk)"
+  if [ "$PATH_JK" != "$BIN" ]; then
+    exec "$PATH_JK" "$@"
   fi
 fi
 
@@ -87,12 +113,12 @@ else
   echo "jk wrapper: cannot decompress .xz; install xz and re-run (Linux: xz-utils; macOS: brew install xz)." >&2
   exit 1
 fi
-mkdir -p "$JK_HOME/bin"
+mkdir -p "$BIN_DIR"
 if [ -e "$BIN" ] || [ -L "$BIN" ]; then
   mv -f "$BIN" "$BIN.old" 2>/dev/null || rm -f "$BIN"
 fi
 cp "$TMP/jk" "$BIN.part" && chmod +x "$BIN.part" && mv "$BIN.part" "$BIN"
-printf '%s\n' "$VERSION" > "$JK_HOME/bin/VERSION"
+printf '%s\n' "$VERSION" > "$BIN_DIR/VERSION"
 rm -f "$BIN.old" 2>/dev/null || true
 
 exec "$BIN" "$@"

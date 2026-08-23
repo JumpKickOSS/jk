@@ -447,18 +447,17 @@
               <dl>
                 <dt>cache CAS</dt><dd>{{ count(cache.cacheCasCount != null ? cache.cacheCasCount : 0) }} · {{ gib(cache.cacheCasBytes != null ? cache.cacheCasBytes : 0) }}</dd>
                 <dt>action index</dt><dd>{{ count(cache.actionsCount) }} · {{ gib(cache.actionsBytes) }}</dd>
+                <dt>incremental</dt><dd :data-tip="'Zinc analysis state vs [cache] incremental-max-size-gb (' + mib(cache.incrementalMaxBytes) + ')'">{{ count(cache.incrementalCount) }} · {{ mib(cache.incrementalBytes) }} · {{ incrementalUsedPct() }}% used</dd>
                 <dt>format stamps</dt><dd :data-tip="'Count of empty stamp files vs cap (' + formatStampsMaxLabel() + ')'">{{ count(cache.formatStampsCount) }} · {{ formatStampsUsedPct() }}% used</dd>
+                <dt>derived</dt><dd data-tip="Small caches with their own retention (hash memos, format indexes, extracted trees) — bounded by count or supersession, so no budget bar">{{ count(cache.derivedCount) }} · {{ mib(cache.derivedBytes) }} apparent</dd>
               </dl>
             </template>
             <div v-else class="dim small">Action cache loading…</div>
           </div>
           <div class="panel">
             <div class="panel-head"><span class="lbl" data-tip="Long-lived artifact repository data">artifact store</span><span class="spacer"></span>
-              <span v-if="cache" class="mono dim">{{ gib(artifactStorageBytes()) }} of {{ gib(cache.maxBytes) }}</span></div>
+              <span v-if="cache" class="mono dim">{{ gib(artifactStorageBytes()) }}</span></div>
             <template v-if="cache">
-              <span class="meter" data-tip="vs [cache] max-store-size-gb (artifact store budget)">
-                <span class="meter-fill used" :style="{ width: artifactStorageUtilizationPercent() + '%' }"></span>
-              </span>
               <dl>
                 <dt>jk-owned (repos / workers)</dt><dd>{{ count(cache.workerJarsCount) }} · {{ gib(cache.workerJarsBytes) }}</dd>
                 <dt>Maven local (not budgeted)</dt><dd>{{ count(cache.mavenLocalCount || 0) }} · {{ gib(cache.mavenLocalBytes || 0) }}</dd>

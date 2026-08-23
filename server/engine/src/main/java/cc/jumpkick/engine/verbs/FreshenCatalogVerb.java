@@ -58,9 +58,7 @@ public final class FreshenCatalogVerb implements HostedVerb {
                     }
                     case "libraries" -> {
                         URI src = url != null ? URI.create(url) : cc.jumpkick.repo.LibraryRegistryClient.DEFAULT_SOURCE;
-                        Path dest = cacheFile != null
-                                ? Path.of(cacheFile)
-                                : cc.jumpkick.library.LibraryCatalog.downloadedFile();
+                        Path dest = cacheFile != null ? Path.of(cacheFile) : cc.jumpkick.util.JkDirs.libraryRegistry();
                         if (Jsonl.bool(requestLine, "force", false)) {
                             cc.jumpkick.repo.LibraryRegistrySync.refreshNow(src, dest);
                         } else {

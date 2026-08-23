@@ -202,9 +202,8 @@ public final class DoctorCommand implements CliCommand {
         if (!Files.isDirectory(store.getParent())) problems.add("store parent missing");
         if (!Files.isDirectory(state.getParent())) problems.add("state parent missing");
         if (!problems.isEmpty()) return new Check(Status.FAIL, "dirs", String.join("; ", problems));
-        String detail = "cache " + cache + " · store " + store + " · "
-                + JkCacheConfig.formatGb(cfg.maxCacheSizeGb()) + "G cache / "
-                + JkCacheConfig.formatGb(cfg.maxStoreSizeGb()) + "G store (display)";
+        String detail = "cache " + cache + " · store " + store + " · " + JkCacheConfig.formatGb(cfg.maxCacheSizeGb())
+                + "G cache budget · store unbudgeted";
         return new Check(Status.OK, "dirs", detail);
     }
 

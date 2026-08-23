@@ -18,7 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * {@code repos/jk-local} is a publish destination. A leftover store-CAS copy of those bytes is a
  * sweep root (via the {@code .jk} memo) so GC does not eat a just-installed worker. Maven-layout
- * jars themselves are independent copies and survive CAS sweep / LRU even when the blob is
+ * jars themselves are independent copies and survive the CAS sweep even when the blob is
  * unreferenced.
  */
 class CacheRootsLocalRepoTest {
@@ -70,23 +70,5 @@ class CacheRootsLocalRepoTest {
                 .as("Maven-layout jar is an independent copy")
                 .isTrue();
         assertThat(ArtifactMemo.jkPath(cacheRoot.resolve("repos/central"), rel)).exists();
-    }
-
-    @Test
-    void lru_eviction_drops_cas_blob_not_the_named_jar(@TempDir Path store) throws IOException {
-        Cas cas = new Cas(store);
-        byte[] dep = "lru victim bytes".getBytes();
-        Path blob = cas.put(dep);
-        String hex = Hashing.sha256Hex(dep);
-        String rel = "com/example/lru/1.0/lru-1.0.jar";
-        RepoArtifactStore.forRepoName(store, "central").materialize(rel, blob, hex);
-        Path artifact = store.resolve("repos/central").resolve(rel);
-
-        AccessLedger ledger = new AccessLedger(store.resolve(".access.log"));
-        var report = LruEvictor.evictDownTo(cas, 0L, Set.of(), ledger, false);
-        assertThat(report.deleted()).isGreaterThanOrEqualTo(1);
-        assertThat(Files.exists(blob)).isFalse();
-        assertThat(Files.exists(artifact)).isTrue();
-        assertThat(ArtifactMemo.jkPath(store.resolve("repos/central"), rel)).exists();
     }
 }

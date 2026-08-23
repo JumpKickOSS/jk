@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.terminal;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import cc.jumpkick.terminal.posix.PosixTty;
+import java.time.Duration;
+import org.junit.jupiter.api.Test;
+
+class NativeTerminalSessionTest {
+    @Test
+    void controllingNeverUsesFdZero() {
+        PosixTty tty = PosixTty.openControlling();
+        if (tty == null) {
+            assertThat(Terminals.controlling().isLive()).isFalse();
+            return;
+        }
+        try {
+            assertThat(tty.fd()).isGreaterThan(0);
+        } finally {
+            tty.close();
+        }
+    }
+
+    @Test
+    void singletonCloseKeepsLiveWhenTtyExists() {
+        TerminalSession s = Terminals.controlling();
+        if (!s.isLive()) {
+            return;
+        }
+        s.close();
+        assertThat(s.isLive()).isTrue();
+        Terminals.shutdown();
+        assertThat(s.isLive()).isFalse();
+    }
+
+    @Test
+    void deadReadIsEmpty() {
+        assertThat(DeadTerminal.INSTANCE.readKey(Duration.ofMillis(1))).isEmpty();
+        assertThat(DeadTerminal.INSTANCE.isLive()).isFalse();
+    }
+}

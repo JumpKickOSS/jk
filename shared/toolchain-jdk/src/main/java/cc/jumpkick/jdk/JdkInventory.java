@@ -14,6 +14,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -24,8 +26,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -82,14 +82,12 @@ public final class JdkInventory {
 
     /** Identifier stored as {@code default}, if any. */
     public Optional<String> defaultId() {
-        ensureMigrated();
-        return topLevel(DEFAULT_KEY);
+        return Optional.ofNullable(snapshot().defaultId);
     }
 
     /** Identifier stored as {@code graal-default}, if any. */
     public Optional<String> graalId() {
-        ensureMigrated();
-        return topLevel(GRAAL_DEFAULT_KEY);
+        return Optional.ofNullable(snapshot().graalId);
     }
 
     /**
@@ -137,10 +135,10 @@ public final class JdkInventory {
      */
     public void record(InstalledJdk jdk, boolean computeHash) throws IOException {
         Objects.requireNonNull(jdk, "jdk");
-        withExclusiveLock(() -> {
-            Snapshot snap = loadLocked();
-            writeLocked(snap.upsert(rowFor(jdk, snap.row(jdk.identifier()), computeHash)));
-        });
+        // Fingerprint before taking the lock — the full-tree walk of a fresh install must not
+        // block every other inventory reader/writer for its duration.
+        Row row = rowFor(jdk, snapshot().row(jdk.identifier()), computeHash);
+        withExclusiveLock(() -> writeLocked(loadLocked().upsert(row)));
     }
 
     /** Drop a row. Default ids that still name it are left for the caller to retarget. */
@@ -155,8 +153,9 @@ public final class JdkInventory {
     }
 
     public List<Finding> verify() throws IOException {
-        ensureMigrated();
-        Snapshot snap = withExclusiveLockGet(this::loadLocked);
+        // Plain read: writes are atomic replaces, so verify must not hold the exclusive lock
+        // across multi-hundred-MB fingerprint walks (it would starve installs and hook reads).
+        Snapshot snap = snapshot();
         List<Finding> out = new ArrayList<>();
         for (Row row : snap.rows.values()) {
             out.add(checkRow(row));
@@ -172,42 +171,66 @@ public final class JdkInventory {
     }
 
     /**
-     * Add untracked owned trees (hashed), drop missing rows, fill empty hashes, keep defaults only
-     * when those ids still exist.
+     * Add untracked owned trees (hashed), drop rows whose tree is gone, fill empty hashes, keep
+     * non-owned rows (external homes, IDE installs in a shared root) as identity rows, and keep
+     * defaults whose row survived. Fingerprints are computed once, outside the lock — the walk
+     * covers every install tree and must not starve concurrent installs or hook reads — and the
+     * findings reuse that same pass instead of re-hashing.
      */
     public List<Finding> repair() throws IOException {
-        return withExclusiveLockGet(() -> {
+        Snapshot before = snapshot();
+        Map<String, Row> owned = new LinkedHashMap<>();
+        for (Path dir : ownedInstallDirs()) {
+            String id = dir.getFileName().toString();
+            Path home = IntellijJdkDir.javaHome(dir);
+            owned.put(id, rowFor(new InstalledJdk(id, home), before.row(id), true));
+        }
+        Snapshot next = withExclusiveLockGet(() -> {
             Snapshot snap = loadLocked();
-            Map<String, Row> rows = new LinkedHashMap<>();
-            for (Path dir : ownedInstallDirs()) {
-                String id = dir.getFileName().toString();
-                Path home = IntellijJdkDir.javaHome(dir);
-                rows.put(id, rowFor(new InstalledJdk(id, home), snap.row(id), true));
-            }
+            Map<String, Row> rows = new LinkedHashMap<>(owned);
             for (Row row : snap.rows.values()) {
-                if (row.home != null && hasJavac(IntellijJdkDir.javaHome(row.home))) {
-                    rows.putIfAbsent(row.id, row);
+                if (rows.containsKey(row.id)) continue;
+                Path dir = row.home != null ? IntellijJdkDir.installDirOf(row.home) : installDir(row.id);
+                if (Files.isDirectory(dir) && hasJavac(IntellijJdkDir.javaHome(dir))) {
+                    rows.put(row.id, row); // not jk-owned but alive: identity row, never dropped
                 }
             }
             String def = snap.defaultId != null && rows.containsKey(snap.defaultId) ? snap.defaultId : null;
             String graal = snap.graalId != null && rows.containsKey(snap.graalId) ? snap.graalId : null;
-            Snapshot next = new Snapshot(def, graal, rows);
-            writeLocked(next);
-            List<Finding> out = new ArrayList<>();
-            for (Row row : next.rows.values()) out.add(checkRow(row));
-            return out;
+            Snapshot merged = new Snapshot(def, graal, rows);
+            writeLocked(merged);
+            return merged;
         });
+        List<Finding> out = new ArrayList<>();
+        for (Row row : next.rows.values()) {
+            if (owned.containsKey(row.id)) {
+                // Fingerprinted moments ago in this very pass — re-walking the tree to compare
+                // the hash against itself is pure cost. A null sha means that walk failed.
+                out.add(
+                        row.sha256 != null && !row.sha256.isBlank()
+                                ? new Finding(Finding.Kind.OK, row.id, installDir(row.id), null)
+                                : new Finding(Finding.Kind.UNHASHED, row.id, installDir(row.id), "fingerprint failed"));
+            } else {
+                out.add(checkRow(row)); // identity-only rows: cheap presence probe
+            }
+        }
+        out.sort(Comparator.comparing((Finding f) -> f.kind().ordinal()).thenComparing(Finding::id));
+        return out;
     }
 
     public Optional<Path> homeOf(String id) {
         if (id == null || id.isBlank()) return Optional.empty();
-        Path underRoot = IntellijJdkDir.javaHome(jdksRoot.resolve(id));
-        if (hasJavac(underRoot)) return Optional.of(real(underRoot));
-        Row row = loadQuiet().row(id);
+        // The row's recorded home is WHICH install the user chose — an external install can
+        // share a basename with a tree under the jdks root, and probing the root first would
+        // silently resolve to the wrong one (the invariant the old home-keyed scheme kept).
+        Row row = snapshot().row(id);
         if (row != null && row.home != null) {
             Path home = IntellijJdkDir.javaHome(row.home);
             if (hasJavac(home)) return Optional.of(real(home));
+            // Recorded home is gone; fall through — a same-id tree under the root may remain.
         }
+        Path underRoot = IntellijJdkDir.javaHome(jdksRoot.resolve(id));
+        if (hasJavac(underRoot)) return Optional.of(real(underRoot));
         return Optional.empty();
     }
 
@@ -224,8 +247,14 @@ public final class JdkInventory {
         if (!Files.isDirectory(dir)) {
             return new Finding(Finding.Kind.MISSING, row.id, dir, "install directory is gone");
         }
-        if (!JdkOwnership.isJkOwned(dir) && (row.home == null || isUnderJdksRoot(dir))) {
-            return new Finding(Finding.Kind.UNOWNED, row.id, dir, "missing " + JdkOwnership.MARKER);
+        if (!JdkOwnership.isJkOwned(dir)) {
+            // Not a jk-written tree: an external home (`jk jdk default ~/.sdkman/...`) or an
+            // IDE-installed JDK in the shared jdks root. jk never fingerprinted it, other tools
+            // legitimately touch it, and repair could not re-baseline what jk doesn't own —
+            // presence and a working javac are the whole contract.
+            return hasJavac(IntellijJdkDir.javaHome(dir))
+                    ? new Finding(Finding.Kind.OK, row.id, dir, null)
+                    : new Finding(Finding.Kind.MISSING, row.id, dir, "no working javac in tree");
         }
         if (row.sha256 == null || row.sha256.isBlank()) {
             return new Finding(Finding.Kind.UNHASHED, row.id, dir, "no sha256 recorded yet");
@@ -289,11 +318,6 @@ public final class JdkInventory {
         }
     }
 
-    private Optional<String> topLevel(String key) {
-        String v = TomlScan.scan(file, key).get(key);
-        return v == null || v.isBlank() ? Optional.empty() : Optional.of(v);
-    }
-
     private void ensureMigrated() {
         if (Files.isRegularFile(file)) return;
         try {
@@ -306,11 +330,30 @@ public final class JdkInventory {
         }
     }
 
-    private Snapshot loadQuiet() {
+    private Snapshot cachedSnapshot;
+    private long cachedSize = -1;
+    private FileTime cachedModified;
+
+    /**
+     * Read-path snapshot, memoized on (size, mtime): {@code jk hook-env} runs on every shell
+     * prompt and used to re-read and re-parse this file up to six times per invocation — one stat
+     * plus at most one parse now serves defaultId/graalId/defaultHome/graalHome together.
+     */
+    private synchronized Snapshot snapshot() {
+        ensureMigrated();
         try {
-            ensureMigrated();
             if (!Files.isRegularFile(file)) return Snapshot.empty();
-            return parse(Files.readString(file, StandardCharsets.UTF_8));
+            var attrs = Files.readAttributes(file, BasicFileAttributes.class);
+            if (cachedSnapshot != null
+                    && attrs.size() == cachedSize
+                    && attrs.lastModifiedTime().equals(cachedModified)) {
+                return cachedSnapshot;
+            }
+            Snapshot snap = parse(Files.readString(file, StandardCharsets.UTF_8));
+            cachedSnapshot = snap;
+            cachedSize = attrs.size();
+            cachedModified = attrs.lastModifiedTime();
+            return snap;
         } catch (IOException e) {
             return Snapshot.empty();
         }
@@ -362,6 +405,26 @@ public final class JdkInventory {
             if (asId != null && rows.containsKey(asId.getFileName().toString())) {
                 return asId.getFileName().toString();
             }
+            // The old scheme recorded the home precisely because a default can live outside the
+            // owned trees (sdkman, system, IntelliJ). If it still works, synthesize the row
+            // setDefault would have written instead of stranding an id nothing resolves.
+            if (hasJavac(recorded)) {
+                Path dir = installDirOfHome(recorded);
+                String rid;
+                if (dir != null && isUnderJdksRoot(dir)) {
+                    rid = dir.getFileName() != null ? dir.getFileName().toString() : null;
+                } else {
+                    rid = id != null && !id.isBlank()
+                            ? id
+                            : (dir != null && dir.getFileName() != null
+                                    ? dir.getFileName().toString()
+                                    : null);
+                }
+                if (rid != null && !rid.isBlank()) {
+                    rows.put(rid, rowFor(new InstalledJdk(rid, recorded), null, false));
+                    return rid;
+                }
+            }
         }
         if (id != null && !id.isBlank() && rows.containsKey(id)) return id;
         return (id != null && !id.isBlank()) ? id : null;
@@ -402,25 +465,40 @@ public final class JdkInventory {
         }
     }
 
+    /**
+     * Drop the four legacy default keys, and ONLY them: this can run from the shell hook on any
+     * machine, so an untouched config must round-trip byte-for-byte (the old whole-file blank-line
+     * collapse rewrote configs that had no legacy keys at all). Atomic replace — a concurrent
+     * config writer must never observe a torn file.
+     */
     private static void stripLegacyKeys(Path configFile) throws IOException {
         if (!Files.exists(configFile)) return;
         String existing = Files.readString(configFile, StandardCharsets.UTF_8);
-        String updated = existing;
-        for (String key :
-                List.of(LEGACY_DEFAULT_KEY, LEGACY_DEFAULT_HOME_KEY, LEGACY_GRAAL_KEY, LEGACY_GRAAL_HOME_KEY)) {
-            Matcher m = Pattern.compile("(?m)^" + Pattern.quote(key) + "\\s*=\\s*.*$")
-                    .matcher(updated);
-            updated = m.replaceAll("");
+        List<String> legacyKeys =
+                List.of(LEGACY_DEFAULT_KEY, LEGACY_DEFAULT_HOME_KEY, LEGACY_GRAAL_KEY, LEGACY_GRAAL_HOME_KEY);
+        List<String> kept = new ArrayList<>();
+        boolean matched = false;
+        for (String line : existing.split("\n", -1)) {
+            String stripped = line.strip();
+            boolean legacy = legacyKeys.stream()
+                    .anyMatch(k -> stripped.startsWith(k)
+                            && stripped.substring(k.length()).stripLeading().startsWith("="));
+            if (legacy) {
+                matched = true;
+                continue;
+            }
+            kept.add(line);
         }
-        updated = updated.replaceAll("(?m)^\\s*\\R", "");
-        if (!updated.equals(existing)) {
-            Files.writeString(configFile, updated, StandardCharsets.UTF_8);
-        }
+        if (!matched) return;
+        AtomicWrites.replace(configFile, String.join("\n", kept));
     }
 
     private void writeLocked(Snapshot snap) throws IOException {
         if (file.getParent() != null) Files.createDirectories(file.getParent());
         AtomicWrites.replace(file, render(snap));
+        synchronized (this) {
+            cachedSnapshot = null; // the (size, mtime) key alone could false-hit a same-second write
+        }
     }
 
     static String render(Snapshot snap) {
@@ -520,15 +598,13 @@ public final class JdkInventory {
         return s == null || s.isBlank() ? null : s;
     }
 
-    /** Strip TOML basic/literal quotes; drop a trailing same-line comment on unquoted values. */
+    /**
+     * Strip TOML quotes and decode basic-string escapes — the inverse of the
+     * {@link MinimalToml#quote} this file's writer uses, so a Windows {@code home} path
+     * ({@code C:\\Users\\…} on disk) reads back with single separators.
+     */
     static String unquote(String v) {
-        if (v.length() >= 2 && (v.charAt(0) == '"' || v.charAt(0) == '\'')) {
-            char quote = v.charAt(0);
-            int end = v.indexOf(quote, 1);
-            return end > 0 ? v.substring(1, end) : v.substring(1);
-        }
-        int hash = v.indexOf('#');
-        return (hash >= 0 ? v.substring(0, hash) : v).strip();
+        return MinimalToml.unquote(v);
     }
 
     private static boolean hasJavac(Path home) {
@@ -637,7 +713,6 @@ public final class JdkInventory {
             UNHASHED,
             UNTRACKED,
             MISSING,
-            UNOWNED,
             TAMPERED
         }
 

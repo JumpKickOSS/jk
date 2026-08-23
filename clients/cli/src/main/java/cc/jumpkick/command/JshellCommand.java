@@ -143,10 +143,12 @@ public final class JshellCommand implements CliCommand {
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.directory(dir.toFile());
-        cc.jumpkick.cli.tui.Interactivity.restoreForChildProcess();
+        cc.jumpkick.terminal.Terminals.restoreForChild();
         pb.inheritIO();
-        cc.jumpkick.cli.CliOutput.skipTrailingBlank();
         Process p = pb.start();
+        // Skip the gap only once the exec actually started — a failed start() still owns
+        // the terminal, and its error wedge has earned the envelope's trailing blank.
+        cc.jumpkick.cli.CliOutput.skipTrailingBlank();
         int exit = p.waitFor();
         return exit;
     }

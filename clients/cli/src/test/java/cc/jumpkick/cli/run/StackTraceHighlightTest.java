@@ -4,7 +4,6 @@ package cc.jumpkick.cli.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.theme.Theme;
-import org.jline.utils.AttributedString;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -16,7 +15,7 @@ class StackTraceHighlightTest {
     private static final String ESC = "\u001b";
 
     private static String plain(String s) {
-        return AttributedString.stripAnsi(s);
+        return cc.jumpkick.terminal.Width.stripAnsi(s);
     }
 
     @Test

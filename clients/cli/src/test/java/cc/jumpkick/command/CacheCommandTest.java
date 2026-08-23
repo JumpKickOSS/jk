@@ -73,7 +73,7 @@ class CacheCommandTest {
     }
 
     @Test
-    void usage_reports_content_classes_and_full_tree_total(@TempDir Path tempDir) throws Exception {
+    void usage_reports_content_classes_and_the_action_cache_total(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
         // Class file blob via compile-main action key (64-char hex CAS digest).
         String classSha = "ab" + "cd" + "e".repeat(60);
@@ -95,14 +95,14 @@ class CacheCommandTest {
                 "TASK run-tests@mod\nKEY test-key\nOUTPUT 3 tests.total\n".getBytes(StandardCharsets.UTF_8));
         writeBlob(cache.resolve("runs/build-1.jsonl"), new byte[128]);
         writeBlob(cache.resolve("format-stamps/ab/stamp1"), new byte[0]);
-        // Uncategorized bulk (still in Total): hash-memo entry
+        // Outside the budget denominator: hash-memo has its own retention and the prune cannot
+        // touch it, so it must not inflate the Total the Utilization bar is measured against.
         writeBlob(cache.resolve("hash-memo/aa/memo1"), new byte[4096]);
 
         String plain = TestAnsi.strip(Capture.stdout(() -> run("cache", "usage", "--cache-dir", cache.toString())));
         assertThat(plain).contains("Cache Storage");
         assertThat(plain).contains("Class Files");
         assertThat(plain).contains("Test Results");
-        assertThat(plain).contains("Event Logs");
         assertThat(plain).contains("Normal Jars");
         assertThat(plain).contains("Shadow Jars");
         assertThat(plain).contains("Minified Jars");
@@ -115,29 +115,29 @@ class CacheCommandTest {
         assertThat(plain).doesNotContain("CAS Blobs");
         assertThat(plain).doesNotContain("Worker JARs");
         assertThat(plain).doesNotContain("Last Pruned");
-        // Total file count includes hash-memo + keys + stamps + runs + cas blobs (more than zero).
-        assertThat(plain).containsPattern("Total\\s+│\\s*[1-9]");
+        // Total is the action cache: 3 keys + 2 cache-CAS blobs.
+        assertThat(plain).containsPattern("Total\\s+│\\s*5\\s");
     }
 
     @Test
-    void prune_removes_stale_action_entries_and_cache_tier_tmp_files(@TempDir Path tempDir) throws Exception {
+    void clean_reclaims_cache_tier_temps_and_leaves_the_store_alone(@TempDir Path tempDir) throws Exception {
         // post-split, plain `jk cache clean` is CACHE-tier only. Its temp janitor runs
-        // on the cache root's sha256/ (the cache CAS); the artifact store's temps belong to the
-        // store sweep (`jk storage clean` / scheduled --sweep) and must survive a plain prune.
+        // on the cache root's sha256/ (the cache CAS); the artifact store's temps belong to
+        // `jk storage clean` and must survive a plain clean.
         Path cache = tempDir.resolve("cache");
+        // A backdated key is no longer an age victim: eviction is budget-driven, and a @TempDir
+        // cache is far under the machine budget, so age alone must not delete it.
         Path stale = writeBlob(cache.resolve("actions/keys/old"), new byte[256]);
         Path fresh = writeBlob(cache.resolve("actions/keys/new"), new byte[256]);
         Path cacheTmp = writeBlob(cache.resolve("sha256/ab/cd/.put-abc.tmp"), new byte[128]);
         Path storeCas = cc.jumpkick.cache.JkStores.resolve(cache, "sha256");
         Path storeTmp = writeBlob(storeCas.resolve("ab/cd/.put-jk1531.tmp"), new byte[128]);
         try {
-            // Backdate the stale entry by 60 days.
             Files.setLastModifiedTime(stale, FileTime.from(Instant.now().minus(60, ChronoUnit.DAYS)));
 
-            String stdout =
-                    Capture.stdout(() -> run("cache", "clean", "--cache-dir", cache.toString(), "--older-than", "30"));
+            String stdout = Capture.stdout(() -> run("cache", "clean", "--cache-dir", cache.toString()));
 
-            assertThat(Files.exists(stale)).isFalse();
+            assertThat(Files.exists(stale)).isTrue();
             assertThat(Files.exists(fresh)).isTrue();
             assertThat(Files.exists(cacheTmp)).isFalse(); // cache-tier temp: cleaned
             assertThat(Files.exists(storeTmp)).isTrue(); // store-tier temp: not this command's job
@@ -149,14 +149,13 @@ class CacheCommandTest {
     }
 
     @Test
-    void prune_dry_run_does_not_delete(@TempDir Path tempDir) throws Exception {
+    void clean_dry_run_reports_without_deleting(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        Path stale = writeBlob(cache.resolve("actions/keys/old"), new byte[1024]);
-        Files.setLastModifiedTime(stale, FileTime.from(Instant.now().minus(60, ChronoUnit.DAYS)));
+        Path cacheTmp = writeBlob(cache.resolve("sha256/ab/cd/.put-abc.tmp"), new byte[1024]);
 
         String stdout = Capture.stdout(() -> run("cache", "clean", "--cache-dir", cache.toString(), "--dry-run"));
 
-        assertThat(Files.exists(stale)).isTrue();
+        assertThat(Files.exists(cacheTmp)).isTrue();
         assertThat(stdout).contains("Dry run: would remove");
     }
 
@@ -310,7 +309,8 @@ class CacheCommandTest {
         assertThat(plain).contains("OCI Images");
         assertThat(plain).contains("Worker JARs");
         assertThat(plain).contains("Total");
-        assertThat(plain).contains("Utilization");
+        // The artifact store carries no budget, so there is nothing to be a percentage of.
+        assertThat(plain).doesNotContain("Utilization");
         assertThat(plain).doesNotContain("Format Stamps");
         assertThat(plain).doesNotContain("CAS Blobs");
         assertThat(plain).doesNotContain("Run Logs");

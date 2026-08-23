@@ -49,9 +49,9 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   names it, so nothing can reach it), which exits once it has no in-flight jobs and no attached
   event stream.
 - **JDK inventory** — managed installs live in the IntelliJ shared root (`~/.jdks`); JumpKick's
-  record of them (`jk-jdks.toml`, fingerprints, Java/Graal defaults) and the JDK access log live
-  under the platform **state** dir (`$JK_STATE_DIR`, default `~/.local/state/jk`). No
-  `default-jdk` / `current-jdk` symlinks under data.
+  record of them (`jk-jdks.toml`, fingerprints, Java/Graal defaults) lives under the platform
+  **state** dir (`$JK_STATE_DIR`, default `~/.local/state/jk`). No `default-jdk` / `current-jdk`
+  symlinks under data, and no access log — jk never evicts a JDK, so there is nothing to rank.
 - **Identity** — one engine per (state directory, artifact store) pair. The store is part of the
   identity hash because two invocations can share a state dir while disagreeing about where downloads
   belong; without it, `JK_STORE_DIR` silently did nothing. A machine can therefore hold several
@@ -176,7 +176,7 @@ Builders and round-trip tests live in `shared/wire` / `EngineProtocolTest`.
 | `jk.toml` | grammar / tables | Additive only; no version bump |
 | `jk-lock.toml` | `version` / `Lockfile.CURRENT_VERSION` | Stay on **1**; additive rows/fields only |
 | Client↔engine wire | `EngineProtocol.PROTOCOL` | Stay on **1** |
-| CLI JSONL / run logs | `JsonlShape.SCHEMA` / `"schema"` | Stay on **1** |
+| CLI JSONL / session transcripts | `JsonlShape.SCHEMA` / `"schema"` | Stay on **1** |
 | Session transcripts | `details.jsonl` `"schema"` | Stay on **1** |
 | Run report | `jk-results.md` | Markdown; no version field |
 | REST `/api/*` | response shapes | Additive fields only |
@@ -198,7 +198,7 @@ Bootstrap build: **Java 25 + Gradle** (until self-hosting CI is complete). Runti
 |---|---|---|
 | `shared/` | `jsonl`, `jk-api`, `plugin-sdk`, `core`, `client-io`, `toolchain-jdk`, `wire` | JSONL codec, client-safe contracts, config/lock, CLI I/O, JDK tools, wire |
 | `server/` | `io`, `resolver`, `toolchain`, `engine` | Repo fetch, PubGrub, import/export tools, build plan; `EngineMain` + fat jar packaging (never links CLI) |
-| `clients/` | `cli`, `web` | Slim wire client (native/JVM), dashboard SPA |
+| `clients/` | `cli`, `cli-terminal`, `web` | Slim wire client (native/JVM), JDK-only TTY/style/keys leaf, dashboard SPA |
 | `plugins/` | `java-compiler` (job-scoped Zinc worker; PLAN for `jk explain`), `kotlin-compiler`, `groovy-compiler`, `test-runner`, `auditor`, `publisher`, `image-builder`, `formatter`, `compat-bridge`, `spring-boot`, `quarkus`, `grails`, `android`, `protobuf`, `minified` | First-party workers / build plugins |
 
 **Layering:** `jsonl` → `{plugin-sdk, wire, cli}` ; `jk-api` → `core` → `{client-io, wire, …}` → server `{io, resolver, toolchain}` → `engine` → clients. Plugins depend on `plugin-sdk` (+ transitive `jsonl`), not on engine internals.
@@ -246,7 +246,7 @@ and exclusions stay GA-scoped.
 
 | Tier | Root | Contents |
 |------|------|----------|
-| **Artifact store** | `<data>/store/` — `~/.local/share/jk/store/` or `$JK_HOME/data/store/` (`JK_STORE_DIR`) | Maven-layout jars under `repos/<name>/…` plus `.jk` memos; first-party workers under `repos/jk-local/`. The Maven local repository (`~/.m2/repository` by default) is the primary blob store when `[m2] integration` is on. |
+| **Artifact store** | `<data>/store/` — `~/.local/share/jk/store/` or `$JK_HOME/data/store/` (`JK_STORE_DIR`) | Maven-layout jars under `repos/<name>/…` plus `.jk` memos; first-party workers under `repos/jk-local/`; `libs.global.toml`; cloned Giter8 catalogs under `templates/`. The Maven local repository (`~/.m2/repository` by default) is the primary blob store when `[m2] integration` is on. |
 | **Cache** | `~/.cache/jk/` (`JK_CACHE_DIR`) | Action index (`actions/`) + rebuildable action payloads under `sha256/…` |
 
 Dependency jars are real `*.jar` files. Compile classpaths never use hash-named CAS blobs.

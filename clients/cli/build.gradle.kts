@@ -21,12 +21,7 @@ dependencies {
     implementation(project(":wire"))
     // Shared JSONL reader for the engine/worker wire envelope (not the plugin SPI).
     implementation(project(":jsonl"))
-
-    // JLine 4 FFM terminal provider for raw-mode TUI (jk init wizard).
-    // FFM backend requires JDK 22+; the GraalVM-compiled binary embeds the
-    // FFM downcalls natively. Reflection/resource hints live under
-    // src/main/resources/META-INF/native-image/org.jline/jline-terminal-ffm/.
-    implementation(libs.jline.terminal.ffm)
+    implementation(project(":cli-terminal"))
 
     // ProcessProperties.getArgumentVectorProgramName for argv[0] `jkx` dispatch
     // (Argv0). compileOnly: inside the image the builder provides the implementation;
@@ -51,6 +46,7 @@ val checkCliRuntimeClasspath by tasks.registering {
                     || n.startsWith("jk-plugin-sdk")
                     || n.startsWith("maven-artifact")
                     || n.startsWith("plexus-utils")
+                    || n.startsWith("jline")
         }
         if (forbidden.isNotEmpty()) {
             throw GradleException(
@@ -151,18 +147,33 @@ val cliTestStateDir =
                 .get()
                 .asFile
                 .also { it.mkdirs() }
-// Prefer a short path when build dir is a deep worktree (UDS sun_path ~108 bytes).
+// Prefer a short path when build dir is a deep worktree (UDS sun_path ~108 bytes). Derived from
+// the platform tmpdir — the literal "/tmp" resolves to <drive>:\tmp on Windows — falling back to
+// /tmp only when the platform tmpdir itself is too long to keep socket paths under sun_path.
+val shortTmpRoot: File = run {
+    val sys = File(System.getProperty("java.io.tmpdir", "/tmp"))
+    if (sys.absolutePath.length <= 60) sys else File("/tmp")
+}
 val cliTestStateDirShort =
-        file(
-                "/tmp/jk-cli-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")
+        shortTmpRoot.resolve(
+                "jk-cli-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")
 
 // @TempDir root for the integration tier. It MUST live outside the repo checkout: the shared
 // convention points java.io.tmpdir at build/tmp (inside clients/cli, which has its own jk.toml),
 // so @TempDir project dirs would find — and the "promote to workspace" tests would MUTATE — the
 // real repo's jk.toml (JK-2329). A short /tmp path also keeps UDS socket paths under sun_path.
 val cliTestTmpDirShort =
-        file(
-                "/tmp/jk-cli-tmp-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")
+        shortTmpRoot.resolve(
+                "jk-cli-tmp-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")
+
+// Sandbox cleanup must run when the tier FAILS too — doLast is skipped on failure, and failed
+// runs are exactly the ones that leave the most litter under the tmp root.
+val cleanCliTestSandboxes by tasks.registering {
+    doLast {
+        cliTestStateDirShort.deleteRecursively()
+        cliTestTmpDirShort.deleteRecursively()
+    }
+}
 
 // Unit vs integration (suite performance):
 // :cli:test — pure unit (TUI/args/jsonl); NO engine spawn tax
@@ -271,10 +282,7 @@ tasks.named<Test>("integrationTest") {
         systemProperty("jk.spring-boot.plugin.jar", springBootWorkerJar.singleFile.absolutePath)
         systemProperty("jk.android.plugin.jar", androidWorkerJar.singleFile.absolutePath)
     }
-    doLast {
-        cliTestStateDirShort.deleteRecursively()
-        cliTestTmpDirShort.deleteRecursively()
-    }
+    finalizedBy(cleanCliTestSandboxes)
 }
 
 graalvmNative {
@@ -317,38 +325,13 @@ graalvmNative {
         buildArgs.add("--gc=serial")
         buildArgs.add("-R:MaxHeapSize=134217728")
         buildArgs.add("-R:MinHeapSize=25165824")
-        // JLine 4 FFM's signal handler uses Arena.ofShared, gated behind this
-        // flag in GraalVM 25. Without it the wizard crashes on Signal.INT setup.
-        buildArgs.add("-H:+SharedArenaSupport")
         // Silence the FFM "restricted method" runtime warning. Without this,
         // every wizard invocation prints a 4-line WARNING block before the UI.
         buildArgs.add("--enable-native-access=ALL-UNNAMED")
-        // (No engine code in this image: the engine role — and its setsid(2)
-        // downcall — lives in the JVM-hosted engine, shipped as jars by :engine.)
-        // Push heavy deps to lazy init. Build-time <clinit> is faster at
-        // runtime but blows up .svm_heap with cached objects we may never
-        // touch. The crypto/SBOM/git/Jib closures (bouncycastle, sigstore,
-        // grpc, cyclonedx, spdx, jgit, com.google) live in forked workers, not
-        // on the binary's classpath, so jline is the only contributor left:
-        // its FFM Linker/Arena lookups must run at image-runtime regardless.
-        buildArgs.add("--initialize-at-run-time=org.jline")
         // WindowsUtf8 binds Kernel32 via FFM at first enable() — keep that off the
         // image-build heap so downcalls resolve against the running process.
-        buildArgs.add("--initialize-at-run-time=cc.jumpkick.cli.tui.WindowsUtf8")
-        // jline-native ships a resource-config with a broad "org/jline/nativ/.*"
-        // pattern that embeds ALL platform native libs (Windows DLLs, Linux/macOS/
-        // FreeBSD .so/.dylib for every arch) as image resources. jk uses the FFM
-        // terminal provider exclusively; the JNI/JNA fallback (JLineNativeLoader,
-        // CLibrary, Kernel32, etc.) is reachable via jline-terminal's AbstractPty
-        // but never exercised at runtime. Exclude those cross-platform binaries
-        // with -H:ExcludeResources so they are not baked into the image heap.
-        buildArgs.add("-H:ExcludeResources=org/jline/nativ/.*")
+        buildArgs.add("--initialize-at-run-time=cc.jumpkick.terminal.windows.WindowsUtf8")
     }
 
 }
-
-// JLine 4 FFM terminal provider ships native-image hints; we supplement them
-// at src/main/resources/META-INF/native-image/org.jline/jline-terminal-ffm/
-// with reflection-config.json and resource-config.json bootstrapped via the
-// GraalVM tracing agent against the JVM wizard (see plan §8d).
 

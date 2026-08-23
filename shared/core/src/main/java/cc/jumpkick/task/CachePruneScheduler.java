@@ -14,27 +14,93 @@ import java.util.regex.Pattern;
 /**
  * Cache-prune cadence: {@code .last-pruned} bookkeeping consulted by the engine's idle-boundary
  * prune.
+ *
+ * <p>The stamp records both <em>when</em> the last prune finished and <em>how full</em> it left the
+ * action tier, because a fixed interval is the wrong cadence at both ends. A cache sitting at a
+ * tenth of its budget gains nothing from a weekly pass; a cache that the last prune could only get
+ * to 95 % full will be over budget again long before the week is out, and waiting for the interval
+ * means running over budget for days. So pressure tightens the cadence rather than bypassing it —
+ * bypassing it would re-fire on every idle boundary, since a prune that ends under pressure ends
+ * under pressure no matter how often it runs.
  */
 public final class CachePruneScheduler {
 
     /** Sentinel filename written after each successful prune. */
     public static final String LAST_PRUNED_FILE = ".last-pruned";
 
+    /** Share of the action budget above which the last prune counts as leaving pressure behind. */
+    static final double PRESSURE_FRACTION = 0.9;
+
+    /** Cadence ceiling once the cache is under pressure — daily instead of the configured week. */
+    static final int PRESSURE_INTERVAL_DAYS = 1;
+
+    private static final long DAY_MILLIS = 24L * 60L * 60L * 1000L;
+
     private CachePruneScheduler() {}
 
-    /** True if the configured cadence calls for a prune now. */
+    /**
+     * What the last successful prune left behind.
+     *
+     * @param millis when it finished
+     * @param finalActionBytes action-tier bytes remaining, or {@code -1} when the pass that wrote
+     *     the stamp did not measure them (a wipe, a store-tier sweep)
+     */
+    public record Stamp(long millis, long finalActionBytes) {}
+
+    /** True if the configured cadence — tightened by cache pressure — calls for a prune now. */
     public static boolean shouldRun(JkCacheConfig config, Path cacheRoot) throws IOException {
-        Path stamp = cacheRoot.resolve(LAST_PRUNED_FILE);
-        if (!Files.isRegularFile(stamp)) return true;
-        long last;
-        try {
-            last = Long.parseLong(
-                    Files.readString(stamp, StandardCharsets.UTF_8).trim());
-        } catch (NumberFormatException e) {
-            return true;
+        Optional<Stamp> stamp = read(cacheRoot);
+        if (stamp.isEmpty()) return true;
+        long intervalDays = config.pruneIntervalDays();
+        if (underPressure(config, stamp.get())) {
+            intervalDays = Math.min(intervalDays, PRESSURE_INTERVAL_DAYS);
         }
-        long intervalMillis = (long) config.pruneIntervalDays() * 24L * 60L * 60L * 1000L;
-        return (System.currentTimeMillis() - last) > intervalMillis;
+        return (System.currentTimeMillis() - stamp.get().millis()) > intervalDays * DAY_MILLIS;
+    }
+
+    /** The last prune ended with the action tier at or above {@link #PRESSURE_FRACTION} of budget. */
+    static boolean underPressure(JkCacheConfig config, Stamp stamp) {
+        long budget = config.maxCacheSizeBytes();
+        if (budget <= 0 || stamp.finalActionBytes() < 0) return false;
+        return stamp.finalActionBytes() >= (long) (budget * PRESSURE_FRACTION);
+    }
+
+    /**
+     * Read {@code .last-pruned}. Empty when absent or unparseable — both mean "no usable record",
+     * and the caller's answer to that is to prune now and write a fresh one.
+     */
+    public static Optional<Stamp> read(Path cacheRoot) {
+        Path stamp = cacheRoot.resolve(LAST_PRUNED_FILE);
+        String[] fields;
+        try {
+            fields = Files.readString(stamp, StandardCharsets.UTF_8).trim().split("\\s+");
+        } catch (IOException absentOrUnreadable) {
+            return Optional.empty();
+        }
+        try {
+            long millis = Long.parseLong(fields[0]);
+            long bytes = fields.length > 1 ? Long.parseLong(fields[1]) : -1L;
+            return Optional.of(new Stamp(millis, bytes));
+        } catch (NumberFormatException malformed) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Record a completed prune. Best-effort: the maintenance itself succeeded, and a missing stamp
+     * only re-runs it earlier.
+     *
+     * @param finalActionBytes action-tier bytes remaining, or {@code -1} when unmeasured
+     */
+    public static void write(Path cacheRoot, long nowMillis, long finalActionBytes) {
+        try {
+            Files.writeString(
+                    cacheRoot.resolve(LAST_PRUNED_FILE),
+                    nowMillis + " " + finalActionBytes + "\n",
+                    StandardCharsets.UTF_8);
+        } catch (IOException ignored) {
+            // cadence hint only
+        }
     }
 
     /**

@@ -101,6 +101,7 @@ class SelfHostingTomlTest {
                         "shared/wire",
                         "server/engine",
                         "clients/cli",
+                        "clients/cli-terminal",
                         "clients/web",
                         "plugins/test-runner",
                         "plugins/java-compiler",
@@ -319,7 +320,12 @@ class SelfHostingTomlTest {
                 cli.dependencies().of(Scope.MAIN).stream().map(d -> d.module()).toList();
         // The slim client (Stage 5): the wire contract + jsonl codec, never the engine itself
         // and never the plugin SPI (JK-2138).
-        assertThat(mainModules).contains("cc.jumpkick:jk-core", "cc.jumpkick:jk-engine-api", "cc.jumpkick:jk-jsonl");
+        assertThat(mainModules)
+                .contains(
+                        "cc.jumpkick:jk-core",
+                        "cc.jumpkick:jk-engine-api",
+                        "cc.jumpkick:jk-jsonl",
+                        "cc.jumpkick:jk-cli-terminal");
         assertThat(mainModules)
                 .doesNotContain(
                         "cc.jumpkick:jk-engine",
@@ -344,8 +350,8 @@ class SelfHostingTomlTest {
         List<String> mergedRootMain = merged.dependencies().of(Scope.MAIN).stream()
                 .map(d -> d.module())
                 .toList();
-        // jk-engine is a workspace-internal dep and is filtered by WorkspaceMerge;
-        // verify an external dep that survives the merge.
-        assertThat(mergedRootMain).contains("org.jline:jline-terminal-ffm");
+        // :cli's last external dep was JLine; after JK-2377 it is gone. Workspace
+        // merge still has other externals (zinc, jgit, …) — just not JLine.
+        assertThat(mergedRootMain).doesNotContain("org.jline:jline-terminal-ffm");
     }
 }

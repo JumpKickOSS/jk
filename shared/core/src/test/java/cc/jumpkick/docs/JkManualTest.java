@@ -16,6 +16,8 @@ class JkManualTest {
         String md = JkManual.markdown();
         assertThat(md).contains("JumpKick " + JkVersion.VERSION);
         assertThat(md).doesNotContain("${jk.version}");
+        assertThat(md).doesNotContain("\r");
+        assertThat(md).endsWith("\n");
         assertThat(md).contains("# JumpKick playbook");
         assertThat(md).contains("jk.toml");
         assertThat(md).contains("jk-lock.toml");

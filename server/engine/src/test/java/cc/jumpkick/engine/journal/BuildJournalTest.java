@@ -6,11 +6,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.builds.ProjectBuilds;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -275,22 +278,31 @@ class BuildJournalTest {
         int n = 24;
         CountDownLatch go = new CountDownLatch(1);
         Set<String> ids = ConcurrentHashMap.newKeySet();
+        List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
         List<Thread> threads = new ArrayList<>();
         for (int i = 0; i < n; i++) {
             Thread t = new Thread(() -> {
                 try {
-                    go.await();
-                } catch (InterruptedException ignored) {
-                    return;
+                    if (!go.await(30, TimeUnit.SECONDS)) {
+                        failures.add(new AssertionError("start latch never opened"));
+                        return;
+                    }
+                    String id = j.append(record(1_700_000_000_000L, true, "g:a"), BuildJournal.Snapshot.NONE);
+                    if (id != null) ids.add(id);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } catch (Throwable e) {
+                    failures.add(e); // otherwise only the id count would show it, without the cause
                 }
-                String id = j.append(record(1_700_000_000_000L, true, "g:a"), BuildJournal.Snapshot.NONE);
-                if (id != null) ids.add(id);
             });
             threads.add(t);
             t.start();
         }
         go.countDown();
-        for (Thread t : threads) t.join();
+        for (Thread t : threads) {
+            assertThat(t.join(Duration.ofSeconds(30))).isTrue();
+        }
+        assertThat(failures).isEmpty();
         assertThat(ids).hasSize(n); // same finished-timestamp, still no collisions
         assertThat(j.list()).hasSize(n);
     }

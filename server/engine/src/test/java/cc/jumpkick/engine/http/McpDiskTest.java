@@ -24,13 +24,17 @@ class McpDiskTest {
             /* cacheCasBytes */ 50,
             /* workerJarsCount */ 1,
             /* workerJarsBytes */ 100,
-            /* runLogsCount */ 3,
-            /* runLogsBytes */ 30,
             /* formatStampsCount */ 4,
             /* formatStampsBytes */ 20,
-            /* maxBytes */ 6L << 30,
+            /* incrementalCount */ 6,
+            /* incrementalBytes */ 4_096,
+            /* incrementalMaxBytes */ 1L << 30,
             /* actionMaxBytes */ 4L << 30,
-            /* lastPrunedMillis */ 0);
+            /* lastPrunedMillis */ 0,
+            /* mavenLocalCount */ 0,
+            /* mavenLocalBytes */ 0,
+            0,
+            0);
 
     private final EngineHttpJobs jobs = new EngineHttpJobs() {
         @Override
@@ -89,7 +93,7 @@ class McpDiskTest {
         Map<String, Object> disk = structured(mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,"
                 + "\"method\":\"tools/call\",\"params\":{\"name\":\"jk_disk\",\"arguments\":{}}}"));
         // Same accounting as GET /api/cache: cache tier vs artifact store, exclusive bytes.
-        assertThat(((Number) disk.get("cacheBytes")).longValue()).isEqualTo(snap.cacheBytes());
+        assertThat(((Number) disk.get("cacheBytes")).longValue()).isEqualTo(snap.actionCacheBytes());
         assertThat(((Number) disk.get("storeBytes")).longValue()).isEqualTo(snap.artifactStorageBytes());
         assertThat(walks).hasValue(1);
         mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","

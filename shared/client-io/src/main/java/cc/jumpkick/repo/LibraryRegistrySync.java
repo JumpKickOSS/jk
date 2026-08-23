@@ -4,6 +4,7 @@ package cc.jumpkick.repo;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -15,7 +16,7 @@ import java.time.Instant;
 import java.util.Objects;
 
 /**
- * Ensure the downloaded library registry ({@link LibraryCatalog#downloadedFile()}) is available
+ * Ensure the downloaded library registry ({@link JkDirs#libraryRegistry()}) is available
  * before short-name expansion in {@code jk.toml}.
  *
  * <ul>
@@ -43,7 +44,7 @@ public final class LibraryRegistrySync {
 
     /** Default source + default on-disk path. */
     public static void ensurePresent(boolean offline) {
-        ensurePresent(offline, LibraryRegistryClient.DEFAULT_SOURCE, LibraryCatalog.downloadedFile());
+        ensurePresent(offline, LibraryRegistryClient.DEFAULT_SOURCE, JkDirs.libraryRegistry());
     }
 
     /**

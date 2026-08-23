@@ -12,8 +12,8 @@ import java.time.Duration;
  * module's {@code BuildPlan} is a client-side, never-{@code run()} reconstruction (see {@code
  * EngineBuildListenerAdapter}) — a listener attached via {@code plan.addListener(...)} is never
  * driven. The listener a caller <em>returns</em> from {@code onModuleStart}, by contrast, is driven
- * by both the in-process and engine-hosted paths alike, so composing extra listeners (e.g. {@link
- * EventLogListener}) into the returned listener is the one place that works either way.
+ * driven by both the in-process and engine-hosted paths alike, so composing extra listeners (e.g.
+ * a {@link SessionMirrorListener}) into the returned listener is the one place that works either way.
  */
 public final class CompositeBuildPlanListener implements BuildPlanListener {
 
@@ -26,8 +26,8 @@ public final class CompositeBuildPlanListener implements BuildPlanListener {
     }
 
     /**
-     * Null-tolerant composition: either side may be {@code null} (no session transcript, or
-     * {@link EventLogListener#open} failed). Both null yields a no-op listener — never a
+     * Null-tolerant composition: either side may be {@code null} (e.g. no session transcript).
+     * Both null yields a no-op listener — never a
      * composite that would dereference null on the first event.
      */
     public static BuildPlanListener of(BuildPlanListener first, BuildPlanListener second) {

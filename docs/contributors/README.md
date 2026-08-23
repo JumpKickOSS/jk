@@ -14,6 +14,7 @@ Agent protocol for work in this repo: [../../AGENTS.md](../../AGENTS.md).
 | [Plugin authoring](plugins.md) | `jk-plugin.toml`, workers, private pins (first-party + vendored) |
 | [Code as Art](code-as-art.md) | Size budgets, Typed Envelope, JSpecify, fluent Lombok |
 | [TUI](tui.md) | CommandWedge, envelope, nerd/ansi/plain, script-mode allowlist |
+| [CLI terminal](../cli-terminal.md) | `:cli-terminal` TTY session, Style, Width, keys (no JLine) |
 | [HTTP server](http.md) | Engine HTTP lifetime, auth, REST, SSE |
 | [Web client](webclient.md) | Dashboard SPA (thin renderer over HTTP) |
 | [Releases](releases.md) | Versioning, install layout, Ed25519 signing |

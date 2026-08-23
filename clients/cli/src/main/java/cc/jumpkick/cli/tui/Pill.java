@@ -4,8 +4,8 @@ package cc.jumpkick.cli.tui;
 import cc.jumpkick.cli.theme.JkDarkTheme;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.terminal.Style;
 import java.util.List;
-import org.jline.utils.AttributedStyle;
 
 /**
  * A small chip label. Nerd: powerline half-circles. ANSI: padded background. Plain: {@code
@@ -31,19 +31,19 @@ public final class Pill implements Widget {
     }
 
     private final RichText label;
-    private final AttributedStyle body;
-    private final AttributedStyle caps;
+    private final Style body;
+    private final Style caps;
     private final Look look;
 
     public Pill(RichText label) {
         this(label, null, null, Look.DEFAULT);
     }
 
-    public Pill(RichText label, AttributedStyle body, AttributedStyle caps) {
+    public Pill(RichText label, Style body, Style caps) {
         this(label, body, caps, Look.DEFAULT);
     }
 
-    private Pill(RichText label, AttributedStyle body, AttributedStyle caps, Look look) {
+    private Pill(RichText label, Style body, Style caps, Look look) {
         this.label = label == null ? RichText.empty() : label;
         this.body = body;
         this.caps = caps;
@@ -98,8 +98,8 @@ public final class Pill implements Widget {
             return "[" + PlainAscii.transform(text) + "]";
         }
         Theme theme = ctx.theme();
-        AttributedStyle chip;
-        AttributedStyle ends;
+        Style chip;
+        Style ends;
         if (body != null) {
             chip = body;
             ends = caps != null ? caps : theme.gray();
@@ -111,7 +111,7 @@ public final class Pill implements Widget {
         return Badge.pill(text, ctx.pill(), chip, ends);
     }
 
-    private record Fill(AttributedStyle chip, AttributedStyle caps) {}
+    private record Fill(Style chip, Style caps) {}
 
     private static Fill fill(Look look, Theme theme) {
         return switch (look) {
@@ -125,7 +125,7 @@ public final class Pill implements Widget {
     }
 
     private static Fill filled(Theme theme, Rgb rgb, boolean whiteInk) {
-        AttributedStyle ink = whiteInk ? theme.bright(255, 255, 255) : theme.bright(0, 0, 0);
+        Style ink = whiteInk ? theme.bright(255, 255, 255) : theme.bright(0, 0, 0);
         return new Fill(theme.withBackground(ink, rgb), theme.bright(rgb));
     }
 

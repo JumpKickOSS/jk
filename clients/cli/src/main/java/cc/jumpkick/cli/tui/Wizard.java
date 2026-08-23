@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
-import java.io.IOException;
+import cc.jumpkick.terminal.Ansi;
+import cc.jumpkick.terminal.InputMode;
+import cc.jumpkick.terminal.Key;
+import cc.jumpkick.terminal.ModeGuard;
+import cc.jumpkick.terminal.Style;
+import cc.jumpkick.terminal.Styled;
+import cc.jumpkick.terminal.StyledBuilder;
+import cc.jumpkick.terminal.TerminalSession;
 import java.io.PrintWriter;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -13,16 +20,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import org.jline.terminal.Attributes;
-import org.jline.terminal.Terminal;
-import org.jline.utils.AttributedString;
-import org.jline.utils.AttributedStringBuilder;
-import org.jline.utils.AttributedStyle;
-import org.jline.utils.NonBlockingReader;
 
 /**
- * Interactive wizard: raw mode, incremental redraw of the active step only, no alt-screen (keeps
- * the transcript). Cancels restore cursor/SGR for a clean shell prompt.
+ * Interactive wizard: {@link InputMode#PROMPT}, incremental redraw of the active step only, no
+ * alt-screen (keeps the transcript). Cancels restore cursor/SGR for a clean shell prompt.
  */
 public final class Wizard {
 
@@ -58,78 +59,6 @@ public final class Wizard {
         return new WizardBuilder();
     }
 
-    /**
-     * Open a system terminal with input ECHO off (hides JLine capability-probe flicker). Reuses
-     * {@link Interactivity}'s shared terminal when present — a second {@code system(true)} would
-     * close FD 0. Output flags left alone; attributes restored on close.
-     */
-    public static Terminal openTerminal() throws IOException {
-        var terminal = Interactivity.takeSharedTerminal();
-        if (terminal == null) {
-            // graphemeCluster(false): skip JLine's mode-2027 grapheme probe — see Interactivity's
-            // probe for the full rationale. Its DECRQM/DA1 query echoes as an ANSI flash on slow
-            // terminals when the reply outruns the probe timeout, and jk's single-codepoint glyphs
-            // never need grapheme-cluster width mode. (The common path reuses the already-probed
-            // shared terminal above; this fallback build must disable it too.)
-            // nativeSignals(false): do not replace {@link GlobalCancel} with SIG_DFL.
-            // {@link #run} calls {@code terminal.handle(INT, …)} when the wizard should
-            // own Ctrl-C, then re-installs GlobalCancel in {@code finally}.
-            terminal = Interactivity.systemTerminalBuilder().build();
-            GlobalCancel.install();
-        }
-        var attrs = terminal.getAttributes();
-        attrs.setLocalFlag(Attributes.LocalFlag.ECHO, false);
-        terminal.setAttributes(attrs);
-        return terminal;
-    }
-
-    /**
-     * Wake JLine's NonBlocking I/O thread if it is stuck in a blocking {@code read()} on stdin.
-     *
-     * <p>JLine wraps FD 0 in {@code FileInputStream} and, for timed reads, parks a daemon thread
-     * in {@code read()}. On macOS that close does not interrupt the blocked read. Once ICANON is
-     * on, the line discipline only delivers input after newline — so the process looks hung after
-     * a successful interactive plan until the user presses <em>Enter</em> (other keys sit in the
-     * kernel line buffer). Non-canonical {@code VMIN=0}/{@code VTIME=0} plus a brief {@code
-     * O_NONBLOCK} pulse force the pending read to return; call this before restoring cooked mode
-     * or closing the terminal.
-     */
-    public static void unblockBlockingInput(Terminal terminal) {
-        if (terminal == null) return;
-        try {
-            Attributes cur = terminal.getAttributes();
-            Attributes nb = new Attributes(cur);
-            // Stay non-canonical with VMIN=0 so a wake cannot re-enter "wait for newline".
-            nb.setLocalFlag(Attributes.LocalFlag.ICANON, false);
-            nb.setControlChar(Attributes.ControlChar.VMIN, 0);
-            nb.setControlChar(Attributes.ControlChar.VTIME, 0);
-            terminal.setAttributes(nb);
-            // Stronger than termios alone: force the blocked read(0) to return EAGAIN.
-            StdinWake.pulseNonBlocking();
-            // Drain while still non-canonical / VMIN=0 so we do not re-block the I/O thread.
-            drainInput(terminal.reader(), 40L);
-        } catch (RuntimeException ignored) {
-            // best-effort — terminal may already be closed
-        }
-    }
-
-    /**
-     * Restore cooked input from {@code saved}, forcing ECHO and ICANON on (needed after
-     * {@link #openTerminal}'s echo-off). Shared by {@link #run} and {@link Confirm}.
-     *
-     * <p>Unblocks any pending JLine stdin read first — see {@link #unblockBlockingInput}. Cooked
-     * (ICANON) is restored only after that wake so a still-pending {@code read} cannot fall back
-     * into "wait for Enter".
-     */
-    public static void restoreCooked(Terminal terminal, Attributes saved) {
-        unblockBlockingInput(terminal);
-        var cooked = new Attributes(saved);
-        cooked.setLocalFlag(Attributes.LocalFlag.ECHO, true);
-        cooked.setLocalFlag(Attributes.LocalFlag.ICANON, true);
-        terminal.setAttributes(cooked);
-        terminal.flush();
-    }
-
     public List<WizardStep> steps() {
         return steps;
     }
@@ -146,8 +75,8 @@ public final class Wizard {
         this.cancelled = true;
     }
 
-    public Optional<Answers> run(Terminal terminal) {
-        return run(terminal, Answers.of(Map.of()));
+    public Optional<Answers> run(TerminalSession tty) {
+        return run(tty, Answers.of(Map.of()));
     }
 
     /**
@@ -155,53 +84,34 @@ public final class Wizard {
      * skipped interactively but rendered as completed, so the user can see what was inferred. Useful
      * when {@code jk init my-project} has supplied the "Project name" answer up front.
      */
-    public Optional<Answers> run(Terminal terminal, Answers preset) {
-        var saved = terminal.enterRawMode();
-        // TerminalBuilder.build() probes the terminal with capability queries
-        // (DA, DECRQM, etc.); the responses arrive in stdin and get echoed to
-        // the screen because echo is still on at that moment. Drain the bytes
-        // so KeyReader doesn't later see them as user keystrokes, then clear
-        // the current line so their visual residue doesn't precede the header.
-        drainInput(terminal.reader(), 40L);
-        var prevHandler = terminal.handle(Terminal.Signal.INT, sig -> cancel());
-        var writer = terminal.writer();
-        writer.print("\r" + CLEAR_TO_END);
-        // Belt-and-suspenders for crashes that bypass the finally block.
-        // Same ECHO+ICANON force-on as the finally — if we crash here, leaving
-        // the user's shell in raw mode would be a worse failure mode than the
-        // crash itself.
-        var restoreHook = new Thread(() -> {
-            writer.print(SHOW_CURSOR);
-            writer.print(RESET_SGR);
-            writer.flush();
-            restoreCooked(terminal, saved);
-        });
-        Runtime.getRuntime().addShutdownHook(restoreHook);
-        try {
-            writer.print(HIDE_CURSOR);
-            writer.flush();
-            return Optional.of(loop(terminal, preset));
-        } catch (WizardCancelled e) {
+    public Optional<Answers> run(TerminalSession tty, Answers preset) {
+        if (!tty.isLive()) {
             return Optional.empty();
-        } finally {
-            // Reset SGR + show cursor BEFORE restoring attributes so the wizard's
-            // last frame stops bleeding styles, then restore canonical/echo mode
-            // so the explicit \r\n lands on its own line and the parent shell's
-            // prompt isn't stranded mid-line (which manifests as "press enter
-            // to get my prompt back" after Ctrl+C).
-            writer.print(RESET_SGR);
-            writer.print(SHOW_CURSOR);
-            writer.flush();
-            terminal.handle(Terminal.Signal.INT, prevHandler);
-            restoreCooked(terminal, saved);
-            writer.print("\r\n");
-            writer.flush();
-            terminal.flush();
-            tryRemoveHook(restoreHook);
-            // JLine's `prevHandler` round-trip doesn't restore our app-level
-            // sun.misc.Signal handler, so re-install it explicitly. Without
-            // this, Ctrl-C after a wizard would fall back to the JVM default.
-            GlobalCancel.install();
+        }
+        try (ModeGuard raw = tty.enter(InputMode.PROMPT)) {
+            tty.drain(Duration.ofMillis(40));
+            var writer = tty.ttyOut();
+            writer.print("\r" + CLEAR_TO_END);
+            var restoreHook = new Thread(() -> {
+                writer.print(SHOW_CURSOR);
+                writer.print(RESET_SGR);
+                writer.flush();
+            });
+            Runtime.getRuntime().addShutdownHook(restoreHook);
+            try {
+                writer.print(HIDE_CURSOR);
+                writer.flush();
+                return Optional.of(loop(tty, preset));
+            } catch (WizardCancelled e) {
+                return Optional.empty();
+            } finally {
+                writer.print(RESET_SGR);
+                writer.print(SHOW_CURSOR);
+                writer.flush();
+                writer.print("\r\n");
+                writer.flush();
+                tryRemoveHook(restoreHook);
+            }
         }
     }
 
@@ -214,15 +124,15 @@ public final class Wizard {
      * path called {@link #moveBelowCloser} — so {@link #run}'s trailing {@code \r\n} places the
      * cursor two lines below the active closer.
      */
-    public static void printCancellation(Terminal terminal, String message) {
-        var writer = terminal.writer();
+    public static void printCancellation(TerminalSession tty, String message) {
+        var writer = tty.ttyOut();
         writer.print(Ansi.cursorPrevLine(2)); // up 2 lines, col 1 — lands at the active ╰
         writer.print(Ansi.cursorForward(INDENT_COLS + RAIL_PREFIX_WIDTH)); // skip past "╰──"
         writer.print(Ansi.ERASE_DISPLAY_TO_END); // erase residue beyond
-        var line = new AttributedStringBuilder()
+        var line = new StyledBuilder()
                 .append(" " + Glyphs.CROSS + " " + message, Theme.active().error()) // leading space separates from ╰──
-                .toAttributedString();
-        writer.print(line.toAnsi(terminal));
+                .build();
+        writer.print(line.toAnsi());
         writer.println();
         writer.flush();
     }
@@ -249,23 +159,8 @@ public final class Wizard {
         }
     }
 
-    public static void drainInput(NonBlockingReader reader, long maxWaitMs) {
-        try {
-            var deadline = System.currentTimeMillis() + maxWaitMs;
-            while (System.currentTimeMillis() < deadline) {
-                var c = reader.read(5L);
-                if (c == NonBlockingReader.READ_EXPIRED || c < 0) {
-                    return;
-                }
-            }
-        } catch (IOException ignored) {
-            // best-effort drain
-        }
-    }
-
-    private Answers loop(Terminal terminal, Answers preset) {
-        var writer = terminal.writer();
-        var reader = terminal.reader();
+    private Answers loop(TerminalSession tty, Answers preset) {
+        var writer = tty.ttyOut();
         var answers = new LinkedHashMap<String, Object>(preset.asMap());
 
         writer.println();
@@ -287,7 +182,7 @@ public final class Wizard {
                 if (!firstStep)
                     writer.println(Theme.colorize("├──────", Theme.active().darkGray()));
                 firstStep = false;
-                renderSettledRegion(terminal, step, answers);
+                renderSettledRegion(tty, step, answers);
                 writer.flush();
                 continue;
             }
@@ -299,7 +194,7 @@ public final class Wizard {
             firstStep = false;
 
             var state = new ActiveState(step, answers);
-            var regionLines = renderActiveRegion(terminal, step, state);
+            var regionLines = renderActiveRegion(tty, step, state);
             var cursorOffset = positionInputCursor(writer, step, state, regionLines);
             writer.flush();
 
@@ -308,27 +203,31 @@ public final class Wizard {
                     moveBelowCloser(writer, regionLines, cursorOffset);
                     throw new WizardCancelled();
                 }
-                var key = KeyReader.readOrNull(reader, KEY_POLL_MS);
-                if (key == null) {
+                var key = tty.readKey(Duration.ofMillis(KEY_POLL_MS));
+                if (key.isEmpty()) {
+                    if (!tty.isLive()) {
+                        moveBelowCloser(writer, regionLines, cursorOffset);
+                        throw new WizardCancelled();
+                    }
                     continue;
                 }
-                if (key instanceof KeyReader.Key.CtrlC) {
+                if (key.get() instanceof Key.CtrlC) {
                     moveBelowCloser(writer, regionLines, cursorOffset);
                     throw new WizardCancelled();
                 }
-                var done = state.handle(key);
+                var done = state.handle(key.get());
 
                 writer.print(HIDE_CURSOR);
                 eraseLines(writer, cursorOffset);
 
                 if (done) {
                     state.commit(answers);
-                    renderSettledRegion(terminal, step, answers);
+                    renderSettledRegion(tty, step, answers);
                     writer.flush();
                     break;
                 }
 
-                regionLines = renderActiveRegion(terminal, step, state);
+                regionLines = renderActiveRegion(tty, step, state);
                 cursorOffset = positionInputCursor(writer, step, state, regionLines);
                 writer.flush();
             }
@@ -343,13 +242,13 @@ public final class Wizard {
         return Answers.of(Map.copyOf(answers));
     }
 
-    private int renderActiveRegion(Terminal terminal, WizardStep step, ActiveState state) {
-        var writer = terminal.writer();
+    private int renderActiveRegion(TerminalSession tty, WizardStep step, ActiveState state) {
+        var writer = tty.ttyOut();
         writer.println(
-                INDENT + Rail.stepBullet(Rail.StepState.ACTIVE, step.prompt()).toAnsi(terminal));
+                INDENT + Rail.stepBullet(Rail.StepState.ACTIVE, step.prompt()).toAnsi());
         var interactive = state.render();
         for (var line : interactive) {
-            writer.println(INDENT + Rail.mid(line, Rail.StepState.ACTIVE).toAnsi(terminal));
+            writer.println(INDENT + Rail.mid(line, Rail.StepState.ACTIVE).toAnsi());
         }
         // └ hook one line below the interactive content; gets erased on commit
         // and re-emitted (with the next step's content above it) on each step.
@@ -358,12 +257,12 @@ public final class Wizard {
         return 1 + interactive.size() + 1;
     }
 
-    private void renderSettledRegion(Terminal terminal, WizardStep step, Map<String, Object> answers) {
-        var writer = terminal.writer();
+    private void renderSettledRegion(TerminalSession tty, WizardStep step, Map<String, Object> answers) {
+        var writer = tty.ttyOut();
         writer.println(INDENT
-                + Rail.stepBullet(Rail.StepState.COMPLETED, step.prompt()).toAnsi(terminal));
+                + Rail.stepBullet(Rail.StepState.COMPLETED, step.prompt()).toAnsi());
         for (var line : summarize(step, answers)) {
-            writer.println(INDENT + Rail.mid(line, Rail.StepState.COMPLETED).toAnsi(terminal));
+            writer.println(INDENT + Rail.mid(line, Rail.StepState.COMPLETED).toAnsi());
         }
     }
 
@@ -439,7 +338,7 @@ public final class Wizard {
         return RenderContext.stripAnsi(s).length();
     }
 
-    private static List<AttributedString> summarize(WizardStep step, Map<String, Object> answers) {
+    private static List<Styled> summarize(WizardStep step, Map<String, Object> answers) {
         var answerStyle = Theme.active().settled().italic();
         return switch (step) {
             case WizardStep.InputStep is ->
@@ -459,7 +358,7 @@ public final class Wizard {
                 for (var c : ms.choicesFor(Answers.of(answers))) {
                     byId.put(c.id(), c.label());
                 }
-                var labels = new ArrayList<AttributedString>();
+                var labels = new ArrayList<Styled>();
                 for (var v : selected) {
                     labels.add(answerLine(byId.getOrDefault(v, v), answerStyle));
                 }
@@ -472,11 +371,11 @@ public final class Wizard {
         };
     }
 
-    private static AttributedString answerLine(String text, AttributedStyle textStyle) {
-        return new AttributedStringBuilder()
+    private static Styled answerLine(String text, Style textStyle) {
+        return new StyledBuilder()
                 .append("➜ ", Theme.active().brightGreen())
                 .append(text, textStyle)
-                .toAttributedString();
+                .build();
     }
 
     private static String labelFor(WizardStep.RadioStep step, Map<String, Object> answers) {
@@ -490,13 +389,13 @@ public final class Wizard {
         return id;
     }
 
-    private static AttributedString plain(String text, AttributedStyle style) {
-        return new AttributedStringBuilder().append(text, style).toAttributedString();
+    private static Styled plain(String text, Style style) {
+        return new StyledBuilder().append(text, style).build();
     }
 
     /**
      * Per-step interactive state. Created at the start of each step iteration and torn down once
-     * {@link #handle(KeyReader.Key)} reports completion.
+     * {@link #handle(Key)} reports completion.
      */
     private static final class ActiveState {
 
@@ -567,18 +466,18 @@ public final class Wizard {
         }
 
         /** Returns true when the step is complete and Wizard should advance. */
-        boolean handle(KeyReader.Key key) {
+        boolean handle(Key key) {
             return switch (step) {
                 case WizardStep.InputStep is -> handleInput(is, key);
                 case WizardStep.RadioStep rs -> handleRadio(rs, key);
                 case WizardStep.MultiSelectStep ms -> handleMulti(ms, key);
-                case WizardStep.OutputStep os -> key instanceof KeyReader.Key.Enter;
+                case WizardStep.OutputStep os -> key instanceof Key.Enter;
             };
         }
 
-        private boolean handleInput(WizardStep.InputStep is, KeyReader.Key key) {
+        private boolean handleInput(WizardStep.InputStep is, Key key) {
             return switch (key) {
-                case KeyReader.Key.Enter e -> {
+                case Key.Enter e -> {
                     var value = input.length() == 0 ? is.defaultValue() : input.toString();
                     var result = is.validator().apply(value);
                     if (result instanceof ValidationResult.Error err) {
@@ -590,21 +489,21 @@ public final class Wizard {
                     error = "";
                     yield true;
                 }
-                case KeyReader.Key.Right r -> realizePlaceholder(is);
-                case KeyReader.Key.Tab t -> realizePlaceholder(is);
-                case KeyReader.Key.Backspace b -> {
+                case Key.Right r -> realizePlaceholder(is);
+                case Key.Tab t -> realizePlaceholder(is);
+                case Key.Backspace b -> {
                     if (input.length() > 0) {
                         input.deleteCharAt(input.length() - 1);
                     }
                     error = "";
                     yield false;
                 }
-                case KeyReader.Key.Space s -> {
+                case Key.Space s -> {
                     input.append(' ');
                     error = "";
                     yield false;
                 }
-                case KeyReader.Key.Char(char c) -> {
+                case Key.Char(char c) -> {
                     input.append(c);
                     error = "";
                     yield false;
@@ -624,13 +523,13 @@ public final class Wizard {
             return false;
         }
 
-        private boolean handleRadio(WizardStep.RadioStep rs, KeyReader.Key key) {
+        private boolean handleRadio(WizardStep.RadioStep rs, Key key) {
             int choiceCount = rs.choicesFor(snapshot).size();
             boolean customEnabled = rs.hasCustomOption() && rs.orientation() == Orientation.VERTICAL;
             int size = choiceCount + (customEnabled ? 1 : 0);
             boolean onCustom = customEnabled && focus == choiceCount;
             return switch (key) {
-                case KeyReader.Key.Enter e -> {
+                case Key.Enter e -> {
                     if (onCustom && input.length() == 0) {
                         error = "Type a value or pick an option above.";
                         yield false;
@@ -638,23 +537,23 @@ public final class Wizard {
                     error = "";
                     yield true;
                 }
-                case KeyReader.Key.Up u -> moveFocus(-1, size, rs.orientation() == Orientation.VERTICAL);
-                case KeyReader.Key.Down d -> moveFocus(1, size, rs.orientation() == Orientation.VERTICAL);
-                case KeyReader.Key.Left l -> moveFocus(-1, size, rs.orientation() == Orientation.HORIZONTAL);
-                case KeyReader.Key.Right r -> moveFocus(1, size, rs.orientation() == Orientation.HORIZONTAL);
-                case KeyReader.Key.Backspace b
+                case Key.Up u -> moveFocus(-1, size, rs.orientation() == Orientation.VERTICAL);
+                case Key.Down d -> moveFocus(1, size, rs.orientation() == Orientation.VERTICAL);
+                case Key.Left l -> moveFocus(-1, size, rs.orientation() == Orientation.HORIZONTAL);
+                case Key.Right r -> moveFocus(1, size, rs.orientation() == Orientation.HORIZONTAL);
+                case Key.Backspace b
                 when onCustom -> {
                     if (input.length() > 0) input.deleteCharAt(input.length() - 1);
                     error = "";
                     yield false;
                 }
-                case KeyReader.Key.Space s
+                case Key.Space s
                 when onCustom -> {
                     input.append(' ');
                     error = "";
                     yield false;
                 }
-                case KeyReader.Key.Char(char c)
+                case Key.Char(char c)
                 when onCustom -> {
                     input.append(c);
                     error = "";
@@ -672,7 +571,7 @@ public final class Wizard {
             return false;
         }
 
-        private boolean handleMulti(WizardStep.MultiSelectStep ms, KeyReader.Key key) {
+        private boolean handleMulti(WizardStep.MultiSelectStep ms, Key key) {
             List<Choice> visible = multiVisible(ms);
             int choiceCount = visible.size();
             boolean customEnabled = ms.hasCustomOption() && ms.orientation() == Orientation.VERTICAL;
@@ -680,22 +579,22 @@ public final class Wizard {
             if (size > 0 && focus >= size) focus = size - 1;
             boolean onCustom = customEnabled && focus == choiceCount;
             return switch (key) {
-                case KeyReader.Key.Enter e -> true;
+                case Key.Enter e -> true;
                 // On the free-form row, Space / chars / Backspace edit the
                 // buffer instead of toggling — the row is "checked" whenever
                 // it holds text, so there's nothing to toggle.
-                case KeyReader.Key.Backspace b
+                case Key.Backspace b
                 when onCustom -> {
                     if (input.length() > 0) input.deleteCharAt(input.length() - 1);
                     yield false;
                 }
-                case KeyReader.Key.Backspace b
+                case Key.Backspace b
                 when ms.filterable() && !onCustom && filter.length() > 0 -> {
                     filter.deleteCharAt(filter.length() - 1);
                     focus = 0;
                     yield false;
                 }
-                case KeyReader.Key.Space s -> {
+                case Key.Space s -> {
                     if (onCustom) {
                         input.append(' ');
                     } else if (!visible.isEmpty()) {
@@ -706,7 +605,7 @@ public final class Wizard {
                     }
                     yield false;
                 }
-                case KeyReader.Key.Char(char ch) -> {
+                case Key.Char(char ch) -> {
                     if (onCustom) {
                         input.append(ch);
                     } else if (ms.filterable()) {
@@ -725,10 +624,10 @@ public final class Wizard {
                     }
                     yield false;
                 }
-                case KeyReader.Key.Up u -> moveFocus(-1, size, ms.orientation() == Orientation.VERTICAL);
-                case KeyReader.Key.Down d -> moveFocus(1, size, ms.orientation() == Orientation.VERTICAL);
-                case KeyReader.Key.Left l -> moveFocus(-1, size, ms.orientation() == Orientation.HORIZONTAL);
-                case KeyReader.Key.Right r -> moveFocus(1, size, ms.orientation() == Orientation.HORIZONTAL);
+                case Key.Up u -> moveFocus(-1, size, ms.orientation() == Orientation.VERTICAL);
+                case Key.Down d -> moveFocus(1, size, ms.orientation() == Orientation.VERTICAL);
+                case Key.Left l -> moveFocus(-1, size, ms.orientation() == Orientation.HORIZONTAL);
+                case Key.Right r -> moveFocus(1, size, ms.orientation() == Orientation.HORIZONTAL);
                 default -> false;
             };
         }
@@ -764,7 +663,7 @@ public final class Wizard {
             }
         }
 
-        List<AttributedString> render() {
+        List<Styled> render() {
             return switch (step) {
                 case WizardStep.InputStep is -> renderInput(is);
                 case WizardStep.RadioStep rs -> renderRadio(rs);
@@ -773,12 +672,12 @@ public final class Wizard {
             };
         }
 
-        private List<AttributedString> renderInput(WizardStep.InputStep is) {
+        private List<Styled> renderInput(WizardStep.InputStep is) {
             return ansiLines(
                     new TextInput(input.toString(), is.placeholder(), true, error).render(RenderContext.current()));
         }
 
-        private List<AttributedString> renderRadio(WizardStep.RadioStep rs) {
+        private List<Styled> renderRadio(WizardStep.RadioStep rs) {
             var choices = rs.choicesFor(snapshot);
             var buttons = new ArrayList<RadioButton>();
             for (int i = 0; i < choices.size(); i++) {
@@ -794,16 +693,15 @@ public final class Wizard {
             var lines = new ArrayList<>(
                     ansiLines(new RadioButtonGroup(buttons, rs.orientation()).render(RenderContext.current())));
             if (rs.hasCustomOption() && rs.orientation() == Orientation.VERTICAL && !error.isEmpty()) {
-                lines.add(new AttributedString(
-                        Theme.colorize(error, Theme.active().error())));
+                lines.add(Styled.of(Theme.colorize(error, Theme.active().error()), Style.EMPTY));
             }
             return lines;
         }
 
-        private static List<AttributedString> ansiLines(List<String> lines) {
-            var out = new ArrayList<AttributedString>(lines.size());
+        private static List<Styled> ansiLines(List<String> lines) {
+            var out = new ArrayList<Styled>(lines.size());
             for (String line : lines) {
-                out.add(new AttributedString(line));
+                out.add(Styled.of(line, Style.EMPTY));
             }
             return out;
         }
@@ -812,7 +710,7 @@ public final class Wizard {
          * Render the editable free-form field: the placeholder as dim italic example text while empty
          * (overwrite-able), or the typed text in the focused/dim style once the user starts typing.
          */
-        private void appendCustomField(AttributedStringBuilder sb, boolean focused, String placeholder) {
+        private void appendCustomField(StyledBuilder sb, boolean focused, String placeholder) {
             if (input.length() == 0) {
                 sb.append(placeholder, Theme.active().darkGray().italic());
             } else {
@@ -822,25 +720,25 @@ public final class Wizard {
             }
         }
 
-        private void appendError(List<AttributedString> lines) {
+        private void appendError(List<Styled> lines) {
             if (!error.isEmpty()) {
-                lines.add(new AttributedStringBuilder()
+                lines.add(new StyledBuilder()
                         .append(error, Theme.active().error())
-                        .toAttributedString());
+                        .build());
             }
         }
 
-        private static void appendHint(AttributedStringBuilder sb, String hint) {
+        private static void appendHint(StyledBuilder sb, String hint) {
             if (hint == null || hint.isEmpty()) return;
             sb.append("  ");
             sb.append(hint, Theme.active().darkGray());
         }
 
-        private List<AttributedString> renderMulti(WizardStep.MultiSelectStep ms) {
-            var lines = new ArrayList<AttributedString>();
+        private List<Styled> renderMulti(WizardStep.MultiSelectStep ms) {
+            var lines = new ArrayList<Styled>();
             List<Choice> visible = multiVisible(ms);
             if (ms.filterable() && ms.orientation() == Orientation.VERTICAL) {
-                var fsb = new AttributedStringBuilder()
+                var fsb = new StyledBuilder()
                         .append("filter: ", Theme.active().darkGray())
                         .append(
                                 filter.length() == 0 ? "(type to search)" : filter.toString(),
@@ -853,7 +751,7 @@ public final class Wizard {
                                     selected.size() + " selected",
                                     Theme.active().completedStep());
                 }
-                lines.add(fsb.toAttributedString());
+                lines.add(fsb.build());
             }
             if (ms.orientation() == Orientation.VERTICAL) {
                 // Cap rows so tall catalogs stay usable under type-to-filter.
@@ -864,7 +762,7 @@ public final class Wizard {
                     var isFocused = i == focus;
                     var isChecked = selected.contains(c.id());
                     if (c.richLabelFn() != null) {
-                        var sb = new AttributedStringBuilder()
+                        var sb = new StyledBuilder()
                                 .append(
                                         isChecked ? Rail.CHECKBOX_ON : Rail.CHECKBOX_OFF,
                                         isChecked
@@ -875,7 +773,7 @@ public final class Wizard {
                                 .append("  ")
                                 .append(c.richLabelFn().apply(isFocused));
                         appendHint(sb, c.hintFor(snapshot));
-                        lines.add(sb.toAttributedString());
+                        lines.add(sb.build());
                     } else {
                         lines.addAll(ansiLines(new Checkbox(c.label(), isChecked, isFocused, c.hintFor(snapshot))
                                 .render(RenderContext.current())));
@@ -883,11 +781,11 @@ public final class Wizard {
                     shown++;
                 }
                 if (visible.size() > maxShow) {
-                    lines.add(new AttributedStringBuilder()
+                    lines.add(new StyledBuilder()
                             .append(
                                     "  … +" + (visible.size() - maxShow) + " more (type to filter)",
                                     Theme.active().darkGray().italic())
-                            .toAttributedString());
+                            .build());
                 }
                 if (ms.hasCustomOption()) {
                     var isFocused = focus == visible.size();
@@ -898,14 +796,12 @@ public final class Wizard {
                             : (isFocused
                                     ? Theme.active().activeStep()
                                     : Theme.active().darkGray());
-                    var sb = new AttributedStringBuilder()
-                            .append(glyph, glyphStyle)
-                            .append("  ");
+                    var sb = new StyledBuilder().append(glyph, glyphStyle).append("  ");
                     appendCustomField(sb, isFocused, ms.customPlaceholder());
-                    lines.add(sb.toAttributedString());
+                    lines.add(sb.build());
                 }
             } else {
-                var sb = new AttributedStringBuilder();
+                var sb = new StyledBuilder();
                 for (var i = 0; i < visible.size(); i++) {
                     var c = visible.get(i);
                     var isFocused = i == focus;
@@ -926,14 +822,14 @@ public final class Wizard {
                         sb.append("  ");
                     }
                 }
-                lines.add(sb.toAttributedString());
+                lines.add(sb.build());
             }
             return lines;
         }
 
-        private List<AttributedString> renderOutput(WizardStep.OutputStep os) {
+        private List<Styled> renderOutput(WizardStep.OutputStep os) {
             var pieces = os.render().apply(Answers.of(Map.of()));
-            var lines = new ArrayList<AttributedString>();
+            var lines = new ArrayList<Styled>();
             for (var s : pieces) {
                 lines.add(plain(s, Theme.active().darkGray()));
             }

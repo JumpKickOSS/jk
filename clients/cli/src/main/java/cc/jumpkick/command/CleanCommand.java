@@ -186,7 +186,7 @@ public final class CleanCommand implements CliCommand {
             var result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest(
-                            "clear", root, 0, false, false, false, projectDir),
+                            "clear", root, false, false, projectDir),
                     steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                     CacheCommand::printWait,
                     summary);

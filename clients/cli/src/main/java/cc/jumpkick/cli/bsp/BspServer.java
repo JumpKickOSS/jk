@@ -464,7 +464,15 @@ public final class BspServer {
     }
 
     private String runJson(Path moduleDir) throws IOException {
-        var outcome = ide.runModule(moduleDir, null);
+        // The launched app's output travels as build/logMessage notifications — the parent's
+        // stdout is the frame channel and must never carry raw program bytes (JK-2351).
+        var outcome = ide.runModule(moduleDir, null, line -> {
+            try {
+                notify("build/logMessage", "{\"type\":4,\"message\":" + q(line) + "}");
+            } catch (IOException clientGone) {
+                // The editor hung up mid-run; keep draining so the app can finish.
+            }
+        });
         return statusResult(outcome, "run failed");
     }
 

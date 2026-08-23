@@ -83,8 +83,9 @@ class TaskForecasterPackageKeyTest {
 
     @Test
     void present_requires_payload_blobs_not_just_the_record(@TempDir Path tmp) throws Exception {
-        // LRU eviction removes cache-CAS payloads while records live on (TTL). A record
-        // whose blobs are gone cannot restore, so the forecast must report RUN, not CACHED.
+        // A cache-CAS payload can go missing while its record lives on (promotion into the store
+        // CAS, a hand-deleted blob). A record whose blobs are gone cannot restore, so the forecast
+        // must report RUN, not CACHED.
         Path cacheRoot = tmp.resolve("cache");
         var ac = new cc.jumpkick.task.ActionCache(
                 cc.jumpkick.cache.JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
@@ -94,7 +95,7 @@ class TaskForecasterPackageKeyTest {
         ac.storeWithOutputs("task@x", "key-1", Map.of(), Map.of("lib.jar", sha), Map.of());
 
         assertThat(TaskForecaster.present(ac, "key-1")).isTrue();
-        Files.delete(blob); // simulate LRU eviction of the payload
+        Files.delete(blob); // the payload is gone; the record is not
         assertThat(TaskForecaster.present(ac, "key-1")).isFalse();
         assertThat(TaskForecaster.present(ac, "no-such-key")).isFalse();
     }

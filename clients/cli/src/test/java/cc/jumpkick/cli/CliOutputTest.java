@@ -134,7 +134,7 @@ class CliOutputTest {
         } finally {
             System.setOut(prev);
         }
-        assertThat(built.toString(StandardCharsets.UTF_8)).isEqualTo("\npaint\n");
+        assertThat(Capture.lf(built.toString(StandardCharsets.UTF_8))).isEqualTo("\npaint\n");
         assertThat(redirected.toString(StandardCharsets.UTF_8)).isEmpty();
     }
 
@@ -150,7 +150,7 @@ class CliOutputTest {
         } finally {
             System.setOut(prev);
         }
-        assertThat(buf.toString(StandardCharsets.UTF_8)).isEqualTo("\nchip\n");
+        assertThat(Capture.lf(buf.toString(StandardCharsets.UTF_8))).isEqualTo("\nchip\n");
     }
 
     @Test

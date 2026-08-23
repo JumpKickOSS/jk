@@ -8,12 +8,12 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Badge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.terminal.Style;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.jline.utils.AttributedStyle;
 
 /**
  * Human-facing failure / warning reports for plan diagnostics: a colored phase pill (same language
@@ -166,11 +166,11 @@ public final class DiagnosticReport {
         // Fail chip: white on plan red. Warn chip: black on amber — same ink as Pill.Look.WARNING
         // / cancelled-job chips (white-on-amber washes out on most terminals).
         Rgb chipRgb = role == Role.ERROR ? t.planFailColor() : Rgb.hex(0xFFB800);
-        AttributedStyle ink = role == Role.ERROR ? t.bright(255, 255, 255) : t.bright(0, 0, 0);
-        AttributedStyle body = t.withBackground(ink, chipRgb);
-        AttributedStyle caps = t.bright(chipRgb);
+        Style ink = role == Role.ERROR ? t.bright(255, 255, 255) : t.bright(0, 0, 0);
+        Style body = t.withBackground(ink, chipRgb);
+        Style caps = t.bright(chipRgb);
         String pill = Badge.pill(title, GlobalConfig.nerdFont().pill(), body, caps);
-        AttributedStyle wordStyle = t.midGray();
+        Style wordStyle = t.midGray();
         StringBuilder sb = new StringBuilder();
         sb.append(pill).append(' ').append(Theme.colorize(word, wordStyle));
         if (module != null && !module.isBlank()) {
@@ -207,7 +207,7 @@ public final class DiagnosticReport {
         if (!t.isAnsi()) {
             return " | " + (paintedContent == null ? "" : paintedContent);
         }
-        AttributedStyle railStyle = role == Role.ERROR ? t.error() : t.warning();
+        Style railStyle = role == Role.ERROR ? t.error() : t.warning();
         return " " + Theme.colorize(RAIL, railStyle) + " " + (paintedContent == null ? "" : paintedContent);
     }
 
@@ -215,7 +215,7 @@ public final class DiagnosticReport {
     public static String footerLine(Role role) {
         Theme t = Theme.active();
         if (!t.isAnsi()) return " +--";
-        AttributedStyle railStyle = role == Role.ERROR ? t.error() : t.warning();
+        Style railStyle = role == Role.ERROR ? t.error() : t.warning();
         return " " + Theme.colorize(FOOTER, railStyle);
     }
 

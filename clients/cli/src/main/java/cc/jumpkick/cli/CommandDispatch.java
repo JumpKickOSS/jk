@@ -78,6 +78,7 @@ import cc.jumpkick.model.command.Command;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.terminal.Ansi;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -250,8 +251,11 @@ public final class CommandDispatch {
 
             if (!report.found()) return null;
             // A plugin command is a leaf command: same envelope, same close after the failure
-            // wedge, so its output is spaced like every other command's.
-            CliOutput.beginCommand(false);
+            // wedge, so its output is spaced like every other command's. Its raw args are
+            // forwarded to the engine unparsed, so honor -O/--output (and JK_OUTPUT) here the
+            // way registry commands do at dispatch — machine consumers of a plugin command must
+            // not get the envelope or the PlainAscii rewrite.
+            CliOutput.beginCommand(pluginArgsAskJson(args));
             try {
                 if (report.error() != null) {
                     cc.jumpkick.cli.tui.CommandWedge.printFail(command, report.error());
@@ -265,6 +269,25 @@ public final class CommandDispatch {
         } catch (Exception e) {
             return null; // best-effort — fall back to the normal help
         }
+    }
+
+    /**
+     * {@code -O json} / {@code --output=jsonl} scanned out of a plugin command's raw arg list
+     * (never parsed client-side), falling back to {@code JK_OUTPUT} via the same resolution
+     * registry commands use.
+     */
+    static boolean pluginArgsAskJson(List<String> args) {
+        for (int i = 0; i < args.size(); i++) {
+            String a = args.get(i);
+            String v = null;
+            if (a.equals("-O") || a.equals("--output")) {
+                v = i + 1 < args.size() ? args.get(i + 1) : null;
+            } else if (a.startsWith("--output=")) {
+                v = a.substring("--output=".length());
+            }
+            if (v != null) return GlobalOptions.outputIsJson(v);
+        }
+        return GlobalOptions.outputIsJson((String) null); // JK_OUTPUT fallback
     }
 
     /** Dispatch {@code cmd} against {@code rest} (its arguments), descending into subcommands. */

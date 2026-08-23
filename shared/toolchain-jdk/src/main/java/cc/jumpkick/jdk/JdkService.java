@@ -73,8 +73,8 @@ public final class JdkService {
      *   <li>Unless {@code refresh}, short-circuit when the entry is already installed — emit {@link
      *       JdkInstallListener#onAlreadyInstalled} and return the existing install.
      *   <li>Otherwise download (streaming byte counts to {@link
-     *       JdkInstallListener#onDownloadProgress}) and extract, then journal the install to the
-     *       {@link JdkAccessLedger} and emit {@link JdkInstallListener#onInstalled}.
+     *       JdkInstallListener#onDownloadProgress}), extract, and emit {@link
+     *       JdkInstallListener#onInstalled}.
      * </ol>
      *
      * Writes nothing to stdout/stderr — all rendering is the listener's job.
@@ -99,11 +99,6 @@ public final class JdkService {
         JdkInstaller.DownloadedArchive archive = installer.download(entry, read -> l.onDownloadProgress(read, total));
         l.onExtractStart(label);
         InstalledJdk installed = installer.extractInstalled(entry, archive);
-        JdkAccessLedger.atDefaultPath()
-                .touch(
-                        installed.home(),
-                        entry.version(),
-                        JdkVendor.displayNameFromFeed(entry.vendor(), entry.product()));
         l.onInstalled(installed);
         return installed;
     }

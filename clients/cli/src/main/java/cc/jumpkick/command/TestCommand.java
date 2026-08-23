@@ -11,7 +11,6 @@ import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.CompositeBuildPlanListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.DashboardCodeLink;
-import cc.jumpkick.cli.run.EventLogListener;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.run.SessionMirrorListener;
 import cc.jumpkick.cli.run.TestFailureHighlight;
@@ -355,7 +354,6 @@ public final class TestCommand implements CliCommand {
 
                         @Override
                         public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
-                            var log = EventLogListener.open(m.cache(), m.plan().name());
                             List<String> buf = Collections.synchronizedList(new ArrayList<>());
                             buffers.put(m.dir(), buf);
                             var lis = new AggregateModuleListener(
@@ -363,7 +361,7 @@ public final class TestCommand implements CliCommand {
                             lis.bufferOutputInto(buf);
                             JsonlShape.emitJsonl(JsonlShape.moduleStart(m.dir().toString(), m.coord()), false);
                             SessionMirrorListener mirror = session == null ? null : new SessionMirrorListener(session);
-                            return CompositeBuildPlanListener.of(CompositeBuildPlanListener.of(lis, mirror), log);
+                            return CompositeBuildPlanListener.of(lis, mirror);
                         }
 
                         @Override
@@ -490,11 +488,9 @@ public final class TestCommand implements CliCommand {
 
                         @Override
                         public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
-                            var log = EventLogListener.open(m.cache(), m.plan().name());
                             JsonlShape.emitJsonl(JsonlShape.moduleStart(m.dir().toString(), m.coord()), json);
                             if (json) {
-                                return CompositeBuildPlanListener.of(
-                                        new cc.jumpkick.cli.run.JsonlListener(System.out, false), log);
+                                return new cc.jumpkick.cli.run.JsonlListener(System.out, false);
                             }
                             List<String> buf = Collections.synchronizedList(new ArrayList<>());
                             buffers.put(m.dir(), buf);
@@ -516,7 +512,7 @@ public final class TestCommand implements CliCommand {
                                 }
                             };
                             SessionMirrorListener mirror = session == null ? null : new SessionMirrorListener(session);
-                            return CompositeBuildPlanListener.of(CompositeBuildPlanListener.of(outLis, mirror), log);
+                            return CompositeBuildPlanListener.of(outLis, mirror);
                         }
 
                         @Override

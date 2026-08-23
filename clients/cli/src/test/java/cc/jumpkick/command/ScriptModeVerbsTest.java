@@ -46,9 +46,12 @@ class ScriptModeVerbsTest {
     void ide_and_vscode_are_script_mode_only_under_print_model() {
         assertThat(script(new IdeCommand())).isFalse();
         assertThat(script(new VscodeCommand())).isFalse();
+        assertThat(script(new ExportIdeaCommand())).isFalse();
         Invocation printModel = Invocation.builder().flag("print-model", true).build();
         assertThat(new IdeCommand().scriptMode(printModel)).isTrue();
         assertThat(new VscodeCommand().scriptMode(printModel)).isTrue();
+        // `jk export idea` is the other IdeCommand alias — it must answer for its delegate too.
+        assertThat(new ExportIdeaCommand().scriptMode(printModel)).isTrue();
     }
 
     @Test

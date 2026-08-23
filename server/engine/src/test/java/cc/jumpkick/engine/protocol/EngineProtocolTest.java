@@ -650,16 +650,14 @@ class EngineProtocolTest {
 
     @Test
     void cache_prune_request_round_trips_all_fields() {
-        String json = ProtoSession.cachePruneRequest("prune", "/cache", 14, true, true, true);
+        String json = ProtoSession.cachePruneRequest("prune", "/cache", true, true);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.CACHE_PRUNE_REQUEST);
         assertThat(Jsonl.str(json, "op")).isEqualTo("prune");
         assertThat(Jsonl.str(json, "cache")).isEqualTo("/cache");
-        assertThat(Jsonl.intValue(json, "olderThanDays", -1)).isEqualTo(14);
         assertThat(Jsonl.bool(json, "dryRun", false)).isTrue();
-        assertThat(Jsonl.bool(json, "sweep", false)).isTrue();
         assertThat(Jsonl.bool(json, "includeJkTmp", false)).isTrue();
 
-        String purge = ProtoSession.cachePruneRequest("purge", "/c", 0, false, false, false);
+        String purge = ProtoSession.cachePruneRequest("purge", "/c", false, false);
         assertThat(Jsonl.str(purge, "op")).isEqualTo("purge");
     }
 
@@ -676,12 +674,10 @@ class EngineProtocolTest {
 
     @Test
     void cache_finish_variant_round_trips_the_summary() {
-        String json = ProtoSession.planFinishCache("", true, 12, 34_567, 2, -1);
+        String json = ProtoSession.planFinishCache("", true, 12, 34_567);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
         assertThat(Jsonl.bool(json, "success", false)).isTrue();
         assertThat(Jsonl.longValue(json, "cacheFiles", -99)).isEqualTo(12);
         assertThat(Jsonl.longValue(json, "cacheBytes", -99)).isEqualTo(34_567);
-        assertThat(Jsonl.longValue(json, "cacheReachableEvicted", -99)).isEqualTo(2);
-        assertThat(Jsonl.longValue(json, "cacheRepoLinks", -99)).isEqualTo(-1); // n/a for prune
     }
 }

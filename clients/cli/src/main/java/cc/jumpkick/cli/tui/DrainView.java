@@ -1,25 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.terminal.Ansi;
+import cc.jumpkick.terminal.InputMode;
+import cc.jumpkick.terminal.Key;
+import cc.jumpkick.terminal.ModeGuard;
+import cc.jumpkick.terminal.Style;
+import cc.jumpkick.terminal.TerminalSession;
+import cc.jumpkick.terminal.Terminals;
 import java.io.PrintWriter;
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.jline.terminal.Attributes;
-import org.jline.terminal.Terminal;
-import org.jline.utils.AttributedStyle;
-import org.jline.utils.NonBlockingReader;
 
 /**
  * Live two-line TUI for {@code jk engine stop} drain (job count + elapsed; Ctrl-X forces kill via
- * {@link #forceRequested()}). Cbreak JLine terminal; no-op when non-interactive.
+ * {@link #forceRequested()}). {@link InputMode#PLAN_KEYS}; no-op when non-interactive.
  */
 public final class DrainView implements LiveRegion, AutoCloseable {
 
-    private final Terminal terminal; // null → inactive no-op
-    private final Attributes saved;
-    private final NonBlockingReader reader;
+    private final TerminalSession terminal; // null → inactive no-op
+    private final ModeGuard mode;
     private final PrintWriter out;
     private final NerdFontCaps nerdFont;
     private final long startNanos;
@@ -34,11 +36,10 @@ public final class DrainView implements LiveRegion, AutoCloseable {
     private Thread keys;
     private Thread restoreHook;
 
-    private DrainView(Terminal terminal, Attributes saved, int jobs, NerdFontCaps nerdFont, long startNanos) {
+    private DrainView(TerminalSession terminal, ModeGuard mode, int jobs, NerdFontCaps nerdFont, long startNanos) {
         this.terminal = terminal;
-        this.saved = saved;
-        this.reader = terminal == null ? null : terminal.reader();
-        this.out = terminal == null ? null : terminal.writer();
+        this.mode = mode;
+        this.out = terminal == null ? null : terminal.ttyOut();
         this.jobs = jobs;
         this.nerdFont = nerdFont;
         this.startNanos = startNanos;
@@ -49,17 +50,13 @@ public final class DrainView implements LiveRegion, AutoCloseable {
         long now = System.nanoTime();
         if (!interactive()) return new DrainView(null, null, initialJobs, nerdFont, now);
         try {
-            Terminal t = Wizard.openTerminal();
-            Attributes saved = t.getAttributes();
-            Attributes raw = new Attributes(saved);
-            raw.setLocalFlag(Attributes.LocalFlag.ICANON, false); // byte-at-a-time
-            raw.setLocalFlag(Attributes.LocalFlag.ECHO, false); // don't echo the keypress
-            raw.setControlChar(Attributes.ControlChar.VMIN, 1);
-            raw.setControlChar(Attributes.ControlChar.VTIME, 0);
-            // ISIG stays on: Ctrl-C keeps raising SIGINT so GlobalCancel settles this region.
-            t.setAttributes(raw);
-            Wizard.drainInput(t.reader(), 40); // flush terminal probe replies
-            DrainView v = new DrainView(t, saved, initialJobs, nerdFont, now);
+            TerminalSession t = Terminals.controlling();
+            if (!t.isLive()) {
+                return new DrainView(null, null, initialJobs, nerdFont, now);
+            }
+            ModeGuard mode = t.enter(InputMode.PLAN_KEYS);
+            t.drain(Duration.ofMillis(40));
+            DrainView v = new DrainView(t, mode, initialJobs, nerdFont, now);
             // Leading blank before the live Engine drain wedge (same envelope as other chrome).
             CommandWedge.envelopeStart();
             v.out.print(Ansi.HIDE_CURSOR);
@@ -131,20 +128,21 @@ public final class DrainView implements LiveRegion, AutoCloseable {
                 "Draining " + n + " job" + (n == 1 ? "" : "s") + "… " + elapsed);
         String hint = Theme.colorize(
                         "Wait for jobs to finish, or press ", Theme.active().dim())
-                + Theme.colorize("Ctrl-X", AttributedStyle.DEFAULT.bold())
+                + Theme.colorize("Ctrl-X", Style.EMPTY.bold())
                 + Theme.colorize(" to kill the engine now", Theme.active().dim());
         return new String[] {l1, hint};
     }
 
     private void readKeys() {
-        while (!closed) {
-            KeyReader.Key key;
-            try {
-                key = KeyReader.readOrNull(reader, 100);
-            } catch (RuntimeException e) {
-                return; // reader closed/failed — stop polling
+        while (!closed && terminal != null) {
+            var key = terminal.readKey(Duration.ofMillis(100));
+            if (key.isEmpty()) {
+                if (!terminal.isLive()) {
+                    return;
+                }
+                continue;
             }
-            if (key instanceof KeyReader.Key.CtrlX) {
+            if (key.get() instanceof Key.CtrlX) {
                 forceRequested = true;
                 return;
             }
@@ -226,8 +224,9 @@ public final class DrainView implements LiveRegion, AutoCloseable {
             out.print(Ansi.SHOW_CURSOR);
             out.print(Ansi.RESET);
             out.flush();
-            Wizard.restoreCooked(terminal, saved);
-            terminal.close();
+            if (mode != null) {
+                mode.close();
+            }
         } catch (Exception ignored) {
             // best-effort restore
         }

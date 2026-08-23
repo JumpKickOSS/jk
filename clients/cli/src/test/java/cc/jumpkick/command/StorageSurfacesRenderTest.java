@@ -14,27 +14,31 @@ import org.junit.jupiter.api.Test;
  */
 class StorageSurfacesRenderTest {
 
+    /** 4 GiB action budget / 512 MiB incremental budget — the shipped defaults. */
+    private static final cc.jumpkick.config.JkCacheConfig CACHE_CONFIG =
+            new cc.jumpkick.config.JkCacheConfig(true, 7, 4.0, 0.5);
+
     @Test
     void cache_usage_table_rows_share_one_visible_width() {
         var stats = new CacheCommand.CacheUsageStats(
                 new CacheCommand.Stats(100, 50_000),
                 new CacheCommand.Stats(5, 200),
-                new CacheCommand.Stats(10, 5_000),
                 new CacheCommand.Stats(3, 8_000),
                 new CacheCommand.Stats(2, 90_000_000),
                 new CacheCommand.Stats(1, 1_000_000),
                 new CacheCommand.Stats(2, 59_000_000),
                 new CacheCommand.Stats(0, 0),
+                new CacheCommand.Stats(48, 1_200_000),
                 new CacheCommand.Stats(170, 0),
+                new CacheCommand.Stats(16_449, 1_400_000),
                 new CacheCommand.Stats(702, 213_300_000));
-        List<String> lines = CacheCommand.renderCacheUsageTable(stats, 4L * 1024 * 1024 * 1024, "1 day ago");
+        List<String> lines = CacheCommand.renderCacheUsageTable(stats, CACHE_CONFIG, "1 day ago");
 
         assertBoxedRowsShareWidth(lines);
         String joined = TestAnsi.strip(String.join("\n", lines));
         assertThat(joined).contains("Cache Storage");
         assertThat(joined).contains("Class Files");
         assertThat(joined).contains("Test Results");
-        assertThat(joined).contains("Event Logs");
         assertThat(joined).contains("Normal Jars");
         assertThat(joined).contains("Shadow Jars");
         assertThat(joined).contains("Minified Jars");
@@ -42,6 +46,14 @@ class StorageSurfacesRenderTest {
         assertThat(joined).contains("OCI Images");
         assertThat(joined).contains("Format Stamps");
         assertThat(joined).contains("--"); // zero-byte stamps
+        String derived = lines.stream()
+                .map(TestAnsi::strip)
+                .filter(l -> l.contains("Derived caches"))
+                .findFirst()
+                .orElseThrow();
+        // Bounded by count and by supersession, so the line reports what is there and stops:
+        // "of <budget>" would name a number that is not this tier's bound.
+        assertThat(derived).contains("apparent").doesNotContain(" of ");
         assertThat(joined).contains("Last cleaned: 1 day ago");
         assertThat(joined).doesNotContain("Last pruned:");
         assertThat(joined).doesNotContain("Last Pruned");
@@ -54,7 +66,7 @@ class StorageSurfacesRenderTest {
                 new CacheCommand.Stats(3, 1024),
                 new CacheCommand.Stats(7, 555),
                 new CacheCommand.Stats(10_370, 2_500_000));
-        List<String> lines = CacheCommand.renderStoreUsageTable(stats, 20L * 1024 * 1024 * 1024, "3 days ago");
+        List<String> lines = CacheCommand.renderStoreUsageTable(stats, "3 days ago");
 
         assertBoxedRowsShareWidth(lines);
         String joined = TestAnsi.strip(String.join("\n", lines));
@@ -68,6 +80,35 @@ class StorageSurfacesRenderTest {
         assertThat(joined).doesNotContain("Run Logs");
         assertThat(joined).doesNotContain("Last pruned:");
         assertThat(joined).doesNotContain("Executables");
+        assertThat(joined).doesNotContain("Utilization");
+    }
+
+    @Test
+    void store_usage_table_omits_the_utilization_row() {
+        // The artifact store has no budget, so a percentage row would have no denominator.
+        var stats = new CacheCommand.StoreUsageStats(
+                new CacheCommand.Stats(12, 8192),
+                new CacheCommand.Stats(3, 1024),
+                new CacheCommand.Stats(7, 555),
+                new CacheCommand.Stats(10_370, 2_500_000));
+        String store = TestAnsi.strip(String.join("\n", CacheCommand.renderStoreUsageTable(stats, "never")));
+        assertThat(store).contains("Total").doesNotContain("Utilization");
+
+        var cacheStats = new CacheCommand.CacheUsageStats(
+                new CacheCommand.Stats(100, 50_000),
+                new CacheCommand.Stats(5, 200),
+                new CacheCommand.Stats(3, 8_000),
+                new CacheCommand.Stats(2, 90_000_000),
+                new CacheCommand.Stats(1, 1_000_000),
+                new CacheCommand.Stats(2, 59_000_000),
+                new CacheCommand.Stats(0, 0),
+                new CacheCommand.Stats(48, 1_200_000),
+                new CacheCommand.Stats(170, 0),
+                new CacheCommand.Stats(0, 0),
+                new CacheCommand.Stats(702, 213_300_000));
+        String cache = TestAnsi.strip(
+                String.join("\n", CacheCommand.renderCacheUsageTable(cacheStats, CACHE_CONFIG, "today")));
+        assertThat(cache).contains("Utilization");
     }
 
     private static void assertBoxedRowsShareWidth(List<String> lines) {

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
@@ -12,6 +11,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Coord;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -217,11 +217,14 @@ public final class RunCommand {
             }
         }
         command.addAll(appArgs);
-        cc.jumpkick.cli.tui.Interactivity.restoreForChildProcess();
+        cc.jumpkick.terminal.Terminals.restoreForChild();
         // The program's own stdout is the last thing on this terminal — `jk run > app.out` must
         // not collect jk's closing blank.
+        Process p = new ProcessBuilder(command).inheritIO().start();
+        // Skip the gap only once the exec actually started — a failed start() still owns
+        // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();
-        return new ProcessBuilder(command).inheritIO().start().waitFor();
+        return p.waitFor();
     }
 
     /**
@@ -388,14 +391,12 @@ public final class RunCommand {
 
             @Override
             public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
-                var log = cc.jumpkick.cli.run.EventLogListener.open(
-                        m.cache(), m.plan().name());
                 List<String> buf = Collections.synchronizedList(new ArrayList<String>());
                 buffers.put(m.dir(), buf);
                 var lis = new cc.jumpkick.cli.run.AggregateModuleListener(
                         agg, m.coord(), m.plan().steps(), m.weight());
                 lis.bufferOutputInto(buf);
-                return cc.jumpkick.cli.run.CompositeBuildPlanListener.of(lis, log);
+                return lis;
             }
 
             @Override

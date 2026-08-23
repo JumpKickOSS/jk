@@ -21,10 +21,14 @@ import java.util.zip.ZipInputStream;
  * GraalVM reachability-metadata repo for {@code jk native}: cached Maven zip, match locked
  * {@code g:a:v} via index ({@code tested-versions} then {@code latest}). Failures yield empty.
  */
-final class ReachabilityMetadata {
+public final class ReachabilityMetadata {
 
-    /** Repository release consumed by this jk version — walk forward with jk releases. */
-    static final String VERSION = "1.1.4";
+    /**
+     * Repository release consumed by this jk version — walk forward with jk releases. Also the
+     * name of the one tree under {@code <cache>/graal-reachability} that can be read, which is
+     * how {@link cc.jumpkick.task.CacheTier#GRAAL_REACHABILITY} knows what to keep.
+     */
+    public static final String VERSION = "1.1.4";
 
     private static final String GROUP = "org.graalvm.buildtools";
     private static final String ARTIFACT = "graalvm-reachability-metadata";

@@ -44,7 +44,7 @@ class LibrarySearchCommandTest {
         // Only the bundled layer may load: a downloaded store/libs.global.toml shadows the
         // curated rows as "global". user.home no longer isolates anything (JkDirs resolves via
         // JK_HOME env since the platform-native layout), so move the downloaded catalog aside.
-        Path downloaded = cc.jumpkick.library.LibraryCatalog.downloadedFile();
+        Path downloaded = cc.jumpkick.util.JkDirs.libraryRegistry();
         Path aside = downloaded.resolveSibling(downloaded.getFileName() + ".test-aside");
         boolean moved = false;
         try {

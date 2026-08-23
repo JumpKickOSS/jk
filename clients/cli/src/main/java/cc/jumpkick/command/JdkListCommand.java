@@ -22,6 +22,7 @@ import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.terminal.Style;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -36,7 +37,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
-import org.jline.utils.AttributedStyle;
 
 /**
  * {@code jk jdk list} — every JDK the probe chain finds on this machine (jk's managed dir, SDKMAN,
@@ -469,29 +469,29 @@ public final class JdkListCommand implements CliCommand {
             loc = painted(location, locStyle, italic, bold, band);
         }
         Table.Row row = Table.Row.data(
-                painted(version, AttributedStyle.DEFAULT, italic, bold, band),
-                painted(r.vendor() == null ? "" : r.vendor(), AttributedStyle.DEFAULT, italic, bold, band),
+                painted(version, Style.EMPTY, italic, bold, band),
+                painted(r.vendor() == null ? "" : r.vendor(), Style.EMPTY, italic, bold, band),
                 painted(r.spec(), Theme.active().settled(), italic, bold, band),
                 RichText.ansi(statusPainted(label, italic, bold, band)),
                 loc);
         return active ? row.emphasized() : row;
     }
 
-    private static RichText painted(String text, AttributedStyle base, boolean italic, boolean bold, Rgb band) {
+    private static RichText painted(String text, Style base, boolean italic, boolean bold, Rgb band) {
         String s = text == null ? "" : text;
         if (!Theme.active().isAnsi()) return RichText.plain(s);
-        AttributedStyle style = deco(base, italic, bold);
+        Style style = deco(base, italic, bold);
         if (band != null) style = Theme.active().withBackground(style, band);
         return RichText.ansi(Theme.colorize(s, style));
     }
 
     /** Layer the active-row indigo band background onto a cell style (no-op when not banded). */
-    private static AttributedStyle banded(AttributedStyle base, Rgb band) {
+    private static Style banded(Style base, Rgb band) {
         return band == null ? base : Theme.active().withBackground(base, band);
     }
 
     /** Layer the row-level italic (active) / bold (default) attributes onto a cell style. */
-    private static AttributedStyle deco(AttributedStyle base, boolean italic, boolean bold) {
+    private static Style deco(Style base, boolean italic, boolean bold) {
         if (italic) base = base.italic();
         if (bold) base = base.bold();
         return base;
@@ -513,7 +513,7 @@ public final class JdkListCommand implements CliCommand {
         return sb.toString();
     }
 
-    private static AttributedStyle segmentStyle(String role) {
+    private static Style segmentStyle(String role) {
         return switch (role) {
             case "active" -> Theme.active().brightCyan().bold();
             case "default" -> Theme.active().brightYellow();

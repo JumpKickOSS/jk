@@ -21,7 +21,6 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -122,19 +121,23 @@ public final class CacheCommand extends GroupCommand {
     record CacheTierStats(Stats actions, Stats stamps) {}
 
     /**
-     * Rows for {@code jk cache usage}. {@code total} is the whole cache-root walk; category rows
-     * are a content breakdown (they need not sum to total).
+     * Rows for {@code jk cache usage}. {@code total} is the action cache (key records plus the
+     * cache CAS) — the bytes {@code max-cache-size-gb} bounds; category rows are a content breakdown
+     * (they need not sum to total). {@code incremental} is outside the total: Zinc analysis state
+     * has its own budget, so folding it in would make the utilization bar measure one tier against
+     * another tier's line.
      */
     record CacheUsageStats(
             Stats classFiles,
             Stats testResults,
-            Stats eventLogs,
             Stats normalJars,
             Stats shadowJars,
             Stats minifiedJars,
             Stats nativeBins,
             Stats ociImages,
+            Stats incremental,
             Stats stamps,
+            Stats derived,
             Stats total) {
         long totalFiles() {
             return total.files;
@@ -149,13 +152,14 @@ public final class CacheCommand extends GroupCommand {
         return new CacheUsageStats(
                 statFromAck(ack, "classFiles"),
                 statFromAck(ack, "testResults"),
-                statFromAck(ack, "eventLogs"),
                 statFromAck(ack, "normalJars"),
                 statFromAck(ack, "shadowJars"),
                 statFromAck(ack, "minifiedJars"),
                 statFromAck(ack, "nativeBins"),
                 statFromAck(ack, "ociImages"),
+                statFromAck(ack, "incremental"),
                 statFromAck(ack, "stamps"),
+                statFromAck(ack, "derived"),
                 new Stats(ack.totalFiles(), ack.totalBytes()));
     }
 
@@ -222,19 +226,13 @@ public final class CacheCommand extends GroupCommand {
      * correctly ({@code 1 day ago} vs {@code 3 days ago}).
      */
     static String lastPrunedLabel(Path root) {
-        Path stamp = root.resolve(cc.jumpkick.task.CachePruneScheduler.LAST_PRUNED_FILE);
-        if (!Files.isRegularFile(stamp)) return "never";
-        try {
-            long millis = Long.parseLong(
-                    Files.readString(stamp, StandardCharsets.UTF_8).trim());
-            long ageMs = System.currentTimeMillis() - millis;
-            long days = ageMs / (24L * 60 * 60 * 1000);
-            if (days == 0) return "today";
-            if (days == 1) return "1 day ago";
-            return days + " days ago";
-        } catch (Exception e) {
-            return "unknown";
-        }
+        var stamp = cc.jumpkick.task.CachePruneScheduler.read(root);
+        if (stamp.isEmpty()) return "never";
+        long ageMs = System.currentTimeMillis() - stamp.get().millis();
+        long days = ageMs / (24L * 60 * 60 * 1000);
+        if (days == 0) return "today";
+        if (days == 1) return "1 day ago";
+        return days + " days ago";
     }
 
     static String fmtCount(long n) {
@@ -337,8 +335,7 @@ public final class CacheCommand extends GroupCommand {
                 BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
                 var planResult = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                         cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest(
-                                "purge", root, 0, false, false, false),
+                        new cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest("purge", root, false, false, null),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                         CacheCommand::printWait,
                         new cc.jumpkick.cli.engine.EngineRequests.CacheMaintSummary[1]);
@@ -451,10 +448,9 @@ public final class CacheCommand extends GroupCommand {
             }
             CacheUsageStats s = cacheUsageFromAck(ack);
             var cfg = cc.jumpkick.config.JkCacheConfig.resolve();
-            long maxBytes = cfg.maxCacheSizeBytes();
             String lastCleaned = lastPrunedLabel(root);
             CommandWedge.envelopeStart();
-            for (String line : renderCacheUsageTable(s, maxBytes, lastCleaned)) {
+            for (String line : renderCacheUsageTable(s, cfg, lastCleaned)) {
                 CliOutput.out(line);
             }
             return 0;
@@ -497,30 +493,21 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Reclaim cache space (stale entries, Class-C heavy outputs)";
+            return "Reclaim cache space to the configured budget (oldest first)";
         }
 
         @Override
         public List<Opt> options() {
             return List.of(
                     cc.jumpkick.cli.CommonOpts.cacheDir(),
-                    Opt.value("<days>", "Drop action-cache entries older than N days", "--older-than"),
-                    Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
-                    // Store-side flag moved to `jk storage clean`; kept hidden for back-compat.
-                    Opt.flag("Sweep unreferenced CAS objects after clean", "--sweep")
-                            .hide(),
-                    Opt.flag("Internal: opportunistic prune.", "--background").hide());
+                    Opt.flag("Print what would be removed; touch nothing.", "--dry-run"));
         }
 
         @Override
         public int run(Invocation in) throws IOException {
             Path cacheDir =
                     in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
-            int olderThanDays = in.value("older-than").map(Integer::parseInt).orElse(30);
             boolean dryRun = in.isSet("dry-run");
-            boolean sweep = in.isSet("sweep");
-            // --background is parsed for script back-compat but has no distinct behavior since
-            // the engine's idle-boundary prune replaced the detached spawner.
             GlobalOptions global = GlobalOptions.from(in);
 
             Path root = resolveCacheRoot(cacheDir);
@@ -529,17 +516,11 @@ public final class CacheCommand extends GroupCommand {
                 return 0;
             }
 
-            return runHosted(root, cacheDir == null, olderThanDays, dryRun, sweep, global);
+            return runHosted(root, cacheDir == null, dryRun, global);
         }
 
         /** The engine-hosted foreground path: send the request, explain any wait, render the stream. */
-        private static int runHosted(
-                Path root,
-                boolean defaultCacheDir,
-                int olderThanDays,
-                boolean dryRun,
-                boolean sweep,
-                GlobalOptions global) {
+        private static int runHosted(Path root, boolean defaultCacheDir, boolean dryRun, GlobalOptions global) {
             // Settled from the terminal plan-finish before the console listener renders the line.
             var summary = new cc.jumpkick.cli.engine.EngineRequests.CacheMaintSummary[1];
             ConsoleSpec spec = cleanSpec(
@@ -551,13 +532,8 @@ public final class CacheCommand extends GroupCommand {
             try {
                 result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                         cc.jumpkick.engine.EnginePaths.current(),
-                        // --sweep adds the CAS sweep but must not do LESS cleaning than plain
-                        // clean: Class-C heavy outputs drop either way.
-                        sweep
-                                ? new cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest(
-                                        "prune", root, olderThanDays, dryRun, true, defaultCacheDir, null, true)
-                                : cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest.cacheClean(
-                                        root, olderThanDays, dryRun, defaultCacheDir),
+                        new cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest(
+                                "prune", root, dryRun, defaultCacheDir, null),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                         CacheCommand::printWait,
                         summary);
@@ -565,7 +541,6 @@ public final class CacheCommand extends GroupCommand {
                 cc.jumpkick.cli.tui.CommandWedge.printFail("Cache", e.getMessage());
                 return cc.jumpkick.model.command.Exit.SOFTWARE;
             }
-            if (summary[0] != null) warnReachableEvicted(summary[0].reachableEvicted());
             return result.success() ? 0 : 1;
         }
 
@@ -590,19 +565,6 @@ public final class CacheCommand extends GroupCommand {
                     },
                     r -> "Failed to clean cache.",
                     true);
-        }
-
-        static void warnReachableEvicted(long evicted) {
-            if (evicted <= 0) return;
-            Theme pt = Theme.active();
-            CliOutput.err(Theme.colorize(Glyphs.BANG, pt.warning())
-                    + " "
-                    + Theme.colorize(
-                            "evicted "
-                                    + evicted
-                                    + " reachable objects to fit the budget — consider raising"
-                                    + " cache.max-cache-size-gb (or JK_MAX_CACHE_SIZE_GB).",
-                            pt.settled()));
         }
     }
 
@@ -715,15 +677,16 @@ public final class CacheCommand extends GroupCommand {
     // ---- shared table chrome for jk cache / storage usage -----------------------------
 
     /**
-     * Box table for {@code jk cache usage}: content classes + full-tree total; utilization vs
-     * cache {@code max-cache-size-gb}; last-cleaned footer.
+     * Box table for {@code jk cache usage}: content classes + action-cache total; utilization vs
+     * cache {@code max-cache-size-gb}; a separate line for the separately-budgeted Zinc analysis
+     * state; last-cleaned footer.
      */
-    static List<String> renderCacheUsageTable(CacheUsageStats s, long maxBytes, String lastCleaned) {
+    static List<String> renderCacheUsageTable(
+            CacheUsageStats s, cc.jumpkick.config.JkCacheConfig cfg, String lastCleaned) {
         String stampSize = s.stamps().bytes <= 0 ? "--" : fmtSize(s.stamps().bytes);
         String[][] rows = {
             {"Class Files", fmtCount(s.classFiles().files), fmtSize(s.classFiles().bytes)},
             {"Test Results", fmtCount(s.testResults().files), fmtSize(s.testResults().bytes)},
-            {"Event Logs", fmtCount(s.eventLogs().files), fmtSize(s.eventLogs().bytes)},
             {"Normal Jars", fmtCount(s.normalJars().files), fmtSize(s.normalJars().bytes)},
             {"Shadow Jars", fmtCount(s.shadowJars().files), fmtSize(s.shadowJars().bytes)},
             {"Minified Jars", fmtCount(s.minifiedJars().files), fmtSize(s.minifiedJars().bytes)},
@@ -731,22 +694,35 @@ public final class CacheCommand extends GroupCommand {
             {"OCI Images", fmtCount(s.ociImages().files), fmtSize(s.ociImages().bytes)},
             {"Format Stamps", fmtCount(s.stamps().files), stampSize},
         };
-        return renderUsageTable("Cache Storage", rows, s.totalFiles(), s.totalBytes(), maxBytes, lastCleaned);
+        List<String> out = new ArrayList<>(renderUsageTable(
+                "Cache Storage", rows, s.totalFiles(), s.totalBytes(), cfg.maxCacheSizeBytes(), lastCleaned));
+        Theme t = Theme.active();
+        out.add("  Incremental state (own budget): "
+                + Theme.colorize(
+                        fmtCount(s.incremental().files) + " files · " + fmtSize(s.incremental().bytes) + " of "
+                                + fmtSize(cfg.incrementalMaxSizeBytes()),
+                        t.normalGray()));
+        // No denominator: these are bounded by count or by supersession, so a percentage would be
+        // measured against a number that is not their bound. Bytes are apparent, never allocated.
+        out.add("  Derived caches (own retention): "
+                + Theme.colorize(
+                        fmtCount(s.derived().files) + " files · " + fmtSize(s.derived().bytes) + " apparent",
+                        t.normalGray()));
+        return out;
     }
 
     /**
-     * Box table for {@code jk storage usage}: jar / native / OCI content and worker jars;
-     * utilization vs store {@code max-store-size-gb}; last-cleaned footer.
+     * Box table for {@code jk storage usage}: jar / native / OCI content and worker jars, plus the
+     * last-cleaned footer. The store carries no budget, so there is no utilization row.
      */
-    static List<String> renderStoreUsageTable(StoreUsageStats s, long maxBytes, String lastCleaned) {
+    static List<String> renderStoreUsageTable(StoreUsageStats s, String lastCleaned) {
         String[][] rows = {
             {"Jar Files", fmtCount(s.jars().files), fmtSize(s.jars().bytes)},
             {"Native Bins", fmtCount(s.executables().files), fmtSize(s.executables().bytes)},
             {"OCI Images", fmtCount(s.oci().files), fmtSize(s.oci().bytes)},
             {"Worker JARs", fmtCount(s.workers().files), fmtSize(s.workers().bytes)},
         };
-        List<String> out =
-                renderUsageTable("Artifact Storage", rows, s.totalFiles(), s.totalBytes(), maxBytes, lastCleaned);
+        List<String> out = renderUsageTable("Artifact Storage", rows, s.totalFiles(), s.totalBytes(), 0, lastCleaned);
         Theme t = Theme.active();
         out.add("  Maven local (not budgeted): "
                 + Theme.colorize(
@@ -754,7 +730,11 @@ public final class CacheCommand extends GroupCommand {
         return out;
     }
 
-    /** Shared Element / File Count / Size box chrome for cache and store usage reports. */
+    /**
+     * Shared Element / File Count / Size box chrome for cache and store usage reports.
+     *
+     * @param maxBytes budget for the Utilization bar; {@code <= 0} omits the row entirely
+     */
     private static List<String> renderUsageTable(
             String title, String[][] rows, long totalFiles, long totalBytes, long maxBytes, String lastCleaned) {
         Table table = new Table(title)
@@ -767,8 +747,10 @@ public final class CacheCommand extends GroupCommand {
         }
         table.row(Table.Row.separator());
         table.row(styledMetricRow(new String[] {"Total", fmtCount(totalFiles), fmtSize(totalBytes)}));
-        String util = utilizationContent(totalBytes, maxBytes);
-        table.row(Table.Row.span(Table.Cell.of(RichText.ansi(util)).span(3)));
+        if (maxBytes > 0) {
+            String util = utilizationContent(totalBytes, maxBytes);
+            table.row(Table.Row.span(Table.Cell.of(RichText.ansi(util)).span(3)));
+        }
         List<String> out = new ArrayList<>(table.render(RenderContext.current()));
         Theme t = Theme.active();
         out.add("  Last cleaned: "

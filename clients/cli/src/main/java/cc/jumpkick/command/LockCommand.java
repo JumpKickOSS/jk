@@ -13,7 +13,6 @@ import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
-import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -106,7 +105,7 @@ public final class LockCommand implements CliCommand {
                 "libraries",
                 global.offline,
                 libraryRegistryUrl != null ? libraryRegistryUrl.toString() : null,
-                libraryCacheFile != null ? libraryCacheFile : LibraryCatalog.downloadedFile());
+                libraryCacheFile != null ? libraryCacheFile : JkDirs.libraryRegistry());
 
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;

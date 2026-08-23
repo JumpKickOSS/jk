@@ -2,9 +2,9 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.theme.Theme;
-import org.jline.utils.AttributedString;
-import org.jline.utils.AttributedStringBuilder;
-import org.jline.utils.AttributedStyle;
+import cc.jumpkick.terminal.Style;
+import cc.jumpkick.terminal.Styled;
+import cc.jumpkick.terminal.StyledBuilder;
 
 /**
  * Left-rail line builders. The rail is the box-drawing column on the left edge of the wizard frame:
@@ -48,71 +48,71 @@ public final class Rail {
     public static final String RADIO_OFF = "○";
 
     /** {@code ╭── <title>} — first line of the frame. */
-    public static AttributedString opener(String title, StepState state) {
+    public static Styled opener(String title, StepState state) {
         var cornerStyle = Theme.active().railStyle(state, RailGlyph.OPEN);
-        return new AttributedStringBuilder()
+        return new StyledBuilder()
                 .append(OPEN_CHAR, cornerStyle)
                 .append(CORNER_DASHES, cornerStyle)
                 .append(" ")
                 .append(title, Theme.active().focused())
-                .toAttributedString();
+                .build();
     }
 
     /** Same as {@link #opener(String, StepState)} but the title carries its own styling. */
-    public static AttributedString opener(AttributedString styledTitle, StepState state) {
+    public static Styled opener(Styled styledTitle, StepState state) {
         var cornerStyle = Theme.active().railStyle(state, RailGlyph.OPEN);
-        return new AttributedStringBuilder()
+        return new StyledBuilder()
                 .append(OPEN_CHAR, cornerStyle)
                 .append(CORNER_DASHES, cornerStyle)
                 .append(" ")
                 .append(styledTitle)
-                .toAttributedString();
+                .build();
     }
 
     /** {@code │ <text>} — interior line, with text styled by caller. */
-    public static AttributedString mid(AttributedString text, StepState state) {
-        return new AttributedStringBuilder()
+    public static Styled mid(Styled text, StepState state) {
+        return new StyledBuilder()
                 .append(MID_CHAR, Theme.active().railStyle(state, RailGlyph.MID))
                 .append("  ")
                 .append(text)
-                .toAttributedString();
+                .build();
     }
 
-    public static AttributedString mid(String text, StepState state, AttributedStyle textStyle) {
-        return new AttributedStringBuilder()
+    public static Styled mid(String text, StepState state, Style textStyle) {
+        return new StyledBuilder()
                 .append(MID_CHAR, Theme.active().railStyle(state, RailGlyph.MID))
                 .append("  ")
                 .append(text, textStyle)
-                .toAttributedString();
+                .build();
     }
 
     /** Bare {@code │} (no following text). */
-    public static AttributedString midBlank(StepState state) {
-        return new AttributedStringBuilder()
+    public static Styled midBlank(StepState state) {
+        return new StyledBuilder()
                 .append(MID_CHAR, Theme.active().railStyle(state, RailGlyph.MID))
-                .toAttributedString();
+                .build();
     }
 
     /** {@code ╰── [text]} — final line; trailing text is omitted when empty. */
-    public static AttributedString closer(String text, AttributedStyle textStyle) {
+    public static Styled closer(String text, Style textStyle) {
         return closer(text, textStyle, StepState.INACTIVE);
     }
 
     /** {@code ╰── [text]} with explicit rail state (controls the corner-glyph color). */
-    public static AttributedString closer(String text, AttributedStyle textStyle, StepState state) {
+    public static Styled closer(String text, Style textStyle, StepState state) {
         var cornerStyle = Theme.active().railStyle(state, RailGlyph.CLOSE);
-        var sb = new AttributedStringBuilder().append(CLOSE_CHAR, cornerStyle).append(CORNER_DASHES, cornerStyle);
+        var sb = new StyledBuilder().append(CLOSE_CHAR, cornerStyle).append(CORNER_DASHES, cornerStyle);
         if (text != null && !text.isEmpty()) {
             sb.append(" ").append(text, textStyle);
         }
-        return sb.toAttributedString();
+        return sb.build();
     }
 
     /**
      * Step header bullet: filled {@code ■} only for the active step, empty {@code □} for
      * completed/inactive steps. Coloring is unchanged — accent when active, dark-gray otherwise.
      */
-    public static AttributedString stepBullet(StepState state, String prompt) {
+    public static Styled stepBullet(StepState state, String prompt) {
         var promptStyle =
                 switch (state) {
                     case ACTIVE -> Theme.active().focused();
@@ -120,10 +120,10 @@ public final class Rail {
                     case INACTIVE -> Theme.active().darkGray();
                 };
         var bullet = state == StepState.ACTIVE ? BULLET_CHAR : BULLET_CHAR_EMPTY;
-        return new AttributedStringBuilder()
+        return new StyledBuilder()
                 .append(bullet, Theme.active().railStyle(state, RailGlyph.BULLET))
                 .append("  ")
                 .append(prompt, promptStyle)
-                .toAttributedString();
+                .build();
     }
 }

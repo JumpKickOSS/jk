@@ -42,6 +42,30 @@ class PluginProcessWatchdogTest {
     }
 
     @Test
+    void an_orphan_holding_stdout_does_not_wedge_the_job() throws Exception {
+        Path sh = Path.of("/bin/sh");
+        assumeTrue(Files.isExecutable(sh), "POSIX shell required");
+
+        // The shell exits at once, leaving a backgrounded sleep that inherited the stdout write
+        // end. Reparented on Linux, it is invisible to descendants() and produces no EOF — the
+        // root-exit drain grace must unwedge the conversation instead of blocking until the
+        // orphan dies. No idle timeout: this is the non-watchdog path.
+        Instant start = Instant.now();
+        int exit = PluginProcess.converse(
+                List.of(sh.toString(), "-c", "echo '##JKT:{\"event\":\"hello\"}'; sleep 30 & exit 0"),
+                Map.of(),
+                null,
+                "##JKT:",
+                (json, convo) -> {},
+                null,
+                false,
+                0L);
+
+        assertThat(exit).isZero();
+        assertThat(Duration.between(start, Instant.now())).isLessThan(Duration.ofSeconds(20));
+    }
+
+    @Test
     void a_chatty_child_is_left_alone() throws Exception {
         Path sh = Path.of("/bin/sh");
         assumeTrue(Files.isExecutable(sh), "POSIX shell required");

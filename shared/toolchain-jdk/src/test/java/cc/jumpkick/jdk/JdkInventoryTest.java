@@ -4,6 +4,7 @@ package cc.jumpkick.jdk;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
+import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -70,14 +71,17 @@ class JdkInventoryTest {
         Path graalHome = fakeGraal(jdks.resolve("graalvm-25.0.3"), "25.0.3");
         Path config = tmp.resolve("config/config.toml");
         Files.createDirectories(config.getParent());
-        Files.writeString(config, """
+        Files.writeString(
+                config,
+                """
                 color = "auto"
                 default-jdk = "temurin-25.0.3"
-                default-jdk-home = "%s"
+                default-jdk-home = %s
                 default-graal-jdk = "graalvm-25.0.3"
-                default-graal-jdk-home = "%s"
+                default-graal-jdk-home = %s
                 nerd-font = "auto"
-                """.formatted(javaHome, graalHome), StandardCharsets.UTF_8);
+                """.formatted(MinimalToml.quote(javaHome.toString()), MinimalToml.quote(graalHome.toString())),
+                StandardCharsets.UTF_8);
         Path data = Files.createDirectories(tmp.resolve("data"));
         Files.createSymbolicLink(data.resolve("default-jdk"), javaHome);
         Files.createSymbolicLink(data.resolve("current-jdk"), javaHome);
@@ -190,20 +194,126 @@ class JdkInventoryTest {
         assertThat(JdkInventory.render(parsed)).isEqualTo(once);
     }
 
+    @Test
+    void external_and_unowned_defaults_verify_ok_and_survive_repair(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        // External home (sdkman-style): no ownership marker, jk never fingerprints it.
+        Path external = fakeUnownedJdk(tmp.resolve("sdkman/25.0.4-tem"), "25.0.4", "Eclipse Adoptium");
+        // Unowned tree in the shared jdks root (IntelliJ-installed): no ownership marker.
+        Path unowned = fakeUnownedJdk(jdks.resolve("corretto-21.0.5"), "21.0.5", "Amazon.com Inc.");
+        JdkInventory inv = new JdkInventory(jdks, tmp.resolve("jk-jdks.toml"));
+        inv.setDefault(new InstalledJdk("25.0.4-tem", external));
+        inv.setGraal(new InstalledJdk("corretto-21.0.5", unowned));
+
+        // Neither row can ever be UNHASHED or TAMPERED — jk doesn't own the bytes.
+        assertThat(inv.verify().stream().allMatch(JdkInventory.Finding::ok)).isTrue();
+
+        // Repair keeps both rows and both pointers — it must never clear a default whose home
+        // still resolves, and never drop a row for a tree it merely doesn't own.
+        inv.repair();
+        assertThat(inv.defaultId()).contains("25.0.4-tem");
+        assertThat(inv.graalId()).contains("corretto-21.0.5");
+        assertThat(inv.defaultHome()).contains(external.toRealPath());
+        assertThat(inv.verify().stream().allMatch(JdkInventory.Finding::ok)).isTrue();
+    }
+
+    @Test
+    void migrate_synthesizes_a_row_for_an_external_legacy_default(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path external = fakeJdk(tmp.resolve("sdkman/25.0.4-tem"), "25.0.4", "Eclipse Adoptium");
+        Path config = tmp.resolve("config/config.toml");
+        Files.createDirectories(config.getParent());
+        Files.writeString(config, """
+                color = "auto"
+
+                default-jdk = "25.0.4-tem"
+                default-jdk-home = %s
+
+                nerd-font = "auto"
+                """.formatted(MinimalToml.quote(external.toString())), StandardCharsets.UTF_8);
+
+        JdkInventory inv = new JdkInventory(jdks, tmp.resolve("state/jk-jdks.toml"), config, null);
+        assertThat(inv.defaultId()).contains("25.0.4-tem");
+        // The pre-upgrade explicit default keeps resolving — the old scheme recorded the home
+        // for exactly this case, and migration must not strand a bare id.
+        assertThat(inv.defaultHome()).contains(external.toRealPath());
+
+        // Legacy keys removed; everything else — including blank lines — byte-preserved.
+        String leftover = Files.readString(config);
+        assertThat(leftover).isEqualTo("""
+                color = "auto"
+
+
+                nerd-font = "auto"
+                """);
+    }
+
+    @Test
+    void migrate_leaves_a_config_without_legacy_keys_untouched(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path config = tmp.resolve("config/config.toml");
+        Files.createDirectories(config.getParent());
+        String original = """
+                color = "auto"
+
+                nerd-font = "auto"
+
+                [m2]
+                integration = true
+                """;
+        Files.writeString(config, original, StandardCharsets.UTF_8);
+        JdkInventory inv = new JdkInventory(jdks, tmp.resolve("state/jk-jdks.toml"), config, null);
+        inv.defaultId(); // trigger migrate
+        assertThat(Files.readString(config)).isEqualTo(original);
+    }
+
+    @Test
+    void home_with_backslashes_round_trips(@TempDir Path tmp) throws IOException {
+        // A Windows home is written through MinimalToml.quote, which escapes each backslash;
+        // the reader must decode them or the path grows double separators (UNC paths break).
+        JdkInventory.Snapshot snap = JdkInventory.parse("""
+                default = "corp-jdk"
+
+                [[jdk]]
+                id = "corp-jdk"
+                vendor = "temurin"
+                version = "25.0.4"
+                graal = false
+                home = "C:\\Users\\dev\\jdk-25"
+                """);
+        assertThat(snap.row("corp-jdk").home().toString()).isEqualTo("C:\\Users\\dev\\jdk-25".replace("\\\\", "\\"));
+        // And render → parse is the identity on such a row.
+        String rendered = JdkInventory.render(snap);
+        assertThat(JdkInventory.parse(rendered).row("corp-jdk").home())
+                .isEqualTo(snap.row("corp-jdk").home());
+    }
+
+    @Test
+    void collision_between_owned_tree_and_external_default_resolves_to_the_recorded_home(@TempDir Path tmp)
+            throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium");
+        Path external = fakeJdk(tmp.resolve("elsewhere/temurin-25.0.4"), "25.0.4", "Eclipse Adoptium");
+        JdkInventory inv = new JdkInventory(jdks, tmp.resolve("jk-jdks.toml"));
+        inv.setDefault(new InstalledJdk("temurin-25.0.4", external));
+        // The row records WHICH install the user chose; the same-basename tree under the jdks
+        // root must not shadow it.
+        assertThat(inv.defaultHome()).contains(external.toRealPath());
+    }
+
+    private static Path fakeUnownedJdk(Path home, String version, String implementor) throws IOException {
+        writeFakeBin(home, version, implementor);
+        return home;
+    }
+
     private static Path fakeJdk(Path home, String version, String implementor) throws IOException {
-        Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake\n");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake\n");
-        Files.writeString(
-                home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"" + implementor + "\"\n");
+        writeFakeBin(home, version, implementor);
         JdkOwnership.mark(home);
         return home;
     }
 
     private static Path fakeGraal(Path home, String version) throws IOException {
-        Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake\n");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake\n");
+        writeFakeBin(home, version, "Oracle Corporation");
         Files.writeString(
                 home.resolve("release"),
                 "JAVA_VERSION=\""
@@ -215,5 +325,13 @@ class JdkInventoryTest {
                         + "\"\n");
         JdkOwnership.mark(home);
         return home;
+    }
+
+    private static void writeFakeBin(Path home, String version, String implementor) throws IOException {
+        Files.createDirectories(home.resolve("bin"));
+        Files.writeString(JdkFingerprint.java(home), "#!/fake\n");
+        Files.writeString(JdkFingerprint.javac(home), "#!/fake\n");
+        Files.writeString(
+                home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"" + implementor + "\"\n");
     }
 }

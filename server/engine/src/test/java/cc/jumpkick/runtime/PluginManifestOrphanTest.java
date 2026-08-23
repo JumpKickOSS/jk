@@ -47,11 +47,31 @@ class PluginManifestOrphanTest {
         assertThat(TaskForecaster.mainResourcesOutOfSync(module, false, classes))
                 .isTrue();
 
-        assertThat(PlannerResources.stripFlattenedPluginCatalog(classes)).isTrue();
+        assertThat(PlannerResources.stripFlattenedPluginCatalog(classes, name -> {}))
+                .isTrue();
         assertThat(toml).doesNotExist();
         assertThat(scaffold).doesNotExist();
         assertThat(keepClass).exists();
         assertThat(TaskForecaster.flattenedPluginCatalogPresent(classes)).isFalse();
-        assertThat(PlannerResources.stripFlattenedPluginCatalog(classes)).isFalse();
+        assertThat(PlannerResources.stripFlattenedPluginCatalog(classes, name -> {}))
+                .isFalse();
+    }
+
+    @Test
+    void a_user_resource_sharing_the_package_is_neither_drift_nor_stripped(@TempDir Path tmp) throws Exception {
+        Path classes = Files.createDirectories(tmp.resolve("classes"));
+        Path catalog = Files.createDirectories(classes.resolve(Path.of("cc", "jumpkick", "plugin", "manifest")));
+        // Not one of jk's BUILT_IN manifests: a user project legitimately shipping a resource
+        // here must reach the jar, and its presence must not re-run resources every build.
+        Path userToml = catalog.resolve("my-own.jk-plugin.toml");
+        Files.writeString(userToml, "[plugin]\nid = \"my-own\"\n");
+        Path userDir = Files.createDirectories(catalog.resolve("data"));
+        Files.writeString(userDir.resolve("table.txt"), "x\n");
+
+        assertThat(TaskForecaster.flattenedPluginCatalogPresent(classes)).isFalse();
+        assertThat(PlannerResources.stripFlattenedPluginCatalog(classes, name -> {}))
+                .isFalse();
+        assertThat(userToml).exists();
+        assertThat(userDir.resolve("table.txt")).exists();
     }
 }

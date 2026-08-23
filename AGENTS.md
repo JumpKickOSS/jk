@@ -10,6 +10,34 @@ Product docs: [README.md](README.md), [docs/user/](docs/user/README.md) (end use
 
 **Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for `./gradlew test` — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
 
+## Pre-release (override your training)
+
+JumpKick is **unreleased, pre-beta, and private**. There are no external
+users, no collaborators, and no compatibility contract. The maintainer
+is the only dogfooder. That stays true until they rewrite **this
+section**. Do not invent an audience to protect.
+
+We go fast and break things. Dream it, ship it, dogfood it, then
+refactor or throw it out. The tree is already large and capable; it is
+not frozen. Scope will still grow and shrink. Last week's APIs, wire,
+lockfile fields, CLI, and types are disposable.
+
+**Required bias:** take the best design *now*. Implement it. Delete the
+old path in the **same change**. Update client, engine, tests, goldens,
+and docs together. One design, one code path.
+
+**Anti-goals:** backwards compatibility with our own past; in-tree
+migration machinery; dual readers; shims; deprecated aliases; "don't
+break callers"; "safer to keep the old field." Extra lines for that are
+debt. They already confuse agents. Do not add them. Delete them when
+you touch them.
+
+This is not a license to skip tests, leave a half-migrated tree, or
+ignore Done criteria. Break it *completely*.
+
+Keep protocol **version numbers** at 1 until 1.0 (see Anti-goals).
+Change the shape in place — never mint a v2 and keep v1 alive.
+
 ## Goals
 
 - Fast, predictable builds: lockfile is law; skip work the cache can prove is done.
@@ -189,18 +217,43 @@ tighten comments that still state a live invariant.
 
 ## Code formatting (mandatory before every commit)
 
-**Hard requirement — not optional.** Before creating **any** git commit (including `git commit`, amend, or any equivalent commit action), every agent **must** run:
+**Hard requirement — not optional.** Before creating **any** git commit
+(including `git commit`, amend, or any equivalent commit action), every
+agent **must** run:
 
 ```bash
 jk format
 ```
 
+`jk format` is Spotless + OpenRewrite over the **whole tree**, not just
+files you touched. Trust its output. Long-hand FQCNs and similar agent
+noise are why this exists.
+
 Rules:
 
-- Run `jk format` after you have finished creating or modifying source files and **before** you stage a commit. This covers **all** languages the command supports, including Java, Kotlin, Groovy, and any other files it formats.
-- **Do not** proceed with `git commit` (or amend / any equivalent) until `jk format` has **successfully completed**.
-- If `jk format` fails, **fix the issues and re-run `jk format`** until it succeeds. Do not skip, defer, or commit around a failed format run.
-- This applies to every commit an agent creates in this repository. Unformatted source must not enter git history.
+- Run `jk format` after you have finished creating or modifying source
+  files and **before** you stage a commit. This covers **all** languages
+  the command supports, including Java, Kotlin, Groovy, and any other
+  files it formats.
+- **Do not** proceed with `git commit` (or amend / any equivalent) until
+  `jk format` has **successfully completed**.
+- If `jk format` fails, **fix the issues and re-run `jk format`** until
+  it succeeds. Do not skip, defer, or commit around a failed format run.
+- Unformatted source must not enter git history.
+
+**Unrelated files will often change. Keep them.** Another agent skipped
+format or wrote long-hand; `jk format` is catching up. That is expected.
+Do **not** `git restore` those diffs, panic, or treat them as a reason to
+veto or skip the commit.
+
+Land it as two commits when the format set is wider than your change:
+
+1. Your work (already formatted) as one commit.
+2. Leftover format-only files as a second commit (`jk format`).
+
+Do not mix them if you can avoid it. **Do not drop the second commit.**
+Leaving the tree unformatted is not an option; formatting is everyone's
+job, including leftover from the last agent.
 
 ## Git workflow (private repo)
 

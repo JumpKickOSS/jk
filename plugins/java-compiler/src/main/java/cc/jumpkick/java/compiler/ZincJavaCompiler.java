@@ -4,6 +4,7 @@ package cc.jumpkick.java.compiler;
 import com.sun.source.util.JavacTask;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -23,11 +24,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.zip.GZIPInputStream;
 import javax.annotation.processing.Processor;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaFileObject;
@@ -243,7 +246,7 @@ public final class ZincJavaCompiler {
             FileConverter converter = PlainVirtualFileConverter.converter();
             ApProvenance provenance = new ApProvenance();
             processors = loadProcessors(processorPath);
-            javac = recordingJavac(converter, processors.processors(), provenance);
+            javac = recordingJavac(converter, processors, provenance);
             Compilers compilers = mixed != null ? mixedCompilers(javac, mixed) : javaOnlyCompilers(javac);
 
             VirtualFile[] sourceFiles = virtual(sources, converter);
@@ -343,17 +346,41 @@ public final class ZincJavaCompiler {
      * <p>Unreadability surfaces either way — a thrown parse error, or an empty {@link Optional} over
      * a file that plainly exists — and both mean the same thing, so both delete it. Left in place it
      * is a file every later {@code store.set} must replace and no read can ever use.
+     *
+     * <p>Do not call {@code store.get()} on a non-gzip file. Zinc opens a {@code FileInputStream}
+     * then wraps it in {@link GZIPInputStream}; a bad magic throws in that constructor and never
+     * closes the stream. Windows then refuses to delete or replace the analysis file.
      */
     private static Optional<AnalysisContents> readAnalysis(AnalysisStore store, Path analysisFile) {
+        if (!Files.isRegularFile(analysisFile)) {
+            return Optional.empty();
+        }
+        if (!gzipHeaderReadable(analysisFile)) {
+            tryDeleteAnalysis(analysisFile);
+            return Optional.empty();
+        }
         try {
             Optional<AnalysisContents> got = store.get();
-            if (got.isEmpty() && Files.isRegularFile(analysisFile)) {
+            if (got.isEmpty()) {
                 tryDeleteAnalysis(analysisFile);
             }
             return got;
         } catch (RuntimeException e) {
             tryDeleteAnalysis(analysisFile);
             return Optional.empty();
+        }
+    }
+
+    /**
+     * Zinc's binary store is gzip. Opens and closes the file ourselves so a bad header cannot leak
+     * a handle the way {@code store.get()} does.
+     */
+    private static boolean gzipHeaderReadable(Path analysisFile) {
+        try (InputStream raw = Files.newInputStream(analysisFile)) {
+            new GZIPInputStream(raw).close();
+            return true;
+        } catch (IOException e) {
+            return false;
         }
     }
 
@@ -394,19 +421,19 @@ public final class ZincJavaCompiler {
 
     /**
      * Remove the analysis file. On POSIX one {@code deleteIfExists} is the whole story. Windows may
-     * deny the delete while another handle lingers, so rename it out of the way — allowed where
-     * deleting is not — and retry when even that is refused.
+     * deny the delete while another handle lingers ({@link FileSystemException}, not
+     * {@link AccessDeniedException} — sharing violation is ERROR_SHARING_VIOLATION), so rename it
+     * out of the way — allowed where deleting is not — and retry when even that is refused.
      */
     private static void tryDeleteAnalysis(Path analysisFile) {
         for (int attempt = 1; ; attempt++) {
             try {
                 Files.deleteIfExists(analysisFile);
                 return;
-            } catch (AccessDeniedException denied) {
-                if (!isWindows() || renameAside(analysisFile) || attempt == LOCK_ATTEMPTS) return;
+            } catch (IOException e) {
+                if (!isWindows() || !isSharingViolation(e) || attempt == LOCK_ATTEMPTS) return;
+                if (renameAside(analysisFile)) return;
                 sleepBriefly(attempt);
-            } catch (IOException ignored) {
-                return; // best effort — a full compile overwrites it anyway
             }
         }
     }
@@ -832,10 +859,10 @@ public final class ZincJavaCompiler {
     }
 
     private static RecordingJavaCompiler recordingJavac(
-            FileConverter converter, List<Processor> processors, ApProvenance provenance) {
+            FileConverter converter, ProcessorLoad processors, ApProvenance provenance) {
         JavaCompiler javac;
-        if (!processors.isEmpty()) {
-            javac = new ProvenanceJavac(processors, provenance);
+        if (processors.any()) {
+            javac = new ProvenanceJavac(processors.loader(), provenance);
         } else {
             scala.Option<JavaCompiler> local = sbt.internal.inc.javac.JavaCompiler.local();
             javac = local.isDefined() ? local.get() : sbt.internal.inc.javac.JavaCompiler.fork(scala.Option.empty());
@@ -843,9 +870,13 @@ public final class ZincJavaCompiler {
         return new RecordingJavaCompiler(javac, converter);
     }
 
-    private record ProcessorLoad(List<Processor> processors, URLClassLoader loader) implements AutoCloseable {
+    /**
+     * The processor path's classloader, kept open for the whole compile. Holds no {@link Processor}
+     * instances: each javac round loads its own (see {@link #freshProcessors}).
+     */
+    private record ProcessorLoad(boolean any, URLClassLoader loader) implements AutoCloseable {
         static ProcessorLoad none() {
-            return new ProcessorLoad(List.of(), null);
+            return new ProcessorLoad(false, null);
         }
 
         @Override
@@ -869,10 +900,57 @@ public final class ZincJavaCompiler {
                 throw new IllegalArgumentException("bad processor path entry: " + processorPath.get(i), e);
             }
         }
-        URLClassLoader loader = new URLClassLoader(urls, ZincJavaCompiler.class.getClassLoader());
+        URLClassLoader loader = processorClassLoader(urls);
+        // Full iteration, not a hasNext() probe: hasNext validates only the FIRST services entry
+        // (it loads the provider class without instantiating), so a jar whose second entry is
+        // broken would otherwise blow up mid-Zinc-compile as a raw ServiceConfigurationError.
+        // Fail fast here instead, where compile()'s RuntimeException catch turns it into a
+        // diagnosed Result. The instances are discarded — per-cycle sets come from
+        // freshProcessors, because AbstractProcessor.init is single-shot.
+        boolean any;
+        try {
+            any = false;
+            for (Processor ignored : ServiceLoader.load(Processor.class, loader)) any = true;
+        } catch (ServiceConfigurationError e) {
+            try {
+                loader.close();
+            } catch (IOException ignored) {
+                // loader teardown is best-effort on the failure path
+            }
+            throw new IllegalStateException("broken annotation processor registration: " + e.getMessage(), e);
+        }
+        return new ProcessorLoad(any, loader);
+    }
+
+    /**
+     * A new {@link Processor} instance set per Zinc cycle (each cycle is its own {@link JavacTask};
+     * within one task javac's real annotation rounds correctly reuse these instances, per the
+     * processor contract). {@link javax.annotation.processing.AbstractProcessor#init} is single-shot
+     * — it throws {@code "Cannot call init more than once."} — so a set handed to one task is never
+     * reusable by the next cycle. Do not move this inside the task. Package-private so a test can
+     * pin that two loads share nothing.
+     */
+    static List<Processor> freshProcessors(URLClassLoader loader) {
         List<Processor> processors = new ArrayList<>();
-        for (Processor p : ServiceLoader.load(Processor.class, loader)) processors.add(p);
-        return new ProcessorLoad(processors, loader);
+        try {
+            for (Processor p : ServiceLoader.load(Processor.class, loader)) processors.add(p);
+        } catch (ServiceConfigurationError e) {
+            // SCE extends Error and would sail past every catch in compile(), potentially after a
+            // cycle already wrote class files without persistAnalysis. loadProcessors fails fast
+            // for entries broken at load time; this guards ones that break mid-compile (a jar
+            // rewritten under us).
+            throw new IllegalStateException("broken annotation processor registration: " + e.getMessage(), e);
+        }
+        return processors;
+    }
+
+    /**
+     * Processor-path loader. Parent is the platform loader so {@link Processor} resolves, but
+     * {@link ServiceLoader} does not inherit {@code META-INF/services} registrations from the
+     * worker classpath — those are not on the user's {@code -processorpath}.
+     */
+    static URLClassLoader processorClassLoader(URL[] urls) {
+        return new URLClassLoader(urls, ClassLoader.getPlatformClassLoader());
     }
 
     private static String[] javacOptions(int release, List<String> extra, Path sourceOutput, List<Path> processorPath) {
@@ -934,11 +1012,11 @@ public final class ZincJavaCompiler {
      * Used instead of Zinc's {@code JavaCompiler.local} when a processor path is present.
      */
     private static final class ProvenanceJavac implements JavaCompiler {
-        private final List<Processor> processors;
+        private final URLClassLoader loader;
         private final ApProvenance provenance;
 
-        ProvenanceJavac(List<Processor> processors, ApProvenance provenance) {
-            this.processors = processors;
+        ProvenanceJavac(URLClassLoader loader, ApProvenance provenance) {
+            this.loader = loader;
             this.provenance = provenance;
         }
 
@@ -971,7 +1049,7 @@ public final class ZincJavaCompiler {
                 }
                 Iterable<? extends JavaFileObject> units = fm.getJavaFileObjectsFromPaths(srcPaths);
                 JavacTask task = (JavacTask) javac.getTask(null, fm, diags, Arrays.asList(options), null, units);
-                task.setProcessors(provenance.wrap(processors));
+                task.setProcessors(provenance.wrap(freshProcessors(loader)));
                 boolean ok = task.call();
                 sbt.internal.inc.javac.DiagnosticsReporter bridge =
                         new sbt.internal.inc.javac.DiagnosticsReporter(reporter);

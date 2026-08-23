@@ -605,8 +605,9 @@ public final class JkResultsMarkdown {
     }
 
     private static String pathOr(@Nullable Path path, String fallback) {
-        // Forward slashes in the markdown report so display paths match across OSes.
-        return path == null ? fallback : path.toString().replace('\\', '/');
+        // Forward slashes in the markdown report so display paths match across OSes; a POSIX
+        // backslash name renders verbatim (DirKeys rewrites only real Windows paths).
+        return path == null ? fallback : cc.jumpkick.util.DirKeys.slashes(path.toString());
     }
 
     private static String leaf(String dir) {

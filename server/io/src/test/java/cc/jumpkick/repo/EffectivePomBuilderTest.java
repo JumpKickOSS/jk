@@ -22,6 +22,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +32,7 @@ import org.junit.jupiter.api.io.TempDir;
 class EffectivePomBuilderTest {
 
     private HttpServer server;
+    private ExecutorService serverPool;
     private URI base;
     private final Map<String, byte[]> poms = new HashMap<>();
     /** When set, invoked with the request path before a registered POM is served (may block). */
@@ -40,6 +42,11 @@ class EffectivePomBuilderTest {
     void start() throws IOException {
         EffectivePomBuilder.clearProcessCache();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        // The default executor runs handlers on the single dispatch thread, so a held response
+        // blocks every other request — the concurrent-walker tests could never get two fetches
+        // in flight and silently fell back to serial fetching.
+        serverPool = Executors.newCachedThreadPool();
+        server.setExecutor(serverPool);
         // Single catch-all handler that serves any registered POM and 404s otherwise.
         server.createContext("/", exchange -> {
             byte[] body = poms.get(exchange.getRequestURI().getPath());
@@ -60,6 +67,7 @@ class EffectivePomBuilderTest {
     @AfterEach
     void stop() {
         server.stop(0);
+        serverPool.shutdownNow();
     }
 
     @Test
@@ -474,10 +482,11 @@ class EffectivePomBuilderTest {
         // Hold each top-level POM response until BOTH walkers have their first fetch in flight —
         // by then each owns its own IN_FLIGHT entry, so the cross-join is guaranteed.
         CountDownLatch bothFetching = new CountDownLatch(2);
+        AtomicBoolean bothWereFetching = new AtomicBoolean(true);
         beforeServe = path -> {
             bothFetching.countDown();
             try {
-                bothFetching.await(5, TimeUnit.SECONDS);
+                if (!bothFetching.await(20, TimeUnit.SECONDS)) bothWereFetching.set(false);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -498,6 +507,9 @@ class EffectivePomBuilderTest {
                         .isInstanceOf(PomParseException.class)
                         .hasMessageContaining("cycle");
             }
+            assertThat(bothWereFetching)
+                    .as("the cross-join needs both walkers holding their own IN_FLIGHT entry")
+                    .isTrue();
         } finally {
             beforeServe = null;
             pool.shutdownNow();
@@ -559,11 +571,12 @@ class EffectivePomBuilderTest {
         // Hold a and x until both walkers have their first fetch in flight, so builder1 owns
         // IN_FLIGHT[a] and builder2 owns IN_FLIGHT[x] before either expands.
         CountDownLatch bothFetching = new CountDownLatch(2);
+        AtomicBoolean bothWereFetching = new AtomicBoolean(true);
         beforeServe = path -> {
             if (path.contains("/a/") || path.contains("/x/")) {
                 bothFetching.countDown();
                 try {
-                    bothFetching.await(5, TimeUnit.SECONDS);
+                    if (!bothFetching.await(20, TimeUnit.SECONDS)) bothWereFetching.set(false);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
@@ -585,6 +598,9 @@ class EffectivePomBuilderTest {
                         .isInstanceOf(PomParseException.class)
                         .hasMessageContaining("cycle");
             }
+            assertThat(bothWereFetching)
+                    .as("the cross-join needs both walkers holding their own IN_FLIGHT entry")
+                    .isTrue();
         } finally {
             beforeServe = null;
             pool.shutdownNow();

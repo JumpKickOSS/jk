@@ -9,7 +9,6 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
-import org.jline.utils.AttributedString;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -23,7 +22,7 @@ class CompilerDiagnosticTest {
     }
 
     private static String plain(String rendered) {
-        return AttributedString.stripAnsi(rendered == null ? "" : rendered);
+        return cc.jumpkick.terminal.Width.stripAnsi(rendered == null ? "" : rendered);
     }
 
     @Test

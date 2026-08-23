@@ -422,10 +422,13 @@ final class AotCacheTrainer {
         for (String dir : path.split(java.io.File.pathSeparator)) {
             Path base = Path.of(dir, exe);
             if (Files.isExecutable(base)) return true;
-            // Windows PATHEXT: docker.exe / docker.cmd, not a bare "docker" file.
+            // Windows PATHEXT: docker.exe / docker.cmd / docker.bat (chocolatey shims and corp
+            // wrappers ship .bat), not a bare "docker" file — same launcher set as
+            // JkLayoutPaths.isRunnableClient.
             if (windows
                     && (Files.isExecutable(Path.of(dir, exe + ".exe"))
-                            || Files.isExecutable(Path.of(dir, exe + ".cmd")))) {
+                            || Files.isExecutable(Path.of(dir, exe + ".cmd"))
+                            || Files.isExecutable(Path.of(dir, exe + ".bat")))) {
                 return true;
             }
         }

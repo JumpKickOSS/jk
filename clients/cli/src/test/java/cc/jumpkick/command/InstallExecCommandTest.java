@@ -203,7 +203,7 @@ class InstallExecCommandTest {
         serveJar("com.example", "widget-cli", "1.0.0", "com.example.Main");
 
         // System global catalog layer (store/libs.global.toml — JK_HOME is redirected in tests).
-        Path libsToml = cc.jumpkick.library.LibraryCatalog.downloadedFile();
+        Path libsToml = cc.jumpkick.util.JkDirs.libraryRegistry();
         Files.createDirectories(libsToml.getParent());
         Files.writeString(libsToml, "[libraries]\ntesttool-fixture = \"com.example:widget-cli\"\n");
         try {

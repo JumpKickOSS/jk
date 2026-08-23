@@ -8,7 +8,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -18,6 +17,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 /**
@@ -46,7 +46,107 @@ public final class RepoArtifactStore {
         // A repo name is a raw substring from the project's config/lockfile; refuse one that would
         // escape repos/ into an attacker-chosen directory.
         MavenLayout.requireSafeSegment(repoName, "repository name");
+        migrateLegacyLocal(cacheRoot);
         this.root = cacheRoot.resolve("repos").resolve(repoName);
+    }
+
+    /**
+     * Marker in {@code repos/}: this store has been through the local → jk-local rename. Before
+     * the marker exists, a {@code repos/local} directory can only be the pre-rename first-party
+     * store (older jk reserved the name and never fetched a remote into it); once the marker is
+     * written, {@code repos/local} is an ordinary user-named remote and must be left alone.
+     */
+    private static final String LEGACY_LOCAL_MARKER = ".jk-local-renamed";
+
+    /** Roots already migrated (or confirmed clean) this process — elides the per-construction probe. */
+    private static final Set<Path> LEGACY_LOCAL_MIGRATED = ConcurrentHashMap.newKeySet();
+
+    /** Test seam: forget which roots this process already migrated, as a fresh process would. */
+    static void clearLegacyMigrationMemoForTest() {
+        LEGACY_LOCAL_MIGRATED.clear();
+    }
+
+    /** True while a pre-rename {@code repos/local} may still exist (migration not yet completed). */
+    public static boolean legacyLocalPending(Path cacheRoot) {
+        Path reposDir = cacheRoot.resolve("repos");
+        return !Files.exists(reposDir.resolve(LEGACY_LOCAL_MARKER)) && Files.isDirectory(reposDir.resolve("local"));
+    }
+
+    /**
+     * Fold a pre-rename {@code repos/local} first-party store into {@code repos/jk-local} so
+     * installs made before the rename stay resolvable under one name. Runs from every store
+     * construction, memoized per process and gated by
+     * {@link #LEGACY_LOCAL_MARKER} on disk, so the real work happens once per store lifetime — and
+     * a {@code repos/local} created <em>after</em> the marker (a user remote actually named
+     * {@code local}, legal since the rename) is never touched. Whole-directory atomic move when
+     * the new store doesn't exist yet; per-file merge otherwise, keeping the jk-local copy on
+     * collision — later writes went there, and every read hash-verifies, so dropping the older
+     * duplicate can never serve wrong bytes. Best-effort: a failure leaves both trees readable and
+     * retries on a later construction.
+     */
+    public static void migrateLegacyLocal(Path cacheRoot) {
+        Path reposDir = cacheRoot.resolve("repos");
+        if (!LEGACY_LOCAL_MIGRATED.add(reposDir)) return;
+        if (Files.exists(reposDir.resolve(LEGACY_LOCAL_MARKER))) return;
+        Path legacy = reposDir.resolve("local");
+        try {
+            if (!Files.isDirectory(legacy)) {
+                writeLegacyMarker(reposDir);
+                return;
+            }
+            Path target = reposDir.resolve(RepoArtifactResolver.JK_LOCAL);
+            if (!Files.exists(target)) {
+                try {
+                    Files.move(legacy, target, StandardCopyOption.ATOMIC_MOVE);
+                    writeLegacyMarker(reposDir);
+                    return;
+                } catch (IOException raceOrFs) {
+                    // Concurrent creator or a filesystem that refuses the directory move —
+                    // fall through to the per-file merge.
+                }
+            }
+            try (Stream<Path> files = Files.walk(legacy)) {
+                for (Path file : (Iterable<Path>) files::iterator) {
+                    if (!Files.isRegularFile(file)) continue;
+                    Path dest = target.resolve(legacy.relativize(file));
+                    if (Files.exists(dest)) {
+                        Files.deleteIfExists(file); // duplicate — jk-local's copy wins
+                    } else {
+                        Files.createDirectories(dest.getParent());
+                        Files.move(file, dest);
+                    }
+                }
+            }
+            // Bottom-up sweep of the emptied skeleton; a leftover file means a concurrent writer
+            // on the OLD layout (an older jk still running) — leave the tree and retry later.
+            boolean emptied = true;
+            try (Stream<Path> dirs = Files.walk(legacy)) {
+                List<Path> ordered = new ArrayList<>();
+                dirs.filter(Files::isDirectory).forEach(ordered::add);
+                for (int i = ordered.size() - 1; i >= 0; i--) {
+                    try {
+                        Files.deleteIfExists(ordered.get(i));
+                    } catch (IOException notEmpty) {
+                        emptied = false;
+                    }
+                }
+            }
+            if (emptied) {
+                writeLegacyMarker(reposDir);
+            } else {
+                LEGACY_LOCAL_MIGRATED.remove(reposDir);
+            }
+        } catch (IOException e) {
+            LEGACY_LOCAL_MIGRATED.remove(reposDir); // retry from a later construction
+        }
+    }
+
+    private static void writeLegacyMarker(Path reposDir) throws IOException {
+        Files.createDirectories(reposDir);
+        Path marker = reposDir.resolve(LEGACY_LOCAL_MARKER);
+        if (!Files.exists(marker)) {
+            Files.writeString(marker, "repos/local was folded into repos/jk-local (or never existed)\n");
+        }
     }
 
     /** Factory: the full store for {@code repoName} under {@code cacheRoot}. */
@@ -312,83 +412,6 @@ public final class RepoArtifactStore {
             out.addAll(forRepoName(cacheRoot, repoName).versions(group, artifact));
         }
         return List.copyOf(out);
-    }
-
-    /** All relative m2 paths stored (non-sidecar files for full store). Empty for NONE. */
-    public List<String> allRelativePaths() {
-        if (root == null || !Files.isDirectory(root)) return List.of();
-        List<String> result = new ArrayList<>();
-        try (Stream<Path> walk = Files.walk(root)) {
-            walk.filter(Files::isRegularFile)
-                    .filter(p -> !isMemoName(p.getFileName().toString()))
-                    // Leaked .put-*.tmp download temps are not stored artifacts.
-                    .filter(p -> !p.getFileName().toString().startsWith(".put-")
-                            && !p.getFileName().toString().endsWith(".tmp"))
-                    .forEach(p -> result.add(root.relativize(p).toString()));
-        } catch (IOException ignored) {
-        }
-        return result;
-    }
-
-    /** One evictable repos/ artifact: its owning repo name, name-relative path, size, and LRU time. */
-    private record ReposEntry(String repoName, String relPath, long size, long atimeMillis) {}
-
-    /** Outcome of {@link #evictReposDownTo}. */
-    public record EvictReport(int deleted, long freedBytes, long remainingBytes) {}
-
-    /**
-     * LRU-evict downloaded artifacts under {@code <cacheRoot>/repos/} down to {@code maxBytes}, keyed
-     * by last-access from {@code atimeByHash} (sha → millis; unknown = coldest). {@code
-     * repos/jk-local} is exempt — first-party, no re-fetch source. Re-fetchable third-party jars are
-     * fair game — this is the size bound the store budget promises. Best-effort; never throws.
-     */
-    public static EvictReport evictReposDownTo(
-            Path cacheRoot, long maxBytes, Map<String, Long> atimeByHash, boolean dryRun) {
-        Path reposDir = cacheRoot.resolve("repos");
-        if (!Files.isDirectory(reposDir)) return new EvictReport(0, 0L, 0L);
-        List<ReposEntry> entries = new ArrayList<>();
-        long total = 0;
-        try (Stream<Path> named = Files.list(reposDir)) {
-            for (Path nameDir : (Iterable<Path>) named::iterator) {
-                String name = nameDir.getFileName().toString();
-                if (!Files.isDirectory(nameDir) || RepoArtifactResolver.isFirstPartyStoreName(name)) {
-                    continue; // never evict first-party
-                }
-                RepoArtifactStore store = new RepoArtifactStore(cacheRoot, name);
-                for (String rel : store.allRelativePaths()) {
-                    Path file = nameDir.resolve(rel);
-                    long size;
-                    try {
-                        size = Files.size(file);
-                    } catch (IOException e) {
-                        continue;
-                    }
-                    String sha = store.readSha256Sidecar(rel).orElse("");
-                    long atime = atimeByHash.getOrDefault(sha, 0L);
-                    entries.add(new ReposEntry(name, rel, size, atime));
-                    total += size;
-                }
-            }
-        } catch (IOException ignored) {
-            // best-effort
-        }
-        if (total <= maxBytes) return new EvictReport(0, 0L, total);
-
-        entries.sort(Comparator.comparingLong(ReposEntry::atimeMillis)
-                .thenComparing(Comparator.comparingLong(ReposEntry::size).reversed()));
-        int deleted = 0;
-        long freed = 0;
-        long remaining = total;
-        for (ReposEntry e : entries) {
-            if (remaining <= maxBytes) break;
-            if (!dryRun) {
-                new RepoArtifactStore(cacheRoot, e.repoName()).evict(e.relPath());
-            }
-            deleted++;
-            freed += e.size();
-            remaining -= e.size();
-        }
-        return new EvictReport(deleted, freed, remaining);
     }
 
     /** The root directory ({@code <cache>/repos/<name>}), or {@code null} for {@link #NONE}. */

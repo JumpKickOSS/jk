@@ -18,8 +18,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -42,21 +40,15 @@ public final class JkBuildParser {
     private JkBuildParser() {}
 
     /**
-     * Process-lifetime memo of {@link #parseLocal(Path)}, keyed by absolute path (size + mtime live
-     * in the value so rewrites re-parse and replace the entry). Stores the <em>local</em> manifest
-     * only — workspace inheritance is applied by {@link #parse(Path)} on top so it always sees a
-     * fresh root.
+     * Process-lifetime memo of {@link #parseLocal(Path)}, keyed by absolute path. The stamp is the
+     * file's bytes — size+mtime is too coarse on Windows (same-length edits in one tick served the
+     * previous parse). One entry per file, replaced in place so a long {@code jk watch} cannot grow
+     * without bound. Stores the <em>local</em> manifest only; workspace inheritance is applied by
+     * {@link #parse(Path)} on top so it always sees a fresh root.
      */
-    // A plain (size, mtime) memo: the parse is a pure function of the file's bytes again, so
-    // nothing environment-shaped belongs in the stamp.
-
-    // Keyed by PATH, with the stamp in the value: keying by (path, size, mtime) would make every
-    // save of a jk.toml a NEW key, stranding the superseded JkBuild for the engine's lifetime —
-    // unbounded growth across a long `jk watch` session. One entry per file, replaced in place.
-
     private static final Map<Path, Cached> PARSE_CACHE = new ConcurrentHashMap<>();
 
-    private record Cached(long size, FileTime modified, JkBuild value) {}
+    private record Cached(String body, JkBuild value) {}
 
     /**
      * Parse {@code jk.toml} and resolve workspace inheritance / sibling placeholders for the module
@@ -78,26 +70,26 @@ public final class JkBuildParser {
      */
     public static JkBuild parseLocal(Path file) throws IOException {
         Objects.requireNonNull(file, "file");
-        BasicFileAttributes attrs;
+        String body;
         try {
-            attrs = Files.readAttributes(file, BasicFileAttributes.class);
+            body = Files.readString(file);
         } catch (NoSuchFileException e) {
             throw new JkBuildParseException("jk.toml not found: " + file);
         }
         Path key = file.toAbsolutePath().normalize();
         Cached cached = PARSE_CACHE.get(key);
-        if (cached != null && cached.size() == attrs.size() && cached.modified().equals(attrs.lastModifiedTime())) {
+        if (cached != null && cached.body().equals(body)) {
             return cached.value();
         }
-        Path moduleDir = file.toAbsolutePath().normalize().getParent();
+        Path moduleDir = key.getParent();
         LibraryCatalog catalog;
         try {
             catalog = LibraryCatalog.forProject(moduleDir);
         } catch (IllegalStateException e) {
             throw new JkBuildParseException(e.getMessage(), e);
         }
-        JkBuild parsed = parse(Files.readString(file), catalog, moduleDir);
-        PARSE_CACHE.put(key, new Cached(attrs.size(), attrs.lastModifiedTime(), parsed));
+        JkBuild parsed = parse(body, catalog, moduleDir);
+        PARSE_CACHE.put(key, new Cached(body, parsed));
         return parsed;
     }
 

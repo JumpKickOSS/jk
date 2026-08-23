@@ -199,6 +199,39 @@ public final class RepoGroup {
     }
 
     /**
+     * As {@link #tryFetchArtifact(Coordinate)} but pinned: a warm hit — process memo, local
+     * mirror — is used only when its digest matches {@code expectedSha256Hex}, and the network
+     * leg goes through {@link MavenRepo#fetchArtifact(Coordinate, String, BooleanSupplier)}, which
+     * evicts a stale mirror copy instead of returning it. The returned {@code fetched().sha256()}
+     * is the actual digest of the bytes on disk; callers asserting the pin into a store must still
+     * compare it — a remote that serves different bytes than the lock pins reaches here verified
+     * only against its own sidecar.
+     */
+    public Optional<RepoFetched> tryFetchArtifact(Coordinate coord, String expectedSha256Hex)
+            throws IOException, InterruptedException {
+        if (expectedSha256Hex == null) return tryFetchArtifact(coord);
+        String key = repoIdentity
+                + "|"
+                + coord.toGav()
+                + "\0"
+                + (coord.type() == null ? "" : coord.type())
+                + "\0"
+                + (coord.classifier() == null ? "" : coord.classifier());
+        RepoFetched hit = liveHit(ARTIFACT_HIT_CACHE, key);
+        if (hit != null && expectedSha256Hex.equalsIgnoreCase(hit.fetched().sha256())) {
+            return Optional.of(hit);
+        }
+        Optional<RepoFetched> found = tryFetch(
+                coord,
+                (repo, c) -> repo.tryLocalArtifact(c).filter(f -> expectedSha256Hex.equalsIgnoreCase(f.sha256())),
+                (repo, c) -> repo.fetchArtifact(c, expectedSha256Hex, NO_ABORT));
+        if (found.isPresent() && ARTIFACT_HIT_CACHE.size() < HIT_CACHE_MAX) {
+            ARTIFACT_HIT_CACHE.putIfAbsent(key, found.get());
+        }
+        return found;
+    }
+
+    /**
      * Return a process-memo hit only when its on-disk payload is still present; drop stale paths
      * (cache GC / manual wipe mid-process).
      */

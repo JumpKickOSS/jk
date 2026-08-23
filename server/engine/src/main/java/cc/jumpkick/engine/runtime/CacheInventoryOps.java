@@ -10,6 +10,8 @@ import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.task.Bound;
+import cc.jumpkick.task.CacheTier;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.PathUtil;
 import java.io.IOException;
@@ -107,20 +109,61 @@ public final class CacheInventoryOps {
             }
         }
 
-        DiskUsage.Stats eventLogs = DiskUsage.of(cacheRoot.resolve("runs"));
         DiskUsage.Stats stamps = DiskUsage.of(cacheRoot.resolve("format-stamps"));
-        DiskUsage.Stats total = DiskUsage.of(cacheRoot);
+        // Total is the action cache — the exact bytes the budget bounds. Every other tier under
+        // this root is bounded on its own terms (see CacheTier), so folding them in would measure
+        // one tier's usage against another tier's line; they are reported beside the total as
+        // `stamps` and `derived`. Zinc analysis sits under actions/ and comes out for the same
+        // reason: its own budget, its own row.
+        DiskUsage.Stats[] budgeted = DiskUsage.exclusive(cacheRoot.resolve("actions"), cacheRoot.resolve("sha256"));
+        DiskUsage.Stats incremental = incrementalStats(cacheRoot.resolve("actions"));
+        DiskUsage.Stats derived = derivedStats(cacheRoot);
         List<String> stats = List.of(
                 pack("classFiles", classFiles[0], classFiles[1]),
                 pack("testResults", testResults[0], testResults[1]),
-                pack("eventLogs", eventLogs.files(), eventLogs.bytes()),
                 pack("normalJars", normalJars[0], normalJars[1]),
                 pack("shadowJars", shadowJars[0], shadowJars[1]),
                 pack("minifiedJars", minifiedJars[0], minifiedJars[1]),
                 pack("nativeBins", nativeBins[0], nativeBins[1]),
                 pack("ociImages", ociImages[0], ociImages[1]),
-                pack("stamps", stamps.files(), stamps.bytes()));
-        return CacheInventoryAck.usage("usage", stats, total.files(), total.bytes());
+                pack("incremental", incremental.files(), incremental.bytes()),
+                pack("stamps", stamps.files(), stamps.bytes()),
+                pack("derived", derived.files(), derived.bytes()));
+        return CacheInventoryAck.usage(
+                "usage",
+                stats,
+                Math.max(0L, DiskUsage.totalFiles(budgeted) - incremental.files()),
+                Math.max(0L, DiskUsage.totalBytes(budgeted) - incremental.bytes()));
+    }
+
+    /**
+     * The tiers with no row of their own: small derived caches bounded by count or supersession
+     * rather than by the action budget. Read off {@link CacheTier} so the report cannot fall
+     * behind the table.
+     */
+    private static DiskUsage.Stats derivedStats(Path cacheRoot) throws IOException {
+        long files = 0;
+        long bytes = 0;
+        for (CacheTier tier : CacheTier.values()) {
+            if (tier == CacheTier.ACTIONS || tier == CacheTier.CACHE_CAS || tier == CacheTier.FORMAT_STAMPS) continue;
+            if (tier.bound().kind() == Bound.Kind.UNBOUNDED) continue;
+            DiskUsage.Stats stats = DiskUsage.of(cacheRoot.resolve(tier.entry()));
+            files += stats.files();
+            bytes += stats.bytes();
+        }
+        return new DiskUsage.Stats(files, bytes);
+    }
+
+    /** Zinc analysis trees under {@code actions/} — separately budgeted, so counted separately. */
+    private static DiskUsage.Stats incrementalStats(Path actionsDir) throws IOException {
+        long files = 0;
+        long bytes = 0;
+        for (String name : List.of("incremental-java", "incremental-kotlin")) {
+            DiskUsage.Stats tree = DiskUsage.of(actionsDir.resolve(name));
+            files += tree.files();
+            bytes += tree.bytes();
+        }
+        return new DiskUsage.Stats(files, bytes);
     }
 
     private static CacheInventoryAck storeUsage(Path storeRoot) throws IOException {

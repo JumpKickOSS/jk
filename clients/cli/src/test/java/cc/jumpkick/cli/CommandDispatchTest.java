@@ -163,4 +163,16 @@ class CommandDispatchTest {
             assertNoGlobalCollision(sub, qualified + " " + sub.name(), globals);
         }
     }
+
+    @org.junit.jupiter.api.Test
+    void plugin_arg_scan_honors_output_flags() {
+        assertThat(CommandDispatch.pluginArgsAskJson(List.of("-O", "json"))).isTrue();
+        assertThat(CommandDispatch.pluginArgsAskJson(List.of("--output", "jsonl")))
+                .isTrue();
+        assertThat(CommandDispatch.pluginArgsAskJson(List.of("--output=json", "x")))
+                .isTrue();
+        assertThat(CommandDispatch.pluginArgsAskJson(List.of("-O", "text"))).isFalse();
+        assertThat(CommandDispatch.pluginArgsAskJson(List.of("build", "--fast")))
+                .isFalse();
+    }
 }

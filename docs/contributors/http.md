@@ -347,13 +347,20 @@ Two storage surfaces (CLI parity: `jk cache usage` / `jk storage usage`), not on
 
 | Surface | Bytes | Budget field |
 | --- | --- | --- |
-| **Cache tier** | action index + cache CAS + format stamps → `cacheBytes` / `actionCacheBytes` | `cacheMaxBytes` / `actionMaxBytes` (`[cache] max-cache-size-gb`, default 4 GiB / 8 GiB on CI) |
-| **Artifact store** | jk-owned `repos/` + workers → `artifactStorageBytes`; Maven local is `mavenLocalBytes` (unbudgeted) | `maxBytes` (`[cache] max-store-size-gb`, default 6 GiB / 12 GiB on CI) |
+| **Action cache** | key records + cache CAS → `actionCacheBytes` (format stamps and incremental state excluded — own retention) | `actionMaxBytes` (`[cache] max-cache-size-gb`, default 4 GiB / 8 GiB on CI) |
+| **Incremental state** | Zinc analysis under `actions/incremental-*` → `incrementalBytes` | `incrementalMaxBytes` (`[cache] incremental-max-size-gb`, default 512 MiB) |
+| **Derived caches** | every other tier under the cache root (hash memos, format indexes, extracted trees, ABI snapshots, materialised path repos) → `derivedCount`/`derivedBytes`, apparent bytes | none — bounded by count or supersession, so no `*MaxBytes` field: see `CacheReportBoundsTest` |
+| **Artifact store** | jk-owned `repos/` + workers → `artifactStorageBytes`; Maven local is `mavenLocalBytes` | none — the store is never size-pruned |
+
+Incremental state is its own surface because it is bounded on its own denominator; folding it
+into `actionsBytes` would make the action-cache bar measure one tier against another tier's
+line. `actionsCount`/`actionsBytes` therefore exclude it.
 
 Full REST also exposes `actionsCount`/`actionsBytes` (index), `cacheCasCount`/`cacheCasBytes`
-(cache CAS), and store section fields. **Live SSE (thin):** `{ "thin": true, cacheBytes,
-cacheMaxBytes, actionCacheBytes, actionMaxBytes, artifactStorageBytes, mavenLocalBytes, maxBytes,
-lastPrunedMillis }` — enough for the footer; change-gated on MiB quanta.
+(cache CAS), `incrementalCount`/`incrementalBytes`/`incrementalMaxBytes`,
+`derivedCount`/`derivedBytes`, and store section fields. **Live SSE (thin):** `{ "thin": true, actionCacheBytes,
+actionMaxBytes, artifactStorageBytes, mavenLocalBytes, lastPrunedMillis }` — enough for the
+footer; change-gated on MiB quanta.
 
 **REST (full):** section counts (`casCount`, `actionsCount`, …) for the Status panels. Prefer the two surfaces for UI; `totalBytes` is the combined sum.
 

@@ -6,6 +6,7 @@ import cc.jumpkick.jdk.JdkCatalogClient;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.repo.LibraryRegistryClient;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -63,7 +64,7 @@ public final class StoreFeedRefresh implements AutoCloseable {
         this(
                 log,
                 new Http(),
-                LibraryCatalog::downloadedFile,
+                JkDirs::libraryRegistry,
                 JdkCatalogClient::defaultCachePath,
                 LibraryRegistryClient.DEFAULT_SOURCE,
                 URI.create(JdkCatalogClient.DEFAULT_FEED_URL),

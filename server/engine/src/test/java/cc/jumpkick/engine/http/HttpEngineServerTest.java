@@ -86,7 +86,8 @@ class HttpEngineServerTest {
     private final List<cc.jumpkick.runtime.BuildMetrics.Entry> metricsRows = new ArrayList<>();
 
     /** The snapshot served by {@code GET /api/cache} — tests reassign the field directly. */
-    private static final CacheSnapshot EMPTY_CACHE = new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    private static final CacheSnapshot EMPTY_CACHE =
+            new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     private CacheSnapshot cacheSnapshot = EMPTY_CACHE;
     private HttpEngineServer server;
@@ -1079,7 +1080,6 @@ class HttpEngineServerTest {
 
     @Test
     void api_cache_reports_the_cache_breakdown_with_token() throws Exception {
-        // maxBytes = store/artifact budget; actionMaxBytes = action-cache budget (CLI parity).
         cacheSnapshot = new CacheSnapshot(
                 100,
                 5_000_000,
@@ -1089,13 +1089,17 @@ class HttpEngineServerTest {
                 0,
                 3,
                 30_000_000,
-                7,
-                9_000,
                 2,
                 100,
-                4_294_967_296L,
+                6,
+                4_096,
+                268_435_456L,
                 1_073_741_824L,
-                1_700_000_000_000L);
+                1_700_000_000_000L,
+                0,
+                0,
+                0,
+                0);
         HttpResponse<String> resp = get("/api/cache");
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.headers().firstValue("Content-Type")).contains("application/json; charset=utf-8");
@@ -1104,13 +1108,14 @@ class HttpEngineServerTest {
                 .contains("\"casBytes\":5000000")
                 .contains("\"actionsCount\":40")
                 .contains("\"workerJarsBytes\":30000000")
-                .contains("\"totalCount\":152")
-                .contains("\"totalBytes\":35209100")
-                .contains("\"actionCacheBytes\":200100")
+                .contains("\"totalCount\":145")
+                .contains("\"totalBytes\":35200100")
+                .contains("\"actionCacheBytes\":200000") // action index + cache CAS; format stamps are not budgeted
                 .contains("\"actionMaxBytes\":1073741824") // fixture cache budget (1 GiB)
-                // Store CAS + worker jars; run logs are state, not storage.
+                // Store CAS + worker jars.
                 .contains("\"artifactStorageBytes\":35000000")
-                .contains("\"maxBytes\":4294967296") // fixture store budget (4 GiB)
+                .doesNotContain("\"maxBytes\"") // the artifact store carries no budget
+                .doesNotContain("runLogs") // the run-log tier is gone, not renamed
                 .contains("\"lastPrunedMillis\":1700000000000");
     }
 

@@ -138,6 +138,11 @@ public final class UpdateCommand implements CliCommand {
         for (String err : outcome.errors()) {
             cc.jumpkick.cli.tui.CommandWedge.printFail("Update", err);
         }
+        // A failed plan sends its real diagnostics as plan events and an EMPTY errors list, so
+        // the loop above prints nothing — every interactive command still settles with a wedge.
+        if (!outcome.success() && outcome.errors().isEmpty() && !global.outputIsJson()) {
+            cc.jumpkick.cli.tui.CommandWedge.printFail("Update", "update failed — see diagnostics above");
+        }
         return outcome.exitCode();
     }
 

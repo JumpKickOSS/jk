@@ -132,14 +132,12 @@ public final class TomlScan {
         return sections.contains(section);
     }
 
-    /** Strip quotes from a scalar; drop a trailing same-line comment on unquoted values. */
+    /**
+     * Strip quotes from a scalar and decode basic-string escapes (a Windows path written by
+     * {@link cc.jumpkick.util.MinimalToml#quote} reads back with single backslashes); drop a
+     * trailing same-line comment on unquoted values.
+     */
     static String scalar(String v) {
-        if (v.length() >= 2 && (v.charAt(0) == '"' || v.charAt(0) == '\'')) {
-            char quote = v.charAt(0);
-            int end = v.indexOf(quote, 1);
-            return end > 0 ? v.substring(1, end) : v.substring(1);
-        }
-        int hash = v.indexOf('#');
-        return (hash >= 0 ? v.substring(0, hash) : v).strip();
+        return cc.jumpkick.util.MinimalToml.unquote(v);
     }
 }

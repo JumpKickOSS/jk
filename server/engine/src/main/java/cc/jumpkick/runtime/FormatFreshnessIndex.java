@@ -63,10 +63,7 @@ public final class FormatFreshnessIndex {
         return new FormatFreshnessIndex(file, projectDir, entries);
     }
 
-    /**
-     * Stable key for the formatter configuration + worker identity. Worker jar is identified by
-     * path/size/mtime (not a full content hash) so opening the index stays a handful of stats.
-     */
+    /** Stable key for the formatter configuration + worker identity. */
     public static String configKey(
             String javaStyle,
             String javaVersion,
@@ -184,14 +181,21 @@ public final class FormatFreshnessIndex {
     }
 
     /**
-     * Worker identity is path:size:mtime of the thin jar <em>and</em> a content hash of its
-     * sibling Maven POM. OpenRewrite/Spotless live on the POM runtime closure; fingerprinting
-     * only the thin jar left freshness green across formatter dependency upgrades. The POM is
-     * hashed (not size:mtime) so same-length, same-millisecond rewrites still invalidate.
+     * Worker identity is the content hash of the thin jar <em>and</em> of its sibling Maven POM.
+     * OpenRewrite/Spotless live on the POM runtime closure; fingerprinting only the thin jar left
+     * freshness green across formatter dependency upgrades.
+     *
+     * <p>Content, not {@code path:size:mtime}: the same worker re-materialised into the store is
+     * the same formatter, and keying on its stat minted a fresh 162 KB index every time one was
+     * re-fetched or re-installed. Neither is the path part of it — two byte-identical jars format
+     * identically wherever they sit. Nor would {@code path:size} do, because a rebuilt worker of
+     * the same length and different formatter code is exactly the case the POM hash exists to
+     * catch. One SHA-256 of a few MB, once per {@code jk format}, on a command that is about to
+     * fork a JVM.
      */
     private static String identity(Path workerJar) {
         if (workerJar == null || !Files.isRegularFile(workerJar)) return "none";
-        return fileIdentity(workerJar) + "|" + contentIdentity(siblingPom(workerJar));
+        return contentIdentity(workerJar) + "|" + contentIdentity(siblingPom(workerJar));
     }
 
     private static Path siblingPom(Path workerJar) {
@@ -201,24 +205,11 @@ public final class FormatFreshnessIndex {
         return workerJar.resolveSibling(name.substring(0, name.length() - 4) + ".pom");
     }
 
-    private static String fileIdentity(Path path) {
-        if (path == null || !Files.isRegularFile(path)) return "none";
-        try {
-            BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);
-            return path.toAbsolutePath().normalize()
-                    + ":"
-                    + attrs.size()
-                    + ":"
-                    + attrs.lastModifiedTime().toMillis();
-        } catch (IOException e) {
-            return path.toAbsolutePath().normalize().toString();
-        }
-    }
-
+    /** SHA-256 of the file, or a path-derived stand-in when it cannot be read (fails dirty). */
     private static String contentIdentity(Path path) {
         if (path == null || !Files.isRegularFile(path)) return "none";
         try {
-            return path.toAbsolutePath().normalize() + ":" + Hashing.sha256Hex(path);
+            return Hashing.sha256Hex(path);
         } catch (IOException e) {
             return path.toAbsolutePath().normalize().toString();
         }

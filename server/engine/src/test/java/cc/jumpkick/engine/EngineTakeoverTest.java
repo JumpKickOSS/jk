@@ -27,7 +27,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
@@ -42,6 +41,25 @@ import org.junit.jupiter.api.Test;
 class EngineTakeoverTest {
 
     private final List<Path> tempDirs = new ArrayList<>();
+    private final List<Throwable> serverFailures = Collections.synchronizedList(new ArrayList<>());
+
+    /** An {@link EngineServer} on its own thread; {@code done} opens when {@code run()} returns. */
+    private record Running(Thread thread, CountDownLatch done) {}
+
+    private Running start(EngineServer server) {
+        CountDownLatch done = new CountDownLatch(1);
+        Thread t = new Thread(() -> {
+            try {
+                server.run();
+            } catch (IOException e) {
+                serverFailures.add(e); // a dead server otherwise reads as a mystery poll timeout
+            } finally {
+                done.countDown();
+            }
+        });
+        t.start();
+        return new Running(t, done);
+    }
 
     private Path shortTempDir() throws IOException {
         // Prefer /tmp: macOS TMPDIR under /var/folders overflows UDS sun_path (~104 bytes).
@@ -68,10 +86,13 @@ class EngineTakeoverTest {
         }
     }
 
-    private static void waitUntil(Duration timeout, BooleanSupplier condition) throws InterruptedException {
+    private void waitUntil(Duration timeout, BooleanSupplier condition) throws InterruptedException {
         long deadline = System.nanoTime() + timeout.toNanos();
         while (!condition.getAsBoolean()) {
-            if (System.nanoTime() > deadline) throw new AssertionError("condition not met within " + timeout);
+            if (System.nanoTime() > deadline) {
+                throw new AssertionError(
+                        "condition not met within " + timeout + "; server failures: " + serverFailures);
+            }
             Thread.sleep(10);
         }
     }
@@ -122,37 +143,23 @@ class EngineTakeoverTest {
         EnginePaths.Paths p = EnginePaths.resolve(state);
 
         EngineServer stale = new EngineServer(p, JkEngineConfig.DEFAULTS, null, "1.0.0-SNAPSHOT", "aaaaaaaaaaaa", null);
-        CountDownLatch staleDone = new CountDownLatch(1);
-        Thread staleT = new Thread(() -> {
-            try {
-                stale.run();
-            } catch (IOException ignored) {
-            } finally {
-                staleDone.countDown();
-            }
-        });
-        staleT.start();
+        Running staleRun = start(stale);
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
         assertThat(helloVersion(EnginePaths.activeSocket(p))).isEqualTo("1.0.0-SNAPSHOT");
 
         // Rebuilt dev engine: same version, different content identity — must WIN (take over).
         EngineServer rebuilt =
                 new EngineServer(p, JkEngineConfig.DEFAULTS, null, "1.0.0-SNAPSHOT", "bbbbbbbbbbbb", null);
-        Thread rebuiltT = new Thread(() -> {
-            try {
-                rebuilt.run();
-            } catch (IOException ignored) {
-            }
-        });
-        rebuiltT.start();
+        Running rebuiltRun = start(rebuilt);
         try {
-            assertThat(staleDone.await(15, TimeUnit.SECONDS))
+            assertThat(staleRun.done().await(15, TimeUnit.SECONDS))
                     .as("stale same-version engine is drained by the rebuilt one")
                     .isTrue();
             assertThat(helloVersion(EnginePaths.activeSocket(p))).isEqualTo("1.0.0-SNAPSHOT");
         } finally {
             rebuilt.close();
-            rebuiltT.join(10_000);
+            stale.close();
+            assertThat(rebuiltRun.thread().join(Duration.ofSeconds(10))).isTrue();
         }
     }
 
@@ -162,18 +169,7 @@ class EngineTakeoverTest {
         EnginePaths.Paths p = EnginePaths.resolve(state);
 
         EngineServer old = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
-        AtomicBoolean oldExited = new AtomicBoolean();
-        CountDownLatch oldDone = new CountDownLatch(1);
-        Thread oldT = new Thread(() -> {
-            try {
-                old.run();
-            } catch (IOException ignored) {
-            } finally {
-                oldExited.set(true);
-                oldDone.countDown();
-            }
-        });
-        oldT.start();
+        Running oldRun = start(old);
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
         Path firstSocket = EnginePaths.activeSocket(p);
         assertThat(helloVersion(firstSocket)).isEqualTo("1.0.0-test");
@@ -181,25 +177,21 @@ class EngineTakeoverTest {
         // A newer engine starts: it must claim a fresh generation, repoint the endpoint, and
         // drain the old engine — which, idle, exits promptly. Nothing is killed.
         EngineServer newer = new EngineServer(p, JkEngineConfig.DEFAULTS, "2.0.0-test", null);
-        Thread newT = new Thread(() -> {
-            try {
-                newer.run();
-            } catch (IOException ignored) {
-            }
-        });
-        newT.start();
+        Running newerRun = start(newer);
+        try {
+            waitUntil(Duration.ofSeconds(10), () -> "2.0.0-test".equals(helloVersion(EnginePaths.activeSocket(p))));
+            assertThat(EnginePaths.activeSocket(p)).isNotEqualTo(firstSocket);
+            assertThat(oldRun.done().await(10, TimeUnit.SECONDS))
+                    .as("displaced engine drains and exits at idle")
+                    .isTrue();
 
-        waitUntil(Duration.ofSeconds(10), () -> "2.0.0-test".equals(helloVersion(EnginePaths.activeSocket(p))));
-        assertThat(EnginePaths.activeSocket(p)).isNotEqualTo(firstSocket);
-        assertThat(oldDone.await(10, TimeUnit.SECONDS))
-                .as("displaced engine drains and exits at idle")
-                .isTrue();
-        assertThat(oldExited).isTrue();
-
-        // The survivor still serves via the repointed endpoint.
-        assertThat(helloVersion(EnginePaths.activeSocket(p))).isEqualTo("2.0.0-test");
-        newer.close();
-        newT.join(10_000);
+            // The survivor still serves via the repointed endpoint.
+            assertThat(helloVersion(EnginePaths.activeSocket(p))).isEqualTo("2.0.0-test");
+        } finally {
+            newer.close();
+            old.close();
+            assertThat(newerRun.thread().join(Duration.ofSeconds(10))).isTrue();
+        }
     }
 
     @Test
@@ -208,26 +200,21 @@ class EngineTakeoverTest {
         EnginePaths.Paths p = EnginePaths.resolve(state);
 
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
-        CountDownLatch done = new CountDownLatch(1);
-        Thread t = new Thread(() -> {
-            try {
-                server.run();
-            } catch (IOException ignored) {
-            } finally {
-                done.countDown();
-            }
-        });
-        t.start();
-        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+        Running run = start(server);
+        try {
+            waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
 
-        Path pidFile = EnginePaths.pidFor(EnginePaths.activeSocket(p));
-        assertThat(pidFile).exists();
-        // Recreated state dir: successor overwrote the generation pid file. Filename still matches.
-        Files.writeString(pidFile, "1\n");
+            Path pidFile = EnginePaths.pidFor(EnginePaths.activeSocket(p));
+            assertThat(pidFile).exists();
+            // Recreated state dir: successor overwrote the generation pid file. Filename still matches.
+            Files.writeString(pidFile, "1\n");
 
-        assertThat(done.await(10, TimeUnit.SECONDS))
-                .as("engine whose pid file names another process yields and exits")
-                .isTrue();
+            assertThat(run.done().await(10, TimeUnit.SECONDS))
+                    .as("engine whose pid file names another process yields and exits")
+                    .isTrue();
+        } finally {
+            server.close();
+        }
     }
 
     @Test
@@ -236,33 +223,28 @@ class EngineTakeoverTest {
         EnginePaths.Paths p = EnginePaths.resolve(state);
 
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
-        CountDownLatch done = new CountDownLatch(1);
-        Thread t = new Thread(() -> {
-            try {
-                server.run();
-            } catch (IOException ignored) {
-            } finally {
-                done.countDown();
-            }
-        });
-        t.start();
-        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
-        Path sock = EnginePaths.activeSocket(p);
-        assertThat(server.claimPlanSlotForTests()).isTrue();
+        Running run = start(server);
+        try {
+            waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+            Path sock = EnginePaths.activeSocket(p);
+            assertThat(server.claimPlanSlotForTests()).isTrue();
 
-        String bye = send(sock, ProtoLifecycle.shutdown(false));
-        assertThat(EngineProtocol.typeOf(bye)).isEqualTo(EngineProtocol.BYE);
-        assertThat(Jsonl.bool(bye, "draining", false)).isTrue();
+            String bye = send(sock, ProtoLifecycle.shutdown(false));
+            assertThat(EngineProtocol.typeOf(bye)).isEqualTo(EngineProtocol.BYE);
+            assertThat(Jsonl.bool(bye, "draining", false)).isTrue();
 
-        waitUntil(Duration.ofSeconds(5), () -> helloVersion(sock) == null);
-        assertThat(t.isAlive())
-                .as("process stays up until in-flight plans finish")
-                .isTrue();
+            waitUntil(Duration.ofSeconds(5), () -> helloVersion(sock) == null);
+            assertThat(run.thread().isAlive())
+                    .as("process stays up until in-flight plans finish")
+                    .isTrue();
 
-        server.releasePlanSlotForTests();
-        assertThat(done.await(10, TimeUnit.SECONDS))
-                .as("engine exits once the last in-flight plan finishes")
-                .isTrue();
+            server.releasePlanSlotForTests();
+            assertThat(run.done().await(10, TimeUnit.SECONDS))
+                    .as("engine exits once the last in-flight plan finishes")
+                    .isTrue();
+        } finally {
+            server.close();
+        }
     }
 
     @Test
@@ -271,67 +253,47 @@ class EngineTakeoverTest {
         EnginePaths.Paths p = EnginePaths.resolve(state);
 
         EngineServer old = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
-        CountDownLatch oldDone = new CountDownLatch(1);
-        Thread oldT = new Thread(() -> {
-            try {
-                old.run();
-            } catch (IOException ignored) {
-            } finally {
-                oldDone.countDown();
-            }
-        });
-        oldT.start();
+        Running oldRun = start(old);
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
         Path firstSocket = EnginePaths.activeSocket(p);
         assertThat(old.claimPlanSlotForTests()).isTrue();
 
         List<String> logs = Collections.synchronizedList(new ArrayList<>());
         EngineServer newer = new EngineServer(p, JkEngineConfig.DEFAULTS, "2.0.0-test", logs::add);
-        Thread newT = new Thread(() -> {
-            try {
-                newer.run();
-            } catch (IOException ignored) {
-            }
-        });
-        newT.start();
+        Running newerRun = start(newer);
         try {
             waitUntil(Duration.ofSeconds(10), () -> "2.0.0-test".equals(helloVersion(EnginePaths.activeSocket(p))));
             waitUntil(Duration.ofSeconds(5), () -> helloVersion(firstSocket) == null);
             waitUntil(Duration.ofSeconds(10), () -> logs.stream().anyMatch(s -> s.contains("is draining")));
             old.releasePlanSlotForTests();
-            assertThat(oldDone.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(oldRun.done().await(10, TimeUnit.SECONDS)).isTrue();
             waitUntil(Duration.ofSeconds(5), () -> logs.stream().anyMatch(s -> s.contains("finished draining")));
         } finally {
             newer.close();
-            newT.join(10_000);
+            old.close();
+            assertThat(newerRun.thread().join(Duration.ofSeconds(10))).isTrue();
         }
     }
 
     @Test
-    void displacement_watchdog_drains_an_engine_the_endpoint_no_longer_names(
-            @org.junit.jupiter.api.io.TempDir Path unused) throws Exception {
+    void displacement_watchdog_drains_an_engine_the_endpoint_no_longer_names() throws Exception {
         Path state = shortTempDir();
         EnginePaths.Paths p = EnginePaths.resolve(state);
 
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
-        CountDownLatch done = new CountDownLatch(1);
-        Thread t = new Thread(() -> {
-            try {
-                server.run();
-            } catch (IOException ignored) {
-            } finally {
-                done.countDown();
-            }
-        });
-        t.start();
-        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+        Running run = start(server);
+        try {
+            waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
 
-        // Simulate a takeover whose drain signal was lost: repoint the endpoint elsewhere.
-        Files.writeString(EnginePaths.endpoint(p), p.key() + ".gen999.sock");
+            // Simulate a takeover whose drain signal was lost: repoint the endpoint elsewhere.
+            Files.writeString(EnginePaths.endpoint(p), p.key() + ".gen999.sock");
 
-        // The watchdog (5s tick) notices and, idle, exits.
-        assertThat(done.await(20, TimeUnit.SECONDS))
-                .as("watchdog self-drains a displaced engine")
-                .isTrue();
+            // The watchdog (5s tick) notices and, idle, exits.
+            assertThat(run.done().await(20, TimeUnit.SECONDS))
+                    .as("watchdog self-drains a displaced engine")
+                    .isTrue();
+        } finally {
+            server.close();
+        }
     }
 }

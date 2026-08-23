@@ -5,9 +5,9 @@ import cc.jumpkick.cli.theme.JkDarkTheme;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.terminal.Style;
 import java.util.List;
 import java.util.Locale;
-import org.jline.utils.AttributedStyle;
 
 /**
  * One line of command chrome: icon + title chip + optional message / progress. Nerd, ANSI, and
@@ -138,9 +138,8 @@ public final class JkWedge implements Widget {
         if (!(icon instanceof Icon.Spinner) || !ctx.ansi()) {
             return chip(glyph, title, colors.chip, ctx.wedge());
         }
-        AttributedStyle[] pulseFg = Spinner.buildChipPulseStyles(Spinner.PULSE_FRAMES, colors.cap);
-        AttributedStyle pulse =
-                ctx.theme().withBackground(pulseFg[Math.floorMod(ctx.frame(), pulseFg.length)], colors.cap);
+        Style[] pulseFg = Spinner.buildChipPulseStyles(Spinner.PULSE_FRAMES, colors.cap);
+        Style pulse = ctx.theme().withBackground(pulseFg[Math.floorMod(ctx.frame(), pulseFg.length)], colors.cap);
         var sb = new StringBuilder();
         sb.append(Theme.colorize(" ", colors.chip));
         sb.append(Theme.colorize(glyph, pulse));
@@ -222,13 +221,13 @@ public final class JkWedge implements Widget {
         };
     }
 
-    private record ChipColors(AttributedStyle chip, Rgb cap) {}
+    private record ChipColors(Style chip, Rgb cap) {}
 
     /**
      * Chip body + trailing pad. One trailing space when the wedge cap follows; two spaces when it
      * does not, the extra pad standing in for the missing cap.
      */
-    public static String chip(String glyph, String name, AttributedStyle chip, boolean wedge) {
+    public static String chip(String glyph, String name, Style chip, boolean wedge) {
         String body = " " + glyph + (name == null || name.isEmpty() ? "" : " " + name);
         String trail = wedge ? " " : "  ";
         return Theme.colorize(body + trail, chip);

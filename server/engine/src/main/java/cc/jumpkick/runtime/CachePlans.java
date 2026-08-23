@@ -10,7 +10,6 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.task.ActionKey;
-import cc.jumpkick.task.CacheGc;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,51 +18,36 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
  * Cache-maintenance plans for {@code jk cache clean}, {@code jk cache nuke}, {@code jk storage
- * clean}, and project-scoped invalidation ({@code jk clean --force}). Mutate caches plans may
- * read concurrently — the engine runs them only at idle boundaries.
+ * clean}, and project-scoped invalidation ({@code jk clean --force}). These mutate caches that
+ * other plans read concurrently — the engine runs them only at idle boundaries.
  */
 public final class CachePlans {
 
     private CachePlans() {}
 
-    /** Files removed (or, on a dry run, that would be). {@code gc}: purged CAS blobs. */
+    /** Files removed (or, on a dry run, that would be): temps, stamps, action keys, CAS blobs. */
     public static final BuildPlanKey<Long> FILES = BuildPlanKey.of("cache-files", Long.class);
 
     /** Bytes freed (or reclaimable, on a dry run). */
     public static final BuildPlanKey<Long> BYTES = BuildPlanKey.of("cache-bytes", Long.class);
 
     /**
-     * Reachable cache-tier CAS objects the LRU evictor removed to fit {@code cache.max-cache-size-gb}
-     * ({@code jk cache clean} only — {@code jk storage clean}'s store-tier sweep never evicts
-     * reachable blobs).
+     * Action-tier bytes left after the prune — what the scheduler records so a cache that fills up
+     * between two cadence ticks is pruned when it fills, not when the interval next elapses.
      */
-    public static final BuildPlanKey<Long> REACHABLE_EVICTED = BuildPlanKey.of("cache-reachable-evicted", Long.class);
-
-    /** Repo-mirror links removed ({@code gc} only). */
-    public static final BuildPlanKey<Long> REPO_LINKS = BuildPlanKey.of("cache-repo-links", Long.class);
+    public static final BuildPlanKey<Long> FINAL_ACTION_BYTES = BuildPlanKey.of("cache-final-bytes", Long.class);
 
     /**
-     * Hygiene plan for the cache at {@code root}: expire stale entries, Class-C heavy outputs, GC
-     * sidecars, cache CAS sweep, and LRU eviction against {@code max-cache-size-gb}. Never touches
-     * the artifact store. {@code includeJkTmp} sweeps {@code state/tmp} only for the default cache
-     * dir.
+     * Hygiene plan for the cache at {@code root}: leaked CAS temps, format stamps, step timings, an
+     * unreferenced-blob sweep, and a tiered retention pass over whole action-cache entries down to
+     * {@code cache.max-cache-size-gb}. Never touches the artifact store. {@code includeJkTmp} sweeps
+     * {@code state/tmp} only for the default cache dir.
      */
-    public static BuildPlan pruneBuildPlan(
-            Path root, int olderThanDays, boolean dryRun, boolean sweep, boolean includeJkTmp) {
-        return pruneBuildPlan(root, olderThanDays, dryRun, sweep, includeJkTmp, false);
-    }
-
-    /**
-     * @param dropAllClassC when true ({@code jk cache clean}), delete every Class-C action key
-     *     (native / OCI / fat assembly); opportunistic idle prune keeps this false (TTL + budget)
-     */
-    public static BuildPlan pruneBuildPlan(
-            Path root, int olderThanDays, boolean dryRun, boolean sweep, boolean includeJkTmp, boolean dropAllClassC) {
+    public static BuildPlan pruneBuildPlan(Path root, boolean dryRun, boolean includeJkTmp) {
         Task pruneStep = Task.builder("prune")
                 .ticks(1)
                 .execute(ctx -> {
@@ -77,35 +61,14 @@ public final class CachePlans {
                         // install-file sweep is best-effort maintenance
                     }
 
-                    ctx.label(dropAllClassC ? "Cleaning cache…" : "Pruning cache…");
-                    long cutoffMillis = System.currentTimeMillis() - (long) olderThanDays * 24L * 60L * 60L * 1000L;
+                    ctx.label("Cleaning cache…");
                     long totalFiles = 0;
                     long totalBytes = 0;
-                    long reachableEvicted = 0;
 
                     // Cache-tier CAS temps under <cacheRoot>/sha256/
                     TempSweep cacheTemps = sweepCasTemps(root.resolve("sha256"), dryRun);
                     totalFiles += cacheTemps.files();
                     totalBytes += cacheTemps.bytes();
-                    Path actionsDir = root.resolve("actions");
-                    if (Files.isDirectory(actionsDir)) {
-                        Path keysDir = actionsDir.resolve("keys");
-                        if (Files.isDirectory(keysDir)) {
-                            for (Path file : olderThan(keysDir, cutoffMillis)) {
-                                long sz = Files.size(file);
-                                if (!dryRun) Files.deleteIfExists(file);
-                                totalFiles++;
-                                totalBytes += sz;
-                            }
-                        }
-                    }
-                    // Run logs are store-tier (`jk storage`); their GC lives in sweepStore —
-                    // running it here too double-counted dry-run FILES/BYTES on every
-                    // prune-with-sweep.
-                    // Format stamps: 7d unused TTL + count-cap LRU (512k / 1M when CI=1|true).
-                    var formatStampReport = cc.jumpkick.task.FormatStampGc.sweep(root, dryRun);
-                    totalFiles += formatStampReport.deleted();
-                    totalBytes += formatStampReport.freedBytes();
 
                     var timingsReport = StepTimings.prune(
                             root,
@@ -121,59 +84,37 @@ public final class CachePlans {
                         totalBytes += tmpReport.freedBytes();
                     }
 
-                    long cacheBudget =
-                            cc.jumpkick.config.JkCacheConfig.resolve().maxCacheSizeBytes();
+                    // Reclaim unreferenced payloads before the budget prune: garbage the sweep frees
+                    // is a shortfall the prune then does not have to cover by evicting live entries.
                     var cacheCas = cc.jumpkick.cache.JkStores.cacheCas(root);
-                    // Class-C (native / OCI / fat assembly): full drop on explicit clean; TTL+budget
-                    // on opportunistic idle prune.
-                    var heavy = dropAllClassC
-                            ? cc.jumpkick.task.HeavyActionGc.purgeAll(root, cacheCas, dryRun)
-                            : cc.jumpkick.task.HeavyActionGc.sweep(
-                                    root, cacheCas, cacheBudget, cc.jumpkick.task.HeavyActionPolicy.TTL, dryRun);
-                    totalFiles += heavy.deletedKeys();
-                    // Always reclaim unreferenced action payloads from the cache CAS. The dropped
-                    // (or dry-run: would-be-dropped) Class-C keys are not roots — dry-run and the
-                    // real clean must report the same reclaimable bytes.
                     var cacheLive = cc.jumpkick.task.CacheRoots.collect(
-                            cacheCas, root.resolve("actions"), root.resolve("tools"), heavy.keyFiles());
+                            cacheCas, root.resolve("actions"), root.resolve("tools"));
                     var cacheSweep = cc.jumpkick.task.CasSweep.sweep(cacheCas, cacheLive, dryRun);
                     totalFiles += cacheSweep.deleted();
                     totalBytes += cacheSweep.freedBytes();
-                    if (cacheBudget > 0) {
-                        // Utilization surfaces (jk cache usage, /api/cache) measure index +
-                        // stamps + blobs against this budget, but eviction can only shrink blobs.
-                        // Aim the blob pool at what remains after the index overhead so a clean
-                        // can actually bring utilization back under 100%. Prefer Class-C
-                        // digests as victims so a hot native binary cannot displace cold class files
-                        // (recompute-cost-per-byte ranking).
-                        long overheadBytes =
-                                cc.jumpkick.cache.DiskUsage.of(actionsDir).bytes()
-                                        + cc.jumpkick.cache.DiskUsage.of(root.resolve("format-stamps"))
-                                                .bytes();
-                        long blobBudget = Math.max(0, cacheBudget - overheadBytes);
-                        var ledger = cc.jumpkick.task.AccessLedger.atDefaultPath();
-                        var preferClassC = cc.jumpkick.task.HeavyActionGc.liveClassCShas(root, cacheCas);
-                        var evict = cc.jumpkick.task.LruEvictor.evictDownTo(
-                                cacheCas,
-                                blobBudget,
-                                cacheLive,
-                                ledger,
-                                dryRun,
-                                cacheSweep.deletedShas(),
-                                preferClassC);
-                        totalFiles += evict.deleted();
-                        totalBytes += evict.freedBytes();
-                        reachableEvicted += evict.reachableEvicted();
-                    }
 
-                    // Optional store-tier sweep (legacy --sweep; prefer jk storage clean).
-                    if (sweep) {
-                        SweepReport storeReport = sweepStore(root, dryRun);
-                        totalFiles += storeReport.files();
-                        totalBytes += storeReport.bytes();
-                        reachableEvicted += storeReport.reachableEvicted();
+                    // Every tier under the cache root, plus a sweep of anything the table does not
+                    // name. The sweep's victims are still on disk in a dry run, so hand them over:
+                    // without that the action prune counts the same blob twice and dry-run totals
+                    // diverge.
+                    var retention =
+                            cc.jumpkick.task.CacheRetention.sweep(root, cacheCas, cacheSweep.deletedShas(), dryRun);
+                    totalFiles += retention.deletedFiles();
+                    totalBytes += retention.freedBytes();
+                    ctx.put(FINAL_ACTION_BYTES, retention.finalActionBytes());
+                    if (!retention.unknownEntries().isEmpty()) {
+                        ctx.warn(
+                                "prune",
+                                "reclaimed unrecognised cache entries: "
+                                        + String.join(", ", retention.unknownEntries()));
                     }
-                    ctx.put(REACHABLE_EVICTED, reachableEvicted);
+                    long actionBudget =
+                            cc.jumpkick.config.JkCacheConfig.resolve().maxCacheSizeBytes();
+                    if (actionBudget > 0 && retention.finalActionBytes() > actionBudget) {
+                        ctx.warn(
+                                "prune",
+                                "cache is still over budget — raise cache.max-cache-size-gb (or JK_MAX_CACHE_SIZE_GB)");
+                    }
 
                     ctx.put(FILES, totalFiles);
                     ctx.put(BYTES, totalBytes);
@@ -200,19 +141,21 @@ public final class CachePlans {
     }
 
     /**
-     * Delete the cache-tier trees under {@code root}: action index, format stamps, and cache CAS
-     * ({@code sha256/}). Leaves {@code repos/} and {@code runs/} alone.
+     * Delete every bounded cache tier under {@code root}. Driven off {@link
+     * cc.jumpkick.task.CacheTier} so a new tier cannot be added to the retention table and then
+     * silently survive {@code jk cache nuke}.
      */
     public static void purgeActionCache(Path root) throws IOException {
-        for (String tree : new String[] {"actions", "format-stamps", "sha256"}) {
-            Path dir = root.resolve(tree);
+        for (var tier : cc.jumpkick.task.CacheTier.purgeable()) {
+            Path dir = root.resolve(tier.entry());
             if (Files.isDirectory(dir)) deleteContents(dir);
+            else Files.deleteIfExists(dir);
         }
     }
 
     /**
-     * Build the store-sweep plan ({@code jk storage clean}): artifact CAS temp cleanup, run-log TTL
-     * GC, and unreferenced-blob sweep. Garbage-only — never evicts reachable blobs.
+     * Build the store-sweep plan ({@code jk storage clean}): leaked download temps. Garbage-only
+     * — the store's artifacts are never collected.
      */
     public static BuildPlan sweepBuildPlan(Path root, boolean dryRun) {
         Task sweepStep = Task.builder("sweep")
@@ -222,7 +165,6 @@ public final class CachePlans {
                     SweepReport report = sweepStore(root, dryRun);
                     ctx.put(FILES, report.files());
                     ctx.put(BYTES, report.bytes());
-                    ctx.put(REACHABLE_EVICTED, report.reachableEvicted());
                     ctx.progress(1);
                 })
                 .build();
@@ -230,9 +172,13 @@ public final class CachePlans {
     }
 
     /** Totals for one store sweep ({@link #sweepStore}). */
-    public record SweepReport(long files, long bytes, long reachableEvicted) {}
+    public record SweepReport(long files, long bytes) {}
 
-    /** Artifact-store GC: reclaims temps, expired run logs, and unreferenced store blobs only. Never evicts reachable blobs. */
+    /**
+     * Artifact-store GC: leaked {@code .put-} download temps, nothing else.
+     * The store is never size-bounded and its blobs are never collected — {@code jk storage nuke} is
+     * the only way to shrink it.
+     */
     public static SweepReport sweepStore(Path root, boolean dryRun) throws IOException {
         long totalFiles = 0;
         long totalBytes = 0;
@@ -242,67 +188,12 @@ public final class CachePlans {
         totalBytes += temps.bytes();
 
         // Reclaim leaked .put-*.tmp download temps under the Maven-layout store too — mirror=false
-        // fetches (metadata / file:// POMs) return the temp and never delete it (JK-2309).
+        // fetches (metadata / file:// POMs) return the temp and never delete it.
         TempSweep repoTemps = sweepCasTemps(cc.jumpkick.cache.JkStores.resolve(root, "repos"), dryRun);
         totalFiles += repoTemps.files();
         totalBytes += repoTemps.bytes();
 
-        var runLogReport = cc.jumpkick.task.RunLogGc.sweep(root, cc.jumpkick.task.RunLogGc.DEFAULT_TTL, dryRun);
-        totalFiles += runLogReport.deleted();
-        totalBytes += runLogReport.freedBytes();
-
-        cc.jumpkick.cache.Cas cas = cc.jumpkick.cache.JkStores.cas(root);
-        Path toolsDir = cc.jumpkick.cache.JkStores.resolve(root, "tools");
-        // Expired promotion markers drop first (real runs) so their blobs sweep in this pass.
-        if (!dryRun) cc.jumpkick.task.CacheRoots.pruneExpiredPromotedMarkers(cas);
-        var liveRefs = cc.jumpkick.task.CacheRoots.collect(cas, root.resolve("actions"), toolsDir);
-        var sweepReport = cc.jumpkick.task.CasSweep.sweep(cas, liveRefs, dryRun);
-        totalFiles += sweepReport.deleted();
-        totalBytes += sweepReport.freedBytes();
-
-        // Size-bound the Maven-layout repos/ tree against the store budget — nothing enforced it
-        // after the migration, so it grew without limit (JK-2304). Budget for repos/ is the store
-        // budget minus what the store CAS already occupies; repos/jk-local is exempt.
-        long storeBudget = resolveStoreBudget();
-        if (storeBudget > 0) {
-            long storeCasBytes = cc.jumpkick.cache.DiskUsage.of(cc.jumpkick.cache.JkStores.resolve(root, "sha256"))
-                    .bytes();
-            long reposBudget = Math.max(0, storeBudget - storeCasBytes);
-            Map<String, Long> atimeByHash;
-            try {
-                atimeByHash = cc.jumpkick.task.AccessLedger.atDefaultPath().latestByHash();
-            } catch (IOException e) {
-                atimeByHash = Map.of();
-            }
-            var repoEvict = cc.jumpkick.repo.RepoArtifactStore.evictReposDownTo(root, reposBudget, atimeByHash, dryRun);
-            totalFiles += repoEvict.deleted();
-            totalBytes += repoEvict.freedBytes();
-        }
-        return new SweepReport(totalFiles, totalBytes, 0L);
-    }
-
-    private static long resolveStoreBudget() {
-        try {
-            return cc.jumpkick.config.JkCacheConfig.resolve().maxStoreSizeBytes();
-        } catch (RuntimeException e) {
-            return cc.jumpkick.config.JkCacheConfig.DEFAULTS.maxStoreSizeBytes();
-        }
-    }
-
-    /** Legacy GC plan (idle 90+ day CAS blobs via {@link CacheGc}); retained for wire back-compat. */
-    public static BuildPlan gcBuildPlan(Path root) {
-        Task gcStep = Task.builder("gc")
-                .ticks(1)
-                .execute(ctx -> {
-                    ctx.label("Collecting cache…");
-                    CacheGc.Report report = CacheGc.run(root, false);
-                    ctx.put(FILES, (long) report.purgedBlobs());
-                    ctx.put(BYTES, report.freedBytes());
-                    ctx.put(REPO_LINKS, (long) report.repoLinksRemoved());
-                    ctx.progress(1);
-                })
-                .build();
-        return BuildPlan.builder("cache-gc").addTask(gcStep).build();
+        return new SweepReport(totalFiles, totalBytes);
     }
 
     /**
@@ -520,20 +411,6 @@ public final class CachePlans {
                         } catch (IOException ignored) {
                         }
                     });
-        }
-    }
-
-    private static List<Path> olderThan(Path dir, long cutoffMillis) throws IOException {
-        try (var stream = Files.walk(dir)) {
-            return stream.filter(Files::isRegularFile)
-                    .filter(p -> {
-                        try {
-                            return Files.getLastModifiedTime(p).toMillis() < cutoffMillis;
-                        } catch (IOException e) {
-                            return false;
-                        }
-                    })
-                    .toList();
         }
     }
 

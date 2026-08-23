@@ -67,18 +67,12 @@ public final class CacheMaintenanceVerb implements HostedVerb {
                                 switch (op) {
                                     case "purge" -> cc.jumpkick.runtime.CachePlans.purgeBuildPlan(cache);
                                     case "sweep" -> cc.jumpkick.runtime.CachePlans.sweepBuildPlan(cache, dryRun);
-                                    case "gc" -> cc.jumpkick.runtime.CachePlans.gcBuildPlan(cache);
                                     case "clear" ->
                                         cc.jumpkick.runtime.CachePlans.clearBuildPlan(
                                                 cache, Path.of(Jsonl.str(requestLine, "dir")), dryRun);
                                     default ->
                                         cc.jumpkick.runtime.CachePlans.pruneBuildPlan(
-                                                cache,
-                                                Jsonl.intValue(requestLine, "olderThanDays", 30),
-                                                dryRun,
-                                                Jsonl.bool(requestLine, "sweep", false),
-                                                Jsonl.bool(requestLine, "includeJkTmp", false),
-                                                Jsonl.bool(requestLine, "dropAllClassC", false));
+                                                cache, dryRun, Jsonl.bool(requestLine, "includeJkTmp", false));
                                 };
                         Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);
                         String dir = EngineProtocol.SINGLE_PLAN_DIR;
@@ -88,7 +82,11 @@ public final class CacheMaintenanceVerb implements HostedVerb {
                             // scheduler re-runs work the user just did. Same file for
                             // the store tier: its usage footer reads from its own root.
                             if (result.success() && !dryRun && ("prune".equals(op) || "sweep".equals(op))) {
-                                CacheMaintenanceLocks.stampLastPruned(cache, host.nowMillis());
+                                CacheMaintenanceLocks.stampLastPruned(
+                                        cache,
+                                        host.nowMillis(),
+                                        plan.get(cc.jumpkick.runtime.CachePlans.FINAL_ACTION_BYTES)
+                                                .orElse(-1L));
                             }
                             return ProtoSession.planFinishCache(
                                     dir,
@@ -96,10 +94,6 @@ public final class CacheMaintenanceVerb implements HostedVerb {
                                     plan.get(cc.jumpkick.runtime.CachePlans.FILES)
                                             .orElse(-1L),
                                     plan.get(cc.jumpkick.runtime.CachePlans.BYTES)
-                                            .orElse(-1L),
-                                    plan.get(cc.jumpkick.runtime.CachePlans.REACHABLE_EVICTED)
-                                            .orElse(-1L),
-                                    plan.get(cc.jumpkick.runtime.CachePlans.REPO_LINKS)
                                             .orElse(-1L));
                         });
                     });

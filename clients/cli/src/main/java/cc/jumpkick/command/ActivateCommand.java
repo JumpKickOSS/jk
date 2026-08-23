@@ -17,6 +17,8 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.terminal.TerminalSession;
+import cc.jumpkick.terminal.Terminals;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -24,7 +26,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
-import org.jline.terminal.Terminal;
 
 /**
  * {@code jk activate [<shell>]} — print the full shell integration script (PATH + hooks +
@@ -108,7 +109,7 @@ public final class ActivateCommand implements CliCommand {
         if (assumeYes) {
             return writeActivation(shell.get());
         }
-        if (!isInteractiveTerminal()) {
+        if (!isInteractiveTerminalSession()) {
             return printManualInstructions(shell.get());
         }
         return runWizard(shell.get());
@@ -216,16 +217,8 @@ public final class ActivateCommand implements CliCommand {
                         .build())
                 .build();
 
-        Terminal terminal;
-        try {
-            terminal = Wizard.openTerminal();
-        } catch (IOException e) {
-            throw new IOException("failed to open terminal: " + e.getMessage(), e);
-        }
-        Optional<Answers> result;
-        try (terminal) {
-            result = wizard.run(terminal);
-        }
+        TerminalSession terminal = Terminals.controlling();
+        Optional<Answers> result = wizard.run(terminal);
         if (result.isEmpty() || "no".equals(result.get().get("modify"))) {
             Theme t = Theme.active();
             String block = ShellInstallerBlock.render(shell, JkDirs.binDir(), home());
@@ -247,7 +240,7 @@ public final class ActivateCommand implements CliCommand {
         return Path.of(System.getProperty("user.home"));
     }
 
-    private static boolean isInteractiveTerminal() {
+    private static boolean isInteractiveTerminalSession() {
         return cc.jumpkick.cli.tui.Interactivity.canPrompt();
     }
 

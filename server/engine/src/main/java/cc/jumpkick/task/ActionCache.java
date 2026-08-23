@@ -8,11 +8,14 @@ import cc.jumpkick.util.Hashing;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.FileTime;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -26,6 +29,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 /**
@@ -79,16 +83,68 @@ public final class ActionCache {
         return Files.isRegularFile(resolveBlob(sha));
     }
 
+    /**
+     * The record for {@code actionKey}, or empty when there is none. Reads without a prior
+     * existence check: another engine's {@link ActionCachePrune} can unlink the key between the two,
+     * and a vanished entry is a miss, not a failure.
+     */
     public Optional<ActionRecord> lookup(String actionKey) throws IOException {
-        Path file = keysDir().resolve(actionKey);
-        if (!Files.exists(file)) return Optional.empty();
-        return Optional.of(parse(Files.readString(file)));
+        Path key = keysDir().resolve(actionKey);
+        try {
+            ActionRecord record = parse(Files.readString(key));
+            stampUsed(key);
+            return Optional.of(record);
+        } catch (NoSuchFileException absent) {
+            return Optional.empty();
+        }
     }
 
+    /**
+     * Stamp {@code key} as used, so the prune ranks by last use rather than by last store.
+     *
+     * <p>A cache hit rewrites nothing else: the CAS is write-once and only a real run replaces the
+     * record. Without this stamp a module nobody edits keeps one ancient key and sorts *ahead* of
+     * the week-old dead keys of a module rebuilt hourly — the prune would evict what you always use
+     * and keep the debris.
+     *
+     * <p>Best-effort and coarsened: a read-only cache root, or a key a concurrent prune just took,
+     * simply keeps its previous ranking.
+     */
+    private static void stampUsed(Path key) {
+        long now = System.currentTimeMillis();
+        Long last = STAMPED.get(key);
+        if (last != null && now - last < STAMP_COARSENING_MILLIS) return;
+        try {
+            Files.setLastModifiedTime(key, FileTime.fromMillis(now));
+            STAMPED.put(key, now);
+        } catch (IOException ignored) {
+            // Ranking hint, never correctness.
+        }
+    }
+
+    /**
+     * Keys this engine stamped recently. A build looks the same entry up several times (forecast,
+     * plan, restore), and a resident engine repeats that every build; without the map the stamp
+     * would be one write per lookup instead of one per entry per hour.
+     */
+    private static final Map<Path, Long> STAMPED = new ConcurrentHashMap<>();
+
+    /** How coarse the last-use stamp is. Eviction ranks in days; sub-hour precision buys nothing. */
+    private static final long STAMP_COARSENING_MILLIS = Duration.ofHours(1).toMillis();
+
+    /** Drop the stamp memo at the idle boundary, alongside the other per-build heap residue. */
+    public static void clearStampCache() {
+        STAMPED.clear();
+    }
+
+    /** The record the {@code tasks/} pointer for {@code taskId} names, or empty. Same race, same answer. */
     public Optional<ActionRecord> lastFor(String taskId) throws IOException {
-        Path pointer = tasksDir().resolve(taskId);
-        if (!Files.exists(pointer)) return Optional.empty();
-        String actionKey = Files.readString(pointer).trim();
+        String actionKey;
+        try {
+            actionKey = Files.readString(tasksDir().resolve(taskId)).trim();
+        } catch (NoSuchFileException absent) {
+            return Optional.empty();
+        }
         return lookup(actionKey);
     }
 
@@ -209,7 +265,7 @@ public final class ActionCache {
     private void trimGenerations(String taskId, String newKey, String previousKey) throws IOException {
         int keep = HeavyActionPolicy.generations(taskId);
         if (keep == Integer.MAX_VALUE) return; // not Class-C
-        Path gens = HeavyActionGc.gensFile(tasksDir(), taskId);
+        Path gens = HeavyActionPolicy.gensFile(tasksDir(), taskId);
         List<String> history = new ArrayList<>();
         if (previousKey != null && !previousKey.isBlank() && !previousKey.equals(newKey)) {
             history.add(previousKey);
@@ -270,7 +326,6 @@ public final class ActionCache {
             Files.write(outputDir.resolve(e.getKey()), e.getValue());
         }
         meter(record.outputs(), false); // cache hit: these bytes come back out of the cache
-        AccessLedger ledger = AccessLedger.atDefaultPath();
         for (Map.Entry<String, String> entry : record.outputs().entrySet()) {
             Path target = outputDir.resolve(entry.getKey());
             // COPY, never link: compilers rewrite restored class files IN PLACE on the next
@@ -292,16 +347,14 @@ public final class ActionCache {
             }
             // Seed content memo so TestStamp / package keys do not re-hash the whole tree.
             FileHashMemo.rememberContent(target, entry.getValue());
-            // Best-effort access journal — feeds the LRU evictor when the
-            // user configures a cache size budget.
-            ledger.touch(entry.getValue());
         }
         return true;
     }
 
     /**
      * Copy {@code blob} to {@code target} computing SHA-256 on the way; true when the bytes match
-     * {@code expectedSha}. A mismatching target is deleted before returning false.
+     * {@code expectedSha}. A mismatching target is deleted before returning false. A blob that
+     * disappeared after the caller's presence check is also false, not a throw.
      */
     private static boolean copyVerified(Path blob, Path target, String expectedSha) throws IOException {
         MessageDigest md;
@@ -319,6 +372,11 @@ public final class ActionCache {
                                 StandardOpenOption.WRITE),
                         md)) {
             in.transferTo(out);
+        } catch (NoSuchFileException vanished) {
+            // Another process's prune unlinked the blob between the presence check and this open.
+            // A missing blob is a cache miss, not a build failure — the caller re-runs the action.
+            Files.deleteIfExists(target);
+            return false;
         }
         if (expectedSha.equalsIgnoreCase(HexFormat.of().formatHex(md.digest()))) {
             return true;
@@ -371,7 +429,6 @@ public final class ActionCache {
             }
         }
         meter(record.outputs(), false);
-        AccessLedger ledger = AccessLedger.atDefaultPath();
         for (Map.Entry<String, String> e : record.outputs().entrySet()) {
             Path target = baseDir.resolve(e.getKey());
             Files.createDirectories(target.getParent());
@@ -397,7 +454,6 @@ public final class ActionCache {
             }
             // Known CAS digest — seed so later ClasspathFingerprint/TestStamp work is free.
             FileHashMemo.rememberContent(target, e.getValue());
-            ledger.touch(e.getValue());
         }
         return true;
     }
@@ -528,11 +584,6 @@ public final class ActionCache {
                 Map<String, String> outputs,
                 Map<String, List<String>> units) {
             this(taskId, actionKey, inputs, outputs, units, Set.of());
-        }
-
-        /** Back-compat: a record with no per-source unit grouping. */
-        public ActionRecord(String taskId, String actionKey, Map<String, String> inputs, Map<String, String> outputs) {
-            this(taskId, actionKey, inputs, outputs, Map.of(), Set.of());
         }
     }
 

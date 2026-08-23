@@ -260,23 +260,44 @@ public final class SyncPlans {
                     for (var pe : pluginEntries) {
                         ctx.label("sync " + pe.coordinate());
                         String hex = pe.sha256Hex();
-                        if (cas.contains(hex)) {
-                            ctx.progress(1);
-                            continue;
-                        }
                         if (pe.coordinate().indexOf(':') < 0) {
                             ctx.error("plugin", "malformed coordinate: " + pe.coordinate());
                             ctx.progress(1);
                             continue;
                         }
                         var coord = Coordinate.ofModule(pe.coordinate(), pe.version());
+                        if (cas.contains(hex)) {
+                            // The jar blob alone isn't enough: worker launch needs the sibling
+                            // POM (PomRuntimeClasspath), and a store warmed via the CAS-blob
+                            // fallback has jar-without-POM forever unless sync repairs it. Warm
+                            // mirrors make this a cheap local probe.
+                            ensureSiblingPom(ctx, repos, coord);
+                            ctx.progress(1);
+                            continue;
+                        }
                         try {
-                            var r = repos.tryFetchArtifact(coord);
+                            var r = repos.tryFetchArtifact(coord, hex);
                             if (r.isPresent()) {
+                                // Pin is law: these bytes become worker code under the pinned hash,
+                                // and the memo fast-path trusts the hash without re-hashing — so a
+                                // mismatch must never reach the CAS. The pinned fetch already
+                                // skipped stale local copies, so a mismatch here means the remote
+                                // itself serves different bytes than the lock pins.
+                                String got = r.get().fetched().sha256();
+                                if (got == null || !got.equalsIgnoreCase(hex)) {
+                                    ctx.error(
+                                            "plugin",
+                                            pe.coordinate() + ":" + pe.version()
+                                                    + " — repository serves different bytes than the lock pins"
+                                                    + " (sha256 " + shortSha(got) + " vs locked " + shortSha(hex)
+                                                    + "); if the upstream republished, re-lock with"
+                                                    + " `jk lock --force`");
+                                    ctx.progress(1);
+                                    continue;
+                                }
                                 cas.putFile(r.get().fetched().cachePath(), hex);
                                 // Worker classpath needs the sibling POM next to the jar.
-                                repos.tryFetchArtifact(
-                                        new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "pom"));
+                                ensureSiblingPom(ctx, repos, coord);
                                 ctx.label("fetched " + pe.coordinate() + ":" + pe.version());
                             } else {
                                 ctx.error("plugin", pe.coordinate() + " not found in any repo");
@@ -359,6 +380,28 @@ public final class SyncPlans {
     /** Progress/diagnostic coordinate: themed label when provided, else {@link Lockfile.Artifact#displayCoord()}. */
     private static String formatCoord(BiFunction<String, String, String> coordLabel, Lockfile.Artifact pkg) {
         return coordLabel != null ? coordLabel.apply(pkg.displayIdentity(), pkg.version()) : pkg.displayCoord();
+    }
+
+    /**
+     * Fetch the plugin's sibling POM into the mirror (warm hit = local probe only) and say so when
+     * it can't be had — a silent POM 404 used to surface only at worker launch as "has no Maven
+     * POM; run `jk install`".
+     */
+    private static void ensureSiblingPom(
+            cc.jumpkick.run.TaskContext ctx, cc.jumpkick.repo.RepoGroup repos, Coordinate coord) {
+        try {
+            var pom = repos.tryFetchArtifact(
+                    new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "pom"));
+            if (pom.isEmpty()) {
+                ctx.warn("plugin", coord.toGav() + ": no POM in any repo — worker launch will refuse this plugin");
+            }
+        } catch (Exception e) {
+            ctx.warn("plugin", coord.toGav() + ": POM fetch failed — " + e.getMessage());
+        }
+    }
+
+    private static String shortSha(String hex) {
+        return hex == null || hex.length() <= 12 ? String.valueOf(hex) : hex.substring(0, 12);
     }
 
     /** Parse {@code dir/jk.toml} if it exists and is valid; {@code null} otherwise. */

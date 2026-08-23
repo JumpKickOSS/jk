@@ -35,6 +35,7 @@ import org.junit.jupiter.api.io.TempDir;
 class KmpRedirectsMemoTest {
 
     private HttpServer server;
+    private ExecutorService serverPool;
     private URI base;
     private final Map<String, byte[]> served = new ConcurrentHashMap<>();
     private final Map<String, AtomicInteger> hits = new ConcurrentHashMap<>();
@@ -50,7 +51,8 @@ class KmpRedirectsMemoTest {
         cc.jumpkick.repo.GradleModuleMetadata.clearParseCache();
         RepoGroup.clearProcessFetchCache();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.setExecutor(Executors.newCachedThreadPool());
+        serverPool = Executors.newCachedThreadPool();
+        server.setExecutor(serverPool);
         server.createContext("/", exchange -> {
             String path = exchange.getRequestURI().getPath();
             hits.computeIfAbsent(path, k -> new AtomicInteger()).incrementAndGet();
@@ -58,7 +60,8 @@ class KmpRedirectsMemoTest {
             if (held != null && path.startsWith(held)) {
                 heldArrived.countDown();
                 try {
-                    release.await(10, TimeUnit.SECONDS);
+                    // Bounded so a failed test cannot wedge a server thread; @AfterEach releases it.
+                    release.await(30, TimeUnit.SECONDS);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
@@ -80,6 +83,7 @@ class KmpRedirectsMemoTest {
     void stop() {
         release.countDown();
         server.stop(0);
+        serverPool.shutdownNow();
     }
 
     @Test
@@ -96,9 +100,15 @@ class KmpRedirectsMemoTest {
             Future<Optional<KmpRedirects.Selection>> first = pool.submit(
                     () -> new KmpRedirects(repos, "standard-jvm").selectionFor("com.example.kmpdemo:widget", "1.0.0"));
             assertThat(heldArrived.await(10, TimeUnit.SECONDS)).isTrue();
-            Future<Optional<KmpRedirects.Selection>> second = pool.submit(
-                    () -> new KmpRedirects(repos, "standard-jvm").selectionFor("com.example.kmpdemo:widget", "1.0.0"));
-            Thread.sleep(100); // give the second caller time to park on the in-flight future
+            CountDownLatch secondStarted = new CountDownLatch(1);
+            Future<Optional<KmpRedirects.Selection>> second = pool.submit(() -> {
+                secondStarted.countDown();
+                return new KmpRedirects(repos, "standard-jvm").selectionFor("com.example.kmpdemo:widget", "1.0.0");
+            });
+            assertThat(secondStarted.await(10, TimeUnit.SECONDS)).isTrue();
+            // Parking on the in-flight future is not observable from here; the second caller has
+            // provably started, so a short beat covers the rest before the first one is released.
+            Thread.sleep(50);
             release.countDown();
 
             Optional<KmpRedirects.Selection> a = first.get(10, TimeUnit.SECONDS);
