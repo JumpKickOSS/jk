@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.jdk.HostPlatform;
+import java.io.BufferedOutputStream;
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.io.PrintStream;
@@ -43,6 +44,10 @@ public final class WindowsUtf8 {
     private static final int ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x4;
 
     private static volatile boolean enabled;
+    private static PrintStream originalOut;
+    private static PrintStream originalErr;
+    private static int previousOutputCp = -1;
+    private static int previousInputCp = -1;
 
     private WindowsUtf8() {}
 
@@ -56,37 +61,93 @@ public final class WindowsUtf8 {
         synchronized (WindowsUtf8.class) {
             if (enabled) return;
             try {
-                setUtf8CodePages();
+                saveAndSetUtf8CodePages();
                 enableVirtualTerminalProcessing();
+                if (previousOutputCp > 0 || previousInputCp > 0) {
+                    // The console code page belongs to the SESSION (the conhost / Windows
+                    // Terminal tab), not to this process — without a restore, every jk
+                    // invocation leaves the window silently switched to chcp 65001, changing
+                    // how unrelated later commands decode OEM/ANSI text. VTP is left enabled
+                    // on purpose: it is per-handle-inherited, modern terminals enable it
+                    // anyway, and toggling it back mid-session can glitch a live paint.
+                    Runtime.getRuntime()
+                            .addShutdownHook(new Thread(WindowsUtf8::restoreCodePages, "jk-console-cp-restore"));
+                }
             } catch (Throwable ignored) {
                 // Best-effort native calls — still retarget Java streams below.
             }
+            originalOut = System.out;
+            originalErr = System.err;
             System.setOut(utf8Stream(FileDescriptor.out));
             System.setErr(utf8Stream(FileDescriptor.err));
             enabled = true;
         }
     }
 
-    /** Test-only: clear the enabled flag (does not restore console code pages or streams). */
+    /** Test-only: restore the swapped streams and console code pages, then clear the flag. */
     static synchronized void resetForTest() {
+        if (originalOut != null) System.setOut(originalOut);
+        if (originalErr != null) System.setErr(originalErr);
+        restoreCodePages();
+        originalOut = null;
+        originalErr = null;
+        previousOutputCp = -1;
+        previousInputCp = -1;
         enabled = false;
     }
 
     static PrintStream utf8Stream(FileDescriptor fd) {
-        return new PrintStream(new FileOutputStream(fd), true, StandardCharsets.UTF_8);
+        // Mirror the JVM's own stdio construction: a buffer under the PrintStream (small +
+        // autoflush on a live console, 8 KiB without autoflush when redirected) — a bare
+        // FileOutputStream turns every chunk write into its own WriteFile call.
+        boolean console = System.console() != null;
+        return new PrintStream(
+                new BufferedOutputStream(new FileOutputStream(fd), console ? 128 : 8192),
+                console,
+                StandardCharsets.UTF_8);
     }
 
-    private static void setUtf8CodePages() throws Throwable {
+    private static void saveAndSetUtf8CodePages() throws Throwable {
+        MethodHandle getOutput = downcall("GetConsoleOutputCP", FunctionDescriptor.of(ValueLayout.JAVA_INT));
+        MethodHandle getInput = downcall("GetConsoleCP", FunctionDescriptor.of(ValueLayout.JAVA_INT));
         MethodHandle setOutput =
                 downcall("SetConsoleOutputCP", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
         MethodHandle setInput =
                 downcall("SetConsoleCP", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+        int outCp = (int) getOutput.invokeExact();
+        int inCp = (int) getInput.invokeExact();
         // invokeExact is signature-polymorphic: a non-void return must be cast or the call
         // is typed as void and throws WrongMethodTypeException (swallowed by enable()). Nothing
-        // acts on the result — a zero just means stdio is redirected and there is no console to
-        // reconfigure, and enable() installs the UTF-8 Java streams either way.
+        // acts on the set results — a zero just means stdio is redirected and there is no console
+        // to reconfigure, and enable() installs the UTF-8 Java streams either way.
         int ignoredOutCp = (int) setOutput.invokeExact(CP_UTF8);
         int ignoredInCp = (int) setInput.invokeExact(CP_UTF8);
+        previousOutputCp = outCp > 0 && outCp != CP_UTF8 ? outCp : -1;
+        previousInputCp = inCp > 0 && inCp != CP_UTF8 ? inCp : -1;
+    }
+
+    /**
+     * Put the console code pages back the way {@link #enable} found them — unless something else
+     * changed them since (a nested {@code chcp}, another tool's bootstrap): then the session isn't
+     * ours to restore.
+     */
+    private static void restoreCodePages() {
+        try {
+            MethodHandle getOutput = downcall("GetConsoleOutputCP", FunctionDescriptor.of(ValueLayout.JAVA_INT));
+            MethodHandle getInput = downcall("GetConsoleCP", FunctionDescriptor.of(ValueLayout.JAVA_INT));
+            MethodHandle setOutput =
+                    downcall("SetConsoleOutputCP", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+            MethodHandle setInput =
+                    downcall("SetConsoleCP", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+            if (previousOutputCp > 0 && (int) getOutput.invokeExact() == CP_UTF8) {
+                int ignoredOut = (int) setOutput.invokeExact(previousOutputCp);
+            }
+            if (previousInputCp > 0 && (int) getInput.invokeExact() == CP_UTF8) {
+                int ignoredIn = (int) setInput.invokeExact(previousInputCp);
+            }
+        } catch (Throwable ignored) {
+            // Best-effort — never let a restore failure surface at exit.
+        }
     }
 
     private static void enableVirtualTerminalProcessing() throws Throwable {
@@ -113,10 +174,13 @@ public final class WindowsUtf8 {
         }
     }
 
+    /** Lazy holder: kernel32 loads once, and only when a downcall actually runs (Windows only). */
+    private static final class Kernel32 {
+        static final SymbolLookup LOOKUP = SymbolLookup.libraryLookup("kernel32", Arena.global());
+    }
+
     private static MethodHandle downcall(String name, FunctionDescriptor desc) {
-        Linker linker = Linker.nativeLinker();
-        SymbolLookup lookup = SymbolLookup.libraryLookup("kernel32", Arena.global());
-        MemorySegment sym = lookup.find(name).orElseThrow(() -> new UnsatisfiedLinkError(name));
-        return linker.downcallHandle(sym, desc);
+        MemorySegment sym = Kernel32.LOOKUP.find(name).orElseThrow(() -> new UnsatisfiedLinkError(name));
+        return Linker.nativeLinker().downcallHandle(sym, desc);
     }
 }
