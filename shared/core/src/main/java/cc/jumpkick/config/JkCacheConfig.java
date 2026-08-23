@@ -94,7 +94,7 @@ public record JkCacheConfig(
 
     /** Effective machine config: user-global file + env overrides + CI/disk defaults. */
     public static JkCacheConfig resolve() {
-        return resolve(JkDirs.userConfigFile(), System::getenv, () -> DiskSpace.probe(JkDirs.cache()));
+        return resolve(JkDirs.userConfigFile(), JkDirs::env, () -> DiskSpace.probe(JkDirs.cache()));
     }
 
     /** As {@link #resolve()} but against an explicit config file + env — probes {@link JkDirs#cache()}. */

@@ -87,13 +87,17 @@ public final class JkDirs {
      * same layout as the client that asked for it.
      */
     public static JkDirs current() {
-        return new JkDirs(
-                name -> {
-                    String prop = System.getProperty("jk.env." + name);
-                    return prop != null ? prop : System.getenv(name);
-                },
-                System.getProperty("user.home"),
-                System.getProperty("os.name", ""));
+        return new JkDirs(JkDirs::env, System.getProperty("user.home"), System.getProperty("os.name", ""));
+    }
+
+    /**
+     * One environment variable, with that override applied. Anything resolving ambient jk settings
+     * — not just the layout — should read through here, so a test can vary one setting for one
+     * test without the JVM-wide value every other test depends on.
+     */
+    public static String env(String name) {
+        String prop = System.getProperty("jk.env." + name);
+        return prop != null ? prop : System.getenv(name);
     }
 
     /** Test seam: fully synthetic environment (host OS name). */
