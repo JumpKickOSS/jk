@@ -874,20 +874,46 @@ public final class ZincJavaCompiler {
             }
         }
         URLClassLoader loader = new URLClassLoader(urls, ZincJavaCompiler.class.getClassLoader());
-        // Probe only — the instance the iterator creates is discarded without being initialized.
-        boolean any = ServiceLoader.load(Processor.class, loader).iterator().hasNext();
+        // Full iteration, not a hasNext() probe: hasNext validates only the FIRST services entry
+        // (it loads the provider class without instantiating), so a jar whose second entry is
+        // broken would otherwise blow up mid-Zinc-compile as a raw ServiceConfigurationError.
+        // Fail fast here instead, where compile()'s RuntimeException catch turns it into a
+        // diagnosed Result. The instances are discarded — per-cycle sets come from
+        // freshProcessors, because AbstractProcessor.init is single-shot.
+        boolean any;
+        try {
+            any = false;
+            for (Processor ignored : ServiceLoader.load(Processor.class, loader)) any = true;
+        } catch (java.util.ServiceConfigurationError e) {
+            try {
+                loader.close();
+            } catch (IOException ignored) {
+                // loader teardown is best-effort on the failure path
+            }
+            throw new IllegalStateException("broken annotation processor registration: " + e.getMessage(), e);
+        }
         return new ProcessorLoad(any, loader);
     }
 
     /**
-     * A new {@link Processor} instance per javac round. {@link javax.annotation.processing.AbstractProcessor#init}
-     * is single-shot — it throws {@code "Cannot call init more than once."} — while Zinc calls the Java
-     * compiler once per incremental round, so a round set is never reusable. Package-private so a test
-     * can pin that two loads share nothing.
+     * A new {@link Processor} instance set per Zinc cycle (each cycle is its own {@link JavacTask};
+     * within one task javac's real annotation rounds correctly reuse these instances, per the
+     * processor contract). {@link javax.annotation.processing.AbstractProcessor#init} is single-shot
+     * — it throws {@code "Cannot call init more than once."} — so a set handed to one task is never
+     * reusable by the next cycle. Do not move this inside the task. Package-private so a test can
+     * pin that two loads share nothing.
      */
     static List<Processor> freshProcessors(URLClassLoader loader) {
         List<Processor> processors = new ArrayList<>();
-        for (Processor p : ServiceLoader.load(Processor.class, loader)) processors.add(p);
+        try {
+            for (Processor p : ServiceLoader.load(Processor.class, loader)) processors.add(p);
+        } catch (java.util.ServiceConfigurationError e) {
+            // SCE extends Error and would sail past every catch in compile(), potentially after a
+            // cycle already wrote class files without persistAnalysis. loadProcessors fails fast
+            // for entries broken at load time; this guards ones that break mid-compile (a jar
+            // rewritten under us).
+            throw new IllegalStateException("broken annotation processor registration: " + e.getMessage(), e);
+        }
         return processors;
     }
 
