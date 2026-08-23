@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.runtime.ReachabilityMetadata;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -59,8 +60,15 @@ public enum CacheTier {
      */
     HASH_MEMO("hash-memo", Bound.files(null, Bound.countCap(32_768, Bound.VictimRule.SUPERSEDED_THEN_OLDEST))),
 
-    /** GraalVM reachability metadata, one tree per bundle version. */
-    GRAAL_REACHABILITY("graal-reachability", Bound.subtrees(Duration.ofDays(90), Bound.countCap(2))),
+    /**
+     * GraalVM reachability metadata, one tree per bundle version. {@code ensureExtracted} resolves
+     * a compile-time constant, so exactly one of those trees can ever be read and the others are
+     * dead the moment the constant moves — no clock required, and none would be right: the live
+     * tree is untouched between native builds, and eviction costs a fetch plus 4,012 file creates.
+     * The same rule reclaims a {@code <version>.extract-*} directory left by an interrupted
+     * extract, since it too is a child that is not the live one.
+     */
+    GRAAL_REACHABILITY("graal-reachability", Bound.subtrees(null, Bound.keepOnly(ReachabilityMetadata.VERSION))),
 
     /** Kotlin ABI snapshots. Written once and never rewritten on reuse, so mtime cannot rank them. */
     KOTLIN_CP_SNAPSHOTS("kotlin-cp-snapshots", Bound.files(null, Bound.resetOverBytes(128L * 1024 * 1024))),

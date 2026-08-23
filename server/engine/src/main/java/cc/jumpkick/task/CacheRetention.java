@@ -282,6 +282,14 @@ public final class CacheRetention {
                 survivors.add(t);
             }
         }
+        if (bound.cap() instanceof Bound.Cap.KeepOnly(String live)) {
+            for (Tree t : survivors) {
+                if (t.dir().getFileName().toString().equals(live)) continue;
+                if (now - t.mtime() < grace) continue; // a half-written extract, not a leftover
+                out = out.plus(delete(t.dir(), dryRun));
+            }
+            return out;
+        }
         if (bound.cap() instanceof Bound.Cap.Count(int max, var rule) && max > 0 && survivors.size() > max) {
             survivors.sort(Comparator.comparingLong(Tree::mtime));
             for (int i = 0; i < survivors.size() - max; i++) {

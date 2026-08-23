@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.runtime.ReachabilityMetadata;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
@@ -13,6 +14,7 @@ import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -50,7 +52,7 @@ class CacheRetentionCoverageTest {
         m.put(CacheTier.FORMAT_STAMPS, root -> file(root, "format-stamps/ab/cd/stamp", "", OLD));
         m.put(CacheTier.FORMAT_FRESHNESS, root -> file(root, "format-freshness/orphan.idx", "x", OLD));
         m.put(CacheTier.HASH_MEMO, root -> overCountCap(root, "hash-memo", 32_768));
-        m.put(CacheTier.GRAAL_REACHABILITY, root -> tree(root, "graal-reachability/1.0.0", OLD));
+        m.put(CacheTier.GRAAL_REACHABILITY, root -> tree(root, "graal-reachability/0.0.1", OLD));
         m.put(CacheTier.KOTLIN_CP_SNAPSHOTS, root -> overByteBudget(root, "kotlin-cp-snapshots"));
         m.put(CacheTier.JSHELL_CP, root -> file(root, "jshell-cp/alias.jar", "x", FRESH));
         m.put(CacheTier.BASE_JRE, root -> tree(root, "base-jre/sha256-dead", OLD));
@@ -100,6 +102,44 @@ class CacheRetentionCoverageTest {
             CacheRetention.sweep(cacheRoot, new Cas(cacheRoot), Set.of(), false);
 
             assertThat(kept).as("%s is unbounded and must survive", tier).exists();
+        }
+    }
+
+    /**
+     * Exactly one metadata bundle can ever be read, so the tier keeps that one and nothing else —
+     * including the directory an interrupted extract leaves beside it.
+     */
+    @Test
+    void the_reachability_tier_keeps_only_the_bundle_in_use(@TempDir Path root) throws IOException {
+        Path live = tree(root, "graal-reachability/" + ReachabilityMetadata.VERSION, OLD);
+        Path superseded = tree(root, "graal-reachability/0.0.1", OLD);
+        Path leaked = tree(root, "graal-reachability/" + ReachabilityMetadata.VERSION + ".extract-7f3a", OLD);
+
+        CacheRetention.sweep(root, new Cas(root), Set.of(), false);
+
+        assertThat(live).as("the version this jk resolves is never old").exists();
+        assertThat(superseded).doesNotExist();
+        assertThat(leaked).doesNotExist();
+    }
+
+    /** {@code path-artifacts} is keyed twice, and the cap belongs to the inner key. */
+    @Test
+    void a_nested_cap_counts_per_parent_not_across_the_tier(@TempDir Path root) throws IOException {
+        long inWindow = Duration.ofDays(2).toMillis(); // past grace, short of the 7-day window
+        for (String pathHash : List.of("aaa", "bbb")) {
+            for (int i = 0; i < 3; i++) {
+                tree(root, "path-artifacts/" + pathHash + "/fp-" + i, inWindow + (3 - i) * 60_000L);
+            }
+        }
+
+        CacheRetention.sweep(root, new Cas(root), Set.of(), false);
+
+        for (String pathHash : List.of("aaa", "bbb")) {
+            assertThat(root.resolve("path-artifacts/" + pathHash + "/fp-0"))
+                    .as("the oldest fingerprint under %s", pathHash)
+                    .doesNotExist();
+            assertThat(root.resolve("path-artifacts/" + pathHash + "/fp-1")).exists();
+            assertThat(root.resolve("path-artifacts/" + pathHash + "/fp-2")).exists();
         }
     }
 
