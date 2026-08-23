@@ -172,4 +172,42 @@ class FileHashMemoTest {
             pool.shutdownNow();
         }
     }
+
+    /**
+     * The entry records the path it describes on its last line, and retention needs that to be
+     * true of every entry. One that does not name this file is not trusted, and the store that
+     * follows the re-hash writes the whole shape.
+     */
+    @Test
+    void a_record_that_does_not_name_this_file_is_not_trusted(@TempDir Path dir) throws Exception {
+        Path f = Files.writeString(dir.resolve("a.jar"), "AA");
+        long mtime = System.currentTimeMillis() - 60_000;
+        Files.setLastModifiedTime(f, FileTime.fromMillis(mtime));
+        long size = Files.size(f);
+        Path cache = dir.resolve("cache");
+        withCache(cache, () -> FileHashMemo.store(f, size, mtime, "jar:abc"));
+        Path entry = onlyEntry(cache);
+        String head = Files.readString(entry).split("\\n", 2)[0];
+
+        Files.writeString(entry, head + "\n" + dir.resolve("elsewhere.jar"));
+        withCache(cache, () -> assertThat(FileHashMemo.lookup(f, size, mtime))
+                .as("names another file")
+                .isNull());
+
+        Files.writeString(entry, head);
+        withCache(cache, () -> {
+            assertThat(FileHashMemo.lookup(f, size, mtime)).as("names no file").isNull();
+            FileHashMemo.store(f, size, mtime, "jar:abc");
+            assertThat(FileHashMemo.lookup(f, size, mtime)).isEqualTo("jar:abc");
+        });
+        assertThat(Files.readString(entry))
+                .isEqualTo(head + "\n" + f.toAbsolutePath().normalize());
+    }
+
+    /** The one memo entry under {@code cache}. */
+    private static Path onlyEntry(Path cache) throws Exception {
+        try (var walk = Files.walk(cache.resolve("hash-memo"))) {
+            return walk.filter(Files::isRegularFile).findFirst().orElseThrow();
+        }
+    }
 }

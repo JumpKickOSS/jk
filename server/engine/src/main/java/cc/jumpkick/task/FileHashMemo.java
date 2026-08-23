@@ -26,6 +26,20 @@ import java.util.concurrent.atomic.AtomicLong;
  * Trust only when size+mtime match and mtime is ≥ {@link #SETTLE_MS} old; store only after
  * settle. Fail open (re-hash) on any I/O error.
  * </ul>
+ *
+ * <p>One entry per source file at {@code <cache>/hash-memo/<aa>/<sha256(abs path)>}, holding two
+ * lines:
+ *
+ * <pre>{@code
+ * <size> <mtimeMillis> <token>
+ * <absolute path>
+ * }</pre>
+ *
+ * <p>The second line is what lets retention be exact: {@link CacheRetention} drops the entries
+ * whose source no longer exists instead of guessing by age, which it cannot do here because
+ * {@link #forceStore} rewrites on every content change and so mtime measures churn, not use. An
+ * entry without that line is not trusted — {@link #lookup} fails open, the caller re-hashes, and
+ * the store that follows writes the whole shape.
  */
 public final class FileHashMemo {
 
@@ -180,10 +194,15 @@ public final class FileHashMemo {
      * is settle-gated, so a same-size rewrite in the same mtime tick cannot reuse a stale digest.
      */
     public static String lookup(Path file, long size, long mtimeMillis) {
-        Path entry = entryPath(file);
+        Path abs = file.toAbsolutePath().normalize();
+        Path entry = entryPath(abs);
         if (entry == null) return null;
         try {
-            String content = Files.readString(entry, StandardCharsets.UTF_8);
+            String record = Files.readString(entry, StandardCharsets.UTF_8);
+            int nl = record.indexOf('\n');
+            // No recorded path, or one naming a different file: nothing here is about `file`.
+            if (nl < 0 || !record.substring(nl + 1).equals(abs.toString())) return null;
+            String content = record.substring(0, nl);
             int sp1 = content.indexOf(' ');
             int sp2 = content.indexOf(' ', sp1 + 1);
             if (sp1 < 0 || sp2 < 0) return null;
@@ -245,21 +264,25 @@ public final class FileHashMemo {
     }
 
     private static void forceStore(Path file, long size, long mtimeMillis, String token) {
-        Path entry = entryPath(file);
+        Path abs = file.toAbsolutePath().normalize();
+        Path entry = entryPath(abs);
         if (entry == null) return;
         try {
-            AtomicWrites.replace(entry, size + " " + mtimeMillis + " " + token);
+            AtomicWrites.replace(entry, size + " " + mtimeMillis + " " + token + "\n" + abs);
         } catch (IOException | RuntimeException e) {
             // best-effort — the memo is an optimisation, never a requirement
         }
     }
 
-    /** {@code <cache>/hash-memo/<aa>/<sha256(abs path)>}, or {@code null} when no session cache resolves. */
-    private static Path entryPath(Path file) {
+    /**
+     * {@code <cache>/hash-memo/<aa>/<sha256(abs path)>}, or {@code null} when no session cache
+     * resolves. {@code abs} must already be absolute and normalized — it is the string that is
+     * hashed, and the one the entry records.
+     */
+    private static Path entryPath(Path abs) {
         try {
             Path cache = cc.jumpkick.config.SessionContext.current().cacheDir();
-            String key = Hashing.sha256Hex(
-                    file.toAbsolutePath().normalize().toString().getBytes(StandardCharsets.UTF_8));
+            String key = Hashing.sha256Hex(abs.toString().getBytes(StandardCharsets.UTF_8));
             return cache.resolve("hash-memo").resolve(key.substring(0, 2)).resolve(key.substring(2));
         } catch (RuntimeException e) {
             return null;

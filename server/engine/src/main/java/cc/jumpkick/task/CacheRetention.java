@@ -3,14 +3,17 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -49,6 +52,53 @@ public final class CacheRetention {
      */
     public static Report sweep(Path cacheRoot, Cas cacheCas, Set<String> alreadyFreedShas, boolean dryRun)
             throws IOException {
+        return sweep(cacheRoot, cacheCas, alreadyFreedShas, dryRun, Probe.REAL, Map.of());
+    }
+
+    /**
+     * What the pass is allowed to ask about one entry. Enumeration — {@code readdir}, plus one
+     * {@code isDirectory} per shard — is the floor and does not come through here; everything
+     * that costs per entry does, so a test can assert the below-cap pass asked nothing at all.
+     */
+    interface Probe {
+
+        Probe REAL = new Probe() {
+            @Override
+            public long mtime(Path entry) throws IOException {
+                return Files.getLastModifiedTime(entry).toMillis();
+            }
+
+            @Override
+            public long size(Path entry) throws IOException {
+                return Files.size(entry);
+            }
+
+            @Override
+            public String read(Path entry) throws IOException {
+                return Files.readString(entry, StandardCharsets.UTF_8);
+            }
+        };
+
+        long mtime(Path entry) throws IOException;
+
+        long size(Path entry) throws IOException;
+
+        String read(Path entry) throws IOException;
+    }
+
+    /**
+     * The same pass with the filesystem questions and the table's numbers substituted: {@code
+     * caps} overrides a tier's {@link Bound}, so a test can make a cap bind without seeding
+     * 32,768 entries to do it.
+     */
+    static Report sweep(
+            Path cacheRoot,
+            Cas cacheCas,
+            Set<String> alreadyFreedShas,
+            boolean dryRun,
+            Probe probe,
+            Map<CacheTier, Bound> caps)
+            throws IOException {
         if (!Files.isDirectory(cacheRoot)) return Report.EMPTY;
         long now = System.currentTimeMillis();
         long grace = Sweep.MIN_AGE_FOR_SWEEP.toMillis();
@@ -58,7 +108,7 @@ public final class CacheRetention {
         long finalActionBytes = 0L;
 
         for (CacheTier tier : CacheTier.values()) {
-            Bound bound = tier.bound();
+            Bound bound = caps.getOrDefault(tier, tier.bound());
             Path root = cacheRoot.resolve(tier.entry());
             switch (bound.kind()) {
                 case DELEGATED -> {
@@ -74,12 +124,12 @@ public final class CacheRetention {
                     // Present so the table is total and the sweep below spares it.
                 }
                 case FILES -> {
-                    Tally t = sweepFiles(root, bound, now, grace, dryRun);
+                    Tally t = sweepFiles(root, bound, now, grace, dryRun, probe);
                     files += t.files();
                     bytes += t.bytes();
                 }
                 case SUBTREES -> {
-                    Tally t = sweepSubtrees(root, bound, now, grace, dryRun);
+                    Tally t = sweepSubtrees(root, bound, now, grace, dryRun, probe);
                     files += t.files();
                     bytes += t.bytes();
                 }
@@ -87,7 +137,7 @@ public final class CacheRetention {
                     Tally t = new Tally(0, 0L);
                     for (Path parent : children(root)) {
                         if (!Files.isDirectory(parent)) continue;
-                        t = t.plus(sweepSubtrees(parent, bound, now, grace, dryRun));
+                        t = t.plus(sweepSubtrees(parent, bound, now, grace, dryRun, probe));
                     }
                     files += t.files();
                     bytes += t.bytes();
@@ -114,13 +164,14 @@ public final class CacheRetention {
     // ---------------------------------------------------------------- instruments
 
     /** Window then cap over a tree of files. One victim is one file. */
-    private static Tally sweepFiles(Path root, Bound bound, long now, long grace, boolean dryRun) throws IOException {
+    private static Tally sweepFiles(Path root, Bound bound, long now, long grace, boolean dryRun, Probe probe)
+            throws IOException {
         if (!Files.isDirectory(root)) return new Tally(0, 0L);
         if (bound.cap() instanceof Bound.Cap.ResetAlways) return delete(root, dryRun);
 
         // Below a count cap the pass must not pay for a stat walk it will not use: hash-memo is
         // ~16k files, and enumerating names is a few ms against ~20 ms to stat them all.
-        if (bound.window() == null && bound.cap() instanceof Bound.Cap.Count(int max)) {
+        if (bound.window() == null && bound.cap() instanceof Bound.Cap.Count(int max, var rule)) {
             if (countFiles(root) <= max) return new Tally(0, 0L);
         }
 
@@ -129,8 +180,8 @@ public final class CacheRetention {
         try (Stream<Path> walk = Files.walk(root)) {
             for (Path file : (Iterable<Path>) walk.filter(Files::isRegularFile)::iterator) {
                 try {
-                    long size = Files.size(file);
-                    entries.add(new Entry(file, Files.getLastModifiedTime(file).toMillis(), size));
+                    long size = probe.size(file);
+                    entries.add(new Entry(file, probe.mtime(file), size));
                     total += size;
                 } catch (NoSuchFileException vanished) {
                     // another engine got there first
@@ -150,7 +201,18 @@ public final class CacheRetention {
         }
 
         switch (bound.cap()) {
-            case Bound.Cap.Count(int max) -> {
+            case Bound.Cap.Count(int max, Bound.VictimRule rule) -> {
+                if (max > 0 && survivors.size() > max && rule == Bound.VictimRule.SUPERSEDED_THEN_OLDEST) {
+                    List<Entry> live = new ArrayList<>(survivors.size());
+                    for (Entry e : survivors) {
+                        if (now - e.mtime() >= grace && superseded(e.path(), probe)) {
+                            out = out.plus(delete(e.path(), dryRun));
+                        } else {
+                            live.add(e);
+                        }
+                    }
+                    survivors = live;
+                }
                 if (max > 0 && survivors.size() > max) {
                     survivors.sort(Comparator.comparingLong(Entry::mtime));
                     for (int i = 0; i < survivors.size() - max; i++) {
@@ -169,15 +231,46 @@ public final class CacheRetention {
         return out;
     }
 
+    /**
+     * Whether the source {@code entry} describes is gone, read from the path on its last line.
+     *
+     * <p>Two ways to answer "no" that are not "the file is there": an entry that records no path
+     * says nothing about anything, and a path whose every ancestor is also missing reads as a
+     * volume that is not mounted rather than a file that was deleted. Both are kept, because a
+     * dead entry costs one dirent while a wrongly-dropped live one costs a re-hash of a file the
+     * next build is about to read anyway.
+     */
+    private static boolean superseded(Path entry, Probe probe) {
+        String record;
+        try {
+            record = probe.read(entry);
+        } catch (IOException unreadable) {
+            return false;
+        }
+        int nl = record.lastIndexOf('\n');
+        if (nl < 0 || nl == record.length() - 1) return false;
+        Path source;
+        try {
+            source = Path.of(record.substring(nl + 1));
+        } catch (InvalidPathException notAPath) {
+            return false;
+        }
+        if (Files.exists(source)) return false;
+        for (Path dir = source.getParent(); dir != null && dir.getParent() != null; dir = dir.getParent()) {
+            if (Files.isDirectory(dir)) return true;
+        }
+        return false;
+    }
+
     /** Window then cap over a directory of self-contained trees. One victim is one child tree. */
-    private static Tally sweepSubtrees(Path root, Bound bound, long now, long grace, boolean dryRun)
+    private static Tally sweepSubtrees(Path root, Bound bound, long now, long grace, boolean dryRun, Probe probe)
             throws IOException {
         if (!Files.isDirectory(root)) return new Tally(0, 0L);
         record Tree(Path dir, long mtime) {}
         List<Tree> trees = new ArrayList<>();
         for (Path dir : children(root)) {
             if (!Files.isDirectory(dir)) continue;
-            trees.add(new Tree(dir, newestMtime(dir)));
+            trees.add(new Tree(dir, newestMtime(dir, probe)));
         }
 
         Tally out = new Tally(0, 0L);
@@ -189,7 +282,7 @@ public final class CacheRetention {
                 survivors.add(t);
             }
         }
-        if (bound.cap() instanceof Bound.Cap.Count(int max) && max > 0 && survivors.size() > max) {
+        if (bound.cap() instanceof Bound.Cap.Count(int max, var rule) && max > 0 && survivors.size() > max) {
             survivors.sort(Comparator.comparingLong(Tree::mtime));
             for (int i = 0; i < survivors.size() - max; i++) {
                 Tree t = survivors.get(i);
@@ -233,12 +326,12 @@ public final class CacheRetention {
         return n;
     }
 
-    private static long newestMtime(Path dir) throws IOException {
+    private static long newestMtime(Path dir, Probe probe) throws IOException {
         long newest = 0L;
         try (Stream<Path> walk = Files.walk(dir)) {
             for (Path f : (Iterable<Path>) walk.filter(Files::isRegularFile)::iterator) {
                 try {
-                    newest = Math.max(newest, Files.getLastModifiedTime(f).toMillis());
+                    newest = Math.max(newest, probe.mtime(f));
                 } catch (NoSuchFileException vanished) {
                     // ignore
                 }

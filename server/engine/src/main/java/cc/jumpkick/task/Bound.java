@@ -33,10 +33,25 @@ public record Bound(Kind kind, Duration window, Cap cap, String reason) {
         UNBOUNDED
     }
 
+    /**
+     * How a {@link Cap.Count} chooses what to drop. Ranking by age is only honest where mtime
+     * tracks use; where it tracks churn instead, an exact rule has to come first.
+     */
+    public enum VictimRule {
+        /** Oldest mtime first. */
+        OLDEST,
+        /**
+         * Entries whose source is already gone, then oldest mtime for whatever is still over.
+         * The tier opts in by recording, as the last line of each entry, the absolute path that
+         * entry describes; {@link CacheRetention} reads that line and nothing else.
+         */
+        SUPERSEDED_THEN_OLDEST
+    }
+
     /** What the cap does once the window has run. */
     public sealed interface Cap {
-        /** Keep at most {@code max} survivors, oldest mtime first. */
-        record Count(int max) implements Cap {}
+        /** Keep at most {@code max} survivors, picking victims by {@code rule}. */
+        record Count(int max, VictimRule rule) implements Cap {}
 
         /**
          * Over {@code budgetBytes}, delete the whole tier. For tiers whose mtime is <em>not</em> a
@@ -77,7 +92,11 @@ public record Bound(Kind kind, Duration window, Cap cap, String reason) {
     }
 
     public static Cap countCap(int max) {
-        return new Cap.Count(max);
+        return new Cap.Count(max, VictimRule.OLDEST);
+    }
+
+    public static Cap countCap(int max, VictimRule rule) {
+        return new Cap.Count(max, rule);
     }
 
     public static Cap resetOverBytes(long budgetBytes) {
