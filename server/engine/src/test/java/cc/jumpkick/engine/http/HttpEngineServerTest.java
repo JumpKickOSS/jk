@@ -1106,13 +1106,14 @@ class HttpEngineServerTest {
                 .contains("\"casBytes\":5000000")
                 .contains("\"actionsCount\":40")
                 .contains("\"workerJarsBytes\":30000000")
-                .contains("\"totalCount\":152")
-                .contains("\"totalBytes\":35209100")
+                .contains("\"totalCount\":145")
+                .contains("\"totalBytes\":35200100")
                 .contains("\"actionCacheBytes\":200000") // action index + cache CAS; format stamps are not budgeted
                 .contains("\"actionMaxBytes\":1073741824") // fixture cache budget (1 GiB)
-                // Store CAS + worker jars; run logs are state, not storage.
+                // Store CAS + worker jars.
                 .contains("\"artifactStorageBytes\":35000000")
                 .doesNotContain("\"maxBytes\"") // the artifact store carries no budget
+                .doesNotContain("runLogs") // the run-log tier is gone, not renamed
                 .contains("\"lastPrunedMillis\":1700000000000");
     }
 

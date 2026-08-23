@@ -70,11 +70,6 @@ public final class CachePlans {
                     totalFiles += cacheTemps.files();
                     totalBytes += cacheTemps.bytes();
 
-                    // Format stamps: 7d unused TTL + count-cap LRU (512k / 1M when CI=1|true).
-                    var formatStampReport = cc.jumpkick.task.FormatStampGc.sweep(root, dryRun);
-                    totalFiles += formatStampReport.deleted();
-                    totalBytes += formatStampReport.freedBytes();
-
                     var timingsReport = StepTimings.prune(
                             root,
                             StepTimings.Limits.resolve(cc.jumpkick.util.JkDirs.userConfigFile(), System::getenv),
@@ -98,16 +93,24 @@ public final class CachePlans {
                     totalFiles += cacheSweep.deleted();
                     totalBytes += cacheSweep.freedBytes();
 
-                    var cacheConfig = cc.jumpkick.config.JkCacheConfig.resolve();
-                    var policy = cc.jumpkick.task.ActionCachePrune.Policy.of(cacheConfig);
-                    // The sweep's victims are still on disk in a dry run, so hand them over: without
-                    // that the prune counts the same blob twice and dry-run totals diverge.
-                    var prune = cc.jumpkick.task.ActionCachePrune.run(
-                            root, cacheCas, policy, cacheSweep.deletedShas(), dryRun);
-                    totalFiles += prune.totalDeletedFiles();
-                    totalBytes += prune.totalFreedBytes();
-                    ctx.put(FINAL_ACTION_BYTES, prune.finalBytes());
-                    if (policy.actionBudgetBytes() > 0 && prune.finalBytes() > policy.actionBudgetBytes()) {
+                    // Every tier under the cache root, plus a sweep of anything the table does not
+                    // name. The sweep's victims are still on disk in a dry run, so hand them over:
+                    // without that the action prune counts the same blob twice and dry-run totals
+                    // diverge.
+                    var retention =
+                            cc.jumpkick.task.CacheRetention.sweep(root, cacheCas, cacheSweep.deletedShas(), dryRun);
+                    totalFiles += retention.deletedFiles();
+                    totalBytes += retention.freedBytes();
+                    ctx.put(FINAL_ACTION_BYTES, retention.finalActionBytes());
+                    if (!retention.unknownEntries().isEmpty()) {
+                        ctx.warn(
+                                "prune",
+                                "reclaimed unrecognised cache entries: "
+                                        + String.join(", ", retention.unknownEntries()));
+                    }
+                    long actionBudget =
+                            cc.jumpkick.config.JkCacheConfig.resolve().maxCacheSizeBytes();
+                    if (actionBudget > 0 && retention.finalActionBytes() > actionBudget) {
                         ctx.warn(
                                 "prune",
                                 "cache is still over budget — raise cache.max-cache-size-gb (or JK_MAX_CACHE_SIZE_GB)");
@@ -138,13 +141,15 @@ public final class CachePlans {
     }
 
     /**
-     * Delete the cache-tier trees under {@code root}: action index, format stamps, and cache CAS
-     * ({@code sha256/}). Leaves {@code repos/} alone.
+     * Delete every bounded cache tier under {@code root}. Driven off {@link
+     * cc.jumpkick.task.CacheTier} so a new tier cannot be added to the retention table and then
+     * silently survive {@code jk cache nuke}.
      */
     public static void purgeActionCache(Path root) throws IOException {
-        for (String tree : new String[] {"actions", "format-stamps", "sha256"}) {
-            Path dir = root.resolve(tree);
+        for (var tier : cc.jumpkick.task.CacheTier.purgeable()) {
+            Path dir = root.resolve(tier.entry());
             if (Files.isDirectory(dir)) deleteContents(dir);
+            else Files.deleteIfExists(dir);
         }
     }
 

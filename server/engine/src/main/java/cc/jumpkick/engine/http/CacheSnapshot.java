@@ -291,7 +291,7 @@ public record CacheSnapshot(
                 // Zinc analysis is budgeted apart from the action index: own bar, own denominator.
                 .put("incrementalMaxBytes", incrementalMaxBytes)
                 // Count-cap for the stamp tree (512k default / 1M when CI=1|true) — web shows % used, not GiB.
-                .put("formatStampsMax", cc.jumpkick.task.FormatStampGc.resolveMaxFiles())
+                .put("formatStampsMax", cc.jumpkick.task.FormatStamps.maxFiles())
                 .put("totalCount", totalCount())
                 .put("totalBytes", totalBytes())
                 .put("actionCacheCount", actionCacheCount())
