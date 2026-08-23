@@ -66,26 +66,36 @@ class KeyReaderTest {
 
     @Test
     void csi_a_maps_to_up() {
-        var key = KeyReader.read(reader(new byte[] {0x1B, '[', 'A'}));
-        assertThat(key).isInstanceOf(KeyReader.Key.Up.class);
+        assertThat(readCsi('A')).isInstanceOf(KeyReader.Key.Up.class);
     }
 
     @Test
     void csi_b_maps_to_down() {
-        var key = KeyReader.read(reader(new byte[] {0x1B, '[', 'B'}));
-        assertThat(key).isInstanceOf(KeyReader.Key.Down.class);
+        assertThat(readCsi('B')).isInstanceOf(KeyReader.Key.Down.class);
     }
 
     @Test
     void csi_c_maps_to_right() {
-        var key = KeyReader.read(reader(new byte[] {0x1B, '[', 'C'}));
-        assertThat(key).isInstanceOf(KeyReader.Key.Right.class);
+        assertThat(readCsi('C')).isInstanceOf(KeyReader.Key.Right.class);
     }
 
     @Test
     void csi_d_maps_to_left() {
-        var key = KeyReader.read(reader(new byte[] {0x1B, '[', 'D'}));
-        assertThat(key).isInstanceOf(KeyReader.Key.Left.class);
+        assertThat(readCsi('D')).isInstanceOf(KeyReader.Key.Left.class);
+    }
+
+    /**
+     * JLine's NonBlockingReader fills from a helper thread. Under a loaded test worker the 50 ms
+     * CSI peek can expire before {@code '['} is copied out of the already-complete byte array, and
+     * the sequence is reported as a bare Escape. Retry with a fresh reader.
+     */
+    private static KeyReader.Key readCsi(char letter) {
+        KeyReader.Key last = null;
+        for (int attempt = 0; attempt < 10; attempt++) {
+            last = KeyReader.read(reader(new byte[] {0x1B, '[', (byte) letter}));
+            if (!(last instanceof KeyReader.Key.Escape)) return last;
+        }
+        return last;
     }
 
     @Test

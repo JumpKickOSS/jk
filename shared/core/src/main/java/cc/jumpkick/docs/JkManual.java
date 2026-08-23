@@ -44,7 +44,10 @@ public final class JkManual {
 
     private JkManual() {}
 
-    /** Full playbook markdown, with the running JumpKick version substituted. Always ends in a newline. */
+    /**
+     * Full playbook markdown, with the running JumpKick version substituted. Always LF, always ends
+     * in a newline — a document consumed as bytes ({@code jk manual}, MCP), not terminal chrome.
+     */
     public static String markdown() {
         String raw = load().replace("${jk.version}", JkVersion.VERSION);
         return raw.endsWith("\n") ? raw : raw + "\n";
@@ -67,7 +70,8 @@ public final class JkManual {
             if (in == null) {
                 throw new IllegalStateException("missing playbook resource: " + RESOURCE);
             }
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            // Always LF: a Windows checkout may have copied the resource with CRLF.
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8).replace("\r\n", "\n");
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

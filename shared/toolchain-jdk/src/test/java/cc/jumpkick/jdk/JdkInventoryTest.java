@@ -4,6 +4,7 @@ package cc.jumpkick.jdk;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
+import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -70,14 +71,17 @@ class JdkInventoryTest {
         Path graalHome = fakeGraal(jdks.resolve("graalvm-25.0.3"), "25.0.3");
         Path config = tmp.resolve("config/config.toml");
         Files.createDirectories(config.getParent());
-        Files.writeString(config, """
+        Files.writeString(
+                config,
+                """
                 color = "auto"
                 default-jdk = "temurin-25.0.3"
-                default-jdk-home = "%s"
+                default-jdk-home = %s
                 default-graal-jdk = "graalvm-25.0.3"
-                default-graal-jdk-home = "%s"
+                default-graal-jdk-home = %s
                 nerd-font = "auto"
-                """.formatted(javaHome, graalHome), StandardCharsets.UTF_8);
+                """.formatted(MinimalToml.quote(javaHome.toString()), MinimalToml.quote(graalHome.toString())),
+                StandardCharsets.UTF_8);
         Path data = Files.createDirectories(tmp.resolve("data"));
         Files.createSymbolicLink(data.resolve("default-jdk"), javaHome);
         Files.createSymbolicLink(data.resolve("current-jdk"), javaHome);
@@ -223,10 +227,10 @@ class JdkInventoryTest {
                 color = "auto"
 
                 default-jdk = "25.0.4-tem"
-                default-jdk-home = "%s"
+                default-jdk-home = %s
 
                 nerd-font = "auto"
-                """.formatted(external), StandardCharsets.UTF_8);
+                """.formatted(MinimalToml.quote(external.toString())), StandardCharsets.UTF_8);
 
         JdkInventory inv = new JdkInventory(jdks, tmp.resolve("state/jk-jdks.toml"), config, null);
         assertThat(inv.defaultId()).contains("25.0.4-tem");
@@ -298,28 +302,18 @@ class JdkInventoryTest {
     }
 
     private static Path fakeUnownedJdk(Path home, String version, String implementor) throws IOException {
-        Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake\n");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake\n");
-        Files.writeString(
-                home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"" + implementor + "\"\n");
+        writeFakeBin(home, version, implementor);
         return home;
     }
 
     private static Path fakeJdk(Path home, String version, String implementor) throws IOException {
-        Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake\n");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake\n");
-        Files.writeString(
-                home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"" + implementor + "\"\n");
+        writeFakeBin(home, version, implementor);
         JdkOwnership.mark(home);
         return home;
     }
 
     private static Path fakeGraal(Path home, String version) throws IOException {
-        Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve("java"), "#!/fake\n");
-        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake\n");
+        writeFakeBin(home, version, "Oracle Corporation");
         Files.writeString(
                 home.resolve("release"),
                 "JAVA_VERSION=\""
@@ -331,5 +325,13 @@ class JdkInventoryTest {
                         + "\"\n");
         JdkOwnership.mark(home);
         return home;
+    }
+
+    private static void writeFakeBin(Path home, String version, String implementor) throws IOException {
+        Files.createDirectories(home.resolve("bin"));
+        Files.writeString(JdkFingerprint.java(home), "#!/fake\n");
+        Files.writeString(JdkFingerprint.javac(home), "#!/fake\n");
+        Files.writeString(
+                home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"" + implementor + "\"\n");
     }
 }

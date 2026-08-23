@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.theme.Theme;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -153,7 +154,7 @@ class JkManagerTest {
         var buf = new ByteArrayOutputStream();
         var cm = JkManager.plan(stream(buf), "Build", false);
         cm.finishSuccess("ok took 1s");
-        String out = buf.toString(StandardCharsets.UTF_8);
+        String out = Capture.lf(buf.toString(StandardCharsets.UTF_8));
         // Leading blank at construct; settle does not close the envelope (dispatch does).
         assertThat(out).startsWith("\n");
         assertThat(out).doesNotEndWith("\n\n");
@@ -167,7 +168,7 @@ class JkManagerTest {
         var buf = new ByteArrayOutputStream();
         var cm = JkManager.plan(stream(buf), "Run", false);
         cm.finishBuildPlanExec("Executing `java -cp … Main`");
-        String out = buf.toString(StandardCharsets.UTF_8);
+        String out = Capture.lf(buf.toString(StandardCharsets.UTF_8));
         assertThat(out).startsWith("\n");
         assertThat(out).doesNotEndWith("\n\n");
         assertThat(out).endsWith("\n");
@@ -182,7 +183,7 @@ class JkManagerTest {
         CommandWedge.envelopeStart(ps); // e.g. EnsureFreshLock / analyzing
         var cm = JkManager.plan(ps, "Build", false);
         cm.finishBuildPlanSuccess("built");
-        String out = buf.toString(StandardCharsets.UTF_8);
+        String out = Capture.lf(buf.toString(StandardCharsets.UTF_8));
         // Exactly one leading blank for the whole command, not two.
         assertThat(out).startsWith("\n");
         assertThat(out).doesNotStartWith("\n\n");

@@ -12,7 +12,6 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -2253,13 +2252,23 @@ class JkBuildParserTest {
 
         for (int i = 0; i < 20; i++) {
             Files.writeString(file, PROJECT + "\n# edit " + i + "\n");
-            // Distinct mtime so the stamp really moves on every rewrite.
-            Files.setLastModifiedTime(file, FileTime.fromMillis(1_700_000_000_000L + i * 1000L));
             JkBuildParser.parseLocal(file);
         }
         assertThat(JkBuildParser.parseCacheSizeForTest())
                 .as("one entry per file, not one per revision")
                 .isEqualTo(sizeAfterFirst);
+    }
+
+    @Test
+    void parse_memo_does_not_reuse_a_same_length_rewrite(@org.junit.jupiter.api.io.TempDir Path tmp) throws Exception {
+        // Size+mtime stamps miss this on Windows: same length, same tick, different bytes.
+        Path file = tmp.resolve("jk.toml");
+        Files.writeString(file, PROJECT + "description = \"a\"\n");
+        JkBuild first = JkBuildParser.parseLocal(file);
+        Files.writeString(file, PROJECT + "description = \"b\"\n");
+        JkBuild second = JkBuildParser.parseLocal(file);
+        assertThat(second).isNotSameAs(first);
+        assertThat(second.project().description()).isEqualTo("b");
     }
 
     @Test

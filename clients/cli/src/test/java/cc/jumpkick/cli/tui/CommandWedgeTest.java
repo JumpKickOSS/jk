@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MainSources;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.NerdFontCaps;
@@ -162,7 +163,7 @@ class CommandWedgeTest {
         } finally {
             System.setErr(prev);
         }
-        String out = err.toString(StandardCharsets.UTF_8);
+        String out = Capture.lf(err.toString(StandardCharsets.UTF_8));
         assertThat(out).startsWith("\n");
         assertThat(out).doesNotStartWith("\n\n");
         assertThat(out).contains("Build").contains("boom").contains("again");
@@ -185,7 +186,7 @@ class CommandWedgeTest {
         } finally {
             System.setOut(prev);
         }
-        String out = buf.toString(StandardCharsets.UTF_8);
+        String out = Capture.lf(buf.toString(StandardCharsets.UTF_8));
         assertThat(out).startsWith("\n");
         assertThat(out).doesNotStartWith("\n\n");
         assertThat(out).contains("Add").contains("ok");
@@ -203,7 +204,7 @@ class CommandWedgeTest {
         } finally {
             System.setOut(prev);
         }
-        String out = buf.toString(StandardCharsets.UTF_8);
+        String out = Capture.lf(buf.toString(StandardCharsets.UTF_8));
         assertThat(out).startsWith("\n");
         assertThat(out).doesNotStartWith("\n\n");
         assertThat(out).contains("wedge-one").contains("wedge-two");

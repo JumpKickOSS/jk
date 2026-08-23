@@ -4,6 +4,7 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -25,7 +26,7 @@ class JdkDownloadBarTest {
             try (JdkDownloadBar bar = JdkDownloadBar.show(ps, "Eclipse Temurin 25")) {
                 assertThat(CliOutput.envelopeStarted()).isTrue();
             }
-            String out = buf.toString(StandardCharsets.UTF_8);
+            String out = Capture.lf(buf.toString(StandardCharsets.UTF_8));
             assertThat(out).startsWith("\n");
             assertThat(out).doesNotStartWith("\n\n");
             return null;
@@ -44,7 +45,7 @@ class JdkDownloadBarTest {
             try (JdkDownloadBar installing = JdkDownloadBar.showInstalling(ps, "Eclipse Temurin 25")) {
                 assertThat(CliOutput.envelopeStarted()).isTrue();
             }
-            String out = buf.toString(StandardCharsets.UTF_8);
+            String out = Capture.lf(buf.toString(StandardCharsets.UTF_8));
             assertThat(out).startsWith("\n");
             assertThat(out).doesNotStartWith("\n\n");
             return null;

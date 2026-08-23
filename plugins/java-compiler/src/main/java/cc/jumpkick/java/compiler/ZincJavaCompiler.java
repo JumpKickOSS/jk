@@ -4,6 +4,7 @@ package cc.jumpkick.java.compiler;
 import com.sun.source.util.JavacTask;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -29,6 +30,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.zip.GZIPInputStream;
 import javax.annotation.processing.Processor;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaFileObject;
@@ -344,17 +346,41 @@ public final class ZincJavaCompiler {
      * <p>Unreadability surfaces either way — a thrown parse error, or an empty {@link Optional} over
      * a file that plainly exists — and both mean the same thing, so both delete it. Left in place it
      * is a file every later {@code store.set} must replace and no read can ever use.
+     *
+     * <p>Do not call {@code store.get()} on a non-gzip file. Zinc opens a {@code FileInputStream}
+     * then wraps it in {@link GZIPInputStream}; a bad magic throws in that constructor and never
+     * closes the stream. Windows then refuses to delete or replace the analysis file.
      */
     private static Optional<AnalysisContents> readAnalysis(AnalysisStore store, Path analysisFile) {
+        if (!Files.isRegularFile(analysisFile)) {
+            return Optional.empty();
+        }
+        if (!gzipHeaderReadable(analysisFile)) {
+            tryDeleteAnalysis(analysisFile);
+            return Optional.empty();
+        }
         try {
             Optional<AnalysisContents> got = store.get();
-            if (got.isEmpty() && Files.isRegularFile(analysisFile)) {
+            if (got.isEmpty()) {
                 tryDeleteAnalysis(analysisFile);
             }
             return got;
         } catch (RuntimeException e) {
             tryDeleteAnalysis(analysisFile);
             return Optional.empty();
+        }
+    }
+
+    /**
+     * Zinc's binary store is gzip. Opens and closes the file ourselves so a bad header cannot leak
+     * a handle the way {@code store.get()} does.
+     */
+    private static boolean gzipHeaderReadable(Path analysisFile) {
+        try (InputStream raw = Files.newInputStream(analysisFile)) {
+            new GZIPInputStream(raw).close();
+            return true;
+        } catch (IOException e) {
+            return false;
         }
     }
 
@@ -395,19 +421,19 @@ public final class ZincJavaCompiler {
 
     /**
      * Remove the analysis file. On POSIX one {@code deleteIfExists} is the whole story. Windows may
-     * deny the delete while another handle lingers, so rename it out of the way — allowed where
-     * deleting is not — and retry when even that is refused.
+     * deny the delete while another handle lingers ({@link FileSystemException}, not
+     * {@link AccessDeniedException} — sharing violation is ERROR_SHARING_VIOLATION), so rename it
+     * out of the way — allowed where deleting is not — and retry when even that is refused.
      */
     private static void tryDeleteAnalysis(Path analysisFile) {
         for (int attempt = 1; ; attempt++) {
             try {
                 Files.deleteIfExists(analysisFile);
                 return;
-            } catch (AccessDeniedException denied) {
-                if (!isWindows() || renameAside(analysisFile) || attempt == LOCK_ATTEMPTS) return;
+            } catch (IOException e) {
+                if (!isWindows() || !isSharingViolation(e) || attempt == LOCK_ATTEMPTS) return;
+                if (renameAside(analysisFile)) return;
                 sleepBriefly(attempt);
-            } catch (IOException ignored) {
-                return; // best effort — a full compile overwrites it anyway
             }
         }
     }

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.Capture;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -158,8 +159,7 @@ class OutputWindowTest {
         cm.writeAbove("first");
         cm.writeAbove("");
         cm.writeAbove("second");
-        // Normalize CRLF from PrintStream on Windows.
-        String out = buf.toString(StandardCharsets.UTF_8).replace("\r\n", "\n");
+        String out = Capture.lf(buf.toString(StandardCharsets.UTF_8));
         assertThat(out).contains("first\n\nsecond\n");
         cm.close();
     }
@@ -329,7 +329,7 @@ class OutputWindowTest {
         assertThat(cm.outputWindow().committedScrollbackLines()).isGreaterThan(0);
         buf.reset();
         cm.finishBuildPlanSuccess("built");
-        String out = buf.toString(StandardCharsets.UTF_8);
+        String out = Capture.lf(buf.toString(StandardCharsets.UTF_8));
         // Settle chip is preceded by a blank (separator under process scrollback).
         assertThat(out).contains("\n\n");
         assertThat(out).contains("built");
