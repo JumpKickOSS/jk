@@ -137,8 +137,10 @@ class WorkspaceSchedulerTest {
         WorkspaceScheduler.PhasedUnitTask<String, String> task = (unit, artifactsReady) -> {
             order.add("start:" + unit);
             if (unit.equals("up")) {
-                artifactsReady.run();
+                // Latch before the publish, not after: artifactsReady is what admits "down", so a
+                // countDown afterwards races the dependent it just released.
                 upPublished.countDown();
+                artifactsReady.run();
                 try {
                     // Hold "up" open (its test phase) until "down" has demonstrably started.
                     assertThat(downStarted.await(5, TimeUnit.SECONDS))
