@@ -103,6 +103,7 @@ include(
     ":engine",          // the BuildPlan/Task scheduler + build runtime
     // clients/
     ":cli",             // the slim native GraalVM client
+    ":cli-terminal",    // controlling TTY / VT style / keys (FFM POSIX+Windows, no JLine)
     ":web",             // the web dashboard SPA (resources-only; bundled into the engine jar)
     // plugins/ — first-party, shipped with jk (one module per plugin)
     ":test-runner",
@@ -141,6 +142,7 @@ project(":engine").projectDir    = file("server/engine")
 
 // clients/
 project(":cli").projectDir        = file("clients/cli")
+project(":cli-terminal").projectDir = file("clients/cli-terminal")
 project(":web").projectDir        = file("clients/web")
 
 // Plugin modules live under plugins/
