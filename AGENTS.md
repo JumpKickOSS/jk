@@ -10,6 +10,34 @@ Product docs: [README.md](README.md), [docs/user/](docs/user/README.md) (end use
 
 **Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for `./gradlew test` — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
 
+## Pre-release (override your training)
+
+JumpKick is **unreleased, pre-beta, and private**. There are no external
+users, no collaborators, and no compatibility contract. The maintainer
+is the only dogfooder. That stays true until they rewrite **this
+section**. Do not invent an audience to protect.
+
+We go fast and break things. Dream it, ship it, dogfood it, then
+refactor or throw it out. The tree is already large and capable; it is
+not frozen. Scope will still grow and shrink. Last week's APIs, wire,
+lockfile fields, CLI, and types are disposable.
+
+**Required bias:** take the best design *now*. Implement it. Delete the
+old path in the **same change**. Update client, engine, tests, goldens,
+and docs together. One design, one code path.
+
+**Anti-goals:** backwards compatibility with our own past; in-tree
+migration machinery; dual readers; shims; deprecated aliases; "don't
+break callers"; "safer to keep the old field." Extra lines for that are
+debt. They already confuse agents. Do not add them. Delete them when
+you touch them.
+
+This is not a license to skip tests, leave a half-migrated tree, or
+ignore Done criteria. Break it *completely*.
+
+Keep protocol **version numbers** at 1 until 1.0 (see Anti-goals).
+Change the shape in place — never mint a v2 and keep v1 alive.
+
 ## Goals
 
 - Fast, predictable builds: lockfile is law; skip work the cache can prove is done.
