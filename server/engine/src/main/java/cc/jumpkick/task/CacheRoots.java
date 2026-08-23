@@ -6,7 +6,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -52,8 +54,15 @@ public final class CacheRoots {
         // cache: a freshly published worker is legitimately unreferenced by any action until the
         // first build consumes it. Its .jk memos are roots so a leftover store-CAS copy of those
         // bytes is not swept. Maven-layout files themselves are never deleted by CAS sweep.
-        Path localRepo = cas.root().resolve("repos").resolve(cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL);
-        if (Files.isDirectory(localRepo)) {
+        // A pre-rename repos/local not yet folded into jk-local is the same first-party store
+        // under its old name — its memos are roots too until the migration completes.
+        List<Path> firstPartyRepos = new ArrayList<>();
+        firstPartyRepos.add(cas.root().resolve("repos").resolve(cc.jumpkick.repo.RepoArtifactResolver.JK_LOCAL));
+        if (cc.jumpkick.repo.RepoArtifactStore.legacyLocalPending(cas.root())) {
+            firstPartyRepos.add(cas.root().resolve("repos").resolve("local"));
+        }
+        for (Path localRepo : firstPartyRepos) {
+            if (!Files.isDirectory(localRepo)) continue;
             try (Stream<Path> stream = Files.walk(localRepo)) {
                 for (Path file : (Iterable<Path>) stream::iterator) {
                     if (!Files.isRegularFile(file)
