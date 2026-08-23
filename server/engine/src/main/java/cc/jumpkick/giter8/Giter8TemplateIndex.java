@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.giter8;
 
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -45,7 +46,7 @@ public final class Giter8TemplateIndex {
 
     /**
      * Disk always wins on id collision — {@code putIfAbsent} in root order ($JK_TEMPLATES,
-     * ~/.jk/templates, cache clones, dogfood), plugin-bundled rows last. One uniform local-wins
+     * {@link JkDirs#templates()}, dogfood), plugin-bundled rows last. One uniform local-wins
      * rule: a user's copy of {@code java/spring-boot/hello} overrides the plugin's bundled one.
      * The returned list is sorted by id (language/framework/name) so every surface — CLI picker,
      * HTTP, MCP, web — lists templates in the same order on every filesystem.
@@ -165,18 +166,11 @@ public final class Giter8TemplateIndex {
         return List.copyOf(names);
     }
 
-    public static List<Path> defaultSearchRoots(Path home, List<Path> extras) {
+    public static List<Path> defaultSearchRoots(List<Path> extras) {
         List<Path> roots = new ArrayList<>();
         String env = System.getenv("JK_TEMPLATES");
         if (env != null && !env.isBlank()) roots.add(Path.of(env));
-        if (home != null) {
-            roots.add(home.resolve(".jk").resolve("templates"));
-            roots.add(home.resolve(".jk").resolve("cache").resolve("templates"));
-            String xdg = System.getenv("XDG_CACHE_HOME");
-            if (xdg != null && !xdg.isBlank()) {
-                roots.add(Path.of(xdg).resolve("jk").resolve("templates"));
-            }
-        }
+        roots.add(JkDirs.templates());
         if (extras != null) {
             for (Path p : extras) {
                 if (p != null) roots.add(p);
@@ -284,8 +278,11 @@ public final class Giter8TemplateIndex {
             Path envRoot = Path.of(env).toAbsolutePath().normalize();
             if (tmpl.startsWith(envRoot)) return true;
         }
-        Path home = Path.of(System.getProperty("user.home", "")).resolve(".jk").resolve("templates");
-        return tmpl.startsWith(home.toAbsolutePath().normalize());
+        Path storeTemplates = JkDirs.templates().toAbsolutePath().normalize();
+        Path abs = tmpl.toAbsolutePath().normalize();
+        if (!abs.startsWith(storeTemplates)) return false;
+        Path rel = storeTemplates.relativize(abs);
+        return rel.getNameCount() > 0 && LANGS.contains(rel.getName(0).toString());
     }
 
     public static boolean isTemplateRoot(Path p) {
@@ -294,9 +291,6 @@ public final class Giter8TemplateIndex {
     }
 
     public static List<Path> searchRoots(Path... hints) {
-        Path home = Optional.ofNullable(System.getProperty("user.home"))
-                .map(Path::of)
-                .orElse(null);
         List<Path> extras = new ArrayList<>();
         if (hints != null) {
             for (Path h : hints) {
@@ -315,7 +309,7 @@ public final class Giter8TemplateIndex {
         } catch (Exception ignored) {
             // best-effort
         }
-        return defaultSearchRoots(home, extras);
+        return defaultSearchRoots(extras);
     }
 
     private static void collectDogfood(Path start, List<Path> extras) {

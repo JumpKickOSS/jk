@@ -32,6 +32,10 @@ class JkDirsTest {
         assertThat(dirs.stateDir()).isEqualTo(Path.of("/home/me/.local/state/jk"));
         assertThat(dirs.binDirectory()).isEqualTo(Path.of("/home/me/.local/bin"));
         assertThat(dirs.storeDir()).isEqualTo(Path.of("/home/me/.local/share/jk/store"));
+        assertThat(dirs.libraryRegistryFile())
+                .isEqualTo(Path.of("/home/me/.local/share/jk/store").resolve(JkDirs.LIBRARY_REGISTRY_FILE));
+        assertThat(dirs.templatesDir())
+                .isEqualTo(Path.of("/home/me/.local/share/jk/store").resolve(JkDirs.TEMPLATES_DIR));
         assertThat(dirs.libDir()).isEqualTo(Path.of("/home/me/.local/share/jk/store/lib"));
         assertThat(dirs.productLibDir()).isEqualTo(Path.of("/home/me/.local/share/jk/lib"));
         assertThat(dirs.jdksDir()).isEqualTo(Path.of("/home/me/.jdks"));
@@ -93,6 +97,10 @@ class JkDirsTest {
         assertThat(dirs.configDir()).isEqualTo(jkHome.resolve("config"));
         assertThat(dirs.binDirectory()).isEqualTo(jkHome.resolve("bin"));
         assertThat(dirs.storeDir()).isEqualTo(jkHome.resolve("data").resolve("store"));
+        assertThat(dirs.libraryRegistryFile())
+                .isEqualTo(jkHome.resolve("data").resolve("store").resolve(JkDirs.LIBRARY_REGISTRY_FILE));
+        assertThat(dirs.templatesDir())
+                .isEqualTo(jkHome.resolve("data").resolve("store").resolve(JkDirs.TEMPLATES_DIR));
         assertThat(dirs.productLibDir()).isEqualTo(jkHome.resolve("data").resolve("lib"));
     }
 
@@ -140,6 +148,10 @@ class JkDirsTest {
 
         // <data>/store, <store>/lib, <data>/lib, <config>/config.toml, <state>/builds, <state>/tmp
         assertThat(umbrella.storeDir()).isEqualTo(Path.of("/opt/jk/data/store"));
+        assertThat(umbrella.libraryRegistryFile())
+                .isEqualTo(Path.of("/opt/jk/data/store").resolve(JkDirs.LIBRARY_REGISTRY_FILE));
+        assertThat(umbrella.templatesDir())
+                .isEqualTo(Path.of("/opt/jk/data/store").resolve(JkDirs.TEMPLATES_DIR));
         assertThat(umbrella.libDir()).isEqualTo(Path.of("/opt/jk/data/store/lib"));
         assertThat(umbrella.productLibDir()).isEqualTo(Path.of("/opt/jk/data/lib"));
         assertThat(umbrella.userConfigFilePath()).isEqualTo(Path.of("/opt/jk/config/config.toml"));
@@ -153,6 +165,10 @@ class JkDirsTest {
                 .isEqualTo(xdg.dataDir().relativize(xdg.productLibDir()));
         assertThat(umbrella.storeDir().relativize(umbrella.libDir()))
                 .isEqualTo(xdg.storeDir().relativize(xdg.libDir()));
+        assertThat(umbrella.storeDir().relativize(umbrella.libraryRegistryFile()))
+                .isEqualTo(xdg.storeDir().relativize(xdg.libraryRegistryFile()));
+        assertThat(umbrella.storeDir().relativize(umbrella.templatesDir()))
+                .isEqualTo(xdg.storeDir().relativize(xdg.templatesDir()));
         assertThat(umbrella.stateDir().relativize(umbrella.buildsDir()))
                 .isEqualTo(xdg.stateDir().relativize(xdg.buildsDir()));
         assertThat(umbrella.stateDir().relativize(umbrella.tmpDir()))
@@ -185,6 +201,9 @@ class JkDirsTest {
         assertThat(dirs.userConfigFilePath()).isEqualTo(Path.of("/etc/jk-config.toml"));
         assertThat(dirs.cacheDir()).isEqualTo(Path.of("/var/cache/jk"));
         assertThat(dirs.storeDir()).isEqualTo(Path.of("/var/lib/jk/store"));
+        assertThat(dirs.libraryRegistryFile())
+                .isEqualTo(Path.of("/var/lib/jk/store").resolve(JkDirs.LIBRARY_REGISTRY_FILE));
+        assertThat(dirs.templatesDir()).isEqualTo(Path.of("/var/lib/jk/store").resolve(JkDirs.TEMPLATES_DIR));
         assertThat(dirs.stateDir()).isEqualTo(Path.of("/var/lib/jk/state"));
         assertThat(dirs.dataDir()).isEqualTo(Path.of("/var/lib/jk/data"));
         assertThat(dirs.binDirectory()).isEqualTo(Path.of("/usr/local/bin"));
@@ -197,6 +216,9 @@ class JkDirsTest {
         Map<String, String> env = Map.of("JK_STORE_DIR", "/data/jk-store");
         JkDirs dirs = JkDirs.of(env::get, "/home/me", "Linux");
         assertThat(dirs.storeDir()).isEqualTo(Path.of("/data/jk-store"));
+        assertThat(dirs.libraryRegistryFile())
+                .isEqualTo(Path.of("/data/jk-store").resolve(JkDirs.LIBRARY_REGISTRY_FILE));
+        assertThat(dirs.templatesDir()).isEqualTo(Path.of("/data/jk-store").resolve(JkDirs.TEMPLATES_DIR));
         assertThat(dirs.libDir()).isEqualTo(Path.of("/data/jk-store/lib"));
     }
 

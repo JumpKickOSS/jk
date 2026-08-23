@@ -11,6 +11,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.repo.LibraryRegistryClient;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -60,7 +61,7 @@ public final class LibraryUpdateCommand implements CliCommand {
                 in.value("cache-file").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
 
         long startNanos = System.nanoTime();
-        Path cacheFile = cacheFileOverride != null ? cacheFileOverride : LibraryCatalog.downloadedFile();
+        Path cacheFile = cacheFileOverride != null ? cacheFileOverride : JkDirs.libraryRegistry();
         Path previousBackup = cacheFile.resolveSibling(cacheFile.getFileName() + ".prev");
         Map<String, LibraryCatalog.Module> before = currentEntries(cacheFile);
 

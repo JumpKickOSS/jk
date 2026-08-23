@@ -18,7 +18,7 @@ jk self nuke          # jk-owned product dirs (not PATH, not JDKs)
 | Tier | Holds | Wipe |
 |------|--------|------|
 | **Cache** (`JK_CACHE_DIR`) | Action index + cache CAS (classes, tests, jars, natives, OCI, stamps) | `jk cache nuke` |
-| **Store** (`JK_STORE_DIR`) | Maven-layout `repos/` + `.jk` memos (deps, workers). Maven local repo is the primary jar store when `[m2] integration` is on (default). | `jk storage nuke` (does **not** delete `~/.m2`) |
+| **Store** (`JK_STORE_DIR`) | Maven-layout `repos/` + `.jk` memos (deps, workers), `libs.global.toml`, cloned Giter8 catalogs under `templates/`. Maven local repo is the primary jar store when `[m2] integration` is on (default). | `jk storage nuke` (does **not** delete `~/.m2`) |
 | **Project `target/`** | This checkout’s outputs | `jk clean` |
 
 `jk clean` does **not** by itself force a full recompute: unchanged inputs restore from

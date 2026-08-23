@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.config.JkTemplatesConfig;
 import cc.jumpkick.giter8.Giter8Apply;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,7 +19,7 @@ import java.util.Optional;
  *
  * <ol>
  *   <li>{@code $JK_TEMPLATES/&lt;name&gt;.g8} when the env var is set
- *   <li>{@code ~/.jk/templates/&lt;name&gt;.g8}
+ *   <li>{@link JkDirs#templates()} (cloned catalogs + user drop-ins)
  *   <li>Walk up from cwd looking for {@code templates/&lt;name&gt;.g8} (dev checkout dogfood)
  *   <li>Configured third-party git sources ({@code [templates.sources]} in config.toml, plus any
  *       CLI {@code --template-source} extras)
@@ -64,7 +65,7 @@ public final class Giter8Catalog {
             throws IOException {
         if (!isShortName(ref)) return Optional.empty();
         String dirName = ref + ".g8";
-        Path cache = Giter8Git.defaultCacheRoot();
+        Path cache = JkDirs.templates();
         JkTemplatesConfig cfg = config == null ? JkTemplatesConfig.defaults() : config;
         List<String> extras = extraSources == null ? List.of() : extraSources;
 
@@ -75,11 +76,9 @@ public final class Giter8Catalog {
             if (hit.isPresent()) return hit;
         }
 
-        // 2) ~/.jk/templates/
-        Path homeTemplates = Path.of(System.getProperty("user.home"), ".jk", "templates", dirName);
-        if (isTemplateRoot(homeTemplates)) {
-            return Optional.of(homeTemplates.toAbsolutePath().normalize());
-        }
+        // 2) store templates (user drop-ins at the catalog root)
+        Optional<Path> stored = langKindOrFlat(cache, ref, dirName);
+        if (stored.isPresent()) return stored;
 
         // 3) Walk-up monorepo dogfood
         Path walk = cwd == null ? null : cwd.toAbsolutePath().normalize();

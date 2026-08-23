@@ -26,7 +26,7 @@ import org.tomlj.TomlTable;
  *
  * <ol>
  *   <li>{@code jk-libs.toml} at the workspace root (or standalone project root) — optional
- *   <li>system global ({@code <store>/libs.global.toml}) — managed by {@code jk library update}
+ *   <li>system global ({@link JkDirs#libraryRegistry()}) — managed by {@code jk library update}
  *   <li>bundled classpath resource — offline floor
  * </ol>
  *
@@ -35,9 +35,6 @@ import org.tomlj.TomlTable;
 public final class LibraryCatalog {
 
     private static final String BUNDLED_RESOURCE = "/cc/jumpkick/library/libraries.toml";
-
-    /** Basename under {@link JkDirs#store()}. */
-    public static final String DOWNLOADED_BASENAME = "libs.global.toml";
 
     /**
      * Optional project/workspace short-name map. Allowed only at the workspace root (or standalone
@@ -53,9 +50,9 @@ public final class LibraryCatalog {
         this.layers = List.copyOf(Objects.requireNonNull(layers, "layers"));
     }
 
-    /** Downloaded registry mirror: {@code <store>/libs.global.toml}. */
+    /** Downloaded registry mirror: {@link JkDirs#libraryRegistry()}. */
     public static Path downloadedFile() {
-        return JkDirs.store().resolve(DOWNLOADED_BASENAME);
+        return JkDirs.libraryRegistry();
     }
 
     /** ETag sidecar next to {@code cacheFile} for conditional-GET revalidation. */

@@ -46,8 +46,9 @@ Product data uses platform-native locations (XDG on Linux/macOS; Windows Known F
 | **config** | `~/.config/jk/config.toml` | `%APPDATA%\jk\config.toml` |
 | **managed JDKs** | Linux: `~/.jdks` · macOS: `~/Library/Java/JavaVirtualMachines` | `%USERPROFILE%\.jdks` |
 
-**Artifact store** (`repos/` + `.jk` memos; Maven local repo for third-party jars) lives
-under **data** (`…/store`). **Cache CAS** (action outputs) lives under **cache**
+**Artifact store** (`repos/` + `.jk` memos, `libs.global.toml`, `templates/`; Maven local
+repo for third-party jars) lives under **data** (`…/store`). **Cache CAS** (action outputs)
+lives under **cache**
 (`…/cache/sha256`). The live engine jar is
 `<data>/lib/jk-engine/<jar>` with metadata in `<config>/jk-engine/config.toml`
 (under `JK_HOME`: `$JK_HOME/data/lib/jk-engine/…` + `$JK_HOME/config/jk-engine/config.toml`).

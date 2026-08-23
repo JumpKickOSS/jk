@@ -45,6 +45,8 @@ import java.util.function.Supplier;
  *   <tr><td>store</td><td>{@code <data>/store} ({@link #storeDir()})</td></tr>
  *   <tr><td>tool lib</td><td>{@code <store>/lib} ({@link #libDir()})</td></tr>
  *   <tr><td>product lib (engine jar)</td><td>{@code <data>/lib} ({@link #productLibDir()})</td></tr>
+ *   <tr><td>library registry</td><td>{@code <store>/libs.global.toml} ({@link #libraryRegistryFile()})</td></tr>
+ *   <tr><td>templates</td><td>{@code <store>/templates} ({@link #templatesDir()})</td></tr>
  *   <tr><td>credentials</td><td>{@code <data>/credentials}, {@code <data>/repo-credentials}</td></tr>
  *   <tr><td>global config file</td><td>{@code <config>/config.toml} ({@link #userConfigFilePath()})</td></tr>
  *   <tr><td>per-app config</td><td>{@code <config>/<bin>/config.toml}</td></tr>
@@ -60,6 +62,12 @@ import java.util.function.Supplier;
  * {@code JK_JDKS_DIR} for hermetic JDK isolation.
  */
 public final class JkDirs {
+
+    /** Downloaded library registry basename under {@link #storeDir()}. */
+    public static final String LIBRARY_REGISTRY_FILE = "libs.global.toml";
+
+    /** Cloned Giter8 catalog directory under {@link #storeDir()}. */
+    public static final String TEMPLATES_DIR = "templates";
 
     private final Function<String, String> env;
     private final String userHome;
@@ -109,6 +117,16 @@ public final class JkDirs {
     /** The fetched-artifact store; see {@link #storeDir()}. */
     public static Path store() {
         return current().storeDir();
+    }
+
+    /** Downloaded library registry: {@link #libraryRegistryFile()}. */
+    public static Path libraryRegistry() {
+        return current().libraryRegistryFile();
+    }
+
+    /** Cloned Giter8 catalogs: {@link #templatesDir()}. */
+    public static Path templates() {
+        return current().templatesDir();
     }
 
     public static Path state() {
@@ -176,8 +194,9 @@ public final class JkDirs {
     /**
      * Downloaded artifacts: Maven-layout jars under {@code repos/} with {@code .jk} memos, plugin
      * short classpaths under {@code lib/&lt;id&gt;/}, {@code maven-metadata.xml} copies, git clones,
-     * the JDK catalog ({@code jdks.json}), and the library registry ({@code libs.global.toml}).
-     * Engine/client install blobs may still sit under {@code sha256/}. Always {@code <data>/store}
+     * the JDK catalog ({@code jdks.json}), the library registry ({@link #libraryRegistryFile()}),
+     * and cloned Giter8 catalogs ({@link #templatesDir()}). Engine/client install blobs may still
+     * sit under {@code sha256/}. Always {@code <data>/store}
      * — {@code $JK_HOME/data/store} under the umbrella; override via {@code JK_STORE_DIR}.
      *
      * <h2>Why this is not under {@code cache/}</h2>
@@ -193,6 +212,23 @@ public final class JkDirs {
         String override = nonBlank(env.apply("JK_STORE_DIR"));
         if (override != null) return Path.of(override);
         return dataDir().resolve("store");
+    }
+
+    /**
+     * Downloaded short-name library registry. Always {@code <store>}/{@value
+     * #LIBRARY_REGISTRY_FILE} — the only on-disk copy.
+     */
+    public Path libraryRegistryFile() {
+        return storeDir().resolve(LIBRARY_REGISTRY_FILE);
+    }
+
+    /**
+     * Cloned Giter8 template catalogs (official + {@code [templates.sources]}). Always {@code
+     * <store>}/{@value #TEMPLATES_DIR} — the only on-disk copy. One subdirectory per source cache
+     * key; user drop-ins may use the {@code <lang>/<framework>/*.g8} layout at this root.
+     */
+    public Path templatesDir() {
+        return storeDir().resolve(TEMPLATES_DIR);
     }
 
     public Path stateDir() {

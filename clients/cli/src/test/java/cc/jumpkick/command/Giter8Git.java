@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,7 +14,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Fetch remote Giter8 templates via {@code git clone} into {@code ~/.cache/jk/templates/}.
+ * Fetch remote Giter8 templates via {@code git clone} into {@link JkDirs#templates()}.
  *
  * <p>Supported refs:
  *
@@ -127,9 +128,9 @@ public final class Giter8Git {
         return Optional.empty();
     }
 
-    /** Default cache: {@code ~/.cache/jk/templates}. */
+    /** Default clone root: {@link JkDirs#templates()}. */
     public static Path defaultCacheRoot() {
-        return Path.of(System.getProperty("user.home"), ".jk", "cache", "templates");
+        return JkDirs.templates();
     }
 
     private static boolean isEmptyDir(Path dir) throws IOException {

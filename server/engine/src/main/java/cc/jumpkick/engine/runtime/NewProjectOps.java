@@ -8,6 +8,7 @@ import cc.jumpkick.giter8.Giter8Maven;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
 import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.scaffold.NewScaffolder;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -421,13 +422,15 @@ public final class NewProjectOps {
             JkTemplatesConfig cfg = JkTemplatesConfig.resolve();
             throw new IllegalArgumentException("template short name not found: "
                     + ref
-                    + " (looked under $JK_TEMPLATES, ~/.jk/templates, monorepo templates/,"
-                    + " official cache; try `jk new --template "
+                    + " (looked under $JK_TEMPLATES, "
+                    + JkDirs.templates()
+                    + ", monorepo templates/; try `jk new --template "
                     + ref
-                    + "` once to populate the cache, or install under"
-                    + " ~/.jk/templates/<lang>/<framework>/"
+                    + "` once to populate the store, or drop a .g8 with .jk-template.toml under "
+                    + JkDirs.templates().resolve("<lang>").resolve("<framework>")
+                    + "/"
                     + (twoSegments ? ref.substring(ref.indexOf('/') + 1) : ref)
-                    + ".g8 with a .jk-template.toml; official="
+                    + ".g8; official="
                     + cfg.officialUrl()
                     + ")");
         }
@@ -450,7 +453,7 @@ public final class NewProjectOps {
     private static final ConcurrentHashMap<String, Object> CLONE_LOCKS = new ConcurrentHashMap<>();
 
     private static Path cloneRemoteTemplate(String ref) throws IOException {
-        Path cache = Path.of(System.getProperty("user.home"), ".jk", "cache", "templates");
+        Path cache = JkDirs.templates();
         Files.createDirectories(cache);
         String key = ref.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]+", "_");
         Path dest = cache.resolve(key);

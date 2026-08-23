@@ -25,9 +25,9 @@ Or env: `JK_AUTO_WARMUP=off`. Worker AOT also respects `JK_AOT_TRAIN=off` / `JK_
 
 ## Warmup order (idle worker)
 
-1. **`libs.global.toml`** — conditional GET / ETag (skip if fresh)
+1. **`libs.global.toml`** — `<store>/libs.global.toml` (`JkDirs.libraryRegistry()`); conditional GET / ETag (skip if fresh)
 2. **`jdks.json`** — TTL + If-Modified-Since
-3. **Official `jk-templates` shallow clone** — `git fetch --depth 1` / clone (includes future AOT fixtures)
+3. **Official `jk-templates` shallow clone** — `<store>/templates` (`JkDirs.templates()`); `git fetch --depth 1` / clone (includes future AOT fixtures)
 4. **java-compiler AOT** — only if missing for this host
 5. **Host calibration** — only if missing/stale for this jk version + JDK
 
