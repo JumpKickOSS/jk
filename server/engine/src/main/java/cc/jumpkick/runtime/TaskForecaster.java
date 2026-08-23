@@ -82,6 +82,9 @@ public final class TaskForecaster {
             boolean skipTests,
             WorkspaceTarget target,
             Set<Path> terminalDirs) {
+        // One resolver for the whole walk: every module resolves its classpath against the same
+        // lock and store, so its per-artifact resolve memo is only useful if it outlives a module.
+        ClasspathResolver resolver = new ClasspathResolver(cas);
         Path workerJar = null;
         try {
             workerJar = PluginJar.JAVA_COMPILER.locateStored(cas);
@@ -89,13 +92,15 @@ public final class TaskForecaster {
             // forecast without a worker still uses action-cache + zinc-file presence
         }
         try (JavaCompilerHost.Scope ignored = JavaCompilerHost.open()) {
-            return forecastModules(graph, cas, actionCache, cache, skipTests, target, terminalDirs, workerJar);
+            return forecastModules(
+                    graph, cas, resolver, actionCache, cache, skipTests, target, terminalDirs, workerJar);
         }
     }
 
     private static List<TaskForecast.Module> forecastModules(
             BuildGraph.Result graph,
             Cas cas,
+            ClasspathResolver resolver,
             ActionCache actionCache,
             Path cache,
             boolean skipTests,
@@ -136,6 +141,7 @@ public final class TaskForecaster {
                     force,
                     skipTests,
                     cas,
+                    resolver,
                     actionCache,
                     cache,
                     restoredJarShas,
@@ -300,6 +306,7 @@ public final class TaskForecaster {
             boolean force,
             boolean skipTests,
             Cas cas,
+            ClasspathResolver resolver,
             ActionCache actionCache,
             Path cache,
             Map<Path, String> restoredJarShas,
@@ -329,7 +336,6 @@ public final class TaskForecaster {
         boolean producesJar = false, producesImage = false;
         try {
             Lockfile lock = LockfileReader.read(lockFile);
-            ClasspathResolver resolver = new ClasspathResolver(cas);
             boolean compact = CompileSupport.isSimpleLayout(project.project(), dir);
             BuildLayout layout = BuildLayout.of(dir, project);
             int release = project.project().javaRelease();

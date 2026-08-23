@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Maps a {@link Lockfile}'s checksummed packages to on-disk {@code *.jar} paths, filtered by
@@ -66,6 +67,23 @@ public final class ClasspathResolver {
 
     private final Path storeRoot;
     private final cc.jumpkick.repo.ArtifactLocator locator;
+
+    /**
+     * Store-only locator for a lock that opted out of {@code [m2] integration}, built once so
+     * {@link #resolved} keys stay stable across calls.
+     */
+    private volatile cc.jumpkick.repo.ArtifactLocator storeOnlyLocator;
+
+    /**
+     * Artifact coordinate &rarr; the jar backing it, per locator. A workspace resolves every
+     * module's classpath against one lock, so the same few hundred artifacts are located tens of
+     * thousands of times per build, and each miss costs a stat plus a checksum-memo read. The
+     * answer depends only on the coordinate, its sha and the locator — all fixed for a run.
+     *
+     * <p>Only hits are memoized: a miss can become a hit when a concurrent sync lands the jar, and
+     * caching "absent" would strand the classpath for the rest of the build.
+     */
+    private final Map<String, Path> resolved = new ConcurrentHashMap<>();
 
     public ClasspathResolver(Cas cas) {
         this(Objects.requireNonNull(cas, "cas").root(), defaultLocator(cas.root()));
@@ -194,8 +212,13 @@ public final class ClasspathResolver {
      */
     private cc.jumpkick.repo.ArtifactLocator effectiveLocator(Lockfile lock) {
         boolean projectOptOut = lock.modules().stream().anyMatch(m -> Boolean.FALSE.equals(m.m2integration()));
-        if (projectOptOut) return new cc.jumpkick.repo.ArtifactLocator(storeRoot);
-        return locator;
+        if (!projectOptOut) return locator;
+        cc.jumpkick.repo.ArtifactLocator storeOnly = storeOnlyLocator;
+        if (storeOnly == null) {
+            storeOnly = new cc.jumpkick.repo.ArtifactLocator(storeRoot);
+            storeOnlyLocator = storeOnly;
+        }
+        return storeOnly;
     }
 
     /**
@@ -291,7 +314,7 @@ public final class ClasspathResolver {
                 continue;
             }
             String hex = checksum.startsWith("sha256:") ? checksum.substring("sha256:".length()) : checksum;
-            Path jar = locator.locate(pkg).orElse(null);
+            Path jar = locate(locator, pkg);
             if (jar == null) {
                 if (requirePresent) {
                     throw new IllegalStateException(
@@ -320,6 +343,23 @@ public final class ClasspathResolver {
         }
         cc.jumpkick.task.AccessLedger.atDefaultPath().touchAll(touched);
         return result;
+    }
+
+    /** {@link #resolved}-backed {@code locate}; see that field for why this is worth caching. */
+    private Path locate(cc.jumpkick.repo.ArtifactLocator loc, Lockfile.Artifact pkg) {
+        String key = (loc == locator ? "m|" : "s|")
+                + pkg.source()
+                + '|'
+                + pkg.name()
+                + '|'
+                + pkg.version()
+                + '|'
+                + pkg.checksumHex();
+        Path hit = resolved.get(key);
+        if (hit != null) return hit;
+        Path found = loc.locate(pkg).orElse(null);
+        if (found != null) resolved.put(key, found);
+        return found;
     }
 
     /** One jar per module when dual-scoped; prefer processor, then test dual, else main/runtime. */
