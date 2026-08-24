@@ -4,11 +4,14 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.util.PathUtil;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -19,6 +22,7 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
+import java.util.zip.ZipEntry;
 
 /**
  * {@code jk build --aot-cache}: extract the app under {@code target/aot-cache/} and train a JVM
@@ -29,6 +33,16 @@ final class AotCachePackage {
 
     /** Non-Boot training must finish inside this window (Boot exits at refresh on its own). */
     private static final long TRAINING_TIMEOUT_SECONDS = 180;
+
+    /**
+     * 1980-02-01T00:00:00Z — the one pinned instant every jk archive writer stamps entries with.
+     * Applied via {@link ZipEntry#setTimeLocal}, never {@code setTime}: setTime's DOS-time
+     * conversion runs through the JVM's default timezone, so the same inputs would produce
+     * different bytes on a host with a different {@code $TZ}. The value is the zip epoch's first
+     * month — anything before 1980 is unrepresentable in DOS time and costs an extended-timestamp
+     * extra field (18 bytes) on every entry.
+     */
+    private static final LocalDateTime ENTRY_TIME = LocalDateTime.ofEpochSecond(318_211_200L, 0, ZoneOffset.UTC);
 
     private AotCachePackage() {}
 
@@ -404,25 +418,34 @@ final class AotCachePackage {
             throws IOException {
         Path mainJar = Path.of(plan.mainJar());
         Path libDir = Files.createDirectories(outDir.resolve("lib"));
-        List<String> libNames = new ArrayList<>(plan.libNames());
         for (int i = 0; i < plan.libNames().size(); i++) {
             Files.copy(
                     Path.of(plan.libPaths().get(i)),
                     libDir.resolve(plan.libNames().get(i)),
                     StandardCopyOption.REPLACE_EXISTING);
         }
-
-        // Rewrite the app jar with a Class-Path manifest entry (relative lib/ refs). A jar's
-        // Class-Path is resolved against the jar's own location, so the layout is relocatable.
         String appJarName = mainJar.getFileName().toString();
-        Path appJar = outDir.resolve(appJarName);
-        try (var jarIn = new JarInputStream(Files.newInputStream(mainJar))) {
+        rewriteAppJar(mainJar, outDir.resolve(appJarName), plan.libNames(), plan.mainClass());
+        return appJarName;
+    }
+
+    /**
+     * Copy {@code from} to {@code to}, adding a {@code Class-Path} manifest entry with relative
+     * {@code lib/} refs (a jar's Class-Path resolves against the jar's own location, so the layout
+     * is relocatable) and {@code Main-Class} when the source jar has none.
+     *
+     * <p>Every entry — the manifest included — carries {@link #ENTRY_TIME}, so re-running
+     * {@code --aot-cache} over an unchanged app yields a byte-identical jar. That is why the
+     * manifest is written by hand instead of through {@code new JarOutputStream(out, manifest)}:
+     * the convenience constructor stamps it with {@code System.currentTimeMillis()}.
+     */
+    static void rewriteAppJar(Path from, Path to, List<String> libNames, String mainClass) throws IOException {
+        try (var jarIn = new JarInputStream(Files.newInputStream(from))) {
             Manifest manifest = jarIn.getManifest();
             if (manifest == null) manifest = new Manifest();
             manifest.getMainAttributes().putIfAbsent(Attributes.Name.MANIFEST_VERSION, "1.0");
-            if (manifest.getMainAttributes().getValue(Attributes.Name.MAIN_CLASS) == null
-                    && !plan.mainClass().isEmpty()) {
-                manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS, plan.mainClass());
+            if (manifest.getMainAttributes().getValue(Attributes.Name.MAIN_CLASS) == null && !mainClass.isEmpty()) {
+                manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS, mainClass);
             }
             if (!libNames.isEmpty()) {
                 StringBuilder cp = new StringBuilder();
@@ -432,17 +455,27 @@ final class AotCachePackage {
                 }
                 manifest.getMainAttributes().put(Attributes.Name.CLASS_PATH, cp.toString());
             }
-            try (var jarOut = new JarOutputStream(Files.newOutputStream(appJar), manifest)) {
+            try (var jarOut = new JarOutputStream(Files.newOutputStream(to))) {
+                ByteArrayOutputStream manifestBytes = new ByteArrayOutputStream();
+                manifest.write(manifestBytes);
+                jarOut.putNextEntry(pinned("META-INF/MANIFEST.MF"));
+                jarOut.write(manifestBytes.toByteArray());
+                jarOut.closeEntry();
                 JarEntry entry;
                 while ((entry = jarIn.getNextJarEntry()) != null) {
                     if (entry.getName().equals("META-INF/MANIFEST.MF")) continue;
-                    jarOut.putNextEntry(new JarEntry(entry.getName()));
+                    jarOut.putNextEntry(pinned(entry.getName()));
                     jarIn.transferTo(jarOut);
                     jarOut.closeEntry();
                 }
             }
         }
-        return appJarName;
+    }
+
+    private static JarEntry pinned(String name) {
+        JarEntry entry = new JarEntry(name);
+        entry.setTimeLocal(ENTRY_TIME);
+        return entry;
     }
 
     /** The last ~25 lines — JVM/App startup logs are long; the failure is at the bottom. */

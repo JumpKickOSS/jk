@@ -8,6 +8,8 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.zip.CRC32;
@@ -20,6 +22,16 @@ import java.util.zip.ZipOutputStream;
  * a signed jar). R8 retrace artifacts land under {@code target/r8/}.
  */
 final class AabPackager {
+
+    /**
+     * 1980-02-01T00:00:00Z — the one pinned instant every jk archive writer stamps entries with.
+     * Applied via {@link ZipEntry#setTimeLocal}, never {@code setTime}: setTime's DOS-time
+     * conversion runs through the JVM's default timezone, so the same inputs would produce
+     * different bytes on a host with a different {@code $TZ}. The value is the zip epoch's first
+     * month — anything before 1980 is unrepresentable in DOS time and costs an extended-timestamp
+     * extra field (18 bytes) on every entry.
+     */
+    private static final LocalDateTime ENTRY_TIME = LocalDateTime.ofEpochSecond(318_211_200L, 0, ZoneOffset.UTC);
 
     private AabPackager() {}
 
@@ -135,8 +147,10 @@ final class AabPackager {
         }
     }
 
-    private static void write(ZipOutputStream zip, String name, byte[] bytes, int method) throws IOException {
+    /** One entry, pinned to {@link #ENTRY_TIME} so the archive is byte-identical run to run. */
+    static void write(ZipOutputStream zip, String name, byte[] bytes, int method) throws IOException {
         ZipEntry entry = new ZipEntry(name);
+        entry.setTimeLocal(ENTRY_TIME);
         entry.setMethod(method);
         if (method == ZipEntry.STORED) {
             entry.setSize(bytes.length);

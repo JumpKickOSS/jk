@@ -6,6 +6,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -15,6 +17,16 @@ import java.util.zip.ZipOutputStream;
  * {@code res/}, {@code R.txt}; also emits a sibling classes jar for workspace compile.
  */
 final class AarPackager {
+
+    /**
+     * 1980-02-01T00:00:00Z — the one pinned instant every jk archive writer stamps entries with.
+     * Applied via {@link ZipEntry#setTimeLocal}, never {@code setTime}: setTime's DOS-time
+     * conversion runs through the JVM's default timezone, so the same inputs would produce
+     * different bytes on a host with a different {@code $TZ}. The value is the zip epoch's first
+     * month — anything before 1980 is unrepresentable in DOS time and costs an extended-timestamp
+     * extra field (18 bytes) on every entry.
+     */
+    private static final LocalDateTime ENTRY_TIME = LocalDateTime.ofEpochSecond(318_211_200L, 0, ZoneOffset.UTC);
 
     private AarPackager() {}
 
@@ -53,7 +65,7 @@ final class AarPackager {
     }
 
     /** Jar the classes dir, excluding the generated {@code R} / {@code R$*} classes. */
-    private static void writeClassesJar(Path classesDir, Path jar) throws IOException {
+    static void writeClassesJar(Path classesDir, Path jar) throws IOException {
         List<Path> files = ResourceStep.filesUnder(classesDir, "");
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
             for (Path file : files) {
@@ -67,7 +79,7 @@ final class AarPackager {
 
     private static void putFile(ZipOutputStream zip, String entryName, Path file) throws IOException {
         ZipEntry entry = new ZipEntry(entryName);
-        entry.setTime(318240000000L); // fixed stamp — reproducible AARs, same posture as jk jars
+        entry.setTimeLocal(ENTRY_TIME);
         zip.putNextEntry(entry);
         try (var in = Files.newInputStream(file)) {
             in.transferTo((OutputStream) zip);
