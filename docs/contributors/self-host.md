@@ -25,8 +25,9 @@ export PATH="$HOME/.local/bin:$PATH"
 jk engine status
 ```
 
-Thin JVM alternative (no Graal): [CONTRIBUTING.md](../../CONTRIBUTING.md) path B
-(`:cli:installDist` + `:engine:shadowJar` + `jk self materialize`).
+Thin JVM alternative (no Graal, PATH only): [CONTRIBUTING.md](../../CONTRIBUTING.md) path B
+(`:cli:installDist` + `:engine:shadowJar`). Engine materialize (`:engine:installLocal`)
+always uses the native client from `./gradlew dist`.
 
 Helper: `./scripts/bootstrap-from-gradle.sh`.
 

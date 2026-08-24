@@ -63,47 +63,25 @@ object JkLayoutPaths {
     }
 
     /**
-     * Preferred client binaries for dogfood tasks (installLocal materialize). First existing runnable wins; callers may
-     * still fall back to bare {@code "jk"} on PATH.
+     * Native client for dogfood tasks (`installLocal` materialize). Always the Graal image from `./gradlew dist` —
+     * never the thin JVM `:cli:installDist` scripts (`jk.bat` / `jk`).
      *
-     * Order: `:cli:installDist` → native `build/dist` (when present) → platform bin dir. installDist leads because it
-     * is the task installLocal depends on, so the `:cli:installDist installLocal` dogfood path cannot pick up a stale
-     * `build/dist` binary from an earlier `dist` run. On Windows, the installDist extensionless `jk` file is a Unix
-     * shell script and must not be chosen (CreateProcess error 193).
+     * Order: ship-layout `build/dist/jk[.exe]`, then `:cli:nativeCompile` output. Windows only accepts `jk.exe`
+     * (CreateProcess cannot launch the Unix `jk` script or a `.bat` wrapper).
      */
-    fun clientCandidates(rootProjectDir: File, cliInstallDistBin: File?): List<File> {
+    fun clientCandidates(rootProjectDir: File): List<File> {
         val list = mutableListOf<File>()
-        if (cliInstallDistBin != null) {
-            val bin = if (cliInstallDistBin.isDirectory) cliInstallDistBin else cliInstallDistBin.parentFile
-            if (bin != null) {
-                if (isWindows()) {
-                    list.add(File(bin, "jk.bat"))
-                    list.add(File(bin, "jk.cmd"))
-                } else {
-                    list.add(File(bin, "jk"))
-                }
-            }
-        }
-
-        // Ship-layout native binary, when `./gradlew dist` already produced it.
         list.add(File(rootProjectDir, "build/dist/jk.exe"))
         list.add(File(rootProjectDir, "build/dist/jk"))
-
-        if (isWindows()) {
-            list.add(File(binDir(), "jk.exe"))
-            list.add(File(binDir(), "jk.bat"))
-            list.add(File(binDir(), "jk.cmd"))
-        } else {
-            list.add(File(binDir(), "jk"))
-        }
+        list.add(File(rootProjectDir, "clients/cli/build/native/nativeCompile/jk.exe"))
+        list.add(File(rootProjectDir, "clients/cli/build/native/nativeCompile/jk"))
         return list.distinct()
     }
 
-    fun resolveClient(rootProjectDir: File, cliInstallDistBin: File?): String? {
-        for (c in clientCandidates(rootProjectDir, cliInstallDistBin)) {
+    fun resolveClient(rootProjectDir: File): String? {
+        for (c in clientCandidates(rootProjectDir)) {
             if (isRunnableClient(c)) return c.absolutePath
         }
-        // PATH fallback — ProcessBuilder("jk") when available
         return null
     }
 
@@ -111,9 +89,9 @@ object JkLayoutPaths {
     fun isRunnableClient(file: File): Boolean {
         if (!file.isFile) return false
         val name = file.name.lowercase()
-        if (name.endsWith(".exe") || name.endsWith(".bat") || name.endsWith(".cmd")) return true
-        // Windows: extensionless Gradle Application `jk` is a #!/bin/sh script — not a Win32 app.
-        if (isWindows()) return false
+        if (name.endsWith(".exe")) return true
+        // Windows: neither `.bat` / `.cmd` nor the extensionless Unix `jk` script is a Win32 image.
+        if (isWindows() || name.endsWith(".bat") || name.endsWith(".cmd")) return false
         return file.canExecute()
     }
 

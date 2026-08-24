@@ -159,13 +159,13 @@ public final class SelfCommand extends GroupCommand {
                     install.materializeFromFiles(cc.jumpkick.cli.Jk.VERSION, JkStores.cas(JkDirs.cache()), engineJar);
             EngineInstall.wipeAotDirectory(JkDirs.state().resolve("aot"), cc.jumpkick.cli.Jk.VERSION);
             install.gc();
-            CliOutput.out("materialized " + m.engineJar());
-            // Best-effort install-time terminal probe; never fail materialize.
             try {
-                new SetupTerminalSub().run(Invocation.builder().build());
+                cc.jumpkick.config.UserConfigEditor.setNerdFont(
+                        JkDirs.userConfigFile(), cc.jumpkick.config.NerdFontMode.AUTO);
             } catch (Exception ignored) {
-                // ignore
+                // Best-effort nerd-font seed; never fail materialize.
             }
+            cc.jumpkick.cli.tui.CommandWedge.printOk("Self", "Materialized JumpKick " + m.version());
             return 0;
         }
     }

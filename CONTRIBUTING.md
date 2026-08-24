@@ -97,14 +97,10 @@ jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/en
 #### B) Thin JVM client + engine jar (no Graal; dogfood without native-image)
 
 ```bash
-# 1) Slim client + workers + engine materialize + daemon bounce
-./gradlew :cli:installDist installLocal --no-daemon
-# Root installLocal side-loads every plugin worker, then :engine:installLocal
-# (shadowJar → jk self materialize → engine stop/start).
+# 1) Slim client on PATH. Does not run :engine:installLocal — that task always
+# uses the native client at build/dist/jk (jk.exe on Windows) from `./gradlew dist`.
+./gradlew :cli:installDist :engine:shadowJar --no-daemon
 export PATH="$PWD/clients/cli/build/install/jk/bin:$PATH"
-
-# Engine-only refresh after an engine code change:
-# ./gradlew :cli:installDist :engine:installLocal --no-daemon
 
 # 2) Same dogfood as (A); --skip-native stages the bootstrap client (no Graal)
 jk lock
@@ -179,11 +175,8 @@ Multi-module sample under
 [`docs/user/examples/workspace-showcase/`](docs/user/examples/workspace-showcase/):
 
 ```bash
-./gradlew :cli:installDist :engine:shadowJar installLocal --no-daemon
-CLIENT_BIN="$PWD/clients/cli/build/install/jk/bin/jk"
-ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
-"$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
-export PATH="$PWD/clients/cli/build/install/jk/bin:$PATH"
+./gradlew dist installLocal --no-daemon
+export PATH="$PWD/build/dist:$PATH"
 
 cd docs/user/examples/workspace-showcase
 jk lock && jk build && jk test --modules app
