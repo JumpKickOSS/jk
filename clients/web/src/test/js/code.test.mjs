@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Headless tests for the dashboard #project/<id>/files helpers. Run by WebClientCodeTest.
+// Headless tests for the dashboard #project/<id>/files helpers. Run by WebClientJsTest.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';

@@ -170,7 +170,7 @@ Groovy or TOML grammar, so `.groovy` tokenizes as `java` and `.toml` as
 skipped above 200 KiB / 4000 lines, and when the CDN is unreachable; the file then renders as
 plain text with a gutter so `?line=` can still scroll (Save stays disabled in that branch).
 
-`code.js` is tested headlessly (`node --test` via `WebClientCodeTest`), same shape as `fold.js`.
+`code.js` is tested headlessly (`node --test` via `WebClientJsTest`), same shape as `fold.js`.
 
 ## Project page: dependency graph (lazy)
 
@@ -232,8 +232,10 @@ server-side so unchanged free RAM does not repaint noise.
 ## Testing
 
 `fold.js` is browser-free on purpose — pure functions of `(cards, event)` — and is tested
-headlessly with `node --test` via the `WebClientFoldTest` JUnit wrapper (it stages `fold.js` as
-`fold.mjs` and passes the path in `JK_FOLD_MJS`):
+headlessly with `node --test`. One JUnit wrapper, `WebClientJsTest`, runs every
+`src/test/js/*.test.mjs`: it stages the SPA's modules in a `type:module` temp dir and hands each
+one to Node as `JK_<NAME>_MJS` (plus `JK_APP_DIR`). Node is required — a missing `node` fails the
+build rather than skipping; opt out deliberately with `JK_WEB_JS_SKIP=1`:
 
 ```bash
 ./gradlew :web:test

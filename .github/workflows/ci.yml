@@ -39,5 +39,12 @@ jobs:
           java-version: '25'
           cache: gradle
 
+      # The dashboard's JS suites run under `node --test` and are part of the unit tier.
+      # WebClientJsTest fails the build when node is missing, so pin the version here rather
+      # than inherit whatever the runner image happens to ship.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
       - name: Unit test
         run: ./gradlew test --no-daemon

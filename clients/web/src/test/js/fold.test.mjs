@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Headless tests for the dashboard's event-folding logic (docs/webclient.md). Run by
-// WebClientFoldTest via `node --test`, which copies fold.js to fold.mjs and passes its path in
-// JK_FOLD_MJS (fold.js's .js extension would be treated as CommonJS by a bare node import).
+// WebClientJsTest via `node --test`, which stages fold.js in a type:module dir (a bare .js import
+// would be CommonJS) and passes its path in JK_FOLD_MJS.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
