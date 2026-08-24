@@ -4,11 +4,17 @@ package cc.jumpkick.plugin.image;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.image.ImageConfig;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** The decisions the trainer makes without needing a container runtime. */
 class AotCacheTrainerTest {
@@ -127,6 +133,36 @@ class AotCacheTrainerTest {
         assertThat(BaseJre.hostCanExecute(List.of("linux/amd64", "linux/arm64")))
                 .as("multi-arch has no single JVM to train with")
                 .isFalse();
+    }
+
+    /**
+     * Where the image's JVM is looked for. The extracted tree is 50–200 MB and is shared by every
+     * module built on the same base, so it belongs under jk's cache root — the only place {@code
+     * CacheTier.BASE_JRE}'s bound reaches. It used to be written under the module's build output,
+     * where nothing reclaims it and the next {@code jk clean} deletes it.
+     *
+     * <p>Proven by the {@code .extracted} marker, which {@link BaseJre} touches on use: only a
+     * lookup rooted at the cache root can find this one. The reference is digest-pinned and the
+     * tree already exists, so the found path never reaches the registry — a lookup anywhere else
+     * would, and comes back empty.
+     */
+    @Test
+    void the_base_jre_is_taken_from_the_cache_root(@TempDir Path cacheRoot) throws Exception {
+        String base = "example.invalid/jre@sha256:" + "a".repeat(64);
+        Path marker = cacheRoot
+                .resolve("base-jre")
+                .resolve(HexFormat.of()
+                        .formatHex(MessageDigest.getInstance("SHA-256").digest(base.getBytes(StandardCharsets.UTF_8))))
+                .resolve(".extracted");
+        Files.createDirectories(marker.getParent());
+        Files.writeString(marker, base + "\nsha256:cafe\n");
+        Files.setLastModifiedTime(marker, FileTime.fromMillis(0));
+
+        AotCacheTrainer.localBaseJre(plan(null), base, cacheRoot, msg -> {});
+
+        assertThat(Files.getLastModifiedTime(marker).toMillis() > 0)
+                .as("the tree under the cache root is the one the trainer used")
+                .isEqualTo(BaseJre.hostCanExecute(plan(null).config().platforms()));
     }
 
     @Test
