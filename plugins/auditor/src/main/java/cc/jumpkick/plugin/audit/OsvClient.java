@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.regex.Pattern;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -23,6 +24,9 @@ public final class OsvClient {
 
     public static final URI DEFAULT_BATCH = URI.create("https://api.osv.dev/v1/querybatch");
     public static final URI DEFAULT_VULNS = URI.create("https://api.osv.dev/v1/vulns/");
+
+    /** GHSA-…, CVE-…, GO-… and friends: letters, digits, dot, dash, underscore. Nothing path-like. */
+    private static final Pattern VULN_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,127}");
 
     private final HttpClient http;
     private final URI batchUrl;
@@ -94,6 +98,12 @@ public final class OsvClient {
 
     /** Fetch full vulnerability metadata. */
     public Vulnerability fetchVuln(String vulnId) throws IOException, InterruptedException {
+        // vulnId comes from the batch response, so it is remote input. `URI.resolve` on
+        // "//evil.example/x" or "../" retargets the host or escapes the path, so the id is
+        // validated as a bare advisory identifier before it is ever resolved.
+        if (!VULN_ID.matcher(vulnId).matches()) {
+            throw new IOException("refusing to fetch a malformed OSV vulnerability id: " + vulnId);
+        }
         var url = vulnsUrl.resolve(vulnId);
         HttpRequest request = HttpRequest.newBuilder(url)
                 .timeout(Duration.ofSeconds(30))
@@ -150,13 +160,16 @@ public final class OsvClient {
         }
     }
 
+    /**
+     * The advisory's severity <em>label</em>.
+     *
+     * <p>{@code severity[].score} is a CVSS <em>vector</em> ({@code CVSS:3.1/AV:N/...}), not a label,
+     * so it is never returned as one — reading it was why every advisory classified as
+     * {@code UNKNOWN}. {@code database_specific.severity} is the label OSV and GitHub actually
+     * publish. An advisory with only a vector stays unclassified and gates anyway, because
+     * {@code Severity.UNKNOWN} fails closed.
+     */
     private static String extractSeverity(JsonNode node) {
-        var sev = node.get("severity");
-        if (sev != null && sev.isArray() && !sev.isEmpty()) {
-            var first = sev.get(0);
-            var score = first.get("score");
-            if (score != null && score.isString()) return score.stringValue();
-        }
         var dbSpecific = node.get("database_specific");
         if (dbSpecific != null) {
             var inner = dbSpecific.get("severity");
