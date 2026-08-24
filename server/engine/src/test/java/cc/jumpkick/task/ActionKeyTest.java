@@ -4,6 +4,8 @@ package cc.jumpkick.task;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.compile.KotlincRequest;
+import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -112,6 +114,21 @@ class ActionKeyTest {
     }
 
     @Test
+    void the_javac_key_carries_the_pinned_source_encoding(@TempDir Path tempDir) throws IOException {
+        // Both javac front ends pin UTF-8, so this token can never separate two of today's keys.
+        // It is in the preimage so that the day the pin moves, every artifact decoded under the old
+        // charset stops being a cache hit. A source- and classpath-free request keeps the preimage
+        // free of temp-dir paths, so the thing being hashed can be spelled out in full.
+        CompileRequest request = CompileRequest.builder()
+                .outputDir(tempDir.resolve("out"))
+                .release(25)
+                .build();
+
+        assertThat(ActionKey.forJavac("compile-main", request, "0.1.0"))
+                .isEqualTo(Hashing.sha256Hex("task:compile-main\njk:0.1.0\nrelease:25\nencoding:UTF-8\noptions:\n"));
+    }
+
+    @Test
     void qualified_task_id_differs_per_module_and_is_stable() {
         Path a = Path.of("/work/projA/target/build/classes/main");
         Path b = Path.of("/work/projB/target/build/classes/main");
@@ -137,7 +154,7 @@ class ActionKeyTest {
         Path worker = tempDir.resolve("worker.jar");
         Files.writeString(worker, "worker");
 
-        var base = new cc.jumpkick.compile.KotlincRequest(
+        var base = new KotlincRequest(
                 List.of(src),
                 List.of(),
                 tempDir.resolve("out"),
@@ -147,9 +164,9 @@ class ActionKeyTest {
                 null,
                 null,
                 List.of(),
-                List.of(new cc.jumpkick.compile.KotlincRequest.Plugin("all-open", pluginV1, List.of())),
+                List.of(new KotlincRequest.Plugin("all-open", pluginV1, List.of())),
                 null);
-        var upgraded = new cc.jumpkick.compile.KotlincRequest(
+        var upgraded = new KotlincRequest(
                 List.of(src),
                 List.of(),
                 tempDir.resolve("out"),
@@ -159,11 +176,45 @@ class ActionKeyTest {
                 null,
                 null,
                 List.of(),
-                List.of(new cc.jumpkick.compile.KotlincRequest.Plugin("all-open", pluginV2, List.of())),
+                List.of(new KotlincRequest.Plugin("all-open", pluginV2, List.of())),
                 null);
 
         assertThat(ActionKey.forKotlinc("compile-main", base, "0.1.0"))
                 .isNotEqualTo(ActionKey.forKotlinc("compile-main", upgraded, "0.1.0"));
+    }
+
+    @Test
+    void kotlin_jdk_home_is_part_of_action_key(@TempDir Path tempDir) throws IOException {
+        // jk.toml moves `jdk = 17` to `jdk = 21` and leaves jvmTarget alone. kotlinc resolves the
+        // platform classes it links against from -jdk-home, so the key MUST move — otherwise the
+        // build restores bytecode compiled against the 17 platform.
+        Path src = tempDir.resolve("Main.kt");
+        Files.writeString(src, "fun main() {}");
+        Path worker = tempDir.resolve("worker.jar");
+        Files.writeString(worker, "worker");
+
+        Path jdk17 = jdk(tempDir.resolve("temurin-17"), "17.0.12+7");
+        Path jdk21 = jdk(tempDir.resolve("temurin-21"), "21.0.5+11");
+
+        assertThat(ActionKey.forKotlinc("compile-kotlin", kotlin(src, worker, tempDir, jdk17), "0.1.0"))
+                .isNotEqualTo(ActionKey.forKotlinc("compile-kotlin", kotlin(src, worker, tempDir, jdk21), "0.1.0"));
+    }
+
+    @Test
+    void kotlin_jdk_identity_is_content_not_path(@TempDir Path tempDir) throws IOException {
+        // A point release upgraded in place — same JAVA_HOME, different JDK. Keying the path
+        // alone would restore bytecode linked against the superseded platform classes.
+        Path src = tempDir.resolve("Main.kt");
+        Files.writeString(src, "fun main() {}");
+        Path worker = tempDir.resolve("worker.jar");
+        Files.writeString(worker, "worker");
+        Path jdk = jdk(tempDir.resolve("temurin-21"), "21.0.5+11");
+
+        String before = ActionKey.forKotlinc("compile-kotlin", kotlin(src, worker, tempDir, jdk), "0.1.0");
+        jdk(jdk, "21.0.6+11"); // same length: the token is the content, not the file size
+        String after = ActionKey.forKotlinc("compile-kotlin", kotlin(src, worker, tempDir, jdk), "0.1.0");
+
+        assertThat(after).isNotEqualTo(before);
     }
 
     @Test
@@ -172,5 +223,24 @@ class ActionKeyTest {
         String withWorkerA = ActionKey.forArtifact("package-jar", "0.1.0", List.of("worker-sha:aaa", "classes:bbb"));
         String withWorkerB = ActionKey.forArtifact("package-jar", "0.1.0", List.of("worker-sha:ccc", "classes:bbb"));
         assertThat(withWorkerA).isNotEqualTo(withWorkerB);
+    }
+
+    /** A JDK install skeleton: just the {@code release} file the key reads. */
+    private static Path jdk(Path home, String version) throws IOException {
+        Files.createDirectories(home);
+        Files.writeString(
+                home.resolve("release"),
+                "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\nOS_ARCH=\"x86_64\"\n");
+        return home;
+    }
+
+    private static KotlincRequest kotlin(Path src, Path worker, Path tempDir, Path javaHome) {
+        return KotlincRequest.builder()
+                .sources(List.of(src))
+                .outputDir(tempDir.resolve("out"))
+                .jvmTarget(17) // held fixed on purpose: only the JDK moves
+                .workerClasspath(List.of(worker))
+                .javaHome(javaHome)
+                .build();
     }
 }
