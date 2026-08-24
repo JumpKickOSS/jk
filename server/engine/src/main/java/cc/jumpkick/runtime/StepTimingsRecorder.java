@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestSummary;
 import java.nio.file.Path;
@@ -71,7 +72,7 @@ public final class StepTimingsRecorder implements BuildPlanListener {
         // Compile / other count-scaled steps: deferred from stepFinish.
         for (var e : durationByStep.entrySet()) {
             String step = e.getKey();
-            if ("run-tests".equals(step)) continue;
+            if (TaskNames.RUN_TESTS.equals(step)) continue;
             if (!learnable(step)) continue;
             int count = ticksByStep.getOrDefault(step, 0);
             long wall = e.getValue();
@@ -81,9 +82,9 @@ public final class StepTimingsRecorder implements BuildPlanListener {
             }
             emitHostCompileOrPackage(step, wall, count);
         }
-        Long ms = durationByStep.get("run-tests");
+        Long ms = durationByStep.get(TaskNames.RUN_TESTS);
         if (ms == null) return;
-        int planned = ticksByStep.getOrDefault("run-tests", 0);
+        int planned = ticksByStep.getOrDefault(TaskNames.RUN_TESTS, 0);
         int methods = planned;
         int classes = 0;
         TestSummary sum = testSummary == null ? null : testSummary.get();
@@ -97,9 +98,9 @@ public final class StepTimingsRecorder implements BuildPlanListener {
         if (sum != null && sum.succeeded() > 0) {
             methods = (int) Math.min(Integer.MAX_VALUE, sum.succeeded());
         }
-        double perMethod = EffortWeights.observedPerUnit("run-tests", ms, methods);
+        double perMethod = EffortWeights.observedPerUnit(TaskNames.RUN_TESTS, ms, methods);
         if (perMethod > 0) {
-            sink.add(new StepTimings.Sample(moduleKey, "run-tests", perMethod));
+            sink.add(new StepTimings.Sample(moduleKey, TaskNames.RUN_TESTS, perMethod));
             // Host-wide absolute ms/method for cold modules that have never run tests here.
             if (methods > 0) {
                 double msPerMethod = ms / (double) methods;
@@ -120,7 +121,7 @@ public final class StepTimingsRecorder implements BuildPlanListener {
         }
         // Optional class-rate sample for hierarchical lookup (stored as synthetic step key).
         if (classes > 0) {
-            double perClass = EffortWeights.observedPerUnit("run-tests", ms, classes);
+            double perClass = EffortWeights.observedPerUnit(TaskNames.RUN_TESTS, ms, classes);
             if (perClass > 0) {
                 sink.add(new StepTimings.Sample(moduleKey, "run-tests-class", perClass));
             }
@@ -134,20 +135,20 @@ public final class StepTimingsRecorder implements BuildPlanListener {
     private void emitHostCompileOrPackage(String step, long wallMs, int count) {
         if (hostSink == null || wallMs <= 0) return;
         switch (step) {
-            case "compile-java" ->
+            case TaskNames.COMPILE_JAVA ->
                 perSource(HostLearnedRates.COMPILE_JAVA_PER_SOURCE_MS, wallMs, count, MAX_COMPILE_PER_SOURCE_MS);
-            case "compile-kotlin" ->
+            case TaskNames.COMPILE_KOTLIN ->
                 perSource(HostLearnedRates.COMPILE_KOTLIN_PER_SOURCE_MS, wallMs, count, MAX_COMPILE_PER_SOURCE_MS);
-            case "compile-groovy" ->
+            case TaskNames.COMPILE_GROOVY ->
                 perSource(HostLearnedRates.COMPILE_GROOVY_PER_SOURCE_MS, wallMs, count, MAX_COMPILE_PER_SOURCE_MS);
-            case "compile-test" ->
+            case TaskNames.COMPILE_TEST ->
                 perSource(HostLearnedRates.COMPILE_TEST_PER_SOURCE_MS, wallMs, count, MAX_COMPILE_PER_SOURCE_MS);
-            case "package-jar" ->
+            case TaskNames.PACKAGE_JAR ->
                 hostSink.add(new HostLearnedRates.HostSample(HostLearnedRates.PACKAGE_JAR_MS, wallMs, MAX_PACKAGE_MS));
-            case "package-assembly" ->
+            case TaskNames.PACKAGE_ASSEMBLY ->
                 hostSink.add(
                         new HostLearnedRates.HostSample(HostLearnedRates.PACKAGE_ASSEMBLY_MS, wallMs, MAX_PACKAGE_MS));
-            case "native-image" -> {
+            case TaskNames.NATIVE_IMAGE -> {
                 // Size-conditioned host rates when this process recorded input bytes for the module.
                 long bytes = NativeEffort.takeLastInputBytes(moduleKey);
                 if (bytes <= 0) bytes = NativeEffort.estimateInputBytes(Path.of(moduleKey));
@@ -176,14 +177,14 @@ public final class StepTimingsRecorder implements BuildPlanListener {
     /** The variable, count-scaled steps whose duration is worth learning. */
     private static boolean learnable(String step) {
         return switch (step) {
-            case "compile-java",
-                    "compile-kotlin",
-                    "compile-groovy",
-                    "compile-test",
-                    "run-tests",
-                    "package-jar",
-                    "package-assembly",
-                    "native-image" -> true;
+            case TaskNames.COMPILE_JAVA,
+                    TaskNames.COMPILE_KOTLIN,
+                    TaskNames.COMPILE_GROOVY,
+                    TaskNames.COMPILE_TEST,
+                    TaskNames.RUN_TESTS,
+                    TaskNames.PACKAGE_JAR,
+                    TaskNames.PACKAGE_ASSEMBLY,
+                    TaskNames.NATIVE_IMAGE -> true;
             default -> false;
         };
     }

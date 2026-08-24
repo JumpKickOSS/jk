@@ -17,6 +17,7 @@ import cc.jumpkick.plugin.buildlogic.BuildLogicContributor;
 import cc.jumpkick.plugin.buildlogic.BuildLogicGraph;
 import cc.jumpkick.plugin.buildlogic.BuildLogicTask;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import java.io.IOException;
@@ -306,7 +307,7 @@ public final class BuildLogicSupport {
                 if (e instanceof IOException ioe) throw ioe;
                 throw new IllegalStateException("[build] logic task " + simple + " failed: " + e.getMessage(), e);
             }
-            actionCache.store(taskId, key, Map.of("build-logic", key), outDir);
+            actionCache.store(taskId, key, Map.of(TaskNames.BUILD_LOGIC, key), outDir);
             if (!generatesSources) mergeIntoClasses(outDir, classesDir);
         }
         return true;

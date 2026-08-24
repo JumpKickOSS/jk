@@ -4,6 +4,7 @@ package cc.jumpkick.engine.journal;
 import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.engine.BuildHistoryKinds;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.TaskPhases;
 import cc.jumpkick.runtime.TestClassWalls;
 import cc.jumpkick.util.DirKeys;
@@ -444,8 +445,8 @@ public final class BuildJournal {
     static boolean isImplausibleHeavyWall(String task, long millis) {
         if (task == null || millis <= 0) return false;
         String t = task.toLowerCase(Locale.ROOT);
-        if (t.contains("native-image") || t.equals("native")) return millis < 5_000L;
-        if (t.contains("write-image") || t.equals("image")) return millis < 3_000L;
+        if (t.contains(TaskNames.NATIVE_IMAGE) || t.equals("native")) return millis < 5_000L;
+        if (t.contains(TaskNames.WRITE_IMAGE) || t.equals("image")) return millis < 3_000L;
         return false;
     }
 

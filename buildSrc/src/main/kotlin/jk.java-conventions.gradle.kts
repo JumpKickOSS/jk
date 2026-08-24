@@ -484,12 +484,18 @@ tasks.named("check") { dependsOn(checkNoFqcn) }
 tasks.named("jar") { dependsOn(checkNoFqcn) }
 
 // ---------------------------------------------------------------------------
-// Guard plumbing shared by G3 / G5 / G7 / G9 (JK-2409).
+// Guard plumbing shared by G3 / G5 / G7 / G9 / G12 (JK-2409, JK-2414).
 //
 // Two habits inherited from G1 (JK-2393), both load-bearing:
 //   * match against code only — a banned literal named in javadoc is documentation, not a defect;
 //   * squash whitespace first, so `jk format` wrapping a call across two lines cannot evade a
 //     pattern written on one. A guard a re-flow can defeat stops working without anyone noticing.
+//
+// The squash stops at a literal's opening quote (JK-2414). Squashing *through* one invents tokens
+// that were never written: `PlannerNative:168` labels a run `" native-image "`, and a squash that
+// runs inside the quotes hands every downstream guard the step name `"native-image"` — a sentence
+// reported as a defect. Java cannot wrap a string literal anyway, so there is nothing in there for
+// a re-flow to hide.
 // ---------------------------------------------------------------------------
 
 /** The text a guard pattern is matched against: comments and imports gone, whitespace squashed. */
@@ -501,7 +507,42 @@ fun guardText(src: String): String =
                     s.startsWith("import ") || s.startsWith("package ")
                 }
                 .joinToString("\n")
-                .replace(Regex("\\s+"), "")
+                .let(::squashBetweenLiterals)
+
+/** Drop whitespace between tokens, keeping every string / char / text-block literal verbatim. */
+fun squashBetweenLiterals(src: String): String {
+    val out = StringBuilder(src.length)
+    var i = 0
+    while (i < src.length) {
+        val c = src[i]
+        when {
+            c == '"' || c == '\'' -> {
+                val close = if (c == '"' && src.startsWith("\"\"\"", i)) "\"\"\"" else c.toString()
+                out.append(close)
+                i += close.length
+                while (i < src.length) {
+                    if (src[i] == '\\') {
+                        out.append(src, i, minOf(i + 2, src.length))
+                        i += 2
+                    } else if (src.startsWith(close, i)) {
+                        out.append(close)
+                        i += close.length
+                        break
+                    } else {
+                        out.append(src[i])
+                        i++
+                    }
+                }
+            }
+            c.isWhitespace() -> i++
+            else -> {
+                out.append(c)
+                i++
+            }
+        }
+    }
+    return out.toString()
+}
 
 /** Occurrences of [pattern] in already-[guardText]-ed code. */
 fun countIn(code: String, pattern: Regex): Int = pattern.findAll(code).count()
@@ -858,3 +899,93 @@ val checkNoHandRolledHex by tasks.registering {
 }
 tasks.named("check") { dependsOn(checkNoHandRolledHex) }
 tasks.named("jar") { dependsOn(checkNoHandRolledHex) }
+
+// ---------------------------------------------------------------------------
+// Guard G12 (JK-2414): a step is named once, in `TaskNames`.
+//
+// Defect it prevents: the silent missing-dependency edge. A step name is a producer/consumer
+// contract — `Step.builder("compile-java")` on one side, `.requires("compile-java")` on the other —
+// and when both ends type the string, a typo is not a compile error, it is an edge that quietly
+// does not exist. `cc.jumpkick.run.TaskNames` has owned these names all along and 243 production
+// references already went through it; the sweep closed the 229 that did not, taking it to 472.
+//
+// The ban list is READ FROM THE OWNER, not re-typed here: every `public static final String` in
+// `TaskNames.java` whose value contains a hyphen. Add a constant and it is banned as a literal the
+// same minute — a guard that carried its own copy of the vocabulary would be the third place to
+// keep in sync, which is the defect it exists to prevent.
+//
+// The seven single-word values (`train`, `delete`, `install`, `prewarm`, `select`, `wizard`,
+// `scaffold`) are deliberately OUT of the list. They are ordinary English — `"install"` appears in
+// paths, help text and Maven scopes — so banning them by text scan would be false positives all
+// the way down. The hyphenated 51 are unambiguous: nothing else in the tree spells `write-stamp`.
+//
+// One structural exemption, no allowlist: GraalVM's launcher is `native-image` on POSIX and
+// `native-image.cmd` on Windows, so `NativeImageDriver` and `NativePreflight` spell the same
+// characters to mean a FILE, not a step. That is a different vocabulary and it is free to diverge,
+// so it must not borrow `TaskNames.NATIVE_IMAGE`. The exemption is the shape, not the file: a bare
+// literal sitting directly beside its own `.cmd`/`.exe` sibling is a filename. Three sites today.
+//
+// A pure ban, not a ratchet: zero sites remain and there is nothing to allow. Reachability was
+// measured, not assumed — 14 of the 31 modules carry `:jk-api` on their compile classpath (it is
+// an `api` dependency of both `:core` and `:wire`, which pulls in most of the tree), and those 14
+// are exactly the ones that name a step today. The other 17 are the plugin workers and the leaf
+// libraries (`host`, `cli-terminal`, `dynamic-surface`, `plugin-sdk`, `web`, …). None of them
+// names a step, and the guard firing on one that starts to is the right outcome, not a trap:
+// either it takes the dependency — `:jk-api` is a pure model module, not `:core` — or the name
+// belongs on the engine side of the wire and has no business being re-typed in a worker.
+//
+// Scope is `src/main/java`. Test sources keep their literals on purpose: an assertion that the
+// journal rendered `run-tests` is a golden pinning the OUTPUT vocabulary, and rewriting it to
+// `TaskNames.RUN_TESTS` would make a rename of the value invisible to the whole suite — the test
+// would follow the rename and still pass. 519 test-side literals are therefore left alone.
+// ---------------------------------------------------------------------------
+
+/** A launcher filename, not a step name: the bare spelling sits beside its `.cmd`/`.exe` sibling. */
+val launcherFilename =
+        Regex("\"([a-z][a-z0-9-]*)\\.(?:cmd|exe)\"[:,]\"\\1\"|\"([a-z][a-z0-9-]*)\"[,:]\"\\2\\.(?:cmd|exe)\"")
+
+val checkNoBareTaskName by tasks.registering {
+    group = "verification"
+    description = "Fail the build on a step name typed as a literal (use cc.jumpkick.run.TaskNames)"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val owner = rootProject.layout.projectDirectory.file(
+            "shared/jk-api/src/main/java/cc/jumpkick/run/TaskNames.java")
+    inputs.file(owner).withPropertyName("taskNames")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val stamp = layout.buildDirectory.file("guards/no-bare-task-name.ok")
+    outputs.file(stamp)
+    doLast {
+        val ownerFile = owner.asFile
+        // value -> constant, for the hyphenated names only (see G12 above).
+        val named = Regex("""public static final String (\w+) = "([^"]+)";""")
+                .findAll(ownerFile.readText())
+                .map { it.groupValues[2] to it.groupValues[1] }
+                .filter { (value, _) -> value.contains('-') }
+                .toMap()
+
+        val hits = mutableListOf<String>()
+        mainJava.files.sorted().forEach { f ->
+            if (f == ownerFile) return@forEach
+            val code = guardText(f.readText()).replace(launcherFilename, "")
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            named.forEach { (value, constant) ->
+                val n = countIn(code, Regex(Regex.escape("\"$value\"")))
+                if (n > 0) hits.add("  $rel: $n x \"$value\"  ->  TaskNames.$constant")
+            }
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("A step name typed as a literal is a producer/consumer contract"
+                    + " with no compiler behind it — a typo becomes a missing dependency edge, not"
+                    + " a build error (JK-2414). These name a step by hand:\n"
+                    + hits.sorted().joinToString("\n")
+                    + "\n  Reference cc.jumpkick.run.TaskNames instead; it is on every production"
+                    + " module's classpath. A string that is NOT a step name — GraalVM's"
+                    + " native-image launcher file, say — must not borrow the constant either:"
+                    + " give that vocabulary its own owner.")
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkNoBareTaskName) }
+tasks.named("jar") { dependsOn(checkNoBareTaskName) }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.builds;
 
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -215,8 +216,8 @@ public final class MetricsHarvest {
     static boolean isImplausibleHeavyWall(String key, double ms) {
         if (key == null || !(ms > 0)) return false;
         String k = key.toLowerCase(Locale.ROOT);
-        if (k.contains("native-image") || k.contains(".phase.native.")) return ms < 5_000.0;
-        if (k.contains("write-image") || k.contains(".phase.image.")) return ms < 3_000.0;
+        if (k.contains(TaskNames.NATIVE_IMAGE) || k.contains(".phase.native.")) return ms < 5_000.0;
+        if (k.contains(TaskNames.WRITE_IMAGE) || k.contains(".phase.image.")) return ms < 3_000.0;
         return false;
     }
 

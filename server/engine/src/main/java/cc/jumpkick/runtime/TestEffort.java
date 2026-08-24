@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.run.TaskNames;
 import java.util.Collection;
 import java.util.Map;
 import java.util.OptionalDouble;
@@ -60,7 +61,7 @@ public final class TestEffort {
         // for a known module. (Host-tier suite average is NOT a substitute: it mixes tiny and huge
         // suites and under-prices a cold 1000-test module.)
         if (metrics != null && moduleDir != null && !moduleDir.isBlank()) {
-            long own = EffortWeights.stepOkAvgMillisOwn(metrics, moduleDir, "run-tests");
+            long own = EffortWeights.stepOkAvgMillisOwn(metrics, moduleDir, TaskNames.RUN_TESTS);
             if (own > 0) return own;
         }
         // Class-wall path: complete selection coverage → Σ walls (no method count).
@@ -95,7 +96,7 @@ public final class TestEffort {
         if (methods <= 0) {
             // Unknown size: host whole-task wall is better than inventing a method count.
             if (metrics != null) {
-                long host = EffortWeights.stepOkAvgMillisHost(metrics, "run-tests");
+                long host = EffortWeights.stepOkAvgMillisHost(metrics, TaskNames.RUN_TESTS);
                 if (host > 0) return host;
             }
             return Math.max(startup, Calibration.STATIC_SUITE_STARTUP_MS);
@@ -111,21 +112,21 @@ public final class TestEffort {
     /** Hierarchical method-ms: module residual → project median → host absolute → calibration. */
     public static double methodMs(String moduleDir, StepTimings timings, Collection<String> projectDirs) {
         if (timings != null) {
-            var own = timings.perUnit(moduleDir == null ? "" : moduleDir, "run-tests");
+            var own = timings.perUnit(moduleDir == null ? "" : moduleDir, TaskNames.RUN_TESTS);
             if (own.isPresent() && own.getAsDouble() > 0) {
                 return own.getAsDouble() * EffortWeights.MS_PER_WEIGHT;
             }
             // Project median before host absolute: sibling modules share frameworks/fixtures, a
             // strictly closer prior than a host-wide average that may come from other projects.
             if (projectDirs != null && !projectDirs.isEmpty()) {
-                var proj = timings.medianPerUnit("run-tests", projectDirs);
+                var proj = timings.medianPerUnit(TaskNames.RUN_TESTS, projectDirs);
                 if (proj.isPresent() && proj.getAsDouble() > 0) {
                     return proj.getAsDouble() * EffortWeights.MS_PER_WEIGHT;
                 }
             }
             OptionalDouble hostAbs = timings.hostAvgTestMethodMs();
             if (hostAbs.isPresent()) return hostAbs.getAsDouble();
-            var hostRate = timings.medianPerUnit("run-tests");
+            var hostRate = timings.medianPerUnit(TaskNames.RUN_TESTS);
             if (hostRate.isPresent() && hostRate.getAsDouble() > 0) {
                 return hostRate.getAsDouble() * EffortWeights.MS_PER_WEIGHT;
             }
@@ -146,7 +147,7 @@ public final class TestEffort {
             var learned = cal.learned().meanMs(HostLearnedRates.RUN_TESTS_SUITE_STARTUP_MS);
             if (learned.isPresent()) return Math.round(learned.getAsDouble());
             if (cal.hasColdPriors()) {
-                long wall0 = cal.coldStepWallMs("run-tests", 0, 1);
+                long wall0 = cal.coldStepWallMs(TaskNames.RUN_TESTS, 0, 1);
                 if (wall0 > 0) return wall0;
             }
             return Math.round(Calibration.scaleBaseline(Calibration.BASELINE_SUITE_STARTUP_MS, 1.0));

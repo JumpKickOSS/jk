@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -225,10 +226,10 @@ public final class BuildEta {
                 continue;
             }
             Map<String, Integer> counts = new java.util.HashMap<>();
-            if (m.testCount() > 0) counts.put("run-tests", m.testCount());
+            if (m.testCount() > 0) counts.put(TaskNames.RUN_TESTS, m.testCount());
             if (m.sourceCount() > 0) {
-                counts.put("compile-java", m.sourceCount());
-                counts.put("compile-test", m.sourceCount());
+                counts.put(TaskNames.COMPILE_JAVA, m.sourceCount());
+                counts.put(TaskNames.COMPILE_TEST, m.sourceCount());
             }
             int classGuess = m.testCount() > 0 ? Math.max(1, m.testCount() / 3) : 0;
             // workers: 0 = auto (same as bare jk build -w omit)
@@ -258,7 +259,7 @@ public final class BuildEta {
         String name = s.name();
         // TEST-resource drift reruns the suite for real — test action keys hash test resources —
         // so run-tests must keep its full wall no matter which rule below would discount it.
-        if ("run-tests".equals(name) && testResourceDrift) {
+        if (TaskNames.RUN_TESTS.equals(name) && testResourceDrift) {
             return false;
         }
         // Cascade-forced compile/package without local source edits.
@@ -267,17 +268,17 @@ public final class BuildEta {
         }
         // Cascade-forced native ("rebuild · compile changed") without local compile — cli native
         // often SKIPPED while tests still run (dogfood: priced ~34s native, actual SKIPPED).
-        if (!localCompile && isCascadeForcedStep(s) && "native-image".equals(name)) {
+        if (!localCompile && isCascadeForcedStep(s) && TaskNames.NATIVE_IMAGE.equals(name)) {
             return true;
         }
         // MAIN-resource drift schedules copy/package only — never a full compile/test suite
         // (dogfood-validated discount; the test-resource case exited above).
-        if (!localCompile && resourceDrift && (isCompileStepName(name) || "run-tests".equals(name))) {
+        if (!localCompile && resourceDrift && (isCompileStepName(name) || TaskNames.RUN_TESTS.equals(name))) {
             return true;
         }
         // Pure cascade module: discount tests. Cli keeps tests when a heavy tail is forecast
         // (test-dep on a dirty engine) even if native itself is discounted.
-        if (!localCompile && !keepFullTests && "run-tests".equals(name)) {
+        if (!localCompile && !keepFullTests && TaskNames.RUN_TESTS.equals(name)) {
             return true;
         }
         return false;
@@ -330,9 +331,9 @@ public final class BuildEta {
         if (m == null || m.steps() == null) return false;
         for (TaskForecast.Task s : m.steps()) {
             if (s.cached()) continue;
-            if ("copy-resources".equals(s.name()) || "copy-test-resources".equals(s.name())) return true;
+            if (TaskNames.COPY_RESOURCES.equals(s.name()) || "copy-test-resources".equals(s.name())) return true;
             String t = s.text() == null ? "" : s.text();
-            if ("package-jar".equals(s.name()) && t.contains("resources changed")) return true;
+            if (TaskNames.PACKAGE_JAR.equals(s.name()) && t.contains("resources changed")) return true;
         }
         return false;
     }
@@ -355,9 +356,9 @@ public final class BuildEta {
         if (m == null || m.steps() == null) return false;
         return m.steps().stream()
                 .anyMatch(s -> !s.cached()
-                        && ("native-image".equals(s.name())
-                                || "write-image".equals(s.name())
-                                || "package-assembly".equals(s.name())));
+                        && (TaskNames.NATIVE_IMAGE.equals(s.name())
+                                || TaskNames.WRITE_IMAGE.equals(s.name())
+                                || TaskNames.PACKAGE_ASSEMBLY.equals(s.name())));
     }
 
     /**
@@ -373,15 +374,15 @@ public final class BuildEta {
     static boolean isCompileStepName(String name) {
         if (name == null) return false;
         return name.startsWith("compile-main")
-                || name.startsWith("compile-java")
-                || name.startsWith("compile-kotlin")
-                || name.startsWith("compile-groovy")
-                || name.startsWith("compile-test");
+                || name.startsWith(TaskNames.COMPILE_JAVA)
+                || name.startsWith(TaskNames.COMPILE_KOTLIN)
+                || name.startsWith(TaskNames.COMPILE_GROOVY)
+                || name.startsWith(TaskNames.COMPILE_TEST);
     }
 
     static boolean isCompileOrPackageStep(String name) {
         if (name == null) return false;
-        return isCompileStepName(name) || "package-jar".equals(name) || "package-assembly".equals(name);
+        return isCompileStepName(name) || TaskNames.PACKAGE_JAR.equals(name) || TaskNames.PACKAGE_ASSEMBLY.equals(name);
     }
 
     /**

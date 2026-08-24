@@ -528,7 +528,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
      */
     public void notePlainTestTick(String module, String stepKey, int delta) {
         if (!animate || Theme.active().isAnsi()) return;
-        if (stepKey == null || !(stepKey.equals(TaskNames.RUN_TESTS) || stepKey.startsWith("run-tests"))) {
+        if (stepKey == null || !(stepKey.equals(TaskNames.RUN_TESTS) || stepKey.startsWith(TaskNames.RUN_TESTS))) {
             return;
         }
         synchronized (lock) {
@@ -957,7 +957,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     public static boolean forceShowOnStepFailure(String step, String group) {
         // Only the test-runner step uses curated failure chrome; everything else is a tool/worker.
         if (step == null) return true;
-        return !step.equals(TaskNames.RUN_TESTS) && !step.startsWith("run-tests");
+        return !step.equals(TaskNames.RUN_TESTS) && !step.startsWith(TaskNames.RUN_TESTS);
     }
 
     public List<String> renderBuildPlanLines(int cols, long elapsedMillis) {

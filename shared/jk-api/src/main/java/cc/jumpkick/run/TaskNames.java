@@ -20,8 +20,8 @@ public final class TaskNames {
     public static final String COMPILE_KOTLIN = "compile-kotlin";
     public static final String COMPILE_TEST = "compile-test";
     public static final String COPY_RESOURCES = "copy-resources";
-    /** Optional project build logic; often folded into copy-resources. */
-    public static final String HATCH_GENERATE = "build-logic";
+    /** Project build-logic, as the action-cache input label for one logic task. */
+    public static final String BUILD_LOGIC = "build-logic";
     /** SPI BEFORE_COMPILE / GENERATE anchor (codegen before main compile). */
     public static final String BUILD_LOGIC_BEFORE_COMPILE = "build-logic-before-compile";
     /** SPI AFTER_COMPILE anchor. */

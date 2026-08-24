@@ -9,6 +9,7 @@ import cc.jumpkick.jdk.JdkLts;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkResolution;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.MinimalToml;
@@ -342,9 +343,9 @@ public final class Calibration {
     public long compilePerSourceMs(String step) {
         String key =
                 switch (step == null ? "" : step) {
-                    case "compile-kotlin" -> HostLearnedRates.COMPILE_KOTLIN_PER_SOURCE_MS;
-                    case "compile-groovy" -> HostLearnedRates.COMPILE_GROOVY_PER_SOURCE_MS;
-                    case "compile-test" -> HostLearnedRates.COMPILE_TEST_PER_SOURCE_MS;
+                    case TaskNames.COMPILE_KOTLIN -> HostLearnedRates.COMPILE_KOTLIN_PER_SOURCE_MS;
+                    case TaskNames.COMPILE_GROOVY -> HostLearnedRates.COMPILE_GROOVY_PER_SOURCE_MS;
+                    case TaskNames.COMPILE_TEST -> HostLearnedRates.COMPILE_TEST_PER_SOURCE_MS;
                     default -> HostLearnedRates.COMPILE_JAVA_PER_SOURCE_MS;
                 };
         OptionalDouble learned = this.learned.meanMs(key);
@@ -412,16 +413,16 @@ public final class Calibration {
         int n = Math.max(0, count);
         int w = coldTestParallel(testWorkers);
         return switch (s) {
-            case "run-tests" -> {
+            case TaskNames.RUN_TESTS -> {
                 long body = (long) n * testMethodMs();
                 yield testSuiteStartupMs() + Math.max(0, (body + w - 1) / w);
             }
-            case "compile-java", "compile-kotlin", "compile-groovy", "compile-test" ->
+            case TaskNames.COMPILE_JAVA, TaskNames.COMPILE_KOTLIN, TaskNames.COMPILE_GROOVY, TaskNames.COMPILE_TEST ->
                 compilePerSourceMs(s) * Math.max(1, n);
-            case "package-jar" -> packageJarMs();
-            case "package-assembly" -> packageAssemblyMs();
-            case "native-image" -> nativeImageMs();
-            case "write-image" -> ociImageMs();
+            case TaskNames.PACKAGE_JAR -> packageJarMs();
+            case TaskNames.PACKAGE_ASSEMBLY -> packageAssemblyMs();
+            case TaskNames.NATIVE_IMAGE -> nativeImageMs();
+            case TaskNames.WRITE_IMAGE -> ociImageMs();
             default -> 0L;
         };
     }
@@ -1343,7 +1344,7 @@ public final class Calibration {
         }
         sb.append(String.format(
                 "  cold ETA prior      startup=%d ms  method=%d ms  compile/src=%d ms%n",
-                testSuiteStartupMs(), testMethodMs(), compilePerSourceMs("compile-java")));
+                testSuiteStartupMs(), testMethodMs(), compilePerSourceMs(TaskNames.COMPILE_JAVA)));
         sb.append(String.format(
                 "  host scale          cpu=%.2f  fork=%.2f  io=%.2f  (baseline×scale×%.2f)%n",
                 cpuScale(), forkScale(), ioScale(), COLD_BIAS));

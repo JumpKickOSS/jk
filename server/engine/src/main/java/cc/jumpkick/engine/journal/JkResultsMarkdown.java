@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.test.MarkdownTestReport;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.DirKeys;
@@ -519,13 +520,13 @@ public final class JkResultsMarkdown {
         String n = name.toLowerCase(Locale.ROOT);
         return "install".equals(n)
                 || "publish".equals(n)
-                || "native-image".equals(n)
-                || "write-image".equals(n)
-                || "package-jar".equals(n)
-                || "package-assembly".equals(n)
-                || "package-minified".equals(n)
-                || "cache-install".equals(n)
-                || n.contains("native-image")
+                || TaskNames.NATIVE_IMAGE.equals(n)
+                || TaskNames.WRITE_IMAGE.equals(n)
+                || TaskNames.PACKAGE_JAR.equals(n)
+                || TaskNames.PACKAGE_ASSEMBLY.equals(n)
+                || TaskNames.PACKAGE_MINIFIED.equals(n)
+                || TaskNames.CACHE_INSTALL.equals(n)
+                || n.contains(TaskNames.NATIVE_IMAGE)
                 || (n.endsWith("-image") && n.contains("write"));
     }
 

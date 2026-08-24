@@ -26,6 +26,7 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -247,7 +248,7 @@ public final class LockCommand implements CliCommand {
             public void onPackage(String moduleDir, String name, String version) {
                 // The engine sends structured lock-package events instead of pre-themed labels;
                 // colorize here, client-side, exactly as the in-process plan labels itself.
-                current.label("resolve-deps", "Resolved " + Coords.module(name, version));
+                current.label(TaskNames.RESOLVE_DEPS, "Resolved " + Coords.module(name, version));
             }
         };
 

@@ -42,6 +42,11 @@
 # lost ten qualifiers. Characters fell everywhere; lines moved either way depending on how much
 # re-wrapping the shorter names bought back. The invariants below are unchanged.
 #
+# JK-2414 moved four of them upward, by 1 to 7 lines, for the same kind of reason: the TaskNames
+# sweep replaced `"compile-java"` with `TaskNames.COMPILE_JAVA`, which is eight characters longer,
+# so a `case` arm or a constructor call that used to fit on one line now wraps. Two of the four are
+# the added `import` line alone. The invariants below are unchanged.
+#
 # FORMAT. One entry per line: `<lines>  <path from the repo root>`. The comment lines immediately
 # above an entry, with no blank line between, are that entry's invariant. A blank line separates
 # entries. Sorted by path.
@@ -128,7 +133,7 @@
 
 # T58: the append path and the replay path must read and write the same record shape, and a
 # journal that replays differently from how it was written is a corrupted history.
-857  server/engine/src/main/java/cc/jumpkick/engine/journal/BuildJournal.java
+858  server/engine/src/main/java/cc/jumpkick/engine/journal/BuildJournal.java
 
 # T58: `coreBuilder` and `appendDeclaredTails` have to agree on DAG edge order — a tail appended
 # against a stale edge set is a step that runs before its input exists.
@@ -137,11 +142,11 @@
 # T58: the probe bootstrap, the continuous learned-rate fold and the cold-ETA model are one model.
 # Micro-probes must never become absolute method costs (empty @Tests run in ~5 ms and would
 # under-shoot real suites by 10x), and that rule is only enforceable where both halves are visible.
-1388  server/engine/src/main/java/cc/jumpkick/runtime/Calibration.java
+1389  server/engine/src/main/java/cc/jumpkick/runtime/Calibration.java
 
 # T58: the per-phase weight table is data that belongs in a resource, not code. No invariant holds
 # it here — this entry is a ratchet, not a justification.
-1199  server/engine/src/main/java/cc/jumpkick/runtime/EffortWeights.java
+1205  server/engine/src/main/java/cc/jumpkick/runtime/EffortWeights.java
 
 # T58: one plan per verb, with the shared step bodies next to the plans that compose them.
 1089  server/engine/src/main/java/cc/jumpkick/runtime/ExecPlans.java
@@ -160,7 +165,7 @@
 # T58: the forecast's cache keys must mirror the real build's request field for field — drift makes
 # `jk explain` forecast a phantom rebuild. Dirty-marking of a module and of its consumers is one
 # traversal, so misses stay pessimistic and never become false cache hits.
-1212  server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java
+1219  server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java
 
 # T58: workspace step execution and the target/ write-drain that `jk build` must not return ahead
 # of (JK-2451). Ratchet only.

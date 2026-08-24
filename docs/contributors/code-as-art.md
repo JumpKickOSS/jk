@@ -246,6 +246,11 @@ count. Annotations without a deleted map do not count.
 - No FQCN except collisions. `jk format` shortens what it can reach;
   `checkNoFqcn` ratchets the rest against `fqcn-baseline.txt`, where
   every surviving reference is filed under the reason it survives.
+- A step is named once, in `cc.jumpkick.run.TaskNames`. Typing
+  `"compile-java"` at a producer and again at a consumer makes a typo a
+  missing dependency edge instead of a compile error;
+  `checkNoBareTaskName` bans the literal in `src/main/java`. Tests keep
+  theirs — an assertion on rendered output is a golden.
 - Preview APIs only with an explicit ticket. Virtual threads are
   already house style.
 

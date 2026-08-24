@@ -186,11 +186,11 @@ public final class TaskForecaster {
         return m.steps().stream()
                 .anyMatch(p -> !p.cached()
                         && (p.name().startsWith("compile-main")
-                                || p.name().startsWith("compile-java")
-                                || p.name().startsWith("compile-kotlin")
-                                || p.name().startsWith("compile-groovy")
-                                || "package-jar".equals(p.name())
-                                || "package-assembly".equals(p.name())));
+                                || p.name().startsWith(TaskNames.COMPILE_JAVA)
+                                || p.name().startsWith(TaskNames.COMPILE_KOTLIN)
+                                || p.name().startsWith(TaskNames.COMPILE_GROOVY)
+                                || TaskNames.PACKAGE_JAR.equals(p.name())
+                                || TaskNames.PACKAGE_ASSEMBLY.equals(p.name())));
     }
 
     /**
@@ -461,10 +461,10 @@ public final class TaskForecaster {
                         && stampLangActionPresent(
                                 actionCache, ActionKey.qualifiedTaskId(TaskNames.COMPILE_KOTLIN, layout.classesDir()));
                 if (fresh || restoreHit) {
-                    steps.add(new TaskForecast.Task("compile-kotlin", TaskForecast.Status.CACHED, "", null));
+                    steps.add(new TaskForecast.Task(TaskNames.COMPILE_KOTLIN, TaskForecast.Status.CACHED, "", null));
                 } else {
                     steps.add(new TaskForecast.Task(
-                            "compile-kotlin",
+                            TaskNames.COMPILE_KOTLIN,
                             TaskForecast.Status.FULL,
                             "full compile · " + count(ktSrc.size(), "source"),
                             null));
@@ -485,10 +485,10 @@ public final class TaskForecaster {
                         && stampLangActionPresent(
                                 actionCache, ActionKey.qualifiedTaskId(TaskNames.COMPILE_GROOVY, layout.classesDir()));
                 if (fresh || restoreHit) {
-                    steps.add(new TaskForecast.Task("compile-groovy", TaskForecast.Status.CACHED, "", null));
+                    steps.add(new TaskForecast.Task(TaskNames.COMPILE_GROOVY, TaskForecast.Status.CACHED, "", null));
                 } else {
                     steps.add(new TaskForecast.Task(
-                            "compile-groovy",
+                            TaskNames.COMPILE_GROOVY,
                             TaskForecast.Status.FULL,
                             "full compile · " + count(gvSrc.size(), "source"),
                             null));
@@ -524,7 +524,7 @@ public final class TaskForecaster {
             if (haveTests && !skipTests) {
                 if (compileDirty) {
                     steps.add(new TaskForecast.Task(
-                            "compile-test", TaskForecast.Status.RUN, "recompile · main changed", null));
+                            TaskNames.COMPILE_TEST, TaskForecast.Status.RUN, "recompile · main changed", null));
                     testDirty = true;
                 } else if (!javaTest.isEmpty()) {
                     List<Path> baseCp = new ArrayList<>();
@@ -544,7 +544,7 @@ public final class TaskForecaster {
                             .extraOptions(javacArgs)
                             .processorPath(processorCp)
                             .build();
-                    String taskId = ActionKey.qualifiedTaskId("compile-test", testOut);
+                    String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST, testOut);
                     Path stateDir =
                             cache.resolve("actions").resolve("incremental-java").resolve(taskId);
                     long tt = Perf.start();
@@ -557,12 +557,12 @@ public final class TaskForecaster {
                             workerJar,
                             layout.generatedSourcesDir("annotations", "test"));
                     Perf.end("  predict-compile-test", tt);
-                    TaskForecast.Task p = compileStep("compile-test", pred, false);
+                    TaskForecast.Task p = compileStep(TaskNames.COMPILE_TEST, pred, false);
                     steps.add(p);
                     if (!p.cached()) testDirty = true;
                 } else {
                     // Kotlin/Groovy-only tests: no content predictor — assume fresh when main is clean.
-                    steps.add(new TaskForecast.Task("compile-test", TaskForecast.Status.CACHED, "", null));
+                    steps.add(new TaskForecast.Task(TaskNames.COMPILE_TEST, TaskForecast.Status.CACHED, "", null));
                 }
 
                 // ---- run-tests ----
@@ -572,8 +572,8 @@ public final class TaskForecaster {
                 // testDepDirty: sibling on test classpath is rebuilding — suite must re-run even
                 // when main compile stays cached (cli ← engine test-dep dogfood).
                 if (compileDirty || testDirty || testDepDirty) {
-                    steps.add(
-                            new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · " + tests, null));
+                    steps.add(new TaskForecast.Task(
+                            TaskNames.RUN_TESTS, TaskForecast.Status.RUN, "run tests · " + tests, null));
                 } else {
                     // Same factory as live run-tests default selection sources +
                     // worker/engine jar extras (nested-engine CLI included) so the key matches the
@@ -596,9 +596,13 @@ public final class TaskForecaster {
                     boolean hit = stampKey != null && present(actionCache, stampKey);
                     steps.add(
                             hit
-                                    ? new TaskForecast.Task("run-tests", TaskForecast.Status.CACHED, "· " + tests, null)
+                                    ? new TaskForecast.Task(
+                                            TaskNames.RUN_TESTS, TaskForecast.Status.CACHED, "· " + tests, null)
                                     : new TaskForecast.Task(
-                                            "run-tests", TaskForecast.Status.RUN, "run tests · " + tests, null));
+                                            TaskNames.RUN_TESTS,
+                                            TaskForecast.Status.RUN,
+                                            "run tests · " + tests,
+                                            null));
                 }
             }
 
@@ -639,11 +643,11 @@ public final class TaskForecaster {
                 // "sibling not built" — schedule it until its jar exists.
                 if (!Files.isRegularFile(layout.mainJar())) {
                     steps.add(new TaskForecast.Task(
-                            "package-jar", TaskForecast.Status.RUN, "package · module has no sources", null));
+                            TaskNames.PACKAGE_JAR, TaskForecast.Status.RUN, "package · module has no sources", null));
                 }
             } else if (compileDirty) {
                 steps.add(new TaskForecast.Task(
-                        "package-jar", TaskForecast.Status.RUN, "repackage · compile changed", null));
+                        TaskNames.PACKAGE_JAR, TaskForecast.Status.RUN, "repackage · compile changed", null));
             } else {
                 Path jar = layout.mainJar();
                 String mainClass = PluginModule.mainClass(dir, project);
@@ -675,13 +679,14 @@ public final class TaskForecaster {
                         "manifest:" + project.manifest());
                 Perf.end("  package-fingerprint", tp);
                 String pkgKey = ActionKey.forArtifact(
-                        ActionKey.qualifiedTaskId("package-jar", jar), BuildIdentity.cacheKeyVersion(), tokens);
+                        ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, jar), BuildIdentity.cacheKeyVersion(), tokens);
                 boolean hit = present(actionCache, pkgKey);
                 steps.add(
                         hit
-                                ? new TaskForecast.Task("package-jar", TaskForecast.Status.CACHED, "", key8(pkgKey))
+                                ? new TaskForecast.Task(
+                                        TaskNames.PACKAGE_JAR, TaskForecast.Status.CACHED, "", key8(pkgKey))
                                 : new TaskForecast.Task(
-                                        "package-jar",
+                                        TaskNames.PACKAGE_JAR,
                                         TaskForecast.Status.RUN,
                                         mainResourceDrift ? "repackage · resources changed" : "repackage",
                                         null));
@@ -703,7 +708,7 @@ public final class TaskForecaster {
             if (project.assembly() && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
                 if (compileDirty) {
                     steps.add(new TaskForecast.Task(
-                            "package-assembly", TaskForecast.Status.RUN, "repackage · compile changed", null));
+                            TaskNames.PACKAGE_ASSEMBLY, TaskForecast.Status.RUN, "repackage · compile changed", null));
                 } else {
                     boolean hit = assemblyActionCached(
                             dir,
@@ -717,9 +722,10 @@ public final class TaskForecaster {
                             knownResourceDrift);
                     steps.add(
                             hit
-                                    ? new TaskForecast.Task("package-assembly", TaskForecast.Status.CACHED, "", null)
+                                    ? new TaskForecast.Task(
+                                            TaskNames.PACKAGE_ASSEMBLY, TaskForecast.Status.CACHED, "", null)
                                     : new TaskForecast.Task(
-                                            "package-assembly", TaskForecast.Status.RUN, "repackage", null));
+                                            TaskNames.PACKAGE_ASSEMBLY, TaskForecast.Status.RUN, "repackage", null));
                 }
             }
 
@@ -734,7 +740,7 @@ public final class TaskForecaster {
             // allowNative=false, so the binary they were dirty "for" never appears) — JK-2088.
             boolean nativeOnNativeCmd = target == WorkspaceTarget.NATIVE && terminalDirs.contains(dir);
             if ((nativeOnBuild || nativeOnNativeCmd) && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
-                boolean jarDirty = steps.stream().anyMatch(s -> "package-jar".equals(s.name()) && !s.cached());
+                boolean jarDirty = steps.stream().anyMatch(s -> TaskNames.PACKAGE_JAR.equals(s.name()) && !s.cached());
                 Path nativeOut = layout.nativeBinary();
                 boolean binaryPresent = Files.isRegularFile(nativeOut) || Files.isRegularFile(layout.nativeLibrary());
                 // Missing binary after wipe: action-cache hit ⇒ restore (CACHED), not a FULL
@@ -745,10 +751,10 @@ public final class TaskForecaster {
                         && stampLangActionPresent(
                                 actionCache, ActionKey.qualifiedTaskId(TaskNames.NATIVE_IMAGE, nativeOut));
                 if (jarDirty || compileDirty || (!binaryPresent && !nativeRestoreHit)) {
-                    String why = jarDirty || compileDirty ? "rebuild · compile changed" : "native-image";
-                    steps.add(new TaskForecast.Task("native-image", TaskForecast.Status.RUN, why, null));
+                    String why = jarDirty || compileDirty ? "rebuild · compile changed" : TaskNames.NATIVE_IMAGE;
+                    steps.add(new TaskForecast.Task(TaskNames.NATIVE_IMAGE, TaskForecast.Status.RUN, why, null));
                 } else {
-                    steps.add(new TaskForecast.Task("native-image", TaskForecast.Status.CACHED, "", null));
+                    steps.add(new TaskForecast.Task(TaskNames.NATIVE_IMAGE, TaskForecast.Status.CACHED, "", null));
                 }
             }
 
@@ -778,7 +784,8 @@ public final class TaskForecaster {
             // Main resource drift schedules the module so the jar ships fresh bytes.
             // Cascade to compile consumers is owned by package-jar above, not by these steps.
             if (mainResourceDrift) {
-                steps.add(new TaskForecast.Task("copy-resources", TaskForecast.Status.RUN, "resources changed", null));
+                steps.add(new TaskForecast.Task(
+                        TaskNames.COPY_RESOURCES, TaskForecast.Status.RUN, "resources changed", null));
             }
             if (testResourceDrift) {
                 // Distinct name: test-resource drift schedules the module (material) but
@@ -988,7 +995,7 @@ public final class TaskForecaster {
                 "main:" + (mainClass == null ? "" : mainClass),
                 "manifest:" + project.manifest(),
                 "packaging:fat");
-        String shTask = ActionKey.qualifiedTaskId("package-assembly", assemblyJar);
+        String shTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_ASSEMBLY, assemblyJar);
         String shKey = ActionKey.forArtifact(shTask, BuildIdentity.cacheKeyVersion(), tokens);
         return present(actionCache, shKey);
     }

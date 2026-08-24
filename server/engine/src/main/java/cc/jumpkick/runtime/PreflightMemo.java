@@ -10,6 +10,7 @@ import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.PluginModule;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -608,7 +609,7 @@ public final class PreflightMemo {
         for (var s : plan.steps()) {
             String phase = s.group().orElse("");
             steps.add(new BuildPlanShape.StepShape(s.name(), phase));
-            if ("run-tests".equals(s.name())) {
+            if (TaskNames.RUN_TESTS.equals(s.name())) {
                 try {
                     testWeight += s.estimateWeight();
                 } catch (Exception ignored) {

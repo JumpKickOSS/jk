@@ -302,7 +302,7 @@ val compileRequestPairs = listOf(
                 ("PlannerCompile.java|\"compile-main\", javaOut" to "TaskForecaster.java|\"compile-main\", out)"),
         "compile-test" to
                 ("TestSupport.java|qualifiedTaskId(taskId, outputDir)"
-                        to "TaskForecaster.java|\"compile-test\", testOut)"))
+                        to "TaskForecaster.java|TaskNames.COMPILE_TEST, testOut)"))
 
 // Every `CompileRequest.builder()` site in the module and how many times it appears, so a new chain
 // has to be declared as keyed (above) or unkeyed (here) before the build will run.

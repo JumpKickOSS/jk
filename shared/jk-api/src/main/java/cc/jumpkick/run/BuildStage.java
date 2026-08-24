@@ -165,54 +165,55 @@ public enum BuildStage {
         }
         return switch (t) {
             // Acquisition: parse, lock, fetch, sync, toolchain — all "get the module ready".
-            case "parse-build",
-                    "resolve-deps",
-                    "ensure-jdk",
+            case TaskNames.PARSE_BUILD,
+                    TaskNames.RESOLVE_DEPS,
+                    TaskNames.ENSURE_JDK,
                     "sync-deps",
-                    "read-lock",
-                    "parse-lock",
-                    "fetch-catalog",
-                    "fetch-git",
-                    "lock-plugins",
-                    "lock-sdk",
-                    "resolve-coord",
-                    "resolve-formatters",
-                    "resolve-jar-deps",
-                    "resolve-kotlinc",
-                    "write-lockfile",
-                    "install-jdk",
+                    TaskNames.READ_LOCK,
+                    TaskNames.PARSE_LOCK,
+                    TaskNames.FETCH_CATALOG,
+                    TaskNames.FETCH_GIT,
+                    TaskNames.LOCK_PLUGINS,
+                    TaskNames.LOCK_SDK,
+                    TaskNames.RESOLVE_COORD,
+                    TaskNames.RESOLVE_FORMATTERS,
+                    TaskNames.RESOLVE_JAR_DEPS,
+                    TaskNames.RESOLVE_KOTLINC,
+                    TaskNames.WRITE_LOCKFILE,
+                    TaskNames.INSTALL_JDK,
                     "prewarm",
-                    "sync-cas",
-                    "sync-modules",
-                    "sync-plugins",
-                    "sync-sources",
-                    "sync-workers" -> RESOLVE;
-            case "build-logic-before-compile" -> GENERATE;
-            case "compile-java",
-                    "compile-kotlin",
-                    "compile-groovy",
-                    "copy-resources",
-                    "assemble-classes",
-                    "write-stamp",
-                    "write-stamp-kotlin",
-                    "write-stamp-groovy",
-                    "build-logic-after-compile",
+                    TaskNames.SYNC_CAS,
+                    TaskNames.SYNC_MODULES,
+                    TaskNames.SYNC_PLUGINS,
+                    TaskNames.SYNC_SOURCES,
+                    TaskNames.SYNC_WORKERS -> RESOLVE;
+            case TaskNames.BUILD_LOGIC_BEFORE_COMPILE -> GENERATE;
+            case TaskNames.COMPILE_JAVA,
+                    TaskNames.COMPILE_KOTLIN,
+                    TaskNames.COMPILE_GROOVY,
+                    TaskNames.COPY_RESOURCES,
+                    TaskNames.ASSEMBLE_CLASSES,
+                    TaskNames.WRITE_STAMP,
+                    TaskNames.WRITE_STAMP_KOTLIN,
+                    TaskNames.WRITE_STAMP_GROOVY,
+                    TaskNames.BUILD_LOGIC_AFTER_COMPILE,
                     "ksp",
                     "protoc" -> COMPILE;
             // GENERATE reserved for explicit stage / future before-compile codegen tasks
-            case "compile-test", "run-tests" -> TEST;
-            case "package-jar", "package-assembly", "embed-sha", "build-logic-before-package" -> PACKAGE;
+            case TaskNames.COMPILE_TEST, TaskNames.RUN_TESTS -> TEST;
+            case TaskNames.PACKAGE_JAR, TaskNames.PACKAGE_ASSEMBLY, "embed-sha", TaskNames.BUILD_LOGIC_BEFORE_PACKAGE ->
+                PACKAGE;
             case "train", "train-reachability" -> TRAIN;
-            case "native-image", "native-shared" -> NATIVE;
-            case "write-image", "image-plan" -> IMAGE;
-            case "install", "cache-install" -> PUBLISH;
+            case TaskNames.NATIVE_IMAGE, "native-shared" -> NATIVE;
+            case TaskNames.WRITE_IMAGE, TaskNames.IMAGE_PLAN -> IMAGE;
+            case "install", TaskNames.CACHE_INSTALL -> PUBLISH;
             default -> {
                 if (t.startsWith("compile")) yield COMPILE;
-                if (t.startsWith("write-stamp")) yield COMPILE;
+                if (t.startsWith(TaskNames.WRITE_STAMP)) yield COMPILE;
                 if (t.startsWith("package")) yield PACKAGE;
                 if (t.startsWith("train")) yield TRAIN;
                 if (t.startsWith("native")) yield NATIVE;
-                if (t.startsWith("image") || t.startsWith("write-image")) yield IMAGE;
+                if (t.startsWith("image") || t.startsWith(TaskNames.WRITE_IMAGE)) yield IMAGE;
                 if (t.contains("generat") || t.contains("codegen")) yield GENERATE;
                 if (t.contains("test")) yield TEST;
                 yield OTHER;

@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -89,7 +90,7 @@ public final class NativeEffort {
         if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
 
         // 1) Module-own measured wall — project history supersedes host / baselines
-        long own = EffortWeights.stepOkAvgMillisOwn(metrics, mod, "native-image");
+        long own = EffortWeights.stepOkAvgMillisOwn(metrics, mod, TaskNames.NATIVE_IMAGE);
         if (own >= WALL_FLOOR_MS) return own;
 
         long effective = estimateInputBytes(moduleDir);
@@ -100,7 +101,7 @@ public final class NativeEffort {
 
         // 3) Host absolute wall only when we cannot size the closed world (no jar/deps yet).
         // Raw task.native-image.wall-ms is not size-normalized — do not use it when bytes exist.
-        long host = EffortWeights.stepOkAvgMillisHost(metrics, "native-image");
+        long host = EffortWeights.stepOkAvgMillisHost(metrics, TaskNames.NATIVE_IMAGE);
         if (host >= WALL_FLOOR_MS) return host;
 
         // 4) Cold flat: reference × cpuScale
