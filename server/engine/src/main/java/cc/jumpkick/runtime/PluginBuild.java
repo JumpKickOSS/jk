@@ -7,8 +7,10 @@ import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
+import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
@@ -231,29 +233,21 @@ public final class PluginBuild {
         return new Declarations(steps, packager, commands);
     }
 
-    /** Package-visible so tests can pre-seed the describe cache without forking a worker. */
+    /**
+     * What a describe reply depends on: the engine, the plugin's own version and config, and the
+     * project facts — through the same {@link ProjectFacts#token()} the action keys use, so this
+     * cache and the step/packager keys cannot disagree about which facts matter. Package-visible so
+     * tests can pre-seed the describe cache without forking a worker.
+     */
     static String describeKey(Active active, JkBuild project) {
-        StringBuilder b = new StringBuilder();
-        b.append(cc.jumpkick.model.BuildIdentity.cacheKeyVersion())
-                .append('|')
-                .append(active.manifest().version())
-                .append('|')
-                .append(configToken(active.config()))
-                .append('|')
-                .append(project.project().group())
-                .append(':')
-                .append(project.project().name())
-                .append(':')
-                .append(project.project().version())
-                .append('|')
-                .append(project.project().javaRelease())
-                .append('|')
-                .append(project.nativeConfig().isPresent())
-                .append('|')
-                .append(project.project().isKotlin())
-                .append('|')
-                .append(String.valueOf(project.mainClass()));
-        return Hashing.sha256Hex(b.toString().getBytes(StandardCharsets.UTF_8)).substring(0, 16);
+        String key = BuildIdentity.cacheKeyVersion()
+                + '|'
+                + active.manifest().version()
+                + '|'
+                + configToken(active.config())
+                + '|'
+                + facts(project, project.mainClass()).token();
+        return Hashing.sha256Hex(key.getBytes(StandardCharsets.UTF_8)).substring(0, 16);
     }
 
     /** A stable render of the validated config — the token action keys carry for In.config(). */
@@ -685,9 +679,9 @@ public final class PluginBuild {
         return jarPath;
     }
 
-    /** {@link cc.jumpkick.plugin.build.ProjectFacts} for the shared {@link cc.jumpkick.plugin.protocol.SpecWriter}. */
-    public static cc.jumpkick.plugin.build.ProjectFacts facts(JkBuild project, String resolvedMain) {
-        return new cc.jumpkick.plugin.build.ProjectFacts(
+    /** The fact set a plugin body sees; {@link ProjectFacts#token()} is the same set as a key. */
+    public static ProjectFacts facts(JkBuild project, String resolvedMain) {
+        return new ProjectFacts(
                 project.project().group(),
                 project.project().name(),
                 project.project().version(),

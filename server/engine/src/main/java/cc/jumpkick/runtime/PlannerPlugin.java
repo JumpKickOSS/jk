@@ -9,6 +9,9 @@ import cc.jumpkick.compile.CycloneDxSbom;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PluginConfig;
+import cc.jumpkick.plugin.build.In;
+import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
@@ -16,6 +19,7 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.ClasspathFingerprint;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -182,6 +186,56 @@ public final class PlannerPlugin {
     }
 
     /**
+     * Everything the declared-input vocabulary is fingerprinted from. Each arm fills it with what
+     * its own body receives; {@link #declaredInputTokens} alone decides the spelling.
+     */
+    record InputSources(
+            Path classes,
+            List<Path> runtimeClasspath,
+            List<PluginBuild.ProdEntry> runtimeEntries,
+            PluginConfig config,
+            BuildLayout layout,
+            Path moduleDir) {}
+
+    /**
+     * The declared inputs as action-key tokens: the one renderer the step arm and the packager arm
+     * both key on, one prefix per {@link In.Kind}. Two copies of this switch had already drifted to
+     * {@code cp:} and {@code libs:} for the same declared input, which is a wrong-artifact restore
+     * rather than a cosmetic difference. The switch is exhaustive over the closed vocabulary and
+     * {@link In#fromWire} refuses an unknown spelling — an input skipped here is an input missing
+     * from the key, i.e. a silently stale artifact.
+     */
+    static List<String> declaredInputTokens(List<String> inputs, InputSources src) throws IOException {
+        List<String> tokens = new ArrayList<>();
+        for (String input : inputs) {
+            In declared = In.fromWire(input);
+            switch (declared.kind()) {
+                case CLASSES -> tokens.add("classes:" + ClasspathFingerprint.entry(src.classes()));
+                case RUNTIME_CLASSPATH -> tokens.add("cp:" + ClasspathFingerprint.of(src.runtimeClasspath()));
+                case RUNTIME_ENTRIES -> {
+                    tokens.add("cp:" + ClasspathFingerprint.of(src.runtimeClasspath()));
+                    // Container content (an AAR's res/assets/jni) is input too — an assets-only AAR
+                    // bump must re-run even though no classes jar changed.
+                    for (PluginBuild.ProdEntry entry : src.runtimeEntries()) {
+                        if (entry.container() != null) {
+                            tokens.add("container:" + entry.fileName() + ":"
+                                    + ClasspathFingerprint.entry(entry.container()));
+                        }
+                    }
+                }
+                case CONFIG -> tokens.add("config:" + PluginBuild.configToken(src.config()));
+                case STEP_OUTPUT ->
+                    tokens.add(input + ":"
+                            + ClasspathFingerprint.entry(PluginBuild.taskScratch(src.layout(), declared.step())));
+                case PROJECT_FILES ->
+                    tokens.add(input + ":"
+                            + ClasspathFingerprint.entry(src.moduleDir().resolve(declared.step())));
+            }
+        }
+        return tokens;
+    }
+
+    /**
      * One declared build-plugin task: engine fingerprints inputs, restores on hit, forks on miss.
      */
     static Task pluginTask(
@@ -220,50 +274,21 @@ public final class PlannerPlugin {
                     Map<String, Path> toolExtras = PluginBuild.fetchStepDependencies(
                             project, in.dir(), cx.cas(), PluginBuild.sdkPins(in.lockFile()));
 
-                    // Action key: exactly the declared inputs, plus the facts the body sees.
-                    List<String> tokens = new ArrayList<>();
-                    for (String input : step.inputs()) {
-                        switch (input) {
-                            case "classes" ->
-                                tokens.add("classes:" + cc.jumpkick.task.ClasspathFingerprint.entry(classes));
-                            case "runtime-classpath" ->
-                                tokens.add("cp:" + cc.jumpkick.task.ClasspathFingerprint.of(classpath));
-                            case "runtime-entries" -> {
-                                tokens.add("cp:" + cc.jumpkick.task.ClasspathFingerprint.of(classpath));
-                                for (var pe : prodEntries) {
-                                    if (pe.container() != null) {
-                                        tokens.add("container:" + pe.fileName() + ":"
-                                                + cc.jumpkick.task.ClasspathFingerprint.entry(pe.container()));
-                                    }
-                                }
-                            }
-                            case "config" -> tokens.add("config:" + PluginBuild.configToken(active.config()));
-                            default -> {
-                                if (input.startsWith("step:")) {
-                                    Path other = PluginBuild.taskScratch(layout, input.substring("step:".length()));
-                                    tokens.add(input + ":" + cc.jumpkick.task.ClasspathFingerprint.entry(other));
-                                } else if (input.startsWith("project:")) {
-                                    Path files = in.dir().resolve(input.substring("project:".length()));
-                                    tokens.add(input + ":" + cc.jumpkick.task.ClasspathFingerprint.entry(files));
-                                }
-                            }
-                        }
-                    }
+                    // Action key: exactly the declared inputs, plus the very facts the body sees —
+                    // the same ProjectFacts instance rides the spec below, so no fact can reach the
+                    // plugin without reaching its key.
+                    ProjectFacts facts = PluginBuild.facts(project, startClass);
+                    List<String> tokens = new ArrayList<>(declaredInputTokens(
+                            step.inputs(),
+                            new InputSources(classes, classpath, prodEntries, active.config(), layout, in.dir())));
                     for (var tool : toolExtras.entrySet()) {
-                        tokens.add("tool:" + tool.getKey() + ":"
-                                + cc.jumpkick.task.ClasspathFingerprint.entry(tool.getValue()));
+                        tokens.add("tool:" + tool.getKey() + ":" + ClasspathFingerprint.entry(tool.getValue()));
                     }
-                    tokens.add("facts:" + project.project().group() + ":"
-                            + project.project().name() + ":"
-                            + project.project().version() + ":"
-                            + project.project().javaRelease() + ":"
-                            + startClass);
+                    tokens.add("facts:" + facts.token());
                     // The step's CODE is an input: a changed plugin jar must re-run the
                     // step, or a plugin upgrade (or first-party dev iteration) silently restores
                     // outputs produced by the old code.
-                    tokens.add("worker:"
-                            + cc.jumpkick.task.ClasspathFingerprint.entry(
-                                    PluginBuild.workerJarFor(active, in.cache())));
+                    tokens.add("worker:" + ClasspathFingerprint.entry(PluginBuild.workerJarFor(active, in.cache())));
                     String taskId = ActionKey.qualifiedTaskId("plugin-" + step.name(), scratch);
                     String actionKey =
                             ActionKey.forArtifact(taskId, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);
@@ -294,7 +319,7 @@ public final class PlannerPlugin {
                                     step.name(),
                                     active.manifest().id())
                             .configValues(active.config().values())
-                            .project(PluginBuild.facts(project, startClass))
+                            .project(facts)
                             .layout(classes, in.dir(), scratch)
                             .javaHome(javaHome)
                             .classpath(classpath, cc.jumpkick.plugin.protocol.PluginProtocol.ROLE_COMPILE);
@@ -357,6 +382,8 @@ public final class PlannerPlugin {
         BuildLayout layout = ctx.require(LAYOUT);
         ClasspathResolver resolver = new ClasspathResolver(cas);
         String startClass = resolvedMain(project, in.dir(), classes);
+        // The same facts the packager body receives below — key and spec cannot diverge.
+        ProjectFacts facts = PluginBuild.facts(project, startClass);
 
         // Coordinate-named runtime entries: lock artifacts + workspace sibling jars — the SAME
         // set steps see via In.runtimeEntries(). Packaging from the lock alone drops sibling
@@ -377,40 +404,17 @@ public final class PlannerPlugin {
         extras.putAll(PluginBuild.fetchPackagerDependencies(project, in.dir(), cas));
 
         // Action key from the declared inputs + facts — any config, classes, dependency-set,
-        // step-output, extra-artifact, or manifest change re-packages; nothing else does.
+        // step-output, extra-artifact, or manifest change re-packages; nothing else does. The
+        // packager's runtime view IS its entry jars, so that is what the shared renderer keys.
         List<Path> entryJars = new ArrayList<>(entries.size());
         for (PluginBuild.ProdEntry e : entries) {
             if (e.jar() != null) entryJars.add(e.jar());
         }
-        List<String> tokens = new ArrayList<>();
-        for (String input : decls.packager().inputs()) {
-            switch (input) {
-                case "classes" -> tokens.add("classes:" + cc.jumpkick.task.ClasspathFingerprint.entry(classes));
-                case "runtime-classpath", "runtime-entries" -> {
-                    tokens.add("libs:" + cc.jumpkick.task.ClasspathFingerprint.of(entryJars));
-                    // Container content (an AAR's res/assets/jni) is packaged input too — an
-                    // assets-only AAR bump must re-package even though no classes jar changed.
-                    for (PluginBuild.ProdEntry e : entries) {
-                        if (e.container() != null) {
-                            tokens.add("container:" + e.fileName() + ":"
-                                    + cc.jumpkick.task.ClasspathFingerprint.entry(e.container()));
-                        }
-                    }
-                }
-                case "config" -> tokens.add("config:" + PluginBuild.configToken(active.config()));
-                default -> {
-                    if (input.startsWith("step:")) {
-                        Path other = PluginBuild.taskScratch(layout, input.substring("step:".length()));
-                        tokens.add(input + ":" + cc.jumpkick.task.ClasspathFingerprint.entry(other));
-                    } else if (input.startsWith("project:")) {
-                        Path files = in.dir().resolve(input.substring("project:".length()));
-                        tokens.add(input + ":" + cc.jumpkick.task.ClasspathFingerprint.entry(files));
-                    }
-                }
-            }
-        }
+        List<String> tokens = new ArrayList<>(declaredInputTokens(
+                decls.packager().inputs(),
+                new InputSources(classes, entryJars, entries, active.config(), layout, in.dir())));
         List<Path> extraJars = new ArrayList<>(extras.values());
-        tokens.add("extras:" + cc.jumpkick.task.ClasspathFingerprint.of(extraJars));
+        tokens.add("extras:" + ClasspathFingerprint.of(extraJars));
         if (!secrets.isEmpty()) {
             // A changed signing credential re-signs (the signature is part of the artifact);
             // the key carries only a digest — a secret value never appears anywhere readable.
@@ -421,14 +425,12 @@ public final class PlannerPlugin {
             tokens.add("secrets:"
                     + cc.jumpkick.util.Hashing.sha256Hex(sb.toString().getBytes(StandardCharsets.UTF_8)));
         }
-        tokens.add("facts:" + project.project().group() + ":"
-                + project.project().name() + ":" + project.project().version() + ":" + startClass);
-        tokens.add("manifest:" + project.manifest());
+        // [manifest] attributes ride inside the facts token — they reach the packager, so they key it.
+        tokens.add("facts:" + facts.token());
         // Packager identity (e.g. shrink vs boot) so CLI packaging overrides cannot cache-collide.
         tokens.add("packaging:" + decls.packager().name());
         // The packager's CODE is an input, same as plugin steps (see pluginTask).
-        tokens.add(
-                "worker:" + cc.jumpkick.task.ClasspathFingerprint.entry(PluginBuild.workerJarFor(active, in.cache())));
+        tokens.add("worker:" + ClasspathFingerprint.entry(PluginBuild.workerJarFor(active, in.cache())));
         // The minified packager folds `jk train` observations into its keep rules out-of-band
         // (same path derivation as MinifiedJarPackager.produce). Absence and every content state
         // must be distinct keys — otherwise a post-train rebuild restores the pre-train jar as
@@ -439,9 +441,7 @@ public final class PlannerPlugin {
                     .resolve("merged")
                     .resolve(cc.jumpkick.surface.TrainLayout.SURFACE_JSON);
             tokens.add("train:"
-                    + (Files.isRegularFile(trainSurface)
-                            ? cc.jumpkick.task.ClasspathFingerprint.entry(trainSurface)
-                            : "absent"));
+                    + (Files.isRegularFile(trainSurface) ? ClasspathFingerprint.entry(trainSurface) : "absent"));
         }
         String pkgTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, jarPath);
         String pkgKey = ActionKey.forArtifact(pkgTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);
@@ -468,7 +468,7 @@ public final class PlannerPlugin {
                         null,
                         active.manifest().id())
                 .configValues(active.config().values())
-                .project(PluginBuild.facts(project, startClass))
+                .project(facts)
                 .layout(classes, in.dir(), layout.moduleTargetDir().resolve("plugin"))
                 .javaHome(ctx.require(JAVA_HOME))
                 .artifact(jarPath);

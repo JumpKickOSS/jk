@@ -30,4 +30,25 @@ public record ProjectFacts(
                 ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(manifest));
     }
+
+    /**
+     * The stable render every action key hashes this fact set through — the one place facts become
+     * a cache key. Every component participates, deliberately: a fact that reaches a plugin body
+     * but not its key restores a stale artifact, so a new component must be rendered here in the
+     * same change (a test pins the component count so it cannot be forgotten).
+     *
+     * <p>{@code manifest} renders in declaration order rather than sorted — the packaged {@code
+     * MANIFEST.MF} carries that order, so a reorder really is a different artifact.
+     */
+    public String token() {
+        StringBuilder b = new StringBuilder(group + ':' + name + ':' + version
+                + "|release=" + javaRelease
+                + "|main=" + (mainClass == null ? "" : mainClass)
+                + "|native=" + nativeDeclared
+                + "|kotlin=" + kotlin);
+        for (Map.Entry<String, String> attribute : manifest.entrySet()) {
+            b.append("|manifest.").append(attribute.getKey()).append('=').append(attribute.getValue());
+        }
+        return b.toString();
+    }
 }
