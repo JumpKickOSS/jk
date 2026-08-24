@@ -24,8 +24,7 @@ class FormatFreshnessIndexTest {
         Files.writeString(a, "class A {}");
         Files.writeString(b, "class B {}");
 
-        String key = FormatFreshnessIndex.configKey(
-                "palantir", "2.80.0", "kotlinlang", "0.61", true, true, true, null, null);
+        String key = key(null);
         FormatFreshnessIndex idx = FormatFreshnessIndex.open(cache, project, key);
         FormatFreshnessIndex.Split first = idx.partition(List.of(a, b), List.of());
         assertThat(first.dirtyJava()).containsExactly(a, b);
@@ -54,10 +53,10 @@ class FormatFreshnessIndexTest {
         Path src = project.resolve("A.java");
         Files.writeString(src, "class A {}");
 
-        String palantir = FormatFreshnessIndex.configKey(
-                "palantir", "2.80.0", "kotlinlang", "0.61", true, true, true, null, null);
-        String google =
-                FormatFreshnessIndex.configKey("google", "1.28.0", "kotlinlang", "0.61", true, true, true, null, null);
+        String palantir = key(null);
+        String google = new FormatKey(
+                        "google", "1.28.0", "kotlinlang", "0.61", 120, true, true, true, "1.28.0", null, null)
+                .digest();
         assertThat(palantir).isNotEqualTo(google);
 
         FormatFreshnessIndex idx = FormatFreshnessIndex.open(tmp.resolve("cache"), project, palantir);
@@ -75,12 +74,10 @@ class FormatFreshnessIndexTest {
         Files.writeString(worker, "thin");
         Files.writeString(pom, "<project><artifactId>jk-formatter</artifactId><version>1</version></project>\n");
 
-        String before = FormatFreshnessIndex.configKey(
-                "palantir", "2.80.0", "kotlinlang", "0.61", true, true, true, null, worker);
+        String before = key(worker);
 
         Files.writeString(pom, "<project><artifactId>jk-formatter</artifactId><version>2</version></project>\n");
-        String after = FormatFreshnessIndex.configKey(
-                "palantir", "2.80.0", "kotlinlang", "0.61", true, true, true, null, worker);
+        String after = key(worker);
 
         assertThat(after).isNotEqualTo(before);
     }
@@ -101,10 +98,10 @@ class FormatFreshnessIndexTest {
         }
         Files.setLastModifiedTime(second, FileTime.fromMillis(System.currentTimeMillis() - 86_400_000L));
 
-        assertThat(keyFor(second)).isEqualTo(keyFor(first));
+        assertThat(key(second)).isEqualTo(key(first));
 
         Files.writeString(second, "thnn"); // same length, different formatter
-        assertThat(keyFor(second)).isNotEqualTo(keyFor(first));
+        assertThat(key(second)).isNotEqualTo(key(first));
     }
 
     private static Path siblingPom(Path jar) {
@@ -112,8 +109,10 @@ class FormatFreshnessIndexTest {
         return jar.resolveSibling(name.substring(0, name.length() - 4) + ".pom");
     }
 
-    private static String keyFor(Path workerJar) {
-        return FormatFreshnessIndex.configKey(
-                "palantir", "2.80.0", "kotlinlang", "0.61", true, true, true, null, workerJar);
+    /** jk's shipped formatter configuration, with only the worker jar varying. */
+    private static String key(Path workerJar) {
+        return new FormatKey(
+                        "palantir", "2.80.0", "kotlinlang", "0.61", 120, true, true, true, "1.28.0", null, workerJar)
+                .digest();
     }
 }

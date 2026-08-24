@@ -2,9 +2,13 @@
 package cc.jumpkick.format;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 
 /**
  * CAS-sharded per-file format stamp store under {@code <cache>/format-stamps/}. A hit means the
@@ -16,9 +20,32 @@ import java.nio.file.attribute.FileTime;
 final class FormatStampCache {
 
     private final Path root;
+    private final String configKey;
 
-    FormatStampCache(Path root) {
+    /**
+     * {@code configKey} is the host's {@code FormatKey} digest, verbatim. The worker never derives
+     * its own: a second derivation of "the formatter configuration" is precisely how the ktfmt
+     * width and the remove-unused-imports google-java-format version ended up keying neither store.
+     */
+    FormatStampCache(Path root, String configKey) {
         this.root = root;
+        this.configKey = configKey;
+    }
+
+    /**
+     * The stamp key for a file whose raw bytes are {@code fileBytes}: SHA-256 over the run's config
+     * digest and the content. Null on failure (fail-open cache miss).
+     */
+    String keyFor(byte[] fileBytes) {
+        if (fileBytes == null) return null;
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            md.update((configKey + "\n").getBytes(StandardCharsets.UTF_8));
+            md.update(fileBytes);
+            return HexFormat.of().formatHex(md.digest());
+        } catch (NoSuchAlgorithmException e) {
+            return null;
+        }
     }
 
     /**

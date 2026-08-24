@@ -28,7 +28,8 @@ import java.util.zip.ZipEntry;
 
 /**
  * {@code minified-jar} packager: R8 {@code --classfile} full mode over classes + runtime closure →
- * one slim jar. Shrink-only by default; {@code obfuscate = true} writes a mapping file.
+ * one slim jar. Shrink-only by default; {@code obfuscate = true} also emits the {@code -mapping.txt}
+ * deobfuscation map beside the jar, as a declared output so a cache hit restores the pair.
  *
  * <p>{@code [application] main} is optional: when present, R8 keeps the entry point and the
  * manifest gets {@code Main-Class}. When absent (library fat/shrunk jars), every class from the
@@ -187,11 +188,14 @@ final class MinifiedJarPackager {
             for (String rel : io.config().stringList("keep-files")) {
                 run.arg("--pg-conf").arg(projectFile(io, rel).toString());
             }
+            // The deobfuscation map. Obfuscated stack traces are unreadable without it, and it is
+            // the only copy — so it is a declared output, cached and restored with the jar. A
+            // cache hit that brought back the jar alone would leave a shipped artifact whose crash
+            // reports can never be resolved again.
+            Path mapping = null;
             if (obfuscate) {
-                run.arg("--pg-map-output")
-                        .arg(io.artifactPath()
-                                .resolveSibling(stripExtension(io.artifactPath()) + "-mapping.txt")
-                                .toString());
+                mapping = io.artifactPath().resolveSibling(stripExtension(io.artifactPath()) + "-mapping.txt");
+                run.arg("--pg-map-output").arg(mapping.toString());
             }
             long before = 0;
             for (Path p : program) before += Files.size(p);
@@ -201,6 +205,7 @@ final class MinifiedJarPackager {
             if (result.exit() != 0) {
                 throw new IllegalStateException("R8 failed (exit " + result.exit() + "):\n" + result.output());
             }
+            if (mapping != null) io.produced(mapping);
             int absent = ByNameIndex.countMissingClasses(result.output());
             if (absent > 0) {
                 io.label(absent + " optional " + (absent == 1 ? "class is" : "classes are")

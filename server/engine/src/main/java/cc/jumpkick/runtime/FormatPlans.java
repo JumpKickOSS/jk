@@ -101,14 +101,16 @@ public final class FormatPlans {
         BuildPlanKey<List> kotlinJarsKey = BuildPlanKey.of("format-kotlin-jars", List.class);
 
         BuildPlanKey<FormatFreshnessIndex> indexKey = BuildPlanKey.of("format-index", FormatFreshnessIndex.class);
+        // FormatKey.digest() — computed once in collect, and the name of BOTH format stores: this
+        // index here, and the worker's per-file stamps (it rides the spec as `configKey`).
+        BuildPlanKey<String> configKeyKey = BuildPlanKey.of("format-config-key", String.class);
 
         Task collect = Task.builder(TaskNames.COLLECT_SOURCES)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("collect sources");
                     CollectedSources all = collectSources(projectDir);
-                    FormatFreshnessIndex index = openIndex(
-                            projectDir,
+                    String configKey = configKey(
                             cache,
                             javaStyle,
                             kotlinStyle,
@@ -116,6 +118,10 @@ public final class FormatPlans {
                             importOrder,
                             removeUnusedImports,
                             rewriteConfig);
+                    ctx.put(configKeyKey, configKey == null ? "" : configKey);
+                    FormatFreshnessIndex index = configKey == null
+                            ? FormatFreshnessIndex.disabled(projectDir)
+                            : FormatFreshnessIndex.open(cache, projectDir, configKey);
                     FormatFreshnessIndex.Split split = index.partition(all.javaFiles(), all.kotlinFiles());
                     ctx.put(javaFilesKey, split.dirtyJava());
                     ctx.put(kotlinFilesKey, split.dirtyKotlin());
@@ -226,6 +232,7 @@ public final class FormatPlans {
                     List<Path> kotlinJars = (List<Path>) ctx.require(kotlinJarsKey);
 
                     Path workerJar = PluginJar.FORMATTER.locate(JkStores.cas(cache));
+                    String configKey = ctx.get(configKeyKey).orElse("");
                     Path spec = writeSpec(
                             check,
                             javaStyle,
@@ -240,6 +247,7 @@ public final class FormatPlans {
                             removeUnusedImports,
                             rewriteConfig,
                             cache,
+                            configKey.isEmpty() ? null : configKey,
                             null);
                     try {
                         AtomicInteger changed = new AtomicInteger();
@@ -315,7 +323,8 @@ public final class FormatPlans {
         return "palantir".equals(style) ? PALANTIR_VERSION : GOOGLE_VERSION;
     }
 
-    private static Path writeSpec(
+    // Package-private so FormatKeyTest can assert the worker is actually told the key.
+    static Path writeSpec(
             boolean check,
             String javaStyle,
             String kotlinStyle,
@@ -329,6 +338,7 @@ public final class FormatPlans {
             boolean removeUnusedImports,
             Path rewriteConfig,
             Path cacheDir,
+            String configKey,
             Path dest)
             throws IOException {
         SpecWriter w = new SpecWriter()
@@ -363,14 +373,21 @@ public final class FormatPlans {
                 w.configString(
                         "rewriteConfigFile", rewriteConfig.toAbsolutePath().toString());
         }
-        // Pass the cache root so the plugin can read/write per-file format stamps.
-        if (cacheDir != null)
+        // The stamp store's root and its key. The worker derives neither: a second derivation of
+        // "the formatter config" is what let kotlinMaxWidth and the GJF version go unkeyed.
+        if (cacheDir != null && configKey != null) {
             w.configString("cacheDir", cacheDir.toAbsolutePath().toString());
+            w.configString("configKey", configKey);
+        }
         Path spec = dest != null ? dest : Files.createTempFile("jk-format-", ".spec");
         if (dest != null && dest.getParent() != null) Files.createDirectories(dest.getParent());
         Files.write(spec, w.lines(), StandardCharsets.UTF_8);
         return spec;
     }
+
+    // The trainer's stamp store is the scratch dir, deleted with it. A fixed key keeps the training
+    // spec the same shape as a real one so the stamp path lands in the AOT cache.
+    private static final String TRAIN_CONFIG_KEY = "format-aot-train";
 
     /**
      * Background AOT trainer: same {@code java -cp worker PluginMain spec} shape as a real format,
@@ -424,6 +441,7 @@ public final class FormatPlans {
                 removeUnusedImports,
                 null,
                 scratch,
+                TRAIN_CONFIG_KEY,
                 scratch.resolve("train.spec"));
         List<String> jvmFlags = new ArrayList<>();
         jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
@@ -526,8 +544,15 @@ public final class FormatPlans {
         return new CollectedSources(List.copyOf(java), List.copyOf(kotlin));
     }
 
-    private static FormatFreshnessIndex openIndex(
-            Path projectDir,
+    /**
+     * This run's {@link FormatKey} digest, or null when the worker jar cannot be located — without
+     * the formatter's own identity there is no honest key, so both stores stay off rather than
+     * cache under a key that cannot see a formatter upgrade.
+     *
+     * <p>Package-private so {@code FormatKeyTest} can assert the jk-pinned width and
+     * google-java-format version actually reach the key.
+     */
+    static String configKey(
             Path cache,
             String javaStyle,
             String kotlinStyle,
@@ -536,20 +561,21 @@ public final class FormatPlans {
             boolean removeUnusedImports,
             Path rewriteConfig) {
         try {
-            Path workerJar = PluginJar.FORMATTER.locate(JkStores.cas(cache));
-            String key = FormatFreshnessIndex.configKey(
-                    javaStyle,
-                    javaVersion(javaStyle),
-                    kotlinStyle,
-                    KTFMT_VERSION,
-                    optimizeImports,
-                    importOrder,
-                    removeUnusedImports,
-                    rewriteConfig,
-                    workerJar);
-            return FormatFreshnessIndex.open(cache, projectDir, key);
+            return new FormatKey(
+                            javaStyle,
+                            javaVersion(javaStyle),
+                            kotlinStyle,
+                            KTFMT_VERSION,
+                            KOTLIN_MAX_WIDTH,
+                            optimizeImports,
+                            importOrder,
+                            removeUnusedImports,
+                            GOOGLE_VERSION,
+                            rewriteConfig,
+                            PluginJar.FORMATTER.locate(JkStores.cas(cache)))
+                    .digest();
         } catch (Exception e) {
-            return FormatFreshnessIndex.disabled(projectDir);
+            return null;
         }
     }
 

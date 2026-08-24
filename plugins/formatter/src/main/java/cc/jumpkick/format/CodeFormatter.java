@@ -69,21 +69,10 @@ public final class CodeFormatter implements Plugin {
         }
         Spec spec = Spec.from(PluginSpec.read(Path.of(args.get(0))));
 
-        // Per-file stamp cache — skips unchanged files without running the formatter.
-        FormatStampCache stampCache =
-                spec.cacheDir != null ? new FormatStampCache(spec.cacheDir.resolve("format-stamps")) : null;
-        // Config descriptor is the same for every file in this run; compute once.
-        String configDesc = stampCache != null
-                ? FormatStamp.configDescriptor(
-                        spec.javaStyle,
-                        spec.javaVersion,
-                        spec.kotlinStyle,
-                        spec.kotlinVersion,
-                        spec.optimizeImports,
-                        spec.importOrder,
-                        spec.removeUnusedImports,
-                        FormatStamp.workerJarSha(),
-                        spec.rewriteConfigFile != null ? spec.rewriteConfigFile.toPath() : null)
+        // Per-file stamp cache — skips unchanged files without running the formatter. The host
+        // computed and sent the config digest (its FormatKey); no key without it.
+        FormatStampCache stampCache = spec.cacheDir != null && spec.configKey != null
+                ? new FormatStampCache(spec.cacheDir.resolve("format-stamps"), spec.configKey)
                 : null;
 
         // Build the OpenRewrite recipe once (null when no rewrite is requested).
@@ -117,7 +106,7 @@ public final class CodeFormatter implements Plugin {
                 try {
                     // Read once: stamp key, unnamed-class probe, and the formatter on a miss.
                     byte[] originalBytes = Files.readAllBytes(ref.file.toPath());
-                    String stampKey = stampCache != null ? FormatStamp.computeKey(originalBytes, configDesc) : null;
+                    String stampKey = stampCache != null ? stampCache.keyFor(originalBytes) : null;
 
                     if (stampKey != null && stampCache.contains(stampKey)) {
                         clean++;
@@ -155,7 +144,7 @@ public final class CodeFormatter implements Plugin {
                         // skips it. (In check mode the file wasn't written, so no stamp.)
                         if (spec.apply && stampCache != null) {
                             byte[] finalBytes = Files.readAllBytes(ref.file.toPath());
-                            String finalKey = FormatStamp.computeKey(finalBytes, configDesc);
+                            String finalKey = stampCache.keyFor(finalBytes);
                             if (finalKey != null) stampCache.record(finalKey);
                         }
                     } else {
@@ -358,6 +347,9 @@ public final class CodeFormatter implements Plugin {
         File rewriteConfigFile = null;
         // Stamp cache: null when the host didn't pass a cache-dir (no caching).
         Path cacheDir = null;
+        /** The host's FormatKey digest — the single owner of what this run is keyed by. */
+        String configKey = null;
+
         final List<FileRef> files = new ArrayList<>();
 
         boolean hasRewrite() {
@@ -381,6 +373,7 @@ public final class CodeFormatter implements Plugin {
             s.removeUnusedImports = c.bool("removeUnusedImports", true);
             c.stringOpt("rewriteConfigFile").ifPresent(p -> s.rewriteConfigFile = new File(p));
             c.stringOpt("cacheDir").ifPresent(p -> s.cacheDir = Path.of(p));
+            c.stringOpt("configKey").ifPresent(k -> s.configKey = k);
             for (String f : c.stringList("javaFiles")) s.files.add(new FileRef(false, new File(f)));
             for (String f : c.stringList("kotlinFiles")) s.files.add(new FileRef(true, new File(f)));
             return s;
