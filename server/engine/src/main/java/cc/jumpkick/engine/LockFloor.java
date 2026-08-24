@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
-import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.resolver.Versions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,7 +44,7 @@ public final class LockFloor {
             if (!Files.isRegularFile(lock)) return null;
             String floor = LockfileReader.read(lock).jkMin();
             if (floor == null || floor.isBlank()) return null;
-            return EngineInstall.compare(floor, running) > 0 ? floor : null;
+            return Versions.compare(floor, running) > 0 ? floor : null;
         } catch (IOException | RuntimeException e) {
             return null;
         }

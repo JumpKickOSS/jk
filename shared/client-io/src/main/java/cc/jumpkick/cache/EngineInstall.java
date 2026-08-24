@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cache;
 
+import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.util.AppInstallConfig;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.Hashing;
@@ -140,7 +141,8 @@ public final class EngineInstall {
     /**
      * Install {@code version}'s engine jar from CAS as {@code jk-engine-<version>.jar} when that
      * path is free, else {@code jk-engine-<version>.<epoch>.jar}. Identical live bytes are a no-op.
-     * Refuses to replace a <em>newer</em> live install with an older version.
+     * Refuses to replace a <em>newer</em> live install with an older version, newer being
+     * {@link Versions#compare} — the one version order in the product.
      */
     public Materialized materialize(String version, Cas cas, String engineJarSha) throws IOException {
         Optional<Materialized> existing = currentInstall();
@@ -156,7 +158,7 @@ public final class EngineInstall {
             if (sameLive(raced, version, engineJarSha)) {
                 return confirmLive(raced.get(), version, engineJarSha);
             }
-            if (raced.isPresent() && compare(raced.get().version(), version) > 0) {
+            if (raced.isPresent() && Versions.compare(raced.get().version(), version) > 0) {
                 throw new IOException(
                         "refusing to replace jk-engine " + raced.get().version() + " with older " + version);
             }
@@ -307,23 +309,6 @@ public final class EngineInstall {
                 || name.endsWith(".config")
                 || name.endsWith(".training")
                 || name.contains(".tmp-");
-    }
-
-    public static int compare(String a, String b) {
-        String[] an = a.split("-", 2);
-        String[] bn = b.split("-", 2);
-        String[] as = an[0].split("\\.");
-        String[] bs = bn[0].split("\\.");
-        for (int i = 0; i < Math.max(as.length, bs.length); i++) {
-            long av = i < as.length ? parse(as[i]) : 0;
-            long bv = i < bs.length ? parse(bs[i]) : 0;
-            if (av != bv) return Long.compare(av, bv);
-        }
-        boolean aq = an.length > 1;
-        boolean bq = bn.length > 1;
-        if (aq != bq) return aq ? -1 : 1;
-        if (!aq) return 0;
-        return an[1].compareTo(bn[1]);
     }
 
     static boolean isParkedClientName(String name) {
@@ -602,14 +587,6 @@ public final class EngineInstall {
             return Files.getLastModifiedTime(p).toMillis();
         } catch (IOException e) {
             return 0L;
-        }
-    }
-
-    private static long parse(String seg) {
-        try {
-            return Long.parseLong(seg);
-        } catch (NumberFormatException e) {
-            return 0;
         }
     }
 
