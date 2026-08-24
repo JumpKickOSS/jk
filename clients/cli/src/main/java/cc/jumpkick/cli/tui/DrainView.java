@@ -55,7 +55,6 @@ public final class DrainView implements LiveRegion, AutoCloseable {
                 return new DrainView(null, null, initialJobs, nerdFont, now);
             }
             ModeGuard mode = t.enter(InputMode.PLAN_KEYS);
-            t.drain(Duration.ofMillis(40));
             DrainView v = new DrainView(t, mode, initialJobs, nerdFont, now);
             // Leading blank before the live Engine drain wedge (same envelope as other chrome).
             CommandWedge.envelopeStart();
@@ -134,6 +133,9 @@ public final class DrainView implements LiveRegion, AutoCloseable {
     }
 
     private void readKeys() {
+        if (terminal != null) {
+            terminal.drain(Duration.ofMillis(40));
+        }
         while (!closed && terminal != null) {
             var key = terminal.readKey(Duration.ofMillis(100));
             if (key.isEmpty()) {
