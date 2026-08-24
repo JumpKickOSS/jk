@@ -130,21 +130,37 @@ final class AabPackager {
             keyPass = DebugKeystore.PASSWORD;
         }
         Files.copy(unsigned, out, StandardCopyOption.REPLACE_EXISTING);
-        TaskExec.ToolRun.Result signed = io.tool("jarsigner")
-                .arg("-keystore")
-                .arg(keystore.toAbsolutePath().toString())
-                .arg("-storepass")
-                .arg(storePass)
-                .arg("-keypass")
-                .arg(keyPass)
-                .arg(out.toAbsolutePath().toString())
-                .arg(alias)
-                .run();
-        if (signed.exit() != 0) {
-            // NEVER echo jarsigner's command line (it would carry the passwords) — its
-            // stdout/stderr alone.
-            throw new IllegalStateException("jarsigner failed:\n" + signed.output());
+        // The release password reaches jarsigner on a 0600 file, not on argv — see
+        // Signing.passwordFile. Both files are gone before this method returns.
+        try (Signing.PasswordFile store = Signing.passwordFile(storePass);
+                Signing.PasswordFile key = Signing.passwordFile(keyPass)) {
+            TaskExec.ToolRun.Result signed = io.tool("jarsigner")
+                    .args(jarsignerArgs(keystore, store, key, out, alias))
+                    .run();
+            if (signed.exit() != 0) {
+                // jarsigner's stdout/stderr alone: the command line names two temp paths and
+                // nothing a reader could act on.
+                throw new IllegalStateException("jarsigner failed:\n" + signed.output());
+            }
         }
+    }
+
+    /**
+     * jarsigner's argv. A method rather than a builder chain so a test can read the command line
+     * this build would appear under in {@code ps} — the point of the {@code :file} forms being what
+     * is <em>not</em> in it.
+     */
+    static List<String> jarsignerArgs(
+            Path keystore, Signing.PasswordFile store, Signing.PasswordFile key, Path out, String alias) {
+        return List.of(
+                "-keystore",
+                keystore.toAbsolutePath().toString(),
+                "-storepass:file",
+                store.arg(),
+                "-keypass:file",
+                key.arg(),
+                out.toAbsolutePath().toString(),
+                alias);
     }
 
     /** One entry, pinned to {@link #ENTRY_TIME} so the archive is byte-identical run to run. */

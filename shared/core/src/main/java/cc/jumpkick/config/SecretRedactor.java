@@ -14,9 +14,21 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Masks {@code.env}-sourced values in text that leaves the process.
  *
- * <p>Masking is by <em>source</em>, not by name heuristics ({@code *_TOKEN}, {@code *_PASSWORD},
- * …): any value whose effective resolution came from a {@code.env} file is secret. That is what
- * {@link EnvLookup#isFromFile} records, and what this redactor consumes.
+ * <p>Masking is by <em>declaration</em>, not by name heuristics ({@code *_TOKEN}, {@code
+ * *_PASSWORD}, …): a name a {@code.env} file declares is a secret name, and its effective value is
+ * secret whichever layer supplied it.
+ *
+ * <p>The narrower rule — only values that {@link EnvLookup#isFromFile} attributes to the file —
+ * left the common case unmasked. {@code.env} supplies the default and CI exports the real one, so
+ * {@code NEXUS_TOKEN=…} in the file plus {@code NEXUS_TOKEN} in the environment meant the value
+ * that actually reached the wire was the one value never masked. In the degenerate case the two are
+ * the same string and it went unmasked purely because the shell also exported it. Precedence
+ * decides which value wins; it does not decide whether the name holds a credential.
+ *
+ * <p>The reach is still bounded by what {@link EnvLookup} can enumerate. A credential that appears
+ * only in the real environment, with no {@code.env} line naming it, is invisible here — nothing
+ * can list the host environment's secrets, and guessing by name is the heuristic this class exists
+ * to avoid.
  *
  * <p>Two surfaces share one instinct:
  *
@@ -35,10 +47,10 @@ public final class SecretRedactor {
 
     /**
      * Values shorter than this are treated as configuration, not credentials. Masking is
-     * by source, so without a floor a {@code.env} holding {@code NODE_ENV=test} or
+     * by declaration, so without a floor a {@code.env} holding {@code NODE_ENV=test} or
      * {@code PORT=8080} turns every {@code test} / {@code 8080} in build output into {@code ***}
      * and hashes unrelated cache-key text that contains the substring. Real tokens are comfortably
-     * longer; a deliberately short secret is outside what source-based masking can protect.
+     * longer; a deliberately short secret is outside what declaration-based masking can protect.
      */
     public static final int MIN_SECRET_LENGTH = 6;
 
@@ -79,19 +91,18 @@ public final class SecretRedactor {
         return text;
     }
 
-    /**
-     * Build a redactor from an {@link EnvLookup}: every effective value that came from a
-     * {@code.env} file (not the real environment).
-     */
     /** Redactors are immutable; memo by value-set so per-line redaction reuses one. */
     private static final ConcurrentHashMap<Set<String>, SecretRedactor> MEMO = new ConcurrentHashMap<>();
 
+    /**
+     * Build a redactor from an {@link EnvLookup}: the effective value of every name a {@code.env}
+     * file declares, whether the file or the real environment supplied it.
+     */
     public static SecretRedactor from(EnvLookup env) {
         Objects.requireNonNull(env, "env");
         Set<String> values = new LinkedHashSet<>();
         for (String name : env.fileNames()) {
-            if (!env.isFromFile(name)) continue; // real env won — not a file secret
-            String v = env.get(name);
+            String v = env.get(name); // effective value: the real environment's when it shadows
             if (v != null && !v.isEmpty()) values.add(v);
         }
         if (values.isEmpty()) return NONE;

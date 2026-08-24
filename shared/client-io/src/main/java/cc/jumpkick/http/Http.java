@@ -281,11 +281,14 @@ public final class Http {
                 lastIo = e;
             }
         }
+        // SafeUri, not the URI: a repository declared as https://user:token@host/ would otherwise
+        // put its credential into every exhausted-retry message, which is journalled text.
+        String shown = SafeUri.forMessage(uri);
         if (lastIo != null) {
-            throw new IOException(verb + " " + uri + " failed after " + (backoffs.length + 1) + " attempts", lastIo);
+            throw new IOException(verb + " " + shown + " failed after " + (backoffs.length + 1) + " attempts", lastIo);
         }
         throw new IOException(
-                verb + " " + uri + " returned " + lastStatus + " after " + (backoffs.length + 1) + " attempts");
+                verb + " " + shown + " returned " + lastStatus + " after " + (backoffs.length + 1) + " attempts");
     }
 
     private static long jittered(Duration base) {

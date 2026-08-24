@@ -77,14 +77,14 @@ final class DeployCommand {
         command.add("--output=" + apks.toAbsolutePath());
         command.add("--mode=universal");
         command.add("--aapt2=" + aapt2.toAbsolutePath());
-        command.add("--ks=" + keystore.toAbsolutePath());
-        command.add("--ks-pass=pass:" + DebugKeystore.PASSWORD);
-        command.add("--ks-key-alias=" + DebugKeystore.ALIAS);
-        command.add("--key-pass=pass:" + DebugKeystore.PASSWORD);
-        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        if (process.waitFor() != 0) {
-            throw new IllegalStateException("bundletool build-apks failed:\n" + output);
+        try (Signing.PasswordFile pass = Signing.passwordFile(DebugKeystore.PASSWORD)) {
+            command.addAll(signingFlags(keystore, pass));
+            Process process =
+                    new ProcessBuilder(command).redirectErrorStream(true).start();
+            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            if (process.waitFor() != 0) {
+                throw new IllegalStateException("bundletool build-apks failed:\n" + output);
+            }
         }
         // universal.apks is a zip: universal.apk + toc.pb.
         Path universal = work.resolve("universal.apk");
@@ -98,6 +98,22 @@ final class DeployCommand {
             }
         }
         return universal;
+    }
+
+    /**
+     * bundletool's signing flags for the stable debug identity.
+     *
+     * <p>{@code file:}, not {@code pass:} — bundletool's {@code Password.createFromStringValue}
+     * reads the first line of the named file, so the value stays off a world-readable argv. The
+     * debug password is a published constant and leaked nothing on {@code pass:}; this is the
+     * plugin speaking one dialect, and it is the shape a release identity would require.
+     */
+    static List<String> signingFlags(Path keystore, Signing.PasswordFile pass) {
+        return List.of(
+                "--ks=" + keystore.toAbsolutePath(),
+                "--ks-pass=file:" + pass.arg(),
+                "--ks-key-alias=" + DebugKeystore.ALIAS,
+                "--key-pass=file:" + pass.arg());
     }
 
     /** {@code --adb <path>} override, else the provisioned platform-tools binary. */

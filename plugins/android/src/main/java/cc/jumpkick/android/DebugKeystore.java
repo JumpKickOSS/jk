@@ -92,26 +92,17 @@ final class DebugKeystore {
         return keystore;
     }
 
-    /** {@code <javaHome>/bin/keytool}, {@code .exe} on Windows. */
-    private static Path keytool(Path javaHome) {
-        return javaHome.resolve("bin").resolve(Os.isWindows() ? "keytool.exe" : "keytool");
-    }
-
-    /**
-     * The one {@code keytool -genkeypair} invocation in the plugin: 2048-bit RSA, ~27 years of
-     * validity and the standard debug distinguished name. Two copies of this argv had drifted apart
-     * across the packagers and the deploy command.
-     */
-    private static void run(Path keytool, Path keystore) throws IOException, InterruptedException {
-        List<String> command = List.of(
+    /** The generation argv, readable by a test: no password appears in it. */
+    static List<String> genKeypairCommand(Path keytool, Path keystore, Signing.PasswordFile pass) {
+        return List.of(
                 keytool.toString(),
                 "-genkeypair",
                 "-keystore",
                 keystore.toAbsolutePath().toString(),
-                "-storepass",
-                PASSWORD,
-                "-keypass",
-                PASSWORD,
+                "-storepass:file",
+                pass.arg(),
+                "-keypass:file",
+                pass.arg(),
                 "-alias",
                 ALIAS,
                 "-keyalg",
@@ -122,10 +113,31 @@ final class DebugKeystore {
                 "10000",
                 "-dname",
                 "CN=Android Debug,O=Android,C=US");
-        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        if (process.waitFor() != 0) {
-            throw new IOException("keytool failed to generate the debug keystore:\n" + output);
+    }
+
+    /** {@code <javaHome>/bin/keytool}, {@code .exe} on Windows. */
+    private static Path keytool(Path javaHome) {
+        return javaHome.resolve("bin").resolve(Os.isWindows() ? "keytool.exe" : "keytool");
+    }
+
+    /**
+     * The one {@code keytool -genkeypair} invocation in the plugin: 2048-bit RSA, ~27 years of
+     * validity and the standard debug distinguished name. Two copies of this argv had drifted apart
+     * across the packagers and the deploy command.
+     *
+     * <p>{@link #PASSWORD} is published, so putting it on argv leaked nothing — but it takes the
+     * same {@link Signing#passwordFile} route the release passwords take, so there is one shape to
+     * read and no example of the risky spelling left in the plugin to copy.
+     */
+    private static void run(Path keytool, Path keystore) throws IOException, InterruptedException {
+        try (Signing.PasswordFile pass = Signing.passwordFile(PASSWORD)) {
+            List<String> command = genKeypairCommand(keytool, keystore, pass);
+            Process process =
+                    new ProcessBuilder(command).redirectErrorStream(true).start();
+            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            if (process.waitFor() != 0) {
+                throw new IOException("keytool failed to generate the debug keystore:\n" + output);
+            }
         }
     }
 }

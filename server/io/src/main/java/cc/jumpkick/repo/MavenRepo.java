@@ -10,6 +10,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.CentralMirror;
 import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
 import java.io.IOException;
 import java.io.InputStream;
@@ -692,12 +693,27 @@ public final class MavenRepo {
                 "offline: " + coord + " (" + relativePath + ") not in local index for " + name);
     }
 
+    /**
+     * The canonical form of a repository base URL: a trailing slash so {@code resolve} appends
+     * rather than replaces, and <strong>no userinfo</strong>.
+     *
+     * <p>{@link #baseUrl()} is not just a request prefix — {@code LockOrchestrator} interpolates it
+     * into every artifact's {@code source} field, so it is committed to {@code jk-lock.toml} and
+     * shared with everyone who clones the repository. A base URL declared as
+     * {@code https://alice:s3cr3t@nexus.example.com/repo/} (in {@code jk.toml} or, worse, in one
+     * developer's {@code ~/.config/jk/config.toml}) would put that credential in the lockfile, in
+     * every fetch error and in the journal. Stripping it here costs nothing: authentication runs
+     * through {@link RepoCredentialResolver} and an {@code Authorization} header,
+     * and the JDK's {@code HttpClient} never authenticates from userinfo — so the credential half
+     * of such a URL was inert on the wire and live everywhere else.
+     */
     private static URI normalize(URI uri) {
-        String s = uri.toString();
+        URI safe = SafeUri.withoutUserInfo(uri);
+        String s = safe.toString();
         if (!s.endsWith("/")) {
             return URI.create(s + "/");
         }
-        return uri;
+        return safe;
     }
 
     public record Fetched(URI url, Path cachePath, String sha256, long size) {}

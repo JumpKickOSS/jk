@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.In;
 import cc.jumpkick.plugin.build.PackageIo;
 import com.android.apksig.ApkSigner;
 import com.android.apksig.KeyConfig;
+import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileAttribute;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
@@ -25,6 +30,51 @@ final class Signing {
 
     /** A loaded signer identity + which signature schemes to apply. */
     record Identity(PrivateKey key, List<X509Certificate> certs, String name, boolean v3) {}
+
+    /** {@code 0600}, applied at creation so the value is never briefly world-readable on disk. */
+    private static final FileAttribute<?> OWNER_ONLY =
+            PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"));
+
+    /**
+     * A password handed to a signer <em>out of band</em>: an owner-only temp file, deleted when the
+     * run ends.
+     *
+     * <p>argv is public. {@code /proc/<pid>/cmdline} is world-readable on Linux and {@code ps} shows
+     * the same bytes to every account on the box, for as long as the signer runs — so a release
+     * keystore password on {@code jarsigner -storepass <pass>} is readable by anyone with a shell,
+     * and by any process-listing agent that samples it. Every tool the plugin hands a password to
+     * accepts a file instead: {@code jarsigner}/{@code keytool} take {@code -storepass:file <path>},
+     * bundletool takes {@code --ks-pass=file:<path>}. All three read the file's <em>first line</em>,
+     * so the value is written with no terminator.
+     *
+     * <p>The debug identity's password is a published Android constant ({@link
+     * DebugKeystore#PASSWORD}) and leaks nothing on argv; it goes through here anyway so the plugin
+     * has one spelling of "hand a signer a password" rather than a safe one and a risky one that
+     * look alike at the call site.
+     */
+    static PasswordFile passwordFile(String password) throws IOException {
+        // POSIX permissions are not a thing on Windows; the JDK's temp directory there is already
+        // per-user, so create plainly rather than failing the sign.
+        Path file = Os.isWindows()
+                ? Files.createTempFile("jk-signing-", ".pass")
+                : Files.createTempFile("jk-signing-", ".pass", OWNER_ONLY);
+        Files.writeString(file, password, StandardCharsets.UTF_8);
+        return new PasswordFile(file);
+    }
+
+    /** The file from {@link #passwordFile}; {@code close} removes it. */
+    record PasswordFile(Path path) implements AutoCloseable {
+
+        /** The argv value: an absolute path, never the password. */
+        String arg() {
+            return path.toAbsolutePath().toString();
+        }
+
+        @Override
+        public void close() throws IOException {
+            Files.deleteIfExists(path);
+        }
+    }
 
     /** True when the effective config carries a release signing reference. */
     static boolean hasReleaseConfig(PackageIo io) {

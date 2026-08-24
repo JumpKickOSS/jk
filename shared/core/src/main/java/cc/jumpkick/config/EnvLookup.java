@@ -38,9 +38,11 @@ import java.util.function.UnaryOperator;
  *
  * <h2>Secrets</h2>
  *
- * A {@code.env} is where tokens live, so {@link #isFromFile} / {@link #secretValues} identify
- * file-sourced values. {@link SecretRedactor#from(EnvLookup)} masks them in free-form text (JSONL,
- * journal, errors) and hashes them for cache keys.
+ * A {@code.env} is where tokens live, so {@link #fileNames} names the secrets and {@link
+ * SecretRedactor#from(EnvLookup)} masks their effective values in free-form text (JSONL, journal,
+ * errors) and hashes them for cache keys. {@link #isFromFile} answers the narrower question of
+ * <em>which layer won</em> — {@code jk env} displays that; redaction deliberately does not depend
+ * on it, because a shadowed name still names a credential.
  */
 public final class EnvLookup {
 
@@ -116,7 +118,7 @@ public final class EnvLookup {
 
     /**
      * True when {@code name}'s effective value came from a {@code.env} file rather than the real
-     * environment — i.e. it should be treated as a secret.
+     * environment — i.e. which layer won. Not the secrecy predicate: see the class note.
      */
     public boolean isFromFile(String name) {
         return realEnv.apply(name) == null && fromFiles.containsKey(name);
