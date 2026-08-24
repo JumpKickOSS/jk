@@ -62,9 +62,18 @@ public final class PosixTty implements AutoCloseable {
             int oNonblock = darwin ? TermiosDarwin.O_NONBLOCK : TermiosLinux.O_NONBLOCK;
             int fGet = darwin ? TermiosDarwin.F_GETFL : TermiosLinux.F_GETFL;
             int fSet = darwin ? TermiosDarwin.F_SETFL : TermiosLinux.F_SETFL;
-            int cur = (int) fcntlGetMh.invokeExact(fd, fGet);
-            if (cur >= 0) {
-                int set = (int) fcntlSetMh.invokeExact(fd, fSet, cur | oNonblock);
+            // O_NONBLOCK is best-effort: a missing native-image fcntl descriptor must not
+            // kill the session. poll + non-blocking read still work without it; a blocking
+            // read after POLLIN is correct.
+            if (fcntlMh != null) {
+                int cur = (int) fcntlMh.invokeExact(fd, fGet, 0);
+                if (cur >= 0) {
+                    int set = (int) fcntlMh.invokeExact(fd, fSet, cur | oNonblock);
+                }
+            }
+            if (tcgetattrMh == null) {
+                int ignored = (int) closeMh.invokeExact(fd);
+                return null;
             }
             int size = darwin ? TermiosDarwin.SIZE : TermiosLinux.SIZE;
             MemorySegment term = arena.allocate(size);
@@ -283,8 +292,7 @@ public final class PosixTty implements AutoCloseable {
 
     private static volatile MethodHandle openMh;
     private static volatile MethodHandle closeMh;
-    private static volatile MethodHandle fcntlGetMh;
-    private static volatile MethodHandle fcntlSetMh;
+    private static volatile MethodHandle fcntlMh;
     private static volatile MethodHandle tcgetattrMh;
     private static volatile MethodHandle tcsetattrMh;
     private static volatile MethodHandle pollMh;
@@ -304,56 +312,77 @@ public final class PosixTty implements AutoCloseable {
             try {
                 Linker linker = Linker.nativeLinker();
                 SymbolLookup lookup = linker.defaultLookup();
-                openMh = linker.downcallHandle(
-                        lookup.findOrThrow("open"),
+                Linker.Option cap = Linker.Option.captureCallState("errno");
+                Linker.Option variadic2 = Linker.Option.firstVariadicArg(2);
+                // Bind independently: native-image throws MissingForeignRegistrationError per
+                // descriptor. One missing entry must not leave open/tcgetattr null.
+                openMh = bind(
+                        linker,
+                        lookup,
+                        "open",
                         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-                closeMh = linker.downcallHandle(
-                        lookup.findOrThrow("close"), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
-                fcntlGetMh = linker.downcallHandle(
-                        lookup.findOrThrow("fcntl"),
-                        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT),
-                        Linker.Option.firstVariadicArg(2));
-                fcntlSetMh = linker.downcallHandle(
-                        lookup.findOrThrow("fcntl"),
+                closeMh = bind(
+                        linker, lookup, "close", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+                fcntlMh = bind(
+                        linker,
+                        lookup,
+                        "fcntl",
                         FunctionDescriptor.of(
                                 ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT),
-                        Linker.Option.firstVariadicArg(2));
-                Linker.Option cap = Linker.Option.captureCallState("errno");
+                        variadic2);
                 ValueLayout nfds = Os.isDarwin() ? ValueLayout.JAVA_INT : ValueLayout.JAVA_LONG;
-                pollMh = linker.downcallHandle(
-                        lookup.findOrThrow("poll"),
+                pollMh = bind(
+                        linker,
+                        lookup,
+                        "poll",
                         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, nfds, ValueLayout.JAVA_INT),
                         cap);
-                readMh = linker.downcallHandle(
-                        lookup.findOrThrow("read"),
+                readMh = bind(
+                        linker,
+                        lookup,
+                        "read",
                         FunctionDescriptor.of(
                                 ValueLayout.JAVA_LONG,
                                 ValueLayout.JAVA_INT,
                                 ValueLayout.ADDRESS,
                                 ValueLayout.JAVA_LONG),
                         cap);
-                writeMh = linker.downcallHandle(
-                        lookup.findOrThrow("write"),
+                writeMh = bind(
+                        linker,
+                        lookup,
+                        "write",
                         FunctionDescriptor.of(
                                 ValueLayout.JAVA_LONG,
                                 ValueLayout.JAVA_INT,
                                 ValueLayout.ADDRESS,
                                 ValueLayout.JAVA_LONG),
                         cap);
-                tcgetattrMh = linker.downcallHandle(
-                        lookup.findOrThrow("tcgetattr"),
+                tcgetattrMh = bind(
+                        linker,
+                        lookup,
+                        "tcgetattr",
                         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS),
                         cap);
-                tcsetattrMh = linker.downcallHandle(
-                        lookup.findOrThrow("tcsetattr"),
+                tcsetattrMh = bind(
+                        linker,
+                        lookup,
+                        "tcsetattr",
                         FunctionDescriptor.of(
                                 ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS),
                         cap);
-            } catch (Throwable ignored) {
-                // leave handles null
             } finally {
                 initAttempted = true;
             }
+        }
+    }
+
+    @SuppressWarnings("restricted")
+    private static MethodHandle bind(
+            Linker linker, SymbolLookup lookup, String name, FunctionDescriptor desc, Linker.Option... opts) {
+        try {
+            return linker.downcallHandle(lookup.findOrThrow(name), desc, opts);
+        } catch (Throwable ignored) {
+            return null;
         }
     }
 

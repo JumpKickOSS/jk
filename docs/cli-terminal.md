@@ -1393,7 +1393,7 @@ silent. `HostPlatform` is replaced by `Os.isWindows()` / `isDarwin()` / `isLinux
 ```
 src/main/resources/META-INF/native-image/cc.jumpkick/cli-terminal/
   native-image.properties
-  reachability-metadata.json   # REQUIRED in commit 1 for sun.misc.Signal + sun.misc.SignalHandler
+  reachability-metadata.json   # sun.misc.Signal + FFM foreign.downcalls (termios/poll/fcntl, Kernel32)
 ```
 
 JLine's in-tree `reflection-config.json` is `[]`; reachability today comes from the JLine
@@ -1662,6 +1662,12 @@ This is a local CLI, not a service. No metrics backend.
   `/dev/tty` failures are swallowed into non-live — never a stacktrace on `jk build`.
 - **Native-image:** a missing downcall should fail the *first* prompt with a short message, not
   an FFM `IncompatibleClassChangeError` dump. Binder init catches `Throwable` like `TerminalSize`.
+  Every POSIX/Kernel32 `downcallHandle` descriptor (including `captureCallState` on
+  `tcgetattr`/`poll`/`read`/`write` and `firstVariadicArg` on `fcntl`/`ioctl`) must be listed
+  under `foreign.downcalls` in `:cli-terminal`'s `reachability-metadata.json`. Graal throws
+  `MissingForeignRegistrationError` per descriptor; `PosixTty.ensure()` binds independently so
+  one miss does not null `open`/`tcgetattr`. A hole here makes `canPrompt()` false on a live
+  TTY and `jk new` skips the wizard.
 - **Alerting:** none. Dogfood + `./gradlew :cli:test` / `:cli:integrationTest` / reinstall smoke.
 
 Latency targets: `controlling()` first open < 5ms (no 200ms grapheme timeout). `readKey(75ms)`
