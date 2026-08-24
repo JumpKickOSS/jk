@@ -1,0 +1,11 @@
+# LF in the object store and the working tree, on every OS.
+# Overrides Git for Windows' installer default (core.autocrlf=true).
+* text=auto eol=lf
+
+# cmd.exe still treats LF-only batch files as one line.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.jar binary
+*.png binary
+*.webp binary

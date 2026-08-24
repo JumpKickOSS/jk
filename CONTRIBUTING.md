@@ -10,6 +10,17 @@ Every source file starts with an SPDX line:
 
 Use the comment syntax appropriate to the file type (`//`, `#`, `<!--`, …).
 
+## Line endings
+
+LF everywhere (`.gitattributes` `eol=lf`). `*.bat` / `*.cmd` stay CRLF for `cmd.exe`.
+On Windows, Git for Windows still ships `core.autocrlf=true`; override it so checkout
+stays LF:
+
+```
+git config --global core.autocrlf false
+git config --global core.eol lf
+```
+
 ## Toolchain
 
 Bootstrap pins (`.sdkmanrc`):
