@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.compat.PassthroughEnv;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.repo.RepoGroup;
@@ -15,7 +16,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.stream.Stream;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -310,14 +310,15 @@ final class SourceProjectBuilder {
     private record RunResult(int exitCode, String stdout) {}
 
     /**
-     * Run {@code command} in {@code projectDir} with a scrubbed environment (JAVA_HOME set to {@code
-     * javaHome}). When {@code captureStdout}, stdout is returned and stderr discarded; otherwise both
+     * Run {@code command} in {@code projectDir} with the child environment {@link PassthroughEnv}
+     * defines (override vars stripped, JAVA_HOME set to {@code javaHome}, its {@code bin} first on
+     * PATH). When {@code captureStdout}, stdout is returned and stderr discarded; otherwise both
      * streams are discarded. This is best-effort: we never surface the tool's console.
      */
     private static RunResult run(Path projectDir, Path javaHome, List<String> command, boolean captureStdout)
             throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(command).directory(projectDir.toFile());
-        applyEnv(pb.environment(), javaHome);
+        PassthroughEnv.apply(pb.environment(), javaHome);
         pb.redirectError(ProcessBuilder.Redirect.DISCARD);
         if (!captureStdout) {
             pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
@@ -333,23 +334,6 @@ final class SourceProjectBuilder {
             out = buf.toString(StandardCharsets.UTF_8);
         }
         return new RunResult(p.waitFor(), out);
-    }
-
-    /** Scrub tool-behavior override vars; set JAVA_HOME and prepend {@code <jdk>/bin} to PATH. */
-    private static void applyEnv(Map<String, String> env, Path javaHome) {
-        for (String key :
-                new String[] {"JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "KOTLIN_HOME", "MAVEN_OPTS", "GRADLE_OPTS"}) {
-            env.remove(key);
-        }
-        if (javaHome != null) {
-            String home = javaHome.toAbsolutePath().toString();
-            env.put("JAVA_HOME", home);
-            String binDir = javaHome.resolve("bin").toAbsolutePath().toString();
-            String pathKey = env.containsKey("PATH") ? "PATH" : "PATH";
-            String existing = env.getOrDefault(pathKey, "");
-            String sep = isWindows() ? ";" : ":";
-            env.put(pathKey, existing.isEmpty() ? binDir : binDir + sep + existing);
-        }
     }
 
     private static boolean isWindows() {

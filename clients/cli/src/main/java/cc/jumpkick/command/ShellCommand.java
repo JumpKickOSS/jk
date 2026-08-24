@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.compat.PassthroughEnv;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -71,11 +72,10 @@ public final class ShellCommand implements CliCommand {
         pb.inheritIO();
         var env = pb.environment();
         target.vars().forEach(env::put);
-        // Strip well-known tool-options envs that would override jk's choice
-
-        env.remove("JAVA_TOOL_OPTIONS");
-        env.remove("_JAVA_OPTIONS");
-        env.remove("JDK_HOME");
+        // Strip the vars through which the surrounding shell could out-vote the pin we just applied
+        // (JDK_HOME above all — see PassthroughEnv). Null javaHome: JkEnv already layered PATH on
+        // __JK_ORIG_PATH, so prepending <jdk>/bin again here would double it.
+        PassthroughEnv.apply(env, null);
 
         var javaHome = target.vars().get(JkEnv.JAVA_HOME);
         CliOutput.out("Entering jk shell with JAVA_HOME=" + javaHome);
