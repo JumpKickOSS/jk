@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.function.UnaryOperator;
 
 /**
  * The environment handed to a forked test JVMa sandbox jk supplies by default, plus
@@ -19,6 +20,10 @@ import java.util.function.UnaryOperator;
  * <p>So {@code JK_HOME}, {@code JK_JDKS_DIR}, and {@code JK_M2_LOCAL} point at throwaway directories
  * under the module's build output unless the module says otherwise. Anything a suite genuinely needs
  * from the real environment it can name explicitly — the sandbox is a default, not a wall.
+ *
+ * <p>The declared values themselves are resolved by {@link TestEnvValues}, which the run-tests cache
+ * key also uses: the two must agree about an unset {@code ${VAR}} or a build's outcome depends on
+ * what is already cached.
  */
 public final class TestEnv {
 
@@ -34,17 +39,12 @@ public final class TestEnv {
 
     /**
      * The child environment for {@code project}'s test JVMs: the sandbox defaults with the module's
-     * {@code [test] env} applied over them, and {@code ${target}} / {@code ${module}} expanded.
+     * {@code [test] env} applied over them, and {@code ${target}} / {@code ${module}} / {@code ${VAR}}
+     * expanded.
      *
      * <p>A module that sets {@code JK_HOME} itself wins — this is a default, not an override.
      */
     public static Map<String, String> forModule(JkBuild project, Path moduleDir, BuildLayout layout) {
-        return forModule(project, moduleDir, layout, cc.jumpkick.config.BuildEnv.forModule(moduleDir));
-    }
-
-    /** As {@link #forModule(JkBuild, Path, BuildLayout)}, resolving {@code ${VAR}} through {@code env}. */
-    public static Map<String, String> forModule(
-            JkBuild project, Path moduleDir, BuildLayout layout, UnaryOperator<String> env) {
         Path target = layout.moduleTargetDir();
         Map<String, String> out = new LinkedHashMap<>();
         // Sandbox first so a declared value replaces it.
@@ -57,23 +57,11 @@ public final class TestEnv {
         // opts in — Gradle does the same.
         out.put("JK_HTTP_ENABLED", "false");
         out.put("JK_HTTP_PORT", "0");
-        for (Map.Entry<String, String> e : project.build().testEnv().entrySet()) {
-            String withPaths = expand(e.getValue(), moduleDir, target);
-            // Then environment references — a whitelisted position, resolved through the
-            // request's environment plus.env, and strict about an unset variable.
-            out.put(e.getKey(), cc.jumpkick.config.Interpolation.expand(withPaths, "[test].env." + e.getKey(), env));
-        }
+        out.putAll(TestEnvValues.resolve(
+                project.build().testEnv(),
+                moduleDir,
+                target,
+                new TestEnvValues.Mode.Launch(BuildEnv.forModule(moduleDir))));
         return Map.copyOf(out);
-    }
-
-    /**
-     * Substitute the two path tokens. Explicit tokens rather than inferring which values look like
-     * paths: a magic "does this smell like a path" rule would eventually rewrite something that was
-     * meant literally.
-     */
-    static String expand(String value, Path moduleDir, Path target) {
-        if (value == null || value.indexOf('$') < 0) return value;
-        return value.replace("${target}", target.toAbsolutePath().toString())
-                .replace("${module}", moduleDir.toAbsolutePath().toString());
     }
 }

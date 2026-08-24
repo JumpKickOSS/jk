@@ -413,9 +413,11 @@ public final class ManifestBuild {
      * env = { JK_HOME = "${target}/test-jk-home", JK_HTTP_ENABLED = "false" }
      * </pre>
      *
-     * Values are literal strings; {@code ${target}} and {@code ${module}} are substituted at launch
-     * (see {@code TestEnv}). Environment variables are deliberately <em>not</em> interpolated here
-     * yet — that is whitelisted separately.
+     * Values are stored exactly as written. {@code ${target}}, {@code ${module}} and {@code ${VAR}}
+     * are all expanded later, by {@link TestEnvValues}, because what they expand to depends on the
+     * consumer: the forked JVM wants real directories and real values, the run-tests cache key wants
+     * portable tokens and a digest. {@code [test] env} is one of the few positions where
+     * {@code ${VAR}} is legal at all — see {@link Interpolation}.
      */
     static Map<String, String> parseTestEnv(TomlTable root) {
         TomlTable test = root.getTable("test");

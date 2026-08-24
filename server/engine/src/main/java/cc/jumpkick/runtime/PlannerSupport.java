@@ -31,8 +31,8 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.stream.Stream;
 
 /**
@@ -687,9 +687,9 @@ public final class PlannerSupport {
     }
 
     /**
-     * Stamp extras with env expansion and secret hashing for a module at {@code moduleDir}
-     * . There is deliberately no lookup-free overload: it would silently skip
-     * both expansion and hashing and produce a key that disagrees with this one.
+     * Stamp extras with env expansion and secret hashing for a module at {@code moduleDir}. There is
+     * deliberately no lookup-free overload: it would silently skip both expansion and hashing and
+     * produce a key that disagrees with this one.
      */
     static List<String> testStampExtras(
             Map<String, String> workerJars,
@@ -697,18 +697,13 @@ public final class PlannerSupport {
             Map<String, String> testEnv,
             Path moduleDir) {
         cc.jumpkick.config.EnvLookup lookup =
-                moduleDir == null ? null : cc.jumpkick.config.BuildEnv.lookupFor(moduleDir);
-        cc.jumpkick.config.SecretRedactor redactor = lookup == null
-                ? cc.jumpkick.config.SecretRedactor.none()
-                : cc.jumpkick.config.SecretRedactor.from(lookup);
-        return testStampExtras(workerJars, selection, testEnv, redactor, lookup);
+                cc.jumpkick.config.BuildEnv.lookupFor(Objects.requireNonNull(moduleDir, "moduleDir"));
+        return testStampExtras(workerJars, selection, testEnv, cc.jumpkick.config.SecretRedactor.from(lookup), lookup);
     }
 
     /**
      * Stamp extras. Declared {@code [test] env} values only (sandbox defaults stay out — they are
-     * absolute paths that would defeat cache sharing). Environment references expand through
-     * {@code lookup}; a {@code.env}-sourced value is hashed into the key, never written verbatim
-     *
+     * absolute paths that would defeat cache sharing).
      */
     static List<String> testStampExtras(
             Map<String, String> workerJars,
@@ -720,38 +715,16 @@ public final class PlannerSupport {
         extras.add("jk:" + cc.jumpkick.model.BuildIdentity.cacheKeyVersion());
         // Suite + tag filters are part of the outcome.
         if (selection != null) extras.add("sel:" + selection.identityToken());
-        // [test] env changes what the suite sees, so it must retest.
-        cc.jumpkick.config.SecretRedactor secrets =
-                redactor == null ? cc.jumpkick.config.SecretRedactor.none() : redactor;
-        for (Map.Entry<String, String> e : new TreeMap<>(testEnv).entrySet()) {
-            String raw = e.getValue() == null ? "" : e.getValue();
-            String expanded = raw;
-            boolean envResolved = false;
-            if (lookup != null && raw.indexOf('$') >= 0) {
-                // Expand ${VAR} for cache identity, but leave ${target}/${module} as tokens so
-                // the key stays portable across checkouts (same instinct as the sandbox defaults).
-                boolean[] resolved = {false};
-                try {
-                    expanded = cc.jumpkick.config.Interpolation.expand(raw, "[test].env." + e.getKey(), var -> {
-                        if ("target".equals(var) || "module".equals(var)) return "${" + var + "}";
-                        String v = lookup.get(var);
-                        if (v != null) resolved[0] = true;
-                        return v;
-                    });
-                } catch (cc.jumpkick.config.JkBuildParseException ex) {
-                    // Unset var — keep the raw text so a broken reference still changes the key.
-                    expanded = raw;
-                }
-                envResolved = resolved[0];
-            }
-            String keyed = secrets.forCacheKey(expanded);
-            if (envResolved && keyed.equals(expanded)) {
-                // Non-secret env reference (${HOME}, a CI id): the VALUE still keys the stamp
-                // a changed environment retestsbut the literal must not land in a
-                // (potentially shared) key: no absolute paths or ids on disk.
-                keyed = cc.jumpkick.config.SecretRedactor.KEY_PREFIX + cc.jumpkick.util.Hashing.sha256Hex(expanded);
-            }
-            extras.add("test-env:" + e.getKey() + "=" + keyed);
+        // [test] env changes what the suite sees, so it must retest. Resolved by the same owner the
+        // fork uses, in its cache-key mode: ${target}/${module} stay tokens so the key is portable,
+        // a .env-sourced value is hashed, and an unset ${VAR} fails here exactly as it fails at
+        // launch — a manifest jk cannot fork must never forecast as "tests cached".
+        // The launch-side directories are not passed: the mode, not the caller, decides what the
+        // two path tokens mean, and this mode keeps them literal.
+        var resolved = cc.jumpkick.config.TestEnvValues.resolve(
+                testEnv, null, null, new cc.jumpkick.config.TestEnvValues.Mode.CacheKey(lookup, redactor));
+        for (Map.Entry<String, String> e : resolved.entrySet()) {
+            extras.add("test-env:" + e.getKey() + "=" + e.getValue());
         }
         // Plugin jars by content — a plugin change retests the module that forks it.
         for (Map.Entry<String, String> e : workerJars.entrySet()) {

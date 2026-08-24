@@ -2,13 +2,19 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.task.ActionCache;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -21,6 +27,16 @@ import org.junit.jupiter.api.io.TempDir;
  * each project has to remember.
  */
 class TestEnvTest {
+
+    /** A name no environment sets — asserted, not assumed, so a stray export cannot green this file. */
+    private static final String UNSET = "JK_2384_UNSET_ON_PURPOSE";
+
+    @BeforeAll
+    static void the_unset_variable_really_is_unset() {
+        // Asserted, not assumed: a stray export would otherwise turn the two strictness tests green
+        // without exercising the unset path at all.
+        assertThat(System.getenv(UNSET)).isNull();
+    }
 
     @Test
     void jk_home_and_m2_are_sandboxed_under_the_module_by_default(@TempDir Path tmp) throws Exception {
@@ -59,22 +75,15 @@ class TestEnvTest {
     void module_and_target_tokens_expand(@TempDir Path tmp) throws Exception {
         JkBuild project = project(tmp, """
                 [test]
-                env = { A = "${module}/fixtures", B = "${target}/scratch", C = "literal" }
+                env = { A = "${module}/fixtures", B = "${target}/scratch", C = "literal", D = "costs $5" }
                 """);
         var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project));
 
         assertThat(env.get("A")).isEqualTo(tmp.toAbsolutePath() + "/fixtures");
         assertThat(env.get("B")).isEqualTo(tmp.resolve("target").toAbsolutePath() + "/scratch");
         assertThat(env.get("C")).isEqualTo("literal");
-    }
-
-    @Test
-    void a_value_without_tokens_is_left_alone() {
-        assertThat(TestEnv.expand("plain", Path.of("/m"), Path.of("/m/target"))).isEqualTo("plain");
-        assertThat(TestEnv.expand(null, Path.of("/m"), Path.of("/m/target"))).isNull();
-        // A lone $ is not a token and must not be mangled.
-        assertThat(TestEnv.expand("costs $5", Path.of("/m"), Path.of("/m/target")))
-                .isEqualTo("costs $5");
+        // A lone $ is not a reference and must not be mangled.
+        assertThat(env.get("D")).isEqualTo("costs $5");
     }
 
     @Test
@@ -130,6 +139,57 @@ class TestEnvTest {
         List<String> after = BuildPlanner.testStampExtras(tmp, project);
         assertThat(after).isNotEqualTo(extras);
         assertThat(after).noneMatch(s -> s.contains("other-secret-value"));
+    }
+
+    /**
+     * The launch path and the cache-key path used to disagree here: launch threw, the key path
+     * caught the same exception and keyed on the raw {@code ${VAR}} text. One manifest, two answers.
+     */
+    @Test
+    void an_unset_reference_fails_the_key_path_exactly_as_it_fails_at_launch(@TempDir Path tmp) throws Exception {
+        JkBuild project = project(tmp, "[test]\nenv = { API_KEY = \"${" + UNSET + "}\" }\n");
+        BuildLayout layout = BuildLayout.of(tmp, project);
+
+        assertThatThrownBy(() -> TestEnv.forModule(project, tmp, layout))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[test].env.API_KEY")
+                .hasMessageContaining(UNSET);
+        assertThatThrownBy(() -> BuildPlanner.testStampExtras(tmp, project))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[test].env.API_KEY")
+                .hasMessageContaining(UNSET);
+    }
+
+    /**
+     * The reproducibility fence: a build's outcome must not be a function of cache state. The
+     * manifest is identical in both halves; only the action cache differs.
+     */
+    @Test
+    void a_bad_reference_fails_the_plan_cold_and_with_a_green_marker_present(@TempDir Path tmp) throws Exception {
+        JkBuild project = project(tmp, "[test]\nenv = { API_KEY = \"${" + UNSET + "}\" }\n");
+        Path lock = tmp.resolve("jk-lock.toml");
+        Path classes = Files.createDirectories(tmp.resolve("target/classes"));
+        ActionCache cache = new ActionCache(new Cas(tmp.resolve("cas")), tmp.resolve("actions"));
+
+        // Cold: nothing cached for this module.
+        assertThatThrownBy(() -> BuildPlanner.runTestsStampKey(tmp, project, false, classes, lock, List.of()))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[test].env.API_KEY");
+
+        // Give the variable a value, take the key the build would use and store the green marker
+        // under it — "this module's tests are cached" is now true on disk.
+        Files.writeString(tmp.resolve(".env"), UNSET + "=a-value-long-enough-to-count\n");
+        String key = BuildPlanner.runTestsStampKey(tmp, project, false, classes, lock, List.of());
+        assertThat(key).isNotNull();
+        cache.storeWithOutputs("run-tests", key, Map.of(), Map.of("tests.total", "1"));
+        assertThat(cache.lookup(key)).isPresent();
+
+        // Take the value away again. Same manifest, same marker: the plan must fail as it did cold,
+        // not key on the raw ${VAR} text and let the forecast report a skip.
+        Files.delete(tmp.resolve(".env"));
+        assertThatThrownBy(() -> BuildPlanner.runTestsStampKey(tmp, project, false, classes, lock, List.of()))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[test].env.API_KEY");
     }
 
     private static JkBuild project(Path dir, String extra) throws Exception {
