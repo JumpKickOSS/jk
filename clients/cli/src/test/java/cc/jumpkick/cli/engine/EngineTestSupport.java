@@ -52,7 +52,7 @@ public final class EngineTestSupport {
                 }
                 EngineInstall install = EngineInstall.current();
                 // ALWAYS materialize — EngineInstall is content-aware (same bytes return
-                // immediately; same version + different bytes parks the previous jar).
+                // immediately; same version + different bytes publishes a sibling jar).
                 // The old presence-check skipped the refresh, so a persistent test JK_HOME
                 // kept serving a STALE engine across rebuilds (every
                 // :cli:integrationTest run tonight resolved with last week's resolver).

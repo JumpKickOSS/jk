@@ -3,9 +3,7 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.util.AppInstallConfig;
-import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,48 +15,34 @@ import org.junit.jupiter.api.io.TempDir;
 class InstallCommandJarConfigTest {
 
     @Test
-    void engine_install_keys_include_digest_of_installed_jar(@TempDir Path tmp) throws Exception {
-        Path jar = Files.writeString(tmp.resolve("jk-engine-0.12.0-all.jar"), "engine-bytes-v2");
-        Map<String, String> keys = new LinkedHashMap<>();
-        InstallCommand.putInstalledJarKeys(keys, jar, EngineInstall.BIN_NAME);
-        assertThat(keys)
-                .containsEntry("jar", "jk-engine-0.12.0-all.jar")
-                .containsEntry("engine-sha256", Hashing.sha256Hex(jar));
-    }
-
-    @Test
-    void non_engine_install_keys_do_not_set_engine_digest(@TempDir Path tmp) throws Exception {
+    void install_keys_record_the_jar_basename(@TempDir Path tmp) throws Exception {
         Path jar = Files.writeString(tmp.resolve("widget-1.0.0-all.jar"), "app");
         Map<String, String> keys = new LinkedHashMap<>();
-        InstallCommand.putInstalledJarKeys(keys, jar, "widget");
+        InstallCommand.putInstalledJarKeys(keys, jar);
         assertThat(keys).containsOnly(Map.entry("jar", "widget-1.0.0-all.jar"));
     }
 
     @Test
-    void writing_engine_keys_overwrites_stale_digest_beside_new_jar_name(@TempDir Path tmp) throws Exception {
+    void writing_install_keys_overwrites_a_stale_jar_name(@TempDir Path tmp) throws Exception {
         JkDirs dirs = JkDirs.of(Map.of("JK_HOME", tmp.resolve("home").toString())::get, tmp.toString());
         AppInstallConfig.write(
                 dirs,
-                EngineInstall.BIN_NAME,
+                "widget",
                 Map.of(
-                        "version", "0.12.0",
-                        "jar", "jk-engine-0.12.0.jar",
-                        "engine-sha256", "deadbeef",
-                        "protocol", "1",
-                        "name", "jk-engine"));
+                        "version", "1.0.0",
+                        "jar", "widget-1.0.0-all.jar",
+                        "name", "widget"));
 
-        Path jar = Files.writeString(tmp.resolve("jk-engine-0.12.0-all.jar"), "fresh-engine-bytes");
+        Path jar = Files.writeString(tmp.resolve("widget-1.1.0-all.jar"), "fresh");
         Map<String, String> keys = new LinkedHashMap<>();
-        InstallCommand.putInstalledJarKeys(keys, jar, EngineInstall.BIN_NAME);
-        keys.putIfAbsent("name", EngineInstall.BIN_NAME);
-        keys.putIfAbsent("version", "0.12.0");
-        AppInstallConfig.write(dirs, EngineInstall.BIN_NAME, keys);
+        InstallCommand.putInstalledJarKeys(keys, jar);
+        keys.putIfAbsent("name", "widget");
+        keys.putIfAbsent("version", "1.1.0");
+        AppInstallConfig.write(dirs, "widget", keys);
 
-        assertThat(AppInstallConfig.read(dirs, EngineInstall.BIN_NAME))
-                .containsEntry("jar", "jk-engine-0.12.0-all.jar")
-                .containsEntry("engine-sha256", Hashing.sha256Hex(jar))
-                .containsEntry("version", "0.12.0")
-                .containsEntry("protocol", "1")
-                .doesNotContainEntry("engine-sha256", "deadbeef");
+        assertThat(AppInstallConfig.read(dirs, "widget"))
+                .containsEntry("jar", "widget-1.1.0-all.jar")
+                .containsEntry("version", "1.1.0")
+                .containsEntry("name", "widget");
     }
 }

@@ -58,7 +58,7 @@ All JEP 514 caches live under the **shared** `state/aot/` directory (not next to
 
 Policy when a generation becomes primary (endpoint claim / `jk self materialize` — not every
 ensure of an already-live same-version engine), and again when install GC removes
-parked `*.jar.old` / `jk.old`:
+retired `jk-engine-*.jar` files / parked `jk.old`:
 
 1. **Reap other versions** — delete every AOT artifact whose name is not for this exact
    product version (no `-<version>-<16hex>` segment). Legacy unversioned worker names

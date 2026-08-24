@@ -5,20 +5,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.util.AppInstallConfig;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class EngineInstallTest {
 
     private static EngineInstall install(Path home) {
-        JkDirs dirs = JkDirs.of(Map.of("JK_HOME", home.toString())::get, home.toString());
-        return new EngineInstall(home.resolve("lib"), dirs);
+        return new EngineInstall(home.resolve("lib"));
+    }
+
+    private static EngineInstall install(Path home, AtomicLong clock) {
+        return new EngineInstall(home.resolve("lib"), clock::get);
     }
 
     @Test
@@ -34,8 +37,7 @@ class EngineInstallTest {
         assertThat(m.engineJar().getFileName().toString()).isEqualTo("jk-engine-0.12.0.jar");
         assertThat(m.root()).isEqualTo(store.engineHome());
         assertThat(store.configFile()).exists();
-        JkDirs dirs = JkDirs.of(Map.of("JK_HOME", home.toString())::get, home.toString());
-        assertThat(AppInstallConfig.read(dirs, "jk-engine"))
+        assertThat(AppInstallConfig.parse(Files.readString(store.configFile())))
                 .containsEntry("jar", "jk-engine-0.12.0.jar")
                 .containsEntry("version", "0.12.0");
         assertThat(m.engineJar()).isEqualTo(store.engineJarPath());
@@ -44,13 +46,15 @@ class EngineInstallTest {
 
         var again = store.materializeFromFiles("0.12.0", cas, jar);
         assertThat(again.engineJar()).isEqualTo(m.engineJar());
-        assertThat(Files.exists(store.engineJarOldPath())).isFalse();
+        try (var jars = Files.list(store.engineHome())) {
+            assertThat(jars.filter(p -> p.getFileName().toString().endsWith(".jar"))
+                            .toList())
+                    .containsExactly(m.engineJar());
+        }
     }
 
     @Test
-    void survives_config_metadata_deletion_by_recovering_version_from_the_jar(@TempDir Path tmp) throws Exception {
-        // JK-2294: `jk self nuke --config` deletes <config>/jk-engine/config.toml but keeps the jar
-        // under product-lib. The engine must still resolve, recovering its version from the jar name.
+    void survives_pointer_deletion_by_recovering_version_from_the_jar(@TempDir Path tmp) throws Exception {
         Path home = Files.createDirectories(tmp.resolve("home"));
         Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
         EngineInstall store = install(home);
@@ -58,18 +62,23 @@ class EngineInstallTest {
         store.materializeFromFiles("0.12.0", cas, jar);
         assertThat(store.currentInstall()).isPresent();
 
-        Files.delete(store.configFile()); // config-nuke
+        Files.delete(store.configFile());
         assertThat(store.configFile()).doesNotExist();
 
         var recovered = store.currentInstall();
-        assertThat(recovered).as("engine still resolves after config deletion").isPresent();
+        assertThat(recovered).as("engine still resolves after pointer deletion").isPresent();
         assertThat(recovered.orElseThrow().version()).isEqualTo("0.12.0");
         assertThat(recovered.orElseThrow().engineJar()).hasContent("engine-bytes");
+
+        var healed = store.materializeFromFiles("0.12.0", cas, jar);
+        assertThat(healed.engineJar()).isEqualTo(recovered.orElseThrow().engineJar());
+        assertThat(store.configFile()).exists();
+        assertThat(AppInstallConfig.parse(Files.readString(store.configFile())))
+                .containsEntry("jar", "jk-engine-0.12.0.jar");
     }
 
     @Test
     void a_jk_config_property_cannot_override_the_computed_engine_digest(@TempDir Path tmp) throws Exception {
-        // JK-2325: -Djk-config.engine-sha256=... must not poison the recorded digest.
         Path home = Files.createDirectories(tmp.resolve("home"));
         Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
         EngineInstall store = install(home);
@@ -78,8 +87,8 @@ class EngineInstallTest {
         System.setProperty("jk-config.engine-sha256", "deadbeef");
         try {
             store.materializeFromFiles("0.12.0", cas, jar);
-            JkDirs dirs = JkDirs.of(Map.of("JK_HOME", home.toString())::get, home.toString());
-            assertThat(AppInstallConfig.read(dirs, "jk-engine")).containsEntry("engine-sha256", realSha);
+            assertThat(AppInstallConfig.parse(Files.readString(store.configFile())))
+                    .containsEntry("engine-sha256", realSha);
         } finally {
             System.clearProperty("jk-config.engine-sha256");
         }
@@ -105,25 +114,43 @@ class EngineInstallTest {
     }
 
     @Test
-    void rematerializing_the_same_version_with_new_bytes_parks_the_previous_jar(@TempDir Path dir) throws Exception {
+    void rematerializing_the_same_version_with_new_bytes_publishes_an_epoch_sibling(@TempDir Path dir)
+            throws Exception {
         Path home = Files.createDirectories(dir.resolve("home"));
         var cas = new Cas(home.resolve("cache"));
-        var store = install(home);
+        AtomicLong clock = new AtomicLong(1_724_400_000_000L);
+        var store = install(home, clock);
         Path jarV1 = dir.resolve("engine-v1.jar");
         Files.writeString(jarV1, "engine bytes v1");
         Path jarV2 = dir.resolve("engine-v2.jar");
         Files.writeString(jarV2, "engine bytes v2 (rebuilt snapshot)");
 
         var first = store.materializeFromFiles("1.0.0-SNAPSHOT", cas, jarV1);
+        assertThat(first.engineJar().getFileName().toString()).isEqualTo("jk-engine-1.0.0-SNAPSHOT.jar");
         assertThat(first.engineJar()).hasContent("engine bytes v1");
 
         var second = store.materializeFromFiles("1.0.0-SNAPSHOT", cas, jarV2);
+        assertThat(second.engineJar().getFileName().toString()).isEqualTo("jk-engine-1.0.0-SNAPSHOT.1724400000000.jar");
         assertThat(second.engineJar()).hasContent("engine bytes v2 (rebuilt snapshot)");
-        assertThat(store.engineJarOldPath()).hasContent("engine bytes v1");
+        assertThat(first.engineJar()).hasContent("engine bytes v1");
         assertThat(store.resolve("1.0.0-SNAPSHOT").orElseThrow().engineJar()).isEqualTo(second.engineJar());
 
         var third = store.materializeFromFiles("1.0.0-SNAPSHOT", cas, jarV2);
         assertThat(third.engineJar()).isEqualTo(second.engineJar());
+    }
+
+    @Test
+    void epoch_allocation_skips_names_that_already_exist(@TempDir Path dir) throws Exception {
+        Path home = Files.createDirectories(dir.resolve("home"));
+        var cas = new Cas(home.resolve("cache"));
+        AtomicLong clock = new AtomicLong(1_724_400_000_000L);
+        var store = install(home, clock);
+        store.materializeFromFiles("0.12.0", cas, Files.writeString(dir.resolve("v1.jar"), "first"));
+        Files.writeString(store.engineHome().resolve("jk-engine-0.12.0.1724400000000.jar"), "occupied");
+
+        var second = store.materializeFromFiles("0.12.0", cas, Files.writeString(dir.resolve("v2.jar"), "second"));
+        assertThat(second.engineJar().getFileName().toString()).isEqualTo("jk-engine-0.12.0.1724400000001.jar");
+        assertThat(second.engineJar()).hasContent("second");
     }
 
     @Test
@@ -134,8 +161,8 @@ class EngineInstallTest {
         Path jar = dir.resolve("engine.jar");
         Files.writeString(jar, "engine bytes");
 
-        JkDirs dirs = JkDirs.of(Map.of("JK_HOME", home.toString())::get, home.toString());
-        AppInstallConfig.write(dirs, "jk-engine", Map.of("version", "1.0.0"));
+        Files.createDirectories(store.engineHome());
+        Files.writeString(store.configFile(), "version = \"1.0.0\"\n");
         assertThat(store.currentInstall()).isEmpty();
 
         var healed = store.materializeFromFiles("1.0.0", cas, jar);
@@ -144,18 +171,19 @@ class EngineInstallTest {
     }
 
     @Test
-    void resolve_pairs_the_client_version_with_live_or_parked_jar(@TempDir Path dir) throws Exception {
+    void resolve_finds_a_leftover_jar_of_the_previous_version(@TempDir Path dir) throws Exception {
         Path home = Files.createDirectories(dir.resolve("home"));
         var cas = new Cas(home.resolve("cache"));
         var store = install(home);
         Path oldJar = Files.writeString(dir.resolve("old.jar"), "old-engine");
         Path newJar = Files.writeString(dir.resolve("new.jar"), "new-engine");
-        store.materializeFromFiles("0.12.0", cas, oldJar);
-        store.materializeFromFiles("0.13.0", cas, newJar);
+        var v12 = store.materializeFromFiles("0.12.0", cas, oldJar);
+        var v13 = store.materializeFromFiles("0.13.0", cas, newJar);
 
-        assertThat(store.resolve("0.13.0").orElseThrow().engineJar()).isEqualTo(store.engineJarPath());
-        assertThat(store.resolve("0.12.0").orElseThrow().engineJar()).isEqualTo(store.engineJarOldPath());
+        assertThat(store.resolve("0.13.0").orElseThrow().engineJar()).isEqualTo(v13.engineJar());
+        assertThat(store.resolve("0.12.0").orElseThrow().engineJar()).isEqualTo(v12.engineJar());
         assertThat(store.resolve("0.11.0")).isEmpty();
+        assertThat(v12.engineJar()).hasContent("old-engine");
     }
 
     @Test
@@ -174,15 +202,14 @@ class EngineInstallTest {
     }
 
     @Test
-    void gc_deletes_parked_engine_and_parked_clients(@TempDir Path homeRoot) throws Exception {
+    void gc_deletes_retired_engine_jars_and_parked_clients(@TempDir Path homeRoot) throws Exception {
         Path home = Files.createDirectories(homeRoot.resolve("home"));
         EngineInstall store = install(home);
         Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
         Path liveJar = Files.writeString(homeRoot.resolve("live.jar"), "live");
-        store.materializeFromFiles("1.0.0", cas, liveJar);
-
-        Files.writeString(store.engineJarOldPath(), "previous");
-        Files.writeString(store.configFileOld(), "version = \"0.9.0\"\njar = \"live.jar\"\n");
+        var live = store.materializeFromFiles("1.0.0", cas, liveJar);
+        Files.writeString(store.engineHome().resolve("jk-engine-0.9.0.jar"), "previous");
+        Files.writeString(store.engineHome().resolve("jk-engine-1.0.0.jar.old"), "legacy-park");
 
         Path state = Files.createDirectories(home.resolve("state"));
         Path aot = Files.createDirectories(state.resolve("aot"));
@@ -197,14 +224,44 @@ class EngineInstallTest {
         List<Path> pruned = store.gc(bin, state);
 
         assertThat(pruned).isNotEmpty();
-        assertThat(store.engineJarOldPath()).doesNotExist();
-        assertThat(store.configFileOld()).doesNotExist();
+        assertThat(store.engineHome().resolve("jk-engine-0.9.0.jar")).doesNotExist();
+        assertThat(store.engineHome().resolve("jk-engine-1.0.0.jar.old")).doesNotExist();
         assertThat(staleCache).doesNotExist();
         assertThat(liveEng).exists();
         assertThat(liveWorker).exists();
         assertThat(jkOld).doesNotExist();
         assertThat(liveJk).exists();
-        assertThat(store.engineJarPath()).hasContent("live");
+        assertThat(live.engineJar()).hasContent("live");
+        assertThat(store.configFile()).exists();
+    }
+
+    @Test
+    void gc_after_same_version_rebuild_keeps_only_the_live_sibling(@TempDir Path dir) throws Exception {
+        Path home = Files.createDirectories(dir.resolve("home"));
+        var cas = new Cas(home.resolve("cache"));
+        AtomicLong clock = new AtomicLong(1_724_400_000_000L);
+        var store = install(home, clock);
+        var first = store.materializeFromFiles("0.12.0", cas, Files.writeString(dir.resolve("v1.jar"), "v1"));
+        var second = store.materializeFromFiles("0.12.0", cas, Files.writeString(dir.resolve("v2.jar"), "v2"));
+        assertThat(first.engineJar()).exists();
+        assertThat(second.engineJar()).isNotEqualTo(first.engineJar());
+
+        store.gc(null, null);
+
+        assertThat(first.engineJar()).doesNotExist();
+        assertThat(second.engineJar()).hasContent("v2");
+        assertThat(store.currentInstall().orElseThrow().engineJar()).isEqualTo(second.engineJar());
+    }
+
+    @Test
+    void gc_deletes_abandoned_config_dir_pointer(@TempDir Path tmp) throws Exception {
+        Path cfg = Files.createDirectories(tmp.resolve("config/jk-engine"));
+        Path stale = Files.writeString(cfg.resolve("config.toml"), "jar = \"jk-engine-0.12.0.jar\"\n");
+        List<Path> removed = new ArrayList<>();
+        EngineInstall.sweepAbandonedConfig(tmp.resolve("config"), removed);
+        assertThat(stale).doesNotExist();
+        assertThat(cfg).doesNotExist();
+        assertThat(removed).contains(stale);
     }
 
     @Test
@@ -228,6 +285,21 @@ class EngineInstallTest {
                 .isEqualTo("jk.old");
         assertThat(EngineInstall.parkedName(Path.of("jk.exe")).getFileName().toString())
                 .isEqualTo("jk.exe.old");
+    }
+
+    @Test
+    void version_from_jar_name_strips_an_epoch_suffix() {
+        assertThat(EngineInstall.versionFromJarName("jk-engine-0.12.0.jar")).contains("0.12.0");
+        assertThat(EngineInstall.versionFromJarName("jk-engine-0.12.0.1724400000000.jar"))
+                .contains("0.12.0");
+        assertThat(EngineInstall.versionFromJarName("jk-engine-0.12.0-SNAPSHOT.jar"))
+                .contains("0.12.0-SNAPSHOT");
+        assertThat(EngineInstall.versionFromJarName("jk-engine-0.12.0-SNAPSHOT.1724400000000.jar"))
+                .contains("0.12.0-SNAPSHOT");
+        assertThat(EngineInstall.versionFromJarName("jk-engine-0.12.0.jar.old")).isEmpty();
+        assertThat(EngineInstall.isEngineJarName("jk-engine-0.12.0.1724400000000.jar"))
+                .isTrue();
+        assertThat(EngineInstall.isEngineJarName("widget-1.0.0.jar")).isFalse();
     }
 
     @Test
