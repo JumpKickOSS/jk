@@ -43,6 +43,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Engine-hosted workspace build: send {@link EngineProtocol#BUILD_REQUEST}, decode wire events into
@@ -109,7 +110,7 @@ final class EngineBuildListenerAdapter {
             writer.write('\n');
             writer.flush();
 
-            return streamEvents(reader, listener, req.cache());
+            return streamEvents(reader, listener, req.cache(), ch);
         }
     }
 
@@ -224,7 +225,7 @@ final class EngineBuildListenerAdapter {
             writer.write('\n');
             writer.flush();
 
-            return streamSingleBuildPlanEvents(reader, listenerFactory, testResultOut, null);
+            return streamSingleBuildPlanEvents(reader, listenerFactory, testResultOut, null, ch);
         }
     }
 
@@ -271,7 +272,7 @@ final class EngineBuildListenerAdapter {
             writer.write('\n');
             writer.flush();
 
-            return streamSingleBuildPlanEvents(reader, listenerFactory, testResultOut, buildOutcomeOut);
+            return streamSingleBuildPlanEvents(reader, listenerFactory, testResultOut, buildOutcomeOut, ch);
         }
     }
 
@@ -323,7 +324,7 @@ final class EngineBuildListenerAdapter {
             writer.write('\n');
             writer.flush();
 
-            return streamEvents(reader, listener, req.cache());
+            return streamEvents(reader, listener, req.cache(), ch);
         }
     }
 
@@ -360,7 +361,7 @@ final class EngineBuildListenerAdapter {
                     cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
-            return streamEvents(reader, listener, req.cache());
+            return streamEvents(reader, listener, req.cache(), ch);
         }
     }
 
@@ -393,7 +394,7 @@ final class EngineBuildListenerAdapter {
                     cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
-            return streamEvents(reader, listener, req.cache());
+            return streamEvents(reader, listener, req.cache(), ch);
         }
     }
 
@@ -434,7 +435,7 @@ final class EngineBuildListenerAdapter {
             writer.write('\n');
             writer.flush();
 
-            return streamSingleBuildPlanEvents(reader, listenerFactory, testResultOut, null);
+            return streamSingleBuildPlanEvents(reader, listenerFactory, testResultOut, null, ch);
         }
     }
 
@@ -923,6 +924,16 @@ final class EngineBuildListenerAdapter {
             cc.jumpkick.run.TestSummary[] testResultOut,
             String[] buildOutcomeOut)
             throws IOException {
+        return streamSingleBuildPlanEvents(reader, listenerFactory, testResultOut, buildOutcomeOut, null);
+    }
+
+    static BuildPlanResult streamSingleBuildPlanEvents(
+            BufferedReader reader,
+            Function<List<Task>, BuildPlanListener> listenerFactory,
+            cc.jumpkick.run.TestSummary[] testResultOut,
+            String[] buildOutcomeOut,
+            @Nullable SocketChannel ch)
+            throws IOException {
         List<Task> steps = new ArrayList<>();
         List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
         BuildPlanListener listener = null;
@@ -1014,6 +1025,7 @@ final class EngineBuildListenerAdapter {
                         // A remote cancel injects this terminal from another thread — it can land
                         // before plan-done ever created the listener.
                         if (listener != null) listener.planFinish(result);
+                        awaitJobFinish(reader, ch);
                         return result;
                     }
                     case EngineProtocol.ERROR ->
@@ -1027,6 +1039,45 @@ final class EngineBuildListenerAdapter {
         } finally {
             // The job is over however the stream ended.
             if (notedJid > 0) cc.jumpkick.cli.engine.EngineClient.ActiveJobs.forget(notedJid);
+        }
+    }
+
+    /**
+     * Block until the engine says it has stopped writing under the project's {@code target/}
+     * ({@link EngineProtocol#JOB_FINISH}), or the stream ends.
+     *
+     * <p>The plan terminal is <em>not</em> the end of the engine's work on the tree: the preflight
+     * memos ({@code target/.jk/preflight/}) and the journal's {@code target/jk-results.md} copy are
+     * written after it. Returning on the terminal handed control back mid-write, so
+     * {@code jk build && jk clean} — and any caller that deletes {@code target/} straight after a
+     * build — raced those writers: the delete either tripped over a freshly created temp file
+     * ({@code DirectoryNotEmptyException}) or completed and then had {@code target/} recreated
+     * under it (JK-2451). Waiting here is the ordering fix; the terminal already carried the
+     * outcome, so nothing read past this point can change the result.
+     *
+     * <p>EOF means the same thing from an engine that died or was killed — the tree is not going
+     * to change either way, so it is a normal exit from this wait, not a failure.
+     *
+     * <p>Half-closing our write side first is what keeps this from being a standoff: the engine's
+     * connection thread is parked reading this socket for a late {@code BUILD_CANCEL}, and the
+     * terminal is our last word on it. The half-close hands it the EOF it needs to move on to the
+     * finish tail, while our read side stays open for the line we are waiting for.
+     */
+    private static void awaitJobFinish(BufferedReader reader, @Nullable SocketChannel ch) {
+        if (ch != null) {
+            try {
+                ch.shutdownOutput();
+            } catch (IOException | UnsupportedOperationException ignored) {
+                // Not half-closable (or already gone) — the engine still wakes on its own.
+            }
+        }
+        try {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (EngineProtocol.JOB_FINISH.equals(EngineProtocol.typeOf(line))) return;
+            }
+        } catch (IOException ignored) {
+            // Outcome already decided; a broken stream now tells us nothing new.
         }
     }
 
@@ -1046,7 +1097,8 @@ final class EngineBuildListenerAdapter {
                 + "(it may have crashed); run `jk engine status` for details");
     }
 
-    private static WorkspaceResult streamEvents(BufferedReader reader, WorkspaceBuildListener listener, Path cache)
+    private static WorkspaceResult streamEvents(
+            BufferedReader reader, WorkspaceBuildListener listener, Path cache, @Nullable SocketChannel ch)
             throws IOException {
         Map<String, ModuleMeta> planByDir = new LinkedHashMap<>();
         Map<String, BuildPlanListener> planListenersByDir = new LinkedHashMap<>();
@@ -1220,6 +1272,7 @@ final class EngineBuildListenerAdapter {
                                 Jsonl.strArray(line, "errors"),
                                 Jsonl.bool(line, "cancelled", false));
                         listener.onWorkspaceFinish(result);
+                        awaitJobFinish(reader, ch);
                         return result;
                     }
                     case EngineProtocol.ERROR -> {
@@ -1234,6 +1287,7 @@ final class EngineBuildListenerAdapter {
                             String msg = wire.getMessage() == null ? "" : wire.getMessage();
                             WorkspaceResult failed = new WorkspaceResult(false, 2, List.of(), List.of(msg), false);
                             listener.onWorkspaceFinish(failed);
+                            awaitJobFinish(reader, ch);
                             return failed;
                         }
                         throw new EngineWireException(wire.code(), "jk engine: build failed: " + wire.getMessage());

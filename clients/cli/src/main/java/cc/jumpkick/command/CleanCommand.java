@@ -14,14 +14,11 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Stream;
 
 /**
  * {@code jk clean}: remove per-module {@code target/} ({@code --keep-artifacts} keeps final jars).
@@ -198,46 +195,23 @@ public final class CleanCommand implements CliCommand {
     }
 
     /**
-     * Delete {@code root} depth-first. Retries a few times when the tree is racing the engine
-     * (e.g. {@code target/.jk/preflight} rewritten mid-walk) so {@code jk clean} does not exit 1
-     * on a transient {@link java.nio.file.DirectoryNotEmptyException}.
+     * Delete {@code root} depth-first, folding what went into {@code stats}. One shared
+     * implementation ({@link cc.jumpkick.util.PathUtil#deleteRecursivelyOrThrow(Path,
+     * cc.jumpkick.util.PathUtil.Removed)}) rather than a clean-local copy: this used to retry the
+     * walk on {@link
+     * java.nio.file.DirectoryNotEmptyException}, papering over an engine that was still writing
+     * {@code target/.jk/preflight} and {@code target/jk-results.md} after telling the client the
+     * build was over. The client now waits for {@code job-finish} before returning, so there is no
+     * writer left to race and a not-empty directory is a real failure again (JK-2451).
      */
     static void deleteRecursively(Path root, long[] stats) throws IOException {
-        if (!Files.exists(root)) return;
-        IOException last = null;
-        for (int attempt = 0; attempt < 4; attempt++) {
-            if (attempt > 0) {
-                // Brief pause so a concurrent preflight/memo write can finish before we re-walk.
-                try {
-                    Thread.sleep(25L * attempt);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw last;
-                }
-            }
-            try {
-                try (Stream<Path> stream = Files.walk(root)) {
-                    stream.sorted(Comparator.reverseOrder()).forEach(p -> {
-                        try {
-                            long size = Files.isRegularFile(p) ? Files.size(p) : -1;
-                            // Count only after a successful delete — a failed attempt must not
-                            // inflate the stats across retry walks.
-                            if (Files.deleteIfExists(p) && size >= 0) {
-                                stats[0]++;
-                                stats[1] += size;
-                            }
-                        } catch (IOException e) {
-                            throw new UncheckedIOException(e);
-                        }
-                    });
-                }
-                return;
-            } catch (UncheckedIOException e) {
-                last = e.getCause() instanceof IOException io ? io : new IOException(e);
-            } catch (IOException e) {
-                last = e;
-            }
+        var tally = new cc.jumpkick.util.PathUtil.Removed();
+        try {
+            cc.jumpkick.util.PathUtil.deleteRecursivelyOrThrow(root, tally);
+        } finally {
+            // Whatever it managed to remove is removed, failure or not — the report must match disk.
+            stats[0] += tally.files();
+            stats[1] += tally.bytes();
         }
-        throw last;
     }
 }

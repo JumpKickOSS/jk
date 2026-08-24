@@ -91,6 +91,18 @@ public final class EngineProtocol {
     public static final String JOB_START = "job-start";
 
     /**
+     * Server → client: the job is finished <em>and the engine has stopped touching the project
+     * tree</em>; carries {@code jid}. Sent after the journal (and its {@code target/jk-results.md}
+     * copy) is written, which happens strictly after the plan terminal
+     * ({@link #BUILDPLAN_FINISH} / {@link #WORKSPACE_FINISH}). A client that returns on the
+     * terminal alone hands control back while those writes are still in flight, so a following
+     * {@code jk clean} races them. Waiting for this line is what makes "the command returned" mean
+     * "the engine is done with this project tree". Stream EOF is the same signal from an engine
+     * that died first.
+     */
+    public static final String JOB_FINISH = "job-finish";
+
+    /**
      * Server → client: workspace preflight progress ({@code onPreflight}) before the plan burst
      * lock freshen, graph, prepare-module, etc.
      */

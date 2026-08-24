@@ -65,10 +65,10 @@ class CleanCommandTest {
 
     @Test
     @EnabledOnOs({OS.LINUX, OS.MAC}) // PosixFilePermissions — undeletable-dir lock is POSIX-only
-    void delete_stats_do_not_double_count_across_retry_walks(@TempDir Path tempDir) throws IOException {
+    void delete_stats_count_only_what_was_actually_removed(@TempDir Path tempDir) throws IOException {
         Path root = Files.createDirectories(tempDir.resolve("target"));
-        // "zz.txt" sorts after "locked/…" in the reverse-order walk, so it is deleted (and must be
-        // counted exactly once) before the undeletable file fails each of the four attempts.
+        // "zz.txt" sorts after "locked/…" in the reverse-order walk, so it is deleted (and counted)
+        // before the undeletable file aborts the walk.
         Files.writeString(root.resolve("zz.txt"), "abc");
         Path locked = Files.createDirectories(root.resolve("locked"));
         Files.writeString(locked.resolve("file.txt"), "defghi");
@@ -82,7 +82,7 @@ class CleanCommandTest {
             Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwx------"));
         }
 
-        // zz.txt once; the never-deleted file contributes nothing despite four walk attempts.
+        // zz.txt once; the file that survived contributes nothing.
         assertThat(stats[0]).isEqualTo(1);
         assertThat(stats[1]).isEqualTo(3);
         assertThat(locked.resolve("file.txt")).exists();

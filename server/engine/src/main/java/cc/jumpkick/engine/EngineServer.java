@@ -736,7 +736,7 @@ public final class EngineServer implements AutoCloseable {
                 sendQuiet(writer, ProtoLifecycle.error(EngineProtocol.ERR_AUTH, "engine token rejected"));
                 return;
             }
-            serveConnection(reader, writer);
+            serveConnection(reader, writer, ch);
         } catch (IOException ignored) {
             // client disconnected / socket error mid-exchange — nothing to do
         } finally {
@@ -744,7 +744,7 @@ public final class EngineServer implements AutoCloseable {
         }
     }
 
-    private void serveConnection(BufferedReader reader, BufferedWriter writer) throws IOException {
+    private void serveConnection(BufferedReader reader, BufferedWriter writer, SocketChannel ch) throws IOException {
         String line;
         while ((line = reader.readLine()) != null) {
             String type = EngineProtocol.typeOf(line);
@@ -771,7 +771,7 @@ public final class EngineServer implements AutoCloseable {
             }
             HostedVerb verb = verbs.find(type);
             if (verb != null) {
-                if (dispatchVerb(verb, line, reader, writer)) return;
+                if (dispatchVerb(verb, line, reader, writer, ch)) return;
                 continue;
             }
             switch (type) {
@@ -871,15 +871,16 @@ public final class EngineServer implements AutoCloseable {
      * Registry dispatch. {@code true} means the verb owns the rest of this connection
      * (async plan / cache maint).
      */
-    private boolean dispatchVerb(HostedVerb verb, String line, BufferedReader reader, BufferedWriter writer)
+    private boolean dispatchVerb(
+            HostedVerb verb, String line, BufferedReader reader, BufferedWriter writer, SocketChannel ch)
             throws IOException {
         return switch (verb.shape()) {
             case VerbShape.AsyncPlan() -> {
-                jobs.submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer));
+                jobs.submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer, ch));
                 yield true;
             }
             case VerbShape.CacheMaint() -> {
-                jobs.submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer));
+                jobs.submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer, ch));
                 yield true;
             }
             case VerbShape.SyncRead() -> {

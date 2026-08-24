@@ -18,6 +18,7 @@ import cc.jumpkick.runtime.progress.ProgressBarMode;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.nio.channels.SocketChannel;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -140,6 +141,7 @@ public final class JobEnvelope {
     public long submit(String requestLine, JobRequest job, JobTransport transport) {
         BufferedReader reader = transport instanceof JobTransport.SocketWatch w ? w.reader() : null;
         BufferedWriter writer = transport instanceof JobTransport.SocketWatch w ? w.writer() : null;
+        SocketChannel channel = transport instanceof JobTransport.SocketWatch w ? w.channel() : null;
         boolean detached = transport instanceof JobTransport.FireAndForget;
         String threadPrefix = job.threadPrefix();
         String kind = job.verb();
@@ -280,11 +282,11 @@ public final class JobEnvelope {
                 done.countDown();
                 // Unblock the connection thread only if it is parked on client readLine
                 // waiting for BUILD_CANCEL / EOF — remote cancel finishes the runner without
-                // the client writing anything. A blanket interrupt here landed after
-                // the read loop too, leaving the flag set through teardown so the journal
-                // completion died on ClosedByInterruptException — a phantom "running" job in
-                // jk jobs until engine restart.
-                if (!detached && parkedOnRead.get()) connectionThread.interrupt();
+                // the client writing anything. Only while actually parked: a wake that lands
+                // after the read loop poisons teardown I/O instead (a stray interrupt once killed
+                // journal completion with ClosedByInterruptException, leaving a permanent
+                // "running" job in jk jobs).
+                if (!detached && parkedOnRead.get()) wakeOffClientRead(channel, connectionThread);
             }
         });
         runnerRef.set(started);
@@ -457,7 +459,16 @@ public final class JobEnvelope {
                         host.withProgress(host.withIo(finishPayload, eventRequestId), eventRequestId));
                 // Journal first: clearProgress retires the JobSession (drops the accumulator).
                 // Writing after retire leaves a permanent running=true stub in jk jobs.
-                host.writeJournal(eventRequestId, cancelled, elapsedMillis, writer);
+                try {
+                    host.writeJournal(eventRequestId, cancelled, elapsedMillis, writer);
+                } finally {
+                    // Last write under the project's target/ is the journal's jk-results.md copy,
+                    // so this is the moment the engine is provably done with the tree. The client
+                    // blocks on this line rather than the plan terminal — otherwise `jk build`
+                    // returns mid-write and a following `jk clean` races the memo/journal writers
+                    // (JK-2451). In a finally so a throwing journal can never strand the client.
+                    if (writer != null) sendQuiet(writer, ProtoLifecycle.jobFinish(eventRequestId));
+                }
                 host.clearProgress(eventRequestId);
                 // Idle boundary after finish side-effects so prune/GC see journal + event garbage too.
                 // Cache maintenance (plan=false) only GCs when nothing else is in flight.
@@ -504,6 +515,33 @@ public final class JobEnvelope {
                         + "ms)");
             }
         });
+    }
+
+    /**
+     * Wake the connection thread off client-readLine so it can run the finish tail.
+     *
+     * <p>Half-closing the read direction is the gentle wake: the blocked read sees EOF while the
+     * write direction stays usable, so the tail can still deliver {@code job-finish} — the line the
+     * client waits for before it may delete {@code target/} (JK-2451). {@link Thread#interrupt} is
+     * the fallback, and it is blunt: on a thread blocked in an InterruptibleChannel read it closes
+     * the whole channel, so the client learns the job ended one journal-write too early. A platform
+     * whose half-close does not wake a blocked read is still covered — the client half-closes its
+     * own end once it has the terminal, which delivers the same EOF.
+     */
+    private static void wakeOffClientRead(@Nullable SocketChannel channel, Thread connectionThread) {
+        if (channel != null) {
+            try {
+                channel.shutdownInput();
+                return;
+            } catch (IOException | UnsupportedOperationException ignored) {
+                // Not a half-closable transport (or already gone) — fall through to the blunt wake.
+            }
+        }
+        try {
+            connectionThread.interrupt();
+        } catch (RuntimeException ignored) {
+            // best-effort wake
+        }
     }
 
     public void registerLiveJob(

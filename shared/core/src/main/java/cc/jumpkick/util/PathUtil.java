@@ -73,10 +73,45 @@ public final class PathUtil {
 
     /** As {@link #deleteRecursively}, but a failed delete propagates instead of being swallowed. */
     public static void deleteRecursivelyOrThrow(Path root) throws IOException {
+        deleteRecursivelyOrThrow(root, new Removed());
+    }
+
+    /**
+     * As {@link #deleteRecursivelyOrThrow(Path)}, tallying what came off disk — what {@code jk
+     * clean} prints. The tally is mutable on purpose: a delete that fails part-way still removed
+     * everything it got to, and the caller's report has to say so.
+     */
+    public static void deleteRecursivelyOrThrow(Path root, Removed tally) throws IOException {
         if (root == null || !Files.exists(root)) return;
         try (var stream = Files.walk(root)) {
+            // Reverse lexicographic order visits every child before its parent: a child's path is
+            // the parent's plus a separator, so it always sorts after it.
             var paths = stream.sorted(Comparator.reverseOrder()).toList();
-            for (Path p : paths) Files.deleteIfExists(p);
+            for (Path p : paths) {
+                // Size first — a deleted file has none left to ask for — and count only a delete
+                // that actually happened.
+                long size = Files.isRegularFile(p) ? Files.size(p) : -1;
+                if (Files.deleteIfExists(p) && size >= 0) tally.add(size);
+            }
+        }
+    }
+
+    /** Running tally for {@link #deleteRecursivelyOrThrow(Path, Removed)}. Directories count as 0 files. */
+    public static final class Removed {
+        private long files;
+        private long bytes;
+
+        public long files() {
+            return files;
+        }
+
+        public long bytes() {
+            return bytes;
+        }
+
+        void add(long size) {
+            files++;
+            bytes += size;
         }
     }
 }

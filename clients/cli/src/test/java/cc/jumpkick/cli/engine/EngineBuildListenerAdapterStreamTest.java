@@ -4,10 +4,14 @@ package cc.jumpkick.cli.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.run.BuildPlanResult;
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.StringReader;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -25,6 +29,43 @@ class EngineBuildListenerAdapterStreamTest {
 
     private static BufferedReader stream(String... lines) {
         return new BufferedReader(new StringReader(String.join("\n", lines) + "\n"));
+    }
+
+    /** A reader that records every line the loop actually consumed. */
+    private static BufferedReader recording(List<String> consumed, String... lines) {
+        BufferedReader source = stream(lines);
+        return new BufferedReader(source) {
+            @Override
+            public String readLine() throws IOException {
+                String line = source.readLine();
+                if (line != null) consumed.add(line);
+                return line;
+            }
+        };
+    }
+
+    @Test
+    void the_stream_waits_for_job_finish_before_returning() throws Exception {
+        List<String> consumed = new ArrayList<>();
+        // The engine keeps writing under target/ after the plan terminal (preflight memos, the
+        // journal's jk-results.md copy) and only then sends job-finish. Returning on the terminal
+        // hands the caller a tree the engine is still writing into (JK-2451).
+        BufferedReader reader = recording(
+                consumed,
+                ProtoLifecycle.jobStart(43, "build", "/proj", 9),
+                ProtoEvents.planDone(0),
+                ProtoEvents.planFinish("/proj", true, false),
+                ProtoJobs.timeline("/proj/target/jk-profile.json"),
+                ProtoLifecycle.jobFinish(43),
+                "{\"type\":\"past-the-end\"}");
+
+        BuildPlanResult result = EngineBuildListenerAdapter.streamSingleBuildPlanEvents(
+                reader, steps -> new cc.jumpkick.run.BuildPlanListener() {}, null, null);
+
+        assertThat(result.success()).isTrue();
+        assertThat(consumed).anyMatch(l -> l.contains("job-finish"));
+        // …and not one line further: the wait ends at job-finish, it does not drain the socket.
+        assertThat(consumed).noneMatch(l -> l.contains("past-the-end"));
     }
 
     @Test
