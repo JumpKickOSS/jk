@@ -28,6 +28,7 @@ import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -198,7 +199,7 @@ public final class NewCommand implements CliCommand {
         if (noModule) return Optional.empty();
         Path normHome = home == null ? null : home.toAbsolutePath().normalize();
         for (Path dir = startDir.toAbsolutePath().normalize(); dir != null; dir = dir.getParent()) {
-            if (Files.exists(dir.resolve("jk.toml"))) return Optional.of(dir);
+            if (Files.exists(dir.resolve(ManifestPaths.MANIFEST))) return Optional.of(dir);
             if (Files.isDirectory(dir.resolve(".git"))) return Optional.empty(); // exited the repo
             if (dir.equals(normHome)) return Optional.empty(); // hit $HOME
         }
@@ -261,7 +262,7 @@ public final class NewCommand implements CliCommand {
         // For any other invocation we defer the existing-manifest check to
         // after the target is fully resolved (the project name may come from
         // the wizard or from `--name`).
-        if (directory != null && isCurrentDirArg(directory) && Files.exists(cwd.resolve("jk.toml"))) {
+        if (directory != null && isCurrentDirArg(directory) && Files.exists(cwd.resolve(ManifestPaths.MANIFEST))) {
             String existing = wizardPresetName(directory, cwd)
                     .orElseGet(
                             () -> cwd.getFileName() != null ? cwd.getFileName().toString() : "this directory");
@@ -468,7 +469,7 @@ public final class NewCommand implements CliCommand {
                     var pickedOpt = ((NewJdkCandidate.Installed) resolved).option();
                     var inputs = fromAnswers(ctx.require(ANSWERS), cwd, pickedOpt);
                     ctx.put(INPUTS, inputs);
-                    if (Files.exists(inputs.directory().resolve("jk.toml"))) {
+                    if (Files.exists(inputs.directory().resolve(ManifestPaths.MANIFEST))) {
                         ctx.error("exists", "project " + inputs.name() + " already exists at " + inputs.directory());
                         throw new RuntimeException("project exists");
                     }
@@ -534,7 +535,7 @@ public final class NewCommand implements CliCommand {
             CommandWedge.printFail("New", "--assembly requires --executable");
             return Exit.USAGE;
         }
-        if (Files.exists(inputs.directory().resolve("jk.toml"))) {
+        if (Files.exists(inputs.directory().resolve(ManifestPaths.MANIFEST))) {
             emitProjectExistsError(
                     inputs.group() + ":" + inputs.name(),
                     parent != null,
@@ -631,7 +632,7 @@ public final class NewCommand implements CliCommand {
         if (parent != null) {
             Path root = parent.root();
             String rel = root.relativize(inputs.directory()).toString().replace('\\', '/');
-            Path rootToml = root.resolve("jk.toml");
+            Path rootToml = root.resolve(ManifestPaths.MANIFEST);
             // Registers the module, promoting a plain project into a workspace
             // root (creating the [workspace] table) when this is its first module.
             EngineEdits.apply(rootToml, "register-workspace-module", List.of(rel));

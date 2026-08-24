@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.util;
 
+import cc.jumpkick.lock.ManifestPaths;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Objects;
@@ -176,7 +177,7 @@ public final class JkDirs {
     public Path userConfigFilePath() {
         String override = nonBlank(env.apply("JK_CONFIG_FILE"));
         if (override != null) return Path.of(override);
-        return configDir().resolve("config.toml");
+        return configDir().resolve(ManifestPaths.CONFIG);
     }
 
     /**

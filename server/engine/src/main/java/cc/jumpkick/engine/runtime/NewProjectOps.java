@@ -12,6 +12,7 @@ import cc.jumpkick.giter8.Giter8ShortNames;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
 import cc.jumpkick.giter8.PluginTemplates;
 import cc.jumpkick.giter8.TemplateSpec;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.runtime.ProjectIds;
 import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.scaffold.NewScaffolder;
@@ -261,7 +262,7 @@ public final class NewProjectOps {
                     }
                 }
             }
-            if (!Files.isRegularFile(target.resolve("jk.toml"))) {
+            if (!Files.isRegularFile(target.resolve(ManifestPaths.MANIFEST))) {
                 throw new IOException("template did not produce jk.toml: " + prep.template());
             }
             if (req.standalone()) {
@@ -333,7 +334,7 @@ public final class NewProjectOps {
                 throw new IllegalArgumentException("name escapes parentDir");
             }
         }
-        if (Files.exists(target.resolve("jk.toml"))) {
+        if (Files.exists(target.resolve(ManifestPaths.MANIFEST))) {
             throw new IllegalStateException("project already exists: " + target);
         }
         if (Files.isDirectory(target)) {

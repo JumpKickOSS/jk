@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.WorkspaceMerge;
@@ -55,7 +56,7 @@ public final class WorkspaceResolve {
             JkBuild root;
             try {
                 // parseLocal for the root — parse() would re-enter applyWorkspace.
-                root = JkBuildParser.parseLocal(rootDir.get().resolve("jk.toml"));
+                root = JkBuildParser.parseLocal(rootDir.get().resolve(ManifestPaths.MANIFEST));
             } catch (JkBuildParseException e) {
                 if (module.project().inheritsFromWorkspace()
                         || module.project().requiresWorkspaceRoot()
@@ -102,7 +103,7 @@ public final class WorkspaceResolve {
         try {
             var rootDir = WorkspaceLocator.findRoot(moduleDir);
             if (rootDir.isEmpty()) return Set.of();
-            JkBuild root = JkBuildParser.parseLocal(rootDir.get().resolve("jk.toml"));
+            JkBuild root = JkBuildParser.parseLocal(rootDir.get().resolve(ManifestPaths.MANIFEST));
             if (!root.isWorkspaceRoot()) return Set.of();
             Set<String> out = new LinkedHashSet<>();
             out.add(root.project().group() + ":" + root.project().name());

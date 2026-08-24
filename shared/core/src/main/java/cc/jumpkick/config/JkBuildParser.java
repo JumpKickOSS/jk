@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
@@ -297,12 +298,12 @@ public final class JkBuildParser {
         if (root.contains("catalog")) {
             throw new JkBuildParseException("catalog = … was removed — short names always resolve through the system "
                     + "catalog (global + bundled) plus optional workspace-root "
-                    + LibraryCatalog.PROJECT_FILE);
+                    + ManifestPaths.LIBRARIES);
         }
         if (root.getTable("libraries") != null) {
             throw new JkBuildParseException(
                     "[libraries] in jk.toml was removed — put short-name → group:artifact entries in "
-                            + LibraryCatalog.PROJECT_FILE
+                            + ManifestPaths.LIBRARIES
                             + " at the workspace root (standalone: project root)");
         }
     }

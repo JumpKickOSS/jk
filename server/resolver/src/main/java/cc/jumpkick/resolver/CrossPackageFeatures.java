@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -52,7 +53,7 @@ final class CrossPackageFeatures {
                         + " (workspace/git/Maven sidecar come later)");
             }
             Path libToml =
-                    projectDir.resolve(d.pathSource().rawPath()).normalize().resolve("jk.toml");
+                    projectDir.resolve(d.pathSource().rawPath()).normalize().resolve(ManifestPaths.MANIFEST);
             if (!Files.isRegularFile(libToml)) {
                 throw new IllegalArgumentException("dependency `"
                         + d.library()

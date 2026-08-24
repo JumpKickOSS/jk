@@ -24,9 +24,6 @@ import java.util.Optional;
  */
 public final class LockPaths {
 
-    /** Filename only — always resolve via {@link #lockFile(Path)}. */
-    public static final String FILE_NAME = "jk-lock.toml";
-
     private LockPaths() {}
 
     /**
@@ -36,7 +33,7 @@ public final class LockPaths {
     public static Path lockOwnerDir(Path projectDir) {
         Objects.requireNonNull(projectDir, "projectDir");
         Path dir = projectDir.toAbsolutePath().normalize();
-        Path toml = dir.resolve("jk.toml");
+        Path toml = dir.resolve(ManifestPaths.MANIFEST);
         if (Files.isRegularFile(toml) && WorkspaceScan.isWorkspaceRoot(dir)) {
             return dir;
         }
@@ -53,7 +50,7 @@ public final class LockPaths {
 
     /** Absolute path of the lockfile that governs {@code projectDir}. */
     public static Path lockFile(Path projectDir) {
-        return lockOwnerDir(projectDir).resolve(FILE_NAME);
+        return lockOwnerDir(projectDir).resolve(ManifestPaths.LOCK);
     }
 
     /**
@@ -66,7 +63,7 @@ public final class LockPaths {
         if (!owner.equals(dir)) {
             return true; // member → root
         }
-        Path toml = owner.resolve("jk.toml");
+        Path toml = owner.resolve(ManifestPaths.MANIFEST);
         if (!Files.isRegularFile(toml)) {
             return false;
         }

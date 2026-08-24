@@ -11,6 +11,7 @@ import cc.jumpkick.cli.bsp.BspServer;
 import cc.jumpkick.cli.ide.IdeEngineClient;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -85,7 +86,7 @@ public final class BspCommand implements CliCommand {
     }
 
     private static int install(Path projectDir) throws Exception {
-        if (!Files.isRegularFile(projectDir.resolve("jk.toml"))) {
+        if (!Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST))) {
             CommandWedge.printFail("BSP", "no jk.toml in " + PathDisplay.of(projectDir));
             return Exit.CONFIG;
         }

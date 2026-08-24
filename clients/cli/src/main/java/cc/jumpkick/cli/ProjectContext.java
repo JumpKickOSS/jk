@@ -3,6 +3,7 @@ package cc.jumpkick.cli;
 
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,7 +22,7 @@ public record ProjectContext(Path dir, Path buildFile, Path lockFile) {
      * Exit#CONFIG}).
      */
     public static Optional<ProjectContext> require(Path dir, String command) {
-        Path buildFile = dir.resolve("jk.toml");
+        Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(buildFile)) {
             CommandWedge.printFail(command, "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Optional.empty();

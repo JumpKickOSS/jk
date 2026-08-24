@@ -21,6 +21,7 @@ import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -218,19 +219,21 @@ public final class TreeCommand implements CliCommand {
      * ({@code workspace.modules} + each member's {@code name}).
      */
     private static TreeDir matchColonNameBootstrap(Path root, String spec, String want) {
-        List<String> rels =
-                TomlScan.scan(root.resolve("jk.toml"), "workspace.modules").stringArray("workspace.modules");
+        List<String> rels = TomlScan.scan(root.resolve(ManifestPaths.MANIFEST), "workspace.modules")
+                .stringArray("workspace.modules");
         List<String> dirs = new ArrayList<>();
         List<String> names = new ArrayList<>();
         if (rels.isEmpty()) {
             dirs.add(root.toString());
-            String n = TomlScan.scan(root.resolve("jk.toml"), "name").get("name");
+            String n =
+                    TomlScan.scan(root.resolve(ManifestPaths.MANIFEST), "name").get("name");
             names.add(n == null || n.isBlank() ? root.getFileName().toString() : n);
         } else {
             for (String rel : rels) {
                 Path d = root.resolve(rel).toAbsolutePath().normalize();
                 dirs.add(d.toString());
-                String n = TomlScan.scan(d.resolve("jk.toml"), "name").get("name");
+                String n =
+                        TomlScan.scan(d.resolve(ManifestPaths.MANIFEST), "name").get("name");
                 names.add(n == null || n.isBlank() ? d.getFileName().toString() : n);
             }
         }
@@ -250,7 +253,7 @@ public final class TreeCommand implements CliCommand {
         if (Files.exists(relative) && !Files.isDirectory(relative)) {
             return TreeDir.fail("`" + spec + "` is not a directory");
         }
-        if (Files.isDirectory(relative) && !Files.isRegularFile(relative.resolve("jk.toml"))) {
+        if (Files.isDirectory(relative) && !Files.isRegularFile(relative.resolve(ManifestPaths.MANIFEST))) {
             return TreeDir.fail("no jk.toml in " + relative);
         }
         return TreeDir.fail("`" + spec + "` is not a module directory");
@@ -269,7 +272,7 @@ public final class TreeCommand implements CliCommand {
     }
 
     private static boolean isModuleDir(Path dir) {
-        return Files.isDirectory(dir) && Files.isRegularFile(dir.resolve("jk.toml"));
+        return Files.isDirectory(dir) && Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST));
     }
 
     record TreeDir(Path dir, String error) {

@@ -15,6 +15,7 @@ import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TestSummary;
@@ -118,7 +119,7 @@ public final class ImageVerb implements HostedVerb {
                         .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
                 var wsRoot = WorkspaceLocator.findRoot(entryDir);
                 if (wsRoot.isPresent()) {
-                    JkBuild rootBuild = JkBuildParser.parse(wsRoot.get().resolve("jk.toml"));
+                    JkBuild rootBuild = JkBuildParser.parse(wsRoot.get().resolve(ManifestPaths.MANIFEST));
                     if (rootBuild.isWorkspaceRoot()
                             && !BuildGraph.canonicalPath(wsRoot.get()).equals(BuildGraph.canonicalPath(entryDir))) {
                         // Workspace member: same orchestrator as jk build; image terminal on this

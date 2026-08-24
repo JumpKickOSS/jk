@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.watch;
 
+import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -121,7 +122,7 @@ public final class SourceWatch implements AutoCloseable {
                 Path changed = dir.resolve(rel);
                 String name = rel.getFileName().toString();
                 if (dir.equals(projectDir)) {
-                    if (name.equals("jk.toml")) manifest = true;
+                    if (name.equals(ManifestPaths.MANIFEST)) manifest = true;
                     continue;
                 }
                 if (Files.isDirectory(changed) && event.kind() == StandardWatchEventKinds.ENTRY_CREATE) {

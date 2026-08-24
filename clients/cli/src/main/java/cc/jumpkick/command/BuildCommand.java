@@ -39,6 +39,7 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -164,7 +165,7 @@ public final class BuildCommand implements CliCommand {
         SessionContext.install(
                 SessionContext.current().withParallelTests(parallelTests).withTestSelection(testSelection));
         Path startDir = global.workingDir();
-        Path buildFile = startDir.resolve("jk.toml");
+        Path buildFile = startDir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(buildFile)) {
             CommandWedge.printFail("Build", "no jk.toml in " + PathDisplay.styledRaw(startDir));
             return Exit.CONFIG;
@@ -817,7 +818,7 @@ public final class BuildCommand implements CliCommand {
      */
     private int runForDir(Path dir) throws Exception {
         long startNanos = System.nanoTime(); // captured before the forecast so timing includes it
-        Path buildFile = dir.resolve("jk.toml");
+        Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(buildFile)) {
             CommandWedge.printFail("Build", "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Exit.CONFIG;

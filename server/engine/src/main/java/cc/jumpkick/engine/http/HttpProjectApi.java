@@ -7,6 +7,7 @@ import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.runtime.NewProjectOps;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.DependencyGraphModel;
 import cc.jumpkick.runtime.ProjectCard;
@@ -596,7 +597,7 @@ final class HttpProjectApi {
                 // A manifest edit stales the lock's manifests-sha256 stamp: the next build pays a
                 // full re-resolve. Tell the pane so the user is not surprised.
                 String fileName = w.path().substring(w.path().lastIndexOf('/') + 1);
-                if (fileName.equals("jk.toml") || fileName.equals("jk-libs.toml")) {
+                if (fileName.equals(ManifestPaths.MANIFEST) || fileName.equals(ManifestPaths.LIBRARIES)) {
                     resp.put("lockStale", Boolean.TRUE);
                 }
                 HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.jsonl.MiniJson.write(resp));

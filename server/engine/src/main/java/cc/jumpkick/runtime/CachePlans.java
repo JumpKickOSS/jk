@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Workspace;
 import cc.jumpkick.run.BuildPlan;
@@ -281,7 +282,7 @@ public final class CachePlans {
         LinkedHashSet<Path> dirs = new LinkedHashSet<>();
         dirs.add(here);
         try {
-            JkBuild manifest = JkBuildParser.parse(here.resolve("jk.toml"));
+            JkBuild manifest = JkBuildParser.parse(here.resolve(ManifestPaths.MANIFEST));
             Path wsRoot = manifest.isWorkspaceRoot()
                     ? here
                     : WorkspaceLocator.findRoot(here).orElse(null);
@@ -292,7 +293,8 @@ public final class CachePlans {
                     wsRoot = wsRoot.toAbsolutePath().normalize();
                 }
                 dirs.add(wsRoot);
-                JkBuild root = wsRoot.equals(here) ? manifest : JkBuildParser.parse(wsRoot.resolve("jk.toml"));
+                JkBuild root =
+                        wsRoot.equals(here) ? manifest : JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
                 for (String module : root.workspaceOpt().map(Workspace::modules).orElse(List.of())) {
                     Path mod = wsRoot.resolve(module).normalize();
                     try {
@@ -315,7 +317,7 @@ public final class CachePlans {
         for (Path dir : moduleDirs) {
             JkBuild project;
             try {
-                project = JkBuildParser.parse(dir.resolve("jk.toml"));
+                project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
             } catch (Exception e) {
                 continue; // no/invalid manifest here — nothing to tag
             }

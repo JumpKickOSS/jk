@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.manifest;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.PluginDeclaration;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -62,7 +63,8 @@ public final class PluginDescriptorStore {
         if (!Files.isRegularFile(file)) return Optional.empty();
         try {
             PluginDescriptor parsed = PluginDescriptors.parse(
-                    Files.readString(file, StandardCharsets.UTF_8), decl.coordinateWithVersion() + "!jk-plugin.toml");
+                    Files.readString(file, StandardCharsets.UTF_8),
+                    decl.coordinateWithVersion() + "!" + ManifestPaths.PLUGIN_MANIFEST);
             // Clear-on-overflow (ProjectIds idiom): a resident engine otherwise pins one
             // descriptor per plugin sha it ever met, across every checkout and upgrade.
             if (BY_SHA.size() >= 1_024) BY_SHA.clear();

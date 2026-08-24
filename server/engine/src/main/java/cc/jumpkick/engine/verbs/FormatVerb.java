@@ -12,6 +12,7 @@ import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.FormatPlans;
@@ -58,7 +59,7 @@ public final class FormatVerb implements HostedVerb {
         Path entryDir = Path.of(spec.dir());
         JkBuild entry;
         try {
-            entry = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+            entry = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
         } catch (Exception e) {
             throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
         }

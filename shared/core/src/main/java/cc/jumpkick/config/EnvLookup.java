@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -46,9 +47,6 @@ import java.util.function.UnaryOperator;
  */
 public final class EnvLookup {
 
-    /** {@code .env} — no {@code .env.{profile}} yet; profiles already exist and the overlap needs a design. */
-    public static final String FILE_NAME = ".env";
-
     private final Map<String, String> fromFiles;
     private final UnaryOperator<String> realEnv;
 
@@ -67,9 +65,9 @@ public final class EnvLookup {
     public static EnvLookup forModule(Path moduleDir, UnaryOperator<String> realEnv) {
         Map<String, String> layered = new LinkedHashMap<>();
         workspaceRoot(moduleDir).ifPresent(root -> {
-            if (!root.equals(moduleDir)) layered.putAll(readCached(root.resolve(FILE_NAME)));
+            if (!root.equals(moduleDir)) layered.putAll(readCached(root.resolve(ManifestPaths.ENV)));
         });
-        layered.putAll(readCached(moduleDir.resolve(FILE_NAME))); // module wins over workspace
+        layered.putAll(readCached(moduleDir.resolve(ManifestPaths.ENV))); // module wins over workspace
         return new EnvLookup(layered, realEnv);
     }
 

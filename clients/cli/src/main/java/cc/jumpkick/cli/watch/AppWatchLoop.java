@@ -13,6 +13,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ExecPlan;
 import cc.jumpkick.engine.protocol.PluginCommandReport;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
@@ -171,7 +172,7 @@ public final class AppWatchLoop {
     }
 
     private boolean build(Path projectDir, Path cache) throws IOException, InterruptedException {
-        String target = BuildCommand.buildTarget(projectDir.resolve("jk.toml"), projectDir);
+        String target = BuildCommand.buildTarget(projectDir.resolve(ManifestPaths.MANIFEST), projectDir);
         ConsoleSpec spec = new ConsoleSpec(
                 "Watch", r -> Theme.colorize("Built", Theme.active().focused()), r -> "Build failed");
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
@@ -197,7 +198,7 @@ public final class AppWatchLoop {
     }
 
     private boolean compile(Path projectDir, Path cache) throws IOException, InterruptedException {
-        String target = BuildCommand.buildTarget(projectDir.resolve("jk.toml"), projectDir);
+        String target = BuildCommand.buildTarget(projectDir.resolve(ManifestPaths.MANIFEST), projectDir);
         ConsoleSpec spec = new ConsoleSpec(
                 "Watch", r -> Theme.colorize("Recompiled", Theme.active().focused()), r -> "Compile failed");
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);

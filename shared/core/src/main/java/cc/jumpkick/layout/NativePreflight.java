@@ -3,6 +3,7 @@ package cc.jumpkick.layout;
 
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -73,7 +74,7 @@ public final class NativePreflight {
      */
     public static String specifiedMain(Path moduleDir, String cliOverride) {
         if (notBlank(cliOverride)) return cliOverride;
-        Path toml = moduleDir.resolve("jk.toml");
+        Path toml = moduleDir.resolve(ManifestPaths.MANIFEST);
         if (!Files.isRegularFile(toml)) return null;
         var scan = TomlScan.scan(toml, "native.main", "image.main", "application.main");
         String fromNative = scan.get("native.main");

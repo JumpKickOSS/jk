@@ -14,6 +14,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -112,7 +113,7 @@ public final class ImagePlans {
             String tarballArg,
             String dockerExecutableArg,
             java.util.function.UnaryOperator<BuildPlanner.Inputs> decorate) {
-        Path jkBuildPath = projectDir.resolve("jk.toml");
+        Path jkBuildPath = projectDir.resolve(ManifestPaths.MANIFEST);
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
         boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(projectDir);
         int estimatedTestCount = TestSupport.estimateAllSuiteTestCount(projectDir, compact);

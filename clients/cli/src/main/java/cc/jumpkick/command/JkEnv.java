@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkVendor;
+import cc.jumpkick.lock.ManifestPaths;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -63,7 +64,8 @@ public final class JkEnv {
         String projectGraal = null;
         int javaRelease = 0;
         if (root.isPresent()) {
-            var scan = cc.jumpkick.config.TomlScan.scan(root.get().resolve("jk.toml"), "jdk", "java", "native.graal");
+            var scan = cc.jumpkick.config.TomlScan.scan(
+                    root.get().resolve(ManifestPaths.MANIFEST), "jdk", "java", "native.graal");
             projectJdk = scan.get("jdk");
             javaRelease = scan.getInt("java", 0);
             // [native] present without an explicit graal spec defaults to "graalvm" —
@@ -193,7 +195,7 @@ public final class JkEnv {
         if (cwd == null) return Optional.empty();
         var p = cwd.toAbsolutePath().normalize();
         while (p != null) {
-            if (Files.isRegularFile(p.resolve("jk.toml"))) return Optional.of(p);
+            if (Files.isRegularFile(p.resolve(ManifestPaths.MANIFEST))) return Optional.of(p);
             p = p.getParent();
         }
         return Optional.empty();

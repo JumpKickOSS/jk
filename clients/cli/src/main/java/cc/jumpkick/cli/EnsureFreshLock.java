@@ -8,6 +8,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.util.JkDirs;
@@ -104,7 +105,7 @@ public final class EnsureFreshLock {
             boolean ownSpinner,
             java.net.URI repoUrl) {
         Path dir = projectDir.toAbsolutePath().normalize();
-        if (!Files.isRegularFile(dir.resolve("jk.toml"))) {
+        if (!Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) {
             return Exit.SUCCESS; // caller already validated project
         }
         if (!needsRefresh(dir)) {
@@ -212,7 +213,7 @@ public final class EnsureFreshLock {
     static String lockCoordLabel(Path projectDir) {
         try {
             Path owner = LockPaths.lockOwnerDir(projectDir);
-            Path toml = owner.resolve("jk.toml");
+            Path toml = owner.resolve(ManifestPaths.MANIFEST);
             if (!Files.isRegularFile(toml)) return owner.getFileName().toString();
             var info = cc.jumpkick.command.BuildCommand.projectInfoOrNull(owner);
             if (info != null && info.error() == null) {

@@ -33,6 +33,7 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -666,7 +667,7 @@ public final class TestCommand implements CliCommand {
             throw new IllegalArgumentException("--all and --suite cannot be combined");
         }
         Path wd = GlobalOptions.from(in).workingDir();
-        Path toml = wd.resolve("jk.toml");
+        Path toml = wd.resolve(ManifestPaths.MANIFEST);
         String explicit = in.value("profile").orElse(null);
         boolean explicitProfile = explicit != null && !explicit.isBlank();
         String profileName = explicitProfile ? explicit : Profiles.autoSelect(System.getenv());

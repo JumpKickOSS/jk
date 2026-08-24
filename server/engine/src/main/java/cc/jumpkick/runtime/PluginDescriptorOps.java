@@ -7,6 +7,7 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginDeclaration;
@@ -36,9 +37,6 @@ import java.util.zip.ZipFile;
 public final class PluginDescriptorOps {
 
     private PluginDescriptorOps() {}
-
-    /** The manifest entry name at the root of a plugin jar. */
-    public static final String MANIFEST_ENTRY = "jk-plugin.toml";
 
     /**
      * Materialize every locked declaration's manifest that is missing from {@code moduleDir}'s
@@ -77,9 +75,9 @@ public final class PluginDescriptorOps {
     /** Extract {@code jar}'s root manifest into the store (atomic move over a temp file). */
     public static void materialize(Path moduleDir, String sha256Hex, Path jar) throws IOException {
         try (ZipFile zip = new ZipFile(jar.toFile())) {
-            ZipEntry entry = zip.getEntry(MANIFEST_ENTRY);
+            ZipEntry entry = zip.getEntry(ManifestPaths.PLUGIN_MANIFEST);
             if (entry == null) {
-                throw new IOException(jar + " has no root " + MANIFEST_ENTRY + " — not a build plugin");
+                throw new IOException(jar + " has no root " + ManifestPaths.PLUGIN_MANIFEST + " — not a build plugin");
             }
             String text;
             try (InputStream in = zip.getInputStream(entry)) {

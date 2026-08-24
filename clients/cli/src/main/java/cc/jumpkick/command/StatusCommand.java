@@ -17,6 +17,7 @@ import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -81,7 +82,7 @@ public final class StatusCommand implements CliCommand {
         CacheSnapshot cache = null;
 
         // Fresh lock before forecast / module pins — never make the user run `jk lock` for status.
-        if (!globalOnly && Files.isRegularFile(cwd.resolve("jk.toml"))) {
+        if (!globalOnly && Files.isRegularFile(cwd.resolve(ManifestPaths.MANIFEST))) {
             int lockCode = EnsureFreshLock.ensure(cwd, JkDirs.cache(), global, "Status");
             if (lockCode != 0) return lockCode;
         }
@@ -432,7 +433,7 @@ public final class StatusCommand implements CliCommand {
             long etaMillis, int moduleTotal, int modulesCached, int sourceCount, int testCount, int artifactsCached) {}
 
     private static ProjectSnapshot loadProject(Path cwd) {
-        Path buildFile = cwd.resolve("jk.toml");
+        Path buildFile = cwd.resolve(ManifestPaths.MANIFEST);
         if (!Files.isRegularFile(buildFile)) return null;
         try {
             var info = BuildCommand.projectInfoOrNull(cwd, true);

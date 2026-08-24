@@ -42,16 +42,16 @@ public final class LockManifestDigest {
     public static String compute(Path lockOwnerDir) throws IOException {
         Path owner = lockOwnerDir.toAbsolutePath().normalize();
         Map<String, byte[]> parts = new LinkedHashMap<>();
-        Path rootToml = owner.resolve("jk.toml");
+        Path rootToml = owner.resolve(ManifestPaths.MANIFEST);
         if (Files.isRegularFile(rootToml)) {
-            parts.put("jk.toml", normalized(Files.readAllBytes(rootToml)));
+            parts.put(ManifestPaths.MANIFEST, normalized(Files.readAllBytes(rootToml)));
             try {
                 JkBuild root = JkBuildParser.parseLocal(rootToml);
                 addPathDepManifests(parts, owner, owner, root);
                 if (root.isWorkspaceRoot()) {
                     for (Map.Entry<Path, JkBuild> member :
                             WorkspaceLoader.loadModules(owner, root).entrySet()) {
-                        Path mt = member.getKey().resolve("jk.toml");
+                        Path mt = member.getKey().resolve(ManifestPaths.MANIFEST);
                         if (!Files.isRegularFile(mt)) continue;
                         String rel = owner.relativize(mt).toString().replace('\\', '/');
                         parts.put(rel, normalized(Files.readAllBytes(mt)));
@@ -65,9 +65,9 @@ public final class LockManifestDigest {
         // The workspace catalog layer (jk-libs.toml) changes how short names resolve to
         // group:artifact, so a pin edit must flip staleness exactly like a manifest edit —
         // without this the lock kept resolving the old GA while looking fresh.
-        Path libs = owner.resolve("jk-libs.toml");
+        Path libs = owner.resolve(ManifestPaths.LIBRARIES);
         if (Files.isRegularFile(libs)) {
-            parts.put("jk-libs.toml", normalized(Files.readAllBytes(libs)));
+            parts.put(ManifestPaths.LIBRARIES, normalized(Files.readAllBytes(libs)));
         }
         return hashParts(parts);
     }
@@ -84,7 +84,7 @@ public final class LockManifestDigest {
                 Path toml = declaringDir
                         .resolve(d.pathSource().rawPath())
                         .normalize()
-                        .resolve("jk.toml");
+                        .resolve(ManifestPaths.MANIFEST);
                 if (!Files.isRegularFile(toml)) continue;
                 String key;
                 try {

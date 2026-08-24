@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.TaskNames;
@@ -96,7 +97,7 @@ public final class ModuleOutputRestore {
             futures.add(CompletableFuture.supplyAsync(
                     () -> {
                         try {
-                            Path toml = dir.resolve("jk.toml");
+                            Path toml = dir.resolve(ManifestPaths.MANIFEST);
                             if (!Files.isRegularFile(toml)) return dir;
                             JkBuild build = JkBuildParser.parse(toml);
                             if (!packageOutputsMissing(workspaceRoot, dir, build)) return null;

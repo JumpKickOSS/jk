@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapPlan;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
@@ -314,7 +315,7 @@ public final class BuildEta {
                     || t.contains("classpath")
                     || t.contains("options")
                     || t.contains("not locked")
-                    || t.contains("jk.toml")) {
+                    || t.contains(ManifestPaths.MANIFEST)) {
                 return true;
             }
         }

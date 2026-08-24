@@ -15,6 +15,7 @@ import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.BuildGraph;
@@ -71,7 +72,7 @@ public final class CompileVerb implements HostedVerb {
         if (!spec.modules().isEmpty()) {
             JkBuild entry;
             try {
-                entry = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+                entry = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
             } catch (Exception e) {
                 throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
             }
@@ -99,7 +100,7 @@ public final class CompileVerb implements HostedVerb {
                 // (JK-2103). The client mirrors this condition and expects workspace events.
                 var wsRoot = WorkspaceLocator.findRoot(entryDir);
                 if (wsRoot.isPresent()) {
-                    JkBuild rootBuild = JkBuildParser.parse(wsRoot.get().resolve("jk.toml"));
+                    JkBuild rootBuild = JkBuildParser.parse(wsRoot.get().resolve(ManifestPaths.MANIFEST));
                     if (rootBuild.isWorkspaceRoot()) {
                         Set<Path> selected = new LinkedHashSet<>();
                         List<String> raw = new ArrayList<>();

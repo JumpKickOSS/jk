@@ -7,6 +7,7 @@ import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Variants;
@@ -83,7 +84,7 @@ public final class LockFlow {
             @Nullable URI repoUrl,
             boolean conservative)
             throws Exception {
-        if (!Files.exists(dir.resolve("jk.toml"))) {
+        if (!Files.exists(dir.resolve(ManifestPaths.MANIFEST))) {
             return new Result(Exit.CONFIG, "no jk.toml in " + dir, null, null, 0);
         }
         Files.createDirectories(cache);
@@ -165,7 +166,7 @@ public final class LockFlow {
     private static String variantUnionHint(Path lockDir) {
         List<String> lines = new ArrayList<>();
         try {
-            JkBuild owner = JkBuildParser.parse(lockDir.resolve("jk.toml"));
+            JkBuild owner = JkBuildParser.parse(lockDir.resolve(ManifestPaths.MANIFEST));
             collectOverlayLines(owner, null, lines);
             if (owner.isWorkspaceRoot()) {
                 for (var e : WorkspaceLoader.loadModules(lockDir, owner).entrySet()) {

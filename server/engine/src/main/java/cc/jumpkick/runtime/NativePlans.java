@@ -5,6 +5,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.NativePreflight;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
@@ -109,7 +110,7 @@ public final class NativePlans {
             boolean verbose,
             boolean allowNative,
             UnaryOperator<BuildPlanner.Inputs> decorate) {
-        Path buildFile = moduleDir.resolve("jk.toml");
+        Path buildFile = moduleDir.resolve(ManifestPaths.MANIFEST);
         Path lockFile = LockPaths.lockFile(moduleDir);
         boolean compact = ModuleLayout.isCompact(moduleDir);
         int estimatedTests = TestSupport.estimateAllSuiteTestCount(moduleDir, compact);

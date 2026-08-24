@@ -10,6 +10,7 @@ import cc.jumpkick.layout.SourceLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.plugin.Plugin;
@@ -116,8 +117,8 @@ public final class Publisher implements Plugin, PublishExtension {
         // Resolve workspace-sibling placeholders before rendering anything: a single-file parse
         // leaves `workspace:<name>`/`LATEST`, which would land in the POM and make the published
         // artifact unconsumable.
-        JkBuild project =
-                WorkspaceResolve.applyWorkspace(projectDir, JkBuildParser.parse(projectDir.resolve("jk.toml")));
+        JkBuild project = WorkspaceResolve.applyWorkspace(
+                projectDir, JkBuildParser.parse(projectDir.resolve(ManifestPaths.MANIFEST)));
 
         // Assemble artifacts.
         List<MavenPublisher.Artifact> artifacts = new ArrayList<>();
@@ -158,7 +159,7 @@ public final class Publisher implements Plugin, PublishExtension {
                     UUID.randomUUID().toString(),
                     Instant.now(),
                     Instant.now(),
-                    Map.of("configRef", "jk.toml"),
+                    Map.of("configRef", ManifestPaths.MANIFEST),
                     Map.of(
                             "group", project.project().group(),
                             "artifact", project.project().name(),

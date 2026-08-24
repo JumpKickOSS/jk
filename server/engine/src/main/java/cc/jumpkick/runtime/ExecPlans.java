@@ -24,6 +24,7 @@ import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
@@ -82,7 +83,7 @@ public final class ExecPlans {
      */
     public static ProjectInfo projectInfo(Path dir, String modulesSpec, String affectedSince, boolean counts) {
         try {
-            Path buildFile = dir.resolve("jk.toml");
+            Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
             if (!Files.exists(buildFile)) {
                 return ProjectInfo.error("no jk.toml in " + dir);
             }
@@ -104,7 +105,7 @@ public final class ExecPlans {
                     wsRoot = root.get();
                     workspaceRootDir = wsRoot.toString();
                     try {
-                        rootBuild = JkBuildParser.parse(wsRoot.resolve("jk.toml"));
+                        rootBuild = JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
                     } catch (Exception ignored) {
                         rootBuild = build;
                     }
@@ -397,7 +398,7 @@ public final class ExecPlans {
             String variant,
             Map<String, String> clientEnv) {
         try {
-            JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
+            JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
             project = VariantApply.applyLenient(project, dir, Variants.Selection.parse(variant), clientEnv)
                     .build();
             BuildLayout layout = BuildLayout.of(dir, project);

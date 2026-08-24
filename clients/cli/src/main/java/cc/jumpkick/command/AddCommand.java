@@ -8,6 +8,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
@@ -132,7 +133,7 @@ public final class AddCommand implements CliCommand {
             return runPing(parsed.toCoord());
         }
 
-        Path file = dir.resolve("jk.toml");
+        Path file = dir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(file)) {
             CommandWedge.printFail("Add", "no jk.toml in current directory");
             return Exit.CONFIG;
@@ -221,7 +222,7 @@ public final class AddCommand implements CliCommand {
      * version) and register it in the enclosing workspace root's {@code [workspace].modules}.
      */
     private int addModule(Path cwd, Scope scope) throws IOException {
-        Path currentToml = cwd.resolve("jk.toml");
+        Path currentToml = cwd.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(currentToml)) {
             CommandWedge.printFail("Add", "no jk.toml in current directory");
             return Exit.CONFIG;
@@ -235,7 +236,7 @@ public final class AddCommand implements CliCommand {
             return Exit.USAGE;
         }
         Path target = cwd.resolve(raw).normalize();
-        Path targetToml = target.resolve("jk.toml");
+        Path targetToml = target.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(targetToml)) {
             CommandWedge.printFail("Add", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(target));
             return Exit.CONFIG;
@@ -272,7 +273,7 @@ public final class AddCommand implements CliCommand {
         // 2. Register membership in the enclosing workspace root (cwd itself
         //    when cwd is the root).
         Path root = cc.jumpkick.config.WorkspaceScan.findEnclosingWorkspace(cwd).orElse(cwd);
-        Path rootToml = root.resolve("jk.toml");
+        Path rootToml = root.resolve(ManifestPaths.MANIFEST);
         try {
             if (!target.startsWith(root)) {
                 CommandWedge.printFail(
@@ -313,7 +314,7 @@ public final class AddCommand implements CliCommand {
      * --ver}.
      */
     private int addFile(Path cwd, Path filePath, Scope scope) throws IOException {
-        Path tomlFile = cwd.resolve("jk.toml");
+        Path tomlFile = cwd.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(tomlFile)) {
             CommandWedge.printFail("Add", "no jk.toml in current directory");
             return Exit.CONFIG;

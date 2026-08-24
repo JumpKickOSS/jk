@@ -11,6 +11,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.WhyReport;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -46,7 +47,7 @@ public final class WhyCommand implements CliCommand {
     public int run(Invocation in) throws IOException {
         GlobalOptions global = GlobalOptions.from(in);
         Path dir = global.workingDir();
-        Path buildFile = dir.resolve("jk.toml");
+        Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(buildFile)) {
             CommandWedge.printFail("Why", "project must have jk.toml (run `jk init` first)");
             return Exit.CONFIG;

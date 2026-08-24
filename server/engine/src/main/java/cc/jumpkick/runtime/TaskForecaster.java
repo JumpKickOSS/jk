@@ -17,6 +17,7 @@ import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -281,7 +282,7 @@ public final class TaskForecaster {
             boolean verbose,
             Set<Path> projectModules,
             boolean testOnly) {
-        Path buildFile = dir.resolve("jk.toml");
+        Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
         Path lockFile = LockPaths.lockFile(dir);
         // 0 = auto at run-tests (JUnitLauncher); forecast treats as 1 for cost estimates.
         int workerCount = workers > 0 ? workers : 1;
@@ -498,7 +499,7 @@ public final class TaskForecaster {
 
             producesJar = !mainSrc.isEmpty() || !ktSrc.isEmpty() || !gvSrc.isEmpty();
             try {
-                var img = ImageConfigParser.parse(dir.resolve("jk.toml"));
+                var img = ImageConfigParser.parse(dir.resolve(ManifestPaths.MANIFEST));
                 producesImage = img.base() != null || img.registry() != null;
             } catch (Exception ignored) {
             }
@@ -1040,8 +1041,8 @@ public final class TaskForecaster {
 
     /** True when a module-root {@code jk-plugin.toml} differs from its copy at the classes root. */
     static boolean pluginManifestOutOfSync(Path dir, Path outDir) {
-        Path src = dir.resolve("jk-plugin.toml");
-        Path copy = outDir.resolve("jk-plugin.toml");
+        Path src = dir.resolve(ManifestPaths.PLUGIN_MANIFEST);
+        Path copy = outDir.resolve(ManifestPaths.PLUGIN_MANIFEST);
         // A deleted (or renamed-away) manifest with a copy still in classes/ is the JK-2174
         // orphan: the jar stays "self-describing" with an obsolete manifest until a clean build.
         if (!Files.isRegularFile(src)) return Files.isRegularFile(copy);

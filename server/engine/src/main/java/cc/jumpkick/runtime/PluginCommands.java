@@ -8,6 +8,7 @@ import cc.jumpkick.engine.protocol.PluginCommandReport;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.plugin.manifest.VariantApply;
@@ -39,7 +40,7 @@ public final class PluginCommands {
     public static PluginCommandReport run(
             Path dir, Path cache, String command, List<String> args, String variant, Map<String, String> clientEnv) {
         try {
-            Path buildFile = dir.resolve("jk.toml");
+            Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
             if (!Files.isRegularFile(buildFile)) return PluginCommandReport.notFound();
             JkBuild project = JkBuildParser.parse(buildFile);
             if (!project.plugins().isEmpty() && PluginDescriptorOps.ensureMaterialized(dir, cache)) {

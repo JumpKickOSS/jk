@@ -10,6 +10,7 @@ import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
@@ -262,7 +263,8 @@ public final class SyncPlans {
                     JkBuild build = ctx.get(BUILD).orElse(null);
                     RepoGroup repos = build != null
                             ? RepoGroupBuilder.buildFor(build, repoUrl, cas)
-                            : RepoGroupBuilder.buildFor(JkBuildParser.parse(dir.resolve("jk.toml")), repoUrl, cas);
+                            : RepoGroupBuilder.buildFor(
+                                    JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST)), repoUrl, cas);
                     for (var pe : pluginEntries) {
                         ctx.label("sync " + pe.coordinate());
                         String hex = pe.sha256Hex();
@@ -411,7 +413,7 @@ public final class SyncPlans {
 
     /** Parse {@code dir/jk.toml} if it exists and is valid; {@code null} otherwise. */
     public static JkBuild parseBuildIfPresent(Path dir) {
-        Path buildFile = dir.resolve("jk.toml");
+        Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(buildFile)) return null;
         try {
             return JkBuildParser.parse(buildFile);

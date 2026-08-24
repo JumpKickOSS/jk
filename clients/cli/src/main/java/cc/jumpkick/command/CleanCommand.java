@@ -16,6 +16,7 @@ import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -129,7 +130,7 @@ public final class CleanCommand implements CliCommand {
     private static List<Path> collectProjectDirs(Path workspaceRoot, List<String> warnings) {
         List<Path> dirs = new ArrayList<>();
         dirs.add(workspaceRoot);
-        Path rootToml = workspaceRoot.resolve("jk.toml");
+        Path rootToml = workspaceRoot.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(rootToml)) return dirs;
         var info = BuildCommand.projectInfoOrNull(workspaceRoot);
         if (info != null && info.workspaceRoot()) {
@@ -165,7 +166,7 @@ public final class CleanCommand implements CliCommand {
 
     /** Invalidate this project's (+ workspace's) action-cache entries for {@code --force}. */
     private static int clearProjectActionCache(Path projectDir, Path cacheDirOverride) {
-        if (!Files.isRegularFile(projectDir.resolve("jk.toml"))) {
+        if (!Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST))) {
             // Not a project dir: nothing project-scoped to clear; the file clean already ran.
             return 0;
         }

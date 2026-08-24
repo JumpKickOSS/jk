@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.config.JkBuildEditor;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.util.AtomicWrites;
 import java.nio.charset.StandardCharsets;
@@ -27,7 +28,7 @@ public final class McpManifest {
 
     public static Map<String, Object> deps(
             String dir, String action, List<String> coords, String scopeName, boolean apply) {
-        Path file = PathUtil.resolveUserPath(dir).resolve("jk.toml");
+        Path file = PathUtil.resolveUserPath(dir).resolve(ManifestPaths.MANIFEST);
         Map<String, Object> out = new LinkedHashMap<>();
         try {
             String before = Files.readString(file, StandardCharsets.UTF_8);
@@ -67,7 +68,7 @@ public final class McpManifest {
     }
 
     public static Map<String, Object> workspace(String dir, String action, String path, boolean apply) {
-        Path file = PathUtil.resolveUserPath(dir).resolve("jk.toml");
+        Path file = PathUtil.resolveUserPath(dir).resolve(ManifestPaths.MANIFEST);
         Map<String, Object> out = new LinkedHashMap<>();
         try {
             String before = Files.readString(file, StandardCharsets.UTF_8);
@@ -89,7 +90,7 @@ public final class McpManifest {
     }
 
     public static Map<String, Object> setJava(String dir, int java, boolean apply) {
-        Path file = PathUtil.resolveUserPath(dir).resolve("jk.toml");
+        Path file = PathUtil.resolveUserPath(dir).resolve(ManifestPaths.MANIFEST);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("note", "java = " + java + " is language/--release, not jdk = " + java);
         try {

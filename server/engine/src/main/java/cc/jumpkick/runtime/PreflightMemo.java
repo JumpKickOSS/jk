@@ -6,6 +6,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.PluginModule;
@@ -346,7 +347,7 @@ public final class PreflightMemo {
             List<Path> unitDirs = new ArrayList<>();
             for (UnitLine u : units) {
                 Path dir = absFromRel(root, u.rel());
-                if (!Files.isRegularFile(dir.resolve("jk.toml"))) return Optional.empty();
+                if (!Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) return Optional.empty();
                 unitDirs.add(dir);
             }
             if (!gotStruct.equals(structureFingerprint(entryDir, unitDirs))) return Optional.empty();
@@ -359,7 +360,7 @@ public final class PreflightMemo {
                 UnitLine ul = units.get(i);
                 Path dir = unitDirs.get(i);
                 dirByRel.put(ul.rel(), dir);
-                JkBuild manifest = JkBuildParser.parse(dir.resolve("jk.toml"));
+                JkBuild manifest = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
                 String coord =
                         manifest.project().group() + ":" + manifest.project().name();
                 if (!coord.equals(ul.coord())) return Optional.empty(); // identity drift
@@ -426,13 +427,13 @@ public final class PreflightMemo {
             // too, or a root that grows src/ keeps hitting a graph memo without a root unit.
             feed(md, "entry");
             feed(md, "rootSources=" + (CompileSupport.hasSources(root) ? "1" : "0"));
-            feedFile(md, root.resolve("jk.toml"));
+            feedFile(md, root.resolve(ManifestPaths.MANIFEST));
             Path rootLock = LockPaths.lockFile(root).toAbsolutePath().normalize();
             feedFile(md, rootLock);
             for (Path dir : unitDirs) {
                 Path d = dir.toAbsolutePath().normalize();
                 feed(md, relKey(root, d));
-                feedFile(md, d.resolve("jk.toml"));
+                feedFile(md, d.resolve(ManifestPaths.MANIFEST));
                 // Every workspace member resolves to the single root lock — already digested
                 // above; re-reading a monorepo-sized lock once per module scaled the key cost by
                 // modules × lock size. A marker keeps the structural position; a module
@@ -483,7 +484,7 @@ public final class PreflightMemo {
             feed(md, "shape");
             feed(md, "skip=" + (skipTests ? "1" : "0"));
             feed(md, BuildIdentity.cacheKeyVersion());
-            feedFile(md, moduleDir.resolve("jk.toml"));
+            feedFile(md, moduleDir.resolve(ManifestPaths.MANIFEST));
             feedFile(md, LockPaths.lockFile(moduleDir));
             return HexFormat.of().formatHex(md.digest());
         } catch (Exception e) {
@@ -632,11 +633,11 @@ public final class PreflightMemo {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             feed(md, "skip=" + (skipTests ? "1" : "0"));
             feed(md, "mode=" + fingerprintMode());
-            feedFile(md, moduleDir.resolve("jk.toml"));
+            feedFile(md, moduleDir.resolve(ManifestPaths.MANIFEST));
             feedFile(md, LockPaths.lockFile(moduleDir));
             // Plugin workers keep jk-plugin.toml at the module root (copied onto the jar root).
             if (PluginModule.isWorker(moduleDir)) {
-                feedFile(md, moduleDir.resolve("jk-plugin.toml"));
+                feedFile(md, moduleDir.resolve(ManifestPaths.PLUGIN_MANIFEST));
             }
             boolean mtimeMode = useMtimeMode();
             List<Path> roots = new ArrayList<>(ModuleLayout.fingerprintDirs(moduleDir, skipTests));

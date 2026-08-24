@@ -26,6 +26,7 @@ import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.layout.NativePreflight;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -114,7 +115,7 @@ public final class NativeCommand implements CliCommand {
 
         Path startDir = global.workingDir();
         VariantSelection.install(in, startDir);
-        Path buildFile = startDir.resolve("jk.toml");
+        Path buildFile = startDir.resolve(ManifestPaths.MANIFEST);
         Path cache = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
 
         if (!Files.exists(buildFile)) {
@@ -267,7 +268,7 @@ public final class NativeCommand implements CliCommand {
                 hasNativeTable = !"DISABLED".equals(info.nativeMode());
             } else {
                 // Unit tests / engine-down: bootstrap [native] scan, not a plugin-schema parse.
-                var scan = TomlScan.scan(moduleDir.resolve("jk.toml"), "native.enabled");
+                var scan = TomlScan.scan(moduleDir.resolve(ManifestPaths.MANIFEST), "native.enabled");
                 explicitlyDisabled = scan.hasSection("native") && "false".equalsIgnoreCase(scan.get("native.enabled"));
                 hasNativeTable = scan.hasSection("native") && !explicitlyDisabled;
             }

@@ -16,6 +16,7 @@ import cc.jumpkick.config.FormatStyles;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -75,7 +76,7 @@ public final class FormatCommand implements CliCommand {
         GlobalOptions global = GlobalOptions.from(in);
         boolean check = in.isSet("check");
         Path projectDir = global.workingDir();
-        Path buildFile = projectDir.resolve("jk.toml");
+        Path buildFile = projectDir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(buildFile)) {
             CommandWedge.printFail("Format", "no jk.toml in " + PathDisplay.styledRaw(projectDir));
             return Exit.CONFIG;

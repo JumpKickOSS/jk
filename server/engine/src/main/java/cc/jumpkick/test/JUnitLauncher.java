@@ -11,6 +11,7 @@ import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.ToolDefaults;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.run.SessionCancel;
@@ -170,7 +171,7 @@ public final class JUnitLauncher {
     static void ensureQuarkusToolingPom(Path moduleDir) {
         if (moduleDir == null || !Files.isDirectory(moduleDir)) return;
         Path pom = moduleDir.resolve("pom.xml");
-        Path jkToml = moduleDir.resolve("jk.toml");
+        Path jkToml = moduleDir.resolve(ManifestPaths.MANIFEST);
         if (!Files.isRegularFile(jkToml)) return;
         try {
             String toml = Files.readString(jkToml);

@@ -6,6 +6,7 @@ import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -234,15 +235,15 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
      */
     public static String coordOf(Path projectDir) {
         Path dir = projectDir.toAbsolutePath().normalize();
-        Path toml = dir.resolve("jk.toml");
+        Path toml = dir.resolve(ManifestPaths.MANIFEST);
         var local = TomlScan.scan(toml, "group", "name");
         String g = blankToEmpty(local.get("group"));
         String n = blankToEmpty(local.get("name"));
         if (g.isEmpty()) {
             Optional<Path> root = WorkspaceScan.findRoot(dir);
             if (root.isPresent()) {
-                String inherited =
-                        TomlScan.scan(root.get().resolve("jk.toml"), "group").get("group");
+                String inherited = TomlScan.scan(root.get().resolve(ManifestPaths.MANIFEST), "group")
+                        .get("group");
                 g = blankToEmpty(inherited);
             }
         }
@@ -255,7 +256,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
     }
 
     private static Optional<String> explicitId(Path projectDir) {
-        Path toml = projectDir.resolve("jk.toml");
+        Path toml = projectDir.resolve(ManifestPaths.MANIFEST);
         if (!Files.isRegularFile(toml)) return Optional.empty();
         try {
             // Read raw TOML so root-level `id` stays an unadvertised escape hatch without widening

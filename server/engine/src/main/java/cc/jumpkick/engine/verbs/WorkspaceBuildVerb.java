@@ -17,6 +17,7 @@ import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildService;
@@ -77,7 +78,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             // accepted here and fails as a job (202 + request-finish), never a bare 400.
             JkBuild entry;
             try {
-                entry = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+                entry = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
             } catch (Exception e) {
                 throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
             }
@@ -160,7 +161,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     ? null
                     : dirtyHintDirs.stream().map(Path::of).collect(Collectors.toUnmodifiableSet());
             if (dirty == null && !moduleTokens.isEmpty()) {
-                JkBuild entry = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+                JkBuild entry = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
                 var hit = JobSelect.resolveTokens(entryDir, entry, moduleTokens);
                 if (hit != null && !hit.ok()) {
                     host.sendQuiet(

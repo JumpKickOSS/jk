@@ -5,6 +5,7 @@ import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TomlValues;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -209,7 +210,7 @@ public final class BuildMetrics {
             // no session / bad path — global merge below
         }
         // Only a real jk checkout is a project session; engine CWD / random dirs use loadAll.
-        boolean projectSession = work != null && Files.isRegularFile(work.resolve("jk.toml"));
+        boolean projectSession = work != null && Files.isRegularFile(work.resolve(ManifestPaths.MANIFEST));
         Path memoKey = projectSession ? work : null;
         long now = System.currentTimeMillis();
         AggMemo memo = AGG_MEMO.get();

@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlan;
 import java.nio.file.Path;
 import java.util.Set;
@@ -21,7 +22,7 @@ public final class CompilePlans {
     /** As above with request-level Inputs decoration (JK-2102). {@code null} = none. */
     public static BuildPlan compileBuildPlan(
             Path dir, Path cache, String profileName, boolean verbose, UnaryOperator<BuildPlanner.Inputs> decorate) {
-        Path buildFile = dir.resolve("jk.toml");
+        Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
         Path lockFile = LockPaths.lockFile(dir);
         BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                 dir,

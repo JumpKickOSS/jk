@@ -6,6 +6,7 @@ import cc.jumpkick.engine.protocol.WhyReport;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.DependencyTree;
@@ -30,7 +31,7 @@ public final class GraphOps {
     /** The marker-tagged tree, ready for {@link DependencyTree#applyStyling} client-side. */
     public static String treeRender(Path dir, int maxDepth, boolean flatten, boolean stack, List<String> scopeNames)
             throws IOException {
-        JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
+        JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
         Lockfile lock = LockfileReader.read(LockPaths.lockFile(dir));
         List<Scope> scopes = scopeNames.isEmpty()
                 ? null
@@ -41,7 +42,7 @@ public final class GraphOps {
 
     public static WhyReport why(Path dir, String query) {
         try {
-            JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
+            JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
             Lockfile lock = LockfileReader.read(LockPaths.lockFile(dir));
             // One LockGraph per request: a fuzzy query with many matches used to rebuild the
             // whole reverse adjacency per match.

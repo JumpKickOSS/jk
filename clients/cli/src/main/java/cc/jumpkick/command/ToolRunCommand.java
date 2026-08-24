@@ -14,6 +14,7 @@ import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -135,11 +136,12 @@ public final class ToolRunCommand implements CliCommand {
         try {
             Path start = cwd.toAbsolutePath().normalize();
             Path wsRoot = null;
-            if (Files.isRegularFile(start.resolve("jk.toml"))) {
+            if (Files.isRegularFile(start.resolve(ManifestPaths.MANIFEST))) {
                 var peek = BuildCommand.projectInfoOrNull(start);
                 if (peek != null && peek.workspaceRoot()) wsRoot = start;
                 else if (peek == null
-                        && !workspaceModules(start.resolve("jk.toml")).isEmpty()) {
+                        && !workspaceModules(start.resolve(ManifestPaths.MANIFEST))
+                                .isEmpty()) {
                     wsRoot = start;
                 }
             }
@@ -152,13 +154,13 @@ public final class ToolRunCommand implements CliCommand {
             if (wsRoot == null) {
                 // Cwd is not in a workspace — still allow path-as-module if it has jk.toml
                 Path direct = start.resolve(name).normalize();
-                if (Files.isRegularFile(direct.resolve("jk.toml"))) return direct;
+                if (Files.isRegularFile(direct.resolve(ManifestPaths.MANIFEST))) return direct;
                 return null;
             }
             var rootBuild = BuildCommand.projectInfoOrNull(wsRoot);
             List<String> moduleDirs = rootBuild != null && rootBuild.workspaceRoot()
                     ? rootBuild.moduleDirs()
-                    : workspaceModules(wsRoot.resolve("jk.toml"));
+                    : workspaceModules(wsRoot.resolve(ManifestPaths.MANIFEST));
             if (moduleDirs.isEmpty()) return null;
             String want = name.replace('\\', '/');
             while (want.startsWith("./")) want = want.substring(2);
@@ -172,7 +174,7 @@ public final class ToolRunCommand implements CliCommand {
                         ? Path.of(mod).normalize()
                         : wsRoot.resolve(mod).normalize();
                 String m = wsRoot.relativize(dir).toString().replace('\\', '/');
-                if (!Files.isRegularFile(dir.resolve("jk.toml"))) continue;
+                if (!Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) continue;
                 if (m.equals(want)) return dir; // exact declared path — always unambiguous
                 // Trailing-segment shortcut: `jk run cli` → clients/cli.
                 if (m.endsWith("/" + want)) suffixHits.add(dir);
@@ -218,7 +220,7 @@ public final class ToolRunCommand implements CliCommand {
      * or a single script file in the folder.
      */
     private int runDirectory(Path dir, List<String> args) throws IOException, InterruptedException {
-        if (Files.isRegularFile(dir.resolve("jk.toml"))) {
+        if (Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) {
             RunCommand delegate = new RunCommand();
             delegate.cacheDirOverride = cacheDirOverride;
             delegate.jdksDir = jdksDir;

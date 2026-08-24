@@ -11,6 +11,7 @@ import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
@@ -49,7 +50,7 @@ public final class OutdatedPlans {
     public static OutdatedReport compute(Path dir, Path cache, URI repoUrl) {
         LinkedHashMap<Path, JkBuild> scopes = new LinkedHashMap<>();
         try {
-            JkBuild root = JkBuildParser.parse(dir.resolve("jk.toml"));
+            JkBuild root = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
             JkBuild effectiveRoot = LockPlans.applyWorkspaceContextIfModule(dir, root);
             scopes.put(dir, effectiveRoot);
             if (effectiveRoot.isWorkspaceRoot()) {

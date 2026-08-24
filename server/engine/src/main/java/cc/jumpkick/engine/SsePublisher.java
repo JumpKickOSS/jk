@@ -9,6 +9,7 @@ import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.runtime.ProjectIds;
@@ -337,7 +338,8 @@ public final class SsePublisher {
         if (!eventsWanted()) return;
         String coord = null;
         try {
-            var project = JkBuildParser.parse(Path.of(dir).resolve("jk.toml")).project();
+            var project = JkBuildParser.parse(Path.of(dir).resolve(ManifestPaths.MANIFEST))
+                    .project();
             coord = project.group() + ":" + project.name();
         } catch (Exception e) {
             // unparseable/missing jk.toml — the dashboard falls back to showing the dir

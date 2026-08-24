@@ -41,7 +41,7 @@ public final class LockfileModules {
      */
     public static List<Lockfile.ModuleEntry> capture(Path projectDir) throws IOException {
         Path dir = projectDir.toAbsolutePath().normalize();
-        Path toml = dir.resolve("jk.toml");
+        Path toml = dir.resolve(ManifestPaths.MANIFEST);
         if (!Files.isRegularFile(toml)) return List.of();
         // parseLocal + explicit workspace capture (resolved pins), not parse() which also rewrites
         // sibling deps we do not need here.
@@ -53,7 +53,7 @@ public final class LockfileModules {
         var rootOpt = WorkspaceLocator.findRoot(dir);
         if (rootOpt.isPresent()) {
             Path root = rootOpt.get();
-            JkBuild rootManifest = JkBuildParser.parseLocal(root.resolve("jk.toml"));
+            JkBuild rootManifest = JkBuildParser.parseLocal(root.resolve(ManifestPaths.MANIFEST));
             return captureWorkspace(root, rootManifest);
         }
         // Standalone: drop optional auto-inherits so we pin concrete local defaults.

@@ -12,6 +12,7 @@ import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.IdeWireModel;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.util.JkDirs;
@@ -97,7 +98,7 @@ public final class IdeSupport {
 
         Path startDir = global.workingDir();
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
-        if (!Files.exists(startDir.resolve("jk.toml"))) {
+        if (!Files.exists(startDir.resolve(ManifestPaths.MANIFEST))) {
             throw new IdeException(2, "no jk.toml in " + PathDisplay.styledRaw(startDir));
         }
 

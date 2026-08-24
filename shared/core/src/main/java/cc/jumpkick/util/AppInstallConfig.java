@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.util;
 
+import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -25,7 +26,6 @@ import java.util.regex.Pattern;
  */
 public final class AppInstallConfig {
 
-    public static final String FILE_NAME = "config.toml";
     public static final String PROP_PREFIX = "jk-config.";
 
     private static final Pattern PLACEHOLDER = Pattern.compile("\\$\\{([A-Za-z0-9._-]+)}");
@@ -42,7 +42,7 @@ public final class AppInstallConfig {
     public static Path path(JkDirs dirs, String binName) {
         Objects.requireNonNull(dirs, "dirs");
         String bin = requireBin(binName);
-        return dirs.configDir().resolve(bin).resolve(FILE_NAME);
+        return dirs.configDir().resolve(bin).resolve(ManifestPaths.CONFIG);
     }
 
     /** Read string keys from the install config; empty map when missing/unreadable. */

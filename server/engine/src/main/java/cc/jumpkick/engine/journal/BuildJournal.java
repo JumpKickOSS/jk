@@ -4,6 +4,7 @@ package cc.jumpkick.engine.journal;
 import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.engine.BuildHistoryKinds;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.TaskPhases;
 import cc.jumpkick.runtime.TestClassWalls;
@@ -46,8 +47,6 @@ public final class BuildJournal {
 
     /** Whitelist name for journal rows that still carry a test-only markdown snapshot. */
     public static final String TEST_RESULTS_MD = "test-results.md";
-
-    public static final String LOCKFILE = "jk-lock.toml";
 
     public static final String DIAGNOSTICS_TXT = "diagnostics.txt";
 
@@ -218,8 +217,11 @@ public final class BuildJournal {
                     Files.move(
                             tmp.resolve(RESULTS_MD), target.resolve(RESULTS_MD), StandardCopyOption.REPLACE_EXISTING);
                 }
-                if (snapshot.lockfile() != null && Files.isRegularFile(tmp.resolve(LOCKFILE))) {
-                    Files.move(tmp.resolve(LOCKFILE), target.resolve(LOCKFILE), StandardCopyOption.REPLACE_EXISTING);
+                if (snapshot.lockfile() != null && Files.isRegularFile(tmp.resolve(ManifestPaths.LOCK))) {
+                    Files.move(
+                            tmp.resolve(ManifestPaths.LOCK),
+                            target.resolve(ManifestPaths.LOCK),
+                            StandardCopyOption.REPLACE_EXISTING);
                 }
                 if (snapshot.diagnosticsText() != null && Files.isRegularFile(tmp.resolve(DIAGNOSTICS_TXT))) {
                     Files.move(
@@ -501,7 +503,7 @@ public final class BuildJournal {
             Files.copy(s.resultsMd(), dir.resolve(RESULTS_MD), StandardCopyOption.REPLACE_EXISTING);
         }
         if (s.lockfile() != null && Files.isRegularFile(s.lockfile())) {
-            Files.copy(s.lockfile(), dir.resolve(LOCKFILE), StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(s.lockfile(), dir.resolve(ManifestPaths.LOCK), StandardCopyOption.REPLACE_EXISTING);
         }
         if (s.diagnosticsText() != null && !s.diagnosticsText().isBlank()) {
             Files.writeString(dir.resolve(DIAGNOSTICS_TXT), s.diagnosticsText(), StandardCharsets.UTF_8);
@@ -842,7 +844,7 @@ public final class BuildJournal {
         return RESULTS_MD.equals(name)
                 || TEST_RESULTS_MD.equals(name)
                 || ProjectBuilds.DETAILS.equals(name)
-                || LOCKFILE.equals(name)
+                || ManifestPaths.LOCK.equals(name)
                 || DIAGNOSTICS_TXT.equals(name);
     }
 

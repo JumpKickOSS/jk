@@ -15,6 +15,7 @@ import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.ContextPropagator;
@@ -848,7 +849,7 @@ public final class EffortWeights {
      */
     public static int jdkWeight(Path dir, Path jdksDir) {
         try {
-            JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
+            JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
             Path lf = LockPaths.lockFile(dir);
             Lockfile lock = Files.exists(lf) ? LockfileReader.read(lf) : null;
             JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
@@ -961,7 +962,7 @@ public final class EffortWeights {
     static boolean producesNativeImage(Path dir) {
         try {
             if (dir == null || !Files.isDirectory(dir)) return false;
-            JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
+            JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
             return project.nativeMode() == JkBuild.NativeMode.ALWAYS;
         } catch (Exception e) {
             return false;
@@ -979,7 +980,7 @@ public final class EffortWeights {
             var cfg = SessionContext.current().config();
             if (cfg.rebuildOr(false) || cfg.forceOr(false)) return true;
             if (dir == null || !Files.isDirectory(dir)) return true;
-            JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
+            JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
             BuildLayout layout = BuildLayout.of(dir, project);
             if (!Files.isRegularFile(layout.mainJar())) return true;
             boolean compact = ModuleLayout.isCompact(dir);
@@ -1021,7 +1022,7 @@ public final class EffortWeights {
         try {
             if (SessionContext.current().config().rebuildOr(false)) return false;
             if (SessionContext.current().config().forceOr(false)) return false;
-            JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
+            JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
             BuildLayout layout = BuildLayout.of(dir, project);
             Path art = artifact.apply(layout);
             if (!Files.isRegularFile(art)) return false;

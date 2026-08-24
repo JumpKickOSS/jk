@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.PassthroughEnv;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.JobWorkers;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.ByteArrayOutputStream;
@@ -47,8 +48,8 @@ final class SourceProjectBuilder {
             Path projectDir, String versionOverride, Path javaHome, Cas cas, RepoGroup repos, String jkVersion)
             throws IOException, InterruptedException {
 
-        if (Files.isRegularFile(projectDir.resolve("jk.toml"))) {
-            JkBuild project = JkBuildParser.parse(Files.readString(projectDir.resolve("jk.toml")));
+        if (Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST))) {
+            JkBuild project = JkBuildParser.parse(Files.readString(projectDir.resolve(ManifestPaths.MANIFEST)));
             String group = project.project().group();
             String artifact = project.project().name();
             String version = versionOverride != null

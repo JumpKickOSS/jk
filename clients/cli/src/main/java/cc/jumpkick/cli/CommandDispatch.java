@@ -80,6 +80,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.plugin.PluginJarNotFoundException;
 import cc.jumpkick.engine.protocol.PluginCommandReport;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Command;
 import cc.jumpkick.model.command.Invocation;
@@ -248,7 +249,7 @@ public final class CommandDispatch {
      */
     private static Integer tryPluginCommand(String command, List<String> args) {
         Path dir = Path.of("").toAbsolutePath().normalize();
-        if (!Files.isRegularFile(dir.resolve("jk.toml"))) return null;
+        if (!Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) return null;
         try {
             PluginCommandReport report;
             var paths = EnginePaths.current();

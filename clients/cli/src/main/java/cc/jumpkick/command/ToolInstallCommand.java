@@ -13,6 +13,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -127,7 +128,7 @@ public final class ToolInstallCommand implements CliCommand {
 
         Path base = global.workingDir();
         if (in.positionals().isEmpty()) {
-            if (Files.isRegularFile(base.resolve("jk.toml"))) {
+            if (Files.isRegularFile(base.resolve(ManifestPaths.MANIFEST))) {
                 return appInstallDelegate().runProjectInstallBuildPlan(base, "install");
             }
             CommandWedge.printFail(
@@ -168,7 +169,7 @@ public final class ToolInstallCommand implements CliCommand {
         }
         if (classified instanceof ToolTarget.Directory dir) {
             Path projectDir = base.resolve(dir.path()).toAbsolutePath().normalize();
-            if (!Files.isRegularFile(projectDir.resolve("jk.toml"))) {
+            if (!Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST))) {
                 CommandWedge.printFail(
                         "Tool", "no jk.toml in " + projectDir + " — a directory target must be a jk project.");
                 return Exit.CONFIG;

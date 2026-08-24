@@ -8,6 +8,7 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -89,7 +90,7 @@ public final class ImportCommand implements CliCommand {
         }
 
         Path projectDir = source.toAbsolutePath().getParent();
-        Path target = out != null ? out : projectDir.resolve("jk.toml");
+        Path target = out != null ? out : projectDir.resolve(ManifestPaths.MANIFEST);
         if (Files.exists(target) && !force) {
             CommandWedge.printFail(
                     "Import", "refusing to overwrite " + PathDisplay.styled(target, baseDir) + " (use --force).");

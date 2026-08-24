@@ -9,6 +9,7 @@ import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildMetrics;
@@ -70,7 +71,8 @@ public final class JournalWriter {
 
     public static @Nullable String coordOf(String dir) {
         try {
-            var project = JkBuildParser.parse(Path.of(dir).resolve("jk.toml")).project();
+            var project = JkBuildParser.parse(Path.of(dir).resolve(ManifestPaths.MANIFEST))
+                    .project();
             return project.group() + ":" + project.name();
         } catch (Exception e) {
             return null;

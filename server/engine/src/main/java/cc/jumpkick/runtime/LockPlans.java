@@ -7,6 +7,7 @@ import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
@@ -469,7 +470,7 @@ public final class LockPlans {
             var rootOpt = WorkspaceLocator.findRoot(dir);
             if (rootOpt.isEmpty()) return Variants.unionDependencies(project);
             Path wsRoot = rootOpt.get();
-            JkBuild wsRootBuild = JkBuildParser.parse(wsRoot.resolve("jk.toml"));
+            JkBuild wsRootBuild = JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
             if (!wsRootBuild.isWorkspaceRoot()) return Variants.unionDependencies(project);
             var siblings = WorkspaceLoader.loadModules(wsRoot, wsRootBuild);
             return WorkspaceMerge.applyToModule(wsRootBuild, project, siblings.values());
@@ -494,12 +495,12 @@ public final class LockPlans {
         // Ensure libs.global.toml exists before short-name expansion (closes race with the engine's
         // background StoreFeedRefresh on first start of a host).
         LibraryRegistrySync.ensurePresent(SessionContext.current().offline());
-        JkBuild root = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+        JkBuild root = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
         if (root.isWorkspaceRoot()) return workspaceScope(entryDir, root);
         var rootOpt = WorkspaceLocator.findRoot(entryDir);
         if (rootOpt.isPresent()) {
             Path wsRoot = rootOpt.get();
-            return workspaceScope(wsRoot, JkBuildParser.parse(wsRoot.resolve("jk.toml")));
+            return workspaceScope(wsRoot, JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST)));
         }
         // Standalone: variant dep overlays union here (workspace scopes union inside WorkspaceMerge).
         JkBuild effective = applyWorkspaceContextIfModule(entryDir, root);

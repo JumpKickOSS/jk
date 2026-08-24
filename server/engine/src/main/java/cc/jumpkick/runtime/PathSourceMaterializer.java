@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PathSource;
 import cc.jumpkick.repo.RepoGroup;
@@ -74,7 +75,7 @@ final class PathSourceMaterializer {
         Path repo = fpDir.resolve("repo");
         Path marker = fpDir.resolve("coordinate.txt");
 
-        boolean isJk = Files.isRegularFile(projectDir.resolve("jk.toml"));
+        boolean isJk = Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST));
 
         // Coordinate: read cheaply from a jk target's project identity; a foreign target reveals it only
         // after building (cached in the marker for a fingerprint hit).
@@ -82,7 +83,7 @@ final class PathSourceMaterializer {
         String artifact = null;
         String version = null;
         if (isJk) {
-            JkBuild project = JkBuildParser.parse(Files.readString(projectDir.resolve("jk.toml")));
+            JkBuild project = JkBuildParser.parse(Files.readString(projectDir.resolve(ManifestPaths.MANIFEST)));
             group = project.project().group();
             artifact = project.project().name();
             version = project.project().version();

@@ -7,6 +7,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.plugin.buildlogic.BuildLogicAnchor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.run.BuildStage;
@@ -65,13 +66,13 @@ public final class PlannerResources {
                         Path dir = in.dir().resolve(root.relative());
                         if (Files.isDirectory(dir)) resDirs.add(dir);
                     }
-                    Path pluginManifest = in.dir().resolve("jk-plugin.toml");
+                    Path pluginManifest = in.dir().resolve(ManifestPaths.PLUGIN_MANIFEST);
                     boolean ownManifest = Files.isRegularFile(pluginManifest);
                     // Orphan reconciliation: a manifest deleted (or renamed away) at the module
                     // root must also leave the classes tree, or the jar keeps describing a
                     // plugin that no longer exists.
                     if (!ownManifest) {
-                        Files.deleteIfExists(classes.resolve("jk-plugin.toml"));
+                        Files.deleteIfExists(classes.resolve(ManifestPaths.PLUGIN_MANIFEST));
                     }
                     boolean copied = false;
                     if (!resDirs.isEmpty() || ownManifest) {
@@ -80,7 +81,7 @@ public final class PlannerResources {
                         if (ownManifest) {
                             Files.copy(
                                     pluginManifest,
-                                    classes.resolve("jk-plugin.toml"),
+                                    classes.resolve(ManifestPaths.PLUGIN_MANIFEST),
                                     StandardCopyOption.REPLACE_EXISTING);
                         }
                         copied = true;

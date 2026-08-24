@@ -8,6 +8,7 @@ import cc.jumpkick.engine.protocol.GeneratedFiles;
 import cc.jumpkick.engine.protocol.OutdatedReport;
 import cc.jumpkick.engine.protocol.WhyReport;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.DependencyGraphModel;
 import cc.jumpkick.runtime.ExplainReport;
@@ -46,7 +47,7 @@ public final class McpReads {
         Path root = PathUtil.resolveUserPath(dir);
         Map<String, Object> m = new LinkedHashMap<>();
         try {
-            var build = JkBuildParser.parse(root.resolve("jk.toml"));
+            var build = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
             Path cache = JkDirs.cache();
             Session session = Session.defaults().withWorkingDir(root).withCacheDir(cache);
             ExplainReport report = ExplainReport.compute(root, build, cache, session, ExplainReport.Knobs.defaults());

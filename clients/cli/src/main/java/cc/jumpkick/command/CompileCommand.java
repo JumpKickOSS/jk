@@ -19,6 +19,7 @@ import cc.jumpkick.cli.tui.ModuleScopeHint;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineWireException;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -110,7 +111,7 @@ public final class CompileCommand implements CliCommand {
         for (Path moduleDir : List.of(dir)) {
             ConsoleSpec spec = new ConsoleSpec(
                     "Compile", r -> Theme.colorize("Compiled", Theme.active().focused()), r -> "Compilation failed");
-            String target = BuildCommand.buildTarget(moduleDir.resolve("jk.toml"), moduleDir);
+            String target = BuildCommand.buildTarget(moduleDir.resolve(ManifestPaths.MANIFEST), moduleDir);
             BuildPlanResult result;
             try {
                 result = EngineClient.runCompile(

@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.JkDirs;
@@ -128,7 +129,7 @@ public final class NativeEffort {
     private static InputSplit splitInputs(Path moduleDir) {
         if (moduleDir == null || !Files.isDirectory(moduleDir)) return new InputSplit(0, 0);
         try {
-            JkBuild project = JkBuildParser.parse(moduleDir.resolve("jk.toml"));
+            JkBuild project = JkBuildParser.parse(moduleDir.resolve(ManifestPaths.MANIFEST));
             BuildLayout layout = BuildLayout.of(moduleDir, project);
             long app = 0;
             Path mainJar = layout.mainJar();

@@ -12,6 +12,7 @@ import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.LockPlans;
@@ -94,7 +95,7 @@ public final class UpdateVerb implements HostedVerb {
                     Files.createDirectories(cache);
                     JkBuild root;
                     try {
-                        root = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+                        root = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
                     } catch (RuntimeException e) {
                         host.sendQuiet(
                                 writer,

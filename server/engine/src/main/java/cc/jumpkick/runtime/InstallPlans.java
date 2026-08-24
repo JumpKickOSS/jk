@@ -13,6 +13,7 @@ import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
@@ -65,7 +66,7 @@ public final class InstallPlans {
     public static BuildPlan projectInstallBuildPlan(
             Path projectDir, Path cache, Path m2Dir, boolean skipTests, boolean verbose, Path graalHome)
             throws IOException {
-        JkBuild proj = JkBuildParser.parse(projectDir.resolve("jk.toml"));
+        JkBuild proj = JkBuildParser.parse(projectDir.resolve(ManifestPaths.MANIFEST));
 
         Path lockFile = LockPaths.lockFile(projectDir);
         boolean compact = ModuleLayout.isCompact(projectDir);
@@ -73,7 +74,7 @@ public final class InstallPlans {
         BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                 projectDir,
                 cache,
-                projectDir.resolve("jk.toml"),
+                projectDir.resolve(ManifestPaths.MANIFEST),
                 lockFile,
                 projectDir,
                 1,
@@ -161,7 +162,7 @@ public final class InstallPlans {
                         throw new RuntimeException(e);
                     }
                     Path checkout = fetched.checkoutPath();
-                    if (requireJkToml && !Files.exists(checkout.resolve("jk.toml"))) {
+                    if (requireJkToml && !Files.exists(checkout.resolve(ManifestPaths.MANIFEST))) {
                         ctx.error("no-jk-toml", url + " has no jk.toml at " + ref);
                         throw new RuntimeException("no jk.toml in checkout");
                     }
@@ -197,7 +198,7 @@ public final class InstallPlans {
 
     /** Cache-install the thin jar of {@code moduleDir} after a workspace package. */
     public static void installThinJar(Path moduleDir, Path cache, Path m2Dir) throws IOException {
-        JkBuild proj = JkBuildParser.parse(moduleDir.resolve("jk.toml"));
+        JkBuild proj = JkBuildParser.parse(moduleDir.resolve(ManifestPaths.MANIFEST));
         proj = WorkspaceResolve.applyWorkspace(moduleDir, proj);
         cacheInstallArtifact(proj, BuildLayout.of(moduleDir, proj), cache, m2Dir);
     }

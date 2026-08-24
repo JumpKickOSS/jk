@@ -8,6 +8,7 @@ import cc.jumpkick.engine.LockFloor;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.verbs.MetricsVerb;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.runtime.BuildMetrics;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
@@ -189,7 +190,7 @@ final class HttpReadApi {
                 JsonOut.object()
                         .put("dir", dir.toString())
                         .put("parent", parent != null ? parent.toString() : null)
-                        .put("hasJkToml", Files.isRegularFile(dir.resolve("jk.toml")))
+                        .put("hasJkToml", Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST)))
                         .put("truncated", truncated)
                         .putStrings("dirs", subdirs)
                         .toString());

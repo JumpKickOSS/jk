@@ -17,6 +17,7 @@ import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.OutdatedReport;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GitVersion;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -77,7 +78,7 @@ public final class OutdatedCommand implements CliCommand {
         this.global = GlobalOptions.from(in);
 
         Path dir = global.workingDir();
-        if (!Files.exists(dir.resolve("jk.toml"))) {
+        if (!Files.exists(dir.resolve(ManifestPaths.MANIFEST))) {
             CommandWedge.printFail("Outdated", "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Exit.CONFIG;
         }

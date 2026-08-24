@@ -7,6 +7,7 @@ import cc.jumpkick.config.TrainConfigParser;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
@@ -34,7 +35,7 @@ public final class TrainPlans {
             boolean force,
             boolean skipTests,
             boolean verbose) {
-        Path buildFile = moduleDir.resolve("jk.toml");
+        Path buildFile = moduleDir.resolve(ManifestPaths.MANIFEST);
         Path lockFile = LockPaths.lockFile(moduleDir);
         boolean compact = ModuleLayout.isCompact(moduleDir);
         int estimatedTests = TestSupport.estimateAllSuiteTestCount(moduleDir, compact);
@@ -81,7 +82,7 @@ public final class TrainPlans {
                     Path moduleJdk = ctx.get(BuildPlanner.JAVA_HOME).orElse(javaHome);
                     TrainConfig config;
                     try {
-                        config = TrainConfigParser.parse(moduleDir.resolve("jk.toml"));
+                        config = TrainConfigParser.parse(moduleDir.resolve(ManifestPaths.MANIFEST));
                     } catch (Exception e) {
                         throw new RuntimeException("invalid [train] config: " + e.getMessage(), e);
                     }

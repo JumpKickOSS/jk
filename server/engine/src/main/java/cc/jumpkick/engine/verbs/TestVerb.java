@@ -12,6 +12,7 @@ import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.BuildPlanner;
@@ -69,7 +70,7 @@ public final class TestVerb implements HostedVerb {
             Path entryDir = Path.of(entryDirStr);
             Path cache = Path.of(cacheStr);
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
-            Path buildFile = entryDir.resolve("jk.toml");
+            Path buildFile = entryDir.resolve(ManifestPaths.MANIFEST);
             Path lockFile = LockPaths.lockFile(entryDir);
             int workerCount = Math.max(0, workers);
 

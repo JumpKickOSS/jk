@@ -11,6 +11,7 @@ import cc.jumpkick.lock.BomExporter;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.mvn.PomExporter;
 import java.io.IOException;
@@ -135,7 +136,7 @@ public final class GenerateOps {
 
     /** The export view: parsed root (+ workspace modules) and merged locked versions. */
     private static Loaded load(Path dir) throws IOException {
-        Path toml = dir.resolve("jk.toml");
+        Path toml = dir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(toml)) {
             throw new IOException("no jk.toml in " + dir);
         }

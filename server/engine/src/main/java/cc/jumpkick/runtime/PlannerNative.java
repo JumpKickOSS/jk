@@ -9,6 +9,7 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
@@ -232,7 +233,8 @@ public final class PlannerNative {
                         metadataDirs = withTrain;
                         // Refuse to native-build on stale train outputs when configured.
                         try {
-                            var trainCfg = cc.jumpkick.config.TrainConfigParser.parse(dir.resolve("jk.toml"));
+                            var trainCfg =
+                                    cc.jumpkick.config.TrainConfigParser.parse(dir.resolve(ManifestPaths.MANIFEST));
                             String stale =
                                     TrainRunner.staleReason(dir, project, layout, lockFile, javaHomeEarly, trainCfg);
                             if (stale != null) {

@@ -12,6 +12,7 @@ import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -62,7 +63,7 @@ public final class AuditCommand implements CliCommand {
         this.osvVulnsUrl = in.value("osv-vulns-url").map(URI::create).orElse(null);
         String severity = in.value("severity").orElse("LOW");
         Path projectDir = global.workingDir();
-        if (!Files.exists(projectDir.resolve("jk.toml"))) {
+        if (!Files.exists(projectDir.resolve(ManifestPaths.MANIFEST))) {
             CommandWedge.printFail("Audit", "no jk.toml in " + PathDisplay.styledRaw(projectDir));
             return Exit.CONFIG;
         }

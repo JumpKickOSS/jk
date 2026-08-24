@@ -12,6 +12,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.DenyReport;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -46,7 +47,7 @@ public final class DenyCommand implements CliCommand {
     public int run(Invocation in) throws IOException {
         GlobalOptions global = GlobalOptions.from(in);
         Path projectDir = global.workingDir();
-        Path jkBuild = projectDir.resolve("jk.toml");
+        Path jkBuild = projectDir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(jkBuild)) {
             CommandWedge.printFail("Deny", jkBuild + " not found.");
             return Exit.NO_INPUT;

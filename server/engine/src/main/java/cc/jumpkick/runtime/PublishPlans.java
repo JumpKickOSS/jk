@@ -10,6 +10,7 @@ import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.JkBuild;
@@ -68,7 +69,7 @@ public final class PublishPlans {
     /** Build the publish plan for {@code projectDir}. Locates the plugin jar eagerly (fail fast, with side-load hints). */
     public static BuildPlan publishBuildPlan(Path projectDir, Path cache, Request req) {
         Path workerJar = PluginJar.PUBLISHER.locate(JkStores.cas(cache));
-        Path jkBuildPath = projectDir.resolve("jk.toml");
+        Path jkBuildPath = projectDir.resolve(ManifestPaths.MANIFEST);
 
         Task parseBuild = Task.builder(TaskNames.PARSE_BUILD)
                 .ticks(1)

@@ -244,7 +244,7 @@ class BuildJournalTest {
         BuildJournal j = new BuildJournal(dir);
         String id = j.append(record(1_700_000_000_000L, true, "g:a"), new BuildJournal.Snapshot(md, lock, "boom\n"));
         assertThat(j.artifact(id, BuildJournal.RESULTS_MD)).isPresent();
-        assertThat(j.artifact(id, BuildJournal.LOCKFILE)).isPresent();
+        assertThat(j.artifact(id, "jk-lock.toml")).isPresent();
         assertThat(j.artifact(id, BuildJournal.DIAGNOSTICS_TXT)).isPresent();
         assertThat(Files.readString(j.artifact(id, BuildJournal.RESULTS_MD).get()))
                 .contains("all good");
@@ -269,7 +269,7 @@ class BuildJournalTest {
         assertThat(j.get("../secret")).isEmpty();
         assertThat(j.delete("../secret")).isFalse();
         assertThat(j.get("a/b")).isEmpty();
-        assertThat(j.artifact("..", BuildJournal.LOCKFILE)).isEmpty();
+        assertThat(j.artifact("..", "jk-lock.toml")).isEmpty();
     }
 
     @Test

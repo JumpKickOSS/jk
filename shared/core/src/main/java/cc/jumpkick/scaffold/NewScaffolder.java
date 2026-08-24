@@ -2,6 +2,7 @@
 package cc.jumpkick.scaffold;
 
 import cc.jumpkick.docs.JkManual;
+import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -72,7 +73,8 @@ public final class NewScaffolder {
         }
         var dir = inputs.directory();
         Files.createDirectories(dir);
-        Files.writeString(dir.resolve("jk.toml"), NewJkBuildRenderer.render(inputs), StandardCharsets.UTF_8);
+        Files.writeString(
+                dir.resolve(ManifestPaths.MANIFEST), NewJkBuildRenderer.render(inputs), StandardCharsets.UTF_8);
 
         if (standalone) {
             writeGitignore(dir);
@@ -92,7 +94,8 @@ public final class NewScaffolder {
     private static void writePluginProject(NewInputs inputs, boolean standalone) throws IOException {
         Path dir = inputs.directory();
         Files.createDirectories(dir);
-        Files.writeString(dir.resolve("jk.toml"), NewJkBuildRenderer.render(inputs), StandardCharsets.UTF_8);
+        Files.writeString(
+                dir.resolve(ManifestPaths.MANIFEST), NewJkBuildRenderer.render(inputs), StandardCharsets.UTF_8);
         if (standalone) {
             writeGitignore(dir);
             JkManual.ensureAgentsGuide(dir);
@@ -110,7 +113,9 @@ public final class NewScaffolder {
         Path services = resources.resolve("META-INF").resolve("services");
         Files.createDirectories(services);
         Files.writeString(
-                resources.resolve("jk-plugin.toml"), renderPluginManifest(pluginId, prefix), StandardCharsets.UTF_8);
+                resources.resolve(ManifestPaths.PLUGIN_MANIFEST),
+                renderPluginManifest(pluginId, prefix),
+                StandardCharsets.UTF_8);
         Files.writeString(
                 services.resolve("cc.jumpkick.plugin.Plugin"), pkg + "." + className + "\n", StandardCharsets.UTF_8);
 

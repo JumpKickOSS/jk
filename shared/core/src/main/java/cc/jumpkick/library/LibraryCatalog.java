@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.library;
 
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.io.InputStream;
@@ -36,12 +37,6 @@ public final class LibraryCatalog {
 
     private static final String BUNDLED_RESOURCE = "/cc/jumpkick/library/libraries.toml";
 
-    /**
-     * Optional project/workspace short-name map. Allowed only at the workspace root (or standalone
-     * project root) — never under a workspace module.
-     */
-    public static final String PROJECT_FILE = "jk-libs.toml";
-
     private static volatile LibraryCatalog bundled;
 
     private final List<Layer> layers;
@@ -67,7 +62,7 @@ public final class LibraryCatalog {
 
     /** Path of the project/workspace catalog file under {@code root}. */
     public static Path projectFile(Path root) {
-        return root.resolve(PROJECT_FILE);
+        return root.resolve(ManifestPaths.LIBRARIES);
     }
 
     /** Bundled-only catalog (lazy singleton); ignores system/project layers. */
@@ -110,11 +105,11 @@ public final class LibraryCatalog {
         Objects.requireNonNull(dir, "dir");
         Objects.requireNonNull(warn, "warn");
         Path root = catalogRoot(dir);
-        Path moduleLibs = dir.toAbsolutePath().normalize().resolve(PROJECT_FILE);
+        Path moduleLibs = dir.toAbsolutePath().normalize().resolve(ManifestPaths.LIBRARIES);
         Path rootLibs = projectFile(root);
         if (!moduleLibs.equals(rootLibs) && Files.isRegularFile(moduleLibs)) {
-            throw new IllegalStateException(
-                    PROJECT_FILE + " is only allowed at the workspace root (" + rootLibs + "); found " + moduleLibs);
+            throw new IllegalStateException(ManifestPaths.LIBRARIES + " is only allowed at the workspace root ("
+                    + rootLibs + "); found " + moduleLibs);
         }
         LibraryCatalog base = layered(warn);
         return loadFileLayer(rootLibs, "project", warn)
@@ -135,7 +130,7 @@ public final class LibraryCatalog {
         Path candidate = normalized;
         Path nearestJkTomlDir = null;
         for (int depth = 0; depth < 8192 && candidate != null; depth++) {
-            Path jkToml = candidate.resolve("jk.toml");
+            Path jkToml = candidate.resolve(ManifestPaths.MANIFEST);
             if (Files.isRegularFile(jkToml)) {
                 if (nearestJkTomlDir == null) nearestJkTomlDir = candidate;
                 if (declaresWorkspaceModules(jkToml)) {

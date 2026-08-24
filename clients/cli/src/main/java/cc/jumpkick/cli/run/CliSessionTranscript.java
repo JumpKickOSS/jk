@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run;
 
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanResult;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -188,7 +189,7 @@ public final class CliSessionTranscript {
 
     private static String coordOf(Path dir) {
         try {
-            Path toml = dir.resolve("jk.toml");
+            Path toml = dir.resolve(ManifestPaths.MANIFEST);
             if (!Files.isRegularFile(toml)) return "unknown:unknown";
             String text = Files.readString(toml, StandardCharsets.UTF_8);
             String group = null, name = null;

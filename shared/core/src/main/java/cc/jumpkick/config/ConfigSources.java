@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -61,7 +62,7 @@ public final class ConfigSources {
     public static Path findProjectConfig(Path startDir) {
         Path here = startDir == null ? null : startDir.toAbsolutePath().normalize();
         while (here != null) {
-            Path candidate = here.resolve("jk.toml");
+            Path candidate = here.resolve(ManifestPaths.MANIFEST);
             if (Files.isRegularFile(candidate)) return candidate;
             here = here.getParent();
         }

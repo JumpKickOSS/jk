@@ -10,6 +10,7 @@ import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.CompatPlans;
 import cc.jumpkick.util.JkDirs;
@@ -70,7 +71,7 @@ public final class ImportVerb implements HostedVerb {
         return ProtoSession.withTrigger(
                 ProtoJobs.importRequest(
                         source.toString(),
-                        dir.resolve("jk.toml").toString(),
+                        dir.resolve(ManifestPaths.MANIFEST).toString(),
                         spec.dir(),
                         JkDirs.tmp().toString(),
                         false,

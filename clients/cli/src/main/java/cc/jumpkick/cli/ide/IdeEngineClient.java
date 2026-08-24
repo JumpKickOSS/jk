@@ -9,6 +9,7 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.IdeWireModel;
 import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -70,7 +71,7 @@ public class IdeEngineClient {
     public static IdeEngineClient open(Path projectDir, Path cacheDir, Path jdksDir) throws IOException {
         Objects.requireNonNull(projectDir, "projectDir");
         Objects.requireNonNull(cacheDir, "cacheDir");
-        if (!Files.isRegularFile(projectDir.resolve("jk.toml"))) {
+        if (!Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST))) {
             throw new IOException("no jk.toml in " + projectDir);
         }
         return new IdeEngineClient(projectDir, cacheDir, jdksDir);

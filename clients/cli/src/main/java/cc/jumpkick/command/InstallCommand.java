@@ -18,6 +18,7 @@ import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ExecPlan;
 import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.PluginModule;
@@ -80,7 +81,7 @@ public final class InstallCommand {
 
     private int installCurrentProject() throws IOException {
         Path projectDir = global.workingDir();
-        Path manifest = projectDir.resolve("jk.toml");
+        Path manifest = projectDir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(manifest)) {
             CommandWedge.printFail("Install", "no jk.toml in " + PathDisplay.styledRaw(projectDir));
             return Exit.CONFIG;

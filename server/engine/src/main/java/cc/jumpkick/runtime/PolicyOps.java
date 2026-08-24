@@ -7,6 +7,7 @@ import cc.jumpkick.engine.protocol.DenyReport;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -24,7 +25,7 @@ public final class PolicyOps {
 
     public static DenyReport denyCheck(Path dir) {
         try {
-            var policy = DenyPolicyParser.parse(dir.resolve("jk.toml"));
+            var policy = DenyPolicyParser.parse(dir.resolve(ManifestPaths.MANIFEST));
             Lockfile lock = LockfileReader.read(LockPaths.lockFile(dir));
             List<PolicyChecker.Violation> violations = new PolicyChecker(policy).check(lock);
             List<String> modules = new ArrayList<>(violations.size());

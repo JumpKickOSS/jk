@@ -6,6 +6,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.forge.ForgeGitCredentials;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.GitVersion;
@@ -80,7 +81,7 @@ public final class GitSourceMaterializer {
         Lockfile.Artifact.GitInfo gitInfo = new Lockfile.Artifact.GitInfo(
                 source.canonicalUrl(), sha, source.ref().token());
 
-        boolean isJk = Files.isRegularFile(projectDir.resolve("jk.toml"));
+        boolean isJk = Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST));
 
         // Determine the coordinate. For a jk target it's read cheaply from project identity (+ the
         // ref-derived version), so an already-built commit is a cache hit with no build. A foreign
@@ -91,7 +92,7 @@ public final class GitSourceMaterializer {
         String versionOverride = null;
         Path marker = shaDir.resolve("coordinate.txt");
         if (isJk) {
-            JkBuild project = JkBuildParser.parse(Files.readString(projectDir.resolve("jk.toml")));
+            JkBuild project = JkBuildParser.parse(Files.readString(projectDir.resolve(ManifestPaths.MANIFEST)));
             group = project.project().group();
             artifact = project.project().name();
             version = deriveVersion(fetcher, source, sha);

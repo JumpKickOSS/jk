@@ -17,6 +17,7 @@ import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -94,7 +95,7 @@ public final class VerifyBuildCommand implements CliCommand {
         this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.global = GlobalOptions.from(in);
         Path dir = global.workingDir();
-        Path buildFile = dir.resolve("jk.toml");
+        Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
         Path lockFile = LockPaths.lockFile(dir);
         if (!Files.exists(buildFile) || !Files.exists(lockFile)) {
             CommandWedge.printFail("Verify", "jk.toml and jk-lock.toml required in " + PathDisplay.styledRaw(dir));
@@ -395,7 +396,7 @@ public final class VerifyBuildCommand implements CliCommand {
         if (name.equals(".git")) return true;
         return name.equals("target")
                 && d.getParent() != null
-                && Files.exists(d.getParent().resolve("jk.toml"));
+                && Files.exists(d.getParent().resolve(ManifestPaths.MANIFEST));
     }
 
     /**
@@ -408,7 +409,7 @@ public final class VerifyBuildCommand implements CliCommand {
         try (var stream = Files.walk(root)) {
             for (Path p : (Iterable<Path>) stream::iterator) {
                 if (p.getFileName() != null
-                        && "jk-lock.toml".equals(p.getFileName().toString())) {
+                        && ManifestPaths.LOCK.equals(p.getFileName().toString())) {
                     Files.setLastModifiedTime(p, now);
                 }
             }

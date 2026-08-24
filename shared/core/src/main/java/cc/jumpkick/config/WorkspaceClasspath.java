@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JkBuild;
@@ -59,7 +60,7 @@ public final class WorkspaceClasspath {
                 return new Result(List.of(), List.of());
             }
             root = rootOpt.get();
-            rootManifest = JkBuildParser.parse(root.resolve("jk.toml"));
+            rootManifest = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
             if (!rootManifest.isWorkspaceRoot()) {
                 return new Result(List.of(), List.of());
             }
@@ -84,7 +85,7 @@ public final class WorkspaceClasspath {
         unitDirs.add(root); // the root is a unit too
         for (Path unitDir : unitDirs) {
             if (unitDir.toAbsolutePath().normalize().equals(self)) continue; // exclude self
-            Path manifest = unitDir.resolve("jk.toml");
+            Path manifest = unitDir.resolve(ManifestPaths.MANIFEST);
             if (!Files.exists(manifest)) continue;
             JkBuild unit;
             try {

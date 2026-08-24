@@ -10,6 +10,7 @@ import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.BuildPlan;
@@ -63,7 +64,7 @@ public final class WorkspaceExecute {
         for (Path moduleDir : moduleDirs) {
             Path normalDir = moduleDir.toAbsolutePath().normalize();
             if (normalDir.equals(wsRoot)) continue;
-            Path buildFile = moduleDir.resolve("jk.toml");
+            Path buildFile = moduleDir.resolve(ManifestPaths.MANIFEST);
             if (!Files.exists(buildFile)) continue;
             JkBuild build;
             try {
@@ -122,7 +123,7 @@ public final class WorkspaceExecute {
     public static WorkspaceResult buildWorkspace(WorkspaceRequest req, WorkspaceBuildListener listener) {
         JkBuild entryBuild;
         try {
-            entryBuild = JkBuildParser.parse(req.entryDir().resolve("jk.toml"));
+            entryBuild = JkBuildParser.parse(req.entryDir().resolve(ManifestPaths.MANIFEST));
         } catch (Exception e) {
             WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.host.Errors.text(e)));
             listener.onWorkspaceFinish(r);
@@ -605,7 +606,7 @@ public final class WorkspaceExecute {
             Set<Path> jarConsumed,
             boolean forceRebuild) {
         Path dir = u.dir();
-        Path buildFile = dir.resolve("jk.toml");
+        Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(buildFile)) return null;
         BuildPlan plan = assemblePlan(u, req, moduleDirs, forceRebuild, jarConsumed);
         // Bar weight must be live estimatedTotalWeight for dirty prepares: shape-memo weights ignore

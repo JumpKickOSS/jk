@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.config.TomlValues;
+import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -94,7 +95,7 @@ final class BuildLogicTaskScan {
     static Path logicDir(Path projectDir) {
         if (projectDir == null) return null;
         Path root = projectDir.toAbsolutePath().normalize();
-        Path toml = root.resolve("jk.toml");
+        Path toml = root.resolve(ManifestPaths.MANIFEST);
         String logicRel = ".jk-build";
         var parsed = TomlValues.parse(toml);
         if (parsed.isPresent()) {

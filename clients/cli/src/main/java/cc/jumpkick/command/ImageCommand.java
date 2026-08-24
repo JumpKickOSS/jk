@@ -19,6 +19,7 @@ import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.ModuleScopeHint;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -100,7 +101,7 @@ public final class ImageCommand implements CliCommand {
         this.global = GlobalOptions.from(in);
         Path projectDir = global.workingDir();
         VariantSelection.install(in, projectDir);
-        Path jkBuildPath = projectDir.resolve("jk.toml");
+        Path jkBuildPath = projectDir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(jkBuildPath)) {
             CommandWedge.printFail("Image", jkBuildPath + " not found.");
             return Exit.NO_INPUT;
@@ -126,7 +127,7 @@ public final class ImageCommand implements CliCommand {
                 return Exit.USAGE;
             }
             projectDir = Path.of(selected.moduleDirs().getFirst());
-            jkBuildPath = projectDir.resolve("jk.toml");
+            jkBuildPath = projectDir.resolve(ManifestPaths.MANIFEST);
         }
         Path cache = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
         var peek = BuildCommand.projectInfoOrNull(projectDir);

@@ -9,6 +9,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.TrainPlans;
@@ -60,7 +61,7 @@ public final class TrainVerb implements HostedVerb {
                 Path jdksDir = jdksDirStr != null && !jdksDirStr.isBlank() ? Path.of(jdksDirStr) : null;
                 Path javaHome = Path.of(System.getProperty("java.home"));
                 BuildPlan plan = SessionContext.where(session, () -> {
-                    JkBuild module = JkBuildParser.parse(session.workingDir().resolve("jk.toml"));
+                    JkBuild module = JkBuildParser.parse(session.workingDir().resolve(ManifestPaths.MANIFEST));
                     return TrainPlans.moduleBuildPlan(
                             session.workingDir(),
                             module,

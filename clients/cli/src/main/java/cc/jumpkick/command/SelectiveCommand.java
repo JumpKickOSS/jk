@@ -6,6 +6,7 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -318,7 +319,7 @@ public final class SelectiveCommand implements CliCommand {
     static String fingerprintModule(Path moduleDir) throws Exception {
         MessageDigest md = MessageDigest.getInstance("SHA-256");
         List<Path> files = new ArrayList<>();
-        Path toml = moduleDir.resolve("jk.toml");
+        Path toml = moduleDir.resolve(ManifestPaths.MANIFEST);
         if (Files.isRegularFile(toml)) files.add(toml);
         Path src = moduleDir.resolve("src");
         if (Files.isDirectory(src)) {

@@ -10,6 +10,7 @@ import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.runtime.ExplainReport;
@@ -79,7 +80,7 @@ public final class ExplainVerb implements HostedVerb {
                         .withConfig(config)
                         .withWorkingDir(entryDir)
                         .withCacheDir(cache);
-                JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+                JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
                 String etaJdksDirStr = Jsonl.str(requestLine, "jdksDir");
                 int workers = Jsonl.intValue(requestLine, "workers", 0); // 0 = auto (bare jk build)
                 int maxModuleConcurrency = Jsonl.intValue(requestLine, "maxModuleConcurrency", 0);

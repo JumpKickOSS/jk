@@ -12,6 +12,7 @@ import cc.jumpkick.config.RepositoriesScan;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -102,7 +103,7 @@ public final class PublishCommand implements CliCommand {
 
         Path projectDir = global.workingDir();
         VariantSelection.install(in, projectDir);
-        Path jkBuildPath = projectDir.resolve("jk.toml");
+        Path jkBuildPath = projectDir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(jkBuildPath)) {
             CommandWedge.printFail("Publish", jkBuildPath + " not found.");
             return Exit.NO_INPUT;

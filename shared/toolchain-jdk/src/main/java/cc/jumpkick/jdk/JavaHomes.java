@@ -7,6 +7,7 @@ import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -54,7 +55,7 @@ public final class JavaHomes {
     /** Bootstrap jdk/java pins for {@code projectDir}, workspace-inherited. Test-visible. */
     static JkBuild readBuildSoft(Path projectDir) {
         try {
-            Path toml = projectDir.resolve("jk.toml");
+            Path toml = projectDir.resolve(ManifestPaths.MANIFEST);
             if (!Files.isRegularFile(toml)) return null;
             var scan = TomlScan.scan(toml, "jdk", "java");
             String jdk = scan.get("jdk");
@@ -65,7 +66,7 @@ public final class JavaHomes {
                 // same bootstrap pattern as ProjectIdentity.coordOf's group inheritance.
                 var root = WorkspaceScan.findRoot(projectDir);
                 if (root.isPresent()) {
-                    var rootScan = TomlScan.scan(root.get().resolve("jk.toml"), "jdk", "java");
+                    var rootScan = TomlScan.scan(root.get().resolve(ManifestPaths.MANIFEST), "jdk", "java");
                     if (isBlank(jdk)) jdk = rootScan.get("jdk");
                     if (isBlank(java)) java = rootScan.get("java");
                 }

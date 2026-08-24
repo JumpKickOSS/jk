@@ -20,6 +20,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -71,7 +72,7 @@ public final class IdeOps {
             throws IOException {
         Cas cas = JkStores.cas(cache);
 
-        Path buildFile = startDir.resolve("jk.toml");
+        Path buildFile = startDir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(buildFile)) {
             return IdeWireModel.error("no jk.toml in " + startDir);
         }
@@ -82,7 +83,7 @@ public final class IdeOps {
         } else {
             var rootOpt = WorkspaceLocator.findRoot(startDir);
             wsRoot = rootOpt.orElse(startDir);
-            rootBuild = JkBuildParser.parse(wsRoot.resolve("jk.toml"));
+            rootBuild = JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
         }
         // Canonicalize wsRoot so paths from BuildGraph (which calls toRealPath) and workspace-loader
         // paths are consistent — critical for correct relativize() on systems where the temp/project

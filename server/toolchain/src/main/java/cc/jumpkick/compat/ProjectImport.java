@@ -2,6 +2,7 @@
 package cc.jumpkick.compat;
 
 import cc.jumpkick.gradle.GradleImporter;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.mvn.PomImporter;
 import java.io.IOException;
@@ -62,7 +63,7 @@ public final class ProjectImport {
 
             Path effectiveBaseDir = baseDir != null ? baseDir : source.getParent();
             for (Map.Entry<String, JkBuild> e : modules.entrySet()) {
-                Path moduleJkBuild = effectiveBaseDir.resolve(e.getKey()).resolve("jk.toml");
+                Path moduleJkBuild = effectiveBaseDir.resolve(e.getKey()).resolve(ManifestPaths.MANIFEST);
                 if (Files.exists(moduleJkBuild) && !force) {
                     return new Outcome(73, 0, "would overwrite " + moduleJkBuild + " — pass --force", wrote);
                 }

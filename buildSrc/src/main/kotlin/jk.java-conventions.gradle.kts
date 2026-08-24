@@ -989,3 +989,79 @@ val checkNoBareTaskName by tasks.registering {
 }
 tasks.named("check") { dependsOn(checkNoBareTaskName) }
 tasks.named("jar") { dependsOn(checkNoBareTaskName) }
+
+// ---------------------------------------------------------------------------
+// Guard G13 (JK-2413): jk's own file names are spelled once, in `ManifestPaths`.
+//
+// Defect it prevents: the rename that half-lands. `jk.toml` had no owner at all — 214 production
+// sites typed it, four of them inside `shared/core/layout`, the package that should have owned it —
+// while its sibling `jk-lock.toml` had `LockPaths.FILE_NAME` and three sites typed it anyway. A
+// name spelled in 214 places cannot be moved, and a name that cannot be moved is not a decision
+// jk still owns; it is one the tree has already made. Worse, the near-misses are invisible: a
+// reader looking for `jk-libs.toml` beside a writer that produced `jk-lib.toml` compiles, ships,
+// and simply never finds the file.
+//
+// The ban list is READ FROM THE OWNER, not re-typed here: every `public static final String` in
+// `ManifestPaths.java`. Add a name there and it is banned as a literal the same minute — a guard
+// carrying its own copy of the vocabulary would be the second place to keep in sync, which is the
+// defect it exists to prevent.
+//
+// A pure ban, not a ratchet: zero sites remain and there is nothing to allow. Reachability was
+// measured, not assumed — every one of the eight Gradle modules that named a file already carries
+// `:core` on its compile classpath, and `ManifestPaths` is a constants-only class in it. The ninth
+// module in the audit's count, `clients/intellij`, is not in `settings.gradle.kts` at all: it is a
+// separate wire-only build that must never see a jk jar, so its one `new File(base, "jk.toml")`
+// is out of reach by design and out of this guard's scope by construction.
+//
+// Someone else's `config.toml` — a third-party tool's, read by a future importer — would be a
+// different vocabulary that is free to diverge, exactly like GraalVM's `native-image` launcher
+// under G12. It must not borrow `ManifestPaths.CONFIG`; it gets its own owner, and this guard
+// then has nothing to say about it.
+//
+// Scope is `src/main/java`. Test sources keep their literals on purpose, for the same reason G12
+// leaves step names alone: a fixture that writes a `jk.toml` and asserts on `no jk.toml in <dir>`
+// is a golden pinning the on-disk vocabulary, and rewriting it to `ManifestPaths.MANIFEST` would
+// make a rename of the value invisible to the whole suite — every test would follow the rename and
+// still pass. 1,195 test-side literals across 228 files are therefore left alone.
+// ---------------------------------------------------------------------------
+val checkNoBareManifestName by tasks.registering {
+    group = "verification"
+    description = "Fail the build on a jk file name typed as a literal (use cc.jumpkick.lock.ManifestPaths)"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val owner = rootProject.layout.projectDirectory.file(
+            "shared/core/src/main/java/cc/jumpkick/lock/ManifestPaths.java")
+    inputs.file(owner).withPropertyName("manifestPaths")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val stamp = layout.buildDirectory.file("guards/no-bare-manifest-name.ok")
+    outputs.file(stamp)
+    doLast {
+        val ownerFile = owner.asFile
+        // value -> constant, straight out of the owner (see G13 above).
+        val named = Regex("""public static final String (\w+) = "([^"]+)";""")
+                .findAll(ownerFile.readText())
+                .associate { it.groupValues[2] to it.groupValues[1] }
+
+        val hits = mutableListOf<String>()
+        mainJava.files.sorted().forEach { f ->
+            if (f == ownerFile) return@forEach
+            val code = guardText(f.readText())
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            named.forEach { (value, constant) ->
+                val n = countIn(code, Regex(Regex.escape("\"$value\"")))
+                if (n > 0) hits.add("  $rel: $n x \"$value\"  ->  ManifestPaths.$constant")
+            }
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("A file jk owns is named once, in cc.jumpkick.lock.ManifestPaths"
+                    + " (JK-2413). These re-type the name:\n"
+                    + hits.sorted().joinToString("\n")
+                    + "\n  Reference the constant. A file that is NOT jk's — a third-party tool's"
+                    + " own config.toml, say — must not borrow it either: give that vocabulary its"
+                    + " own owner.")
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkNoBareManifestName) }
+tasks.named("jar") { dependsOn(checkNoBareManifestName) }

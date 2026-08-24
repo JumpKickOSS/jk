@@ -4,6 +4,7 @@ package cc.jumpkick.builds;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
@@ -29,7 +30,7 @@ public final class DeclaredDeps {
     public static Set<String> collect(Path projectOrWorkspaceRoot) {
         if (projectOrWorkspaceRoot == null) return Set.of();
         Path root = projectOrWorkspaceRoot.toAbsolutePath().normalize();
-        Path rootToml = root.resolve("jk.toml");
+        Path rootToml = root.resolve(ManifestPaths.MANIFEST);
         if (!Files.isRegularFile(rootToml)) return Set.of();
 
         LibraryCatalog catalog;
@@ -42,7 +43,7 @@ public final class DeclaredDeps {
         TreeSet<String> out = new TreeSet<>();
         collectFromToml(rootToml, catalog, out);
         for (Path moduleDir : moduleDirs(root, rootToml)) {
-            Path mt = moduleDir.resolve("jk.toml");
+            Path mt = moduleDir.resolve(ManifestPaths.MANIFEST);
             if (Files.isRegularFile(mt)) collectFromToml(mt, catalog, out);
         }
         return Set.copyOf(out);

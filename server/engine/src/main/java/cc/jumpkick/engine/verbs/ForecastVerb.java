@@ -11,6 +11,7 @@ import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.BuildService;
 import java.io.BufferedWriter;
@@ -73,7 +74,7 @@ public final class ForecastVerb implements HostedVerb {
                         .withConfig(config)
                         .withWorkingDir(entryDir)
                         .withCacheDir(cache);
-                JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+                JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
                 SessionContext.where(session, () -> {
                     BuildService.ResolvedGraph graph;
                     try {

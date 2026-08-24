@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.lock.ManifestPaths;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -51,7 +52,7 @@ public final class PluginTunings {
      */
     public static PluginTuning overlayProject(PluginTuning base, Path projectDir) {
         PluginTuning eff = base == null ? PluginTuning.NONE : base;
-        return projectDir == null ? eff : overlay(eff, fromToml(projectDir.resolve("jk.toml")));
+        return projectDir == null ? eff : overlay(eff, fromToml(projectDir.resolve(ManifestPaths.MANIFEST)));
     }
 
     /** The {@code JK_*} environment layer. Coercion via the shared {@link EnvValues}. */

@@ -14,6 +14,7 @@ import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.NativePreflight;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildService;
@@ -74,7 +75,7 @@ public final class NativeVerb implements HostedVerb {
         Path entryDir = Path.of(spec.dir());
         JkBuild entry;
         try {
-            entry = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+            entry = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
         } catch (Exception e) {
             throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
         }
@@ -182,7 +183,7 @@ public final class NativeVerb implements HostedVerb {
             List<String> moduleTokens = Jsonl.strArray(requestLine, "moduleDirs");
             Set<Path> selected = new LinkedHashSet<>();
             if (!moduleTokens.isEmpty()) {
-                JkBuild entry = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+                JkBuild entry = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
                 var hit = JobSelect.resolveTokens(entryDir, entry, moduleTokens);
                 if (hit != null && !hit.ok()) {
                     host.sendQuiet(

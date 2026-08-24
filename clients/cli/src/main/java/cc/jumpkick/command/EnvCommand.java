@@ -9,6 +9,7 @@ import cc.jumpkick.config.DotEnv;
 import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -57,8 +58,8 @@ public final class EnvCommand implements CliCommand {
         } catch (Exception e) {
             workspaceRoot = dir;
         }
-        Path workspaceEnv = workspaceRoot.resolve(EnvLookup.FILE_NAME);
-        Path moduleEnv = dir.resolve(EnvLookup.FILE_NAME);
+        Path workspaceEnv = workspaceRoot.resolve(ManifestPaths.ENV);
+        Path moduleEnv = dir.resolve(ManifestPaths.ENV);
         Map<String, String> wsMap = DotEnv.read(workspaceEnv);
         Map<String, String> modMap = DotEnv.read(moduleEnv);
 
@@ -111,7 +112,7 @@ public final class EnvCommand implements CliCommand {
             } else if (wsMap.containsKey(name)) {
                 source = labelFile(workspaceEnv, workspaceRoot, "workspace");
             } else {
-                source = ".env";
+                source = ManifestPaths.ENV;
             }
         } else {
             source = "shell";
@@ -135,7 +136,7 @@ public final class EnvCommand implements CliCommand {
         } catch (IllegalArgumentException e) {
             rel = abs.getFileName();
         }
-        String shown = rel.toString().isEmpty() ? EnvLookup.FILE_NAME : rel.toString();
+        String shown = rel.toString().isEmpty() ? ManifestPaths.ENV : rel.toString();
         return ".env (" + scope + ": " + shown + ")";
     }
 

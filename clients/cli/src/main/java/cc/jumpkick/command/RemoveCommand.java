@@ -5,6 +5,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -68,7 +69,7 @@ public final class RemoveCommand implements CliCommand {
         String nameArg = in.positionals().get(0);
 
         Path dir = global.workingDir();
-        Path file = dir.resolve("jk.toml");
+        Path file = dir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(file)) {
             CommandWedge.printFail("Remove", "no jk.toml in current directory");
             return Exit.CONFIG;
@@ -151,7 +152,7 @@ public final class RemoveCommand implements CliCommand {
         }
         Path target = cwd.resolve(raw).normalize();
         Path root = cc.jumpkick.config.WorkspaceScan.findEnclosingWorkspace(cwd).orElse(cwd);
-        Path rootToml = root.resolve("jk.toml");
+        Path rootToml = root.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(rootToml) || !target.startsWith(root)) return;
         String rel = root.relativize(target).toString().replace('\\', '/');
         if (rel.isBlank()) return;

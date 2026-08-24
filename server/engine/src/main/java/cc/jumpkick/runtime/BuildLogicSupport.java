@@ -9,6 +9,7 @@ import cc.jumpkick.config.TomlValues;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.buildlogic.BuildLogicAnchor;
@@ -72,7 +73,7 @@ public final class BuildLogicSupport {
      */
     public static Optional<Config> config(Path projectDir) {
         Path root = projectDir.toAbsolutePath().normalize();
-        Path toml = projectDir.resolve("jk.toml");
+        Path toml = projectDir.resolve(ManifestPaths.MANIFEST);
         String logicRel = DEFAULT_DIR;
         String main = null;
         Optional<TomlTable> build = TomlValues.parse(toml).map(t -> t.getTable("build"));
@@ -599,7 +600,7 @@ public final class BuildLogicSupport {
             throws IOException, InterruptedException {
         JkBuild project;
         try {
-            project = JkBuildParser.parse(projectDir.resolve("jk.toml"));
+            project = JkBuildParser.parse(projectDir.resolve(ManifestPaths.MANIFEST));
         } catch (Exception e) {
             throw new IllegalStateException(
                     "[build] logic: cannot parse jk.toml for Kotlin compile: " + e.getMessage(), e);
@@ -723,7 +724,7 @@ public final class BuildLogicSupport {
         for (Path dir : dirs) {
             hashTree(projectDir, dir, "in", tokens);
         }
-        for (String file : new String[] {"jk.toml", "jk-lock.toml"}) {
+        for (String file : new String[] {ManifestPaths.MANIFEST, ManifestPaths.LOCK}) {
             Path p = projectDir.resolve(file);
             if (Files.isRegularFile(p)) {
                 tokens.add("in:" + file + ":" + Hashing.sha256Hex(Files.readAllBytes(p)));

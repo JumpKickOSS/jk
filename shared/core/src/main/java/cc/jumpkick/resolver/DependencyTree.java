@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -413,7 +414,7 @@ public final class DependencyTree {
         if (rootDir == null) return byName;
         for (String m : modules) {
             try {
-                JkBuild b = JkBuildParser.parse(rootDir.resolve(m).normalize().resolve("jk.toml"));
+                JkBuild b = JkBuildParser.parse(rootDir.resolve(m).normalize().resolve(ManifestPaths.MANIFEST));
                 byName.put(
                         b.project().name(),
                         b.project().group() + ":" + b.project().name());
@@ -449,7 +450,7 @@ public final class DependencyTree {
             var rootDir = WorkspaceLocator.findRoot(projectDir);
             if (rootDir.isEmpty()) return WorkspaceGraph.none();
             Path root = rootDir.get();
-            JkBuild rootBuild = JkBuildParser.parseLocal(root.resolve("jk.toml"));
+            JkBuild rootBuild = JkBuildParser.parseLocal(root.resolve(ManifestPaths.MANIFEST));
             if (!rootBuild.isWorkspaceRoot()) return WorkspaceGraph.none();
             List<LoadedModule> loaded = loadModules(rootBuild.workspace().modules(), root, lock);
             List<JkBuild> siblingBuilds = new ArrayList<>(loaded.size());
@@ -827,7 +828,7 @@ public final class DependencyTree {
         JkBuild rootBuild = null;
         if (rootDir != null) {
             try {
-                Path rootToml = rootDir.resolve("jk.toml");
+                Path rootToml = rootDir.resolve(ManifestPaths.MANIFEST);
                 if (Files.isRegularFile(rootToml)) rootBuild = JkBuildParser.parse(rootToml);
             } catch (Exception ignored) {
                 // inheritance best-effort
@@ -840,7 +841,7 @@ public final class DependencyTree {
             JkBuild build = null;
             Lockfile lock = sharedLock;
             try {
-                Path toml = dir == null ? null : dir.resolve("jk.toml");
+                Path toml = dir == null ? null : dir.resolve(ManifestPaths.MANIFEST);
                 if (toml != null && Files.isRegularFile(toml)) build = JkBuildParser.parseLocal(toml);
                 if (lock == null && dir != null) {
                     Path lf = cc.jumpkick.lock.LockPaths.lockFile(dir);

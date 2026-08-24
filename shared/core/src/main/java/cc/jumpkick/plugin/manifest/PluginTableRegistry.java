@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
 import java.io.IOException;
@@ -115,9 +116,9 @@ public final class PluginTableRegistry {
     public static void installFromJar(Path jar) {
         Objects.requireNonNull(jar, "jar");
         try {
-            String toml = zipEntryText(jar, "jk-plugin.toml");
+            String toml = zipEntryText(jar, ManifestPaths.PLUGIN_MANIFEST);
             if (toml == null || toml.isBlank()) return;
-            PluginDescriptor manifest = PluginDescriptors.parse(toml, jar + "!jk-plugin.toml");
+            PluginDescriptor manifest = PluginDescriptors.parse(toml, jar + "!" + ManifestPaths.PLUGIN_MANIFEST);
             putBuiltIn(manifest, jar);
         } catch (IOException e) {
             throw new UncheckedIOException("failed to read plugin manifest from " + jar, e);
@@ -522,9 +523,9 @@ public final class PluginTableRegistry {
             Path jar = Path.of(override);
             if (!Files.isRegularFile(jar)) continue;
             try {
-                String toml = zipEntryText(jar, "jk-plugin.toml");
+                String toml = zipEntryText(jar, ManifestPaths.PLUGIN_MANIFEST);
                 if (toml == null || toml.isBlank()) continue;
-                PluginDescriptor manifest = parseBuiltIn(toml, jar + "!jk-plugin.toml");
+                PluginDescriptor manifest = parseBuiltIn(toml, jar + "!" + ManifestPaths.PLUGIN_MANIFEST);
                 byTable.put(manifest.table(), manifest);
                 ARCHIVES.put(manifest.id(), jar);
             } catch (IOException e) {
@@ -543,7 +544,7 @@ public final class PluginTableRegistry {
         Map<String, PluginDescriptor> byTable = new LinkedHashMap<>();
         int missing = 0;
         for (String resource : BUILT_IN) {
-            Path toml = root.resolve("plugins").resolve(builtInId(resource)).resolve("jk-plugin.toml");
+            Path toml = root.resolve("plugins").resolve(builtInId(resource)).resolve(ManifestPaths.PLUGIN_MANIFEST);
             if (!Files.isRegularFile(toml)) {
                 missing++;
                 continue;
@@ -607,10 +608,10 @@ public final class PluginTableRegistry {
 
     /** True when {@code dir} is a jk checkout that ships first-party {@code plugins/<id>/jk-plugin.toml}. */
     private static boolean isFirstPartyPluginCheckout(Path dir) {
-        return Files.isRegularFile(dir.resolve("jk.toml"))
+        return Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))
                 && Files.isRegularFile(dir.resolve("plugins")
                         .resolve(builtInId(BUILT_IN.getFirst()))
-                        .resolve("jk-plugin.toml"));
+                        .resolve(ManifestPaths.PLUGIN_MANIFEST));
     }
 
     private static String zipEntryText(Path jar, String entry) throws IOException {

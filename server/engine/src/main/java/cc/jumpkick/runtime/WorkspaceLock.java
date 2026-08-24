@@ -6,6 +6,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
@@ -71,7 +72,7 @@ public final class WorkspaceLock {
         }
         try {
             if (entryDir != null) {
-                Path toml = entryDir.resolve("jk.toml");
+                Path toml = entryDir.resolve(ManifestPaths.MANIFEST);
                 if (Files.isRegularFile(toml)) {
                     JkBuild b = JkBuildParser.parseLocal(toml);
                     // Workspace root: merge is done at lock time; package count from the existing

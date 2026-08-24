@@ -25,6 +25,7 @@ import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -325,11 +326,11 @@ public final class PlannerSupport {
         var rootOpt = WorkspaceLocator.findRoot(moduleDir);
         if (rootOpt.isEmpty()) return out;
         Path root = rootOpt.get();
-        JkBuild rootManifest = JkBuildParser.parse(root.resolve("jk.toml"));
+        JkBuild rootManifest = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
         if (!rootManifest.isWorkspaceRoot()) return out;
         for (String module : rootManifest.workspace().modules()) {
             Path dir = root.resolve(module);
-            Path manifest = dir.resolve("jk.toml");
+            Path manifest = dir.resolve(ManifestPaths.MANIFEST);
             if (!Files.exists(manifest)) continue;
             JkBuild sib;
             try {
@@ -621,7 +622,7 @@ public final class PlannerSupport {
         // be an explicit clear ([profiles.x] exclude-tags = []) and must stay empty.
         if (sel.tagsResolved()) return sel;
         if (!sel.includeTags().isEmpty() || !sel.excludeTags().isEmpty()) return sel;
-        var fromToml = JkBuildParser.parseTestTags(moduleDir.resolve("jk.toml"));
+        var fromToml = JkBuildParser.parseTestTags(moduleDir.resolve(ManifestPaths.MANIFEST));
         if (fromToml.isEmpty()) return sel;
         return TestSelection.of(sel.suites(), sel.allSuites(), fromToml.includeTags(), fromToml.excludeTags());
     }
@@ -795,7 +796,7 @@ public final class PlannerSupport {
             var rootOpt = WorkspaceLocator.findRoot(moduleDir);
             if (rootOpt.isEmpty()) return List.of();
             root = rootOpt.get();
-            rootManifest = JkBuildParser.parse(root.resolve("jk.toml"));
+            rootManifest = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
         } catch (IOException | RuntimeException e) {
             return List.of();
         }
@@ -805,7 +806,7 @@ public final class PlannerSupport {
         Map<Path, JkBuild> byDir = new LinkedHashMap<>();
         for (String module : rootManifest.workspace().modules()) {
             Path dir = root.resolve(module);
-            Path manifest = dir.resolve("jk.toml");
+            Path manifest = dir.resolve(ManifestPaths.MANIFEST);
             if (!Files.isRegularFile(manifest)) continue;
             JkBuild sib;
             try {

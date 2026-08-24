@@ -22,7 +22,7 @@ public final class LockFreshness {
      */
     public static boolean needsRefresh(Path projectDir) {
         Path owner = LockPaths.lockOwnerDir(projectDir);
-        Path lockFile = owner.resolve(LockPaths.FILE_NAME);
+        Path lockFile = owner.resolve(ManifestPaths.LOCK);
         if (!Files.isRegularFile(lockFile)) return true;
         return workspaceLockStale(owner, lockFile);
     }
@@ -52,7 +52,7 @@ public final class LockFreshness {
      */
     public static boolean isStale(Path dir, Path lockFile) {
         try {
-            Path buildFile = dir.resolve("jk.toml");
+            Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
             if (!Files.exists(buildFile) || !Files.exists(lockFile)) return false;
 
             Lockfile lock = LockfileReader.read(lockFile);

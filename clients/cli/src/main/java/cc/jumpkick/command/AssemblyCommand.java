@@ -6,6 +6,7 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -57,7 +58,7 @@ public final class AssemblyCommand implements CliCommand {
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
         Path dir = global.workingDir();
-        Path toml = dir.resolve("jk.toml");
+        Path toml = dir.resolve(ManifestPaths.MANIFEST);
         if (!Files.isRegularFile(toml)) {
             CommandWedge.printFail("Assemble", "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Exit.CONFIG;

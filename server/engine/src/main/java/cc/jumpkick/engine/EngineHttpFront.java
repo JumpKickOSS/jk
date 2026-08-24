@@ -13,6 +13,7 @@ import cc.jumpkick.engine.jobs.JobTransport;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.runtime.BuildMetrics;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -152,7 +153,7 @@ public final class EngineHttpFront {
 
     private static Path requireProject(String dirStr) {
         Path entryDir = cc.jumpkick.host.PathUtil.resolveUserPath(dirStr);
-        if (!Files.isRegularFile(entryDir.resolve("jk.toml"))) {
+        if (!Files.isRegularFile(entryDir.resolve(ManifestPaths.MANIFEST))) {
             throw new IllegalArgumentException("no jk.toml in " + entryDir);
         }
         return entryDir;

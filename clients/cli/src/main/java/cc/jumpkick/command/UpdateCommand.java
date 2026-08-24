@@ -14,6 +14,7 @@ import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -76,7 +77,7 @@ public final class UpdateCommand implements CliCommand {
         this.global = GlobalOptions.from(in);
 
         Path dir = global.workingDir();
-        if (!Files.exists(dir.resolve("jk.toml"))) {
+        if (!Files.exists(dir.resolve(ManifestPaths.MANIFEST))) {
             CommandWedge.printFail("Update", "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Exit.CONFIG;
         }

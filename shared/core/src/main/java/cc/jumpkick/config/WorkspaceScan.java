@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.lock.ManifestPaths;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -41,7 +42,7 @@ public final class WorkspaceScan {
         for (int depth = 0; depth < MAX_DEPTH; depth++) {
             Path parent = candidate.getParent();
             if (parent == null) break;
-            Path rootJkToml = parent.resolve("jk.toml");
+            Path rootJkToml = parent.resolve(ManifestPaths.MANIFEST);
             if (Files.exists(rootJkToml)) {
                 String relative = parent.relativize(normalized).toString().replace('\\', '/');
                 if (TomlScan.scan(rootJkToml, "workspace.modules")
@@ -57,7 +58,7 @@ public final class WorkspaceScan {
 
     /** True when {@code dir/jk.toml} declares a non-empty {@code [workspace] modules} list. */
     public static boolean isWorkspaceRoot(Path dir) {
-        Path toml = dir.resolve("jk.toml");
+        Path toml = dir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(toml)) return false;
         return !TomlScan.scan(toml, "workspace.modules")
                 .stringArray("workspace.modules")
