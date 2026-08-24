@@ -222,28 +222,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             WorkspaceBuildListener listener = host.workspaceListener(writer, entryDirStr);
             WorkspaceResult result =
                     SessionContext.where(session, () -> BuildService.buildWorkspace(workspaceReq, listener));
-            host.releaseExclusiveSlot();
-            boolean cancelled = result.cancelled() || host.effectiveCancelled(rid, cancelToken.cancelled());
-            cc.jumpkick.engine.jobs.JobOutcome outcome =
-                    cc.jumpkick.engine.jobs.JobOutcome.of(result.success() && !cancelled, result.exitCode());
-            if (rid > 0) {
-                if (result.success() && !cancelled) host.finishProgress(rid);
-                host.emitWorkspaceProgress(rid, writer, true);
-            }
-            host.flushTimeline(rid, writer);
-            List<String> safeErrors = result.errors().stream()
-                    .map(err -> host.redactEnv(entryDirStr, err))
-                    .toList();
-            host.send(
-                    writer,
-                    ProtoEvents.workspaceFinish(
-                            result.success() && !cancelled, result.exitCode(), safeErrors, cancelled));
-            if (!result.success() && !cancelled) {
-                for (String error : safeErrors.stream().limit(5).toList()) {
-                    host.publishRequestError(host.eventRequestId(), entryDirStr, error);
-                }
-            }
-            return outcome;
+            return WorkspaceTerminal.finish(host, writer, entryDirStr, result, cancelToken.cancelled());
         } catch (Exception e) {
             String dir = Jsonl.str(requestLine, "dir");
             long rid = host.eventRequestId();
