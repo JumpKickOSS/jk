@@ -2,6 +2,7 @@
 package cc.jumpkick.testrunner;
 
 import cc.jumpkick.jsonl.Jsonl;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -27,12 +28,16 @@ final class JsonOut {
             out.append(value);
         } else if (value instanceof Map<?, ?> map) {
             writeObject(out, map);
+        } else if (value instanceof Path path) {
+            // Before the Iterable arm: a Path IS an Iterable<Path> whose elements are themselves
+            // single-name Paths, so the array branch recurses forever and blows the stack. A file
+            // location on an event payload is one string.
+            writeString(out, path.toString());
         } else if (value instanceof Iterable<?> it) {
             writeArray(out, it);
         } else {
-            // Defensive: stringify anything else (e.g. enums, paths) — keeps
-            // the encoder total even if a future event payload sneaks in an
-            // unexpected type.
+            // Defensive: stringify anything else (e.g. enums) — keeps the encoder total even if a
+            // future event payload sneaks in an unexpected type.
             writeString(out, value.toString());
         }
     }

@@ -166,8 +166,7 @@ public final class LockfileReader {
                         t.getString("description"),
                         t.getString("sources"),
                         m2,
-                        m2install,
-                        t.getString("layout")));
+                        m2install));
             }
         }
         String manifestsSha = result.getString("manifests-sha256"); // optional, additive v1

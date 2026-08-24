@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -51,15 +52,46 @@ class MicronautAotInputsTest {
         assertThat(inputsOf(describe(dir, "cfg/native-aot.properties"))).contains("project:" + spec);
     }
 
+    /**
+     * The auto-gate at {@code MicronautPlugin.build}: with no {@code aot} key, a declared
+     * {@code [native]} turns AOT on by itself (mirroring spring-boot). Every other fixture in this
+     * file forces {@code aot = true}, so this is the only case where {@code nativeDeclared}
+     * actually decides.
+     */
+    @Test
+    void a_declared_native_build_turns_aot_on_with_no_aot_key(@TempDir Path dir) throws Exception {
+        assertThat(aotTaskLine(dir, null, true, null)).isPresent();
+        assertThat(aotTaskLine(dir, null, false, null)).isEmpty();
+    }
+
+    /** An explicit {@code aot = false} outranks {@code [native]}: the key always wins. */
+    @Test
+    void an_explicit_false_suppresses_aot_even_for_a_native_build(@TempDir Path dir) throws Exception {
+        assertThat(aotTaskLine(dir, false, true, null)).isEmpty();
+    }
+
     /** The `micronaut-aot` task line from a describe run with aot forced on. */
     private static String describe(Path dir, String aotConfig) throws Exception {
+        return aotTaskLine(dir, true, false, aotConfig)
+                .orElseThrow(() -> new AssertionError("no micronaut-aot task line"));
+    }
+
+    /**
+     * Run the plugin's describe op and return the {@code micronaut-aot} task line, if the plugin
+     * contributed one. {@code aot} null means the key is absent — the only shape in which
+     * {@code nativeDeclared} gets to decide.
+     */
+    private static Optional<String> aotTaskLine(Path dir, Boolean aot, boolean nativeDeclared, String aotConfig)
+            throws Exception {
         Path spec = dir.resolve("describe.spec");
         List<String> lines = new ArrayList<>(List.of(
                 "{\"t\":\"op\",\"op\":\"describe\",\"plugin\":\"jk-micronaut\"}",
                 "{\"t\":\"config\",\"key\":\"version\",\"kind\":\"string\",\"value\":\"5\"}",
-                "{\"t\":\"config\",\"key\":\"aot\",\"kind\":\"bool\",\"value\":true}",
                 "{\"t\":\"project\",\"group\":\"com.example\",\"name\":\"svc\",\"version\":\"1\","
-                        + "\"javaRelease\":25,\"nativeDeclared\":false,\"kotlin\":false}"));
+                        + "\"javaRelease\":25,\"nativeDeclared\":" + nativeDeclared + ",\"kotlin\":false}"));
+        if (aot != null) {
+            lines.add(2, "{\"t\":\"config\",\"key\":\"aot\",\"kind\":\"bool\",\"value\":" + aot + "}");
+        }
         if (aotConfig != null) {
             lines.add(
                     2, "{\"t\":\"config\",\"key\":\"aot-config\",\"kind\":\"string\",\"value\":\"" + aotConfig + "\"}");
@@ -72,8 +104,7 @@ class MicronautAotInputsTest {
         assertThat(exit).isZero();
         return List.of(buffer.toString(StandardCharsets.UTF_8).split("\n")).stream()
                 .filter(l -> l.contains("\"t\":\"task\"") && l.contains("\"name\":\"micronaut-aot\""))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("no micronaut-aot task line in:\n" + buffer));
+                .findFirst();
     }
 
     /** The `inputs` array of a describe task line, as wire names. */

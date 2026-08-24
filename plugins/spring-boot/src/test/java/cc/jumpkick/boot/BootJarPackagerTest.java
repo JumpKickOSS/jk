@@ -91,11 +91,19 @@ class BootJarPackagerTest {
         }
     }
 
+    /**
+     * Runtime entries arrive as CAS blobs — {@code <store>/sha256/AB/CD/<60 hex>} — never as
+     * {@code <group>/<artifact>-<version>.jar}. The disambiguator prepends
+     * {@code jar().getParent().getFileName()}, which on that layout is the second hex pair, so the
+     * name it mints is {@code CD-util-1.0.jar}. The old fixture used group directories and pinned
+     * {@code group-b-util-1.0.jar}, a name production cannot produce.
+     */
     @Test
     void colliding_lib_file_names_get_disambiguated(@TempDir Path tmp) throws Exception {
         Path classes = Files.createDirectories(tmp.resolve("classes"));
-        Path a = writeJar(Files.createDirectories(tmp.resolve("group-a")).resolve("util-1.0.jar"), "a/A.class");
-        Path b = writeJar(Files.createDirectories(tmp.resolve("group-b")).resolve("util-1.0.jar"), "b/B.class");
+        Path a = writeJar(casBlob(tmp, "aa", "bb"), "a/A.class");
+        Path b = writeJar(casBlob(tmp, "cc", "dd"), "b/B.class");
+        Path c = writeJar(casBlob(tmp, "ee", "dd"), "c/C.class"); // same second pair as b
         Path loader = writeJar(tmp.resolve("loader.jar"), "org/springframework/boot/loader/launch/JarLauncher.class");
 
         Path out = tmp.resolve("app.jar");
@@ -104,7 +112,8 @@ class BootJarPackagerTest {
                         classes,
                         List.of(
                                 new BootJarPackager.Lib("util-1.0.jar", a, false),
-                                new BootJarPackager.Lib("util-1.0.jar", b, false)),
+                                new BootJarPackager.Lib("util-1.0.jar", b, false),
+                                new BootJarPackager.Lib("util-1.0.jar", c, false)),
                         loader,
                         out,
                         "com.example.App",
@@ -113,9 +122,24 @@ class BootJarPackagerTest {
                         0L));
 
         try (JarFile jar = new JarFile(out.toFile())) {
-            assertThat(jar.getEntry("BOOT-INF/lib/util-1.0.jar")).isNotNull();
-            assertThat(jar.getEntry("BOOT-INF/lib/group-b-util-1.0.jar")).isNotNull();
+            assertThat(jar.getEntry("BOOT-INF/lib/util-1.0.jar")).isNotNull(); // first keeps the plain name
+            assertThat(jar.getEntry("BOOT-INF/lib/dd-util-1.0.jar")).isNotNull();
+            // Two blobs sharing a shard directory name must still not collide.
+            assertThat(jar.getEntry("BOOT-INF/lib/dd-util-1.0.jar.2")).isNotNull();
+            // …and every lib is listed exactly once in the layer index the launcher reads.
+            String idx = entryText(jar, "BOOT-INF/classpath.idx");
+            assertThat(idx)
+                    .contains("BOOT-INF/lib/util-1.0.jar")
+                    .contains("BOOT-INF/lib/dd-util-1.0.jar")
+                    .contains("BOOT-INF/lib/dd-util-1.0.jar.2");
         }
+    }
+
+    /** A content-addressed blob path: {@code <store>/sha256/<hi>/<lo>/<name>}, as the CAS lays out. */
+    private static Path casBlob(Path tmp, String hi, String lo) throws IOException {
+        Path dir = tmp.resolve("store/sha256").resolve(hi).resolve(lo);
+        Files.createDirectories(dir);
+        return dir.resolve(hi + lo + "0".repeat(56));
     }
 
     @Test
@@ -169,6 +193,11 @@ class BootJarPackagerTest {
     }
 
     /** A minimal jar containing one empty entry (+ nothing else). */
+    /** UTF-8 text of one jar entry. */
+    private static String entryText(JarFile jar, String name) throws IOException {
+        return new String(jar.getInputStream(jar.getEntry(name)).readAllBytes(), StandardCharsets.UTF_8);
+    }
+
     private static Path writeJar(Path path, String entryName) throws IOException {
         try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(path))) {
             jos.putNextEntry(new JarEntry(entryName));

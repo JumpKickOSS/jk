@@ -87,10 +87,10 @@ final class PathSourceMaterializer {
             artifact = project.project().name();
             version = project.project().version();
         } else if (Files.isRegularFile(marker)) {
-            String[] gav = Files.readString(marker).strip().split(":", 3);
-            group = gav[0];
-            artifact = gav[1];
-            version = gav[2];
+            GitSourceMaterializer.Gav cached = GitSourceMaterializer.readCoordinateMarker(marker);
+            group = cached.group();
+            artifact = cached.artifact();
+            version = cached.version();
         }
 
         if (group != null
@@ -104,7 +104,9 @@ final class PathSourceMaterializer {
                 SourceProjectBuilder.build(projectDir, null, javaHome, cas, buildRepos, jkVersion);
         GitSourceMaterializer.installArtifact(
                 repo, built.group(), built.artifact(), built.version(), built.jar(), built.pomXml());
-        Files.writeString(marker, built.coordinate() + ":" + built.version());
+        if (!isJk) {
+            GitSourceMaterializer.writeCoordinateMarker(marker, built);
+        }
         return new Materialized(built.group(), built.artifact(), built.version(), repo.toUri());
     }
 

@@ -87,15 +87,20 @@ class TuiModeFixturesTest {
     }
 
     @Test
-    void spinner_wedge_frame_plain_is_ascii() {
+    void spinner_wedge_frame_plain_is_ascii() throws Exception {
         var colors = Spinner.buildChipPulseStyles(
                 Spinner.PULSE_FRAMES, cc.jumpkick.cli.theme.Theme.active().planBadgeColor());
-        // Force plain path inside renderWedgeFrame via Theme — under CI isAnsi is often false already.
-        String frame = Spinner.renderWedgeFrame(0, "Status", "working", NerdFontCaps.NONE, colors);
-        if (frame.contains("Status") && !frame.contains(CSI)) {
-            assertThat(frame).isEqualTo("jk: * Status > working");
-            assertThat(frame).doesNotContain(Glyphs.PULSE).doesNotContain(PUA).doesNotContain(CSI);
-        }
+        withConfig(noAnsiConfig(), () -> {
+            // Every animator frame renders the same still line: --no-ansi has no animation.
+            for (int i : new int[] {0, 1, Spinner.PULSE_FRAMES - 1}) {
+                String frame = Spinner.renderWedgeFrame(i, "Status", "working", NerdFontCaps.NONE, colors);
+                assertThat(frame).isEqualTo("jk: * Status > working");
+            }
+            // Nerd caps must not smuggle PUA glyphs past the plain switch either.
+            String nerd = Spinner.renderWedgeFrame(0, "Status", "working", NerdFontCaps.ALL, colors);
+            assertThat(nerd).isEqualTo("jk: * Status > working");
+            return null;
+        });
     }
 
     @Test

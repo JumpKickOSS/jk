@@ -26,9 +26,18 @@ public final class M2Dirs {
     private M2Dirs() {}
 
     public static Path localRepository() {
+        return localRepository(System.getenv("JK_M2_LOCAL"));
+    }
+
+    /**
+     * The resolution above with {@code JK_M2_LOCAL} passed in. The environment is the one input a
+     * test cannot clear — and the build sets {@code JK_M2_LOCAL} on every test JVM so the real
+     * {@code ~/.m2} is never written — so the lower-precedence steps are only reachable through
+     * this entry point.
+     */
+    static Path localRepository(String override) {
         String prop = System.getProperty("jk.m2.local");
         if (prop != null && !prop.isBlank()) return Path.of(prop.trim());
-        String override = System.getenv("JK_M2_LOCAL");
         if (override != null && !override.isBlank()) return Path.of(override.trim());
         String mavenProp = System.getProperty("maven.repo.local");
         if (mavenProp != null && !mavenProp.isBlank()) return Path.of(mavenProp.trim());

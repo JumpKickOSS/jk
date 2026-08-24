@@ -14,7 +14,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -38,9 +37,6 @@ import org.junit.jupiter.api.io.TempDir;
 class KspRoomHiltTest {
 
     @Test
-    @Disabled("Same Hilt GeneratesRootInputPropagatedData failure as HiltTransformTest under "
-            + "KSP; Room side is fine once Hilt processing completes. Disabled until the "
-            + "Android Hilt processor classpath is fixed.")
     void room_and_hilt_generate_via_ksp_and_the_app_builds(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");

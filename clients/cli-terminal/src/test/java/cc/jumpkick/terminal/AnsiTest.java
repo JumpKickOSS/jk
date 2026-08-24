@@ -3,8 +3,14 @@ package cc.jumpkick.terminal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.io.InputStream;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassModel;
+import java.lang.classfile.constantpool.ClassEntry;
+import java.lang.classfile.constantpool.ConstantPool;
+import java.lang.classfile.constantpool.PoolEntry;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class AnsiTest {
@@ -18,39 +24,46 @@ class AnsiTest {
                 .contains("hello");
     }
 
+    /**
+     * {@code Ansi} is the escape-sequence alphabet: it must stay linkable on its own, with no
+     * policy type behind it. Asserted against the <em>compiled</em> class, not the source text —
+     * the constant pool names every type the class actually references, so a new
+     * {@code SessionContext.current()} (or any other jk collaborator) fails here even if the
+     * import is written as a fully-qualified name.
+     */
     @Test
-    void noSessionContextImport() throws Exception {
-        String src = Files.readString(ansiSource());
-        assertThat(src).doesNotContain("import cc.jumpkick.");
-        assertThat(src).doesNotContain("SessionContext.current");
+    void compiles_against_the_jdk_alone() throws Exception {
+        Set<String> foreign = new LinkedHashSet<>();
+        for (String referenced : referencedTypes(Ansi.class)) {
+            if (referenced.startsWith("java/") || referenced.startsWith("cc/jumpkick/terminal/Ansi")) continue;
+            foreign.add(referenced);
+        }
+        assertThat(foreign)
+                .as("Ansi must reference only JDK types; policy belongs in :cli")
+                .isEmpty();
     }
 
-    /**
-     * Workspace {@code jk build} runs tests with CWD at {@code ~/.local/state/jk/engine}, so
-     * {@code src/...} relatives miss. Walk from this class's output location (and CWD) instead.
-     */
-    static Path ansiSource() throws Exception {
-        Path rel = Path.of("src/main/java/cc/jumpkick/terminal/Ansi.java");
-        Path classLoc = Path.of(AnsiTest.class
-                        .getProtectionDomain()
-                        .getCodeSource()
-                        .getLocation()
-                        .toURI())
-                .toAbsolutePath()
-                .normalize();
-        Path cwd = Path.of("").toAbsolutePath().normalize();
-        for (Path start : new Path[] {classLoc, cwd}) {
-            for (Path d = start; d != null; d = d.getParent()) {
-                Path atModule = d.resolve(rel);
-                if (Files.isRegularFile(atModule)) {
-                    return atModule;
-                }
-                Path atWorkspace = d.resolve("clients/cli-terminal").resolve(rel);
-                if (Files.isRegularFile(atWorkspace)) {
-                    return atWorkspace;
-                }
-            }
+    /** Internal names of every class the constant pool of {@code type} names. */
+    private static Set<String> referencedTypes(Class<?> type) throws Exception {
+        byte[] bytes;
+        try (InputStream in = type.getResourceAsStream(type.getSimpleName() + ".class")) {
+            assertThat(in)
+                    .as("compiled %s on the test classpath", type.getSimpleName())
+                    .isNotNull();
+            bytes = in.readAllBytes();
         }
-        throw new AssertionError("cannot locate Ansi.java from class=" + classLoc + " cwd=" + cwd);
+        ClassModel model = ClassFile.of().parse(bytes);
+        ConstantPool pool = model.constantPool();
+        Set<String> names = new LinkedHashSet<>();
+        for (int i = 1; i < pool.size(); i++) {
+            PoolEntry entry;
+            try {
+                entry = pool.entryByIndex(i);
+            } catch (IllegalArgumentException wideSlot) {
+                continue; // long/double occupy two slots; the second is not addressable
+            }
+            if (entry instanceof ClassEntry ce) names.add(ce.asInternalName());
+        }
+        return names;
     }
 }

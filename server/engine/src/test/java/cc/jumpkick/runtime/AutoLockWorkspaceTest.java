@@ -156,7 +156,7 @@ class AutoLockWorkspaceTest {
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(proj);
         Lockfile stale = new Lockfile(1, "test", "jk-test", List.of())
                 .withModules(List.of(new Lockfile.ModuleEntry(
-                        ".", "com.example", "solo", "1.0.0", "21", 21, null, null, null, null, null, null)));
+                        ".", "com.example", "solo", "1.0.0", "21", 21, null, null, null, null, null)));
         LockfileWriter.write(stale, lockFile);
 
         // Then the project bumps its version: content digest diverges (mtimes are irrelevant

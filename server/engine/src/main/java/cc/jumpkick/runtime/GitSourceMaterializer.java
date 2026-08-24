@@ -97,10 +97,10 @@ public final class GitSourceMaterializer {
             version = deriveVersion(fetcher, source, sha);
             versionOverride = version; // git deps override the jk.toml version with the ref-derived one
         } else if (Files.isRegularFile(marker)) {
-            String[] gav = Files.readString(marker).strip().split(":", 3);
-            group = gav[0];
-            artifact = gav[1];
-            version = gav[2];
+            Gav cached = readCoordinateMarker(marker);
+            group = cached.group();
+            artifact = cached.artifact();
+            version = cached.version();
         }
 
         // Cache hit: coordinate known and the artifact is already installed.
@@ -117,7 +117,7 @@ public final class GitSourceMaterializer {
         version = built.version();
         installArtifact(repo, group, artifact, version, built.jar(), built.pomXml());
         if (!isJk) {
-            Files.writeString(marker, built.coordinate());
+            writeCoordinateMarker(marker, built);
         }
         return new Materialized(group, artifact, version, repo.toUri(), gitInfo);
     }
@@ -130,6 +130,30 @@ public final class GitSourceMaterializer {
     private static Path artifactPom(Path repo, String group, String artifact, String version) {
         return repo.resolve(
                 group.replace('.', '/') + "/" + artifact + "/" + version + "/" + artifact + "-" + version + ".pom");
+    }
+
+    /** The coordinate a foreign (Gradle/Maven) target only reveals once it has been built. */
+    record Gav(String group, String artifact, String version) {}
+
+    /**
+     * Cache a foreign target's coordinate beside its built artifacts. Both source materializers
+     * write and read this file, so the format has one owner: {@code group:artifact:version} and
+     * nothing else. {@link SourceProjectBuilder.Built#coordinate()} already carries the version;
+     * appending it a second time yielded {@code g:a:v:v}, which no artifact path can match, so
+     * every foreign path target rebuilt on every resolve.
+     */
+    static void writeCoordinateMarker(Path marker, SourceProjectBuilder.Built built) throws IOException {
+        Files.writeString(marker, built.coordinate());
+    }
+
+    /** Inverse of {@link #writeCoordinateMarker}. */
+    static Gav readCoordinateMarker(Path marker) throws IOException {
+        String text = Files.readString(marker).strip();
+        String[] gav = text.split(":");
+        if (gav.length != 3) {
+            throw new IOException(marker + ": expected group:artifact:version, got " + text);
+        }
+        return new Gav(gav[0], gav[1], gav[2]);
     }
 
     /** Copy the built jar + POM into the {@code file://} repo and (re)write maven-metadata.xml. */

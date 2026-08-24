@@ -51,8 +51,7 @@ public record Lockfile(
             String description,
             String sources,
             Boolean m2integration,
-            Boolean m2install,
-            String layout) {
+            Boolean m2install) {
         public ModuleEntry {
             Objects.requireNonNull(path, "path");
             Objects.requireNonNull(group, "group");
@@ -72,22 +71,8 @@ public record Lockfile(
                 String groovy,
                 String description,
                 String sources,
-                Boolean m2integration,
-                String layout) {
-            this(
-                    path,
-                    group,
-                    name,
-                    version,
-                    jdk,
-                    java,
-                    kotlin,
-                    groovy,
-                    description,
-                    sources,
-                    m2integration,
-                    null,
-                    layout);
+                Boolean m2integration) {
+            this(path, group, name, version, jdk, java, kotlin, groovy, description, sources, m2integration, null);
         }
 
         /** Unset Scala pin. */
@@ -103,8 +88,7 @@ public record Lockfile(
                 String description,
                 String sources,
                 Boolean m2integration,
-                Boolean m2install,
-                String layout) {
+                Boolean m2install) {
             this(
                     path,
                     group,
@@ -118,8 +102,7 @@ public record Lockfile(
                     description,
                     sources,
                     m2integration,
-                    m2install,
-                    layout);
+                    m2install);
         }
     }
 

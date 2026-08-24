@@ -187,18 +187,7 @@ class LockfileRoundTripTest {
         Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT")
                 .withModules(List.of(
                         new Lockfile.ModuleEntry(
-                                ".",
-                                "com.example",
-                                "root",
-                                "1.2.3",
-                                "temurin-25",
-                                25,
-                                null,
-                                null,
-                                "Root",
-                                null,
-                                null,
-                                null),
+                                ".", "com.example", "root", "1.2.3", "temurin-25", 25, null, null, "Root", null, null),
                         new Lockfile.ModuleEntry(
                                 "lib",
                                 "com.example",
@@ -211,8 +200,7 @@ class LockfileRoundTripTest {
                                 null,
                                 "publish",
                                 false,
-                                false,
-                                "maven")));
+                                false)));
 
         String rendered = LockfileWriter.render(original);
         assertThat(rendered)
@@ -226,17 +214,11 @@ class LockfileRoundTripTest {
                 .contains("sources = \"publish\"")
                 .contains("m2.integration = false")
                 .contains("m2.install = false");
-        assertThat(rendered).doesNotContain("layout");
 
+        // Whole records, not selected keys: a component the writer forgets to emit is a silent
+        // data loss on the next read, and a per-field assertion list never notices the new one.
         Lockfile parsed = LockfileReader.parse(rendered);
-        assertThat(parsed.modules()).hasSize(2);
-        assertThat(parsed.modules().getFirst().name()).isEqualTo("root");
-        assertThat(parsed.modules().get(1).name()).isEqualTo("lib");
-        assertThat(parsed.modules().get(1).version()).isEqualTo("1.2.3");
-        assertThat(parsed.modules().get(1).java()).isEqualTo(25);
-        assertThat(parsed.modules().get(1).kotlin()).isEqualTo("2.4.0");
-        assertThat(parsed.modules().get(1).m2integration()).isFalse();
-        assertThat(parsed.modules().get(1).m2install()).isFalse();
+        assertThat(parsed.modules()).containsExactlyElementsOf(original.modules());
     }
 
     @Test
@@ -252,7 +234,6 @@ class LockfileRoundTripTest {
                         null,
                         null,
                         "3",
-                        null,
                         null,
                         null,
                         null,
