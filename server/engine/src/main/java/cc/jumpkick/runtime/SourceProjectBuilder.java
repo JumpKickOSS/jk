@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Stream;
+import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -156,6 +157,15 @@ final class SourceProjectBuilder {
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setNamespaceAware(false);
+            // Attacker-influenceable XML: a path/git dependency's pom.xml is third-party content,
+            // so reject a DOCTYPE outright rather than merely declining to fetch external
+            // entities — same posture as PomParser / MavenMetadata / PomImporter.
+            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+            factory.setExpandEntityReferences(false);
             Element project;
             try (InputStream in = Files.newInputStream(pomXml)) {
                 project = factory.newDocumentBuilder().parse(in).getDocumentElement();
