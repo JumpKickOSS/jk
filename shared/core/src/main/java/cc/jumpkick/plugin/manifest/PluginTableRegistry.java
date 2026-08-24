@@ -43,6 +43,9 @@ public final class PluginTableRegistry {
     private static final String TEST_RUNNER_PLUGIN_CLASS = "cc.jumpkick.testrunner.TestRunner";
     private static final String BUILT_IN_SUFFIX = ".jk-plugin.toml";
 
+    /** The engine fat jar: the only shipped artifact that embeds {@code :core}. */
+    private static final String ENGINE_FAT_JAR_PREFIX = "jk-engine";
+
     private static final List<String> BUILT_IN = List.of(
             "spring-boot.jk-plugin.toml",
             "grails.jk-plugin.toml",
@@ -461,9 +464,22 @@ public final class PluginTableRegistry {
 
     /**
      * Workspace sources are a test-classpath substitute, not a production catalog. Load them
-     * when this class came from jk-core's classes dir / {@code jk-core-*.jar} (unit tests) or
-     * the test-runner host set {@code jk.plugin.class}. Skip the native CLI and the engine fat
-     * jar — those stay empty until {@link #putBuiltIn}.
+     * unless this class came from a shipped artifact, or the test-runner host set
+     * {@code jk.plugin.class}.
+     *
+     * <p>The effective guard is not this method — it is {@link #isFirstPartyPluginCheckout}, which
+     * only finds sources when the code source sits inside a checkout that ships
+     * {@code plugins/<id>/jk-plugin.toml}. No shipped layout does: the native CLI has no
+     * filesystem code source, and an installed worker resolves {@code :core} out of the store. So
+     * this method only has to exclude the one shipped artifact that both embeds {@code :core} and
+     * could be run from inside a checkout — the engine fat jar, which seeds via
+     * {@link #putBuiltIn} instead.
+     *
+     * <p>This deliberately does <em>not</em> match on {@code :core}'s artifact name. It used to
+     * require {@code jk-core-*.jar}, which is the <em>published</em> name; Gradle hands consumers
+     * the build-internal {@code core.jar}, so every test JVM that received the jar rather than the
+     * classes directory silently got an empty registry, and any manifest naming a plugin table
+     * failed to parse with "plugin tables installed here: none".
      */
     private static boolean shouldLoadWorkspacePluginSources() {
         if (TEST_RUNNER_PLUGIN_CLASS.equals(System.getProperty("jk.plugin.class"))) return true;
@@ -474,8 +490,7 @@ public final class PluginTableRegistry {
             if (Files.isDirectory(loc)) {
                 return "main".equals(pathFileName(loc));
             }
-            String name = pathFileName(loc);
-            return name.startsWith("jk-core-") && name.endsWith(".jar");
+            return !pathFileName(loc).startsWith(ENGINE_FAT_JAR_PREFIX);
         } catch (Exception e) {
             return false;
         }
