@@ -162,3 +162,126 @@ val checkNoHandBuiltJavaBinary by tasks.registering {
 }
 tasks.named("check") { dependsOn(checkNoHandBuiltJavaBinary) }
 tasks.named("jar") { dependsOn(checkNoHandBuiltJavaBinary) }
+
+// ---------------------------------------------------------------------------
+// Guard G10 (JK-2411): the size caps are a ratchet, not a suggestion.
+//
+// `code-as-art.md`'s size table had no mechanical check, and unenforced caps regrow: `EngineServer`
+// finished its peel at 1,064 lines and was back over 1,200 eleven days later; the `JkManager` triad
+// went 2,467 -> 3,414 in ten days, ending up larger than the 2,204-line god class it replaced. A
+// shipped number is a floor, not a fact.
+//
+// Caps are per language, because the languages do not split at the same cost. A Java split costs an
+// import; `clients/web` has no bundler, so a JS split costs a <script> tag and a load-order
+// invariant no compiler checks. CSS is exempt outright — splitting a cascade on line count is a
+// regression risk with no readability win. Soft caps (400 Java / 600 JS) are a review signal, not a
+// gate; only the hard caps below are enforced.
+//
+// Three rules, all against the checked-in `size-baseline.txt` at the repo root (see its header):
+//   1. A listed file may only shrink.
+//   2. An unlisted file must be at or under its language's hard cap.
+//   3. Every listed file claims the exception band, so every entry carries the invariant comment.
+// A shrink passes and prints the tightened line to paste back — the ratchet never blocks progress.
+//
+// The count is `wc -l` (newline characters), the number the scoreboard and commit messages cite.
+// Scope is production sources of Gradle modules that apply this plugin: `src/main/java`,
+// `src/main/kotlin`, and `src/main/resources/**/*.{js,mjs}` (that last one is `clients/web`).
+// ---------------------------------------------------------------------------
+val fileSizeHardCaps = mapOf("java" to 800, "kt" to 800, "js" to 1200, "mjs" to 1200)
+
+val checkFileSizeCaps by tasks.registering {
+    group = "verification"
+    description = "Fail the build when a file grows past size-baseline.txt or over its hard cap"
+    val sources = fileTree(layout.projectDirectory) {
+        include("src/main/java/**/*.java")
+        include("src/main/kotlin/**/*.kt")
+        include("src/main/resources/**/*.js")
+        include("src/main/resources/**/*.mjs")
+    }
+    inputs.files(sources).withPropertyName("productionSources")
+    val baseline = rootProject.layout.projectDirectory.file("size-baseline.txt")
+    inputs.file(baseline).withPropertyName("sizeBaseline")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val here = layout.projectDirectory.asFile.relativeTo(treeRoot).invariantSeparatorsPath + "/"
+    val caps = fileSizeHardCaps
+    val stamp = layout.buildDirectory.file("guards/file-size-caps.ok")
+    outputs.file(stamp)
+    doLast {
+        // An entry is `<lines>  <path>`; its invariant is the comment block directly above it, with
+        // no blank line between. Whitespace-insensitive so the columns can stay aligned by eye.
+        val listed = LinkedHashMap<String, Int>()
+        val malformed = mutableListOf<String>()
+        val undocumented = mutableListOf<String>()
+        var documented = false
+        baseline.asFile.readLines().forEachIndexed { i, raw ->
+            val line = raw.trim()
+            when {
+                line.isEmpty() -> documented = false
+                line.startsWith("#") -> documented = true
+                else -> {
+                    val parts = line.split(Regex("\\s+"))
+                    val lines = if (parts.size == 2) parts[0].toIntOrNull() else null
+                    if (lines == null) {
+                        malformed.add("  size-baseline.txt:${i + 1}: expected `<lines>  <path>`, got `$line`")
+                    } else {
+                        listed[parts[1]] = lines
+                        if (!documented) undocumented.add("  size-baseline.txt:${i + 1}: ${parts[1]}")
+                    }
+                    documented = false
+                }
+            }
+        }
+
+        val grew = mutableListOf<String>()
+        val overCap = mutableListOf<String>()
+        val loose = mutableListOf<String>()
+        val present = mutableSetOf<String>()
+        sources.files.sorted().forEach { f ->
+            val hard = caps[f.extension.lowercase()] ?: return@forEach
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            val lines = f.readText().count { it == '\n' }
+            present.add(rel)
+            val listedAt = listed[rel]
+            when {
+                listedAt == null && lines > hard ->
+                        overCap.add("  $rel: $lines lines, hard cap $hard")
+                listedAt != null && lines > listedAt ->
+                        grew.add("  $rel: $lines lines, baseline $listedAt (+${lines - listedAt})")
+                listedAt != null && lines < listedAt ->
+                        loose.add("  %5d  %s   (was %d)".format(lines, rel, listedAt))
+            }
+        }
+        listed.forEach { (rel, at) ->
+            if (rel.startsWith(here) && rel !in present) loose.add("  (deleted) $rel   (was $at)")
+        }
+
+        val problems = mutableListOf<String>()
+        if (grew.isNotEmpty()) {
+            problems.add("A file in size-baseline.txt may only shrink (JK-2411). These grew:\n"
+                    + grew.joinToString("\n"))
+        }
+        if (overCap.isNotEmpty()) {
+            problems.add("Over the hard cap for their language and not in size-baseline.txt:\n"
+                    + overCap.joinToString("\n")
+                    + "\n  Split the file, or add it to size-baseline.txt with the invariant that"
+                    + " must not be split.")
+        }
+        if (undocumented.isNotEmpty()) {
+            problems.add("Every size-baseline.txt entry is a file claiming the exception band, and"
+                    + " the exception band costs a stated invariant. Write the comment directly"
+                    + " above the entry:\n" + undocumented.joinToString("\n"))
+        }
+        if (malformed.isNotEmpty()) {
+            problems.add("size-baseline.txt is malformed:\n" + malformed.joinToString("\n"))
+        }
+        if (problems.isNotEmpty()) throw GradleException(problems.joinToString("\n\n"))
+
+        if (loose.isNotEmpty()) {
+            logger.lifecycle("size-baseline.txt is loose (these shrank — tighten it in this commit):")
+            loose.forEach { logger.lifecycle(it) }
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkFileSizeCaps) }
+tasks.named("jar") { dependsOn(checkFileSizeCaps) }
