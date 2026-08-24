@@ -62,4 +62,31 @@ class MavenMetadataTest {
         String xml = "<versions><version>1.0</version><version>1.0</version></versions>";
         assertThat(MavenPublisher.parseVersions(xml)).containsExactly("1.0");
     }
+
+    @Test
+    void coordinates_are_entity_escaped_like_the_pom_published_beside_them() {
+        String xml = MavenPublisher.metadataXml("a&b", "c<d", List.of("1.0"));
+        assertThat(xml).contains("<groupId>a&amp;b</groupId>");
+        assertThat(xml).contains("<artifactId>c&lt;d</artifactId>");
+        assertThat(xml).doesNotContain("<groupId>a&b</groupId>");
+    }
+
+    @Test
+    void a_version_needing_escaping_is_escaped_in_every_element_that_carries_it() {
+        String xml = MavenPublisher.metadataXml("g", "a", List.of("1.0&x"));
+        assertThat(xml).contains("<version>1.0&amp;x</version>");
+        assertThat(xml).contains("<latest>1.0&amp;x</latest>");
+        assertThat(xml).contains("<release>1.0&amp;x</release>");
+    }
+
+    /** Read and write must invert, or each republish re-escapes what the last one wrote. */
+    @Test
+    void an_escaped_version_round_trips_instead_of_double_escaping() {
+        String first = MavenPublisher.metadataXml("g", "a", List.of("1.0&x"));
+        assertThat(MavenPublisher.parseVersions(first)).containsExactly("1.0&x");
+
+        String second = MavenPublisher.metadataXml("g", "a", MavenPublisher.parseVersions(first));
+        assertThat(second).isEqualTo(first);
+        assertThat(second).doesNotContain("&amp;amp;");
+    }
 }

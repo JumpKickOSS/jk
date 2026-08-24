@@ -29,6 +29,14 @@ class MavenPublisherTest {
     private final Map<String, String> authHeaders = new HashMap<>();
     private volatile boolean failNext;
 
+    /** Non-zero makes every GET answer with this status instead of the stored body. */
+    private volatile int getFailureStatus;
+
+    /**
+     * A real Maven repository over HTTP: PUT stores, GET reads back what was stored and 404s what
+     * was never published. That distinction is the whole subject of {@code publishMetadata} — a
+     * harness that 405s every GET would let a truncating publisher look healthy.
+     */
     @BeforeEach
     void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -44,6 +52,16 @@ class MavenPublisherTest {
                 } else {
                     exchange.sendResponseHeaders(201, -1);
                 }
+            } else if ("GET".equals(exchange.getRequestMethod())) {
+                byte[] body = received.get(path);
+                if (getFailureStatus != 0) {
+                    exchange.sendResponseHeaders(getFailureStatus, -1); // a failure, not a 404
+                } else if (body == null) {
+                    exchange.sendResponseHeaders(404, -1);
+                } else {
+                    exchange.sendResponseHeaders(200, body.length);
+                    exchange.getResponseBody().write(body);
+                }
             } else {
                 exchange.sendResponseHeaders(405, -1);
             }
@@ -51,6 +69,19 @@ class MavenPublisherTest {
         });
         server.start();
         base = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/repo/");
+    }
+
+    private String metadataOnServer() {
+        byte[] body = received.get("/repo/com/example/widget/maven-metadata.xml");
+        return body == null ? null : new String(body, StandardCharsets.UTF_8);
+    }
+
+    private void publishVersion(String version) throws Exception {
+        new MavenPublisher(base, null, null)
+                .publish(
+                        new JkBuild.Project("com.example", "widget", version, 21),
+                        List.of(new MavenPublisher.Artifact(
+                                ".jar", ("jar-" + version).getBytes(StandardCharsets.UTF_8))));
     }
 
     @AfterEach
@@ -172,6 +203,84 @@ class MavenPublisherTest {
 
         String stem = "/repo/com/example/widget/1.0.0/widget-1.0.0";
         assertThat(received).containsKeys(stem + ".jar.asc", stem + ".jar.sigstore");
+    }
+
+    @Test
+    void first_publish_writes_metadata_with_only_the_new_version() throws Exception {
+        publishVersion("0.1.0");
+
+        // The GET 404'd — absent metadata, so a single-version document is exactly right.
+        assertThat(MavenPublisher.parseVersions(metadataOnServer())).containsExactly("0.1.0");
+    }
+
+    @Test
+    void a_later_publish_merges_into_the_existing_version_list() throws Exception {
+        publishVersion("0.1.0");
+        publishVersion("0.2.0");
+        publishVersion("0.3.0");
+
+        assertThat(MavenPublisher.parseVersions(metadataOnServer())).containsExactly("0.1.0", "0.2.0", "0.3.0");
+        assertThat(metadataOnServer()).contains("<latest>0.3.0</latest>");
+    }
+
+    /**
+     * The defect this test exists for: a failed GET is not an absent document. Falling back to a
+     * single-version write would erase 0.1.0 and 0.2.0 from a repository that cannot un-publish, so
+     * the publish must abort with the old list still standing.
+     *
+     * <p>A 5xx that outlives {@code Http}'s retry ladder — the transient blip that actually reaches
+     * the publisher, since anything shorter the transport rides out on its own.
+     */
+    @Test
+    void a_transient_metadata_get_failure_aborts_without_truncating_the_version_list() throws Exception {
+        publishVersion("0.1.0");
+        publishVersion("0.2.0");
+        String before = metadataOnServer();
+
+        getFailureStatus = 503;
+        assertThatThrownBy(() -> publishVersion("0.3.0"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("maven-metadata.xml")
+                .hasMessageContaining("503");
+
+        assertThat(metadataOnServer()).isEqualTo(before);
+        assertThat(MavenPublisher.parseVersions(metadataOnServer())).containsExactly("0.1.0", "0.2.0");
+
+        // The 0.3.0 artifacts are up and immutable, so re-running once the blip clears is the whole
+        // recovery — and it lands the merged list, not a truncated one.
+        assertThat(received).containsKey("/repo/com/example/widget/0.3.0/widget-0.3.0.jar");
+        getFailureStatus = 0;
+        publishVersion("0.3.0");
+        assertThat(MavenPublisher.parseVersions(metadataOnServer())).containsExactly("0.1.0", "0.2.0", "0.3.0");
+    }
+
+    /**
+     * The non-transient shape of the same bug, and the likelier one: a deploy credential with write
+     * but not read access. {@code Http} never retries a 4xx, so before the fix every single publish
+     * to such a repository silently replaced the version list with one entry.
+     */
+    @Test
+    void a_metadata_get_the_credential_may_not_read_aborts_without_truncating() throws Exception {
+        publishVersion("0.1.0");
+        publishVersion("0.2.0");
+        String before = metadataOnServer();
+
+        getFailureStatus = 403;
+        assertThatThrownBy(() -> publishVersion("0.3.0"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("maven-metadata.xml")
+                .hasMessageContaining("403");
+
+        assertThat(metadataOnServer()).isEqualTo(before);
+    }
+
+    @Test
+    void metadata_checksums_match_the_metadata_body() throws Exception {
+        publishVersion("0.1.0");
+
+        String metaPath = "/repo/com/example/widget/maven-metadata.xml";
+        assertThat(new String(received.get(metaPath + ".sha256"), StandardCharsets.US_ASCII))
+                .isEqualTo(Checksums.sha256Hex(received.get(metaPath)));
     }
 
     @Test

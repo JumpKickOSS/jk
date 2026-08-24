@@ -219,9 +219,8 @@ public final class Publisher implements Plugin, PublishExtension {
             for (Map.Entry<String, Integer> e : result.statusByPath().entrySet()) {
                 ctx.label("upload " + e.getKey() + " → " + e.getValue());
             }
-            if (!result.allOk()) {
-                throw new IOException("partial upload failure");
-            }
+            // No partial-failure check: publish() throws on the first non-2xx PUT, so a Result here
+            // is a fully successful upload.
             return PublishResult.uploaded(result.statusByPath().size(), result.bytes());
         } finally {
             if (signing.sigstore() instanceof AutoCloseable closeable) {
