@@ -2,6 +2,7 @@
 package cc.jumpkick.tool;
 
 import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.jdk.JdkFingerprint;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -72,7 +73,7 @@ public final class AppLauncher {
 
     /** Script content for a self-contained-jar launcher — what {@link #installJar} writes. */
     public static String renderJarScript(Path javaHome, Path jar) {
-        String java = javaBinary(javaHome).toString();
+        String java = JdkFingerprint.java(javaHome).toString();
         return HostPlatform.isWindows()
                 ? "@echo off\r\n\"" + java + "\" -jar \"" + jar.toAbsolutePath() + "\" %*\r\n"
                 : "#!/usr/bin/env bash\nexec "
@@ -84,7 +85,7 @@ public final class AppLauncher {
 
     private static String renderPosix(Path javaHome, String mainClass, List<Path> cp) {
         return "#!/usr/bin/env bash\nexec "
-                + shellQuote(javaBinary(javaHome).toString())
+                + shellQuote(JdkFingerprint.java(javaHome).toString())
                 + " -cp "
                 + shellQuote(joinClasspath(cp))
                 + " "
@@ -94,16 +95,12 @@ public final class AppLauncher {
 
     private static String renderWindows(Path javaHome, String mainClass, List<Path> cp) {
         return "@echo off\r\n\""
-                + javaBinary(javaHome)
+                + JdkFingerprint.java(javaHome)
                 + "\" -cp \""
                 + joinClasspath(cp)
                 + "\" "
                 + mainClass
                 + " %*\r\n";
-    }
-
-    private static Path javaBinary(Path javaHome) {
-        return javaHome.resolve("bin").resolve(HostPlatform.isWindows() ? "java.exe" : "java");
     }
 
     private static String joinClasspath(List<Path> classpath) {

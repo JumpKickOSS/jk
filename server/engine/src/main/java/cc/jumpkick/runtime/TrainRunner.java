@@ -2,6 +2,8 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.TrainConfig;
+import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
@@ -264,10 +266,10 @@ public final class TrainRunner {
 
     private static Path javaBinary(Path javaHome) {
         if (javaHome != null) {
-            Path j = javaHome.resolve("bin/java");
+            Path j = JdkFingerprint.java(javaHome);
             if (Files.isExecutable(j)) return j;
         }
-        return Path.of(System.getProperty("java.home"), "bin", "java");
+        return JdkFingerprint.java(JavaHomes.runningJavaHome());
     }
 
     private static List<String> shell(String command) {

@@ -4,6 +4,8 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildStage;
@@ -257,9 +259,7 @@ public final class PlannerKsp {
                     // -jdk-home cross-compile input below.
                     Path javaHome = ctx.require(JAVA_HOME);
                     List<String> cmd = new ArrayList<>();
-                    cmd.add(cc.jumpkick.jdk.JavaHomes.runningJavaHome()
-                            .resolve("bin/java")
-                            .toString());
+                    cmd.add(JdkFingerprint.java(JavaHomes.runningJavaHome()).toString());
                     cmd.addAll(cc.jumpkick.engine.plugin.JvmOptions.batchFlags(1));
                     cmd.add("-cp");
                     cmd.add(joinPaths(kspClasspath, sep));

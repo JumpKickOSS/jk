@@ -2,6 +2,7 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.engine.plugin.PluginClient;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -93,7 +94,7 @@ public final class KotlincDriver {
                     // Silence the JDK's native-access / Unsafe warnings the compiler triggers.
                     "--enable-native-access=ALL-UNNAMED", "-cp", classpath, WORKER_MAIN, "@" + spec.toAbsolutePath()));
             List<String> cmd = cc.jumpkick.engine.plugin.JvmOptions.javaCommand(
-                    hostJavaHome.resolve("bin").resolve("java").toString(), 1, rest);
+                    JdkFingerprint.java(hostJavaHome).toString(), 1, rest);
 
             List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
             String[] status = {null};
@@ -205,13 +206,17 @@ public final class KotlincDriver {
         jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
         jvmFlags.addAll(cc.jumpkick.engine.plugin.JvmOptions.batchFlags(1));
         jvmFlags.add("--enable-native-access=ALL-UNNAMED");
-        Path javaExe = hostJavaHome.resolve("bin").resolve("java");
+        Path javaExe = JdkFingerprint.java(hostJavaHome);
         return cc.jumpkick.engine.plugin.PluginLoader.command(
                 javaExe, classpath, jvmFlags, List.of("@" + spec.toAbsolutePath()));
     }
 
-    /** Render the request into the unified JSONL plugin spec. */
-    private static Path writeSpec(KotlincRequest request) throws IOException {
+    /**
+     * Render the request into the unified JSONL plugin spec. Package-private so a test can read
+     * back what the compiler is actually told (see {@code trainerCommand} above, opened for the
+     * same reason).
+     */
+    static Path writeSpec(KotlincRequest request) throws IOException {
         SpecWriter sw = new SpecWriter()
                 .op(PluginProtocol.OP_COMPILE, null, "jk-kotlin-compiler")
                 .configString("jvmTarget", String.valueOf(request.jvmTarget()));
@@ -225,8 +230,9 @@ public final class KotlincDriver {
         }
         // Cross-compile against the project's pinned JDK: the plugin HOST is jk's runtime, so without
         // -jdk-home kotlinc would resolve platform classes from jk's newer JDK and let a 17-pinned
-        // project reference APIs it can't run against.
-        sw.arg("-jdk-home").arg(request.javaHome().toAbsolutePath().toString());
+        // project reference APIs it can't run against. Because it reshapes the output it is also an
+        // action-key input — ActionKey.forKotlinc hashes this same JDK, normalized the same way.
+        sw.arg("-jdk-home").arg(request.javaHome().toAbsolutePath().normalize().toString());
         for (Path src : request.sources()) sw.source(src);
         for (Path cp : request.classpath()) sw.cp(cp, PluginProtocol.ROLE_COMPILE);
         for (String arg : request.extraArgs()) sw.arg(arg);

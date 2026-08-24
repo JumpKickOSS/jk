@@ -2,6 +2,7 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.engine.plugin.PluginClient;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -70,7 +71,7 @@ public final class GroovycDriver {
                     // Silence the JDK's native-access / Unsafe warnings the compiler triggers.
                     "--enable-native-access=ALL-UNNAMED", "-cp", classpath, WORKER_MAIN, "@" + spec.toAbsolutePath()));
             List<String> cmd = cc.jumpkick.engine.plugin.JvmOptions.javaCommand(
-                    hostJavaHome.resolve("bin").resolve("java").toString(), 1, rest);
+                    JdkFingerprint.java(hostJavaHome).toString(), 1, rest);
 
             List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
             String[] status = {null};

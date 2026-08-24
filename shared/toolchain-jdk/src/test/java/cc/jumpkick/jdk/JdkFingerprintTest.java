@@ -59,4 +59,24 @@ class JdkFingerprintTest {
         Path install = Files.createDirectories(tmp.resolve("jdk"));
         assertThat(JdkFingerprint.compute(install)).hasSize(64);
     }
+
+    /**
+     * The launcher accessors are the single owner of {@code <javaHome>/bin/java} (JK-2393). A
+     * hand-built path drops the {@code .exe} and every fork built that way is dead on Windows, so
+     * the suffix is pinned here rather than left to whichever host runs the suite.
+     */
+    @Test
+    void launcher_paths_carry_the_windows_exe_suffix(@TempDir Path tmp) {
+        String saved = System.getProperty("os.name");
+        try {
+            System.setProperty("os.name", "Windows 11");
+            assertThat(JdkFingerprint.java(tmp)).isEqualTo(tmp.resolve("bin").resolve("java.exe"));
+            assertThat(JdkFingerprint.javac(tmp)).isEqualTo(tmp.resolve("bin").resolve("javac.exe"));
+            System.setProperty("os.name", "Linux");
+            assertThat(JdkFingerprint.java(tmp)).isEqualTo(tmp.resolve("bin").resolve("java"));
+            assertThat(JdkFingerprint.javac(tmp)).isEqualTo(tmp.resolve("bin").resolve("javac"));
+        } finally {
+            System.setProperty("os.name", saved);
+        }
+    }
 }

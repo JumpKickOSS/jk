@@ -2,6 +2,7 @@
 package cc.jumpkick.tool;
 
 import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -135,18 +136,13 @@ public final class ToolLauncher {
             return new ProcessBuilder(nativeCmd).inheritIO().start().waitFor();
         }
         List<String> cmd = new ArrayList<>();
-        cmd.add(javaBinary(javaHome).toString());
+        cmd.add(JdkFingerprint.java(javaHome).toString());
         cmd.addAll(jvmArgs);
         cmd.add("-cp");
         cmd.add(joinClasspath(env.classpath()));
         cmd.add(env.mainClass());
         cmd.addAll(args);
         return new ProcessBuilder(cmd).inheritIO().start().waitFor();
-    }
-
-    private static Path javaBinary(Path javaHome) {
-        String exe = HostPlatform.isWindows() ? "java.exe" : "java";
-        return javaHome.resolve("bin").resolve(exe);
     }
 
     private static String joinClasspath(List<Path> classpath) {
@@ -171,7 +167,9 @@ public final class ToolLauncher {
                     .append(" \"$@\"\n");
             return sb.toString();
         }
-        sb.append("exec ").append(shellQuote(javaBinary(javaHome).toString())).append(" \\\n");
+        sb.append("exec ")
+                .append(shellQuote(JdkFingerprint.java(javaHome).toString()))
+                .append(" \\\n");
         for (String a : jvmArgs) {
             sb.append("  ").append(shellQuote(a)).append(" \\\n");
         }
@@ -188,7 +186,7 @@ public final class ToolLauncher {
             sb.append('\"').append(env.classpath().getFirst().toAbsolutePath()).append("\" %*\r\n");
             return sb.toString();
         }
-        sb.append('"').append(javaBinary(javaHome)).append('"');
+        sb.append('"').append(JdkFingerprint.java(javaHome)).append('"');
         for (String a : jvmArgs) {
             sb.append(" \"").append(a).append('"');
         }

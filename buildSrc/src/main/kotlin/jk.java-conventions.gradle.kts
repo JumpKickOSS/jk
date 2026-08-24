@@ -124,3 +124,41 @@ tasks.register("checkAll") {
     description = "Unit test + integrationTest for this module"
     dependsOn(tasks.named("test"), integrationTest)
 }
+
+// ---------------------------------------------------------------------------
+// Guard G1 (JK-2393): one owner for a JDK's launcher path.
+//
+// `cc.jumpkick.jdk.JdkFingerprint.java(javaHome)` / `.javac(javaHome)` are the only sanctioned way
+// to name a JDK's `bin/java` — they append `.exe` on Windows. Hand-building the path as
+// `<javaHome>/bin/java` silently drops that suffix and the fork is simply dead on Windows; five
+// worker launches (Groovy, Kotlin, KSP, and `jk train`) shipped that way. Banned outright in
+// production sources: there is no allowlist and no legitimate reason to open one.
+//
+// Scope is `src/main/java`. Test fixtures that lay down a POSIX-only fake JDK tree are writing
+// files, not launching processes, so they are not in scope.
+// ---------------------------------------------------------------------------
+val checkNoHandBuiltJavaBinary by tasks.registering {
+    group = "verification"
+    description = "Fail the build on a hand-built <javaHome>/bin/java (use JdkFingerprint.java)"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val stamp = layout.buildDirectory.file("guards/no-hand-built-java-binary.ok")
+    outputs.file(stamp)
+    doLast {
+        val banned = listOf("""resolve("bin/java")""", """resolve("bin").resolve("java")""")
+        // Whitespace-insensitive: the formatter wraps long resolve() chains across lines.
+        val hits = mainJava.files.sorted().flatMap { f ->
+            val squashed = f.readText().replace(Regex("\\s+"), "")
+            banned.filter { squashed.contains(it) }.map { "${f.name}: $it" }
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException(
+                    "A hand-built <javaHome>/bin/java drops the Windows `.exe` (JK-2393). "
+                            + "Call cc.jumpkick.jdk.JdkFingerprint.java(javaHome) instead: "
+                            + hits)
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkNoHandBuiltJavaBinary) }
+tasks.named("jar") { dependsOn(checkNoHandBuiltJavaBinary) }
