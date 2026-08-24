@@ -43,13 +43,4 @@ class DeterministicJarTest {
     void identical_inputs_produce_byte_identical_jars() throws IOException {
         assertThat(twoEntryJar(0L)).isEqualTo(twoEntryJar(0L));
     }
-
-    @Test
-    void isBuildStamp_flags_only_jk_freshness_stamps() {
-        assertThat(DeterministicJar.isBuildStamp("Main.jstamp")).isTrue();
-        assertThat(DeterministicJar.isBuildStamp("pkg/x.kstamp")).isTrue();
-        assertThat(DeterministicJar.isBuildStamp("suite.test-stamp")).isTrue();
-        assertThat(DeterministicJar.isBuildStamp("Main.class")).isFalse();
-        assertThat(DeterministicJar.isBuildStamp("META-INF/MANIFEST.MF")).isFalse();
-    }
 }

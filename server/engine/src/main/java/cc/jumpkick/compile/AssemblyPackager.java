@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.task.FreshnessStamp;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -59,7 +60,7 @@ public final class AssemblyPackager {
             for (Path file : files) {
                 String name = normalize(request.classesDir(), file);
                 if (name.equals("META-INF/MANIFEST.MF")) continue;
-                if (DeterministicJar.isBuildStamp(name)) continue; // freshness stamp, not jar content
+                if (FreshnessStamp.isStampFile(name)) continue; // freshness stamp, not jar content
                 if (isExcluded(name)) continue;
                 if (isMergeFile(name)) {
                     accumulate(merged, name, Files.readAllBytes(file));

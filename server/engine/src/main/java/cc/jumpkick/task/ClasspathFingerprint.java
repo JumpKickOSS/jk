@@ -19,6 +19,12 @@ import java.util.stream.Stream;
  * rebuilds and match CAS digests seeded by {@link FileHashMemo#rememberContent} after clean→restore
  * — avoiding a multi-second {@code jar:logical} zip walk on every TestStamp. Missing entries become
  * a distinct {@code missing:} token.
+ *
+ * <p>Every walk here drops {@link FreshnessStamp#isStampFile stamp files}: build-host metadata that
+ * lives inside the classes tree, is not code, and whose content changes every build. {@code
+ * [build.embed-sha]} outputs ({@code META-INF/jk-<worker>-sha256.txt}) are deliberately <em>not</em>
+ * dropped — byte-reproducible jars keep those embedded SHAs stable across no-op rebuilds, and a
+ * genuine change to a worker jar <em>should</em> ripple into every module that pins it.
  */
 public final class ClasspathFingerprint {
 
@@ -46,8 +52,7 @@ public final class ClasspathFingerprint {
         for (Map.Entry<String, String> e : relPathToSha256.entrySet()) {
             String rel = e.getKey().replace('\\', '/');
             if (rel.isEmpty()) continue;
-            String base = rel.substring(rel.lastIndexOf('/') + 1);
-            if (isBuildMetadata(base)) continue;
+            if (FreshnessStamp.isStampFile(rel)) continue;
             if (ActionCache.hasJkScratchSegment(Path.of(rel))) continue;
             if (e.getValue() == null || e.getValue().isBlank()) continue;
             files.add(rel + ":" + e.getValue());
@@ -69,8 +74,7 @@ public final class ClasspathFingerprint {
             for (Map.Entry<String, String> e : compileOutputs.entrySet()) {
                 String rel = e.getKey().replace('\\', '/');
                 if (rel.isEmpty()) continue;
-                String base = rel.substring(rel.lastIndexOf('/') + 1);
-                if (isBuildMetadata(base)) continue;
+                if (FreshnessStamp.isStampFile(rel)) continue;
                 if (ActionCache.hasJkScratchSegment(Path.of(rel))) continue;
                 if (e.getValue() == null || e.getValue().isBlank()) continue;
                 digests.put(rel, e.getValue());
@@ -83,7 +87,7 @@ public final class ClasspathFingerprint {
                     for (Path f : (Iterable<Path>) walk::iterator) {
                         if (!Files.isRegularFile(f)) continue;
                         String rel = root.relativize(f).toString().replace('\\', '/');
-                        if (isBuildMetadata(f.getFileName().toString())) continue;
+                        if (FreshnessStamp.isStampFile(f.getFileName().toString())) continue;
                         digests.put(rel, Hashing.sha256Hex(f));
                     }
                 }
@@ -103,7 +107,7 @@ public final class ClasspathFingerprint {
             try (Stream<Path> walk = Files.walk(classesDir)) {
                 for (Path f : (Iterable<Path>) walk::iterator) {
                     if (!Files.isRegularFile(f)) continue;
-                    if (isBuildMetadata(f.getFileName().toString())) continue;
+                    if (FreshnessStamp.isStampFile(f.getFileName().toString())) continue;
                     Path rel = classesDir.relativize(f);
                     if (ActionCache.hasJkScratchSegment(rel)) continue;
                     digests.put(rel.toString().replace('\\', '/'), Hashing.sha256Hex(f));
@@ -147,7 +151,7 @@ public final class ClasspathFingerprint {
         try (Stream<Path> walk = Files.walk(dir)) {
             for (Path f : (Iterable<Path>) walk::iterator) {
                 if (!Files.isRegularFile(f)) continue;
-                if (isBuildMetadata(f.getFileName().toString())) continue;
+                if (FreshnessStamp.isStampFile(f.getFileName().toString())) continue;
                 // `.jk-*` plugin scratch (bootstrap m2/staging) is not output content and
                 // re-hashing it on every no-op build is pure waste.
                 if (ActionCache.hasJkScratchSegment(dir.relativize(f))) continue;
@@ -158,20 +162,5 @@ public final class ClasspathFingerprint {
         }
         files.sort(Comparator.naturalOrder());
         return Hashing.sha256Hex(String.join("\n", files));
-    }
-
-    /**
-     * jk's freshness/skip stamps ({@code.jstamp}, {@code.kstamp}, {@code.test-stamp}) — build-host
-     * metadata that lives inside the classes tree but is not code, and whose content changes every
-     * build. They must be excluded from a content fingerprint of a directory (the packagers already
-     * drop them from jars).
-     *
-     * <p>Note {@code [build.embed-sha]} outputs ({@code META-INF/jk-<worker>-sha256.txt}) are
-     * deliberately <em>not</em> excluded: now that the packagers build byte-reproducible jars, those
-     * embedded SHAs are stable across no-op rebuilds, and a genuine change to a worker jar
-     * <em>should</em> ripple through the embedded SHA into every module that pins it.
-     */
-    private static boolean isBuildMetadata(String name) {
-        return FreshnessStamp.isStampFile(name);
     }
 }

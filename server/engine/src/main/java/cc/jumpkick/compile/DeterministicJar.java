@@ -18,8 +18,8 @@ import java.util.jar.Manifest;
  * {@link AssemblyPackager}). Every entry's timestamp is pinned to a fixed epoch via
  * {@link JarEntry#setTimeLocal} — NOT {@link JarEntry#setTime}, whose DOS-time conversion is
  * timezone-sensitive — so identical inputs yield byte-identical jars regardless of build host,
- * clock, or {@code $TZ}. Extracted because both packagers had duplicated the exact same entry,
- * manifest, and build-stamp handling.
+ * clock, or {@code $TZ}. Extracted because both packagers had duplicated the exact same entry
+ * and manifest handling.
  */
 final class DeterministicJar {
 
@@ -101,10 +101,5 @@ final class DeterministicJar {
                 jos.closeEntry();
             }
         }
-    }
-
-    /** jk's freshness/skip stamps — build-host metadata that must never enter a jar. */
-    static boolean isBuildStamp(String name) {
-        return name.endsWith(".jstamp") || name.endsWith(".kstamp") || name.endsWith(".test-stamp");
     }
 }

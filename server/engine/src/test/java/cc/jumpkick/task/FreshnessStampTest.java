@@ -22,6 +22,10 @@ class FreshnessStampTest {
         assertThat(FreshnessStamp.isStampFile(FreshnessStamp.GROOVY_STAMP)).isTrue();
         assertThat(FreshnessStamp.GROOVY_STAMP).isEqualTo(".gstamp");
         assertThat(FreshnessStamp.isStampFile("Main.class")).isFalse();
+        // Archive-entry paths: the packagers ask with a jar-relative name, not a bare file name.
+        assertThat(FreshnessStamp.isStampFile("BOOT-INF/classes/.gstamp")).isTrue();
+        // A file that merely ends in the suffix is a class, not a stamp.
+        assertThat(FreshnessStamp.isStampFile("Main.jstamp")).isFalse();
     }
 
     @Test

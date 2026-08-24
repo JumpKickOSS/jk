@@ -278,9 +278,14 @@ public final class BootJarPackager {
         return manifest;
     }
 
-    /** jk's freshness/skip stamps — build-host metadata that must not enter the jar. */
+    /**
+     * jk's compile freshness stamps — build-host metadata whose body is a wall clock, so a jar
+     * carrying one is neither clean nor reproducible. Mirrors {@code FreshnessStamp.isStampFile};
+     * this module compiles against the plugin SPI alone and cannot reach the engine's copy.
+     */
     private static boolean isBuildStamp(String name) {
-        return name.endsWith(".jstamp") || name.endsWith(".kstamp") || name.endsWith(".test-stamp");
+        String base = name.substring(name.lastIndexOf('/') + 1);
+        return ".jstamp".equals(base) || ".kstamp".equals(base) || ".gstamp".equals(base);
     }
 
     private static List<Path> collectFiles(Path root) throws IOException {

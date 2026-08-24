@@ -16,9 +16,10 @@ import java.util.stream.Stream;
 
 /**
  * Cheap mtime-based up-to-date check stamped into a compile output dir ({@link #JAVA_STAMP} /
- * {@link #KOTLIN_STAMP}). Sits in front of the content-hashed {@link ActionCache}: one {@code
- * stat} per input, fall through to CAS when anything looks stale. Mtime equality is treated as
- * stale (ms truncation); spoofed mtimes are caught by the action-cache layer.
+ * {@link #KOTLIN_STAMP} / {@link #GROOVY_STAMP}). Sits in front of the content-hashed
+ * {@link ActionCache}: one {@code stat} per input, fall through to CAS when anything looks stale.
+ * Mtime equality is treated as stale (ms truncation); spoofed mtimes are caught by the
+ * action-cache layer.
  */
 public final class FreshnessStamp {
 
@@ -33,9 +34,16 @@ public final class FreshnessStamp {
 
     private FreshnessStamp() {}
 
-    /** True when {@code fileName} is a compile stamp sentinel (excluded from action-cache outputs). */
-    public static boolean isStampFile(String fileName) {
-        return JAVA_STAMP.equals(fileName) || KOTLIN_STAMP.equals(fileName) || GROOVY_STAMP.equals(fileName);
+    /**
+     * True when {@code entry} names a compile stamp sentinel — either a bare file name or a
+     * {@code /}-separated archive-entry path. The one rule for build-host metadata: a stamp body
+     * carries wall-clock {@code STAMP_MILLIS}, so nothing content-keyed or reproducible may
+     * include it. Action-cache outputs, directory fingerprints, jar entries and image layers all
+     * ask here.
+     */
+    public static boolean isStampFile(String entry) {
+        String name = entry.substring(entry.lastIndexOf('/') + 1);
+        return JAVA_STAMP.equals(name) || KOTLIN_STAMP.equals(name) || GROOVY_STAMP.equals(name);
     }
 
     /** True when the stamp matches the current source/classpath sets and no input is newer. */
