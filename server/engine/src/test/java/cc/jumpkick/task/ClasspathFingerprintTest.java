@@ -159,8 +159,9 @@ class ClasspathFingerprintTest {
         cc.jumpkick.config.SessionContext.where(
                 cc.jumpkick.config.Session.defaults().withCacheDir(cache), () -> {
                     String fp1 = ClasspathFingerprint.entry(jar);
-                    assertThat(Files.isDirectory(cache.resolve("hash-memo")))
-                            .as("settled fingerprint recorded on disk")
+                    FileHashMemo.flush();
+                    assertThat(Files.isRegularFile(cache.resolve("hash-memo/memo.v1")))
+                            .as("settled fingerprint reaches the one store file")
                             .isTrue();
                     assertThat(ClasspathFingerprint.entry(jar))
                             .as("memoized read agrees with the computed fingerprint")
@@ -185,7 +186,7 @@ class ClasspathFingerprintTest {
                         assertThat(fp).startsWith("file:");
                         // CAS restore seeds raw digest — entry must not re-hash.
                         String hex = fp.substring("file:".length());
-                        FileHashMemo.clearThreadCache();
+                        FileHashMemo.reset();
                         FileHashMemo.rememberContent(jar, hex);
                         FileHashMemo.resetStats();
                         long reads = FileHashMemo.contentReads();

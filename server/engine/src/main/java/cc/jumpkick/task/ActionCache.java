@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.Hashing;
 import java.io.File;
@@ -158,9 +159,8 @@ public final class ActionCache {
         Map<String, String> outputs = new TreeMap<>();
         Set<String> executables = new TreeSet<>();
         if (Files.exists(outputDir)) {
-            try (Stream<Path> stream = Files.walk(outputDir)) {
+            try (Stream<Path> stream = Files.find(outputDir, Integer.MAX_VALUE, (p, attrs) -> attrs.isRegularFile())) {
                 for (Path file : (Iterable<Path>) stream::iterator) {
-                    if (!Files.isRegularFile(file)) continue;
                     // FreshnessStamp's sentinels (.jstamp/.kstamp) live inside
                     // outputDir but aren't action outputs — exclude them so we
                     // don't accidentally cache a stamp from a previous run.
@@ -173,7 +173,7 @@ public final class ActionCache {
                     cas.putFile(file, hex);
                     String relPath = outputDir.relativize(file).toString().replace(File.separatorChar, '/');
                     outputs.put(relPath, hex);
-                    if (Files.isExecutable(file)) executables.add(relPath);
+                    if (executableBit(file)) executables.add(relPath);
                 }
             }
         }
@@ -183,6 +183,15 @@ public final class ActionCache {
             return new ActionRecord(taskId, actionKey, inputs, Map.of(), Map.of());
         }
         return storeWithOutputs(taskId, actionKey, inputs, outputs, Map.of(), executables);
+    }
+
+    /**
+     * Whether {@code file} carries an executable bit worth recording. Windows has none that survives
+     * a restore — the restore calls {@link java.io.File#setExecutable}, which does nothing there —
+     * and asking costs a security-descriptor read plus an access check per output file.
+     */
+    private static boolean executableBit(Path file) {
+        return !HostPlatform.isWindows() && Files.isExecutable(file);
     }
 
     /** True when any path segment starts with {@code .jk-} — plugin-private scratch, never cached. */
@@ -517,7 +526,7 @@ public final class ActionCache {
 
             String rel = baseDir.relativize(a).toString().replace(File.separatorChar, '/');
             outputs.put(rel, hex);
-            if (Files.isExecutable(a)) executables.add(rel);
+            if (executableBit(a)) executables.add(rel);
         }
         if (outputs.isEmpty()) {
             throw new IOException("packaging produced no files to cache: " + artifacts);

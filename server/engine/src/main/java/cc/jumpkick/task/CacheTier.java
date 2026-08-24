@@ -49,16 +49,15 @@ public enum CacheTier {
     FORMAT_FRESHNESS("format-freshness", Bound.files(Duration.ofDays(7), Bound.none())),
 
     /**
-     * Content hashes keyed by absolute path. Capped by count, never by bytes: entries are ~150 B,
-     * which is one inline extent on btrfs and one 4 KiB block on ext4 — three different "sizes"
-     * for the same tier, none of which a budget could be set against honestly.
+     * Content hashes keyed by absolute path — a single file, which {@link FileHashMemo} keeps
+     * capped by entry count in memory and rewrites whole. Retention cannot rank inside it and does
+     * not need to; the budget is the backstop for a store that somehow outgrows what the in-memory
+     * cap allows, and resetting it costs one rebuild of something wholly derived.
      *
-     * <p>No window, because mtime here is a churn clock: an entry is rewritten whenever its file
-     * changes, so the oldest entries are the <em>stable</em> ones the next build is most likely to
-     * ask for. The cap instead takes the entries whose recorded source path no longer exists —
-     * exact, and enough on its own: one {@code jk clean} supersedes most of the tier.
+     * <p>No window either: mtime here is a churn clock, rewritten on every flush, so age says
+     * nothing about whether the next build wants what is inside.
      */
-    HASH_MEMO("hash-memo", Bound.files(null, Bound.countCap(32_768, Bound.VictimRule.SUPERSEDED_THEN_OLDEST))),
+    HASH_MEMO("hash-memo", Bound.files(null, Bound.resetOverBytes(32L * 1024 * 1024))),
 
     /**
      * GraalVM reachability metadata, one tree per bundle version. {@code ensureExtracted} resolves

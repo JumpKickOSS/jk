@@ -16,7 +16,6 @@ final class CountingProbe implements CacheRetention.Probe {
 
     private final AtomicInteger clocks = new AtomicInteger();
     private final AtomicInteger sizes = new AtomicInteger();
-    private final AtomicInteger reads = new AtomicInteger();
 
     /** Times the pass asked how old an entry is — the question ranking cannot be done without. */
     int clockQuestions() {
@@ -25,7 +24,7 @@ final class CountingProbe implements CacheRetention.Probe {
 
     /** Every question about an individual entry, of any kind. */
     int questions() {
-        return clocks.get() + sizes.get() + reads.get();
+        return clocks.get() + sizes.get();
     }
 
     @Override
@@ -38,11 +37,5 @@ final class CountingProbe implements CacheRetention.Probe {
     public long size(Path entry) throws IOException {
         sizes.incrementAndGet();
         return CacheRetention.Probe.REAL.size(entry);
-    }
-
-    @Override
-    public String read(Path entry) throws IOException {
-        reads.incrementAndGet();
-        return CacheRetention.Probe.REAL.read(entry);
     }
 }

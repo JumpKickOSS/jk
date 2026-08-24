@@ -97,7 +97,7 @@ class CacheCommandTest {
         writeBlob(cache.resolve("format-stamps/ab/stamp1"), new byte[0]);
         // Outside the budget denominator: hash-memo has its own retention and the prune cannot
         // touch it, so it must not inflate the Total the Utilization bar is measured against.
-        writeBlob(cache.resolve("hash-memo/aa/memo1"), new byte[4096]);
+        writeBlob(cache.resolve("hash-memo/memo.v1"), new byte[4096]);
 
         String plain = TestAnsi.strip(Capture.stdout(() -> run("cache", "usage", "--cache-dir", cache.toString())));
         assertThat(plain).contains("Cache Storage");

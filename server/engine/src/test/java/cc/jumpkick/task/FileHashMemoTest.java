@@ -2,212 +2,208 @@
 package cc.jumpkick.task;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
-import java.util.concurrent.Callable;
-import java.util.concurrent.Executors;
+import java.time.Instant;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class FileHashMemoTest {
 
-    /** Run {@code body} with the session cache rooted at {@code cache} (memo isolation). */
+    /** Run {@code body} with the session cache rooted at {@code cache}, on a memo that starts cold. */
     private static void withCache(Path cache, Runnable body) {
-        SessionContext.runWhere(Session.defaults().withCacheDir(cache), body);
-    }
-
-    @Test
-    void roundtrip_for_a_settled_file(@TempDir Path dir) throws Exception {
-        Path f = Files.writeString(dir.resolve("a.jar"), "AA");
-        long mtime = System.currentTimeMillis() - 60_000; // settled long ago
-        Files.setLastModifiedTime(f, FileTime.fromMillis(mtime));
-        long size = Files.size(f);
-        withCache(dir.resolve("cache"), () -> {
-            assertThat(FileHashMemo.lookup(f, size, mtime)).as("empty memo").isNull();
-            FileHashMemo.store(f, size, mtime, "jar:abc");
-            assertThat(FileHashMemo.lookup(f, size, mtime)).isEqualTo("jar:abc");
+        SessionContext.runWhere(Session.defaults().withCacheDir(cache), () -> {
+            FileHashMemo.reset();
+            FileHashMemo.resetStats();
+            body.run();
         });
     }
 
-    @Test
-    void stat_mismatch_invalidates(@TempDir Path dir) throws Exception {
-        Path f = Files.writeString(dir.resolve("a.jar"), "AA");
-        long mtime = System.currentTimeMillis() - 60_000;
-        Files.setLastModifiedTime(f, FileTime.fromMillis(mtime));
-        long size = Files.size(f);
-        withCache(dir.resolve("cache"), () -> {
-            FileHashMemo.store(f, size, mtime, "jar:abc");
-            assertThat(FileHashMemo.lookup(f, size + 1, mtime))
-                    .as("size changed")
-                    .isNull();
-            assertThat(FileHashMemo.lookup(f, size, mtime - 5_000))
-                    .as("mtime changed")
-                    .isNull();
-        });
+    /** Push {@code f}'s mtime a minute into the past, out of the settle window. */
+    private static void settle(Path f) throws Exception {
+        Files.setLastModifiedTime(f, FileTime.fromMillis(System.currentTimeMillis() - 60_000));
     }
 
     @Test
-    void a_freshly_modified_file_is_never_trusted_or_stored(@TempDir Path dir) throws Exception {
-        // Filesystem mtimes are truncated: a file modified "just now" could change
-        // again within the same tick without the stat noticing. Within the settle
-        // window the memo must stand aside and let content hashing decide.
-        Path f = Files.writeString(dir.resolve("a.jar"), "AA");
-        long now = System.currentTimeMillis();
-        long size = Files.size(f);
-        withCache(dir.resolve("cache"), () -> {
-            FileHashMemo.store(f, size, now, "jar:abc"); // must be a no-op
-            long settled = now - 60_000;
-            FileHashMemo.store(f, size, settled, "jar:settled");
-            assertThat(FileHashMemo.lookup(f, size, now))
-                    .as("fresh mtime — never trusted")
-                    .isNull();
-            assertThat(FileHashMemo.lookup(f, size, settled)).isEqualTo("jar:settled");
-        });
-    }
-
-    @Test
-    void contentHash_reads_bytes_once_per_thread_walk(@TempDir Path dir) throws Exception {
+    void a_settled_file_is_hashed_once(@TempDir Path dir) throws Exception {
         Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
-        long mtime = System.currentTimeMillis() - 60_000;
-        Files.setLastModifiedTime(f, FileTime.fromMillis(mtime));
+        settle(f);
         withCache(dir.resolve("cache"), () -> {
             try {
-                FileHashMemo.clearThreadCache();
-                FileHashMemo.resetStats();
                 String a = FileHashMemo.contentHash(f);
                 String b = FileHashMemo.contentHash(f);
                 assertThat(a).isEqualTo(b);
                 assertThat(FileHashMemo.contentHashInvocations()).isEqualTo(2);
                 assertThat(FileHashMemo.contentReads())
-                        .as("second call must not re-read")
+                        .as("second call must not re-read the bytes")
                         .isEqualTo(1);
-                assertThat(FileHashMemo.threadHits()).isEqualTo(1);
+                assertThat(FileHashMemo.memoHits()).isEqualTo(1);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         });
-    }
-
-    @Test
-    void contentHash_same_size_mtime_tick_still_sees_rewrite_via_thread_or_rehash(@TempDir Path dir) throws Exception {
-        // Same class of bug as CasPrewriter: same-size rewrite within one mtime tick must not
-        // serve a stale hex from the disk memo alone. contentHash always re-stats; if mtime+size
-        // match disk memo it would be wrong — settle window forces re-hash for fresh files.
-        Path f = Files.writeString(dir.resolve("Same.java"), "AAAAAA");
-        withCache(dir.resolve("cache"), () -> {
-            try {
-                FileHashMemo.clearThreadCache();
-                String first = FileHashMemo.contentHash(f);
-                Files.writeString(f, "BBBBBB"); // same length
-                FileHashMemo.clearThreadCache(); // new walk (simulates next poll)
-                // Fresh mtime → disk memo ignored → content re-read
-                String second = FileHashMemo.contentHash(f);
-                assertThat(second).isNotEqualTo(first);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
-
-    @Test
-    void contentHash_same_size_rewrite_that_restores_prior_mtime_tick_is_not_stale(@TempDir Path dir) throws Exception {
-        // TestStamp resource fixture pattern: hash → future mtime rewrite → content rewrite that
-        // lands back on the original mtime tick. Thread cache must not serve the first digest.
-        Path f = Files.writeString(dir.resolve("fixture.json"), "{\"v\":1}");
-        withCache(dir.resolve("cache"), () -> {
-            try {
-                FileHashMemo.clearThreadCache();
-                String first = FileHashMemo.contentHash(f);
-                Files.writeString(f, "{\"v\":1}");
-                Files.setLastModifiedTime(f, FileTime.fromMillis(System.currentTimeMillis() + 10_000));
-                assertThat(FileHashMemo.contentHash(f)).isEqualTo(first);
-                Files.writeString(f, "{\"v\":2}"); // same length; mtime often == first tick
-                String second = FileHashMemo.contentHash(f);
-                assertThat(second)
-                        .as("same-size rewrite must not reuse a prior tick's self-hash")
-                        .isNotEqualTo(first);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
-
-    @Test
-    void clearAllThreadCaches_drops_another_threads_walk_cache(@TempDir Path dir) throws Exception {
-        // The idle boundary (IdleHousekeeping.dropHeapResidue) clears from the
-        // housekeeping thread; entries on the immortal pool threads must not survive it.
-        Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
-        long mtime = System.currentTimeMillis() - 60_000;
-        Files.setLastModifiedTime(f, FileTime.fromMillis(mtime));
-        var pool = Executors.newSingleThreadExecutor();
-        try {
-            withCache(dir.resolve("cache"), () -> {
-                try {
-                    Callable<String> onPool = () -> FileHashMemo.contentHash(f);
-                    FileHashMemo.resetStats();
-                    pool.submit(() -> {
-                                FileHashMemo.clearThreadCache();
-                                return null;
-                            })
-                            .get();
-                    pool.submit(onPool).get();
-                    pool.submit(onPool).get();
-                    assertThat(FileHashMemo.threadHits())
-                            .as("second same-thread call hits the walk cache")
-                            .isEqualTo(1);
-                    FileHashMemo.clearAllThreadCaches(); // main thread — cross-thread clear
-                    pool.submit(onPool).get();
-                    assertThat(FileHashMemo.threadHits())
-                            .as("after the idle-boundary clear the pool thread must miss")
-                            .isEqualTo(1);
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-            });
-        } finally {
-            pool.shutdownNow();
-        }
     }
 
     /**
-     * The entry records the path it describes on its last line, and retention needs that to be
-     * true of every entry. One that does not name this file is not trusted, and the store that
-     * follows the re-hash writes the whole shape.
+     * The claim the whole store exists for: a hit costs the caller's stat and nothing else. Proven
+     * by taking the file away — anything that reached for the filesystem would fail instead of
+     * answering. A file-backed entry could not pass this, which is why it cost more on NTFS than
+     * the hash it replaced.
      */
     @Test
-    void a_record_that_does_not_name_this_file_is_not_trusted(@TempDir Path dir) throws Exception {
-        Path f = Files.writeString(dir.resolve("a.jar"), "AA");
-        long mtime = System.currentTimeMillis() - 60_000;
-        Files.setLastModifiedTime(f, FileTime.fromMillis(mtime));
-        long size = Files.size(f);
-        Path cache = dir.resolve("cache");
-        withCache(cache, () -> FileHashMemo.store(f, size, mtime, "jar:abc"));
-        Path entry = onlyEntry(cache);
-        String head = Files.readString(entry).split("\\n", 2)[0];
-
-        Files.writeString(entry, head + "\n" + dir.resolve("elsewhere.jar"));
-        withCache(cache, () -> assertThat(FileHashMemo.lookup(f, size, mtime))
-                .as("names another file")
-                .isNull());
-
-        Files.writeString(entry, head);
-        withCache(cache, () -> {
-            assertThat(FileHashMemo.lookup(f, size, mtime)).as("names no file").isNull();
-            FileHashMemo.store(f, size, mtime, "jar:abc");
-            assertThat(FileHashMemo.lookup(f, size, mtime)).isEqualTo("jar:abc");
+    void a_hit_touches_no_filesystem_beyond_the_caller_stat(@TempDir Path dir) throws Exception {
+        Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
+        settle(f);
+        BasicFileAttributes attrs = Files.readAttributes(f, BasicFileAttributes.class);
+        withCache(dir.resolve("cache"), () -> {
+            try {
+                String hex = FileHashMemo.contentHash(f, attrs);
+                Files.delete(f);
+                assertThat(FileHashMemo.contentHash(f, attrs)).isEqualTo(hex);
+                assertThat(FileHashMemo.contentReads()).isEqualTo(1);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
         });
-        assertThat(Files.readString(entry))
-                .isEqualTo(head + "\n" + f.toAbsolutePath().normalize());
     }
 
-    /** The one memo entry under {@code cache}. */
-    private static Path onlyEntry(Path cache) throws Exception {
-        try (var walk = Files.walk(cache.resolve("hash-memo"))) {
-            return walk.filter(Files::isRegularFile).findFirst().orElseThrow();
+    @Test
+    void a_stat_change_invalidates_the_entry(@TempDir Path dir) throws Exception {
+        Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
+        settle(f);
+        withCache(dir.resolve("cache"), () -> {
+            try {
+                String first = FileHashMemo.contentHash(f);
+                Files.writeString(f, "class Src { int longer; }"); // new size and mtime
+                settle(f);
+                assertThat(FileHashMemo.contentHash(f)).isNotEqualTo(first);
+                assertThat(FileHashMemo.contentReads()).isEqualTo(2);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @Test
+    void a_freshly_written_file_is_never_memoized(@TempDir Path dir) throws Exception {
+        // Filesystem mtimes are truncated: a file modified "just now" could change again within
+        // the same tick without the stat noticing. Inside the settle window the memo stands aside.
+        Path f = Files.writeString(dir.resolve("Same.java"), "AAAAAA");
+        withCache(dir.resolve("cache"), () -> {
+            try {
+                String first = FileHashMemo.contentHash(f);
+                Files.writeString(f, "BBBBBB"); // same length
+                assertThat(FileHashMemo.contentHash(f))
+                        .as("a same-size rewrite inside the settle window must re-hash")
+                        .isNotEqualTo(first);
+                assertThat(FileHashMemo.memoHits()).isZero();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @Test
+    void a_restore_seed_is_trusted_without_waiting_out_settle(@TempDir Path dir) throws Exception {
+        // What keeps stamps and package keys cheap after `jk clean` + an action-cache restore:
+        // the bytes are known, so the digest is usable immediately rather than 2s later.
+        Path f = Files.writeString(dir.resolve("restored.jar"), "AA");
+        String known = cc.jumpkick.util.Hashing.sha256Hex(f);
+        withCache(dir.resolve("cache"), () -> {
+            try {
+                FileHashMemo.rememberContent(f, known);
+                assertThat(FileHashMemo.contentHash(f)).isEqualTo(known);
+                assertThat(FileHashMemo.contentReads())
+                        .as("a seeded digest is not re-read, settle window or not")
+                        .isZero();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @Test
+    void a_seed_is_void_once_the_nanosecond_stamp_moves(@TempDir Path dir) throws Exception {
+        // Compilers rewrite restored class files in place, and such a rewrite can land inside the
+        // same millisecond tick. The seed's provenance is the nanosecond stamp, not the tick.
+        Path f = Files.writeString(dir.resolve("restored.class"), "AA");
+        long second = Instant.now().minusSeconds(60).getEpochSecond();
+        Files.setLastModifiedTime(f, FileTime.from(Instant.ofEpochSecond(second, 400_000)));
+        long before = Files.getLastModifiedTime(f).to(TimeUnit.NANOSECONDS);
+        Files.setLastModifiedTime(f, FileTime.from(Instant.ofEpochSecond(second, 900_000)));
+        long after = Files.getLastModifiedTime(f).to(TimeUnit.NANOSECONDS);
+        assumeTrue(before != after, "filesystem keeps sub-millisecond mtime precision");
+
+        withCache(dir.resolve("cache"), () -> {
+            try {
+                FileHashMemo.rememberContent(f, "0".repeat(64));
+                Files.setLastModifiedTime(f, FileTime.from(Instant.ofEpochSecond(second, 400_000)));
+                assertThat(FileHashMemo.contentHash(f))
+                        .as("the stamp moved, so the seed is not the file's digest any more")
+                        .isNotEqualTo("0".repeat(64));
+                assertThat(FileHashMemo.contentReads()).isEqualTo(1);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @Test
+    void the_store_is_one_file_and_survives_a_restart(@TempDir Path dir) throws Exception {
+        Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
+        settle(f);
+        Path cache = dir.resolve("cache");
+        String[] first = new String[1];
+        withCache(cache, () -> {
+            try {
+                first[0] = FileHashMemo.contentHash(f);
+                FileHashMemo.flush();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        Path tier = cache.resolve("hash-memo");
+        try (var walk = Files.walk(tier)) {
+            assertThat(walk.filter(Files::isRegularFile).map(Path::getFileName).map(Path::toString))
+                    .as("one entry per path would be one file per path; the store is one file")
+                    .containsExactly("memo.v1");
         }
+
+        // A cold process: nothing in memory, everything in that file.
+        withCache(cache, () -> {
+            try {
+                assertThat(FileHashMemo.contentHash(f)).isEqualTo(first[0]);
+                assertThat(FileHashMemo.contentReads())
+                        .as("the reloaded store answers without touching the bytes")
+                        .isZero();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @Test
+    void an_unreadable_store_fails_open(@TempDir Path dir) throws Exception {
+        Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
+        settle(f);
+        Path cache = dir.resolve("cache");
+        Files.createDirectories(cache.resolve("hash-memo"));
+        Files.writeString(cache.resolve("hash-memo/memo.v1"), "not\na\0store\nat all\n");
+        withCache(cache, () -> {
+            try {
+                assertThat(FileHashMemo.contentHash(f)).isEqualTo(cc.jumpkick.util.Hashing.sha256Hex(f));
+                assertThat(FileHashMemo.contentReads()).isEqualTo(1);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 }

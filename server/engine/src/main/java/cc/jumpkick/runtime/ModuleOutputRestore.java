@@ -162,14 +162,17 @@ public final class ModuleOutputRestore {
 
     static boolean classesDirHasContent(Path classesDir) {
         if (classesDir == null || !Files.isDirectory(classesDir)) return false;
-        // Unbounded walk (anyMatch short-circuits at the first class file): a depth cap of 3
-        // missed every package deeper than three segments — cc/jumpkick/... classes sat at
-        // depth 4+, so all 28 self-host modules read as "outputs missing" and the restore
-        // path re-ran the whole workspace on every fully-cached build (JK-2214: 400ms → 4.5s).
-        try (var walk = Files.walk(classesDir)) {
-            return walk.anyMatch(p -> Files.isRegularFile(p)
-                    && p.getFileName() != null
-                    && p.getFileName().toString().endsWith(".class"));
+        // Unbounded walk (findFirst short-circuits at the first class file): a depth cap of 3
+        // missed every package deeper than three segments — cc/jumpkick/... classes sit at
+        // depth 4+, so every self-host module would read as "outputs missing" and the restore
+        // path would re-run the whole workspace on a fully-cached build.
+        try (var walk = Files.find(
+                classesDir,
+                Integer.MAX_VALUE,
+                (p, attrs) -> attrs.isRegularFile()
+                        && p.getFileName() != null
+                        && p.getFileName().toString().endsWith(".class"))) {
+            return walk.findFirst().isPresent();
         } catch (IOException e) {
             return false;
         }
