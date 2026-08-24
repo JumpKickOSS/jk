@@ -10,8 +10,10 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.plugin.build.In;
 import cc.jumpkick.plugin.build.ProjectFacts;
+import cc.jumpkick.plugin.manifest.PluginContributions;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -126,6 +128,87 @@ class PluginActionKeyTokensTest {
                 .isNotEqualTo(PluginBuild.facts(plain, "ex.Main").token());
         assertThat(PluginBuild.facts(kotlin, "ex.Main").token())
                 .isNotEqualTo(PluginBuild.facts(plain, "ex.Main").token());
+    }
+
+    /**
+     * A provisioned SDK component named whole — {@code sdk-component} with no {@code sdk-path} — is
+     * a location, not an artifact. Android's {@code sdk-root} resolves to the managed SDK root, so
+     * fingerprinting it walked every installed platform, system image and emulator binary into
+     * every android step's and packager's key: tens of gigabytes, on every build.
+     */
+    @Test
+    void a_whole_sdk_component_is_keyed_by_revision_not_by_walking_it(@TempDir Path tmp) throws Exception {
+        Path sdkRoot = Files.createDirectories(tmp.resolve("android-sdk/platforms/android-36"));
+        Files.writeString(sdkRoot.resolve("android.jar"), "a platform");
+        List<PluginContributions.StepDep> declared =
+                List.of(new PluginContributions.StepDep("sdk-root", null, false, "root", null));
+        Map<String, Path> extras = Map.of("sdk-root", tmp.resolve("android-sdk"));
+
+        List<String> before = PlannerPlugin.toolTokens(declared, extras, Map.of());
+        Files.writeString(tmp.resolve("android-sdk/system-image"), "60 GB of emulator, morally");
+
+        assertThat(PlannerPlugin.toolTokens(declared, extras, Map.of()))
+                .as("installing an unrelated SDK component must not re-run every android action")
+                .isEqualTo(before);
+        assertThat(before).containsExactly("tool:sdk-root:sdk:root@unpinned");
+    }
+
+    /** When the lock pins the component, the pin IS the identity — that is what `[[sdk]]` records. */
+    @Test
+    void a_pinned_component_carries_its_revision(@TempDir Path tmp) throws Exception {
+        List<PluginContributions.StepDep> declared =
+                List.of(new PluginContributions.StepDep("cmdline-tools", null, false, "cmdline-tools;latest", null));
+        Map<String, Path> extras = Map.of("cmdline-tools", Files.createDirectories(tmp.resolve("tools")));
+
+        assertThat(PlannerPlugin.toolTokens(declared, extras, Map.of("cmdline-tools;latest", "19.0")))
+                .containsExactly("tool:cmdline-tools:sdk:cmdline-tools;latest@19.0");
+    }
+
+    /**
+     * Everything the build actually reads stays content-keyed: a fetched jar, and a named path
+     * inside an SDK component ({@code android-jar}, {@code adb}) — one file, not a tree.
+     */
+    @Test
+    void fetched_artifacts_and_named_component_paths_stay_content_keyed(@TempDir Path tmp) throws Exception {
+        Path aapt2 = Files.writeString(tmp.resolve("aapt2"), "v1");
+        Path androidJar = Files.writeString(tmp.resolve("android.jar"), "platform-36");
+        List<PluginContributions.StepDep> declared = List.of(
+                new PluginContributions.StepDep("aapt2", "com.android.tools.build:aapt2:9.3.1"),
+                new PluginContributions.StepDep("android-jar", null, false, "platforms;android-36", "android.jar"));
+        Map<String, Path> extras = Map.of("aapt2", aapt2, "android-jar", androidJar);
+
+        List<String> before = PlannerPlugin.toolTokens(declared, extras, Map.of());
+        Files.writeString(aapt2, "v2");
+
+        assertThat(PlannerPlugin.toolTokens(declared, extras, Map.of())).isNotEqualTo(before);
+        assertThat(before).allSatisfy(token -> assertThat(token).doesNotContain(":sdk:"));
+    }
+
+    /**
+     * Tools are keyed by name. The packager arm used to fold them into one order-insensitive
+     * {@code extras:} content hash, which cannot tell {@code aapt2} from {@code adb} — swap the two
+     * artifact names and the old token was identical.
+     */
+    @Test
+    void a_tool_token_names_the_artifact_it_identifies(@TempDir Path tmp) throws Exception {
+        Path first = Files.writeString(tmp.resolve("first"), "x");
+        Path second = Files.writeString(tmp.resolve("second"), "y");
+        List<PluginContributions.StepDep> declared = List.of(
+                new PluginContributions.StepDep("aapt2", "g:aapt2:1"),
+                new PluginContributions.StepDep("adb", "g:adb:1"));
+
+        assertThat(PlannerPlugin.toolTokens(declared, Map.of("aapt2", first, "adb", second), Map.of()))
+                .containsExactlyInAnyOrderElementsOf(
+                        PlannerPlugin.toolTokens(declared, Map.of("aapt2", first, "adb", second), Map.of()));
+        assertThat(PlannerPlugin.toolTokens(declared, ordered("aapt2", first, "adb", second), Map.of()))
+                .isNotEqualTo(PlannerPlugin.toolTokens(declared, ordered("aapt2", second, "adb", first), Map.of()));
+    }
+
+    private static Map<String, Path> ordered(String a, Path pa, String b, Path pb) {
+        Map<String, Path> map = new LinkedHashMap<>();
+        map.put(a, pa);
+        map.put(b, pb);
+        return map;
     }
 
     private static PlannerPlugin.InputSources sources(Path tmp) throws Exception {

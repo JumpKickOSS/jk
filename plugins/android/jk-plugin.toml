@@ -149,7 +149,12 @@ artifact      = "adb"
 sdk-component = "platform-tools"
 sdk-path      = "adb"
 
-# The SDK root itself, for the provisioning verbs (`jk android licenses|sdk`).
+# The SDK root itself, for the provisioning verbs (`jk android licenses|sdk`, `jk avd`). No step
+# and no packager reads it — they take the NAMED components above (android-jar, adb, aapt2), each
+# of which is content-keyed on its own. `root` is a location, not an artifact: nothing is installed
+# at it, only under it, which is why the lockfile refuses to pin a revision for it and why the
+# engine keys it as `sdk:root@…` instead of walking it (walking the managed SDK root put tens of
+# gigabytes of platforms, system images and emulator into every android action key).
 [[contribute.step-dependency]]
 artifact      = "sdk-root"
 sdk-component = "root"

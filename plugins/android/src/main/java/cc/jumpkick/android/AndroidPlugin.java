@@ -111,6 +111,9 @@ public final class AndroidPlugin implements Plugin, BuildPlugin {
                         .outputs("dex")
                         .run(DexStep::run));
             }
+            // The signing identity is part of the artifact, so the keystore is a declared input
+            // like any other file: rotating a key at the same path re-signs instead of restoring
+            // an artifact that still carries the old signature. An AAR is never signed.
             if (release) {
                 // The release artifact is the Play-uploadable AAB ([[packaging.variant]] picks
                 // the extension); bundletool assembles from the proto-format link.
@@ -121,6 +124,7 @@ public final class AndroidPlugin implements Plugin, BuildPlugin {
                                 In.runtimeEntries(),
                                 In.projectFiles("assets"),
                                 In.projectFiles("src/main/assets"),
+                                Signing.keystoreInput(ctx.config()),
                                 In.config())
                         .produce(AabPackager::produce));
             } else {
@@ -131,6 +135,7 @@ public final class AndroidPlugin implements Plugin, BuildPlugin {
                                 In.runtimeEntries(),
                                 In.projectFiles("assets"),
                                 In.projectFiles("src/main/assets"),
+                                Signing.keystoreInput(ctx.config()),
                                 In.config())
                         .produce(ApkPackager::produce));
             }

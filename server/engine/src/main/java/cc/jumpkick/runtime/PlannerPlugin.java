@@ -12,6 +12,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.plugin.build.In;
 import cc.jumpkick.plugin.build.ProjectFacts;
+import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
@@ -236,6 +237,48 @@ public final class PlannerPlugin {
     }
 
     /**
+     * The manifest-contributed tool artifacts as action-key tokens: the second renderer the step
+     * arm and the packager arm share, for the same reason {@link #declaredInputTokens} exists. They
+     * used to disagree — per-artifact {@code tool:<name>:<content>} in the step arm, one combined
+     * {@code extras:} hash in the packager arm, which cannot tell two tools apart by name at all.
+     *
+     * <p>A fetched artifact — a jar, or a CAS-materialized transitive closure dir — <em>is</em> its
+     * content, so it is fingerprinted. A step-dependency that names a whole provisioned SDK
+     * component instead ({@code sdk-component} with no {@code sdk-path}) is a <b>location</b>, not
+     * an artifact: android's {@code sdk-root} resolves to the managed Android SDK root, so
+     * fingerprinting it walked every installed platform, system image and emulator binary on the
+     * machine — tens of gigabytes — into every android step's and packager's key, on every build.
+     * A component's identity is its revision, which is exactly what {@code LockPipeline.pinSdk}
+     * records as {@code [[sdk]]} (and deliberately declines to record for the {@code root}
+     * pseudo-component, which has none: nothing is installed <em>at</em> the root, only under it,
+     * and the named components underneath are each keyed on their own).
+     */
+    static List<String> toolTokens(
+            List<PluginContributions.StepDep> declared, Map<String, Path> extras, Map<String, String> sdkPins)
+            throws IOException {
+        Map<String, String> wholeComponents = new LinkedHashMap<>();
+        for (PluginContributions.StepDep dep : declared) {
+            if (dep.sdkComponent() != null
+                    && (dep.sdkPath() == null || dep.sdkPath().isBlank())) {
+                wholeComponents.put(dep.artifact(), dep.sdkComponent());
+            }
+        }
+        List<String> tokens = new ArrayList<>(extras.size());
+        for (Map.Entry<String, Path> tool : extras.entrySet()) {
+            String component = wholeComponents.get(tool.getKey());
+            if (component == null) {
+                tokens.add("tool:" + tool.getKey() + ":" + ClasspathFingerprint.entry(tool.getValue()));
+                continue;
+            }
+            String revision = sdkPins.get(component);
+            if (revision == null) revision = SdkComponents.installedRevision(component);
+            tokens.add(
+                    "tool:" + tool.getKey() + ":sdk:" + component + "@" + (revision == null ? "unpinned" : revision));
+        }
+        return tokens;
+    }
+
+    /**
      * One declared build-plugin task: engine fingerprints inputs, restores on hit, forks on miss.
      */
     static Task pluginTask(
@@ -271,8 +314,9 @@ public final class PlannerPlugin {
 
                     // Manifest-contributed tool artifacts (aapt2, r8, a platform jar) — fetched
                     // into the cache, handed to the body by artifact name, keyed like any input.
-                    Map<String, Path> toolExtras = PluginBuild.fetchStepDependencies(
-                            project, in.dir(), cx.cas(), PluginBuild.sdkPins(in.lockFile()));
+                    Map<String, String> sdkPins = PluginBuild.sdkPins(in.lockFile());
+                    Map<String, Path> toolExtras =
+                            PluginBuild.fetchStepDependencies(project, in.dir(), cx.cas(), sdkPins);
 
                     // Action key: exactly the declared inputs, plus the very facts the body sees —
                     // the same ProjectFacts instance rides the spec below, so no fact can reach the
@@ -281,9 +325,8 @@ public final class PlannerPlugin {
                     List<String> tokens = new ArrayList<>(declaredInputTokens(
                             step.inputs(),
                             new InputSources(classes, classpath, prodEntries, active.config(), layout, in.dir())));
-                    for (var tool : toolExtras.entrySet()) {
-                        tokens.add("tool:" + tool.getKey() + ":" + ClasspathFingerprint.entry(tool.getValue()));
-                    }
+                    tokens.addAll(
+                            toolTokens(PluginContributions.stepDependencies(project, in.dir()), toolExtras, sdkPins));
                     tokens.add("facts:" + facts.token());
                     // The step's CODE is an input: a changed plugin jar must re-run the
                     // step, or a plugin upgrade (or first-party dev iteration) silently restores
@@ -399,8 +442,9 @@ public final class PlannerPlugin {
         // Packagers get the packager-dependency artifacts AND the step-dependency tools (the
         // same artifacts commands receive — an AAB packager forks bundletool exactly like a step
         // forks aapt2). A packager-dependency wins a name collision.
-        Map<String, Path> extras = new LinkedHashMap<>(
-                PluginBuild.fetchStepDependencies(project, in.dir(), cas, PluginBuild.sdkPins(in.lockFile())));
+        Map<String, String> sdkPins = PluginBuild.sdkPins(in.lockFile());
+        Map<String, Path> extras =
+                new LinkedHashMap<>(PluginBuild.fetchStepDependencies(project, in.dir(), cas, sdkPins));
         extras.putAll(PluginBuild.fetchPackagerDependencies(project, in.dir(), cas));
 
         // Action key from the declared inputs + facts — any config, classes, dependency-set,
@@ -413,8 +457,7 @@ public final class PlannerPlugin {
         List<String> tokens = new ArrayList<>(declaredInputTokens(
                 decls.packager().inputs(),
                 new InputSources(classes, entryJars, entries, active.config(), layout, in.dir())));
-        List<Path> extraJars = new ArrayList<>(extras.values());
-        tokens.add("extras:" + ClasspathFingerprint.of(extraJars));
+        tokens.addAll(toolTokens(PluginContributions.stepDependencies(project, in.dir()), extras, sdkPins));
         if (!secrets.isEmpty()) {
             // A changed signing credential re-signs (the signature is part of the artifact);
             // the key carries only a digest — a secret value never appears anywhere readable.

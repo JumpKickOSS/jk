@@ -57,9 +57,10 @@ final class DeployCommand {
         Path work = Files.createTempDirectory("jk-deploy-");
         Path apks = work.resolve("universal.apks");
         // The Maven bundletool library embeds no aapt2 — hand it the plugin's own; local-deploy
-        // installs sign with the standard debug identity (Play signs the real ones).
+        // installs sign with the SAME stable debug identity the apk/aab packagers use, so a
+        // universal APK from a rebuilt bundle still updates the installed app in place.
         Path aapt2 = AndroidDeps.extractAapt2(exec.requireExtra("aapt2"), work.resolve("tools"));
-        Path keystore = debugKeystore(work);
+        Path keystore = DebugKeystore.ensure(DebugKeystore.stableDir(), Path.of(System.getProperty("java.home")));
         exec.label("bundletool build-apks");
         List<String> command = new ArrayList<>();
         command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
@@ -77,9 +78,9 @@ final class DeployCommand {
         command.add("--mode=universal");
         command.add("--aapt2=" + aapt2.toAbsolutePath());
         command.add("--ks=" + keystore.toAbsolutePath());
-        command.add("--ks-pass=pass:android");
-        command.add("--ks-key-alias=androiddebugkey");
-        command.add("--key-pass=pass:android");
+        command.add("--ks-pass=pass:" + DebugKeystore.PASSWORD);
+        command.add("--ks-key-alias=" + DebugKeystore.ALIAS);
+        command.add("--key-pass=pass:" + DebugKeystore.PASSWORD);
         Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         if (process.waitFor() != 0) {
@@ -97,36 +98,6 @@ final class DeployCommand {
             }
         }
         return universal;
-    }
-
-    /** A keytool-generated debug keystore under {@code work} (the standard identity). */
-    private static Path debugKeystore(Path work) throws Exception {
-        Path keystore = work.resolve("debug.keystore");
-        List<String> command = List.of(
-                Path.of(System.getProperty("java.home"), "bin", "keytool").toString(),
-                "-genkeypair",
-                "-keystore",
-                keystore.toAbsolutePath().toString(),
-                "-storepass",
-                "android",
-                "-keypass",
-                "android",
-                "-alias",
-                "androiddebugkey",
-                "-keyalg",
-                "RSA",
-                "-keysize",
-                "2048",
-                "-validity",
-                "10000",
-                "-dname",
-                "CN=Android Debug,O=Android,C=US");
-        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        if (process.waitFor() != 0) {
-            throw new IllegalStateException("keytool failed:\n" + output);
-        }
-        return keystore;
     }
 
     /** {@code --adb <path>} override, else the provisioned platform-tools binary. */

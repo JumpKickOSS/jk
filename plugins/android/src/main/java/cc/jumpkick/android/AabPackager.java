@@ -66,7 +66,7 @@ final class AabPackager {
         }
 
         io.label("sign bundle");
-        signBundle(io, work, unsigned, out);
+        signBundle(io, unsigned, out);
         AndroidDeps.copyRetraceArtifacts(io);
     }
 
@@ -113,7 +113,7 @@ final class AabPackager {
     }
 
     /** jarsigner over the bundle: the release identity when configured, else the debug keystore. */
-    private static void signBundle(PackageIo io, Path work, Path unsigned, Path out) throws Exception {
+    private static void signBundle(PackageIo io, Path unsigned, Path out) throws Exception {
         Path keystore;
         String storePass;
         String keyPass;
@@ -124,10 +124,10 @@ final class AabPackager {
             storePass = io.secret("signing.store-password").orElse("");
             keyPass = io.secret("signing.key-password").orElse(storePass);
         } else {
-            keystore = Signing.debugKeystore(io, work);
-            alias = "androiddebugkey";
-            storePass = "android";
-            keyPass = "android";
+            keystore = Signing.debugKeystore(io);
+            alias = DebugKeystore.ALIAS;
+            storePass = DebugKeystore.PASSWORD;
+            keyPass = DebugKeystore.PASSWORD;
         }
         Files.copy(unsigned, out, StandardCopyOption.REPLACE_EXISTING);
         TaskExec.ToolRun.Result signed = io.tool("jarsigner")

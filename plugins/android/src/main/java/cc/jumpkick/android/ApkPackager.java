@@ -16,8 +16,8 @@ import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
 /**
- * {@code apk} packager: assemble from {@code resources.ap_} + dex, then v1+v2 debug-sign with a
- * generated {@code androiddebugkey} keystore.
+ * {@code apk} packager: assemble from {@code resources.ap_} + dex, then v1+v2 sign — with the
+ * configured release identity, else the stable {@link DebugKeystore}.
  */
 final class ApkPackager {
 
@@ -52,7 +52,7 @@ final class ApkPackager {
             Signing.sign(Signing.release(io), unsigned, out);
         } else {
             io.label("sign (debug)");
-            Signing.sign(Signing.debug(io, work), unsigned, out);
+            Signing.sign(Signing.debug(io), unsigned, out);
         }
         AndroidDeps.copyRetraceArtifacts(io);
     }
