@@ -14,7 +14,6 @@ import io.quarkus.maven.dependency.Dependency;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,14 +22,12 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 
@@ -43,6 +40,11 @@ import java.util.jar.Manifest;
  * <p>Pure bootstrap — no {@code mvn} CLI. Builds an {@code ApplicationModel} via Quarkus's
  * embedded Maven resolver (BootstrapAppModelResolver), injects platform properties/descriptor,
  * then runs {@code createProductionApplication} to produce {@code quarkus-app/}.
+ *
+ * <p>The embedded resolver's job stops at the <em>deployment</em> closure, which is build-time only.
+ * What ships is jk's: the runtime list is the full locked closure, it is declared as the model's
+ * direct dependencies, and {@link LockedAppModel} pins the resolved model's runtime classpath back
+ * onto it before augmentation runs. See {@link LockedClosure}.
  */
 public final class QuarkusAugmentMain {
 
@@ -62,10 +64,15 @@ public final class QuarkusAugmentMain {
         Path runtimeList = Path.of(args[7]).toAbsolutePath().normalize();
         String quarkusVersion = args[8];
 
-        List<RuntimeCoord> runtime = parseRuntimeList(runtimeList);
-        List<RuntimeCoord> extensions = discoverExtensions(runtime);
-        System.err.println("jk-quarkus-augment: runtime=" + runtime.size() + " extensions=" + extensions.size()
-                + " pure-bootstrap");
+        LockedClosure locked = LockedClosure.parse(runtimeList);
+        // Offline is a per-invocation decision the engine owns. It reaches the augment as a system
+        // property and nothing else: reading JK_OFFLINE here would read the *engine daemon's*
+        // startup environment, so one `JK_OFFLINE=1 jk build` would silently pin every later build
+        // in that session offline. The engine cannot set it yet — TaskExec exposes no offline()
+        // accessor, so `--offline` stops at the engine's JkConfig (JK-2450 follow-up).
+        boolean offline = truthy(System.getProperty("jk.quarkus.offline"));
+        System.err.println("jk-quarkus-augment: locked runtime closure="
+                + locked.artifacts().size() + (offline ? " offline" : "") + " pure-bootstrap");
 
         Files.createDirectories(targetDir);
         Path scratch = Files.createDirectories(targetDir.resolve(".jk-quarkus-bootstrap"));
@@ -73,12 +80,12 @@ public final class QuarkusAugmentMain {
         Path appJar = scratch.resolve("app.jar");
         jarDir(classesDir, appJar);
 
-        // Reuse already-fetched jars: jk's repo mirrors are derived from the runtime jar paths
+        // Reuse already-fetched jars: jk's repo mirrors are derived from the locked jar paths
         // the engine handed us — they ARE store paths, and rebuilding product dirs from
         // user.home guesses wrong the moment JK_STORE_DIR (or the platform default) differs.
         // ~/.m2 honors maven.repo.local for the same reason.
         List<String> tails = new ArrayList<>();
-        for (Path reposRoot : mirrorRepoRoots(runtime)) {
+        for (Path reposRoot : locked.mirrorRepoRoots()) {
             tails.add(reposRoot.toString());
         }
         tails.add(System.getProperty(
@@ -89,6 +96,12 @@ public final class QuarkusAugmentMain {
                 .setLocalRepository(localRepo.toString())
                 .setLocalRepositoryTail(tails.toArray(String[]::new))
                 .setWorkspaceDiscovery(false);
+        if (offline) {
+            // Only ever forced ON — left unset, the user's Maven settings stay in charge. Offline
+            // resolution serves the warm store and fails loudly on a miss; it never quietly
+            // reaches Central behind an offline build's back.
+            cfg.setOffline(true);
+        }
         MavenArtifactResolver maven = new MavenArtifactResolver(new BootstrapMavenContext(cfg));
         BootstrapAppModelResolver modelResolver = new BootstrapAppModelResolver(maven);
 
@@ -97,49 +110,32 @@ public final class QuarkusAugmentMain {
         // Point the app artifact at compiled classes for augmentation root content.
         modelResolver.relink(appCoords, classesDir);
 
+        // jk already solved the graph, so the augment declares the WHOLE locked closure as direct
+        // dependencies instead of the handful of jars that looked like extensions. At depth 1 every
+        // locked coordinate is the nearest one, so neither the platform BOM's managed versions nor
+        // a deeper transitive can displace it. Workspace / path jars have no Maven layout GAV —
+        // install them into the bootstrap local repo so the same declaration resolves.
         List<Dependency> direct = new ArrayList<>();
-        Set<String> directKeys = new LinkedHashSet<>();
-        for (RuntimeCoord e : extensions) {
-            String key = e.group() + ":" + e.artifact();
-            if (directKeys.add(key)) {
-                direct.add(new ArtifactDependency(e.group(), e.artifact(), "", "jar", e.version(), "compile", false));
+        int workspaceDeps = 0;
+        for (LockedClosure.Artifact a : locked.artifacts()) {
+            if (a.workspace()) {
+                modelResolver.install(ArtifactCoords.jar(a.group(), a.artifact(), a.version()), a.jar());
+                workspaceDeps++;
             }
-        }
-        // Workspace / path jars (jk path deps) have no Maven layout GAV — install them into the
-        // bootstrap local repo and declare as direct deps so they land in quarkus-app/lib/main.
-        int pathDeps = 0;
-        for (RuntimeCoord r : runtime) {
-            if (!isPathOrUnknown(r)) continue;
-            RuntimeCoord fixed = synthesizeCoords(r);
-            ArtifactCoords c = ArtifactCoords.jar(fixed.group(), fixed.artifact(), fixed.version());
-            modelResolver.install(c, r.jar());
-            String key = fixed.group() + ":" + fixed.artifact();
-            if (directKeys.add(key)) {
-                direct.add(new ArtifactDependency(
-                        fixed.group(), fixed.artifact(), "", "jar", fixed.version(), "compile", false));
-                pathDeps++;
-            }
-        }
-        if (direct.isEmpty()) {
-            // Fall back to all non-unknown runtime coords as direct deps.
-            for (RuntimeCoord r : runtime) {
-                if (r.group().startsWith("unknown")) continue;
-                String key = r.group() + ":" + r.artifact();
-                if (directKeys.add(key)) {
-                    direct.add(
-                            new ArtifactDependency(r.group(), r.artifact(), "", "jar", r.version(), "compile", false));
-                }
-            }
+            direct.add(new ArtifactDependency(a.group(), a.artifact(), "", "jar", a.version(), "compile", false));
         }
         ArtifactCoords managing = ArtifactCoords.pom("io.quarkus.platform", "quarkus-bom", quarkusVersion);
 
-        System.err.println("jk-quarkus-augment: resolving ApplicationModel (direct=" + direct.size() + " pathDeps="
-                + pathDeps + ")…");
+        System.err.println("jk-quarkus-augment: resolving ApplicationModel (direct=" + direct.size() + " workspaceDeps="
+                + workspaceDeps + ")…");
         // Bootstrap 3.38+: (app, directDeps, excludedArtifacts, managingProject, reloadableModules).
-        var model =
-                modelResolver.resolveManagedModel(appCoords, direct, Set.of(), managing, Set.of(appCoords.getKey()));
-        System.err.println(
-                "jk-quarkus-augment: model deps=" + model.getDependencies().size());
+        // Aether owns the deployment closure (build-time only); the lock owns what ships.
+        var model = LockedAppModel.enforce(
+                modelResolver.resolveManagedModel(appCoords, direct, Set.of(), managing, Set.of(appCoords.getKey())),
+                locked);
+        System.err.println("jk-quarkus-augment: runtime deps="
+                + model.getRuntimeDependencies().size() + " deployment deps="
+                + model.getDependencies().size());
 
         // Platform properties + descriptor (required for config expansion + alignment checks).
         injectPlatform(model, quarkusVersion, tails, maven);
@@ -225,6 +221,16 @@ public final class QuarkusAugmentMain {
         System.out.println("jk-quarkus-augment: " + targetDir.resolve("quarkus-run.jar"));
     }
 
+    /**
+     * jk's env/flag truth set ({@code 1/true/yes/on}), re-spelled here because {@code
+     * cc.jumpkick.config.EnvValues} lives in {@code shared/core} and no plugin can reach it.
+     */
+    private static boolean truthy(String raw) {
+        if (raw == null) return false;
+        String v = raw.trim().toLowerCase(Locale.ROOT);
+        return v.equals("1") || v.equals("true") || v.equals("yes") || v.equals("on");
+    }
+
     private static String normalizePackageType(String raw) {
         if (raw == null || raw.isBlank()) return "fast-jar";
         String t = raw.trim().toLowerCase(Locale.ROOT);
@@ -293,8 +299,6 @@ public final class QuarkusAugmentMain {
                 + model.getPlatformProperties().size() + " boms=" + platforms.getImportedPlatformBoms());
     }
 
-    private record RuntimeCoord(String group, String artifact, String version, Path jar) {}
-
     /**
      * Path of a resolved Aether artifact. Prefer {@code getPath} (maven-resolver 1.9.20+ / 2.x);
      * fall back to {@code getFile} for the older resolver pinned by quarkus-bootstrap. Looked up
@@ -318,83 +322,6 @@ public final class QuarkusAugmentMain {
         throw new IllegalStateException("resolved artifact has no path: " + art);
     }
 
-    /** Path/workspace jars written as {@code unknown:unknown:0} by the packager, or non-Maven paths. */
-    private static boolean isPathOrUnknown(RuntimeCoord r) {
-        return r.group().startsWith("unknown")
-                || "0".equals(r.version())
-                        && r.jar() != null
-                        && !r.jar().toString().replace('\\', '/').contains("/repos/");
-    }
-
-    /**
-     * Derive installable GAV for a workspace jar: prefer {@code name-version.jar} filename, else a
-     * stable hash of the path.
-     */
-    private static RuntimeCoord synthesizeCoords(RuntimeCoord r) {
-        if (!r.group().startsWith("unknown") && !"0".equals(r.version())) {
-            return r;
-        }
-        String file = r.jar().getFileName().toString();
-        String base = file.endsWith(".jar") ? file.substring(0, file.length() - 4) : file;
-        // domain-0.1.0 → artifact=domain version=0.1.0
-        String artifact = base;
-        String version = "0.1.0";
-        int dash = base.lastIndexOf('-');
-        if (dash > 0 && dash < base.length() - 1) {
-            String maybeVer = base.substring(dash + 1);
-            if (maybeVer.matches("[0-9].*")) {
-                artifact = base.substring(0, dash);
-                version = maybeVer;
-            }
-        }
-        String group = "jk.workspace";
-        return new RuntimeCoord(group, artifact, version, r.jar());
-    }
-
-    /**
-     * Maven-layout mirror roots under jk's store, derived from the runtime jars' own locations
-     * ({@code <store>/repos/<name>/...}). Every sibling repo dir is a valid resolver tail.
-     */
-    private static List<Path> mirrorRepoRoots(List<RuntimeCoord> runtime) {
-        List<Path> out = new ArrayList<>();
-        Set<Path> seen = new LinkedHashSet<>();
-        String marker = File.separator + "repos" + File.separator;
-        for (RuntimeCoord r : runtime) {
-            if (r.jar() == null) continue;
-            String sp = r.jar().toString();
-            int i = sp.indexOf(marker);
-            if (i <= 0) continue;
-            Path reposRoot = Path.of(sp.substring(0, i)).resolve("repos");
-            if (!Files.isDirectory(reposRoot)) continue;
-            try (var kids = Files.list(reposRoot)) {
-                for (Path repo : kids.filter(Files::isDirectory).sorted().toList()) {
-                    if (seen.add(repo)) out.add(repo);
-                }
-            } catch (IOException ignored) {
-                // unreadable mirror root — resolver just goes to the network
-            }
-            break;
-        }
-        return out;
-    }
-
-    private static List<RuntimeCoord> parseRuntimeList(Path file) throws Exception {
-        List<RuntimeCoord> out = new ArrayList<>();
-        for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-            if (line.isBlank() || line.startsWith("#")) continue;
-            String[] parts = line.split("\t", 2);
-            if (parts.length != 2) {
-                throw new IllegalArgumentException("bad runtime list line: " + line);
-            }
-            String[] gav = parts[0].split(":", 3);
-            if (gav.length != 3) {
-                throw new IllegalArgumentException("bad GAV: " + parts[0]);
-            }
-            out.add(new RuntimeCoord(gav[0], gav[1], gav[2], Path.of(parts[1])));
-        }
-        return out;
-    }
-
     /**
      * Move Quarkus's {@code native-sources/} — runner jar, {@code lib/}, and the
      * {@code native-image.args} it computed — to the step's declared output, where the engine's
@@ -416,52 +343,6 @@ public final class QuarkusAugmentMain {
         Files.createDirectories(dest);
         copyTree(found, dest);
         System.err.println("jk-quarkus-augment: native sources -> " + dest);
-    }
-
-    private static List<RuntimeCoord> discoverExtensions(List<RuntimeCoord> runtime) {
-        List<RuntimeCoord> extensions = new ArrayList<>();
-        for (RuntimeCoord d : runtime) {
-            if (isQuarkusExtension(d.jar())) {
-                extensions.add(d);
-            }
-        }
-        if (extensions.isEmpty()) {
-            for (RuntimeCoord d : runtime) {
-                if (d.group().startsWith("io.quarkus")
-                        && !d.artifact().contains("bootstrap")
-                        && !d.artifact().endsWith("-spi")
-                        && !d.artifact().endsWith("-deployment")) {
-                    extensions.add(d);
-                }
-            }
-        }
-        Set<String> seen = new LinkedHashSet<>();
-        List<RuntimeCoord> ordered = new ArrayList<>();
-        for (String want : List.of("quarkus-rest", "quarkus-arc", "quarkus-core")) {
-            for (RuntimeCoord d : extensions) {
-                if (d.artifact().equals(want) && seen.add(d.group() + ":" + d.artifact())) {
-                    ordered.add(d);
-                }
-            }
-        }
-        for (RuntimeCoord d : extensions) {
-            if (seen.add(d.group() + ":" + d.artifact())) {
-                ordered.add(d);
-            }
-        }
-        // Cap direct deps — resolver still walks the full managed graph.
-        return ordered.size() > 30 ? ordered.subList(0, 30) : ordered;
-    }
-
-    private static boolean isQuarkusExtension(Path jar) {
-        if (jar == null || !Files.isRegularFile(jar)) return false;
-        try (JarFile jf = new JarFile(jar.toFile())) {
-            return jf.getEntry("META-INF/quarkus-extension.properties") != null
-                    || jf.getEntry("META-INF/quarkus-extension.yaml") != null
-                    || jf.getEntry("META-INF/quarkus-extension.yml") != null;
-        } catch (IOException e) {
-            return false;
-        }
     }
 
     private static void jarDir(Path dir, Path jar) throws IOException {
