@@ -21,7 +21,7 @@ class FileHashMemoRestoreSeedTest {
 
     @AfterEach
     void reset() {
-        FileHashMemo.clearThreadCache();
+        FileHashMemo.reset();
         SessionContext.reset();
     }
 
@@ -44,7 +44,7 @@ class FileHashMemoRestoreSeedTest {
         Files.delete(a);
         var rec = ac.lookup(key).orElseThrow();
         FileHashMemo.resetStats();
-        FileHashMemo.clearThreadCache();
+        FileHashMemo.reset();
         ac.restore(rec, classes);
 
         long readsBefore = FileHashMemo.contentReads();
@@ -87,7 +87,7 @@ class FileHashMemoRestoreSeedTest {
 
         Files.delete(jar);
         FileHashMemo.resetStats();
-        FileHashMemo.clearThreadCache();
+        FileHashMemo.reset();
         assertThat(ac.restoreArtifacts(ac.lookup("pkg-key").orElseThrow(), out)).isTrue();
 
         long readsBefore = FileHashMemo.contentReads();

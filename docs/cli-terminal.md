@@ -140,7 +140,8 @@ anti-goals forbid.
 - Named input modes (`COOKED`, `PROMPT`, `PLAN_KEYS`, `INHERIT_CHILD`) with exact termios /
   console-mode bits (including `IXON` off so Ctrl-S cannot freeze a live plan).
 - Timed key reads via **`poll`** (POSIX, fixed-arity, `captureCallState("errno")`) and
-  `WaitForSingleObject` + `ReadFile` (Windows, UTF-8 bytes). POSIX `read` is `O_NONBLOCK`.
+  `WaitForSingleObject` + `PeekConsoleInputW`/`ReadConsoleInputW` (Windows, UTF-8 bytes).
+  POSIX `read` is `O_NONBLOCK`.
   `read` `EAGAIN` after `POLLIN` is not a timeout: the loop is **clock-driven** (deadline at
   the top of each iteration; a sleep slice if `poll` returned immediately). Forever waits
   (`Duration.ZERO`) have no deadline and still take the 50ms slice. No `ppoll`. No helper
@@ -212,7 +213,7 @@ the probe — we do **not** collapse `canPrompt` and `stdoutIsTty`.
    the session. *Rationale:* Wizard, live-plan Ctrl-O, and `jk run` inheritIO are three different
    line-discipline contracts that a boolean cannot express.
 
-4. **Timed reads via `poll` / `WaitForSingleObject`+`ReadFile`. No helper thread. Delete
+4. **Timed reads via `poll` / `WaitForSingleObject`+`PeekConsoleInputW`. No helper thread. Delete
    `StdinWake`.** VMIN=1, VTIME=0 on the TTY (termios). POSIX **`read` never blocks**: the
    session's `/dev/tty` fd is `O_NONBLOCK` for its lifetime (private reader detail on **all
    POSIX**, not a public `pulseNonBlocking()`). The wait loop is **clock-driven**, not
@@ -228,8 +229,9 @@ the probe — we do **not** collapse `canPrompt` and `stdoutIsTty`.
       and the deadline. If `poll` actually blocked, restarting `poll(remaining)` is fine.
    3. Empty when the **deadline passed**, `poll` returned 0, or `!isLive`. `isLive`
       unchanged on `EAGAIN`. Same loop for the ESC 50ms peek and CSI 1ms peeks.
-   Windows input is **UTF-8 bytes** (`SetConsoleCP(65001)` + `ENABLE_VIRTUAL_TERMINAL_INPUT`
-   + `ReadFile` on `CONIN$`) into the same `Keys` parser as POSIX. Never `ReadConsoleW`.
+   Windows input is **UTF-8 bytes** (`SetConsoleCP(65001)` + `PeekConsoleInputW` /
+   `ReadConsoleInputW` on `CONIN$`, KEY_EVENT → UTF-8/CSI) into the same `Keys` parser as
+   POSIX. Never `ReadFile`/`ReadConsoleW` on `CONIN$`.
    Do **not** hold the session lock across `poll`/`WaitForSingleObject`/`read`/the slice.
    *Rationale:* blocking `read` after ICANON is the macOS Enter-hang; treating spurious
    `EAGAIN` as empty busy-spins the wizard; restarting `poll` with no clock exit
@@ -318,7 +320,7 @@ clients/cli-terminal/
     TermiosLinux.java          glibc struct layout + flag constants
     TermiosDarwin.java         Darwin LP64 struct layout + flag constants
   src/main/java/cc/jumpkick/terminal/windows/
-    WindowsConsole.java        CONIN$/CONOUT$ CreateFile, mode, wait, ReadFile/WriteFile
+    WindowsConsole.java        CONIN$/CONOUT$ CreateFile, mode, wait, PeekConsoleInput/WriteFile
     WindowsUtf8.java           CP 65001 + VTP + UTF-8 streams (no HostPlatform)
   src/main/resources/META-INF/native-image/cc.jumpkick/cli-terminal/
     reachability-metadata.json sun.misc.Signal + SignalHandler (commit 1)
@@ -938,7 +940,7 @@ Invariants:
 - **One `ReentrantLock`** on `NativeTerminal` covers `enter` / `ModeGuard.close` (apply
   mode) / drain's mode checks / singleton `close` / `shutdown` / `restoreForChild` /
   snapshot of `isLive`+fd. **Do not hold the lock across `poll`, `WaitForSingleObject`,
-  `read`, or `ReadFile`.** `readKey` locks to copy `isLive` + fd + mode, unlocks, waits,
+  `read`, or `ReadConsoleInputW`.** `readKey` locks to copy `isLive` + fd + mode, unlocks, waits,
   then locks again: if `!isLive` (shutdown won) return empty. Holding the lock across a
   kernel wait makes restore latency unbounded and recreates the Darwin Enter-hang when
   `jk-sigint-tty-restore` cannot take the mutex before the 500ms `halt(2)` join.
@@ -1035,19 +1037,21 @@ ESC disambiguation (50ms peek after `0x1B`) and trailing CSI 1ms peeks use this 
 clock-driven loop (their own `deadlineNanos`). Do not treat peek `EAGAIN` as “bare ESC”
 until that peek's clock expires.
 
-Windows input is **one path** (no `ReadConsoleW`, no `ReadConsoleInputW` / `KEY_EVENT_RECORD`
-map):
+Windows input is **one path** (no `ReadFile` / `ReadConsoleW` on `CONIN$`):
 
 1. Session open: `CreateFileW("CONIN$", …)` and `CreateFileW("CONOUT$", …)` (constants below).
 2. `SetConsoleCP(65001)` / `SetConsoleOutputCP(65001)` (via `WindowsUtf8` / `bootstrap`).
-3. `PROMPT`/`PLAN_KEYS` set `ENABLE_VIRTUAL_TERMINAL_INPUT` on `CONIN$`.
-4. `WaitForSingleObject(conIn, timeoutMs)` then `ReadFile(conIn, buf, n, &read, NULL)`.
+3. `PROMPT`/`PLAN_KEYS` clear `ENABLE_LINE_INPUT`, echo, mouse, window, and quick-edit.
+   `PLAN_KEYS` keeps `ENABLE_PROCESSED_INPUT` (Ctrl-C is a control event). `PROMPT` clears
+   it (Ctrl-C is `0x03`).
+4. `WaitForSingleObject(conIn, timeoutMs)` then `PeekConsoleInputW` (1 record). Only if the
+   peek reports a record, `ReadConsoleInputW` consumes it. KEY_UP / mouse / focus records
+   are discarded; KEY_DOWN with a Unicode char becomes UTF-8, arrow VKs become CSI bytes.
    Same clock-driven loop as POSIX: `WAIT_TIMEOUT` or timed deadline → empty; forever has
-   no deadline. If wait returns immediately (`WAIT_OBJECT_0`, elapsed &lt; 1ms) and
-   `ReadFile` yields 0 bytes, sleep the same slice (`Sleep` / `parkNanos`) then recheck
-   — do not tight-restart `WaitForSingleObject(INFINITE)`.
-5. Treat `ReadFile` bytes as **UTF-8** (console CP is 65001). Feed them to the same `Keys`
-   parser as POSIX (CSI arrows, Ctrl-O `0x0F`, Ctrl-C `0x03` when processed-input is off).
+   no deadline. Never call `ReadFile` on `CONIN$` — leftover KEY_UP/focus events signal the
+   handle and `ReadFile` then blocks for a character, ignoring the wait timeout.
+5. Feed those bytes to the same `Keys` parser as POSIX (CSI arrows, Ctrl-O `0x0F`, Ctrl-C
+   `0x03` when processed-input is off).
 
 Output is separate: `WriteFile(conOut, utf8Bytes, …)` on `CONOUT$` for `ttyOut()`. That
 handle has VTP ORed on at open (see output-mode table). Do not mix `WriteConsoleW`
@@ -1098,12 +1102,12 @@ Windows `ttyOut()` does not need this loop: `WriteFile(CONOUT$)` stays blocking.
 | `ENABLE_PROCESSED_INPUT` | `0x1` | CONIN$ |
 | `ENABLE_LINE_INPUT` | `0x2` | CONIN$ |
 | `ENABLE_ECHO_INPUT` | `0x4` | CONIN$ |
-| `ENABLE_WINDOW_INPUT` | `0x8` | CONIN$ — leave as saved |
-| `ENABLE_MOUSE_INPUT` | `0x10` | CONIN$ — leave as saved |
+| `ENABLE_WINDOW_INPUT` | `0x8` | CONIN$ — clear in PROMPT/PLAN_KEYS |
+| `ENABLE_MOUSE_INPUT` | `0x10` | CONIN$ — clear in PROMPT/PLAN_KEYS |
 | `ENABLE_INSERT_MODE` | `0x20` | CONIN$ — leave as saved |
-| `ENABLE_QUICK_EDIT_MODE` | `0x40` | CONIN$ — leave as saved |
-| `ENABLE_EXTENDED_FLAGS` | `0x80` | CONIN$ — leave as saved |
-| `ENABLE_VIRTUAL_TERMINAL_INPUT` | `0x200` | CONIN$ |
+| `ENABLE_QUICK_EDIT_MODE` | `0x40` | CONIN$ — clear in PROMPT/PLAN_KEYS |
+| `ENABLE_EXTENDED_FLAGS` | `0x80` | CONIN$ — set in PROMPT/PLAN_KEYS (required to change quick-edit) |
+| `ENABLE_VIRTUAL_TERMINAL_INPUT` | `0x200` | unused (KEY_EVENT decode, not ReadFile) |
 | `ENABLE_PROCESSED_OUTPUT` | `0x1` | CONOUT$ — leave as saved |
 | `ENABLE_WRAP_AT_EOL_OUTPUT` | `0x2` | CONOUT$ — leave as saved |
 | `ENABLE_VIRTUAL_TERMINAL_PROCESSING` | `0x4` | CONOUT$ **and** `STD_OUTPUT_HANDLE` |
@@ -1118,7 +1122,8 @@ GetConsoleMode(conIn, &savedIn)
 GetConsoleMode(conOut, &savedOut)
 SetConsoleMode(conOut, savedOut | ENABLE_VIRTUAL_TERMINAL_PROCESSING)
 WaitForSingleObject(conIn, timeoutMs)             // timeoutMs == INFINITE iff Duration.ZERO
-ReadFile(conIn, buf, n, &nRead, NULL)
+PeekConsoleInputW(conIn, rec, 1, &n)              // never ReadConsoleInput on an empty buffer
+ReadConsoleInputW(conIn, rec, 1, &n)              // only when peek n > 0
 WriteFile(conOut, buf, n, &nWritten, NULL)
 ```
 
@@ -1137,9 +1142,11 @@ BOOL SetConsoleMode(HANDLE hConsoleHandle, DWORD dwMode)
 `GetStdHandle` is for `stdoutIsTty` / `WindowsUtf8` VTP on `STD_OUTPUT_HANDLE` only. Session
 I/O uses the `CreateFileW` handles.
 
-`ReadFile` signature: `BOOL ReadFile(HANDLE, LPVOID, DWORD, LPDWORD, LPOVERLAPPED)` — last
-arg `NULL` (synchronous). Partial UTF-8 sequences stay in a small session byte buffer until
-`Keys` can parse a key (same as POSIX `read` returning a short count).
+`PeekConsoleInputW` / `ReadConsoleInputW` signature:
+`BOOL (HANDLE, PINPUT_RECORD, DWORD nLength, LPDWORD)` — `nLength` is 1. `INPUT_RECORD` is
+20 bytes (x64 MSVC): `WORD EventType` at 0, `BOOL bKeyDown` at 4, `WORD wRepeatCount` at 8,
+`WORD wVirtualKeyCode` at 10, `WCHAR UnicodeChar` at 14. Partial UTF-8 / CSI tails stay in a
+small session byte queue until `Keys` can parse a key.
 
 Process exit: nobody is blocked in `read()`. `shutdown()` is `tcsetattr`/`SetConsoleMode` +
 code-page restore + `close(ourFd)` / `CloseHandle`. `Jk.main`'s finally still calls
@@ -1393,7 +1400,7 @@ silent. `HostPlatform` is replaced by `Os.isWindows()` / `isDarwin()` / `isLinux
 ```
 src/main/resources/META-INF/native-image/cc.jumpkick/cli-terminal/
   native-image.properties
-  reachability-metadata.json   # REQUIRED in commit 1 for sun.misc.Signal + sun.misc.SignalHandler
+  reachability-metadata.json   # sun.misc.Signal + FFM foreign.downcalls (termios/poll/fcntl, Kernel32)
 ```
 
 JLine's in-tree `reflection-config.json` is `[]`; reachability today comes from the JLine
@@ -1662,6 +1669,12 @@ This is a local CLI, not a service. No metrics backend.
   `/dev/tty` failures are swallowed into non-live — never a stacktrace on `jk build`.
 - **Native-image:** a missing downcall should fail the *first* prompt with a short message, not
   an FFM `IncompatibleClassChangeError` dump. Binder init catches `Throwable` like `TerminalSize`.
+  Every POSIX/Kernel32 `downcallHandle` descriptor (including `captureCallState` on
+  `tcgetattr`/`poll`/`read`/`write` and `firstVariadicArg` on `fcntl`/`ioctl`) must be listed
+  under `foreign.downcalls` in `:cli-terminal`'s `reachability-metadata.json`. Graal throws
+  `MissingForeignRegistrationError` per descriptor; `PosixTty.ensure()` binds independently so
+  one miss does not null `open`/`tcgetattr`. A hole here makes `canPrompt()` false on a live
+  TTY and `jk new` skips the wizard.
 - **Alerting:** none. Dogfood + `./gradlew :cli:test` / `:cli:integrationTest` / reinstall smoke.
 
 Latency targets: `controlling()` first open < 5ms (no 200ms grapheme timeout). `readKey(75ms)`
@@ -1695,7 +1708,7 @@ required before merge. User docs do not become a terminal tutorial.
 | Risk | Severity | Mitigation |
 |------|----------|------------|
 | Windows Git-Bash/mintty users lose wizards | Medium | Explicit degradation; Windows Terminal is the supported interactive host. Do not discover this at release — document in `tui.md`. |
-| Graal FFM downcalls (termios layout, variadic `ioctl`/`fcntl`, fixed `poll` + errno capture) differ per OS/arch | High | Layout tables in this spec; `captureCallState("errno")` on poll/read/tcsetattr; confined arenas; Darwin AArch64 `firstVariadicArg` only on ioctl/fcntl; integration pty test on Linux/macOS; Windows `ReadFile` UTF-8 dogfood on a real console before `done`. |
+| Graal FFM downcalls (termios layout, variadic `ioctl`/`fcntl`, fixed `poll` + errno capture) differ per OS/arch | High | Layout tables in this spec; `captureCallState("errno")` on poll/read/tcsetattr; confined arenas; Darwin AArch64 `firstVariadicArg` only on ioctl/fcntl; integration pty test on Linux/macOS; Windows `PeekConsoleInputW` dogfood on a real console before `done`. |
 | SIGINT vs `halt(2)`: restore too slow or skipped → raw shell | High | Never block in `read()` (`O_NONBLOCK`); do not hold the session lock across poll/wait. `shutdown()` is tcsetattr + close, no helper-thread join. Keep 500ms bounded join then halt. Manual Ctrl-C dogfood on macOS (the hang we are deleting). |
 | `PROMPT` ISIG-off: JVM default Ctrl-C during wizard if we fail to read 0x03 | Medium | Key parser already maps 0x03; wizard cancel path unchanged. If the console still delivers a control event on Windows, keep processed-input off and verify in a console. |
 | wcwidth drift vs JLine tables → truncation desync (JkManager live region) | Medium | Golden glyph fixture of every chrome code point; OSC-8 tests move with `Width`. |
@@ -1863,7 +1876,7 @@ on a dedicated branch, independently reviewable. **Merge the branch to `main` on
   `@Tag("integration")` pty test
 - **Depends on:** none
 - **Description:** JDK-only leaf. `open("/dev/tty", O_RDWR|O_CLOEXEC)` then `O_NONBLOCK`;
-  `CreateFileW(CONIN$)` + `ReadFile` UTF-8. Four modes. `poll` with
+  `CreateFileW(CONIN$)` + `PeekConsoleInputW`. Four modes. `poll` with
   `captureCallState("errno")`; clock-driven wait loop (`EAGAIN` after immediate `poll`
   → 50ms/`min(remaining,50ms)` slice, not tight restart). `PosixTty.write` loops to
   completion; Windows `WriteFile` blocking. CONOUT$ VTP OR at

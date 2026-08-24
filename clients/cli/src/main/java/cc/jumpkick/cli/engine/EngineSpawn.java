@@ -400,8 +400,9 @@ public final class EngineSpawn {
 
     /**
      * Engine artifact resolution: (a) {@code JK_ENGINE_EXE}; (b) the product-lib jar paired with
-     * this client version (live under {@code lib/jk-engine/}, or a parked {@code *.jar.old} during
-     * drain). Empty when neither is available (caller may download / materialize, then retry).
+     * this client version (live under {@code lib/jk-engine/} via {@code jk-engine.toml}, or a leftover
+     * jar of that version still in the directory until GC). Empty when neither is available (caller
+     * may download / materialize, then retry).
      */
     static Optional<EngineArtifact> resolveEngineArtifact(String envOverride, String version) {
         return resolveEngineArtifact(envOverride, version, cc.jumpkick.cache.EngineInstall.current());

@@ -10,12 +10,17 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.function.BooleanSupplier;
 
 /**
- * Session {@code CONIN$}/{@code CONOUT$}. Input is {@code WaitForSingleObject} + {@code ReadFile}
- * UTF-8. Output {@code WriteFile} is blocking. VTP is ORed onto the session CONOUT$ handle at open.
+ * Session {@code CONIN$}/{@code CONOUT$}. Input is {@code WaitForSingleObject} then
+ * {@code PeekConsoleInputW}/{@code ReadConsoleInputW} — never {@code ReadFile}. A console input
+ * handle stays signaled for KEY_UP, mouse, and focus records; {@code ReadFile} then waits for a
+ * character after the wait timeout has already elapsed. Output {@code WriteFile} is blocking. VTP
+ * is ORed onto the session CONOUT$ handle at open.
  */
 public final class WindowsConsole implements AutoCloseable {
     static final int GENERIC_READ = 0x80000000;
@@ -31,15 +36,32 @@ public final class WindowsConsole implements AutoCloseable {
     static final int ENABLE_PROCESSED_INPUT = 0x1;
     static final int ENABLE_LINE_INPUT = 0x2;
     static final int ENABLE_ECHO_INPUT = 0x4;
+    static final int ENABLE_WINDOW_INPUT = 0x8;
+    static final int ENABLE_MOUSE_INPUT = 0x10;
+    static final int ENABLE_QUICK_EDIT_MODE = 0x40;
+    static final int ENABLE_EXTENDED_FLAGS = 0x80;
     static final int ENABLE_VIRTUAL_TERMINAL_INPUT = 0x200;
     static final int ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x4;
+    static final int KEY_EVENT = 0x1;
+    static final int INPUT_RECORD_BYTES = 20;
+    static final int OFF_EVENT_TYPE = 0;
+    static final int OFF_KEY_DOWN = 4;
+    static final int OFF_REPEAT = 8;
+    static final int OFF_VK = 10;
+    static final int OFF_UNICODE = 14;
+    static final int VK_LEFT = 0x25;
+    static final int VK_UP = 0x26;
+    static final int VK_RIGHT = 0x27;
+    static final int VK_DOWN = 0x28;
 
     private static final int SLICE_MS = 50;
+    private static final byte[] EMPTY = new byte[0];
 
     private final MemorySegment conIn;
     private final MemorySegment conOut;
     private final int savedIn;
     private final int savedOut;
+    private final ArrayDeque<Integer> queued = new ArrayDeque<>();
     private volatile boolean open = true;
 
     private WindowsConsole(MemorySegment conIn, MemorySegment conOut, int savedIn, int savedOut) {
@@ -103,19 +125,54 @@ public final class WindowsConsole implements AutoCloseable {
         }
     }
 
+    /**
+     * {@code PROMPT}/{@code PLAN_KEYS} drop line/echo/mouse/window/quick-edit so the wait handle
+     * is not left signaled by records {@code ReadFile} would ignore. {@code PLAN_KEYS} keeps
+     * processed input (Ctrl-C is a control event). {@code PROMPT} clears it (Ctrl-C is {@code 0x03}).
+     */
+    static int inputModeBits(int savedIn, InputMode mode) {
+        if (mode == InputMode.COOKED || mode == InputMode.INHERIT_CHILD) {
+            return savedIn;
+        }
+        int clear = ENABLE_LINE_INPUT
+                | ENABLE_ECHO_INPUT
+                | ENABLE_MOUSE_INPUT
+                | ENABLE_WINDOW_INPUT
+                | ENABLE_QUICK_EDIT_MODE;
+        int next = (savedIn & ~clear) | ENABLE_EXTENDED_FLAGS;
+        if (mode == InputMode.PROMPT) {
+            return next & ~ENABLE_PROCESSED_INPUT;
+        }
+        return next | ENABLE_PROCESSED_INPUT;
+    }
+
+    /**
+     * UTF-8 bytes for one {@code KEY_EVENT_RECORD}, or empty to discard (key-up, modifiers, mouse).
+     */
+    static byte[] bytesForKeyEvent(int eventType, int keyDown, char unicode, int vk) {
+        if (eventType != KEY_EVENT || keyDown == 0) {
+            return EMPTY;
+        }
+        if (unicode != 0) {
+            if (unicode < 128) {
+                return new byte[] {(byte) unicode};
+            }
+            return Character.toString(unicode).getBytes(StandardCharsets.UTF_8);
+        }
+        return switch (vk) {
+            case VK_UP -> new byte[] {0x1B, '[', 'A'};
+            case VK_DOWN -> new byte[] {0x1B, '[', 'B'};
+            case VK_RIGHT -> new byte[] {0x1B, '[', 'C'};
+            case VK_LEFT -> new byte[] {0x1B, '[', 'D'};
+            default -> EMPTY;
+        };
+    }
+
     public void apply(InputMode mode) {
         if (!open) {
             return;
         }
-        int next = savedIn;
-        if (mode == InputMode.PROMPT) {
-            next = (savedIn & ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT))
-                    | ENABLE_VIRTUAL_TERMINAL_INPUT;
-        } else if (mode == InputMode.PLAN_KEYS) {
-            next = (savedIn & ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT))
-                    | ENABLE_PROCESSED_INPUT
-                    | ENABLE_VIRTUAL_TERMINAL_INPUT;
-        }
+        int next = inputModeBits(savedIn, mode);
         try {
             int ignored = (int) setConsoleMode.invokeExact(conIn, next);
         } catch (Throwable ignored) {
@@ -139,12 +196,21 @@ public final class WindowsConsole implements AutoCloseable {
         if (timeout.isNegative()) {
             throw new IllegalArgumentException("timeout must be >= 0");
         }
+        if (!queued.isEmpty()) {
+            return queued.removeFirst();
+        }
         boolean forever = timeout.isZero();
         long deadline = forever ? Long.MAX_VALUE : System.nanoTime() + timeout.toNanos();
         ensure();
+        if (waitForSingleObject == null || peekConsoleInputW == null || readConsoleInputW == null) {
+            return -1;
+        }
         while (live.getAsBoolean() && open) {
             if (!forever && System.nanoTime() >= deadline) {
                 return -1;
+            }
+            if (!queued.isEmpty()) {
+                return queued.removeFirst();
             }
             int waitMs = forever
                     ? INFINITE
@@ -158,12 +224,9 @@ public final class WindowsConsole implements AutoCloseable {
                 if (waited == WAIT_FAILED) {
                     return -2;
                 }
-                MemorySegment buf = arena.allocate(8);
-                MemorySegment nRead = arena.allocate(ValueLayout.JAVA_INT);
-                int ok = (int) readFile.invokeExact(conIn, buf, 1, nRead, MemorySegment.NULL);
-                int n = nRead.get(ValueLayout.JAVA_INT, 0);
-                if (ok != 0 && n > 0) {
-                    return Byte.toUnsignedInt(buf.get(ValueLayout.JAVA_BYTE, 0));
+                int b = takeQueuedKeyByte(arena);
+                if (b >= 0) {
+                    return b;
                 }
                 long elapsed = System.nanoTime() - t0;
                 if (waited == WAIT_OBJECT_0 && elapsed < 1_000_000L) {
@@ -203,6 +266,38 @@ public final class WindowsConsole implements AutoCloseable {
         closeBoth(conIn, conOut);
     }
 
+    /**
+     * Peek the front record; only then {@code ReadConsoleInputW} so an empty buffer cannot block.
+     * Discards non-key records. Returns the first UTF-8 byte, or -1 if nothing to emit.
+     */
+    private int takeQueuedKeyByte(Arena arena) throws Throwable {
+        MemorySegment rec = arena.allocate(INPUT_RECORD_BYTES);
+        MemorySegment nRead = arena.allocate(ValueLayout.JAVA_INT);
+        int peeked = (int) peekConsoleInputW.invokeExact(conIn, rec, 1, nRead);
+        if (peeked == 0 || nRead.get(ValueLayout.JAVA_INT, 0) <= 0) {
+            return -1;
+        }
+        int consumed = (int) readConsoleInputW.invokeExact(conIn, rec, 1, nRead);
+        if (consumed == 0 || nRead.get(ValueLayout.JAVA_INT, 0) <= 0) {
+            return -1;
+        }
+        int eventType = Short.toUnsignedInt(rec.get(ValueLayout.JAVA_SHORT, OFF_EVENT_TYPE));
+        int keyDown = rec.get(ValueLayout.JAVA_INT, OFF_KEY_DOWN);
+        int vk = Short.toUnsignedInt(rec.get(ValueLayout.JAVA_SHORT, OFF_VK));
+        char unicode = rec.get(ValueLayout.JAVA_CHAR, OFF_UNICODE);
+        int repeat = Math.max(1, Short.toUnsignedInt(rec.get(ValueLayout.JAVA_SHORT, OFF_REPEAT)));
+        byte[] bytes = bytesForKeyEvent(eventType, keyDown, unicode, vk);
+        if (bytes.length == 0) {
+            return -1;
+        }
+        for (int r = 0; r < repeat; r++) {
+            for (byte value : bytes) {
+                queued.addLast(Byte.toUnsignedInt(value));
+            }
+        }
+        return queued.removeFirst();
+    }
+
     private static MemorySegment wchar(Arena arena, String s) {
         return arena.allocateFrom(ValueLayout.JAVA_CHAR, (s + "\0").toCharArray());
     }
@@ -232,7 +327,8 @@ public final class WindowsConsole implements AutoCloseable {
     private static volatile MethodHandle getConsoleMode;
     private static volatile MethodHandle setConsoleMode;
     private static volatile MethodHandle waitForSingleObject;
-    private static volatile MethodHandle readFile;
+    private static volatile MethodHandle peekConsoleInputW;
+    private static volatile MethodHandle readConsoleInputW;
     private static volatile MethodHandle writeFile;
     private static volatile boolean initAttempted;
 
@@ -275,15 +371,14 @@ public final class WindowsConsole implements AutoCloseable {
                 waitForSingleObject = linker.downcallHandle(
                         k32.findOrThrow("WaitForSingleObject"),
                         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-                readFile = linker.downcallHandle(
-                        k32.findOrThrow("ReadFile"),
-                        FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS));
+                FunctionDescriptor consoleInput = FunctionDescriptor.of(
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS);
+                peekConsoleInputW = linker.downcallHandle(k32.findOrThrow("PeekConsoleInputW"), consoleInput);
+                readConsoleInputW = linker.downcallHandle(k32.findOrThrow("ReadConsoleInputW"), consoleInput);
                 writeFile = linker.downcallHandle(
                         k32.findOrThrow("WriteFile"),
                         FunctionDescriptor.of(

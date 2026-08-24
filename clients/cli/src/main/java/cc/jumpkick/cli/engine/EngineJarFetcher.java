@@ -89,7 +89,7 @@ final class EngineJarFetcher {
         }
 
         cas.put(jar, actualSha);
-        return install.materialize(version, cas, actualSha, jarName).engineJar();
+        return install.materialize(version, cas, actualSha).engineJar();
     }
 
     private static byte[] get(Http http, URI uri, String what) throws IOException {

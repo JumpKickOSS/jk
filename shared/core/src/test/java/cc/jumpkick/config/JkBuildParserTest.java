@@ -1956,6 +1956,22 @@ class JkBuildParserTest {
     }
 
     @Test
+    void native_name_strips_a_trailing_exe() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+
+                [native]
+                name = "jk.exe"
+                """);
+        assertThat(parsed.nativeConfig().orElseThrow().name()).isEqualTo("jk");
+        parsed = JkBuildParser.parse(PROJECT + """
+
+                [native]
+                name = "JK.EXE"
+                """);
+        assertThat(parsed.nativeConfig().orElseThrow().name()).isEqualTo("JK");
+    }
+
+    @Test
     void compact_key_is_inert() {
         // `compact` is no longer supported; a stray one in an old jk.toml has no effect.
         JkBuild parsed = JkBuildParser.parse(PROJECT + "compact = true\n");

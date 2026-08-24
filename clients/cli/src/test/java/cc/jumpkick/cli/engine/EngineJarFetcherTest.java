@@ -12,7 +12,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -68,8 +67,7 @@ class EngineJarFetcherTest {
     }
 
     private static cc.jumpkick.cache.EngineInstall engineInstall(Path root) {
-        var dirs = cc.jumpkick.util.JkDirs.of(Map.of("JK_HOME", root.toString())::get, root.toString());
-        return new cc.jumpkick.cache.EngineInstall(root.resolve("lib"), dirs);
+        return new cc.jumpkick.cache.EngineInstall(root.resolve("lib"));
     }
 
     /**

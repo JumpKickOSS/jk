@@ -1039,9 +1039,22 @@ public record JkBuild(
         public NativeConfig {
             args = args == null ? List.of() : List.copyOf(args);
             if (mainClass != null && mainClass.isBlank()) mainClass = null;
-            if (name != null && name.isBlank()) name = null;
+            name = executableBasename(name);
             if (graal != null && graal.isBlank()) graal = null;
             if (enabled == null) enabled = NativeMode.SUPPORTED;
+        }
+
+        /**
+         * Logical native-image basename: {@code jk} and {@code jk.exe} are the same name. A
+         * trailing {@code .exe} is Windows on-disk decoration, not part of {@code [native].name}.
+         */
+        public static String executableBasename(String name) {
+            if (name == null || name.isBlank()) return null;
+            if (name.length() > 4 && name.regionMatches(true, name.length() - 4, ".exe", 0, 4)) {
+                String stripped = name.substring(0, name.length() - 4);
+                if (!stripped.isBlank()) return stripped;
+            }
+            return name;
         }
 
         /** True when {@code enabled = "always"} (or legacy {@code always = true}). */

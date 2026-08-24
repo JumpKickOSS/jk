@@ -66,8 +66,8 @@ are unaffected.
 singleton (`Terminals.controlling()`). `ModeGuard` pop returns `COOKED`; `close()` on the session
 restores original attrs and does **not** close native fds or drop `isLive`. Only
 `Terminals.shutdown()` (from `Jk.main` finally and `GlobalCancel`) closes fds. Timed reads are
-clock-driven `poll` / `WaitForSingleObject` with `O_NONBLOCK` POSIX `read` — no helper thread,
-no FD 0. Prompt/Confirm paint stays on stderr.
+clock-driven `poll` / `WaitForSingleObject` then `PeekConsoleInputW` (Windows) or `O_NONBLOCK`
+POSIX `read` — no helper thread, no FD 0. Prompt/Confirm paint stays on stderr.
 
 ### Module-selection caption
 

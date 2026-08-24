@@ -1248,7 +1248,6 @@ public final class JkManager implements AutoCloseable, LiveRegion {
                 return;
             }
             mode = t.enter(InputMode.PLAN_KEYS);
-            t.drain(Duration.ofMillis(40));
             keyTerminal = t;
             keyMode = mode;
             keysStopped = false;
@@ -1304,6 +1303,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         if (t == null) {
             return;
         }
+        t.drain(Duration.ofMillis(40));
         while (!keysStopped && !stopped && !done) {
             var key = t.readKey(Duration.ofMillis(100));
             if (key.isEmpty()) {

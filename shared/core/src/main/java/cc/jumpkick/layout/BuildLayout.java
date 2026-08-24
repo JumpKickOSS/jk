@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
+import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -33,6 +34,8 @@ public final class BuildLayout {
     private final boolean hasMain;
     /** True when on-disk plugin authoring files mark this module as a worker. */
     private final boolean pluginWorker;
+    /** {@code [native].name} when set — the on-disk binary basename, not the Maven artifact id. */
+    private final String nativeName;
 
     private BuildLayout(
             Path workspaceRoot,
@@ -40,13 +43,15 @@ public final class BuildLayout {
             String artifact,
             String version,
             boolean hasMain,
-            boolean pluginWorker) {
+            boolean pluginWorker,
+            String nativeName) {
         this.workspaceRoot = Objects.requireNonNull(workspaceRoot, "workspaceRoot");
         this.moduleRoot = Objects.requireNonNull(moduleRoot, "moduleRoot");
         this.artifact = Objects.requireNonNull(artifact, "artifact");
         this.version = Objects.requireNonNull(version, "version");
         this.hasMain = hasMain;
         this.pluginWorker = pluginWorker;
+        this.nativeName = nativeName;
     }
 
     public static BuildLayout of(Path projectDir, JkBuild project) {
@@ -65,7 +70,8 @@ public final class BuildLayout {
                 project.project().name(),
                 project.project().version(),
                 hasMain(project),
-                cc.jumpkick.plugin.PluginModule.isWorker(projectDir));
+                cc.jumpkick.plugin.PluginModule.isWorker(projectDir),
+                nativeName(project));
     }
 
     public static BuildLayout of(Path workspaceRoot, Path moduleRoot, JkBuild project) {
@@ -76,7 +82,12 @@ public final class BuildLayout {
                 project.project().name(),
                 project.project().version(),
                 hasMain(project),
-                cc.jumpkick.plugin.PluginModule.isWorker(moduleRoot));
+                cc.jumpkick.plugin.PluginModule.isWorker(moduleRoot),
+                nativeName(project));
+    }
+
+    private static String nativeName(JkBuild project) {
+        return project.nativeConfig().map(JkBuild.NativeConfig::name).orElse(null);
     }
 
     private static boolean hasMain(JkBuild project) {
@@ -387,9 +398,31 @@ public final class BuildLayout {
         return artifactDir().resolve(artifact + "-" + version + "-javadoc.jar");
     }
 
-    /** {@code <artifactDir>/<artifact>} — GraalVM-compiled native executable. */
+    /**
+     * On-disk GraalVM native executable. {@code [native].name} overrides the artifact id (the
+     * binary may be {@code jk} while the module is {@code jk-cli}). Windows native-image writes
+     * {@code .exe}; this path includes that suffix so cache store/restore and presence probes
+     * look at the file that actually lands on disk.
+     */
     public Path nativeBinary() {
-        return artifactDir().resolve(artifact);
+        if (nativeName != null) {
+            return moduleTargetDir().resolve(nativeExecutableFileName(nativeName));
+        }
+        return artifactDir().resolve(nativeExecutableFileName(artifact));
+    }
+
+    /**
+     * On-disk native executable name for an {@code -o} basename. {@code jk} and {@code jk.exe}
+     * are the same name; Windows gets {@code .exe}, other OS do not.
+     */
+    public static String nativeExecutableFileName(String base) {
+        String name = JkBuild.NativeConfig.executableBasename(base);
+        if (name == null || name.isEmpty()) return base;
+        String os = System.getProperty("os.name", "");
+        if (os.toLowerCase(Locale.ROOT).contains("win")) {
+            return name + ".exe";
+        }
+        return name;
     }
 
     /**

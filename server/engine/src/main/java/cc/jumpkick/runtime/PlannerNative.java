@@ -127,14 +127,20 @@ public final class PlannerNative {
                         mainClass = null;
                     }
                     // Output path: [native].name overrides the artifact-derived name.
-                    // Executable → target/<name>; library → target/lib<name> (native-image
+                    // Executable → target/<name>[.exe]; library → target/lib<name> (native-image
                     // appends the platform extension.so/.dylib/.dll and emits C headers).
                     Path out;
-                    if (nativeCfg.name() != null) {
-                        String nm = nativeCfg.name();
-                        out = layout.moduleTargetDir().resolve(shared && !nm.startsWith("lib") ? "lib" + nm : nm);
+                    if (shared) {
+                        if (nativeCfg.name() != null) {
+                            String nm = nativeCfg.name();
+                            out = layout.moduleTargetDir().resolve(nm.startsWith("lib") ? nm : "lib" + nm);
+                        } else {
+                            out = layout.nativeLibrary();
+                        }
                     } else {
-                        out = shared ? layout.nativeLibrary() : layout.nativeBinary();
+                        // Includes [native].name and the Windows .exe suffix — the file
+                        // native-image writes, which the action cache stores.
+                        out = layout.nativeBinary();
                     }
                     Files.createDirectories(out.getParent());
                     // Args, least specific first so the more specific wins on conflict: what the
@@ -307,7 +313,7 @@ public final class PlannerNative {
                     // Effective/discounted bytes stay internal for ETA learning.
                     long classpathBytes = NativeEffort.sumExistingBytes(classpath);
                     long labelBytes = classpathBytes > 0 ? classpathBytes : effectiveBytes;
-                    String binName = nativeOutputDisplayName(out, shared);
+                    String binName = nativeOutputDisplayName(out);
                     ctx.label(
                             labelBytes > 0
                                     ? binName + " · classpath input size: ~" + formatNativeInputMib(labelBytes) + " MiB"
@@ -385,6 +391,9 @@ public final class PlannerNative {
                     // when no progress headers were emitted).
                     ctx.progress(1);
                     if (!shared) {
+                        if (!Files.isRegularFile(out)) {
+                            throw new IOException("native-image reported success but produced no binary at " + out);
+                        }
                         storePackaged(cache, nTask, nKey, nativeTokens, out.getParent(), List.of(out), persist);
                     }
                 })
@@ -451,18 +460,12 @@ public final class PlannerNative {
     }
 
     /**
-     * Basename shown in the native-image step label — the {@code -o} target, with the platform
-     * executable suffix on Windows ({@code .exe}) so the UI matches what lands on disk.
+     * Basename shown in the native-image step label — the on-disk file ({@code .exe} on Windows
+     * for executables), matching {@link cc.jumpkick.layout.BuildLayout#nativeBinary()}.
      */
-    static String nativeOutputDisplayName(Path out, boolean shared) {
+    static String nativeOutputDisplayName(Path out) {
         if (out == null || out.getFileName() == null) return "native";
-        String name = out.getFileName().toString();
-        if (shared) return name;
-        String os = System.getProperty("os.name", "");
-        if (os.toLowerCase(java.util.Locale.ROOT).contains("win") && !name.endsWith(".exe") && !name.endsWith(".EXE")) {
-            return name + ".exe";
-        }
-        return name;
+        return out.getFileName().toString();
     }
 
     /**

@@ -23,8 +23,10 @@ public final class TreeFingerprint {
 
     public static String compute(Path root) throws IOException {
         List<Path> files = new ArrayList<>();
-        try (Stream<Path> stream = Files.walk(root)) {
-            stream.filter(Files::isRegularFile).forEach(files::add);
+        // Files.find, not walk+isRegularFile: the walk reads each entry's attributes to descend,
+        // and the predicate form reuses them instead of resolving every path a second time.
+        try (Stream<Path> stream = Files.find(root, Integer.MAX_VALUE, (p, attrs) -> attrs.isRegularFile())) {
+            stream.forEach(files::add);
         }
         files.sort((a, b) ->
                 root.relativize(a).toString().compareTo(root.relativize(b).toString()));

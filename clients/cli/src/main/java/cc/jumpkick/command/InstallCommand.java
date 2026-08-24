@@ -21,7 +21,6 @@ import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.tool.ToolLauncher;
 import cc.jumpkick.util.AppInstallConfig;
 import cc.jumpkick.util.GitUrl;
-import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -435,10 +434,9 @@ public final class InstallCommand {
                 && plan.binPath().isEmpty()) {
             return null;
         }
-        // Self-host engine install: route through EngineInstall so the live jar is replaced
-        // atomically under the install lock, the previous jar is parked for the drain window, a
-        // downgrade is refused, and config.toml is written coherently — none of which the generic
-        // copy + AppInstallConfig.write below provides (JK-2311).
+        // Self-host engine install: route through EngineInstall so a new jar is published beside
+        // any mapped predecessor, a downgrade is refused, and jk-engine.toml is written coherently
+        // — none of which the generic copy + AppInstallConfig.write below provides.
         Path productLib = JkDirs.current().productLibDir().toAbsolutePath().normalize();
         for (int i = 0; i < plan.linkDests().size(); i++) {
             Path dest = Path.of(plan.linkDests().get(i)).toAbsolutePath().normalize();
@@ -478,9 +476,8 @@ public final class InstallCommand {
     /**
      * Persist {@code $JK_CONFIG_DIR/<bin>/config.toml} for fat/minified installs (jar under
      * {@code productLib/<bin>/}). Honors {@code [application].config} templates and {@code
-     * jk-config.*} system properties. For {@code jk-engine}, always refreshes {@code engine-sha256}
-     * to the installed jar bytes so a self-host reinstall cannot leave a stale digest beside a
-     * new {@code jar =} name.
+     * jk-config.*} system properties. The engine is not this path — it writes {@code jk-engine.toml}
+     * beside the jar via {@link EngineInstall}.
      */
     private void writeAppInstallConfig(Path projectDir, cc.jumpkick.engine.protocol.ExecPlan plan) throws IOException {
         if (plan.linkDests().isEmpty()) return;
@@ -496,7 +493,7 @@ public final class InstallCommand {
         String bin = parent.getFileName().toString();
         if (bin.isBlank()) return;
         Map<String, String> keys = new LinkedHashMap<>(AppInstallConfig.jkConfigProperties());
-        putInstalledJarKeys(keys, dest, bin);
+        putInstalledJarKeys(keys, dest);
         keys.putIfAbsent("name", bin);
         String templateRel = "";
         try {
@@ -520,15 +517,9 @@ public final class InstallCommand {
         AppInstallConfig.write(JkDirs.current(), bin, keys);
     }
 
-    /**
-     * Record the installed jar basename, and for the engine also the content digest the client
-     * pairs with that jar.
-     */
-    static void putInstalledJarKeys(Map<String, String> keys, Path installedJar, String bin) throws IOException {
+    /** Record the installed jar basename for a {@code jk install} app. */
+    static void putInstalledJarKeys(Map<String, String> keys, Path installedJar) {
         keys.put("jar", installedJar.getFileName().toString());
-        if (EngineInstall.BIN_NAME.equals(bin)) {
-            keys.put("engine-sha256", Hashing.sha256Hex(installedJar));
-        }
     }
 
     private static void markExecutable(Path file) {

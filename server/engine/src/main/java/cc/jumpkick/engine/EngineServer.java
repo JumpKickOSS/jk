@@ -485,7 +485,7 @@ public final class EngineServer implements AutoCloseable {
                 log.accept("jk engine: removed " + gc.size() + " displaced install file(s)");
             }
         } catch (RuntimeException ignored) {
-            // parked files may still be mapped by the predecessor — retry on the next cycle
+            // a predecessor may still have the previous jar mapped — retry on the next cycle
         }
         aot.startIfConfigured();
         // HTTP binds only after the predecessor has yielded (drainDisplaced waits for bye, which

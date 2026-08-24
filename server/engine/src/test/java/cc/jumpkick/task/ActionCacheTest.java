@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import java.io.IOException;
@@ -274,6 +275,35 @@ class ActionCacheTest {
         assertThat(outputs.resolve("Keep.class")).exists();
         assertThat(Files.readString(outputs.resolve("Keep.class"))).isEqualTo("keep-v2");
         assertThat(outputs.resolve("Stale.class")).doesNotExist();
+    }
+
+    @Test
+    void store_artifacts_refuses_missing_files(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+        Path base = tempDir.resolve("target");
+        Files.createDirectories(base);
+        Path missing = base.resolve("jk");
+        assertThatThrownBy(() -> cache.storeArtifacts("native-image", "key-empty", Map.of(), base, List.of(missing)))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("no files to cache");
+        assertThat(cache.lookup("key-empty")).isEmpty();
+    }
+
+    @Test
+    void store_artifacts_round_trips_a_windows_style_exe(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+        Path base = tempDir.resolve("target");
+        Files.createDirectories(base);
+        Path exe = base.resolve("jk.exe");
+        Files.writeString(exe, "native-image-bytes");
+        cache.storeArtifacts("native-image", "key-exe", Map.of(), base, List.of(exe));
+        Files.delete(exe);
+        assertThat(cache.restoreArtifacts(cache.lookup("key-exe").orElseThrow(), base))
+                .isTrue();
+        assertThat(exe).exists();
+        assertThat(Files.readString(exe)).isEqualTo("native-image-bytes");
     }
 
     @Test
