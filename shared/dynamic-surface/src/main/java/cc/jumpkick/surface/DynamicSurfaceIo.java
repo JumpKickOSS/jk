@@ -172,7 +172,17 @@ public final class DynamicSurfaceIo {
                 case '\n' -> sb.append("\\n");
                 case '\r' -> sb.append("\\r");
                 case '\t' -> sb.append("\\t");
-                default -> sb.append(c);
+                default -> {
+                    // A raw character below 0x20 is not legal in a JSON string. Everything else in
+                    // the tree escapes these through Jsonl.quote; this module cannot call it,
+                    // because its whole purpose is to be linkable by both the minified worker and
+                    // the native-image driver, and that requires staying dependency-free (see this
+                    // module's build description). So the duplication is layer-forced, and the only
+                    // obligation is that it agrees with Jsonl.quote — DynamicSurfaceIoJsonTest
+                    // pins that.
+                    if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
+                    else sb.append(c);
+                }
             }
         }
         return sb.append('"').toString();

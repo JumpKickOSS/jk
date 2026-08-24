@@ -6,6 +6,7 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.bsp.BspServer;
 import cc.jumpkick.cli.ide.IdeEngineClient;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -105,12 +106,12 @@ public final class BspCommand implements CliCommand {
         String json = """
                 {
                   "name": "jk",
-                  "version": "%s",
+                  "version": %s,
                   "bspVersion": "2.1.0",
                   "languages": ["java", "kotlin", "groovy"],
-                  "argv": ["%s", "bsp", "serve"]
+                  "argv": [%s, "bsp", "serve"]
                 }
-                """.formatted(escapeJson(cc.jumpkick.cli.Jk.VERSION), escapeJson(argv0));
+                """.formatted(Jsonl.quote(cc.jumpkick.cli.Jk.VERSION), Jsonl.quote(argv0));
         Path out = bspDir.resolve("jk.json");
         AtomicWrites.replace(out, json);
         return out;
@@ -127,9 +128,5 @@ public final class BspCommand implements CliCommand {
         ide.connect();
         new BspServer(ide, System.in, System.out).serve();
         return 0;
-    }
-
-    private static String escapeJson(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

@@ -4,6 +4,7 @@ package cc.jumpkick.cli.bsp;
 import cc.jumpkick.cli.ide.IdeEngineClient;
 import cc.jumpkick.engine.protocol.IdeWireModel;
 import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -686,23 +687,15 @@ public final class BspServer {
         return p.toAbsolutePath().normalize().toUri().toString();
     }
 
+    /**
+     * JSON string literal, via the one escaper.
+     *
+     * <p>The local copy this replaced escaped only {@code \ " \n \r \t} and passed everything
+     * else through, so any control character below 0x20 — which an application's ANSI-coloured
+     * output routinely carries — produced invalid JSON-RPC on a protocol whose peer is an IDE.
+     */
     private static String q(String s) {
-        if (s == null) return "null";
-        StringBuilder b = new StringBuilder(s.length() + 2);
-        b.append('"');
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '\\' -> b.append("\\\\");
-                case '"' -> b.append("\\\"");
-                case '\n' -> b.append("\\n");
-                case '\r' -> b.append("\\r");
-                case '\t' -> b.append("\\t");
-                default -> b.append(c);
-            }
-        }
-        b.append('"');
-        return b.toString();
+        return Jsonl.quote(s);
     }
 
     /** Compiled once, not per JSON-RPC message: the field set is small and fixed. */

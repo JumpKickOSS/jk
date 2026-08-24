@@ -392,8 +392,14 @@ public final class SelectiveCommand implements CliCommand {
         }
     }
 
+    /**
+     * JSON string literal, via the one escaper; null renders as an empty string rather than the
+     * {@code null} literal, which is this file's existing contract.
+     *
+     * <p>The local copy this replaced escaped only backslash and quote, so a newline or a control
+     * character in a module name or git head produced invalid JSON.
+     */
     private static String q(String s) {
-        if (s == null) return "\"\"";
-        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+        return cc.jumpkick.jsonl.Jsonl.quote(s == null ? "" : s);
     }
 }

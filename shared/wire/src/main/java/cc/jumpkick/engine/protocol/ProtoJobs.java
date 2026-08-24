@@ -2,7 +2,6 @@
 package cc.jumpkick.engine.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -370,41 +369,17 @@ public final class ProtoJobs {
     }
 
     /** Best-effort parse of a JSON string array field (flat list of quoted strings). */
+    /**
+     * Delegates to {@link Jsonl#strArray} — the one string-array reader.
+     *
+     * <p>This used to be a private copy whose closing bracket was {@code json.indexOf(']')}, i.e.
+     * the first {@code ]} in the document rather than the first one outside a quoted element. Any
+     * value containing {@code ]} truncated the array, so an {@code excludeTags} entry like
+     * {@code "[slow]"} decoded to garbage and the tag stopped matching — excluded tests ran.
+     * {@code Jsonl.strArray} already documents and handles that case.
+     */
     private static List<String> stringArrayField(String json, String key) {
-        if (json == null) return List.of();
-        String needle = "\"" + key + "\":";
-        int start = json.indexOf(needle);
-        if (start < 0) return List.of();
-        start += needle.length();
-        while (start < json.length() && json.charAt(start) == ' ') start++;
-        if (start >= json.length() || json.charAt(start) != '[') return List.of();
-        int end = json.indexOf(']', start);
-        if (end < 0) return List.of();
-        String body = json.substring(start + 1, end).trim();
-        if (body.isEmpty()) return List.of();
-        List<String> out = new ArrayList<>();
-        int i = 0;
-        while (i < body.length()) {
-            while (i < body.length() && (body.charAt(i) == ' ' || body.charAt(i) == ',')) i++;
-            if (i >= body.length()) break;
-            if (body.charAt(i) != '"') break;
-            int j = i + 1;
-            StringBuilder s = new StringBuilder();
-            while (j < body.length()) {
-                char c = body.charAt(j);
-                if (c == '\\' && j + 1 < body.length()) {
-                    s.append(body.charAt(j + 1));
-                    j += 2;
-                    continue;
-                }
-                if (c == '"') break;
-                s.append(c);
-                j++;
-            }
-            out.add(s.toString());
-            i = j + 1;
-        }
-        return List.copyOf(out);
+        return Jsonl.strArray(json, key);
     }
 
     /** Start a single-project build (see {@link EngineProtocol#SINGLE_BUILD_REQUEST}). {@code jdksDir}/{@code profile} may be {@code null}. */

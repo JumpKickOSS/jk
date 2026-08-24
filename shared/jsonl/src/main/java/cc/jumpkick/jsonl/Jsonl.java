@@ -232,10 +232,16 @@ public final class Jsonl {
      */
     public static List<String> strArray(String json, String key) {
         if (json == null) return Collections.emptyList();
-        String needle = "\"" + key + "\":[";
+        // Tolerate whitespace after the colon: jk's own encoders emit compact JSON, but MCP and
+        // hand-written requests may be pretty-printed, and a reader that only accepts `"k":[`
+        // silently returns empty for `"k": [` — which reads as "the caller passed no tags".
+        String needle = "\"" + key + "\":";
         int start = json.indexOf(needle);
         if (start < 0) return Collections.emptyList();
         start += needle.length();
+        while (start < json.length() && Character.isWhitespace(json.charAt(start))) start++;
+        if (start >= json.length() || json.charAt(start) != '[') return Collections.emptyList();
+        start++;
         // The array's closing ']' is the first one that isn't inside a quoted element — a naive
         // indexOf(']') truncates any value that itself contains ']' (e.g. TOML tables like
         // "[project]" carried as a scaffold param or generated-file content).
