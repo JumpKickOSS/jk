@@ -9,6 +9,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.util.JkDirs;
@@ -115,12 +116,12 @@ class EffortWeightsTest {
     @Test
     void predict_reserves_groovy_compile_until_the_stamp_holds(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                group = "t"
-                name = "g"
-                version = "0.1.0"
-                jdk = 25
-                groovy = "5.0.4"
-                """);
+            group = "t"
+            name = "g"
+            version = "0.1.0"
+            jdk = 25
+            groovy = "5.0.4"
+            """);
         Path src = Files.createDirectories(dir.resolve("src"));
         // Enough sources that the static compile weight (ceil(n/10)) clears the TOKEN floor.
         List<Path> sources = new ArrayList<>();
@@ -158,8 +159,7 @@ class EffortWeightsTest {
 
         // The groovy stamp lives in the merged classes dir (where write-stamp-groovy writes it).
         var layout = BuildLayout.of(dir, JkBuildParser.parse(dir.resolve("jk.toml")));
-        FreshnessStamp.write(
-                layout.classesDir(), FreshnessStamp.GROOVY_STAMP, "compile-groovy", "", sources, List.of(), 21);
+        FreshnessStamp.write(layout.classesDir(), BuildStamps.GROOVY, "compile-groovy", "", sources, List.of(), 21);
         var warm = EffortWeights.predict(in, cas, true, false, false, true, false);
         assertThat(warm.compileGroovy()).isEqualTo(EffortWeights.TOKEN);
     }
@@ -356,13 +356,13 @@ class EffortWeightsTest {
             Files.createDirectories(home);
             String key = "module." + AggregatedMetrics.sanitize(moduleDir.toString()) + ".task.native-image.wall-ms";
             Files.writeString(home.resolve(ProjectBuilds.PROJECT_METRICS), """
-                    [mean]
-                    %s = 60000
-                    [last]
-                    %s = 6000
-                    [count]
-                    %s = 5
-                    """.formatted(key, key, key));
+                [mean]
+                %s = 60000
+                [last]
+                %s = 6000
+                [count]
+                %s = 5
+                """.formatted(key, key, key));
             long wall = SessionContext.where(
                     Session.defaults().withWorkingDir(moduleDir),
                     () -> EffortWeights.stepOkAvgMillisOwn(null, moduleDir.toString(), "native-image"));

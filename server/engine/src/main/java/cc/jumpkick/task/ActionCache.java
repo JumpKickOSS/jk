@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.File;
@@ -164,7 +165,7 @@ public final class ActionCache {
                     // FreshnessStamp's sentinels (.jstamp/.kstamp) live inside
                     // outputDir but aren't action outputs — exclude them so we
                     // don't accidentally cache a stamp from a previous run.
-                    if (FreshnessStamp.isStampFile(file.getFileName().toString())) continue;
+                    if (BuildStamps.isStampFile(file.getFileName().toString())) continue;
                     // `.jk-*` scratch (a plugin's private bootstrap repo/staging — the
                     // plugin-sdk copyTree convention) is never an action output.
                     if (hasJkScratchSegment(outputDir.relativize(file))) continue;
@@ -313,8 +314,7 @@ public final class ActionCache {
         // doesn't wipe the stamp a later step relies on. (The test result is a CAS
         // marker now, not a file here — see TestStamp.)
         Map<String, byte[]> stamps = new LinkedHashMap<>();
-        for (String f :
-                new String[] {FreshnessStamp.JAVA_STAMP, FreshnessStamp.KOTLIN_STAMP, FreshnessStamp.GROOVY_STAMP}) {
+        for (String f : BuildStamps.ALL) {
             Path sp = outputDir.resolve(f);
             if (Files.isRegularFile(sp)) stamps.put(f, Files.readAllBytes(sp));
         }

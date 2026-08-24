@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.plugin.build.PackageIo;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.Enumeration;
 import java.util.List;
-import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
@@ -21,15 +19,7 @@ import java.util.zip.ZipOutputStream;
  */
 final class ApkPackager {
 
-    /**
-     * 1980-02-01T00:00:00Z — the one pinned instant every jk archive writer stamps entries with.
-     * Applied via {@link ZipEntry#setTimeLocal}, never {@code setTime}: setTime's DOS-time
-     * conversion runs through the JVM's default timezone, so the same inputs would produce
-     * different bytes on a host with a different {@code $TZ}. The value is the zip epoch's first
-     * month — anything before 1980 is unrepresentable in DOS time and costs an extended-timestamp
-     * extra field (18 bytes) on every entry.
-     */
-    private static final LocalDateTime ENTRY_TIME = LocalDateTime.ofEpochSecond(318_211_200L, 0, ZoneOffset.UTC);
+    private static final DeterministicZip ZIP = DeterministicZip.PINNED;
 
     private ApkPackager() {}
 
@@ -82,37 +72,22 @@ final class ApkPackager {
                 try (InputStream stream = in.getInputStream(entry)) {
                     bytes = stream.readAllBytes();
                 }
-                write(zip, entry.getName(), bytes, entry.getMethod());
+                ZIP.writeEntry(zip, entry.getName(), bytes, entry.getMethod());
             }
             List<Path> dexFiles = ResourceStep.filesUnder(dexDir, ".dex");
             if (dexFiles.isEmpty()) {
                 throw new IOException("no .dex files under " + dexDir);
             }
             for (Path dex : dexFiles) {
-                write(zip, dex.getFileName().toString(), Files.readAllBytes(dex), ZipEntry.DEFLATED);
+                ZIP.writeEntry(zip, dex.getFileName().toString(), Files.readAllBytes(dex), ZipEntry.DEFLATED);
             }
             for (var asset : AndroidDeps.mergedAssets(io).entrySet()) {
-                write(zip, "assets/" + asset.getKey(), Files.readAllBytes(asset.getValue()), ZipEntry.DEFLATED);
+                ZIP.writeEntry(
+                        zip, "assets/" + asset.getKey(), Files.readAllBytes(asset.getValue()), ZipEntry.DEFLATED);
             }
             for (var lib : AndroidDeps.nativeLibs(io).entrySet()) {
-                write(zip, "lib/" + lib.getKey(), Files.readAllBytes(lib.getValue()), ZipEntry.STORED);
+                ZIP.writeEntry(zip, "lib/" + lib.getKey(), Files.readAllBytes(lib.getValue()), ZipEntry.STORED);
             }
         }
-    }
-
-    /** One entry, pinned to {@link #ENTRY_TIME} so the archive is byte-identical run to run. */
-    static void write(ZipOutputStream zip, String name, byte[] bytes, int method) throws IOException {
-        ZipEntry entry = new ZipEntry(name);
-        entry.setTimeLocal(ENTRY_TIME);
-        entry.setMethod(method);
-        if (method == ZipEntry.STORED) {
-            entry.setSize(bytes.length);
-            CRC32 crc = new CRC32();
-            crc.update(bytes);
-            entry.setCrc(crc.getValue());
-        }
-        zip.putNextEntry(entry);
-        zip.write(bytes);
-        zip.closeEntry();
     }
 }

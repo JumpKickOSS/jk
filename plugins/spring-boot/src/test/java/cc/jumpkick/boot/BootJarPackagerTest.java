@@ -3,6 +3,7 @@ package cc.jumpkick.boot;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.BuildStamps;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -88,6 +89,32 @@ class BootJarPackagerTest {
                             + "  - \"BOOT-INF/classpath.idx\"\n"
                             + "  - \"BOOT-INF/layers.idx\"\n"
                             + "  - \"META-INF/\"\n");
+        }
+    }
+
+    @Test
+    void compile_freshness_stamps_never_reach_boot_inf_classes(@TempDir Path tmp) throws Exception {
+        // A stamp body is a wall clock, so a boot jar carrying one is neither clean nor
+        // byte-reproducible.
+        Path classes = Files.createDirectories(tmp.resolve("classes/com/example"));
+        Files.write(classes.resolve("App.class"), new byte[] {1, 2, 3});
+        for (String stamp : BuildStamps.ALL) {
+            Files.writeString(tmp.resolve("classes").resolve(stamp), "STAMP_MILLIS 1758000000000");
+        }
+        Path loader = writeJar(
+                tmp.resolve("spring-boot-loader-4.0.0.jar"),
+                "org/springframework/boot/loader/launch/JarLauncher.class");
+
+        Path out = tmp.resolve("app.jar");
+        new BootJarPackager()
+                .packageBootJar(new BootJarPackager.BootJarRequest(
+                        tmp.resolve("classes"), List.of(), loader, out, "com.example.App", "4.0.0", Map.of(), 0L));
+
+        try (JarFile jar = new JarFile(out.toFile())) {
+            assertThat(jar.getEntry("BOOT-INF/classes/com/example/App.class")).isNotNull();
+            for (String stamp : BuildStamps.ALL) {
+                assertThat(jar.getEntry("BOOT-INF/classes/" + stamp)).as(stamp).isNull();
+            }
         }
     }
 
@@ -192,12 +219,12 @@ class BootJarPackagerTest {
         }
     }
 
-    /** A minimal jar containing one empty entry (+ nothing else). */
     /** UTF-8 text of one jar entry. */
     private static String entryText(JarFile jar, String name) throws IOException {
         return new String(jar.getInputStream(jar.getEntry(name)).readAllBytes(), StandardCharsets.UTF_8);
     }
 
+    /** A minimal jar carrying one entry and nothing else. */
     private static Path writeJar(Path path, String entryName) throws IOException {
         try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(path))) {
             jos.putNextEntry(new JarEntry(entryName));

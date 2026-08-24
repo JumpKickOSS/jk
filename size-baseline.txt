@@ -140,7 +140,7 @@
 
 # T58: the append path and the replay path must read and write the same record shape, and a
 # journal that replays differently from how it was written is a corrupted history.
-860  server/engine/src/main/java/cc/jumpkick/engine/journal/BuildJournal.java
+837  server/engine/src/main/java/cc/jumpkick/engine/journal/BuildJournal.java
 
 # T58: `coreBuilder` and `appendDeclaredTails` have to agree on DAG edge order — a tail appended
 # against a stale edge set is a step that runs before its input exists.
@@ -153,7 +153,7 @@
 
 # T58: the per-phase weight table is data that belongs in a resource, not code. No invariant holds
 # it here — this entry is a ratchet, not a justification.
-1206  server/engine/src/main/java/cc/jumpkick/runtime/EffortWeights.java
+1203  server/engine/src/main/java/cc/jumpkick/runtime/EffortWeights.java
 
 # T58: one plan per verb, with the shared step bodies next to the plans that compose them.
 1090  server/engine/src/main/java/cc/jumpkick/runtime/ExecPlans.java

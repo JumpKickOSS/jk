@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import cc.jumpkick.model.command.Exit;
 import java.util.List;
 import java.util.Locale;
 
@@ -112,6 +113,47 @@ public record BuildRecord(
                 commit,
                 benefit,
                 running,
+                io,
+                requestId);
+    }
+
+    /**
+     * This row closed out as abandoned: an engine died with it still {@code running}, so nothing is
+     * ever going to finish it.
+     *
+     * <p>Not a cancellation. A Ctrl-C reaches a live engine, which completes the row itself; the
+     * only rows that reach here are the ones whose engine was killed, crashed, or lost its machine.
+     * A user cannot act on that, so the code is {@link Exit#SOFTWARE}. Until JK-2417 it was 130 —
+     * {@code 128 + SIGINT} — with {@code cancelled} set, reporting a machine's death as something
+     * the user did, and it was the only 130 in the journal even though a real cancel writes 1.
+     *
+     * <p>The in-flight step, module and diagnostic lists are dropped: a half-written plan is not a
+     * result, and the row is kept only so the history does not show a run that never ends.
+     */
+    public BuildRecord abandoned(long finishedAt, String jkVersion) {
+        return new BuildRecord(
+                id,
+                buildNumber,
+                schema,
+                kind,
+                dir,
+                coord,
+                projectId,
+                startedAt,
+                finishedAt,
+                Math.max(0, finishedAt - startedAt),
+                /* success */ false,
+                /* cancelled */ false,
+                Exit.SOFTWARE,
+                jkVersion != null ? jkVersion : this.jkVersion,
+                /* tests */ null,
+                List.of(),
+                List.of(),
+                List.of(),
+                trigger,
+                commit,
+                /* benefit */ null,
+                /* running */ false,
                 io,
                 requestId);
     }

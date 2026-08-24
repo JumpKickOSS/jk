@@ -13,6 +13,7 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.ObjectStoreConfig;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;
@@ -66,19 +67,19 @@ public final class Publisher implements Plugin, PublishExtension {
     public int run(List<String> args, ProtocolWriter out) {
         if (args.isEmpty()) {
             System.err.println("jk-publish-runner: expected spec file path as first argument");
-            return 2;
+            return Exit.USAGE;
         }
         Path specFile = Path.of(args.get(0));
         if (!Files.isRegularFile(specFile)) {
             System.err.println("jk-publisher: spec file not found: " + specFile);
-            return 2;
+            return Exit.NO_INPUT;
         }
         PluginSpec spec;
         try {
             spec = PluginSpec.read(specFile);
         } catch (IOException e) {
             System.err.println("jk-publisher: could not read spec: " + e.getMessage());
-            return 2;
+            return Exit.NO_INPUT;
         }
 
         try {

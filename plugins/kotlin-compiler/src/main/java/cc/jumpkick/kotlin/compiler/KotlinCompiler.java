@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.kotlin.compiler;
 
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
 import cc.jumpkick.plugin.protocol.PluginSpec;
@@ -53,7 +54,7 @@ public final class KotlinCompiler implements Plugin {
         try {
             if (args.size() != 1) {
                 System.err.println("usage: jk-kotlin-compiler <spec-file>|@<spec-file>");
-                return 2;
+                return Exit.USAGE;
             }
             String specArg = args.get(0).startsWith("@") ? args.get(0).substring(1) : args.get(0);
             CompileSpec spec = CompileSpec.from(PluginSpec.read(Path.of(specArg)));
@@ -61,7 +62,7 @@ public final class KotlinCompiler implements Plugin {
         } catch (Throwable t) {
             System.err.println("jk-kotlin-compiler: " + t.getClass().getName() + ": " + t.getMessage());
             t.printStackTrace(System.err);
-            return 2;
+            return Exit.SOFTWARE;
         }
     }
 

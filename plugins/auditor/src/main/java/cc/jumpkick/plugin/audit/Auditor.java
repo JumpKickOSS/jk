@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.audit;
 import cc.jumpkick.audit.AuditReport;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;
@@ -22,7 +23,8 @@ import java.util.Optional;
  * API in an isolated child JVM so Jackson and the OSV HTTP client never load in jk's own process.
  * Speaks the unified plugin wire — the spec is JSONL ({@code config}: {@code lockfile},
  * {@code batchUrl}?, {@code vulnsUrl}?) and the reply is {@code finding} lines + a terminal
- * {@code done}. Exit 0 success, 1 network/parse error, 2 bad arguments.
+ * {@code done}. Exit codes are {@link Exit}: 0 success, 1 network/parse error, {@link Exit#USAGE}
+ * bad command line, {@link Exit#NO_INPUT} unreadable spec, {@link Exit#DATA_ERR} spec missing a key.
  */
 public final class Auditor implements Plugin {
 
@@ -35,25 +37,25 @@ public final class Auditor implements Plugin {
     public int run(List<String> args, ProtocolWriter out) {
         if (args.isEmpty()) {
             System.err.println("jk-auditor: expected spec file path as first argument");
-            return 2;
+            return Exit.USAGE;
         }
         Path specFile = Path.of(args.get(0));
         if (!Files.isRegularFile(specFile)) {
             System.err.println("jk-auditor: spec file not found: " + specFile);
-            return 2;
+            return Exit.NO_INPUT;
         }
         PluginSpec spec;
         try {
             spec = PluginSpec.read(specFile);
         } catch (IOException e) {
             System.err.println("jk-auditor: could not read spec file: " + e.getMessage());
-            return 2;
+            return Exit.NO_INPUT;
         }
         PluginConfig config = spec.config();
         Optional<String> lockfile = config.stringOpt("lockfile");
         if (lockfile.isEmpty()) {
             System.err.println("jk-auditor: spec missing `lockfile` config");
-            return 2;
+            return Exit.DATA_ERR;
         }
 
         URI batchUrl = config.stringOpt("batchUrl").map(URI::create).orElse(null);

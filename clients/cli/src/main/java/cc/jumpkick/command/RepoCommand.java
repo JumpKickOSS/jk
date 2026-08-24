@@ -12,6 +12,7 @@ import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.CacheInventoryAck;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -89,11 +90,11 @@ public final class RepoCommand extends GroupCommand {
                         false);
             } catch (IOException e) {
                 CliOutput.err(String.valueOf(e.getMessage()));
-                return 2;
+                return Exit.SOFTWARE;
             }
             if (ack.error() != null) {
                 CliOutput.err(ack.error());
-                return 2;
+                return Exit.FAILURE;
             }
             for (String packed : ack.lines()) {
                 String[] f = packed.split("\\|", -1);
@@ -153,11 +154,11 @@ public final class RepoCommand extends GroupCommand {
                         EnginePaths.current(), "repo-search", cacheRoot, JkStores.store(), terms, List.of(), false);
             } catch (IOException e) {
                 CliOutput.err(String.valueOf(e.getMessage()));
-                return 1;
+                return Exit.SOFTWARE;
             }
             if (ack.error() != null) {
                 CliOutput.err(ack.error());
-                return 1;
+                return Exit.FAILURE;
             }
             List<String> hits = ack.entries();
             if (hits.isEmpty()) {

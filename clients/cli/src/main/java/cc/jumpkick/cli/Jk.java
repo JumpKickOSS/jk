@@ -8,6 +8,7 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkConfigLoader;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.terminal.Terminals;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -62,7 +63,7 @@ public final class Jk {
             System.err.println("jk: this binary does not include the engine (wire-only client)."
                     + " Materialize the engine (`./install.sh`, `jk self materialize`,"
                     + " or `jk self update`), or set JK_ENGINE_EXE.");
-            System.exit(70);
+            System.exit(Exit.SOFTWARE);
             return;
         }
         GlobalCancel.install();

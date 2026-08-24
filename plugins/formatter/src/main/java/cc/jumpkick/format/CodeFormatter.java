@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.format;
 
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;
@@ -66,7 +67,7 @@ public final class CodeFormatter implements Plugin {
     public int run(List<String> args, ProtocolWriter out) throws Exception {
         if (args.isEmpty()) {
             System.err.println("jk-formatter: expected spec file path");
-            return 2;
+            return Exit.USAGE;
         }
         Spec spec = Spec.from(PluginSpec.read(Path.of(args.get(0))));
 

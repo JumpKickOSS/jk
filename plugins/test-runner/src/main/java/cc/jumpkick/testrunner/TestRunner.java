@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.testrunner;
 
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
@@ -36,7 +37,7 @@ public final class TestRunner implements Plugin {
             System.err.println("usage: jk-test-runner --scan-classpath=<dir> "
                     + "[--list-only] [--pull --worker=<id>] [--filter=<regex>] "
                     + "[--include-tags=a,b] [--exclude-tags=c,d]");
-            return 2;
+            return Exit.USAGE;
         }
 
         if (!LauncherPath.available()) {
@@ -46,7 +47,8 @@ public final class TestRunner implements Plugin {
             // driver whose tag and event semantics differ from the Launcher's.
             System.err.println("jk-test-runner: the JUnit Platform Launcher is not on the test classpath — "
                     + "add org.junit.platform:junit-platform-launcher (or re-run `jk lock`).");
-            return 2;
+            // The user's declared test dependencies are wrong — the one thing 2 still means.
+            return Exit.CONFIG;
         }
 
         try (var writer = new JsonEventWriter(out)) {
@@ -67,15 +69,15 @@ public final class TestRunner implements Plugin {
                         + e.getMessage());
                 System.err.println("  Ensure org.junit.platform:junit-platform-engine is on the test classpath "
                         + "(Spring Boot: spring-boot-starter-test; bare projects: junit-jupiter).");
-                return 2;
+                return Exit.CONFIG;
             }
             System.err.println("jk-test-runner: " + e.getClass().getName() + ": " + e.getMessage());
             e.printStackTrace(System.err);
-            return 2;
+            return Exit.SOFTWARE;
         } catch (Throwable t) {
             System.err.println("jk-test-runner: " + t.getClass().getName() + ": " + t.getMessage());
             t.printStackTrace(System.err);
-            return 2;
+            return Exit.SOFTWARE;
         }
     }
 

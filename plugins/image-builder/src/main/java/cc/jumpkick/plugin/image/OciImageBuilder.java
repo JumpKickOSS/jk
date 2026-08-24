@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.image;
 
 import cc.jumpkick.image.ImageConfig;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;
@@ -32,7 +33,8 @@ import java.util.Optional;
  * <p>The spec is line-oriented ({@code MAIN_JAR /abs/app.jar}, {@code BASE …}, {@code TARBALL …},
  * {@code DEP_JAR …}, …); the reply is {@value #PREFIX}-prefixed JSONL, terminating in
  * {@code {"t":"result","ok":true,"ref":"…"}} (or {@code "tarball"}), {@code {"t":"result",
- * "ok":false,"error":"…"}} on failure. Exit 0 success, 1 build/push error, 2 bad arguments.
+ * "ok":false,"error":"…"}} on failure. Exit codes are {@link Exit}: 0 success, 1 build/push
+ * error, {@link Exit#USAGE} bad command line, {@link Exit#NO_INPUT} unreadable spec.
  */
 public final class OciImageBuilder implements Plugin, ImageExtension {
 
@@ -47,19 +49,19 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
     public int run(List<String> args, ProtocolWriter out) {
         if (args.isEmpty()) {
             System.err.println("jk-image-runner: expected spec file path");
-            return 2;
+            return Exit.USAGE;
         }
         Path specFile = Path.of(args.get(0));
         if (!Files.isRegularFile(specFile)) {
             System.err.println("jk-image-builder: spec file not found: " + specFile);
-            return 2;
+            return Exit.NO_INPUT;
         }
         PluginSpec spec;
         try {
             spec = PluginSpec.read(specFile);
         } catch (IOException e) {
             System.err.println("jk-image-builder: could not read spec: " + e.getMessage());
-            return 2;
+            return Exit.NO_INPUT;
         }
 
         try {

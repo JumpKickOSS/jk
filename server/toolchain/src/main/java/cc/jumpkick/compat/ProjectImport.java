@@ -4,6 +4,7 @@ package cc.jumpkick.compat;
 import cc.jumpkick.gradle.GradleImporter;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.mvn.PomImporter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -31,12 +32,12 @@ public final class ProjectImport {
 
     /**
      * Convert {@code source} (a {@code pom.xml} or Gradle build file) and write {@code jk.toml}
-     * files. {@code exit} 0 success, 64 unrecognised source, 73 overwrite without force, 1 IO
-     * error, 2 bad arguments.
+     * files. {@code exit} 0 success, {@link Exit#USAGE} a missing argument or an unrecognised
+     * source, {@link Exit#CANT_CREATE} overwrite without force, 1 IO error.
      */
     public static Outcome run(Path source, Path out, Path baseDir, Path tmpDir, boolean force, Path report) {
         if (source == null || out == null) {
-            return new Outcome(2, 0, "import requires source and out", List.of());
+            return new Outcome(Exit.USAGE, 0, "import requires source and out", List.of());
         }
         try {
             String filename = source.getFileName().toString().toLowerCase(Locale.ROOT);
@@ -54,7 +55,7 @@ public final class ProjectImport {
                 root = result.jkBuild();
                 importReport = result.report();
             } else {
-                return new Outcome(64, 0, "unrecognised source: " + source.getFileName(), List.of());
+                return new Outcome(Exit.USAGE, 0, "unrecognised source: " + source.getFileName(), List.of());
             }
 
             List<Path> wrote = new ArrayList<>();
@@ -65,7 +66,8 @@ public final class ProjectImport {
             for (Map.Entry<String, JkBuild> e : modules.entrySet()) {
                 Path moduleJkBuild = effectiveBaseDir.resolve(e.getKey()).resolve(ManifestPaths.MANIFEST);
                 if (Files.exists(moduleJkBuild) && !force) {
-                    return new Outcome(73, 0, "would overwrite " + moduleJkBuild + " — pass --force", wrote);
+                    return new Outcome(
+                            Exit.CANT_CREATE, 0, "would overwrite " + moduleJkBuild + " — pass --force", wrote);
                 }
                 Files.writeString(moduleJkBuild, JkBuildRenderer.render(e.getValue()), StandardCharsets.UTF_8);
                 wrote.add(moduleJkBuild);

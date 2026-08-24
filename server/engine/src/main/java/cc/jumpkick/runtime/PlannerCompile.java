@@ -7,6 +7,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -142,7 +143,7 @@ public final class PlannerCompile {
                     }
                     if (!rerun
                             && FreshnessStamp.isFresh(
-                                    javaOut, FreshnessStamp.JAVA_STAMP, sources, stampInputs, ctx.require(RELEASE))) {
+                                    javaOut, BuildStamps.JAVA, sources, stampInputs, ctx.require(RELEASE))) {
                         ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
                         ctx.label("up to date");
                         ctx.cached();
@@ -376,18 +377,14 @@ public final class PlannerCompile {
                     // prunes its own dir, but the assemble merge into classes/ is additive.
                     // Start the merged tree clean — both stamps die with it, so javac re-runs
                     // too (rare: only on source removals).
-                    if (FreshnessStamp.hasRemovedSources(classes, FreshnessStamp.KOTLIN_STAMP, freshInputs)) {
+                    if (FreshnessStamp.hasRemovedSources(classes, BuildStamps.KOTLIN, freshInputs)) {
                         cc.jumpkick.host.PathUtil.deleteRecursively(classes);
                         Files.createDirectories(classes);
                     }
                     boolean rerun = in.session().config().rebuildOr(false);
                     if (!rerun
                             && FreshnessStamp.isFresh(
-                                    classes,
-                                    FreshnessStamp.KOTLIN_STAMP,
-                                    freshInputs,
-                                    classpath,
-                                    ctx.require(RELEASE))) {
+                                    classes, BuildStamps.KOTLIN, freshInputs, classpath, ctx.require(RELEASE))) {
                         ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
                         ctx.label("up to date");
                         ctx.cached();
@@ -499,18 +496,14 @@ public final class PlannerCompile {
                     if (mixedGroovy) freshInputs.addAll(javaSources(ctx));
                     // A shrunken Groovy source set must not leave dropped classes in the merged
                     // output (the assemble merge into classes/ is additive).
-                    if (FreshnessStamp.hasRemovedSources(classes, FreshnessStamp.GROOVY_STAMP, freshInputs)) {
+                    if (FreshnessStamp.hasRemovedSources(classes, BuildStamps.GROOVY, freshInputs)) {
                         cc.jumpkick.host.PathUtil.deleteRecursively(classes);
                         Files.createDirectories(classes);
                     }
                     boolean rerun = in.session().config().rebuildOr(false);
                     if (!rerun
                             && FreshnessStamp.isFresh(
-                                    classes,
-                                    FreshnessStamp.GROOVY_STAMP,
-                                    freshInputs,
-                                    classpath,
-                                    ctx.require(RELEASE))) {
+                                    classes, BuildStamps.GROOVY, freshInputs, classpath, ctx.require(RELEASE))) {
                         ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
                         ctx.label("up to date");
                         ctx.cached();

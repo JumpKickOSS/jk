@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.plugin.build.PackageIo;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.List;
-import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
@@ -18,15 +16,7 @@ import java.util.zip.ZipOutputStream;
  */
 final class AarPackager {
 
-    /**
-     * 1980-02-01T00:00:00Z — the one pinned instant every jk archive writer stamps entries with.
-     * Applied via {@link ZipEntry#setTimeLocal}, never {@code setTime}: setTime's DOS-time
-     * conversion runs through the JVM's default timezone, so the same inputs would produce
-     * different bytes on a host with a different {@code $TZ}. The value is the zip epoch's first
-     * month — anything before 1980 is unrepresentable in DOS time and costs an extended-timestamp
-     * extra field (18 bytes) on every entry.
-     */
-    private static final LocalDateTime ENTRY_TIME = LocalDateTime.ofEpochSecond(318_211_200L, 0, ZoneOffset.UTC);
+    private static final DeterministicZip ZIP = DeterministicZip.PINNED;
 
     private AarPackager() {}
 
@@ -49,22 +39,26 @@ final class AarPackager {
 
         io.label(aarName);
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(aar))) {
-            putFile(zip, "AndroidManifest.xml", manifest);
-            putFile(zip, "classes.jar", classesJar);
+            ZIP.writeEntry(zip, "AndroidManifest.xml", manifest);
+            ZIP.writeEntry(zip, "classes.jar", classesJar);
             if (resStep != null) {
                 Path rTxt = resStep.resolve("packaged/R.txt");
-                if (Files.isRegularFile(rTxt)) putFile(zip, "R.txt", rTxt);
+                if (Files.isRegularFile(rTxt)) ZIP.writeEntry(zip, "R.txt", rTxt);
                 Path rawRes = resStep.resolve("raw-res");
                 if (Files.isDirectory(rawRes)) {
                     for (Path file : ResourceStep.filesUnder(rawRes, "")) {
-                        putFile(zip, "res/" + rawRes.relativize(file).toString().replace('\\', '/'), file);
+                        ZIP.writeEntry(
+                                zip, "res/" + rawRes.relativize(file).toString().replace('\\', '/'), file);
                     }
                 }
             }
         }
     }
 
-    /** Jar the classes dir, excluding the generated {@code R} / {@code R$*} classes. */
+    /**
+     * Jar the classes dir, excluding the generated {@code R} / {@code R$*} classes and the compile
+     * freshness stamps — a stamp body is a wall clock, and this jar ships inside the AAR.
+     */
     static void writeClassesJar(Path classesDir, Path jar) throws IOException {
         List<Path> files = ResourceStep.filesUnder(classesDir, "");
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
@@ -72,18 +66,9 @@ final class AarPackager {
                 String rel = classesDir.relativize(file).toString().replace('\\', '/');
                 String name = file.getFileName().toString();
                 if (name.equals("R.class") || (name.startsWith("R$") && name.endsWith(".class"))) continue;
-                putFile(zip, rel, file);
+                if (BuildStamps.isStampFile(rel)) continue;
+                ZIP.writeEntry(zip, rel, file);
             }
         }
-    }
-
-    private static void putFile(ZipOutputStream zip, String entryName, Path file) throws IOException {
-        ZipEntry entry = new ZipEntry(entryName);
-        entry.setTimeLocal(ENTRY_TIME);
-        zip.putNextEntry(entry);
-        try (var in = Files.newInputStream(file)) {
-            in.transferTo((OutputStream) zip);
-        }
-        zip.closeEntry();
     }
 }

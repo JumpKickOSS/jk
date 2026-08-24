@@ -3,7 +3,7 @@ package cc.jumpkick.compile;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.host.BuildStamps;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -186,16 +186,16 @@ class JarPackagerTest {
 
         assertThat(listEntries(jarA))
                 .as("build-host metadata, not jar content")
-                .doesNotContain(FreshnessStamp.GROOVY_STAMP, FreshnessStamp.JAVA_STAMP, FreshnessStamp.KOTLIN_STAMP);
+                .doesNotContain(BuildStamps.GROOVY, BuildStamps.JAVA, BuildStamps.KOTLIN);
         assertThat(Files.readAllBytes(jarA))
                 .as("two builds of the same sources produce the same bytes")
                 .isEqualTo(Files.readAllBytes(jarB));
     }
 
     private static void writeStamps(Path classes, String body) throws IOException {
-        Files.writeString(classes.resolve(FreshnessStamp.JAVA_STAMP), body);
-        Files.writeString(classes.resolve(FreshnessStamp.KOTLIN_STAMP), body);
-        Files.writeString(classes.resolve(FreshnessStamp.GROOVY_STAMP), body);
+        Files.writeString(classes.resolve(BuildStamps.JAVA), body);
+        Files.writeString(classes.resolve(BuildStamps.KOTLIN), body);
+        Files.writeString(classes.resolve(BuildStamps.GROOVY), body);
     }
 
     private static List<String> listEntries(Path jar) throws IOException {

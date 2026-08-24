@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.BuildStamps;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -76,11 +77,11 @@ class ClasspathFingerprintTest {
     void stamp_files_are_excluded_from_output_digest_fingerprints(@TempDir Path dir) throws Exception {
         Path classes = Files.createDirectories(dir.resolve("classes"));
         write(classes.resolve("A.class"), "AA");
-        write(classes.resolve(FreshnessStamp.JAVA_STAMP), "stamp-noise");
+        write(classes.resolve(BuildStamps.JAVA), "stamp-noise");
         String live = ClasspathFingerprint.entry(classes);
         Map<String, String> outs = new LinkedHashMap<>();
         outs.put("A.class", cc.jumpkick.host.Hashing.sha256Hex(classes.resolve("A.class")));
-        outs.put(FreshnessStamp.JAVA_STAMP, "deadbeef");
+        outs.put(BuildStamps.JAVA, "deadbeef");
         assertThat(ClasspathFingerprint.entryFromOutputDigests(outs)).isEqualTo(live);
     }
 

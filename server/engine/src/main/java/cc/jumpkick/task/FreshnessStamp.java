@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.host.BuildStamps;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -15,36 +16,17 @@ import java.util.TreeSet;
 import java.util.stream.Stream;
 
 /**
- * Cheap mtime-based up-to-date check stamped into a compile output dir ({@link #JAVA_STAMP} /
- * {@link #KOTLIN_STAMP} / {@link #GROOVY_STAMP}). Sits in front of the content-hashed
- * {@link ActionCache}: one {@code stat} per input, fall through to CAS when anything looks stale.
- * Mtime equality is treated as stale (ms truncation); spoofed mtimes are caught by the
- * action-cache layer.
+ * Cheap mtime-based up-to-date check written into a compile output dir under one of the
+ * {@link BuildStamps} names. Sits in front of the content-hashed {@link ActionCache}: one
+ * {@code stat} per input, fall through to CAS when anything looks stale. Mtime equality is
+ * treated as stale (ms truncation); spoofed mtimes are caught by the action-cache layer.
+ *
+ * <p>The stamp names and the predicate that recognises them live on the host leaf instead, where
+ * the forked plugin workers that must keep stamps out of their archives can reach them.
  */
 public final class FreshnessStamp {
 
-    /** Sentinel stamped into the output directory by the Java compile. */
-    public static final String JAVA_STAMP = ".jstamp";
-
-    /** Sentinel stamped into the output directory by the Kotlin compile. */
-    public static final String KOTLIN_STAMP = ".kstamp";
-
-    /** Sentinel stamped into the output directory by the Groovy compile. */
-    public static final String GROOVY_STAMP = ".gstamp";
-
     private FreshnessStamp() {}
-
-    /**
-     * True when {@code entry} names a compile stamp sentinel — either a bare file name or a
-     * {@code /}-separated archive-entry path. The one rule for build-host metadata: a stamp body
-     * carries wall-clock {@code STAMP_MILLIS}, so nothing content-keyed or reproducible may
-     * include it. Action-cache outputs, directory fingerprints, jar entries and image layers all
-     * ask here.
-     */
-    public static boolean isStampFile(String entry) {
-        String name = entry.substring(entry.lastIndexOf('/') + 1);
-        return JAVA_STAMP.equals(name) || KOTLIN_STAMP.equals(name) || GROOVY_STAMP.equals(name);
-    }
 
     /** True when the stamp matches the current source/classpath sets and no input is newer. */
     public static boolean isFresh(

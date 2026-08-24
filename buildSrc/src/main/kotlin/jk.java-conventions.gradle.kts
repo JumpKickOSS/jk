@@ -1065,3 +1065,178 @@ val checkNoBareManifestName by tasks.registering {
 }
 tasks.named("check") { dependsOn(checkNoBareManifestName) }
 tasks.named("jar") { dependsOn(checkNoBareManifestName) }
+
+// ---------------------------------------------------------------------------
+// Guard G2 (JK-2417): a hard process exit names its code, in `Exit`.
+//
+// Defect it prevents: an exit status that means several things at once. `System.exit(n)` and
+// `Runtime.getRuntime().halt(n)` are the only two calls whose integer a user's shell actually
+// sees, and until JK-2417 the integer `2` reached that shell meaning eight different things — a
+// malformed `jk.toml`, a wrong command line, a missing plugin spec, an unexpected `Throwable`, an
+// unreachable engine, a wedged AOT trainer, and, from `GlobalCancel`, that the user had pressed
+// Ctrl-C. `130` meant three. No script could branch on `$?`, and no user could tell a cancelled
+// build from a broken config. A bare integer at an exit site is not a style problem: it is a
+// meaning nobody had to write down.
+//
+// This is the one place the "0 and 1 often stay bare" clause in `Exit`'s javadoc does NOT apply.
+// A `return 0` is an internal control-flow value that a caller may still translate; `System.exit(0)`
+// is the observable contract. So the ban is on the shape, with no exemption for small numbers.
+//
+// The `return <int>` arm is deliberately NOT banned: `VscodeIdeGenerator`'s `return 3` is a file
+// count, and `src/main` holds 282 `return 0` / 142 `return 1` that are overwhelmingly not exit
+// codes. A text scan cannot tell those apart, and a guard that cries wolf gets an allowlist and
+// then gets ignored.
+//
+// Suggestions are READ FROM THE OWNER, not re-typed here: every `public static final int` in
+// `Exit.java` becomes a value -> constant hint in the failure message, so adding a code to the
+// vocabulary teaches the guard about it the same minute. Same habit as G12/G13.
+//
+// A pure ban, not a ratchet: zero sites remain and there is nothing to allow. The one historical
+// false positive — `HardwareProbe:340`, a `System.exit(1)` inside a TEXT BLOCK of generated probe
+// source — needs no allowlist either, because this guard blanks string, char and text-block
+// contents before matching (`blankNonCode`'s default). An exit code written inside a string is
+// some other program's exit code; it is data, not this file's contract. That is structural, so it
+// keeps holding for the next generated snippet nobody thought to allow.
+//
+// Reachability was measured, not assumed: the four modules with an exit site today are `:cli`,
+// `:engine`, `:plugin-sdk` and `:quarkus`, and since JK-2407 `Exit` lives in `:host`, which
+// `:plugin-sdk` re-exports with `api` — so all 16 plugins can see it. `Exit`'s values are
+// `static final int` and inline at compile time, so even the `compileOnly` worker jars need
+// nothing extra on their runtime classpath.
+//
+// Scope is `src/main/java`. Test sources are out for the reason G1 gives: a fixture that generates
+// a throwaway `main` calling `System.exit(0)` is writing a file, not exiting jk.
+// ---------------------------------------------------------------------------
+val checkNoBareExitCode by tasks.registering {
+    group = "verification"
+    description = "Fail the build on System.exit/halt with a literal (use cc.jumpkick.model.command.Exit)"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val owner = rootProject.layout.projectDirectory.file(
+            "shared/host/src/main/java/cc/jumpkick/model/command/Exit.java")
+    inputs.file(owner).withPropertyName("exitCodes")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val stamp = layout.buildDirectory.file("guards/no-bare-exit-code.ok")
+    outputs.file(stamp)
+    doLast {
+        // value -> constant, straight out of the owner (see G2 above).
+        val named = Regex("""public static final int (\w+) = (-?\d+);""")
+                .findAll(owner.asFile.readText())
+                .associate { it.groupValues[2] to it.groupValues[1] }
+
+        // Both spellings of "kill this process with a number". `.halt(` rather than
+        // `getRuntime().halt(` so a Runtime held in a local cannot slip past.
+        val banned = listOf(
+                Regex("""System\.exit\((-?\d+)\)"""),
+                Regex("""\.halt\((-?\d+)\)"""))
+        val hits = mutableListOf<String>()
+        mainJava.files.sorted().forEach { f ->
+            // Strings blanked, not kept: an exit code inside a text block is generated source.
+            val code = blankNonCode(f.readText()).replace(Regex("\\s+"), "")
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            banned.forEach { pattern ->
+                pattern.findAll(code).forEach { m ->
+                    val value = m.groupValues[1]
+                    val hint = named[value]?.let { "Exit.$it" } ?: "a named Exit constant (add one)"
+                    hits.add("  $rel: ${m.value}  ->  $hint")
+                }
+            }
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("A hard process exit is the one integer a user's script sees, and a"
+                    + " bare one is a meaning nobody wrote down — jk shipped an exit `2` that meant"
+                    + " eight things at once, including Ctrl-C (JK-2417). Name the code:\n"
+                    + hits.sorted().joinToString("\n")
+                    + "\n  cc.jumpkick.model.command.Exit is in :host, which every module already"
+                    + " reaches. If no existing constant fits, add one there with a javadoc line"
+                    + " saying what it means — do not reuse a code that already means something.")
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkNoBareExitCode) }
+tasks.named("jar") { dependsOn(checkNoBareExitCode) }
+
+// ---------------------------------------------------------------------------
+// Guard G8 (JK-2415): one archive instant, and one class that stamps an entry with it.
+//
+// Defect it prevents: an archive whose bytes are a function of the machine that built it. A ZIP
+// entry's timestamp is DOS time, and `ZipEntry.setTime` converts to it through the JVM's default
+// timezone — so identical inputs written under a different $TZ produce different bytes, and the
+// raw-archive fingerprints that key the action cache stop matching. `setTimeLocal` is the TZ-free
+// spelling and the two differ by five characters. Round 3 found the pinned instant re-typed in
+// five packagers, a sixth spelling inside the Quarkus fast-jar, and three writers that pinned
+// nothing at all.
+//
+// Three arms, every one at zero violations, so there is no allowlist and no reason to open one:
+//   1. `setTime(` is banned outright. jk dates with `java.time`, so nothing in production has a
+//      receiver for it other than a zip entry, and on a zip entry it is always the wrong call.
+//   2. `setTimeLocal(` is banned outside `DeterministicZip` — the one class allowed to stamp an
+//      entry. Every packager, in every module, writes through it.
+//   3. The epoch value itself is banned outside `DeterministicZip`, so a sixth copy cannot come
+//      back as a bare number. The value is READ FROM THE OWNER rather than re-typed here: change
+//      `EPOCH_SECONDS` and the guard follows in the same minute, which a copy in this script
+//      would not.
+//
+// Reachability was measured, not assumed: `DeterministicZip` is on the host leaf, which every
+// production module reaches — the plugin workers through `:plugin-sdk`, the rest through `:core`
+// or a direct dependency.
+//
+// Scope is `src/main/java`. Test sources keep the literal on purpose: `ArchiveTimestampTest`,
+// `SourcesJarTimestampTest` and `AotCacheJarTimestampTest` each assert the exact stamped value,
+// and a golden that borrowed the constant would follow a change to it and still pass.
+// `ClasspathFingerprintTest` calls `setTime` deliberately, to build the varying-timestamp jars
+// that prove a fingerprint ignores them.
+// ---------------------------------------------------------------------------
+val checkSingleArchiveInstant by tasks.registering {
+    group = "verification"
+    description = "Fail the build on an archive entry stamped outside cc.jumpkick.host.DeterministicZip"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val owner = rootProject.layout.projectDirectory.file(
+            "shared/host/src/main/java/cc/jumpkick/host/DeterministicZip.java")
+    inputs.file(owner).withPropertyName("deterministicZip")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val stamp = layout.buildDirectory.file("guards/single-archive-instant.ok")
+    outputs.file(stamp)
+    doLast {
+        val ownerFile = owner.asFile
+        // The banned number, straight out of the owner (see G8 above), in both spellings a Java
+        // author can write it.
+        val epoch = Regex("""public static final long EPOCH_SECONDS = ([0-9_]+)L;""")
+                .find(ownerFile.readText())
+                ?.groupValues
+                ?.get(1)
+                ?: throw GradleException("cc.jumpkick.host.DeterministicZip no longer declares"
+                        + " EPOCH_SECONDS, so the archive-instant guard has lost the owner it reads."
+                        + " Restore the constant or retire this guard deliberately.")
+        val numbers = setOf(epoch, epoch.replace("_", ""))
+
+        val hits = mutableListOf<String>()
+        mainJava.files.sorted().forEach { f ->
+            val code = guardText(f.readText())
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            val byTime = countIn(code, Regex("""\.setTime\("""))
+            if (byTime > 0) hits.add("  $rel: $byTime x setTime(  ->  DeterministicZip.entry")
+            if (f == ownerFile) return@forEach
+            val byLocal = countIn(code, Regex("""\.setTimeLocal\("""))
+            if (byLocal > 0) hits.add("  $rel: $byLocal x setTimeLocal(  ->  DeterministicZip.entry")
+            numbers.forEach { value ->
+                val n = countIn(code, Regex(Regex.escape(value)))
+                if (n > 0) hits.add("  $rel: $n x $value  ->  DeterministicZip.EPOCH_SECONDS")
+            }
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("An archive entry is stamped in one place,"
+                    + " cc.jumpkick.host.DeterministicZip (JK-2415). These stamp their own:\n"
+                    + hits.sorted().joinToString("\n")
+                    + "\n  setTime converts to DOS time through the default timezone, so an archive"
+                    + " written with it is a function of the build host's \$TZ, and a second copy of"
+                    + " the epoch is a second instant waiting to drift. Write entries through"
+                    + " DeterministicZip; every production module can reach it.")
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkSingleArchiveInstant) }
+tasks.named("jar") { dependsOn(checkSingleArchiveInstant) }

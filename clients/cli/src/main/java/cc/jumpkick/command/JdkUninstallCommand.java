@@ -268,7 +268,7 @@ public final class JdkUninstallCommand implements CliCommand {
                 // stdin reader thread that macOS won't let us interrupt; the
                 // wizard's finally already restored terminal attributes.
                 Wizard.printCancellation(terminal, "JDK uninstall canceled");
-                Runtime.getRuntime().halt(130); // 128 + SIGINT
+                Runtime.getRuntime().halt(Exit.INTERRUPTED);
                 throw new AssertionError("unreachable");
             }
             JdkHit victim = outcome.get();

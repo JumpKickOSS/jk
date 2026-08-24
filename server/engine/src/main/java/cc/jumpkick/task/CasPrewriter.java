@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import java.io.File;
 import java.io.IOException;
@@ -71,7 +72,7 @@ public final class CasPrewriter implements AutoCloseable {
         try (Stream<Path> stream = Files.walk(outputDir)) {
             for (Path file : (Iterable<Path>) stream::iterator) {
                 if (!Files.isRegularFile(file)) continue;
-                if (FreshnessStamp.isStampFile(file.getFileName().toString())) continue;
+                if (BuildStamps.isStampFile(file.getFileName().toString())) continue;
 
                 String relPath = outputDir.relativize(file).toString().replace(File.separatorChar, '/');
                 // Authoritative pass always content-hashes. Size+mtime alone can miss a
@@ -104,7 +105,7 @@ public final class CasPrewriter implements AutoCloseable {
         try (Stream<Path> stream = Files.walk(outputDir)) {
             for (Path file : (Iterable<Path>) stream::iterator) {
                 if (!Files.isRegularFile(file)) continue;
-                if (FreshnessStamp.isStampFile(file.getFileName().toString())) continue;
+                if (BuildStamps.isStampFile(file.getFileName().toString())) continue;
                 if (processed.containsKey(file)) continue;
                 handleCandidate(file);
             }

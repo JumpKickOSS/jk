@@ -149,7 +149,7 @@ public final class WatchCommand implements CliCommand {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             cc.jumpkick.cli.tui.CommandWedge.printFail("Watch", "interrupted");
-            return 130;
+            return Exit.INTERRUPTED;
         }
     }
 

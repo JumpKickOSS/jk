@@ -7,18 +7,16 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ExecPlan;
+import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.command.Exit;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -26,10 +24,10 @@ import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import java.util.jar.JarInputStream;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
-import java.util.zip.ZipEntry;
 
 /**
  * {@code jk build --aot-cache}: extract the app under {@code target/aot-cache/} and train a JVM
@@ -41,15 +39,7 @@ final class AotCachePackage {
     /** Non-Boot training must finish inside this window (Boot exits at refresh on its own). */
     private static final long TRAINING_TIMEOUT_SECONDS = 180;
 
-    /**
-     * 1980-02-01T00:00:00Z — the one pinned instant every jk archive writer stamps entries with.
-     * Applied via {@link ZipEntry#setTimeLocal}, never {@code setTime}: setTime's DOS-time
-     * conversion runs through the JVM's default timezone, so the same inputs would produce
-     * different bytes on a host with a different {@code $TZ}. The value is the zip epoch's first
-     * month — anything before 1980 is unrepresentable in DOS time and costs an extended-timestamp
-     * extra field (18 bytes) on every entry.
-     */
-    private static final LocalDateTime ENTRY_TIME = LocalDateTime.ofEpochSecond(318_211_200L, 0, ZoneOffset.UTC);
+    private static final DeterministicZip ZIP = DeterministicZip.PINNED;
 
     private AotCachePackage() {}
 
@@ -438,10 +428,11 @@ final class AotCachePackage {
      * {@code lib/} refs (a jar's Class-Path resolves against the jar's own location, so the layout
      * is relocatable) and {@code Main-Class} when the source jar has none.
      *
-     * <p>Every entry — the manifest included — carries {@link #ENTRY_TIME}, so re-running
-     * {@code --aot-cache} over an unchanged app yields a byte-identical jar. That is why the
-     * manifest is written by hand instead of through {@code new JarOutputStream(out, manifest)}:
-     * the convenience constructor stamps it with {@code System.currentTimeMillis()}.
+     * <p>Every entry — the manifest included — is pinned by {@link DeterministicZip}, so
+     * re-running {@code --aot-cache} over an unchanged app yields a byte-identical jar. That is
+     * why the manifest is written by hand instead of through
+     * {@code new JarOutputStream(out, manifest)}: the convenience constructor stamps it with
+     * {@code System.currentTimeMillis()}.
      */
     static void rewriteAppJar(Path from, Path to, List<String> libNames, String mainClass) throws IOException {
         try (var jarIn = new JarInputStream(Files.newInputStream(from))) {
@@ -460,26 +451,17 @@ final class AotCachePackage {
                 manifest.getMainAttributes().put(Attributes.Name.CLASS_PATH, cp.toString());
             }
             try (var jarOut = new JarOutputStream(Files.newOutputStream(to))) {
-                ByteArrayOutputStream manifestBytes = new ByteArrayOutputStream();
-                manifest.write(manifestBytes);
-                jarOut.putNextEntry(pinned("META-INF/MANIFEST.MF"));
-                jarOut.write(manifestBytes.toByteArray());
-                jarOut.closeEntry();
+                ZIP.writeManifest(jarOut, manifest);
                 JarEntry entry;
                 while ((entry = jarIn.getNextJarEntry()) != null) {
-                    if (entry.getName().equals("META-INF/MANIFEST.MF")) continue;
-                    jarOut.putNextEntry(pinned(entry.getName()));
+                    if (entry.getName().equals(JarFile.MANIFEST_NAME)) continue;
+                    // jarIn stays open for the next entry, so this must not be writeEntryStreaming.
+                    jarOut.putNextEntry(ZIP.entry(entry.getName()));
                     jarIn.transferTo(jarOut);
                     jarOut.closeEntry();
                 }
             }
         }
-    }
-
-    private static JarEntry pinned(String name) {
-        JarEntry entry = new JarEntry(name);
-        entry.setTimeLocal(ENTRY_TIME);
-        return entry;
     }
 
     /** The last ~25 lines — JVM/App startup logs are long; the failure is at the bottom. */

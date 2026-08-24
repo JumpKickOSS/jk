@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.image;
 
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.image.ImageConfig;
 import com.google.cloud.tools.jib.api.CacheDirectoryCreationException;
 import com.google.cloud.tools.jib.api.Containerizer;
@@ -422,20 +423,10 @@ public final class ImageBuilder {
         files.sort(Comparator.comparing(p -> classesDir.relativize(p).toString()));
         for (Path file : files) {
             String rel = classesDir.relativize(file).toString().replace(File.separatorChar, '/');
-            if (isBuildStamp(rel)) continue;
+            if (BuildStamps.isStampFile(rel)) continue;
             layer.addEntry(file, target.resolve(rel));
         }
         return layer.build();
-    }
-
-    /**
-     * jk's compile freshness stamps — build-host metadata whose body is a wall clock, so a layer
-     * carrying one churns its digest every build. Mirrors {@code FreshnessStamp.isStampFile}; this
-     * worker does not depend on the engine.
-     */
-    private static boolean isBuildStamp(String rel) {
-        String base = rel.substring(rel.lastIndexOf('/') + 1);
-        return ".jstamp".equals(base) || ".kstamp".equals(base) || ".gstamp".equals(base);
     }
 
     private static RegistryImage registryTarget(Plan plan) throws InvalidImageReferenceException {

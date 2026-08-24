@@ -83,6 +83,7 @@ import cc.jumpkick.engine.protocol.PluginCommandReport;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Command;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
@@ -212,7 +213,7 @@ public final class CommandDispatch {
         Abbreviations.Result<CliCommand> r = Abbreviations.resolve(command, BY_NAME);
         if (r.kind() == Abbreviations.Kind.AMBIGUOUS) {
             printAmbiguousCommand(command, r.candidates(), ansiEnabled());
-            return 2;
+            return Exit.USAGE;
         }
         CliCommand cmd = r.value();
         if (cmd == null) {
@@ -318,18 +319,18 @@ public final class CommandDispatch {
                     return dispatch(def, qualified + " " + def.name(), rest, ansi);
                 }
                 System.out.print(renderHelp(cmd, qualified, ansi));
-                return 64;
+                return Exit.USAGE;
             }
             String subName = rest.get(subAt);
             Abbreviations.Result<CliCommand> r = resolveSub(cmd, subName);
             if (r.kind() == Abbreviations.Kind.AMBIGUOUS) {
                 printAmbiguousSubcommand(cmd, qualified, subName, r.candidates(), ansi);
-                return 2;
+                return Exit.USAGE;
             }
             CliCommand sub = r.value();
             if (sub == null) {
                 printUnknownSubcommand(cmd, qualified, subName, ansi);
-                return 2;
+                return Exit.USAGE;
             }
             return dispatch(sub, qualified + " " + sub.name(), carryGlobals(rest, subAt), ansi);
         }
@@ -345,7 +346,7 @@ public final class CommandDispatch {
             in = ArgParser.parse(withGlobals(cmd), rest, cmd.passthrough());
         } catch (ParseException e) {
             printError(qualified, cmd, e, ansi);
-            return 2;
+            return Exit.USAGE;
         }
         if (in.isSet("version")) {
             System.out.println("jk " + Jk.VERSION);

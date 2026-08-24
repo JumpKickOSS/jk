@@ -8,6 +8,7 @@ import cc.jumpkick.compat.ToolProvisioning;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.gradle.GradleResolver;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.mvn.MavenResolver;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
@@ -25,8 +26,10 @@ import java.util.Map;
  * The {@code jk-compat-bridge} plugin (op {@code command}, name {@code import}/{@code provision_mvn}/
  * {@code provision_gradle}): Maven/Gradle import + tool provisioning, isolated in a forked plugin JVM
  * so provisioning never loads in the engine JVM. Import conversion runs in the engine. Speaks JSONL
- * config spec, {@code wrote}/{@code result} replies + {@code error} on failure. Exit 0 success, 1
- * operation error, 2 bad arguments, 64 unrecognised source, 73 overwrite-without-force.
+ * config spec, {@code wrote}/{@code result} replies + {@code error} on failure. Exit codes are
+ * {@link Exit}: 0 success, 1 operation error, {@link Exit#USAGE} bad command line or unrecognised
+ * source, {@link Exit#NO_INPUT} unreadable spec, {@link Exit#DATA_ERR} spec missing a key,
+ * {@link Exit#CANT_CREATE} overwrite-without-force.
  */
 public final class CompatBridge implements Plugin {
 
@@ -39,19 +42,19 @@ public final class CompatBridge implements Plugin {
     public int run(List<String> args, ProtocolWriter out) {
         if (args.isEmpty()) {
             System.err.println("jk-compat-bridge: expected spec file path");
-            return 2;
+            return Exit.USAGE;
         }
         Path specFile = Path.of(args.get(0));
         if (!Files.isRegularFile(specFile)) {
             System.err.println("jk-compat-bridge: spec file not found: " + specFile);
-            return 2;
+            return Exit.NO_INPUT;
         }
         PluginSpec spec;
         try {
             spec = PluginSpec.read(specFile);
         } catch (IOException e) {
             System.err.println("jk-compat-bridge: could not read spec: " + e.getMessage());
-            return 2;
+            return Exit.NO_INPUT;
         }
         String command = spec.name().orElse("");
         PluginConfig config = spec.config();
@@ -61,7 +64,7 @@ public final class CompatBridge implements Plugin {
             case "provision_gradle" -> runProvision(out, config, true);
             default -> {
                 System.err.println("jk-compat-bridge: unknown command: " + command);
-                yield 2;
+                yield Exit.USAGE;
             }
         };
     }
@@ -91,7 +94,7 @@ public final class CompatBridge implements Plugin {
         boolean noDiscover = c.bool("noDiscover", false);
         if (projectDir == null || toolsRoot == null) {
             System.err.println("jk-compat-bridge: provision requires projectDir and toolsRoot");
-            return 2;
+            return Exit.DATA_ERR;
         }
         try {
             ToolRegistry registry = new ToolRegistry(toolsRoot);

@@ -459,36 +459,13 @@ public final class BuildJournal {
         return DirKeys.slashes(s).replaceAll("[^a-zA-Z0-9._:/-]+", "_");
     }
 
+    /** Close out every {@code running=true} row an engine left behind — see {@link BuildRecord#abandoned}. */
     public int abandonStaleRunning(String jkVersion) {
         int n = 0;
         long now = System.currentTimeMillis();
         for (BuildRecord r : list()) {
             if (r == null || !r.running()) continue;
-            BuildRecord done = new BuildRecord(
-                    r.id(),
-                    r.buildNumber(),
-                    r.schema(),
-                    r.kind(),
-                    r.dir(),
-                    r.coord(),
-                    r.projectId(),
-                    r.startedAt(),
-                    now,
-                    Math.max(0, now - r.startedAt()),
-                    false,
-                    true,
-                    130,
-                    jkVersion != null ? jkVersion : r.jkVersion(),
-                    null,
-                    List.of(),
-                    List.of(),
-                    List.of(),
-                    r.trigger(),
-                    r.commit(),
-                    null,
-                    false,
-                    r.io(),
-                    r.requestId());
+            BuildRecord done = r.abandoned(now, jkVersion);
             String locator = r.buildNumber() > 0
                     ? ProjectBuilds.runDirName(r.buildNumber())
                     : (r.id() != null ? "j-" + r.id() : null);

@@ -7,6 +7,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.KspProcessors;
 import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.kotlin.KotlinResolver;
@@ -209,7 +210,8 @@ public final class PlannerKsp {
                     stampCp.addAll(split.ksp());
                     boolean rerun = in.session().config().rebuildOr(false);
                     if (!rerun
-                            && FreshnessStamp.isFresh(outBase, KSP_STAMP, stampInputs, stampCp, ctx.require(RELEASE))) {
+                            && FreshnessStamp.isFresh(
+                                    outBase, BuildStamps.KSP, stampInputs, stampCp, ctx.require(RELEASE))) {
                         ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick
                         ctx.label("up to date");
                         ctx.progress(1);
@@ -350,7 +352,8 @@ public final class PlannerKsp {
                     for (BuildPlanner.KspDiagnostic diagnostic : kspDiagnostics(output)) {
                         ctx.warn(diagnostic.severity(), diagnostic.message());
                     }
-                    FreshnessStamp.write(outBase, KSP_STAMP, "ksp", "", stampInputs, stampCp, ctx.require(RELEASE));
+                    FreshnessStamp.write(
+                            outBase, BuildStamps.KSP, "ksp", "", stampInputs, stampCp, ctx.require(RELEASE));
                     ctx.progress(1);
                 })
                 .build();
@@ -397,7 +400,4 @@ public final class PlannerKsp {
         }
         return b.toString();
     }
-
-    /** KSP's freshness companion, mirroring compile-kotlin's stamp discipline. */
-    static final String KSP_STAMP = ".kspstamp";
 }

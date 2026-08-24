@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.build.PluginCommandExec;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -30,7 +31,7 @@ final class AvdCommand {
             case "boot" -> boot(exec, root, avdHome, args);
             default -> {
                 exec.out("usage: jk avd [list | create <name> --system-image <pkg> | boot <name>]");
-                yield 64;
+                yield Exit.USAGE;
             }
         };
     }
@@ -59,14 +60,14 @@ final class AvdCommand {
     private static int create(PluginCommandExec exec, Path root, Path avdHome, List<String> args) throws Exception {
         if (args.size() < 2) {
             exec.out("usage: jk avd create <name> --system-image <pkg>");
-            return 64;
+            return Exit.USAGE;
         }
         String name = args.get(1);
         String image = flag(args, "--system-image");
         if (image == null) {
             exec.out("jk avd create: --system-image <pkg> is required "
                     + "(e.g. system-images;android-34;aosp_atd;x86_64)");
-            return 64;
+            return Exit.USAGE;
         }
         // The image must be installed (jk android sdk provisions; licenses gate as always).
         Path imageDir = root.resolve(image.replace(';', '/'));
@@ -78,7 +79,7 @@ final class AvdCommand {
         String[] parts = image.split(";");
         if (parts.length < 4) {
             exec.out("jk avd create: malformed system-image package: " + image);
-            return 64;
+            return Exit.USAGE;
         }
         String target = parts[1]; // android-34
         String tag = parts[2]; // aosp_atd / default / google_apis
@@ -117,7 +118,7 @@ final class AvdCommand {
     private static int boot(PluginCommandExec exec, Path root, Path avdHome, List<String> args) throws Exception {
         if (args.size() < 2) {
             exec.out("usage: jk avd boot <name> [--emulator <path>]");
-            return 64;
+            return Exit.USAGE;
         }
         String name = args.get(1);
         if (!Files.isRegularFile(avdHome.resolve(name + ".ini"))) {

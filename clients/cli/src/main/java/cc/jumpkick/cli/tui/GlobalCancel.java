@@ -5,15 +5,17 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Signals;
 import cc.jumpkick.terminal.Terminals;
 import java.nio.file.Path;
 
 /**
- * App-level SIGINT handlercancel the live engine job through the same
+ * App-level SIGINT handler — cancel the live engine job through the same
  * {@code cancel-request} path as {@code jk cancel}, settle the TUI as cancelled, then hard-exit
- * the CLI ({@link Runtime#halt(int) halt(2)}) as a backup so Ctrl-C never hangs.
+ * the CLI ({@link Runtime#halt(int) halt}({@link Exit#INTERRUPTED})) as a backup so Ctrl-C never
+ * hangs.
  *
  * <p>Order matters:
  *
@@ -21,7 +23,9 @@ import java.nio.file.Path;
  * <li>Cooperative session cancel + engine {@code cancel-request} (jid / project dir) — same
  * kill path as the web UI and {@code jk cancel}
  * <li>Settle the active plan region ("Build job was cancelled by user took …")
- * <li>{@code halt(2)} — guaranteed process death if anything above is stuck
+ * <li>{@code halt(}{@link Exit#INTERRUPTED}{@code )} — guaranteed process death if anything
+ * above is stuck. 130 is {@code 128 + SIGINT}, what every shell already means by it; this
+ * handler halted with 2 until JK-2417, which is jk's bad-config code.
  * </ol>
  *
  * <p>Wizards run in {@code PROMPT} (ISIG off) so Ctrl-C arrives as {@code Key.CtrlC} instead of
@@ -76,7 +80,7 @@ public final class GlobalCancel {
             err.flush();
 
             // 3) Restore the tty (cooked attrs + stdin wake) on a bounded daemon thread —
-            // halt(2) skips shutdown hooks, so nothing else puts the terminal back. Bounded so
+            // halt() skips shutdown hooks, so nothing else puts the terminal back. Bounded so
             // a wedged JLine close can never break the Ctrl-C-never-hangs guarantee.
             Thread tty = Thread.ofPlatform()
                     .daemon(true)
@@ -95,7 +99,7 @@ public final class GlobalCancel {
             } catch (InterruptedException ignored) {
                 // halt follows regardless
             }
-            Runtime.getRuntime().halt(2);
+            Runtime.getRuntime().halt(Exit.INTERRUPTED);
         });
     }
 }

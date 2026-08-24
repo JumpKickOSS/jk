@@ -204,8 +204,10 @@ class JdkEnsureCommandTest {
     @Test
     void missing_spec_is_a_usage_error() {
         // The required positional (Arity.ONE) is enforced by the arg parser,
-        // which exits with its usage code before the command body runs.
-        assertThat(run("jdk", "ensure")).isEqualTo(2);
+        // which exits with its usage code before the command body runs. 64 is EX_USAGE
+        // (Exit.USAGE), spelled as the literal a shell sees; it read 2 until JK-2417, which is
+        // jk's bad-config code and not what a missing argument is.
+        assertThat(run("jdk", "ensure")).isEqualTo(64);
     }
 
     // --- fixtures -----------------------------------------------------------

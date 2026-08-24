@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.minified;
 
+import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.TaskExec;
 import cc.jumpkick.surface.DynamicSurface;
@@ -8,12 +10,10 @@ import cc.jumpkick.surface.DynamicSurfaceIo;
 import cc.jumpkick.surface.KeepRuleEmitter;
 import cc.jumpkick.surface.TrainLayout;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Enumeration;
@@ -41,19 +41,7 @@ import java.util.zip.ZipEntry;
  */
 final class MinifiedJarPackager {
 
-    /** Fixed entry timestamp (zip's floor is 1980) — reproducible output, same as jk's packagers. */
-    private static final LocalDateTime ENTRY_TIME = LocalDateTime.of(1980, 2, 1, 0, 0);
-
-    /**
-     * A pinned-time entry via {@link JarEntry#setTimeLocal} — NOT {@code setTime}, whose DOS-time
-     * conversion is timezone-sensitive and would make the bytes (and raw-jar fingerprints) vary
-     * with the build host's $TZ. Mirrors the engine's DeterministicJar.
-     */
-    private static JarEntry pinnedEntry(String name) {
-        JarEntry entry = new JarEntry(name);
-        entry.setTimeLocal(ENTRY_TIME);
-        return entry;
-    }
+    private static final DeterministicZip ZIP = DeterministicZip.PINNED;
 
     private MinifiedJarPackager() {}
 
@@ -324,7 +312,13 @@ final class MinifiedJarPackager {
         return file;
     }
 
-    private static void zipClasses(Path classesDir, Path jar) throws IOException {
+    /**
+     * The module's classes as one R8 program input. Compile freshness stamps are left out: R8
+     * copies unrecognised inputs straight through, so a stamp taken in here would ship in the
+     * shrunk jar with a wall clock inside it.
+     */
+    // Package-private for MinifiedJarPackagerTest.
+    static void zipClasses(Path classesDir, Path jar) throws IOException {
         try (OutputStream out = Files.newOutputStream(jar);
                 JarOutputStream jos = new JarOutputStream(out);
                 Stream<Path> walk = Files.walk(classesDir)) {
@@ -333,9 +327,8 @@ final class MinifiedJarPackager {
                     .toList();
             for (Path file : files) {
                 String name = classesDir.relativize(file).toString().replace('\\', '/');
-                jos.putNextEntry(pinnedEntry(name));
-                Files.copy(file, jos);
-                jos.closeEntry();
+                if (BuildStamps.isStampFile(name)) continue;
+                ZIP.writeEntry(jos, name, file);
             }
         }
     }
@@ -344,10 +337,9 @@ final class MinifiedJarPackager {
      * R8's output jar, rewritten with a deterministic order/times. Sets {@code Main-Class} only when
      * {@code mainClass} is non-null (library fat/shrunk jars need no entry point).
      *
-     * <p>Parent directory entries are synthesized for every file: frameworks that enumerate
-     * resource directories from the classpath (Micronaut's SoftServiceLoader over {@code
-     * META-INF/micronaut/...}) resolve them via the jar's directory entries, and R8's output
-     * carries none. Thin, fat, and minified jars owe the same contract.
+     * <p>R8's output carries no directory entries; {@link DeterministicZip#writeParentDirs}
+     * synthesizes them, because frameworks that enumerate resource directories from the classpath
+     * resolve them that way.
      */
     // Package-private for MinifiedJarPackagerTest.
     static void writeOutputJar(Path shrunk, Path artifact, String mainClass) throws IOException {
@@ -361,40 +353,17 @@ final class MinifiedJarPackager {
                 OutputStream out = Files.newOutputStream(artifact);
                 JarOutputStream jos = new JarOutputStream(out)) {
             Set<String> dirs = new HashSet<>();
-            writeParentDirs(jos, "META-INF/MANIFEST.MF", dirs);
-            jos.putNextEntry(pinnedEntry("META-INF/MANIFEST.MF"));
-            manifest.write(jos);
-            jos.closeEntry();
+            ZIP.writeParentDirs(jos, JarFile.MANIFEST_NAME, dirs);
+            ZIP.writeManifest(jos, manifest);
             List<JarEntry> entries = new ArrayList<>();
             for (Enumeration<JarEntry> e = in.entries(); e.hasMoreElements(); ) {
                 entries.add(e.nextElement());
             }
             entries.sort(Comparator.comparing(ZipEntry::getName));
             for (JarEntry entry : entries) {
-                if (entry.isDirectory() || entry.getName().equals("META-INF/MANIFEST.MF")) continue;
-                writeParentDirs(jos, entry.getName(), dirs);
-                jos.putNextEntry(pinnedEntry(entry.getName()));
-                try (InputStream body = in.getInputStream(entry)) {
-                    body.transferTo(jos);
-                }
-                jos.closeEntry();
-            }
-        }
-    }
-
-    /**
-     * Directory entries for every ancestor of {@code name}, parents first, each once —
-     * {@code dirs} accumulates what has already been emitted across the whole jar. Local copy of
-     * the engine's DeterministicJar.writeParentDirs by design: plugins stay dependency-free of
-     * jk's kernel modules.
-     */
-    private static void writeParentDirs(JarOutputStream jos, String name, Set<String> dirs) throws IOException {
-        int slash = -1;
-        while ((slash = name.indexOf('/', slash + 1)) >= 0) {
-            String dir = name.substring(0, slash + 1);
-            if (dirs.add(dir)) {
-                jos.putNextEntry(pinnedEntry(dir));
-                jos.closeEntry();
+                if (entry.isDirectory() || entry.getName().equals(JarFile.MANIFEST_NAME)) continue;
+                ZIP.writeParentDirs(jos, entry.getName(), dirs);
+                ZIP.writeEntryStreaming(jos, entry.getName(), in.getInputStream(entry));
             }
         }
     }

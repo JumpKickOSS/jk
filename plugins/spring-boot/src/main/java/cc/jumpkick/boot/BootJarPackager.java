@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.boot;
 
-import java.io.ByteArrayOutputStream;
+import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.DeterministicZip;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -24,9 +22,6 @@ import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.stream.Stream;
-import java.util.zip.CRC32;
-import java.util.zip.CheckedInputStream;
-import java.util.zip.ZipEntry;
 
 /**
  * Packages a Spring Boot executable jar ({@code JarLauncher} layout: loader, {@code
@@ -51,17 +46,17 @@ public final class BootJarPackager {
     public Path packageBootJar(BootJarRequest request) throws IOException {
         Files.createDirectories(request.outputJar().getParent());
         Manifest manifest = buildManifest(request);
-        long epoch = request.timestampEpochSeconds();
+        DeterministicZip zip = new DeterministicZip(request.timestampEpochSeconds());
         Set<String> dirsWritten = new HashSet<>();
 
         try (OutputStream out = Files.newOutputStream(request.outputJar());
                 JarOutputStream jos = new JarOutputStream(out)) {
-            writeManifest(jos, manifest, epoch);
+            zip.writeManifest(jos, manifest);
             dirsWritten.add("META-INF/");
 
             // 1. Loader classes exploded at the root — java -jar must find
             //    Main-Class before anything else is resolvable.
-            explodeLoader(jos, request.loaderJar(), epoch, dirsWritten);
+            explodeLoader(jos, request.loaderJar(), zip, dirsWritten);
 
             // 2. Application classes + resources under BOOT-INF/classes/, then any AOT
             //    output roots (generated classes + GraalVM hint resources) — app files win
@@ -76,33 +71,33 @@ public final class BootJarPackager {
                 for (Path file : files) {
                     String name = normalize(root, file);
                     if (name.equals("META-INF/MANIFEST.MF")) continue;
-                    if (isBuildStamp(name)) continue;
+                    if (BuildStamps.isStampFile(name)) continue;
                     if (!classEntries.add(name)) continue;
-                    writeParentDirs(jos, CLASSES_PREFIX + name, epoch, dirsWritten);
-                    writeEntryStreaming(jos, CLASSES_PREFIX + name, Files.newInputStream(file), epoch);
+                    zip.writeParentDirs(jos, CLASSES_PREFIX + name, dirsWritten);
+                    zip.writeEntryStreaming(jos, CLASSES_PREFIX + name, Files.newInputStream(file));
                 }
             }
 
             // 3. Boot-read metadata under BOOT-INF/classes/META-INF (classpath-visible:
             //    BuildProperties and the sbom actuator resolve these as resources).
             if (!request.buildInfo().isEmpty()) {
-                writeParentDirs(jos, BUILD_INFO_ENTRY, epoch, dirsWritten);
-                writeEntry(jos, BUILD_INFO_ENTRY, buildInfoProperties(request.buildInfo()), epoch);
+                zip.writeParentDirs(jos, BUILD_INFO_ENTRY, dirsWritten);
+                zip.writeEntry(jos, BUILD_INFO_ENTRY, buildInfoProperties(request.buildInfo()));
             }
             if (request.sbom() != null) {
-                writeParentDirs(jos, SBOM_ENTRY, epoch, dirsWritten);
-                writeEntry(jos, SBOM_ENTRY, request.sbom(), epoch);
+                zip.writeParentDirs(jos, SBOM_ENTRY, dirsWritten);
+                zip.writeEntry(jos, SBOM_ENTRY, request.sbom());
             }
 
             // 4. Nested dependency jars — STORED with a precomputed CRC.
-            writeDir(jos, LIB_PREFIX, epoch, dirsWritten);
+            zip.writeDir(jos, LIB_PREFIX, dirsWritten);
             for (Lib lib : request.libs()) {
-                writeStored(jos, LIB_PREFIX + lib.fileName(), lib.jar(), epoch);
+                zip.writeStored(jos, LIB_PREFIX + lib.fileName(), lib.jar());
             }
 
             // 5. The two index files the manifest points at.
-            writeEntry(jos, CLASSPATH_IDX, classpathIndex(request.libs()), epoch);
-            writeEntry(jos, LAYERS_IDX, layersIndex(request.libs()), epoch);
+            zip.writeEntry(jos, CLASSPATH_IDX, classpathIndex(request.libs()));
+            zip.writeEntry(jos, LAYERS_IDX, layersIndex(request.libs()));
         }
         return request.outputJar();
     }
@@ -162,8 +157,8 @@ public final class BootJarPackager {
      * Copy every class from the loader jar to the boot jar's root. Loader jars ship their own
      * signature-free META-INF which we drop (our manifest already points at the launcher).
      */
-    private static void explodeLoader(JarOutputStream jos, Path loaderJar, long epoch, Set<String> dirsWritten)
-            throws IOException {
+    private static void explodeLoader(
+            JarOutputStream jos, Path loaderJar, DeterministicZip zip, Set<String> dirsWritten) throws IOException {
         try (JarFile jf = new JarFile(loaderJar.toFile())) {
             List<JarEntry> entries = new ArrayList<>();
             jf.stream().filter(e -> !e.isDirectory()).forEach(entries::add);
@@ -171,89 +166,10 @@ public final class BootJarPackager {
             for (JarEntry e : entries) {
                 String name = e.getName();
                 if (name.startsWith("META-INF/")) continue;
-                writeParentDirs(jos, name, epoch, dirsWritten);
-                writeEntryStreaming(jos, name, jf.getInputStream(e), epoch);
+                zip.writeParentDirs(jos, name, dirsWritten);
+                zip.writeEntryStreaming(jos, name, jf.getInputStream(e));
             }
         }
-    }
-
-    /**
-     * Write {@code file} as a STORED (uncompressed) entry. Boot's nested-jar loader maps entries
-     * of BOOT-INF/lib/*.jar directly; a DEFLATED nested jar cannot be random-accessed and fails at
-     * launch. STORED requires size + CRC-32 up front, so the file is streamed twice —
-     * constant-memory either way.
-     */
-    /**
-     * Clamp pre-1980 fixed times to 1980-02-01T00:00:00Z: DOS time cannot represent them, and
-     * preserving epoch 0 costs an 18-byte extended-timestamp extra field per entry.
-     */
-    private static long dosSafe(long epochSeconds) {
-        return Math.max(epochSeconds, 318_211_200L);
-    }
-
-    private static void writeStored(JarOutputStream jos, String name, Path file, long epoch) throws IOException {
-        long size = Files.size(file);
-        CRC32 crc = new CRC32();
-        try (InputStream in = new CheckedInputStream(Files.newInputStream(file), crc)) {
-            in.transferTo(OutputStream.nullOutputStream());
-        }
-        JarEntry entry = new JarEntry(name);
-        entry.setMethod(ZipEntry.STORED);
-        entry.setSize(size);
-        entry.setCompressedSize(size);
-        entry.setCrc(crc.getValue());
-        entry.setTimeLocal(LocalDateTime.ofEpochSecond(dosSafe(epoch), 0, ZoneOffset.UTC));
-        jos.putNextEntry(entry);
-        try (InputStream in = Files.newInputStream(file)) {
-            in.transferTo(jos);
-        }
-        jos.closeEntry();
-    }
-
-    /** Emit any missing directory entries leading up to {@code entryName} (deterministic layout). */
-    private static void writeParentDirs(JarOutputStream jos, String entryName, long epoch, Set<String> written)
-            throws IOException {
-        int slash = -1;
-        while ((slash = entryName.indexOf('/', slash + 1)) >= 0) {
-            writeDir(jos, entryName.substring(0, slash + 1), epoch, written);
-        }
-    }
-
-    private static void writeDir(JarOutputStream jos, String dirName, long epoch, Set<String> written)
-            throws IOException {
-        if (!written.add(dirName)) return;
-        JarEntry entry = new JarEntry(dirName);
-        entry.setTimeLocal(LocalDateTime.ofEpochSecond(dosSafe(epoch), 0, ZoneOffset.UTC));
-        jos.putNextEntry(entry);
-        jos.closeEntry();
-    }
-
-    private static void writeEntry(JarOutputStream jos, String name, byte[] data, long epochSeconds)
-            throws IOException {
-        JarEntry entry = new JarEntry(name);
-        entry.setTimeLocal(LocalDateTime.ofEpochSecond(dosSafe(epochSeconds), 0, ZoneOffset.UTC));
-        jos.putNextEntry(entry);
-        jos.write(data);
-        jos.closeEntry();
-    }
-
-    private static void writeEntryStreaming(JarOutputStream jos, String name, InputStream in, long epochSeconds)
-            throws IOException {
-        // Take ownership of `in` before anything that can throw: it is already open at the call
-        // site, so a duplicate-entry putNextEntry would otherwise leak the descriptor.
-        try (in) {
-            JarEntry entry = new JarEntry(name);
-            entry.setTimeLocal(LocalDateTime.ofEpochSecond(dosSafe(epochSeconds), 0, ZoneOffset.UTC));
-            jos.putNextEntry(entry);
-            in.transferTo(jos);
-        }
-        jos.closeEntry();
-    }
-
-    private static void writeManifest(JarOutputStream jos, Manifest manifest, long epochSeconds) throws IOException {
-        ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        manifest.write(buf);
-        writeEntry(jos, "META-INF/MANIFEST.MF", buf.toByteArray(), epochSeconds);
     }
 
     private static Manifest buildManifest(BootJarRequest request) {
@@ -276,16 +192,6 @@ public final class BootJarPackager {
             attrs.put(new Attributes.Name(e.getKey()), e.getValue());
         }
         return manifest;
-    }
-
-    /**
-     * jk's compile freshness stamps — build-host metadata whose body is a wall clock, so a jar
-     * carrying one is neither clean nor reproducible. Mirrors {@code FreshnessStamp.isStampFile};
-     * this module compiles against the plugin SPI alone and cannot reach the engine's copy.
-     */
-    private static boolean isBuildStamp(String name) {
-        String base = name.substring(name.lastIndexOf('/') + 1);
-        return ".jstamp".equals(base) || ".kstamp".equals(base) || ".gstamp".equals(base);
     }
 
     private static List<Path> collectFiles(Path root) throws IOException {

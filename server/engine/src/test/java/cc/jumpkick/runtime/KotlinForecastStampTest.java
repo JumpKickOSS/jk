@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.task.FreshnessStamp;
@@ -39,20 +40,19 @@ class KotlinForecastStampTest {
         agedByAnHour(sources.get(0));
 
         // Nothing compiled yet: no stamp anywhere, so the forecast must predict work.
-        assertThat(FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, sources))
+        assertThat(FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.KOTLIN, sources))
                 .isFalse();
 
         // Exactly what compile-kotlin's stamp step does (BuildPlanner: MAIN_CLASSES).
         Files.createDirectories(layout.classesDir());
-        FreshnessStamp.write(
-                layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, "compile-kotlin", "", sources, List.of(), 25);
+        FreshnessStamp.write(layout.classesDir(), BuildStamps.KOTLIN, "compile-kotlin", "", sources, List.of(), 25);
 
-        assertThat(FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, sources))
+        assertThat(FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.KOTLIN, sources))
                 .isTrue();
 
         // The directory the forecast used to read holds no stamp — reading it can only ever
         // return "not fresh", which is precisely the bug.
-        assertThat(FreshnessStamp.looksFresh(layout.kotlinClassesDir(), FreshnessStamp.KOTLIN_STAMP, sources))
+        assertThat(FreshnessStamp.looksFresh(layout.kotlinClassesDir(), BuildStamps.KOTLIN, sources))
                 .isFalse();
     }
 
@@ -66,13 +66,12 @@ class KotlinForecastStampTest {
         agedByAnHour(source);
 
         Files.createDirectories(layout.classesDir());
-        FreshnessStamp.write(
-                layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, "compile-kotlin", "", sources, List.of(), 25);
-        assertThat(FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, sources))
+        FreshnessStamp.write(layout.classesDir(), BuildStamps.KOTLIN, "compile-kotlin", "", sources, List.of(), 25);
+        assertThat(FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.KOTLIN, sources))
                 .isTrue();
 
         Files.setLastModifiedTime(source, FileTime.fromMillis(System.currentTimeMillis() + 3_600_000));
-        assertThat(FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, sources))
+        assertThat(FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.KOTLIN, sources))
                 .isFalse();
     }
 
@@ -84,11 +83,11 @@ class KotlinForecastStampTest {
     private static Path project(Path tmp) throws Exception {
         Path dir = Files.createDirectories(tmp.resolve("proj"));
         Files.writeString(dir.resolve("jk.toml"), """
-                group   = "com.example"
-                name    = "proj"
-                version = "1.0.0"
-                kotlin  = "2.4.10"
-                """);
+            group   = "com.example"
+            name    = "proj"
+            version = "1.0.0"
+            kotlin  = "2.4.10"
+            """);
         Path src = Files.createDirectories(dir.resolve("src/app"));
         Files.writeString(src.resolve("A.kt"), "package app\ninternal object A\n");
         return dir;

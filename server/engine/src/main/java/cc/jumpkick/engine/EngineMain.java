@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -47,12 +48,13 @@ public final class EngineMain {
 
     /**
      * {@code EngineMain --inflate-xz <in.xz> <out>} — inflate a release client {@code .xz} to
-     * the raw binary. Returns 2 on usage error, 1 on inflate failure, 0 on success.
+     * the raw binary. Returns {@link Exit#USAGE} on a bad command line, 1 on inflate failure, 0 on
+     * success.
      */
     static int runInflateXz(String[] args) {
         if (args.length != 3) {
             System.err.println("usage: EngineMain --inflate-xz <in.xz> <out>");
-            return 2;
+            return Exit.USAGE;
         }
         try {
             Xz.inflate(Path.of(args[1]), Path.of(args[2]));
@@ -224,7 +226,8 @@ public final class EngineMain {
                     System.err.println("jk engine (aot-training): exceeded " + (limitMs / 1000)
                             + "s — halting; a normal recording takes about "
                             + (AOT_TRAINING_UPTIME_MS / 1000) + "s");
-                    Runtime.getRuntime().halt(2);
+                    // Not a cancellation and not bad config: the trainer wedged. EX_SOFTWARE.
+                    Runtime.getRuntime().halt(Exit.SOFTWARE);
                 },
                 "jk-aot-training-watchdog");
         watchdog.setDaemon(true);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -15,12 +16,12 @@ import java.util.stream.Stream;
 /**
  * Content (not path/mtime) fingerprint for cache keys: CAS path encodes the hash; local files use
  * raw content SHA ({@code file:…}); directories use a tree of the same. Packagers emit
- * byte-reproducible jars ({@code DeterministicJar}), so raw jar bytes are stable across no-op
+ * byte-reproducible jars ({@code DeterministicZip}), so raw jar bytes are stable across no-op
  * rebuilds and match CAS digests seeded by {@link FileHashMemo#rememberContent} after clean→restore
  * — avoiding a multi-second {@code jar:logical} zip walk on every TestStamp. Missing entries become
  * a distinct {@code missing:} token.
  *
- * <p>Every walk here drops {@link FreshnessStamp#isStampFile stamp files}: build-host metadata that
+ * <p>Every walk here drops {@link BuildStamps#isStampFile stamp files}: build-host metadata that
  * lives inside the classes tree, is not code, and whose content changes every build. {@code
  * [build.embed-sha]} outputs ({@code META-INF/jk-<worker>-sha256.txt}) are deliberately <em>not</em>
  * dropped — byte-reproducible jars keep those embedded SHAs stable across no-op rebuilds, and a
@@ -52,7 +53,7 @@ public final class ClasspathFingerprint {
         for (Map.Entry<String, String> e : relPathToSha256.entrySet()) {
             String rel = e.getKey().replace('\\', '/');
             if (rel.isEmpty()) continue;
-            if (FreshnessStamp.isStampFile(rel)) continue;
+            if (BuildStamps.isStampFile(rel)) continue;
             if (ActionCache.hasJkScratchSegment(Path.of(rel))) continue;
             if (e.getValue() == null || e.getValue().isBlank()) continue;
             files.add(rel + ":" + e.getValue());
@@ -74,7 +75,7 @@ public final class ClasspathFingerprint {
             for (Map.Entry<String, String> e : compileOutputs.entrySet()) {
                 String rel = e.getKey().replace('\\', '/');
                 if (rel.isEmpty()) continue;
-                if (FreshnessStamp.isStampFile(rel)) continue;
+                if (BuildStamps.isStampFile(rel)) continue;
                 if (ActionCache.hasJkScratchSegment(Path.of(rel))) continue;
                 if (e.getValue() == null || e.getValue().isBlank()) continue;
                 digests.put(rel, e.getValue());
@@ -87,7 +88,7 @@ public final class ClasspathFingerprint {
                     for (Path f : (Iterable<Path>) walk::iterator) {
                         if (!Files.isRegularFile(f)) continue;
                         String rel = root.relativize(f).toString().replace('\\', '/');
-                        if (FreshnessStamp.isStampFile(f.getFileName().toString())) continue;
+                        if (BuildStamps.isStampFile(f.getFileName().toString())) continue;
                         digests.put(rel, Hashing.sha256Hex(f));
                     }
                 }
@@ -107,7 +108,7 @@ public final class ClasspathFingerprint {
             try (Stream<Path> walk = Files.walk(classesDir)) {
                 for (Path f : (Iterable<Path>) walk::iterator) {
                     if (!Files.isRegularFile(f)) continue;
-                    if (FreshnessStamp.isStampFile(f.getFileName().toString())) continue;
+                    if (BuildStamps.isStampFile(f.getFileName().toString())) continue;
                     Path rel = classesDir.relativize(f);
                     if (ActionCache.hasJkScratchSegment(rel)) continue;
                     digests.put(rel.toString().replace('\\', '/'), Hashing.sha256Hex(f));
@@ -151,7 +152,7 @@ public final class ClasspathFingerprint {
         try (Stream<Path> walk = Files.walk(dir)) {
             for (Path f : (Iterable<Path>) walk::iterator) {
                 if (!Files.isRegularFile(f)) continue;
-                if (FreshnessStamp.isStampFile(f.getFileName().toString())) continue;
+                if (BuildStamps.isStampFile(f.getFileName().toString())) continue;
                 // `.jk-*` plugin scratch (bootstrap m2/staging) is not output content and
                 // re-hashing it on every no-op build is pure waste.
                 if (ActionCache.hasJkScratchSegment(dir.relativize(f))) continue;

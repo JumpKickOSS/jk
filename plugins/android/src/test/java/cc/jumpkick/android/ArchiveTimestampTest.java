@@ -4,6 +4,7 @@ package cc.jumpkick.android;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.DeterministicZip;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -23,7 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Reproducible AAR/APK/AAB output. Every entry these packagers write must carry the one pinned
+ * Reproducible AAR/APK/AAB output. Every entry the android packagers write must carry the pinned
  * instant — 1980-02-01T00:00:00Z — stamped through {@link ZipEntry#setTimeLocal}. The other
  * spelling, {@code setTime}, converts to DOS time through the JVM's default timezone, so an
  * archive written with it is a function of the build host's {@code $TZ}; an unstamped entry is a
@@ -34,6 +35,9 @@ import org.junit.jupiter.api.io.TempDir;
  * pin down.
  */
 class ArchiveTimestampTest {
+
+    /** The one writer behind every jk archive; the APK/AAB cases drive it the way they do. */
+    private static final DeterministicZip ZIP = DeterministicZip.PINNED;
 
     /** 19 hours apart, neither observing DST: no wall clock reading can agree between them. */
     private static final TimeZone TOKYO = TimeZone.getTimeZone("Asia/Tokyo");
@@ -79,9 +83,9 @@ class ArchiveTimestampTest {
         // The real mix: aapt2's STORED resources.arsc, a DEFLATED dex, a STORED native lib.
         assertPinned(tmp, "app.apk", out -> {
             try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(out))) {
-                ApkPackager.write(zip, "resources.arsc", "arsc".getBytes(UTF_8), ZipEntry.STORED);
-                ApkPackager.write(zip, "classes.dex", "dex".getBytes(UTF_8), ZipEntry.DEFLATED);
-                ApkPackager.write(zip, "lib/arm64-v8a/libjk.so", "so".getBytes(UTF_8), ZipEntry.STORED);
+                ZIP.writeEntry(zip, "resources.arsc", "arsc".getBytes(UTF_8), ZipEntry.STORED);
+                ZIP.writeEntry(zip, "classes.dex", "dex".getBytes(UTF_8), ZipEntry.DEFLATED);
+                ZIP.writeEntry(zip, "lib/arm64-v8a/libjk.so", "so".getBytes(UTF_8), ZipEntry.STORED);
             }
         });
     }
@@ -90,9 +94,9 @@ class ArchiveTimestampTest {
     void aab_base_module_entries_are_pinned_and_timezone_independent(@TempDir Path tmp) throws Exception {
         assertPinned(tmp, "base.zip", out -> {
             try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(out))) {
-                AabPackager.write(zip, "manifest/AndroidManifest.xml", "proto".getBytes(UTF_8), ZipEntry.STORED);
-                AabPackager.write(zip, "resources.pb", "pb".getBytes(UTF_8), ZipEntry.DEFLATED);
-                AabPackager.write(zip, "dex/classes.dex", "dex".getBytes(UTF_8), ZipEntry.DEFLATED);
+                ZIP.writeEntry(zip, "manifest/AndroidManifest.xml", "proto".getBytes(UTF_8), ZipEntry.STORED);
+                ZIP.writeEntry(zip, "resources.pb", "pb".getBytes(UTF_8), ZipEntry.DEFLATED);
+                ZIP.writeEntry(zip, "dex/classes.dex", "dex".getBytes(UTF_8), ZipEntry.DEFLATED);
             }
         });
     }

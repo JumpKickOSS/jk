@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.task.ActionCache;
@@ -24,23 +25,23 @@ class TaskForecasterGroovyTest {
     @Test
     void groovy_module_forecasts_full_then_cached_on_stamp(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                group = "t"
-                name = "ws"
-                version = "0.1.0"
-                jdk = 25
-                java = 25
+            group = "t"
+            name = "ws"
+            version = "0.1.0"
+            jdk = 25
+            java = 25
 
-                [workspace]
-                modules = ["a"]
-                """);
+            [workspace]
+            modules = ["a"]
+            """);
         Path mod = Files.createDirectories(tmp.resolve("a"));
         Files.writeString(mod.resolve("jk.toml"), """
-                group = "t"
-                name = "a"
-                version = "0.1.0"
-                jdk = 25
-                groovy = "5.0.4"
-                """);
+            group = "t"
+            name = "a"
+            version = "0.1.0"
+            jdk = 25
+            groovy = "5.0.4"
+            """);
         Path src = Files.createDirectories(mod.resolve("src"));
         Path foo = src.resolve("Foo.groovy");
         Files.writeString(foo, "class Foo {}");
@@ -49,11 +50,11 @@ class TaskForecasterGroovyTest {
         // short-circuits to a single "compile-main" step (no compile-groovy).
         String manifestsSha = LockManifestDigest.compute(tmp);
         Files.writeString(tmp.resolve("jk-lock.toml"), """
-                version = 1
-                generated-by = "test"
-                resolution-algorithm = "pubgrub-v1"
-                manifests-sha256 = "%s"
-                """.formatted(manifestsSha));
+            version = 1
+            generated-by = "test"
+            resolution-algorithm = "pubgrub-v1"
+            manifests-sha256 = "%s"
+            """.formatted(manifestsSha));
 
         BuildGraph.Result graph = BuildGraph.resolve(tmp, JkBuildParser.parse(tmp.resolve("jk.toml")));
         assertThat(graph.hasErrors()).isFalse();
@@ -74,7 +75,7 @@ class TaskForecasterGroovyTest {
         // Stamp the merged classes dir (where write-stamp-groovy writes it) — CACHED.
         var layout = BuildLayout.of(mod, JkBuildParser.parse(mod.resolve("jk.toml")));
         FreshnessStamp.write(
-                layout.classesDir(), FreshnessStamp.GROOVY_STAMP, "compile-groovy", "", List.of(foo), List.of(), 21);
+                layout.classesDir(), BuildStamps.GROOVY, "compile-groovy", "", List.of(foo), List.of(), 21);
         List<TaskForecast.Module> warm = TaskForecaster.of(graph, cas, actionCache, cache);
         TaskForecast.Task warmGv =
                 warm.stream().filter(m -> m.dir().endsWith("a")).findFirst().orElseThrow().steps().stream()

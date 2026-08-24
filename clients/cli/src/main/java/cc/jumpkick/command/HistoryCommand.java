@@ -11,6 +11,7 @@ import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -179,7 +180,7 @@ public final class HistoryCommand extends GroupCommand {
         public int run(Invocation in) throws Exception {
             if (in.positionals().isEmpty()) {
                 CliOutput.err("usage: jk history show <id>");
-                return 2;
+                return Exit.USAGE;
             }
             String id = in.positionals().get(0);
             List<String> lines = EngineClient.historyShow(EnginePaths.current(), id);
@@ -298,7 +299,7 @@ public final class HistoryCommand extends GroupCommand {
         public int run(Invocation in) throws Exception {
             if (in.positionals().isEmpty()) {
                 CliOutput.err("usage: jk history rm <id>");
-                return 2;
+                return Exit.USAGE;
             }
             String id = in.positionals().get(0);
             if (EngineClient.historyDelete(EnginePaths.current(), id)) {

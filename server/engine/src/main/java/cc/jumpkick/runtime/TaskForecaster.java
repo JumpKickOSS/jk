@@ -11,6 +11,7 @@ import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
@@ -408,8 +409,7 @@ public final class TaskForecaster {
                 boolean stampFresh = false;
                 if (!compileDepDirty && !force && !groovyJarUnavailable) {
                     try {
-                        stampFresh =
-                                FreshnessStamp.isFresh(out, FreshnessStamp.JAVA_STAMP, mainSrc, stampInputs, release);
+                        stampFresh = FreshnessStamp.isFresh(out, BuildStamps.JAVA, mainSrc, stampInputs, release);
                     } catch (IOException ignored) {
                         stampFresh = false;
                     }
@@ -452,7 +452,7 @@ public final class TaskForecaster {
                 // forecast a full compile no matter how cached the build actually was.
                 boolean fresh = !compileDepDirty
                         && !force
-                        && FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, ktSrc);
+                        && FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.KOTLIN, ktSrc);
                 // After jk clean the stamp is gone with target/, but the action-cache pointer
                 // under tasks/ survives. lastFor+present ⇒ live kotlinc will restore — do not
                 // price FULL (never-built modules have no pointer and stay FULL).
@@ -479,7 +479,7 @@ public final class TaskForecaster {
             if (!gvSrc.isEmpty()) {
                 boolean fresh = !compileDepDirty
                         && !force
-                        && FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.GROOVY_STAMP, gvSrc);
+                        && FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.GROOVY, gvSrc);
                 boolean restoreHit = !compileDepDirty
                         && !force
                         && !classesDirHasContent(layout.classesDir())
@@ -942,7 +942,7 @@ public final class TaskForecaster {
         try (var walk = Files.walk(classesDir)) {
             return walk.anyMatch(p -> {
                 if (!Files.isRegularFile(p)) return false;
-                return !FreshnessStamp.isStampFile(p.getFileName().toString());
+                return !BuildStamps.isStampFile(p.getFileName().toString());
             });
         }
     }

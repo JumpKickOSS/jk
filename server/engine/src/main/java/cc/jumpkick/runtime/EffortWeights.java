@@ -6,6 +6,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.FetchTimings;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkLts;
 import cc.jumpkick.jdk.JdkRegistry;
@@ -709,7 +710,7 @@ public final class EffortWeights {
             if (useJava) {
                 List<Path> src = CompileSupport.collectJavaSources(
                         compact ? in.dir().resolve("src") : in.dir().resolve("src/main/java"));
-                javaRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.JAVA_STAMP, src);
+                javaRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.JAVA, src);
                 compileJava = javaRun
                         ? learned(
                                 timings,
@@ -723,8 +724,7 @@ public final class EffortWeights {
             boolean ktRun = false;
             if (useKotlin) {
                 List<Path> src = CompileSupport.collectKotlinSources(in.dir(), compact);
-                ktRun = rerun
-                        || !FreshnessStamp.looksFresh(layout.kotlinClassesDir(), FreshnessStamp.KOTLIN_STAMP, src);
+                ktRun = rerun || !FreshnessStamp.looksFresh(layout.kotlinClassesDir(), BuildStamps.KOTLIN, src);
                 compileKotlin = ktRun
                         ? learned(
                                 timings,
@@ -740,7 +740,7 @@ public final class EffortWeights {
                 // The groovy stamp lives in the merged classes dir — that is where
                 // write-stamp-groovy writes it (stamp-only freshness, like Kotlin's).
                 List<Path> src = CompileSupport.collectGroovySources(in.dir(), compact);
-                gvRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.GROOVY_STAMP, src);
+                gvRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.GROOVY, src);
                 compileGroovy = gvRun
                         ? learned(
                                 timings,
@@ -987,20 +987,17 @@ public final class EffortWeights {
             // Java main sources
             List<Path> javaSrc =
                     CompileSupport.collectJavaSources(compact ? dir.resolve("src") : dir.resolve("src/main/java"));
-            if (!javaSrc.isEmpty()
-                    && !FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.JAVA_STAMP, javaSrc)) {
+            if (!javaSrc.isEmpty() && !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.JAVA, javaSrc)) {
                 return true;
             }
             // Kotlin
             List<Path> ktSrc = CompileSupport.collectKotlinSources(dir, compact);
-            if (!ktSrc.isEmpty()
-                    && !FreshnessStamp.looksFresh(layout.kotlinClassesDir(), FreshnessStamp.KOTLIN_STAMP, ktSrc)) {
+            if (!ktSrc.isEmpty() && !FreshnessStamp.looksFresh(layout.kotlinClassesDir(), BuildStamps.KOTLIN, ktSrc)) {
                 return true;
             }
             // Groovy (stamp in merged classes dir)
             List<Path> gvSrc = CompileSupport.collectGroovySources(dir, compact);
-            if (!gvSrc.isEmpty()
-                    && !FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.GROOVY_STAMP, gvSrc)) {
+            if (!gvSrc.isEmpty() && !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.GROOVY, gvSrc)) {
                 return true;
             }
             return false;

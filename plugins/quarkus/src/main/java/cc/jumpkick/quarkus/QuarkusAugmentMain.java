@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.quarkus;
 
+import cc.jumpkick.model.command.Exit;
 import io.quarkus.bootstrap.app.AugmentResult;
 import io.quarkus.bootstrap.app.CuratedApplication;
 import io.quarkus.bootstrap.app.QuarkusBootstrap;
@@ -13,23 +14,17 @@ import io.quarkus.maven.dependency.ArtifactDependency;
 import io.quarkus.maven.dependency.Dependency;
 import java.io.File;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.Set;
-import java.util.jar.Attributes;
-import java.util.jar.JarEntry;
-import java.util.jar.JarOutputStream;
-import java.util.jar.Manifest;
 
 /**
  * Forked entry point for Quarkus production packaging.
@@ -51,8 +46,9 @@ public final class QuarkusAugmentMain {
     public static void main(String[] args) throws Exception {
         if (args.length != 9) {
             System.err.println(
-                    "usage: QuarkusAugmentMain projectRoot classesDir targetDir baseName group artifact version runtimeListFile quarkusVersion");
-            System.exit(2);
+                    "usage: QuarkusAugmentMain projectRoot classesDir targetDir baseName group artifact version"
+                            + " runtimeListFile quarkusVersion");
+            System.exit(Exit.USAGE);
         }
         Path appProjectRoot = Path.of(args[0]).toAbsolutePath().normalize();
         Path classesDir = Path.of(args[1]).toAbsolutePath().normalize();
@@ -78,7 +74,7 @@ public final class QuarkusAugmentMain {
         Path scratch = Files.createDirectories(targetDir.resolve(".jk-quarkus-bootstrap"));
         Path localRepo = Files.createDirectories(scratch.resolve("m2"));
         Path appJar = scratch.resolve("app.jar");
-        jarDir(classesDir, appJar);
+        AppJar.write(classesDir, appJar);
 
         // Reuse already-fetched jars: jk's repo mirrors are derived from the locked jar paths
         // the engine handed us — they ARE store paths, and rebuilding product dirs from
@@ -343,29 +339,6 @@ public final class QuarkusAugmentMain {
         Files.createDirectories(dest);
         copyTree(found, dest);
         System.err.println("jk-quarkus-augment: native sources -> " + dest);
-    }
-
-    private static void jarDir(Path dir, Path jar) throws IOException {
-        Manifest man = new Manifest();
-        man.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
-        try (OutputStream fos = Files.newOutputStream(jar);
-                JarOutputStream jos = new JarOutputStream(fos, man)) {
-            if (!Files.isDirectory(dir)) return;
-            Files.walkFileTree(dir, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                    String name = dir.relativize(file).toString().replace('\\', '/');
-                    // Pin entry times (setTimeLocal: TZ-safe) so repeated augments produce
-                    // byte-identical jars — raw-jar fingerprints key downstream action caches.
-                    JarEntry entry = new JarEntry(name);
-                    entry.setTimeLocal(LocalDateTime.of(1980, 2, 1, 0, 0));
-                    jos.putNextEntry(entry);
-                    Files.copy(file, jos);
-                    jos.closeEntry();
-                    return FileVisitResult.CONTINUE;
-                }
-            });
-        }
     }
 
     private static void copyTree(Path from, Path to) throws IOException {

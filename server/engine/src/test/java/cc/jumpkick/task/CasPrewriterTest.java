@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -81,14 +82,14 @@ class CasPrewriterTest {
         Files.createDirectories(classes);
         Cas cas = new Cas(tempDir.resolve("cas"));
         // Simulate left-over freshness stamps from a previous build.
-        Files.writeString(classes.resolve(FreshnessStamp.JAVA_STAMP), "stamp body");
-        Files.writeString(classes.resolve(FreshnessStamp.KOTLIN_STAMP), "stamp body");
+        Files.writeString(classes.resolve(BuildStamps.JAVA), "stamp body");
+        Files.writeString(classes.resolve(BuildStamps.KOTLIN), "stamp body");
 
         CasPrewriter prewriter = CasPrewriter.watching(cas, classes);
         Map<String, String> outputs = prewriter.finish();
 
-        assertThat(outputs).doesNotContainKey(FreshnessStamp.JAVA_STAMP);
-        assertThat(outputs).doesNotContainKey(FreshnessStamp.KOTLIN_STAMP);
+        assertThat(outputs).doesNotContainKey(BuildStamps.JAVA);
+        assertThat(outputs).doesNotContainKey(BuildStamps.KOTLIN);
     }
 
     @Test

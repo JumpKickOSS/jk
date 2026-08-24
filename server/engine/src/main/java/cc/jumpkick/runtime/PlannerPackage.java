@@ -5,6 +5,7 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.JarPackager;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.BuildIdentity;
@@ -229,7 +230,7 @@ public final class PlannerPackage {
                     String actionKey = ctx.get(ACTION_KEY).orElse("");
                     FreshnessStamp.write(
                             javaOut,
-                            FreshnessStamp.JAVA_STAMP,
+                            BuildStamps.JAVA,
                             "compile-main",
                             actionKey,
                             sources,
@@ -274,7 +275,7 @@ public final class PlannerPackage {
                     if (mixedWithJava) freshInputs.addAll(javaSources(ctx));
                     FreshnessStamp.write(
                             classes,
-                            FreshnessStamp.KOTLIN_STAMP,
+                            BuildStamps.KOTLIN,
                             TaskNames.COMPILE_KOTLIN,
                             "",
                             freshInputs,
@@ -310,7 +311,7 @@ public final class PlannerPackage {
                     if (mixedGroovy) freshInputs.addAll(javaSources(ctx));
                     FreshnessStamp.write(
                             classes,
-                            FreshnessStamp.GROOVY_STAMP,
+                            BuildStamps.GROOVY,
                             TaskNames.COMPILE_GROOVY,
                             "",
                             freshInputs,

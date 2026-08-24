@@ -3,6 +3,7 @@ package cc.jumpkick.minified;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.BuildStamps;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,6 +35,22 @@ class MinifiedJarPackagerTest {
         Set<String> paths = Set.of("com/ex/Foo$Bar.class");
         assertThat(MinifiedJarPackager.isNestedClassFile("com/ex/Foo$Bar.class", paths))
                 .isFalse();
+    }
+
+    @Test
+    void classes_input_leaves_the_compile_freshness_stamps_behind(@TempDir Path tmp) throws Exception {
+        // R8 copies an unrecognised input straight through, so a stamp taken into the program
+        // input ships in the shrunk jar with a wall clock inside it.
+        Path classes = Files.createDirectories(tmp.resolve("classes/com/ex"));
+        Files.writeString(classes.resolve("A.class"), "class");
+        for (String stamp : BuildStamps.ALL) {
+            Files.writeString(tmp.resolve("classes").resolve(stamp), "STAMP_MILLIS 1758000000000");
+        }
+
+        Path input = tmp.resolve("classes.jar");
+        MinifiedJarPackager.zipClasses(tmp.resolve("classes"), input);
+
+        assertThat(entryNames(input)).containsExactly("com/ex/A.class");
     }
 
     @Test

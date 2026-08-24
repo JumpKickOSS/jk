@@ -433,7 +433,7 @@ public final class JdkInstallCommand implements CliCommand {
             // on its stdin reader thread that macOS won't let us interrupt.
             // The wizard's finally already restored terminal attributes.
             Wizard.printCancellation(terminal, "JDK installation canceled");
-            Runtime.getRuntime().halt(130); // 128 + SIGINT
+            Runtime.getRuntime().halt(Exit.INTERRUPTED);
             throw new AssertionError("unreachable");
         }
         // session close is Terminals.shutdown only
