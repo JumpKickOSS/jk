@@ -74,7 +74,7 @@ public final class Http {
 
     /** Visible for tests — lets the caller shrink the backoff schedule. */
     Http(HttpClient client, Duration[] backoffs) {
-        this(client, backoffs, CentralMirror.standard(cc.jumpkick.util.JkDirs.cache()));
+        this(client, backoffs, CentralMirror.standard());
     }
 
     /** Visible for tests — injects the Central failover so its window can be driven deterministically. */

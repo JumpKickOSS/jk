@@ -3,6 +3,7 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.http.CentralMirror;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.util.Hashing;
@@ -30,6 +31,13 @@ import java.util.function.BooleanSupplier;
  */
 public final class MavenRepo {
 
+    /**
+     * Central failover + the standing download preference: {@link CentralMirror#standard()}, the same
+     * instance the transport holds. Static because the four-hour window is a fact about this machine's
+     * IP rather than about a repository — a per-repository copy would split it.
+     */
+    private static final CentralMirror CENTRAL_MIRROR = CentralMirror.standard();
+
     private final String name;
     private final URI baseUrl;
     private final RepoTransport transport;
@@ -47,10 +55,6 @@ public final class MavenRepo {
      * {@code.sha1} that confirms an {@code ~/.m2} candidate. Null for non-HTTP transports.
      */
     private final cc.jumpkick.http.Http http;
-
-    /** Central failover + the standing download preference. */
-    private final cc.jumpkick.http.CentralMirror centralMirror =
-            cc.jumpkick.http.CentralMirror.standard(cc.jumpkick.util.JkDirs.store());
 
     /** Artifacts pinned this run without an upstream checksum sidecar. */
     private final AtomicInteger missingUpstreamChecksums = new AtomicInteger();
@@ -301,7 +305,7 @@ public final class MavenRepo {
         warnPlaintextHttpOnce();
         URI uri = baseUrl.resolve(relativePath);
         // Pinned bytes prefer the mirror; enumeration stays on Central (see Leg).
-        URI primary = leg == Leg.ARTIFACT ? centralMirror.routeForDownload(uri) : uri;
+        URI primary = leg == Leg.ARTIFACT ? CENTRAL_MIRROR.routeForDownload(uri) : uri;
         // Before paying for the artifact, see whether the machine's Maven repository already has it
         // . Confirmed against a checksum fetched from THIS repository, so ~/.m2 is only ever a
         // candidate for bytes the remote vouches for.
