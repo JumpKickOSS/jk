@@ -166,8 +166,10 @@ public final class AssemblyPackager {
     private static List<Path> collectFiles(Path root) throws IOException {
         if (!Files.exists(root)) return List.of();
         List<Path> result = new ArrayList<>();
-        try (Stream<Path> stream = Files.walk(root)) {
-            stream.filter(Files::isRegularFile).forEach(result::add);
+        // Files.find, not walk+isRegularFile: the walk already read each entry's attributes, and
+        // re-resolving every path to ask again is the dominant cost of packaging a large tree.
+        try (Stream<Path> stream = Files.find(root, Integer.MAX_VALUE, (p, attrs) -> attrs.isRegularFile())) {
+            stream.forEach(result::add);
         }
         return result;
     }
