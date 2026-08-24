@@ -501,6 +501,9 @@ public final class ActionCache {
      * {@link ActionRecord} keyed by {@code actionKey}, with each artifact's {@code baseDir}-relative
      * path as its output key. The companion of {@link #restoreArtifacts} for single/few-file
      * packaging.
+     *
+     * <p>Refuses an empty output set. {@link #restoreArtifacts} treats empty outputs as a miss, so
+     * persisting one would look like a hit and then rebuild anyway.
      */
     public ActionRecord storeArtifacts(
             String taskId, String actionKey, Map<String, String> inputs, Path baseDir, List<Path> artifacts)
@@ -515,6 +518,9 @@ public final class ActionCache {
             String rel = baseDir.relativize(a).toString().replace(File.separatorChar, '/');
             outputs.put(rel, hex);
             if (Files.isExecutable(a)) executables.add(rel);
+        }
+        if (outputs.isEmpty()) {
+            throw new IOException("packaging produced no files to cache: " + artifacts);
         }
         return storeWithOutputs(taskId, actionKey, inputs, outputs, Map.of(), executables);
     }

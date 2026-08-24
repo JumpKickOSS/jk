@@ -853,7 +853,7 @@ public final class ExecPlans {
         Path nativeBin = layout.nativeBinary();
         if (Files.isRegularFile(nativeBin)) {
             String bin = firstNonBlank(binName, nativeName, p.name());
-            Path dest = binDir.resolve(bin);
+            Path dest = binDir.resolve(BuildLayout.nativeExecutableFileName(bin));
             return installAck(
                     List.of(nativeBin.toAbsolutePath().toString()), List.of(dest.toString()), "", "", dest.toString());
         }

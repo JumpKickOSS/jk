@@ -897,8 +897,8 @@ public final class BuildPlanner {
         return PlannerNative.formatNativeInputMib(bytes);
     }
 
-    static String nativeOutputDisplayName(Path out, boolean shared) {
-        return PlannerNative.nativeOutputDisplayName(out, shared);
+    static String nativeOutputDisplayName(Path out) {
+        return PlannerNative.nativeOutputDisplayName(out);
     }
 
     static Path resolveNativeImageHome(Path graalHome, Path projectDir, Path jdksDir) {

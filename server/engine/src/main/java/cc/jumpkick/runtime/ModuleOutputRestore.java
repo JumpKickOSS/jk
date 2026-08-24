@@ -73,13 +73,7 @@ public final class ModuleOutputRestore {
             restoreArtifact(ac, TaskNames.PACKAGE_ASSEMBLY, layout.assemblyJar());
         }
         if (build.nativeMode() == JkBuild.NativeMode.ALWAYS) {
-            // Same [native].name override as the probe/PlannerNative.
-            Path nativeOut = build.nativeConfig()
-                    .map(JkBuild.NativeConfig::name)
-                    .filter(n -> n != null && !n.isBlank())
-                    .map(n -> layout.moduleTargetDir().resolve(n))
-                    .orElse(layout.nativeBinary());
-            restoreArtifact(ac, TaskNames.NATIVE_IMAGE, nativeOut);
+            restoreArtifact(ac, TaskNames.NATIVE_IMAGE, layout.nativeBinary());
         }
 
         return !packageOutputsMissing(workspaceRoot, moduleDir, build);
@@ -139,27 +133,18 @@ public final class ModuleOutputRestore {
     }
 
     private static boolean nativePresent(BuildLayout layout, JkBuild build) {
-        // [native].name overrides the artifact-derived filename (PlannerNative writes
-        // target/<name>); probing only nativeBinary() flagged jk-cli (binary "jk", artifact
-        // "jk-cli") restore-needed on every fully-cached build (JK-2214).
+        // nativeBinary() already applies [native].name and the Windows .exe suffix.
+        if (Files.isRegularFile(layout.nativeBinary())) return true;
         String named = build.nativeConfig()
                 .map(JkBuild.NativeConfig::name)
                 .filter(n -> n != null && !n.isBlank())
                 .orElse(null);
-        if (named != null) {
-            Path base = layout.moduleTargetDir();
-            if (Files.isRegularFile(base.resolve(named))) return true;
-            String lib = named.startsWith("lib") ? named : "lib" + named;
-            if (Files.isRegularFile(base.resolve(lib + ".so"))
-                    || Files.isRegularFile(base.resolve(lib + ".dylib"))
-                    || Files.isRegularFile(base.resolve(lib + ".dll"))) {
-                return true;
-            }
-        }
-        return Files.isRegularFile(layout.nativeBinary())
-                || Files.isRegularFile(Path.of(layout.nativeLibrary() + ".so"))
-                || Files.isRegularFile(Path.of(layout.nativeLibrary() + ".dylib"))
-                || Files.isRegularFile(Path.of(layout.nativeLibrary() + ".dll"));
+        Path libBase = named != null
+                ? layout.moduleTargetDir().resolve(named.startsWith("lib") ? named : "lib" + named)
+                : layout.nativeLibrary();
+        return Files.isRegularFile(Path.of(libBase + ".so"))
+                || Files.isRegularFile(Path.of(libBase + ".dylib"))
+                || Files.isRegularFile(Path.of(libBase + ".dll"));
     }
 
     private static boolean hasMainSources(Path moduleDir, JkBuild build) {
