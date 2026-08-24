@@ -29,7 +29,7 @@ public final class ExplodedArchives {
 
     /** The exploded dir for an arbitrary archive file (a workspace sibling's AAR), keyed by its content. */
     public static Path explodeFile(Cas cas, Path archive) throws IOException {
-        String hex = cc.jumpkick.util.Hashing.sha256Hex(archive);
+        String hex = cc.jumpkick.host.Hashing.sha256Hex(archive);
         return explodeFile(cas, archive, hex);
     }
 
@@ -71,7 +71,7 @@ public final class ExplodedArchives {
             cc.jumpkick.util.AtomicWrites.publishDir(staging, dir);
         } catch (IOException e) {
             if (!Files.isDirectory(dir)) throw e; // lost a race — the winner's dir serves
-            cc.jumpkick.util.PathUtil.deleteRecursively(staging);
+            cc.jumpkick.host.PathUtil.deleteRecursively(staging);
         }
         return dir;
     }

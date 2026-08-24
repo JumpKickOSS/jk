@@ -149,10 +149,10 @@ public final class M2CompatWriter {
     }
 
     private static MessageDigest newDigest(String algorithm) {
-        return cc.jumpkick.util.Hashing.newDigest(algorithm);
+        return cc.jumpkick.host.Hashing.newDigest(algorithm);
     }
 
     private static String hex(byte[] digest) {
-        return cc.jumpkick.util.Hashing.hex(digest);
+        return cc.jumpkick.host.Hashing.hex(digest);
     }
 }

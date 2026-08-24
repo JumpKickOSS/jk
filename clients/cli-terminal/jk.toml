@@ -2,6 +2,9 @@ name = "jk-cli-terminal"
 description = "Controlling TTY, VT style, and keys for the native CLI"
 java = 25
 
+[dependencies]
+jk-host.workspace = true
+
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"

@@ -2,8 +2,8 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.HostPlatform;
-import cc.jumpkick.util.PathUtil;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -257,7 +257,7 @@ final class AotCachePackage {
             String builtFrom = valueOf(text, "built-from");
             if (recorded.isEmpty() || builtFrom.isEmpty()) return;
             Path jar = Path.of(builtFrom);
-            String actual = Files.isRegularFile(jar) ? cc.jumpkick.util.Hashing.sha256Hex(jar) : "";
+            String actual = Files.isRegularFile(jar) ? cc.jumpkick.host.Hashing.sha256Hex(jar) : "";
             // The lock is the dependency closure's identity: a dep-only bump rebuilds nothing
             // in the thin main jar, but run.sh would keep executing stale lib/ copies. A
             // manifest without the lock key cannot be validated.
@@ -274,7 +274,7 @@ final class AotCachePackage {
     /** sha256 of the module's lockfile, or empty when there is none. */
     private static String currentLockSha(Path projectDir) throws IOException {
         Path lock = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
-        return Files.isRegularFile(lock) ? cc.jumpkick.util.Hashing.sha256Hex(lock) : "";
+        return Files.isRegularFile(lock) ? cc.jumpkick.host.Hashing.sha256Hex(lock) : "";
     }
 
     /** {@code <target>/aot-cache} for a module, or null when there is none. */
@@ -314,7 +314,7 @@ final class AotCachePackage {
         // The jar the layout was derived from, not the extracted copy inside outDir — the copy
         // never changes on its own, so comparing it to itself would always look fresh. The lock
         // pins the dependency closure the lib/ copies came from for the same reason.
-        String appSha = Files.isRegularFile(sourceJar) ? cc.jumpkick.util.Hashing.sha256Hex(sourceJar) : "";
+        String appSha = Files.isRegularFile(sourceJar) ? cc.jumpkick.host.Hashing.sha256Hex(sourceJar) : "";
         Files.writeString(outDir.resolve(MANIFEST), """
                 # Written by `jk build --aot-cache`. The cache is void if this directory moves, the
                 # jars change, or a JVM other than the one below runs it — the JVM reports none of

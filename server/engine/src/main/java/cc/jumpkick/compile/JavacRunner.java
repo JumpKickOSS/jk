@@ -2,8 +2,8 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.HostPlatform;
-import cc.jumpkick.util.PathUtil;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;

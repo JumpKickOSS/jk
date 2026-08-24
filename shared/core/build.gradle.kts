@@ -5,13 +5,15 @@ plugins {
 }
 
 description = "jk core foundations: TOML config parser, lockfile, layout, library catalog, deny " +
-        "policy, plus the shared filesystem/hashing/XML machinery (PathUtil, Hashing, TreeFingerprint, " +
-        "JkDirs, GitUrl, MinimalXml, AtomicWrites) absorbed from the former :support module"
+        "policy, plus the shared filesystem/XML machinery (JkDirs, GitUrl, MinimalXml, AtomicWrites) " +
+        "absorbed from the former :support module. Hashing/PathUtil/Errors moved down to :host so " +
+        "plugin workers can reach them without :core's tomlj."
 
 dependencies {
     api(project(":jk-api"))
-    // MiniJson / Jsonl live in :jsonl. Plugin tables on JkBuild use model.PluginConfig.
-    api(project(":jsonl"))
+    // MiniJson / Jsonl / Hashing / PathUtil / Errors live in :host. Plugin tables on JkBuild
+    // use model.PluginConfig.
+    api(project(":host"))
     api(libs.tomlj)
 }
 

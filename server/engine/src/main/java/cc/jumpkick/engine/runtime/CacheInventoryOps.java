@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.protocol.CacheInventoryAck;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactStore;
@@ -13,7 +14,6 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.Bound;
 import cc.jumpkick.task.CacheTier;
 import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.util.PathUtil;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
@@ -256,7 +256,7 @@ public final class CacheInventoryOps {
             try {
                 coord = Coordinate.parse(spec);
             } catch (IllegalArgumentException e) {
-                return CacheInventoryAck.error(cc.jumpkick.util.Errors.text(e));
+                return CacheInventoryAck.error(cc.jumpkick.host.Errors.text(e));
             }
             String relPath = MavenLayout.artifactPath(coord);
             List<String> hitRepos = new ArrayList<>();

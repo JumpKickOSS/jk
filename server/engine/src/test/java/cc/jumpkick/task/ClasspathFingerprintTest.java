@@ -65,7 +65,7 @@ class ClasspathFingerprintTest {
         Path res = Files.createDirectories(dir.resolve("resources"));
         write(res.resolve("app.properties"), "x=1\n");
         Map<String, String> compileOut =
-                Map.of("a/A.class", cc.jumpkick.util.Hashing.sha256Hex(classes.resolve("a/A.class")));
+                Map.of("a/A.class", cc.jumpkick.host.Hashing.sha256Hex(classes.resolve("a/A.class")));
         String reconstructed = ClasspathFingerprint.entryFromCompileAndResources(compileOut, List.of(res));
         assertThat(reconstructed).isEqualTo(live);
     }
@@ -77,7 +77,7 @@ class ClasspathFingerprintTest {
         write(classes.resolve(FreshnessStamp.JAVA_STAMP), "stamp-noise");
         String live = ClasspathFingerprint.entry(classes);
         Map<String, String> outs = new LinkedHashMap<>();
-        outs.put("A.class", cc.jumpkick.util.Hashing.sha256Hex(classes.resolve("A.class")));
+        outs.put("A.class", cc.jumpkick.host.Hashing.sha256Hex(classes.resolve("A.class")));
         outs.put(FreshnessStamp.JAVA_STAMP, "deadbeef");
         assertThat(ClasspathFingerprint.entryFromOutputDigests(outs)).isEqualTo(live);
     }

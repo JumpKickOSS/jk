@@ -48,7 +48,7 @@ public final class ProjectInfoVerb implements HostedVerb {
                         Jsonl.str(requestLine, "affectedSince"),
                         Jsonl.bool(requestLine, "counts", false));
             } catch (RuntimeException e) {
-                info = cc.jumpkick.engine.protocol.ProjectInfo.error(cc.jumpkick.util.Errors.text(e));
+                info = cc.jumpkick.engine.protocol.ProjectInfo.error(cc.jumpkick.host.Errors.text(e));
             }
             host.sendQuiet(writer, info.encode());
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
-import cc.jumpkick.util.Hashing;
+import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
@@ -15,10 +15,10 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * SHA-256 fingerprint of a JDK install tree (including {@link JdkOwnership#MARKER}). Same
- * aggregation as {@link cc.jumpkick.util.TreeFingerprint} — sorted {@code <relpath>\0<file-sha256>\n}
- * lines, then SHA-256 of that manifest — but streams each file so {@code lib/modules} never sits
- * in memory. Does not follow symlinks.
+ * SHA-256 fingerprint of an installed tool tree — a JDK (including {@link JdkOwnership#MARKER}), or
+ * any tool home {@code jk doctor} verifies. Sorted {@code <relpath>\0<file-sha256>\n} lines, then
+ * SHA-256 of that manifest, streaming each file so {@code lib/modules} never sits in memory. Does
+ * not follow symlinks.
  */
 public final class JdkFingerprint {
 

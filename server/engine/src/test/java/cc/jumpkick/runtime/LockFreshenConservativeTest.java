@@ -318,7 +318,7 @@ class LockFreshenConservativeTest {
         if (!root.endsWith("/")) root = root + "/";
         URI metaUri = URI.create(root).resolve("com/foo/lib/maven-metadata.xml");
         Path metaDir = cc.jumpkick.cache.JkStores.store().resolve("metadata");
-        Path body = metaDir.resolve(cc.jumpkick.util.Hashing.sha256Hex(metaUri.toString()));
+        Path body = metaDir.resolve(cc.jumpkick.host.Hashing.sha256Hex(metaUri.toString()));
         Files.deleteIfExists(body);
         Files.deleteIfExists(body.resolveSibling(body.getFileName() + ".h"));
     }

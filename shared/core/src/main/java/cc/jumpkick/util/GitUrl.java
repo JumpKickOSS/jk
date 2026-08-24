@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.util;
 
+import cc.jumpkick.host.Hashing;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;

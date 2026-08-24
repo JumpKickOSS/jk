@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.TrainConfig;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.layout.BuildLayout;
@@ -11,7 +12,6 @@ import cc.jumpkick.surface.DynamicSurface;
 import cc.jumpkick.surface.DynamicSurfaceIo;
 import cc.jumpkick.surface.KeepRuleEmitter;
 import cc.jumpkick.surface.TrainLayout;
-import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
-import cc.jumpkick.util.Hashing;
+import cc.jumpkick.host.Hashing;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;

@@ -609,7 +609,7 @@ public final class HttpEngineServer implements AutoCloseable {
         java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
         Path root;
         try {
-            root = cc.jumpkick.util.PathUtil.resolveUserPath(dir);
+            root = cc.jumpkick.host.PathUtil.resolveUserPath(dir);
         } catch (IllegalArgumentException e) {
             m.put("dir", dir);
             return m;

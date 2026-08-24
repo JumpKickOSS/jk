@@ -1212,7 +1212,7 @@ class HttpEngineServerTest {
                     .contains("\"hasJkToml\":true");
             assertThat(fromRel.body()).contains("\"dir\":\"" + pick + "\"");
         } finally {
-            cc.jumpkick.util.PathUtil.deleteRecursively(pick);
+            cc.jumpkick.host.PathUtil.deleteRecursively(pick);
         }
     }
 

@@ -11,8 +11,8 @@ import cc.jumpkick.engine.http.mcp.McpProjectCards;
 import cc.jumpkick.engine.http.mcp.McpReads;
 import cc.jumpkick.engine.http.mcp.McpSession;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.MiniJson;
-import cc.jumpkick.util.PathUtil;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -769,7 +769,7 @@ public final class McpHandler {
         } catch (IllegalStateException e) {
             throw new McpError(-32000, e.getMessage());
         } catch (IOException e) {
-            throw new McpError(-32000, cc.jumpkick.util.Errors.text(e));
+            throw new McpError(-32000, cc.jumpkick.host.Errors.text(e));
         }
     }
 

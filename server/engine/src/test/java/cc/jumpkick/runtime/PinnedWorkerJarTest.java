@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.repo.RepoArtifactStore;
-import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;

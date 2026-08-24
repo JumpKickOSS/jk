@@ -3,10 +3,10 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.CentralMirror;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
-import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;

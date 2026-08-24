@@ -2,10 +2,10 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;

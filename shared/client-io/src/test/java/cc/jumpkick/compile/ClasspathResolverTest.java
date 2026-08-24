@@ -4,10 +4,10 @@ package cc.jumpkick.compile;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.RepoArtifactStore;
-import cc.jumpkick.util.Hashing;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;

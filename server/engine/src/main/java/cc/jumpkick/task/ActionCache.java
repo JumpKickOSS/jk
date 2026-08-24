@@ -3,8 +3,8 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.Hashing;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -671,6 +671,6 @@ public final class ActionCache {
     }
 
     private static void deleteRecursively(Path target) throws IOException {
-        cc.jumpkick.util.PathUtil.deleteRecursivelyOrThrow(target);
+        cc.jumpkick.host.PathUtil.deleteRecursivelyOrThrow(target);
     }
 }

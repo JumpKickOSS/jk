@@ -4,7 +4,7 @@ description = "Client–engine wire protocol and build DTOs"
 [dependencies]
 jk-model.workspace = true
 jk-core.workspace = true
-jk-jsonl.workspace = true
+jk-host.workspace = true
 
 [test-dependencies]
 assertj-core = "latest"

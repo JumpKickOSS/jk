@@ -148,7 +148,7 @@ public final class EngineHttpFront {
     }
 
     private static Path requireProject(String dirStr) {
-        Path entryDir = cc.jumpkick.util.PathUtil.resolveUserPath(dirStr);
+        Path entryDir = cc.jumpkick.host.PathUtil.resolveUserPath(dirStr);
         if (!Files.isRegularFile(entryDir.resolve("jk.toml"))) {
             throw new IllegalArgumentException("no jk.toml in " + entryDir);
         }

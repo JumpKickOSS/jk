@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.util;
+package cc.jumpkick.host;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,6 +10,12 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 
+/**
+ * The one digest surface in the tree: SHA-256 by default, any JDK-mandated algorithm on
+ * request, and the single spelling of lowercase hex. Lives in the {@code :host} leaf so the
+ * native client, the engine and every plugin worker share it — naming the algorithm or
+ * hand-encoding hex anywhere else is a defect, not a style choice.
+ */
 public final class Hashing {
 
     private Hashing() {}

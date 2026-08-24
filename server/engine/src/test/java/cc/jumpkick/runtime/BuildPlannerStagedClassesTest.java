@@ -75,7 +75,7 @@ class BuildPlannerStagedClassesTest {
         Fixture f = fixture(tmp);
         Files.writeString(f.classes.resolve("Kept.class"), "kept");
         // The declared step exists but never ran, so its scratch dir is absent.
-        cc.jumpkick.util.PathUtil.deleteRecursivelyOrThrow(f.contributed);
+        cc.jumpkick.host.PathUtil.deleteRecursivelyOrThrow(f.contributed);
 
         Path staged = BuildPlanner.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
 
@@ -133,7 +133,7 @@ class BuildPlannerStagedClassesTest {
         Files.writeString(f.contributed.resolve("Generated.class"), "generated");
 
         Path stage = BuildPlanner.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
-        cc.jumpkick.util.PathUtil.deleteRecursivelyOrThrow(stage);
+        cc.jumpkick.host.PathUtil.deleteRecursivelyOrThrow(stage);
 
         assertThat(BuildPlanner.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout))
                 .isEqualTo(stage);

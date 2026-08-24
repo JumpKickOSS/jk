@@ -3,10 +3,10 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.UserPlugins;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.runtime.PluginDescriptorOps;
-import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.io.InputStream;

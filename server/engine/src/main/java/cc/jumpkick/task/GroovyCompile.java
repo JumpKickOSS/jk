@@ -116,10 +116,10 @@ public final class GroovyCompile {
      * stubs and ships stub-bodied phantom classes instead of erroring.
      */
     private static void wipe(GroovycRequest request) throws IOException {
-        cc.jumpkick.util.PathUtil.deleteRecursively(request.outputDir());
+        cc.jumpkick.host.PathUtil.deleteRecursively(request.outputDir());
         Files.createDirectories(request.outputDir());
         if (request.stubsOut() != null) {
-            cc.jumpkick.util.PathUtil.deleteRecursively(request.stubsOut());
+            cc.jumpkick.host.PathUtil.deleteRecursively(request.stubsOut());
             Files.createDirectories(request.stubsOut());
         }
     }

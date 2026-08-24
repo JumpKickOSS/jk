@@ -56,7 +56,7 @@ public final class ExecPlanVerb implements HostedVerb {
                         ProtoSession.variantOf(requestLine),
                         ProtoSession.clientEnvOf(requestLine));
             } catch (RuntimeException e) {
-                plan = cc.jumpkick.engine.protocol.ExecPlan.error("unknown", cc.jumpkick.util.Errors.text(e));
+                plan = cc.jumpkick.engine.protocol.ExecPlan.error("unknown", cc.jumpkick.host.Errors.text(e));
             }
             host.sendQuiet(writer, plan.encode());
 

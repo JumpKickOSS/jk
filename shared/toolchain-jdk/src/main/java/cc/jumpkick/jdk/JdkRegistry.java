@@ -450,6 +450,6 @@ public final class JdkRegistry {
     }
 
     private static void deleteRecursively(Path root) {
-        cc.jumpkick.util.PathUtil.deleteRecursively(root);
+        cc.jumpkick.host.PathUtil.deleteRecursively(root);
     }
 }

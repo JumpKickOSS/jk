@@ -5,10 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactStore;
-import cc.jumpkick.util.Hashing;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -140,7 +140,7 @@ class LibrarySearchCommandTest {
         if (Files.isDirectory(repos)) {
             try (var names = Files.list(repos)) {
                 for (Path repo : names.toList()) {
-                    cc.jumpkick.util.PathUtil.deleteRecursively(repo.resolve("commons-io"));
+                    cc.jumpkick.host.PathUtil.deleteRecursively(repo.resolve("commons-io"));
                 }
             }
         }

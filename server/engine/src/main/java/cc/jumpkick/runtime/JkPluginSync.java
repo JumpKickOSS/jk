@@ -70,7 +70,7 @@ public final class JkPluginSync {
             }
 
             try {
-                String hex = cc.jumpkick.util.Hashing.sha256Hex(m2Jar);
+                String hex = cc.jumpkick.host.Hashing.sha256Hex(m2Jar);
                 localStore.materialize(relPath, m2Jar, hex);
                 fetched++;
                 obs.fetched(w.artifactId());

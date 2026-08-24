@@ -109,7 +109,7 @@ public final class PlannerLang {
         // BTA's IC sees "no source changes" after an args/plugins/module-name change and would
         // emit nothing into a clean output dir. Key the working dir by a config hash so any
         // config change starts fresh IC state (stale dirs age out with the cache).
-        String configToken = cc.jumpkick.util.Hashing.sha256Hex((CompileSupport.kotlinJvmTarget(ctx.require(RELEASE))
+        String configToken = cc.jumpkick.host.Hashing.sha256Hex((CompileSupport.kotlinJvmTarget(ctx.require(RELEASE))
                                 + "|" + moduleName + "|" + String.join(",", ktArgs) + "|"
                                 + ktPlugins.stream()
                                         .map(p -> p.id() + "=" + p.options())

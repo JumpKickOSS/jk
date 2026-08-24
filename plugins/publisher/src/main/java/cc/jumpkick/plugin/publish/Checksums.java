@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.publish;
 
-import cc.jumpkick.util.Hashing;
+import cc.jumpkick.host.Hashing;
 
 /**
  * Hex digests for Maven checksum sidecars: {@code .md5}, {@code .sha1}, {@code .sha256}, {@code

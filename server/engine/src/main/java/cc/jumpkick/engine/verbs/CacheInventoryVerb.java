@@ -71,7 +71,7 @@ public final class CacheInventoryVerb implements HostedVerb {
                     ack = CacheInventoryOps.run(req);
                 }
             } catch (Exception e) {
-                ack = CacheInventoryAck.error(cc.jumpkick.util.Errors.text(e));
+                ack = CacheInventoryAck.error(cc.jumpkick.host.Errors.text(e));
             }
             host.sendQuiet(writer, ack.encode());
         } catch (Exception e) {

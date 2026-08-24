@@ -229,7 +229,7 @@ public final class PlannerKsp {
 
                     // A stale round's outputs must not survive into the source union.
                     for (String sub : List.of("kotlin", "java", "classes", "resources")) {
-                        cc.jumpkick.util.PathUtil.deleteRecursively(outBase.resolve(sub));
+                        cc.jumpkick.host.PathUtil.deleteRecursively(outBase.resolve(sub));
                     }
                     Files.createDirectories(outBase.resolve("caches"));
 

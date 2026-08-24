@@ -137,7 +137,7 @@ public final class ReachabilityMetadata {
         } catch (IOException e) {
             // Another build won the race (publishDir handles a non-atomic FS itself): fine if the
             // winner completed.
-            cc.jumpkick.util.PathUtil.deleteRecursively(tmp);
+            cc.jumpkick.host.PathUtil.deleteRecursively(tmp);
             if (!Files.isRegularFile(marker)) throw e;
         }
         return root;

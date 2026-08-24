@@ -94,7 +94,7 @@ public final class PlannerPackage {
                             "classes:" + cc.jumpkick.task.ClasspathFingerprint.entry(classes),
                             "contrib:" + contributionsToken(contributed),
                             "main:" + (mainClass == null ? "" : mainClass),
-                            "sbom:" + (sbom == null ? "" : cc.jumpkick.util.Hashing.sha256Hex(sbom)),
+                            "sbom:" + (sbom == null ? "" : cc.jumpkick.host.Hashing.sha256Hex(sbom)),
                             "manifest:" + project.manifest());
                     String pkgTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, jarPath);
                     String pkgKey =

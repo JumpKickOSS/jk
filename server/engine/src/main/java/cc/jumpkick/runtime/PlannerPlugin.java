@@ -310,7 +310,7 @@ public final class PlannerPlugin {
                         }
                     }
 
-                    cc.jumpkick.util.PathUtil.deleteRecursively(scratch); // stale outputs never survive
+                    cc.jumpkick.host.PathUtil.deleteRecursively(scratch); // stale outputs never survive
                     Files.createDirectories(scratch);
                     ctx.label(step.name());
                     cc.jumpkick.plugin.protocol.SpecWriter specWriter = new cc.jumpkick.plugin.protocol.SpecWriter()
@@ -423,7 +423,7 @@ public final class PlannerPlugin {
                 sb.append(e.getKey()).append('=').append(e.getValue()).append('\n');
             }
             tokens.add("secrets:"
-                    + cc.jumpkick.util.Hashing.sha256Hex(sb.toString().getBytes(StandardCharsets.UTF_8)));
+                    + cc.jumpkick.host.Hashing.sha256Hex(sb.toString().getBytes(StandardCharsets.UTF_8)));
         }
         // [manifest] attributes ride inside the facts token — they reach the packager, so they key it.
         tokens.add("facts:" + facts.token());

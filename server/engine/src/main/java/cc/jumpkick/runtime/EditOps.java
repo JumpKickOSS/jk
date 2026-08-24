@@ -58,7 +58,7 @@ public final class EditOps {
             Files.writeString(file, updated, StandardCharsets.UTF_8);
             return new Result(true, null, detail);
         } catch (IOException | RuntimeException e) {
-            return new Result(false, cc.jumpkick.util.Errors.text(e));
+            return new Result(false, cc.jumpkick.host.Errors.text(e));
         }
     }
 
@@ -67,7 +67,7 @@ public final class EditOps {
     /** Args: scope, library, group, artifact, version, filePath. Engine hashes and CAS-puts. */
     private static FileDep addFileDependency(String original, List<String> args) throws IOException {
         Path src = Path.of(args.get(5));
-        String sha256 = cc.jumpkick.util.Hashing.sha256Hex(src);
+        String sha256 = cc.jumpkick.host.Hashing.sha256Hex(src);
         cc.jumpkick.cache.JkStores.cas(cc.jumpkick.util.JkDirs.cache()).putFile(src, sha256);
         String toml = JkBuildEditor.addFileDependency(
                 original, Scope.fromCanonical(args.get(0)), args.get(1), args.get(2), args.get(3), args.get(4), sha256);

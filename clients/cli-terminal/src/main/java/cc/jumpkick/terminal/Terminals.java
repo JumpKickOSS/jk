@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.terminal;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.terminal.posix.PosixTty;
 import cc.jumpkick.terminal.windows.WindowsConsole;
 import cc.jumpkick.terminal.windows.WindowsUtf8;

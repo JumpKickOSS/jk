@@ -36,14 +36,14 @@ class TaskForecasterPackageKeyTest {
         List<String> buildTokens = List.of(
                 "classes:" + ClasspathFingerprint.entry(classes),
                 "main:" + mainClass,
-                "sbom:" + (sbom == null ? "" : cc.jumpkick.util.Hashing.sha256Hex(sbom)),
+                "sbom:" + (sbom == null ? "" : cc.jumpkick.host.Hashing.sha256Hex(sbom)),
                 "manifest:" + manifest);
 
         // Forecast tokens after fix (must stay in lockstep with the build).
         List<String> forecastTokens = List.of(
                 "classes:" + ClasspathFingerprint.entry(classes),
                 "main:" + mainClass,
-                "sbom:" + (sbom == null ? "" : cc.jumpkick.util.Hashing.sha256Hex(sbom)),
+                "sbom:" + (sbom == null ? "" : cc.jumpkick.host.Hashing.sha256Hex(sbom)),
                 "manifest:" + manifest);
 
         assertThat(forecastTokens).isEqualTo(buildTokens);
@@ -64,7 +64,7 @@ class TaskForecasterPackageKeyTest {
         // the pinned sha names a payload blob in the CACHE-tier pool the action records
         // write to — recovery must consult the action cache's own CAS, not the artifact store.
         byte[] bytes = "sibling-jar-bytes".getBytes(StandardCharsets.UTF_8);
-        String sha = cc.jumpkick.util.Hashing.sha256Hex(bytes);
+        String sha = cc.jumpkick.host.Hashing.sha256Hex(bytes);
         Path cacheRoot = tmp.resolve("cache");
         var actionCache = new cc.jumpkick.task.ActionCache(
                 cc.jumpkick.cache.JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
@@ -90,7 +90,7 @@ class TaskForecasterPackageKeyTest {
         var ac = new cc.jumpkick.task.ActionCache(
                 cc.jumpkick.cache.JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
         byte[] bytes = "payload".getBytes(StandardCharsets.UTF_8);
-        String sha = cc.jumpkick.util.Hashing.sha256Hex(bytes);
+        String sha = cc.jumpkick.host.Hashing.sha256Hex(bytes);
         Path blob = ac.cas().put(bytes, sha);
         ac.storeWithOutputs("task@x", "key-1", Map.of(), Map.of("lib.jar", sha), Map.of());
 

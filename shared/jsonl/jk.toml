@@ -1,8 +1,0 @@
-name = "jk-jsonl"
-description = "JSONL field codec and MiniJson tree codec (CLI wire + plugin workers)"
-# Workers load on user JVMs (JDK 17+); stay on release 17.
-java = 17
-
-[test-dependencies]
-assertj-core = "latest"
-junit-jupiter = "latest"

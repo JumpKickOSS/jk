@@ -867,7 +867,7 @@ public final class PlannerSupport {
         for (Path dir : contributed) {
             sb.append(cc.jumpkick.task.ClasspathFingerprint.entry(dir)).append('\n');
         }
-        return cc.jumpkick.util.Hashing.sha256Hex(sb.toString());
+        return cc.jumpkick.host.Hashing.sha256Hex(sb.toString());
     }
 
     /**
@@ -892,7 +892,7 @@ public final class PlannerSupport {
         // only overwrites paths it reproduces, so a survivor from a previous build (a renamed or
         // no-longer-emitted class) would be packaged, and the packaging key is taken over this
         // dir — so the wrong content is what gets cached and restored.
-        cc.jumpkick.util.PathUtil.deleteRecursivelyOrThrow(stage);
+        cc.jumpkick.host.PathUtil.deleteRecursivelyOrThrow(stage);
         Files.createDirectories(stage);
         copyTreeInto(classes, stage);
         for (Path contrib : extra) copyTreeInto(contrib, stage);

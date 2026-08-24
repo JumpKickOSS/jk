@@ -312,7 +312,7 @@ public final class NewProjectOps {
         String parentRaw = req.parentDir() == null ? "" : req.parentDir().strip();
         if (parentRaw.isEmpty()) throw new IllegalArgumentException("missing \"parentDir\"");
         // Same rules as the activity Build path: ~ and relatives resolve against user.home.
-        Path parent = cc.jumpkick.util.PathUtil.resolveUserPath(parentRaw);
+        Path parent = cc.jumpkick.host.PathUtil.resolveUserPath(parentRaw);
         if (!req.relaxParent()) assertAllowedParent(parent);
         if (!Files.isDirectory(parent)) {
             throw new IllegalArgumentException("parentDir is not a directory: " + parent);
@@ -321,7 +321,7 @@ public final class NewProjectOps {
         Path target;
         String targetRaw = req.targetDir() == null ? "" : req.targetDir().strip();
         if (!targetRaw.isEmpty()) {
-            target = cc.jumpkick.util.PathUtil.resolveUserPath(targetRaw).normalize();
+            target = cc.jumpkick.host.PathUtil.resolveUserPath(targetRaw).normalize();
             // targetDir gets the same allowlist gate as parentDir.
             if (!req.relaxParent()) assertAllowedParent(target.getParent() != null ? target.getParent() : target);
         } else {

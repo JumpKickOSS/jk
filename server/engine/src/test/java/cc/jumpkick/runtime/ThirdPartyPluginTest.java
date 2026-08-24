@@ -96,7 +96,7 @@ class ThirdPartyPluginTest {
                 .resolve(ARTIFACT)
                 .resolve(VERSION)
                 .resolve(ARTIFACT + "-" + VERSION + ".jar");
-        String hex = cc.jumpkick.util.Hashing.sha256Hex(jar);
+        String hex = cc.jumpkick.host.Hashing.sha256Hex(jar);
 
         Files.writeString(project.resolve("jk.toml"), """
                 name = "demo"
@@ -203,7 +203,7 @@ class ThirdPartyPluginTest {
                 .resolve(ARTIFACT)
                 .resolve(version)
                 .resolve(ARTIFACT + "-" + version + ".jar");
-        String hex = cc.jumpkick.util.Hashing.sha256Hex(jar);
+        String hex = cc.jumpkick.host.Hashing.sha256Hex(jar);
 
         Files.writeString(tmp.resolve("jk.toml"), """
                 name = "demo"

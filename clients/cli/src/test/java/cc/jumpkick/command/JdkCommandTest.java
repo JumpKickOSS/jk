@@ -6,8 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MockMavenServer;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.HostPlatform;
-import cc.jumpkick.util.Hashing;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;

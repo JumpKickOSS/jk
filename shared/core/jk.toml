@@ -3,7 +3,7 @@ description = "Core library: config, lockfile, layout, and policy"
 
 [dependencies]
 jk-model.workspace = true
-jk-jsonl.workspace = true
+jk-host.workspace = true
 tomlj = "latest"
 
 [provided-dependencies]

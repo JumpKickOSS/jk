@@ -71,7 +71,7 @@ public final class OutdatedVerb implements HostedVerb {
                         () -> cc.jumpkick.runtime.OutdatedPlans.compute(
                                 dir, cache, repoUrl == null ? null : URI.create(repoUrl)));
             } catch (Exception e) {
-                report = cc.jumpkick.engine.protocol.OutdatedReport.error(cc.jumpkick.util.Errors.text(e));
+                report = cc.jumpkick.engine.protocol.OutdatedReport.error(cc.jumpkick.host.Errors.text(e));
             }
             host.sendQuiet(writer, report.encode());
 

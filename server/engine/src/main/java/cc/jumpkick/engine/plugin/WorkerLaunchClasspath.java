@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 /**
  * Classpath used to fork a thin plugin worker: the worker jar plus the Maven runtime closure from
  * its POM ({@code repos/jk-local} / {@code jumpkick} / {@code central}). A workspace {@code target/}
- * worker also gets plugin-sdk and jsonl from {@code target/shared/} (the codec Gradle vendors into
+ * worker also gets plugin-sdk and host from {@code target/shared/} (the codec Gradle vendors into
  * the jar).
  */
 public final class WorkerLaunchClasspath {
@@ -46,7 +46,7 @@ public final class WorkerLaunchClasspath {
     }
 
     /**
-     * plugin-sdk + jsonl next to a workspace-built worker. Prefer {@code classes/main} when present
+     * plugin-sdk + host next to a workspace-built worker. Prefer {@code classes/main} when present
      * so a just-compiled SDK is used even if the sibling jar is stale.
      */
     static List<Path> workspaceCodec(Path workerJar) {
@@ -54,7 +54,7 @@ public final class WorkerLaunchClasspath {
         if (target == null) return List.of();
         List<Path> out = new ArrayList<>();
         addCodecModule(out, target.resolve("shared").resolve("plugin-sdk"), "jk-plugin-sdk-");
-        addCodecModule(out, target.resolve("shared").resolve("jsonl"), "jk-jsonl-");
+        addCodecModule(out, target.resolve("shared").resolve("host"), "jk-host-");
         return List.copyOf(out);
     }
 

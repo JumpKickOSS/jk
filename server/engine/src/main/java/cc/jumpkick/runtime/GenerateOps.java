@@ -43,7 +43,7 @@ public final class GenerateOps {
                 default -> GeneratedFiles.error("unknown generate kind: " + kind);
             };
         } catch (IOException | RuntimeException e) {
-            return GeneratedFiles.error(cc.jumpkick.util.Errors.text(e));
+            return GeneratedFiles.error(cc.jumpkick.host.Errors.text(e));
         }
     }
 

@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.terminal;
+package cc.jumpkick.host;
 
 import java.util.Locale;
 
 /**
- * Host OS for TTY binders. Leaf-local — {@code HostPlatform} is forbidden here.
+ * Host OS predicates, read from {@code os.name}. Lives in the {@code :host} leaf so the native
+ * client, the engine and every plugin worker answer "which OS is this?" the same way — a worker
+ * cannot reach {@code cc.jumpkick.jdk.HostPlatform}, which is what made the copies multiply.
  */
 public final class Os {
     private Os() {}

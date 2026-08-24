@@ -72,7 +72,7 @@ public final class NewProjectVerb implements HostedVerb {
                 NewProjectOps.Created created = NewProjectOps.createWithIdentity(req);
                 ack = NewProjectAck.of(created.path().toString(), created.projectId(), created.filesWritten());
             } catch (Exception e) {
-                ack = NewProjectAck.error(cc.jumpkick.util.Errors.text(e));
+                ack = NewProjectAck.error(cc.jumpkick.host.Errors.text(e));
             }
             host.sendQuiet(writer, ack.encode());
         } catch (Exception e) {

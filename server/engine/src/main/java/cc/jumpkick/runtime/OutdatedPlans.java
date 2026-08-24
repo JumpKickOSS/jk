@@ -57,7 +57,7 @@ public final class OutdatedPlans {
                 }
             }
         } catch (Exception e) {
-            return OutdatedReport.error(cc.jumpkick.util.Errors.text(e));
+            return OutdatedReport.error(cc.jumpkick.host.Errors.text(e));
         }
 
         boolean workspace = scopes.size() > 1;

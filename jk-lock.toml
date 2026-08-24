@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "b0fa870dd152fa9ad919fc4cbd0f393d3fa487183a7e795ce52cfa200f192253"
+manifests-sha256 = "ae5b3c6dc549406d17f25fa52271b11948ce17eb141b3531d5bb03216d4a94be"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [[artifact]]
@@ -2726,6 +2726,14 @@ java    = 25
 description = "Dynamic surface modeling for R8 keep rules and GraalVM metadata"
 
 [[module]]
+path    = "shared/host"
+group   = "cc.jumpkick"
+name    = "jk-host"
+version = "0.12.0"
+java    = 17
+description = "Host leaf: JSONL/MiniJson codec, Hashing, PathUtil, Errors, Os, Exit — the JDK-only floor the CLI, the engine and every plugin worker share"
+
+[[module]]
 path    = "shared/jk-api"
 group   = "cc.jumpkick"
 name    = "jk-model"
@@ -2734,20 +2742,12 @@ java    = 25
 description = "Domain model: dependencies, build plans, and coordinates"
 
 [[module]]
-path    = "shared/jsonl"
-group   = "cc.jumpkick"
-name    = "jk-jsonl"
-version = "0.12.0"
-java    = 17
-description = "JSONL field codec and MiniJson tree codec (CLI wire + plugin workers)"
-
-[[module]]
 path    = "shared/plugin-sdk"
 group   = "cc.jumpkick"
 name    = "jk-plugin-sdk"
 version = "0.12.0"
 java    = 17
-description = "Plugin SPI; JSONL codec is jk-jsonl"
+description = "Plugin SPI; codec and host primitives are jk-host"
 
 [[module]]
 path    = "shared/toolchain-jdk"

@@ -357,7 +357,7 @@ public final class CacheCommand extends GroupCommand {
         for (String tree : new String[] {"actions", "format-stamps", "sha256"}) {
             Path dir = root.resolve(tree);
             if (Files.isDirectory(dir)) {
-                cc.jumpkick.util.PathUtil.deleteRecursivelyOrThrow(dir);
+                cc.jumpkick.host.PathUtil.deleteRecursivelyOrThrow(dir);
                 Files.createDirectories(dir); // keep empty dirs so layout stays familiar
             }
         }

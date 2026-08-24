@@ -129,7 +129,7 @@ final class ScriptRunner {
         if (neutralized != null) {
             Path srcDir = stateDir()
                     .resolve("script-cache")
-                    .resolve(cc.jumpkick.util.Hashing.sha256Hex(source.getBytes(StandardCharsets.UTF_8)))
+                    .resolve(cc.jumpkick.host.Hashing.sha256Hex(source.getBytes(StandardCharsets.UTF_8)))
                     .resolve("src");
             Files.createDirectories(srcDir);
             execScript = srcDir.resolve(script.getFileName().toString());

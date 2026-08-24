@@ -83,12 +83,12 @@ class SelfHostingTomlTest {
         assertThat(root.project().group()).isEqualTo("cc.jumpkick");
         assertThat(root.project().name()).isEqualTo("jk");
         assertThat(root.isWorkspaceRoot()).isTrue();
-        // jsonl is the S1/S7 codec leaf; plugin-sdk sits above it. jk-api is a zero-dep
-        // model (PluginConfig lives there — JK-2139).
+        // host is the S1/S7 codec + host-primitive leaf; plugin-sdk sits above it. jk-api is a
+        // zero-dep model (PluginConfig lives there — JK-2139).
         // Phase 2 adds thin workers (test-runner, java-compiler) as workspace modules.
         assertThat(root.workspace().modules())
                 .containsExactly(
-                        "shared/jsonl",
+                        "shared/host",
                         "shared/plugin-sdk",
                         "shared/jk-api",
                         "shared/core",
@@ -283,8 +283,8 @@ class SelfHostingTomlTest {
         assertThat(runner.project().javaRelease()).isEqualTo(17);
         JkBuild sdk = JkBuildParser.parse(REPO.resolve("shared/plugin-sdk/jk.toml"));
         assertThat(sdk.project().javaRelease()).isEqualTo(17);
-        JkBuild jsonl = JkBuildParser.parse(REPO.resolve("shared/jsonl/jk.toml"));
-        assertThat(jsonl.project().javaRelease()).isEqualTo(17);
+        JkBuild host = JkBuildParser.parse(REPO.resolve("shared/host/jk.toml"));
+        assertThat(host.project().javaRelease()).isEqualTo(17);
     }
 
     @Test
@@ -318,13 +318,13 @@ class SelfHostingTomlTest {
         // to apply WorkspaceMerge.
         List<String> mainModules =
                 cli.dependencies().of(Scope.MAIN).stream().map(d -> d.module()).toList();
-        // The slim client (Stage 5): the wire contract + jsonl codec, never the engine itself
+        // The slim client (Stage 5): the wire contract + the :host leaf, never the engine itself
         // and never the plugin SPI (JK-2138).
         assertThat(mainModules)
                 .contains(
                         "cc.jumpkick:jk-core",
                         "cc.jumpkick:jk-engine-api",
-                        "cc.jumpkick:jk-jsonl",
+                        "cc.jumpkick:jk-host",
                         "cc.jumpkick:jk-cli-terminal");
         assertThat(mainModules)
                 .doesNotContain(

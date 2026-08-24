@@ -45,7 +45,7 @@ public final class WhyVerb implements HostedVerb {
                 report = cc.jumpkick.runtime.GraphOps.why(
                         Path.of(Jsonl.str(requestLine, "dir")), Jsonl.str(requestLine, "query"));
             } catch (RuntimeException e) {
-                report = cc.jumpkick.engine.protocol.WhyReport.error(cc.jumpkick.util.Errors.text(e));
+                report = cc.jumpkick.engine.protocol.WhyReport.error(cc.jumpkick.host.Errors.text(e));
             }
             host.sendQuiet(writer, report.encode());
 

@@ -25,13 +25,13 @@ class AotCacheStalenessTest {
                 app-sha256   = "%s"
                 lock-sha256  = "%s"
                 """.formatted(
-                        jar.toAbsolutePath(), cc.jumpkick.util.Hashing.sha256Hex(jar), lockSha));
+                        jar.toAbsolutePath(), cc.jumpkick.host.Hashing.sha256Hex(jar), lockSha));
     }
 
     @Test
     void lock_change_discards_the_cache(@TempDir Path projectDir) throws Exception {
         Files.writeString(projectDir.resolve("jk-lock.toml"), "old lock");
-        writeCache(projectDir, cc.jumpkick.util.Hashing.sha256Hex(projectDir.resolve("jk-lock.toml")));
+        writeCache(projectDir, cc.jumpkick.host.Hashing.sha256Hex(projectDir.resolve("jk-lock.toml")));
         Files.writeString(projectDir.resolve("jk-lock.toml"), "new lock after a dep bump");
 
         AotCachePackage.discardIfStale(projectDir);
@@ -42,7 +42,7 @@ class AotCacheStalenessTest {
     @Test
     void matching_lock_and_jar_keep_the_cache(@TempDir Path projectDir) throws Exception {
         Files.writeString(projectDir.resolve("jk-lock.toml"), "stable lock");
-        writeCache(projectDir, cc.jumpkick.util.Hashing.sha256Hex(projectDir.resolve("jk-lock.toml")));
+        writeCache(projectDir, cc.jumpkick.host.Hashing.sha256Hex(projectDir.resolve("jk-lock.toml")));
 
         AotCachePackage.discardIfStale(projectDir);
 

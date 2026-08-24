@@ -116,7 +116,7 @@ public final class WorkspaceExecute {
         try {
             entryBuild = JkBuildParser.parse(req.entryDir().resolve("jk.toml"));
         } catch (Exception e) {
-            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.util.Errors.text(e)));
+            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.host.Errors.text(e)));
             listener.onWorkspaceFinish(r);
             return r;
         }
@@ -154,7 +154,7 @@ public final class WorkspaceExecute {
         try {
             graph = BuildGraph.resolve(req.entryDir(), entryBuild);
         } catch (IOException e) {
-            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.util.Errors.text(e)));
+            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.host.Errors.text(e)));
             listener.onWorkspaceFinish(r);
             return r;
         }
@@ -276,7 +276,7 @@ public final class WorkspaceExecute {
             try {
                 failed = ModuleOutputRestore.restoreAll(req.entryDir(), List.copyOf(restoreNeeded), req.cache());
             } catch (IOException e) {
-                WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.util.Errors.text(e)));
+                WorkspaceResult r = new WorkspaceResult(false, 2, List.of(), List.of(cc.jumpkick.host.Errors.text(e)));
                 listener.onWorkspaceFinish(r);
                 return r;
             }

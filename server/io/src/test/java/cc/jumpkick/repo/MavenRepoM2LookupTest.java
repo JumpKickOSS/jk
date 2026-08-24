@@ -62,7 +62,7 @@ class MavenRepoM2LookupTest {
     }
 
     private static String sha1Of(byte[] data) {
-        return cc.jumpkick.util.Hashing.hashHex("SHA-1", data);
+        return cc.jumpkick.host.Hashing.hashHex("SHA-1", data);
     }
 
     /** Put {@code bytes} at the coordinate's Maven-layout path inside a throwaway {@code ~/.m2}. */
@@ -85,14 +85,14 @@ class MavenRepoM2LookupTest {
         serve(
                 "/" + REL + ".sha256",
                 200,
-                cc.jumpkick.util.Hashing.sha256Hex(REAL).getBytes(StandardCharsets.UTF_8));
+                cc.jumpkick.host.Hashing.sha256Hex(REAL).getBytes(StandardCharsets.UTF_8));
         // A .sha1 handler that would REJECT (wrong hash) — if the code fell back to it, adoption fails.
         serve("/" + REL + ".sha1", 200, "0".repeat(40).getBytes(StandardCharsets.UTF_8));
         MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tmp.resolve("store")));
 
         MavenRepo.Fetched fetched = repo.fetchArtifact(coord());
 
-        assertThat(fetched.sha256()).isEqualTo(cc.jumpkick.util.Hashing.sha256Hex(REAL));
+        assertThat(fetched.sha256()).isEqualTo(cc.jumpkick.host.Hashing.sha256Hex(REAL));
         assertThat(hits).contains("/" + REL + ".sha256");
     }
 
@@ -107,7 +107,7 @@ class MavenRepoM2LookupTest {
         MavenRepo.Fetched fetched = repo.fetchArtifact(coord());
 
         assertThat(Files.readAllBytes(fetched.cachePath())).isEqualTo(REAL);
-        assertThat(fetched.sha256()).isEqualTo(cc.jumpkick.util.Hashing.sha256Hex(REAL));
+        assertThat(fetched.sha256()).isEqualTo(cc.jumpkick.host.Hashing.sha256Hex(REAL));
         assertThat(hits).containsExactly("/" + REL + ".sha1");
     }
 
@@ -122,7 +122,7 @@ class MavenRepoM2LookupTest {
         MavenRepo.Fetched fetched = repo.fetchArtifact(coord());
 
         assertThat(fetched.cachePath()).isEqualTo(m2.resolve(REL));
-        assertThat(new Cas(store).contains(cc.jumpkick.util.Hashing.sha256Hex(REAL)))
+        assertThat(new Cas(store).contains(cc.jumpkick.host.Hashing.sha256Hex(REAL)))
                 .isFalse();
         assertThat(ArtifactMemo.jkPath(store.resolve("repos/test"), REL)).exists();
     }

@@ -386,7 +386,7 @@ class CacheCommandTest {
                     .materialize(
                             cc.jumpkick.repo.MavenLayout.artifactPath(coord),
                             blob,
-                            cc.jumpkick.util.Hashing.sha256Hex(bytes));
+                            cc.jumpkick.host.Hashing.sha256Hex(bytes));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

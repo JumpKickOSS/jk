@@ -10,12 +10,12 @@ import cc.jumpkick.compat.InstalledTool;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.discovery.SymlinkProvisioner;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.util.TreeFingerprint;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -254,7 +254,7 @@ public final class DoctorCommand implements CliCommand {
                     continue;
                 }
                 if (Files.isSymbolicLink(home) && verifyLinked) {
-                    String fingerprint = TreeFingerprint.compute(home);
+                    String fingerprint = JdkFingerprint.compute(home);
                     Path marker = root.resolve(tool.slug()).resolve(installed.version() + ".fingerprint");
                     Files.writeString(marker, fingerprint);
                     rows.add(new ToolRow(tool, installed, ToolRowKind.VERIFIED, fingerprint));

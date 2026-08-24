@@ -1,10 +1,10 @@
 name = "jk-plugin-sdk"
-description = "Plugin SPI; JSONL codec is jk-jsonl"
+description = "Plugin SPI; codec and host primitives are jk-host"
 # Workers load on user JVMs (JDK 17+); stay on release 17.
 java = 17
 
 [dependencies]
-jk-jsonl.workspace = true
+jk-host.workspace = true
 
 [test-dependencies]
 assertj-core = "latest"

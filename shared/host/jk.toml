@@ -1,0 +1,8 @@
+name = "jk-host"
+description = "Host leaf: JSONL/MiniJson codec, Hashing, PathUtil, Errors, Os, Exit — the JDK-only floor the CLI, the engine and every plugin worker share"
+# Workers load on user JVMs (JDK 17+); stay on release 17.
+java = 17
+
+[test-dependencies]
+assertj-core = "latest"
+junit-jupiter = "latest"

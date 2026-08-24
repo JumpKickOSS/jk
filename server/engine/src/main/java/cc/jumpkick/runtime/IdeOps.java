@@ -56,7 +56,7 @@ public final class IdeOps {
         try {
             return build(startDir, cache, jdksDir, fetchMissing);
         } catch (IOException | RuntimeException e) {
-            return IdeWireModel.error(cc.jumpkick.util.Errors.text(e));
+            return IdeWireModel.error(cc.jumpkick.host.Errors.text(e));
         }
     }
 

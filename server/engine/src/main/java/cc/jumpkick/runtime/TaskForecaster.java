@@ -668,7 +668,7 @@ public final class TaskForecaster {
                         "classes:" + classesTok,
                         "contrib:" + contribTok,
                         "main:" + (mainClass == null ? "" : mainClass),
-                        "sbom:" + (sbom == null ? "" : cc.jumpkick.util.Hashing.sha256Hex(sbom)),
+                        "sbom:" + (sbom == null ? "" : cc.jumpkick.host.Hashing.sha256Hex(sbom)),
                         "manifest:" + project.manifest());
                 Perf.end("  package-fingerprint", tp);
                 String pkgKey = ActionKey.forArtifact(
@@ -1006,7 +1006,7 @@ public final class TaskForecaster {
             parts.add(fingerprintJarOrCached(jar, actionCache, restoredJarShas));
         }
         parts.sort(Comparator.naturalOrder());
-        return cc.jumpkick.util.Hashing.sha256Hex(String.join("\n", parts));
+        return cc.jumpkick.host.Hashing.sha256Hex(String.join("\n", parts));
     }
 
     static String fingerprintJarOrCached(Path jar, ActionCache actionCache, Map<Path, String> restoredJarShas)

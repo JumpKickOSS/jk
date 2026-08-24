@@ -453,7 +453,7 @@ public final class EngineSpawn {
                         jdk == null
                                 ? "no-jdk"
                                 : jdk.version() + "|" + jdk.vendor().name());
-        String hash = cc.jumpkick.util.Hashing.sha256Hex(signature.toString()).substring(0, 16);
+        String hash = cc.jumpkick.host.Hashing.sha256Hex(signature.toString()).substring(0, 16);
         // ONE home for every AOT cache — engine and workers alike live in ~/.local/state/jk/aot/ so a
         // user (or `jk engine aot`) finds them all side by side. The engine's file
         // carries its jk version ("engine-<version>-<key>.aot") because its LIFETIME is

@@ -38,7 +38,7 @@ public final class IsolatedStoreExtension implements BeforeEachCallback, AfterEa
             Path store = (Path) ctx.getStore(NS).get("store");
             if (store != null) {
                 try {
-                    cc.jumpkick.util.PathUtil.deleteRecursivelyOrThrow(store);
+                    cc.jumpkick.host.PathUtil.deleteRecursivelyOrThrow(store);
                 } catch (Exception ignored) {
                     // /tmp leftovers are ephemeral; never fail the test on cleanup.
                 }

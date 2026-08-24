@@ -94,7 +94,7 @@ public final class UpdateVerb implements HostedVerb {
                         host.sendQuiet(
                                 writer,
                                 ProtoEvents.lockFinish(
-                                        false, Exit.CONFIG, List.of(cc.jumpkick.util.Errors.text(e)), -1));
+                                        false, Exit.CONFIG, List.of(cc.jumpkick.host.Errors.text(e)), -1));
                         return null;
                     }
                     var outcome =

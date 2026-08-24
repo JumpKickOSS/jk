@@ -41,7 +41,7 @@ class KotlinPluginSetupTest {
         Path artifact = dir.resolve("repos/jk-local").resolve(M2_PATH);
         Files.createDirectories(artifact.getParent());
         Files.writeString(artifact, "stand-in worker jar");
-        local.writeMemo(M2_PATH, artifact, cc.jumpkick.util.Hashing.sha256Hex(artifact));
+        local.writeMemo(M2_PATH, artifact, cc.jumpkick.host.Hashing.sha256Hex(artifact));
 
         withoutOverride(() -> assertThat(PluginJar.KOTLIN_COMPILER.locate(cas)).isEqualTo(artifact));
     }

@@ -200,6 +200,6 @@ public final class JGitExtension implements GitBackend {
     }
 
     static void deleteRecursively(Path root) {
-        cc.jumpkick.util.PathUtil.deleteRecursively(root);
+        cc.jumpkick.host.PathUtil.deleteRecursively(root);
     }
 }

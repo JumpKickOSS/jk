@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.run.JkThreads;
-import cc.jumpkick.util.Hashing;
-import cc.jumpkick.util.PathUtil;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -331,7 +331,7 @@ public final class JdkInstaller {
             }
             throw new IOException("JDK download " + uri + " returned " + response.statusCode());
         }
-        MessageDigest sha = cc.jumpkick.util.Hashing.newSha256();
+        MessageDigest sha = cc.jumpkick.host.Hashing.newSha256();
         long total = 0;
         try (InputStream body = response.body();
                 OutputStream sink = Files.newOutputStream(archive)) {
@@ -345,7 +345,7 @@ public final class JdkInstaller {
             }
         }
         if (expectedSha256 != null && !expectedSha256.isEmpty()) {
-            String actual = cc.jumpkick.util.Hashing.hex(sha.digest());
+            String actual = cc.jumpkick.host.Hashing.hex(sha.digest());
             if (!actual.equalsIgnoreCase(expectedSha256)) {
                 throw new IOException(
                         "sha256 mismatch for " + displayName + " — expected " + expectedSha256 + ", got " + actual);

@@ -19,8 +19,8 @@ dependencies {
     implementation(project(":client-io"))
     implementation(project(":toolchain-jdk"))
     implementation(project(":wire"))
-    // Shared JSONL reader for the engine/worker wire envelope (not the plugin SPI).
-    implementation(project(":jsonl"))
+    // The host leaf: JSONL wire envelope, Hashing/PathUtil/Os, Exit (not the plugin SPI).
+    implementation(project(":host"))
     implementation(project(":cli-terminal"))
 
     // ProcessProperties.getArgumentVectorProgramName for argv[0] `jkx` dispatch
@@ -35,7 +35,7 @@ dependencies {
     testImplementation(libs.bouncycastle.bcpg)
 }
 
-// JK-2139: the native client must not see the plugin SPI jar (codec is :jsonl).
+// JK-2139: the native client must not see the plugin SPI jar (codec is :host).
 val checkCliRuntimeClasspath by tasks.registering {
     val runtime = configurations.named("runtimeClasspath")
     inputs.files(runtime)

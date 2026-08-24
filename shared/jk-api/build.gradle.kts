@@ -5,9 +5,9 @@ plugins {
 }
 
 description = "jk-api: the stable front-end contract (IO/thread machinery lives in :core) — BuildPlan/Step scheduler SPI, " +
-        "Dependency/Coordinate model, BuildPlanListener + command (CliCommand/Invocation) SPI. " +
-        "Zero project dependencies — JDK + JSpecify only. PluginConfig lives here so the " +
-        "native CLI does not link :plugin-sdk."
+        "Dependency/Coordinate model, BuildPlanListener. The command SPI (CliCommand/Invocation/Exit) " +
+        "moved down to :host so plugin workers reach it. Zero project dependencies — JDK + JSpecify " +
+        "only. PluginConfig lives here so the native CLI does not link :plugin-sdk."
 
 // This module IS jk's public API surface (Gradle project ":jk-api"; dir kept at
 // shared/jk-api): the impl-free contract that

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compat;
 
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.MinimalTar;
-import cc.jumpkick.util.Hashing;
-import cc.jumpkick.util.PathUtil;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;

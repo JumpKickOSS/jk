@@ -80,7 +80,7 @@ public final class ForecastVerb implements HostedVerb {
                         host.sendQuiet(
                                 writer,
                                 ProtoReads.forecastAck(
-                                        List.of(), false, false, List.of(cc.jumpkick.util.Errors.text(e))));
+                                        List.of(), false, false, List.of(cc.jumpkick.host.Errors.text(e))));
                         return null;
                     }
                     if (graph.hasErrors()) {
@@ -100,7 +100,7 @@ public final class ForecastVerb implements HostedVerb {
             } catch (Exception e) {
                 host.sendQuiet(
                         writer,
-                        ProtoReads.forecastAck(List.of(), false, false, List.of(cc.jumpkick.util.Errors.text(e))));
+                        ProtoReads.forecastAck(List.of(), false, false, List.of(cc.jumpkick.host.Errors.text(e))));
             }
 
         } catch (Exception e) {

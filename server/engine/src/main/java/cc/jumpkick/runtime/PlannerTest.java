@@ -123,12 +123,12 @@ public final class PlannerTest {
                             ? Files.readString(suiteMarker).trim()
                             : null;
                     if (prevSelection != null && !prevSelection.equals(selectionKey)) {
-                        cc.jumpkick.util.PathUtil.deleteRecursively(testClasses);
+                        cc.jumpkick.host.PathUtil.deleteRecursively(testClasses);
                         for (Path langOut : List.of(
                                 ctx.require(LAYOUT).kotlinTestClassesDir(),
                                 ctx.require(LAYOUT).groovyTestClassesDir())) {
                             if (Files.isDirectory(langOut)) {
-                                cc.jumpkick.util.PathUtil.deleteRecursively(langOut);
+                                cc.jumpkick.host.PathUtil.deleteRecursively(langOut);
                             }
                         }
                     }

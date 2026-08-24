@@ -42,7 +42,7 @@ class EngineInstallTest {
                 .containsEntry("jar", "jk-engine-0.12.0.jar")
                 .containsEntry("version", "0.12.0");
         assertThat(m.engineJar()).isEqualTo(store.engineJarPath());
-        assertThat(Files.isSameFile(m.engineJar(), cas.pathFor(cc.jumpkick.util.Hashing.sha256Hex(jar))))
+        assertThat(Files.isSameFile(m.engineJar(), cas.pathFor(cc.jumpkick.host.Hashing.sha256Hex(jar))))
                 .isFalse();
 
         var again = store.materializeFromFiles("0.12.0", cas, jar);
@@ -84,7 +84,7 @@ class EngineInstallTest {
         Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
         EngineInstall store = install(home);
         Path jar = Files.writeString(tmp.resolve("jk-engine-0.12.0.jar"), "engine-bytes");
-        String realSha = cc.jumpkick.util.Hashing.sha256Hex(jar);
+        String realSha = cc.jumpkick.host.Hashing.sha256Hex(jar);
         System.setProperty("jk-config.engine-sha256", "deadbeef");
         try {
             store.materializeFromFiles("0.12.0", cas, jar);

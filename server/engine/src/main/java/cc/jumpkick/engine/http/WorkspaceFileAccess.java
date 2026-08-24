@@ -2,7 +2,7 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.builds.ProjectIdentity;
-import cc.jumpkick.util.Hashing;
+import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;

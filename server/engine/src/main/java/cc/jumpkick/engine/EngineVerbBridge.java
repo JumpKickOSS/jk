@@ -125,7 +125,7 @@ public final class EngineVerbBridge implements VerbHost {
 
     @Override
     public String requestFailedLine(@Nullable String dir, Throwable e) {
-        return ProtoLifecycle.requestFailed(EventRedaction.redactEnv(dir, cc.jumpkick.util.Errors.text(e)));
+        return ProtoLifecycle.requestFailed(EventRedaction.redactEnv(dir, cc.jumpkick.host.Errors.text(e)));
     }
 
     @Override

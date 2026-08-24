@@ -3,7 +3,7 @@ package cc.jumpkick.cache;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.util.Hashing;
+import cc.jumpkick.host.Hashing;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;

@@ -264,7 +264,7 @@ public final class PlannerNative {
                     // toolchain. Shared libraries (+ generated C headers) aren't cached yet.
                     Path releaseFile = javaHome.resolve("release");
                     String graalTok = Files.isRegularFile(releaseFile)
-                            ? cc.jumpkick.util.Hashing.sha256Hex(releaseFile)
+                            ? cc.jumpkick.host.Hashing.sha256Hex(releaseFile)
                             : javaHome.toString();
                     List<String> nativeTokens = List.of(
                             "cp:" + cc.jumpkick.task.ClasspathFingerprint.of(classpath),

@@ -378,7 +378,7 @@ public final class PlannerCompile {
                     // too (rare: only on source removals).
                     if (cc.jumpkick.task.FreshnessStamp.hasRemovedSources(
                             classes, cc.jumpkick.task.FreshnessStamp.KOTLIN_STAMP, freshInputs)) {
-                        cc.jumpkick.util.PathUtil.deleteRecursively(classes);
+                        cc.jumpkick.host.PathUtil.deleteRecursively(classes);
                         Files.createDirectories(classes);
                     }
                     boolean rerun = in.session().config().rebuildOr(false);
@@ -502,7 +502,7 @@ public final class PlannerCompile {
                     // output (the assemble merge into classes/ is additive).
                     if (cc.jumpkick.task.FreshnessStamp.hasRemovedSources(
                             classes, cc.jumpkick.task.FreshnessStamp.GROOVY_STAMP, freshInputs)) {
-                        cc.jumpkick.util.PathUtil.deleteRecursively(classes);
+                        cc.jumpkick.host.PathUtil.deleteRecursively(classes);
                         Files.createDirectories(classes);
                     }
                     boolean rerun = in.session().config().rebuildOr(false);

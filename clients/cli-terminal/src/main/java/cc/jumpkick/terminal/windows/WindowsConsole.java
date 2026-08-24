@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.terminal.windows;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.terminal.InputMode;
-import cc.jumpkick.terminal.Os;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;

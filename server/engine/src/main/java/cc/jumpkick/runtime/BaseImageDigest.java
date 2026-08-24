@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jsonl.MiniJson;
-import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;

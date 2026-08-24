@@ -81,7 +81,7 @@ public final class SigV4Signer {
 
         byte[] signingKey = signingKey(secretKey, dateStamp, region, service);
         String signature =
-                cc.jumpkick.util.Hashing.hex(hmac(signingKey, stringToSign.getBytes(StandardCharsets.UTF_8)));
+                cc.jumpkick.host.Hashing.hex(hmac(signingKey, stringToSign.getBytes(StandardCharsets.UTF_8)));
 
         return ALGORITHM
                 + " Credential="
@@ -129,7 +129,7 @@ public final class SigV4Signer {
     }
 
     public static String sha256Hex(byte[] data) {
-        return cc.jumpkick.util.Hashing.sha256Hex(data);
+        return cc.jumpkick.host.Hashing.sha256Hex(data);
     }
 
     private static byte[] signingKey(String secretKey, String dateStamp, String region, String service) {

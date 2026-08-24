@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.androidsdk;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -203,7 +203,7 @@ public final class AndroidSdkInstaller {
     }
 
     private static void deleteRecursively(Path root) {
-        cc.jumpkick.util.PathUtil.deleteRecursively(root);
+        cc.jumpkick.host.PathUtil.deleteRecursively(root);
     }
 
     private static MessageDigest sha1() {

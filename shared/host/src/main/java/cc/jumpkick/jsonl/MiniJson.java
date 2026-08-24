@@ -11,7 +11,7 @@ import java.util.Map;
  * {@code Boolean}/{@code null}) for HTTP/MCP/journal. Sibling of {@link Jsonl} (wire field codec +
  * {@link Jsonl#quote}); this is the single tree codec — never reimplement escaping here.
  *
- * <p>Lives in :jsonl at the SPI language floor ({@code --release 17}); written without
+ * <p>Lives in :host at the SPI language floor ({@code --release 17}); written without
  * pattern-switch (Java 21+) so worker JVMs on project JDK 17+ can load the same classes.
  *
  * <p>{@link #parse} is strict RFC 8259 — it is the wire-protocol path and must stay that way.

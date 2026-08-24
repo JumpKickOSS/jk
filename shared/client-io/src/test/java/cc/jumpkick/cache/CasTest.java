@@ -79,7 +79,7 @@ class CasTest {
         Path buildOut = tempDir.resolve("target/classes/Hello.class");
         Files.createDirectories(buildOut.getParent());
         Files.writeString(buildOut, "class-bytes-v1");
-        String hex = cc.jumpkick.util.Hashing.sha256Hex(buildOut);
+        String hex = cc.jumpkick.host.Hashing.sha256Hex(buildOut);
 
         Path casBlob = cas.putFile(buildOut, hex);
         assertThat(casBlob).exists();

@@ -6,12 +6,12 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.protocol.OutdatedReport;
 import cc.jumpkick.engine.protocol.WhyReport;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.runtime.ExplainReport;
 import cc.jumpkick.runtime.GraphOps;
 import cc.jumpkick.runtime.OutdatedPlans;
 import cc.jumpkick.runtime.TaskForecast;
 import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.util.PathUtil;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -81,7 +81,7 @@ public final class McpReads {
             }
             m.put("edges", edges);
         } catch (Exception e) {
-            m.put("error", cc.jumpkick.util.Errors.text(e));
+            m.put("error", cc.jumpkick.host.Errors.text(e));
         }
         return m;
     }
@@ -100,7 +100,7 @@ public final class McpReads {
             List<cc.jumpkick.model.Scope> scopes = cc.jumpkick.resolver.DependencyGraphModel.parseScopes(scopesCsv);
             g = cc.jumpkick.resolver.DependencyGraphModel.forProjectDir(root, scopes, transitive);
         } catch (Exception e) {
-            m.put("error", cc.jumpkick.util.Errors.text(e));
+            m.put("error", cc.jumpkick.host.Errors.text(e));
             return m;
         }
         m.put("workspace", g.workspace());
@@ -167,7 +167,7 @@ public final class McpReads {
         try {
             files = cc.jumpkick.runtime.GenerateOps.generate(root, kind, Map.of());
         } catch (RuntimeException e) {
-            m.put("error", cc.jumpkick.util.Errors.text(e));
+            m.put("error", cc.jumpkick.host.Errors.text(e));
             return m;
         }
         if (files.error() != null && !files.error().isBlank()) {
@@ -189,7 +189,7 @@ public final class McpReads {
             return r.toStructured();
         } catch (Exception e) {
             Map<String, Object> m = new LinkedHashMap<>();
-            m.put("error", cc.jumpkick.util.Errors.text(e));
+            m.put("error", cc.jumpkick.host.Errors.text(e));
             return m;
         }
     }

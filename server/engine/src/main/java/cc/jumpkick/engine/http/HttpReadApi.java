@@ -147,8 +147,8 @@ final class HttpReadApi {
         Path dir;
         try {
             dir = requested == null || requested.isBlank()
-                    ? cc.jumpkick.util.PathUtil.userHome()
-                    : cc.jumpkick.util.PathUtil.resolveUserPath(requested);
+                    ? cc.jumpkick.host.PathUtil.userHome()
+                    : cc.jumpkick.host.PathUtil.resolveUserPath(requested);
         } catch (IllegalArgumentException e) {
             HttpEngineServer.sendJson(
                     exchange,

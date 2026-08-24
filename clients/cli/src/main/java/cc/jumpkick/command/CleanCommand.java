@@ -196,8 +196,8 @@ public final class CleanCommand implements CliCommand {
 
     /**
      * Delete {@code root} depth-first, folding what went into {@code stats}. One shared
-     * implementation ({@link cc.jumpkick.util.PathUtil#deleteRecursivelyOrThrow(Path,
-     * cc.jumpkick.util.PathUtil.Removed)}) rather than a clean-local copy: this used to retry the
+     * implementation ({@link cc.jumpkick.host.PathUtil#deleteRecursivelyOrThrow(Path,
+     * cc.jumpkick.host.PathUtil.Removed)}) rather than a clean-local copy: this used to retry the
      * walk on {@link
      * java.nio.file.DirectoryNotEmptyException}, papering over an engine that was still writing
      * {@code target/.jk/preflight} and {@code target/jk-results.md} after telling the client the
@@ -205,9 +205,9 @@ public final class CleanCommand implements CliCommand {
      * writer left to race and a not-empty directory is a real failure again (JK-2451).
      */
     static void deleteRecursively(Path root, long[] stats) throws IOException {
-        var tally = new cc.jumpkick.util.PathUtil.Removed();
+        var tally = new cc.jumpkick.host.PathUtil.Removed();
         try {
-            cc.jumpkick.util.PathUtil.deleteRecursivelyOrThrow(root, tally);
+            cc.jumpkick.host.PathUtil.deleteRecursivelyOrThrow(root, tally);
         } finally {
             // Whatever it managed to remove is removed, failure or not — the report must match disk.
             stats[0] += tally.files();

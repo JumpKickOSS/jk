@@ -2,9 +2,9 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.util;
+package cc.jumpkick.host;
 
 /** Error-message hygiene shared by engine verbs and client sync paths. */
 public final class Errors {

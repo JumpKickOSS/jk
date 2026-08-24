@@ -14,9 +14,9 @@ tasks.processTestResources {
 }
 
 dependencies {
-    implementation(project(":core"))  // Hashing (util) + io + jsonl codec all reachable transitively
+    implementation(project(":core"))  // repo/lock model; Hashing + codec now come from :host via the SDK
     implementation(project(":io"))
-    implementation(project(":plugin-sdk"))  // shared JSONL codec (worker runtime classpath via POM)
+    implementation(project(":plugin-sdk"))  // SPI + :host codec/primitives (worker runtime classpath via POM)
     implementation(libs.bouncycastle.bcpg)
     implementation(libs.sigstore.java)
 

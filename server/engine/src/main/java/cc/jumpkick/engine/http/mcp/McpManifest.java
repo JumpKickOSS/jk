@@ -2,9 +2,9 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.config.JkBuildEditor;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.PathUtil;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -61,7 +61,7 @@ public final class McpManifest {
                 out.put("applied", false);
             }
         } catch (Exception e) {
-            out.put("error", cc.jumpkick.util.Errors.text(e));
+            out.put("error", cc.jumpkick.host.Errors.text(e));
         }
         return out;
     }
@@ -83,7 +83,7 @@ public final class McpManifest {
                 out.put("applied", false);
             }
         } catch (Exception e) {
-            out.put("error", cc.jumpkick.util.Errors.text(e));
+            out.put("error", cc.jumpkick.host.Errors.text(e));
         }
         return out;
     }
@@ -116,7 +116,7 @@ public final class McpManifest {
                 out.put("applied", false);
             }
         } catch (Exception e) {
-            out.put("error", cc.jumpkick.util.Errors.text(e));
+            out.put("error", cc.jumpkick.host.Errors.text(e));
         }
         return out;
     }

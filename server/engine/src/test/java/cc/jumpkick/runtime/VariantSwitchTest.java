@@ -97,7 +97,7 @@ class VariantSwitchTest {
 
         // The daemon-observed failing shape: clean, restore a from the action cache, then
         // switch to b — the switch after a RESTORED (not compiled) tree must also work.
-        cc.jumpkick.util.PathUtil.deleteRecursively(project.resolve("target"));
+        cc.jumpkick.host.PathUtil.deleteRecursively(project.resolve("target"));
         BuildPlanResult a3 = buildVariant(project, cache, "mode=a");
         assertThat(a3.success()).as("variant a restores after clean").isTrue();
         assertThat(classes.resolve("OnlyA.class")).exists();

@@ -78,7 +78,7 @@ public final class LibraryRegistrySync {
             Thread.currentThread().interrupt();
             throw new IOException(e);
         } catch (RuntimeException e) {
-            throw new IOException(cc.jumpkick.util.Errors.text(e), e);
+            throw new IOException(cc.jumpkick.host.Errors.text(e), e);
         }
     }
 

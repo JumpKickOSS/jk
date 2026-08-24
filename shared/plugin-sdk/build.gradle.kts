@@ -6,7 +6,8 @@ plugins {
 }
 
 description = "jk plugin SPI: the stable surface plugins compile against. " +
-        "The JSONL codec lives in :jsonl (S1/S7 share only that)."
+        "The JSONL codec and the host primitives (Hashing, PathUtil, Errors, Os, Exit) live " +
+        "in :host, which every plugin therefore reaches."
 
 // Published as `cc.jumpkick:jk-plugin-sdk` on its OWN version line, independent of
 // cc.jumpkick.model.JkVersion (jk's release train): the SPI freezes on a different cadence. Keep
@@ -15,7 +16,7 @@ description = "jk plugin SPI: the stable surface plugins compile against. " +
 group = "cc.jumpkick"
 version = "0.1.0"
 
-// The plugin SPI leaf (plus :jsonl for the shared codec). Classes ride the user's
+// The plugin SPI leaf (plus :host for the shared codec and host primitives). Classes ride the user's
 // test JVM on the project's pinned JDK — JDK 17 floor. Since JK-2139, :jk-api carries
 // its own same-shape PluginConfig fork; neither module depends on the other.
 java {
@@ -28,7 +29,7 @@ tasks.compileJava {
 }
 
 dependencies {
-    api(project(":jsonl"))
+    api(project(":host"))
 }
 
 // The one library artifact a third-party build plugin compiles against. NOT jk.plugin-conventions:
@@ -43,7 +44,7 @@ publishing {
                 name.set("jk plugin SDK")
                 description.set(
                         "The stable API third-party jk build plugins compile against. " +
-                                "JSONL codec is cc.jumpkick:jk-jsonl.")
+                                "JSONL codec and host primitives are cc.jumpkick:jk-host.")
                 url.set("https://github.com/JumpKickOSS/jk")
                 licenses {
                     license {
