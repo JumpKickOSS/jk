@@ -5,6 +5,7 @@ import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 /**
  * Everything that can change a formatted byte, in one digest — the sole owner of what {@code jk
@@ -19,9 +20,8 @@ import java.nio.file.Path;
  *
  * <p>That split is exactly how {@code kotlinMaxWidth} and the {@code removeUnusedImports} GJF
  * version came to be in neither key: two hand-maintained field lists, in two modules, both
- * incomplete. A new input is now one component here and both stores inherit it — a compile
- * classpath (once {@code optimize-imports} wires one in) is one more component and one more line,
- * not a redesign.
+ * incomplete. A new input is one component here and both stores inherit it — which is how
+ * {@code compileClasspath} arrived: one field, one line in {@link #digest()}, no redesign.
  */
 public record FormatKey(
         String javaStyle,
@@ -35,9 +35,15 @@ public record FormatKey(
         // google-java-format's version — what `removeUnusedImports` actually runs, whatever the style is.
         String removeUnusedVersion,
         Path rewriteConfig,
+        // What `optimize-imports` resolves type names against; see #classpathIdentity.
+        List<Path> compileClasspath,
         Path workerJar) {
 
     private static final String VERSION = "format-key-v1";
+
+    public FormatKey {
+        compileClasspath = compileClasspath == null ? List.of() : List.copyOf(compileClasspath);
+    }
 
     /** Hex SHA-256 over the whole configuration; the name of both format stores' entries. */
     public String digest() {
@@ -55,8 +61,26 @@ public record FormatKey(
                 // Only when the step runs: switching google-java-format while the step is off
                 // changes nothing about the output, and re-formatting the tree for it is waste.
                 "remove-unused-version:" + (removeUnusedImports ? nullToEmpty(removeUnusedVersion) : ""),
+                // Same rule as the GJF version: inert while the pass that reads it is off.
+                "compile-classpath:" + (optimizeImports ? classpathIdentity() : ""),
                 "rewrite:" + rewriteHash(),
                 "worker:" + workerIdentity()));
+    }
+
+    /**
+     * The classpath's <em>entry list</em>, not its content. What decides whether {@code
+     * cc.jumpkick.foo.Bar} shortens is whether the name resolves at all, and that is a property of
+     * which entries are on the path — a set fixed by the lockfile. Hashing the bytes instead would
+     * re-key on every build, because the class-output directories on this path are rewritten by
+     * every compile, and would re-format the whole tree for output that cannot have changed.
+     */
+    private String classpathIdentity() {
+        if (compileClasspath.isEmpty()) return "none";
+        StringBuilder joined = new StringBuilder();
+        for (Path entry : compileClasspath) {
+            joined.append(entry.toAbsolutePath().normalize()).append('\n');
+        }
+        return Hashing.sha256Hex(joined.toString());
     }
 
     private String rewriteHash() {

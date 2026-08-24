@@ -26,7 +26,7 @@ The first-party **formatter** plugin runs in a forked worker (not in the engine 
 
 - **Optimize imports** — shorten fully-qualified class names and add import statements
   (default on). Preferred style is short names + imports; keep an FQCN only when there is
-  a real collision.
+  a real collision. See [what it can shorten](#what-optimize-imports-can-shorten).
 - Custom recipes via `--rewrite-config` / `JK_FORMAT_REWRITE_CONFIG` (OpenRewrite YAML).
 
 Per-file stamp cache skips unchanged files.
@@ -98,6 +98,33 @@ remove-unused-imports = true
 Environment: `JK_FORMAT_OPTIMIZE_IMPORTS`, `JK_FORMAT_IMPORT_ORDER`,
 `JK_FORMAT_REMOVE_UNUSED_IMPORTS` (booleans).
 
+### What optimize-imports can shorten
+
+Shortening `com.example.Widget.of()` to `Widget.of()` means resolving `com.example.Widget`
+to a type, so the pass is only as good as the classpath it resolves against. `jk format`
+gives it two things:
+
+| Source of types | Shortened? |
+|-----------------|------------|
+| The JDK (`java.*`, `javax.*`) | Yes — always, javac supplies these |
+| Your own modules' types | Yes, **once that module has been built** |
+| Dependency (jar) types | **No** — see below |
+
+Your modules' types come from each module's class output (`target/<module>/classes/{main,test}`),
+taken from `jk-lock.toml`'s module list. A module you have never compiled contributes no
+types, so its callers keep their fully-qualified names until you build it — run `jk build`
+before the first `jk format` of a fresh checkout. A project with no lockfile gets no
+classpath at all and only JDK names shorten; `jk format` never resolves or downloads
+anything itself.
+
+**Dependency jars are deliberately left off.** OpenRewrite parses each file with its own
+compiler front end, so every classpath entry is re-opened for every file. On jk's own tree
+(2,011 sources) the module outputs add 18s to a 108s run and shorten 3,293 names; adding
+the 150 dependency jars shortens 47 more and adds six minutes. A dependency's type written
+out in full stays that way — import it yourself.
+
+Optimize-imports also never rewrites Javadoc: `{@link com.example.Widget}` is left alone.
+
 **Precedence:** CLI flag → env var → `[format]` → default `true`.
 
 `--optimize-imports` / `--no-optimize-imports` (and the same pattern for the other two)
@@ -132,6 +159,8 @@ gate before a commit. There is no required CI format job unless you add one.
   [checkstyle-recipe example](examples/checkstyle-recipe/). Kotlin analysis (detekt) is
   not a first-party plugin yet.
 - Palantir/Google **skip unnamed/simple compilation units** they cannot format.
+- **optimize-imports cannot shorten a name it cannot resolve** — unbuilt modules and
+  dependency jars; see [what it can shorten](#what-optimize-imports-can-shorten).
 - Format is engine-hosted: you need a reachable engine (`jk` starts one) and a `jk.toml`
   in the working directory.
 

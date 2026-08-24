@@ -53,8 +53,8 @@ class FormatKeyTest {
         String previous = System.getProperty(PluginJar.FORMATTER.jarProperty());
         System.setProperty(PluginJar.FORMATTER.jarProperty(), worker.toString());
         try {
-            String planned =
-                    FormatPlans.configKey(tmp.resolve("cache"), "palantir", "kotlinlang", true, true, true, null);
+            String planned = FormatPlans.configKey(
+                    tmp.resolve("cache"), "palantir", "kotlinlang", true, true, true, null, List.of());
 
             assertThat(planned)
                     .isEqualTo(new FormatKey(
@@ -68,6 +68,7 @@ class FormatKeyTest {
                                     true,
                                     FormatPlans.GOOGLE_VERSION,
                                     null,
+                                    List.of(),
                                     worker)
                             .digest());
             assertThat(planned)
@@ -83,6 +84,7 @@ class FormatKeyTest {
                                     true,
                                     FormatPlans.GOOGLE_VERSION,
                                     null,
+                                    List.of(),
                                     worker)
                             .digest());
             assertThat(planned)
@@ -98,6 +100,7 @@ class FormatKeyTest {
                                     true,
                                     FormatPlans.PALANTIR_VERSION,
                                     null,
+                                    List.of(),
                                     worker)
                             .digest());
         } finally {
@@ -128,6 +131,7 @@ class FormatKeyTest {
                 true,
                 true,
                 null,
+                List.of(),
                 tmp.resolve("cache"),
                 "cafebabe",
                 tmp.resolve("out.spec"));
@@ -148,6 +152,7 @@ class FormatKeyTest {
                         removeUnusedImports,
                         gjfVersion,
                         null,
+                        List.of(),
                         null)
                 .digest();
     }

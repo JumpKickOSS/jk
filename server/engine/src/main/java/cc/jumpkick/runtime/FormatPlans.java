@@ -12,6 +12,10 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -100,6 +104,8 @@ public final class FormatPlans {
         BuildPlanKey<List> removeUnusedJarsKey = BuildPlanKey.of("format-remove-unused-jars", List.class);
         BuildPlanKey<List> kotlinJarsKey = BuildPlanKey.of("format-kotlin-jars", List.class);
 
+        BuildPlanKey<List> compileClasspathKey = BuildPlanKey.of("format-compile-classpath", List.class);
+
         BuildPlanKey<FormatFreshnessIndex> indexKey = BuildPlanKey.of("format-index", FormatFreshnessIndex.class);
         // FormatKey.digest() — computed once in collect, and the name of BOTH format stores: this
         // index here, and the worker's per-file stamps (it rides the spec as `configKey`).
@@ -110,6 +116,11 @@ public final class FormatPlans {
                 .execute(ctx -> {
                     ctx.label("collect sources");
                     CollectedSources all = collectSources(projectDir);
+                    // Only the OpenRewrite pass reads it; resolving one for a Spotless-only run
+                    // would be a lockfile read and a few hundred stats for nobody.
+                    List<Path> compileClasspath =
+                            optimizeImports || rewriteConfig != null ? compileClasspath(projectDir) : List.of();
+                    ctx.put(compileClasspathKey, compileClasspath);
                     String configKey = configKey(
                             cache,
                             javaStyle,
@@ -117,7 +128,8 @@ public final class FormatPlans {
                             optimizeImports,
                             importOrder,
                             removeUnusedImports,
-                            rewriteConfig);
+                            rewriteConfig,
+                            compileClasspath);
                     ctx.put(configKeyKey, configKey == null ? "" : configKey);
                     FormatFreshnessIndex index = configKey == null
                             ? FormatFreshnessIndex.disabled(projectDir)
@@ -233,6 +245,9 @@ public final class FormatPlans {
 
                     Path workerJar = PluginJar.FORMATTER.locate(JkStores.cas(cache));
                     String configKey = ctx.get(configKeyKey).orElse("");
+                    @SuppressWarnings("unchecked")
+                    List<Path> compileClasspath =
+                            (List<Path>) ctx.get(compileClasspathKey).orElse(List.of());
                     Path spec = writeSpec(
                             check,
                             javaStyle,
@@ -246,6 +261,7 @@ public final class FormatPlans {
                             importOrder,
                             removeUnusedImports,
                             rewriteConfig,
+                            compileClasspath,
                             cache,
                             configKey.isEmpty() ? null : configKey,
                             null);
@@ -337,6 +353,7 @@ public final class FormatPlans {
             boolean importOrder,
             boolean removeUnusedImports,
             Path rewriteConfig,
+            List<Path> compileClasspath,
             Path cacheDir,
             String configKey,
             Path dest)
@@ -369,6 +386,10 @@ public final class FormatPlans {
         }
         if ((optimizeImports || rewriteConfig != null) && !javaFiles.isEmpty()) {
             w.configBool("optimizeImports", optimizeImports);
+            // OpenRewrite can only shorten a name it can resolve, and it resolves against this.
+            // Standard `cp` lines with the compile role, so the worker reads it through
+            // PluginSpec.compileClasspath() like every other worker.
+            if (compileClasspath != null) w.classpath(compileClasspath, PluginProtocol.ROLE_COMPILE);
             if (rewriteConfig != null)
                 w.configString(
                         "rewriteConfigFile", rewriteConfig.toAbsolutePath().toString());
@@ -440,6 +461,9 @@ public final class FormatPlans {
                 importOrder,
                 removeUnusedImports,
                 null,
+                // The trainer formats a synthetic Hello.java that names only java.*; a real
+                // classpath would cost the AOT run a few hundred jar opens for no extra class.
+                List.of(),
                 scratch,
                 TRAIN_CONFIG_KEY,
                 scratch.resolve("train.spec"));
@@ -545,6 +569,51 @@ public final class FormatPlans {
     }
 
     /**
+     * The classpath {@code optimize-imports} resolves type names against — without one OpenRewrite
+     * attributes every name to {@code Unknown}, so the pass parses every file and shortens nothing.
+     *
+     * <p>It is every workspace module's class output, taken from the lockfile's module list. That
+     * is what makes the project's <em>own</em> types nameable, and a tree's own types are what it
+     * writes fully-qualified: on jk itself, 3,798 of 4,284 fully-qualified references.
+     *
+     * <p><strong>Dependency jars are deliberately not on it,</strong> and this is the one place
+     * that says so. OpenRewrite builds a javac file manager per file, so every classpath entry is
+     * re-opened for every file parsed. Measured over jk's own 2,011 sources: these directories cost
+     * 18s on top of a 108s {@code jk format} and shorten 3,293 references; adding the lockfile's
+     * 150 dependency jars shortens 47 more (1.4%) and costs a further 6 minutes. It also runs the
+     * worker's heap hard enough to have crashed it (a HotSpot SIGSEGV unloading classes under a
+     * full GC) in two of four whole-tree runs. A dependency's type written out in full therefore
+     * stays that way, which is a stated limit in {@code docs/user/format.md}, not an accident.
+     *
+     * <p>Directories that do not exist yet are still listed: javac ignores them, and dropping them
+     * would make the entry list — and therefore {@link FormatKey#digest()} — change every time a
+     * module's tests first compile, re-formatting the tree for nothing. A module that has never
+     * been built simply contributes no types, and its callers keep their fully-qualified names
+     * until it has.
+     *
+     * <p>No lockfile means no classpath: {@code jk format} does not resolve or fetch anything, and
+     * shortening degrades to the JDK types javac supplies on its own.
+     */
+    static List<Path> compileClasspath(Path projectDir) {
+        Path lockFile = LockPaths.lockFile(projectDir);
+        if (!Files.isRegularFile(lockFile)) return List.of();
+        Lockfile lock;
+        try {
+            lock = LockfileReader.read(lockFile);
+        } catch (Exception e) {
+            return List.of();
+        }
+        Path workspaceRoot = LockPaths.lockOwnerDir(projectDir);
+        LinkedHashSet<Path> entries = new LinkedHashSet<>();
+        for (Lockfile.ModuleEntry module : lock.modules()) {
+            Path target = BuildLayout.moduleTargetDir(workspaceRoot, workspaceRoot.resolve(module.path()));
+            entries.add(target.resolve("classes").resolve("main"));
+            entries.add(target.resolve("classes").resolve("test"));
+        }
+        return List.copyOf(entries);
+    }
+
+    /**
      * This run's {@link FormatKey} digest, or null when the worker jar cannot be located — without
      * the formatter's own identity there is no honest key, so both stores stay off rather than
      * cache under a key that cannot see a formatter upgrade.
@@ -559,7 +628,8 @@ public final class FormatPlans {
             boolean optimizeImports,
             boolean importOrder,
             boolean removeUnusedImports,
-            Path rewriteConfig) {
+            Path rewriteConfig,
+            List<Path> compileClasspath) {
         try {
             return new FormatKey(
                             javaStyle,
@@ -572,6 +642,7 @@ public final class FormatPlans {
                             removeUnusedImports,
                             GOOGLE_VERSION,
                             rewriteConfig,
+                            compileClasspath,
                             PluginJar.FORMATTER.locate(JkStores.cas(cache)))
                     .digest();
         } catch (Exception e) {

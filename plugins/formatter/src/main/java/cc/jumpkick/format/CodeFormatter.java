@@ -52,7 +52,8 @@ import org.openrewrite.style.NamedStyles;
  *
  * <p>Java Spotless pipeline (always on): {@code importOrder} → {@code removeUnusedImports} →
  * Palantir / Google / AOSP style. Matches the usual Spotless recipe; FQCN shortening is the
- * separate OpenRewrite {@code optimizeImports} pass.
+ * separate OpenRewrite {@code optimizeImports} pass, which resolves names against the compile
+ * classpath the host sends ({@code cp} lines, compile role) and can shorten nothing without one.
  */
 public final class CodeFormatter implements Plugin {
 
@@ -126,7 +127,7 @@ public final class CodeFormatter implements Plugin {
                     // --- OpenRewrite pass (Java only) --------------------------------
                     boolean rewriteChanged = false;
                     if (!ref.kotlin && rewriteRecipe != null) {
-                        rewriteChanged = applyRewrite(rewriteRecipe, ref.file, spec.apply);
+                        rewriteChanged = applyRewrite(rewriteRecipe, ref.file, spec.apply, spec.compileClasspath);
                     }
 
                     // --- Spotless pass -----------------------------------------------
@@ -218,14 +219,22 @@ public final class CodeFormatter implements Plugin {
                     .importStaticAllOthers()
                     .build())));
 
-    private static boolean applyRewrite(Recipe recipe, File file, boolean apply) throws IOException {
+    // Package-private: CodeFormatterRewriteTest drives it directly, so the classpath's effect on
+    // shortening is asserted without resolving the Spotless formatter jars.
+    static boolean applyRewrite(Recipe recipe, File file, boolean apply, List<Path> classpath) throws IOException {
         ExecutionContext ctx = new InMemoryExecutionContext(e -> {});
         List<SourceFile> parsed;
         try {
-            parsed = JavaParser.fromJavaVersion()
+            JavaParser.Builder<?, ?> parser = JavaParser.fromJavaVersion()
                     .logCompilationWarningsAndErrors(false)
-                    .styles(NO_STAR_IMPORTS)
-                    .build()
+                    .styles(NO_STAR_IMPORTS);
+            // Type attribution is the whole feature: ShortenFullyQualifiedTypeReferences rewrites a
+            // field access only when it resolves to a top-level class, so with no classpath every
+            // name outside java.* stays fully qualified and the pass reports success having done
+            // nothing. Left unset (not set empty) when the host sent none, so javac keeps its own
+            // default rather than being told the classpath is empty.
+            if (!classpath.isEmpty()) parser = parser.classpath(classpath);
+            parsed = parser.build()
                     .parse(List.of(file.toPath()), file.toPath().getParent(), ctx)
                     .toList();
         } catch (Exception e) {
@@ -345,6 +354,11 @@ public final class CodeFormatter implements Plugin {
         boolean importOrder = true;
         boolean removeUnusedImports = true;
         File rewriteConfigFile = null;
+        /**
+         * The project's compile classpath, as {@code cp} lines with the compile role. OpenRewrite
+         * resolves type names against it; empty means only the JDK's own types can be shortened.
+         */
+        List<Path> compileClasspath = List.of();
         // Stamp cache: null when the host didn't pass a cache-dir (no caching).
         Path cacheDir = null;
         /** The host's FormatKey digest — the single owner of what this run is keyed by. */
@@ -369,6 +383,7 @@ public final class CodeFormatter implements Plugin {
             s.kotlinMaxWidth = (int) c.intValue("kotlinMaxWidth", 0);
             s.kotlinJars = jars(c.stringList("kotlinJars"));
             s.optimizeImports = c.bool("optimizeImports", false);
+            s.compileClasspath = List.copyOf(ws.compileClasspath());
             s.importOrder = c.bool("importOrder", true);
             s.removeUnusedImports = c.bool("removeUnusedImports", true);
             c.stringOpt("rewriteConfigFile").ifPresent(p -> s.rewriteConfigFile = new File(p));
