@@ -3,8 +3,8 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkHistoryConfig;
-import cc.jumpkick.engine.EngineServer;
 import cc.jumpkick.engine.JsonOut;
+import cc.jumpkick.engine.WireWriter;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoJobs;
@@ -128,7 +128,7 @@ public final class JournalWriter {
             long buildNumber = a.buildNumber();
             if (buildNumber > 0) record = record.withBuildNumber(buildNumber);
             a.flushTimeline().ifPresent(path -> {
-                if (writer != null) EngineServer.sendQuiet(writer, ProtoJobs.timeline(path.toString()));
+                if (writer != null) WireWriter.sendQuiet(writer, ProtoJobs.timeline(path.toString()));
             });
             List<MarkdownTestReport.ModuleRun> tests = takeTests(a.dir());
             if (record.synthetic()) {

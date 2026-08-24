@@ -109,13 +109,13 @@ public final class EngineVerbBridge implements VerbHost {
     @Override
     public void send(@Nullable BufferedWriter writer, String line) throws IOException {
         if (writer == null) return; // detached job — the sinks and hooks carry the facts
-        EngineServer.send(writer, line);
+        WireWriter.send(writer, line);
     }
 
     @Override
     public void sendQuiet(@Nullable BufferedWriter writer, String line) {
         if (writer == null) return;
-        EngineServer.sendQuiet(writer, line);
+        WireWriter.sendQuiet(writer, line);
     }
 
     @Override

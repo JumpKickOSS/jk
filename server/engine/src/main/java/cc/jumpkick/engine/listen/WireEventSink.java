@@ -4,7 +4,6 @@ package cc.jumpkick.engine.listen;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import java.io.BufferedWriter;
-import java.io.IOException;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -26,16 +25,7 @@ public final class WireEventSink implements EventSink {
         if (writer == null) return;
         String line = encode(event);
         if (line == null) return;
-        try {
-            // Same monitor as EngineServer.send — plan workers and heartbeats share the writer.
-            synchronized (writer) {
-                writer.write(line);
-                writer.write('\n');
-                writer.flush();
-            }
-        } catch (IOException ignored) {
-            // client gone
-        }
+        cc.jumpkick.engine.WireWriter.sendQuiet(writer, line);
     }
 
     static @Nullable String encode(EngineEvent event) {

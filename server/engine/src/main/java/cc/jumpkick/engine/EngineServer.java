@@ -733,7 +733,7 @@ public final class EngineServer implements AutoCloseable {
                         new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8))) {
             if (expectedToken != null && !authenticate(reader)) {
                 // Typed refusal (then close): a silent close is indistinguishable from a crash.
-                sendQuiet(writer, ProtoLifecycle.error(EngineProtocol.ERR_AUTH, "engine token rejected"));
+                WireWriter.sendQuiet(writer, ProtoLifecycle.error(EngineProtocol.ERR_AUTH, "engine token rejected"));
                 return;
             }
             serveConnection(reader, writer, ch);
@@ -751,7 +751,7 @@ public final class EngineServer implements AutoCloseable {
             if (type == null) {
                 // A garbled REQUEST gets a typed refusal, never silence — a silently-dropped
                 // request wedges a streaming client that is waiting for a terminal event.
-                sendQuiet(
+                WireWriter.sendQuiet(
                         writer,
                         ProtoLifecycle.error(
                                 EngineProtocol.ERR_PROTOCOL, "unparseable request line (no \"type\" discriminator)"));
@@ -763,7 +763,7 @@ public final class EngineServer implements AutoCloseable {
                 String dir = Jsonl.str(line, "dir");
                 String floor = dir == null ? null : LockFloor.requiredNewer(Path.of(dir), version);
                 if (floor != null) {
-                    send(
+                    WireWriter.send(
                             writer,
                             ProtoLifecycle.error(EngineProtocol.ERR_VERSION_SKEW, LockFloor.message(floor, version)));
                     return;
@@ -780,7 +780,7 @@ public final class EngineServer implements AutoCloseable {
                     if (clientProto > EngineProtocol.PROTOCOL) {
                         // A newer-protocol client: this engine must not serve wire semantics
                         // it postdates — the client reacts by taking over (spawn + drain).
-                        send(
+                        WireWriter.send(
                                 writer,
                                 ProtoLifecycle.error(
                                         EngineProtocol.ERR_VERSION_SKEW,
@@ -788,13 +788,13 @@ public final class EngineServer implements AutoCloseable {
                                                 + EngineProtocol.PROTOCOL + " — start a matching engine"));
                         return;
                     }
-                    send(writer, ProtoLifecycle.helloAck(version, pid, startedAtMillis, draining, buildId));
+                    WireWriter.send(writer, ProtoLifecycle.helloAck(version, pid, startedAtMillis, draining, buildId));
                 }
-                case EngineProtocol.PING -> send(writer, ProtoLifecycle.pong());
+                case EngineProtocol.PING -> WireWriter.send(writer, ProtoLifecycle.pong());
                 case EngineProtocol.STATUS -> {
                     cc.jumpkick.engine.http.StatusSnapshot s = statusSnapshot();
                     HttpEngineServer hs = http.server();
-                    send(
+                    WireWriter.send(
                             writer,
                             ProtoLifecycle.statusAck(
                                     s.version(),
@@ -837,7 +837,7 @@ public final class EngineServer implements AutoCloseable {
                         lifecycleLock.notifyAll();
                     }
                     http.stopNow();
-                    send(writer, ProtoLifecycle.bye(n, drain));
+                    WireWriter.send(writer, ProtoLifecycle.bye(n, drain));
                     if (drain) startDrainReporter();
                     return;
                 }
@@ -861,7 +861,7 @@ public final class EngineServer implements AutoCloseable {
                 }
                 case EngineProtocol.CANCEL_REQUEST -> handleCancelRequest(line, writer);
                 default ->
-                    sendQuiet(
+                    WireWriter.sendQuiet(
                             writer, ProtoLifecycle.error(EngineProtocol.ERR_PROTOCOL, "unknown request type: " + type));
             }
         }
@@ -895,18 +895,18 @@ public final class EngineServer implements AutoCloseable {
         String dir = Jsonl.str(requestLine, "dir");
         if (jid >= 0) {
             boolean ok = cancelJob(jid);
-            send(writer, ProtoLifecycle.cancelAck(jid, ok, ok ? null : "unknown or already finished jid"));
+            WireWriter.send(writer, ProtoLifecycle.cancelAck(jid, ok, ok ? null : "unknown or already finished jid"));
             return;
         }
         if (dir != null && !dir.isBlank()) {
             int n = jobs.cancelJobsForDir(dir);
-            send(
+            WireWriter.send(
                     writer,
                     ProtoLifecycle.cancelAck(
                             0, n > 0, n > 0 ? ("cancelled " + n + " job(s)") : "no running jobs for dir"));
             return;
         }
-        send(writer, ProtoLifecycle.cancelAck(-1, false, "cancel-request requires jid or dir"));
+        WireWriter.send(writer, ProtoLifecycle.cancelAck(-1, false, "cancel-request requires jid or dir"));
     }
 
     boolean cancelJob(long jid) {
@@ -936,15 +936,6 @@ public final class EngineServer implements AutoCloseable {
     private long eventRequestId() {
         Long id = currentEventRequestId.get();
         return id != null ? id : -1;
-    }
-
-    /** Best-effort send: a write failure means the client is gone — nothing more to do for this event. */
-    public static void sendQuiet(BufferedWriter writer, String line) {
-        try {
-            send(writer, line);
-        } catch (IOException ignored) {
-            // the cancel-watching read loop will notice the same disconnect and cancel the build
-        }
     }
 
     static String redactEnv(String dir, String text) {
@@ -1216,15 +1207,6 @@ public final class EngineServer implements AutoCloseable {
     private void planSharedWorkerMemoryOnce() {
         int cap = cc.jumpkick.config.Jobs.resolve(cc.jumpkick.config.JkEngineConfig.resolve());
         JvmOptions.planAndApply(HeapPlan.requestedJvms(cap, 1, false, cap));
-    }
-
-    static void send(BufferedWriter writer, String line) throws IOException {
-        // Heartbeat + plan workers may write concurrently.
-        synchronized (writer) {
-            writer.write(line);
-            writer.write('\n');
-            writer.flush();
-        }
     }
 
     private static void closeQuietly(SocketChannel ch) {

@@ -269,7 +269,7 @@ public final class SsePublisher {
             double pct = heldPct;
             String line = ProtoEvents.workspaceProgress(
                     dir, num, den, snap.phase(), snap.modulesComplete(), snap.modulesTotal(), rem, r0, pct);
-            if (writer != null) EngineServer.sendQuiet(writer, line);
+            if (writer != null) WireWriter.sendQuiet(writer, line);
             if (eventsWanted()) {
                 var body = cc.jumpkick.engine.JsonOut.object()
                         .put("schema", 1)

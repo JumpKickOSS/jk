@@ -7,6 +7,7 @@ import cc.jumpkick.engine.BuildJobFingerprint;
 import cc.jumpkick.engine.InFlightBuilds;
 import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.engine.JsonOut;
+import cc.jumpkick.engine.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.protocol.EngineProtocol;
@@ -159,7 +160,7 @@ public final class JobEnvelope {
         if (plan ? !claimedBuildPlanSlot : host.draining()) {
             if (detached) throw new IllegalStateException("engine is shutting down");
             try {
-                send(
+                WireWriter.send(
                         writer,
                         ProtoLifecycle.error(
                                 EngineProtocol.ERR_SHUTTING_DOWN,
@@ -197,7 +198,7 @@ public final class JobEnvelope {
                 throw new AlreadyRunning(msg, h.requestId(), h.buildNumber());
             }
             try {
-                send(writer, ProtoLifecycle.alreadyRunning(h.buildNumber(), h.requestId(), msg));
+                WireWriter.send(writer, ProtoLifecycle.alreadyRunning(h.buildNumber(), h.requestId(), msg));
             } catch (IOException ignored) {
                 // client gone
             }
@@ -220,7 +221,7 @@ public final class JobEnvelope {
         // Public jid surface — client tracks this for Ctrl-C / jk cancel.
         if (writer != null) {
             try {
-                send(writer, JobAdmit.jobStartLine(host, eventRequestId, eventKind, eventDir, admit));
+                WireWriter.send(writer, JobAdmit.jobStartLine(host, eventRequestId, eventKind, eventDir, admit));
             } catch (IOException ignored) {
                 // client gone before job body — still run cancel registration below
             }
@@ -323,7 +324,7 @@ public final class JobEnvelope {
                     }
                     if (done.getCount() == 0) return;
                     if (heartbeatMs > 0 && writer != null) {
-                        sendQuiet(writer, ProtoLifecycle.heartbeat(host.nowMillis() - start));
+                        WireWriter.sendQuiet(writer, ProtoLifecycle.heartbeat(host.nowMillis() - start));
                     }
                 }
             });
@@ -436,7 +437,7 @@ public final class JobEnvelope {
                 if (cancelled && writer != null) {
                     // Same shape rule as pushCancelledTerminal: single builds journal as "build" but
                     // their client loop only ends on plan-finish.
-                    sendQuiet(writer, cancelledTerminalLine(workspaceStream, eventDir));
+                    WireWriter.sendQuiet(writer, cancelledTerminalLine(workspaceStream, eventDir));
                 }
                 // Release the plan slot before request-finish so status SSE carries the post-finish
                 // activeBuildPlans count — Live activity finishes in the same frame.
@@ -467,7 +468,7 @@ public final class JobEnvelope {
                     // blocks on this line rather than the plan terminal — otherwise `jk build`
                     // returns mid-write and a following `jk clean` races the memo/journal writers
                     // (JK-2451). In a finally so a throwing journal can never strand the client.
-                    if (writer != null) sendQuiet(writer, ProtoLifecycle.jobFinish(eventRequestId));
+                    if (writer != null) WireWriter.sendQuiet(writer, ProtoLifecycle.jobFinish(eventRequestId));
                 }
                 host.clearProgress(eventRequestId);
                 // Idle boundary after finish side-effects so prune/GC see journal + event garbage too.
@@ -591,7 +592,7 @@ public final class JobEnvelope {
 
     private void pushCancelledTerminal(LiveJob job) {
         if (job.writer() == null) return;
-        sendQuiet(job.writer(), cancelledTerminalLine(job.workspaceStream(), job.dir()));
+        WireWriter.sendQuiet(job.writer(), cancelledTerminalLine(job.workspaceStream(), job.dir()));
     }
 
     /**
@@ -664,7 +665,7 @@ public final class JobEnvelope {
         }
         int killed = JobWorkers.shutdownForRequest(eventRequestId, JobWorkers.cancelGraceMs());
         interruptRunner(runnerThread);
-        sendQuiet(
+        WireWriter.sendQuiet(
                 writer,
                 ProtoLifecycle.error(
                         EngineProtocol.ERR_DEADLINE,
@@ -729,21 +730,6 @@ public final class JobEnvelope {
             return Long.parseLong(raw.trim());
         } catch (NumberFormatException e) {
             return defaultMs;
-        }
-    }
-
-    static void send(BufferedWriter writer, String line) throws IOException {
-        writer.write(line);
-        writer.write('\n');
-        writer.flush();
-    }
-
-    static void sendQuiet(@Nullable BufferedWriter writer, String line) {
-        if (writer == null) return;
-        try {
-            send(writer, line);
-        } catch (IOException ignored) {
-            // the cancel-watching read loop will notice the same disconnect
         }
     }
 }

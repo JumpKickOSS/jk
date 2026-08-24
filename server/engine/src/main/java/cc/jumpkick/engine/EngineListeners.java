@@ -71,7 +71,7 @@ public final class EngineListeners {
         BuildAccumulator a = sessions.accumulator(requestId);
         if (a == null) return;
         a.flushTimeline().ifPresent(path -> {
-            if (writer != null) EngineServer.sendQuiet(writer, ProtoJobs.timeline(path.toString()));
+            if (writer != null) WireWriter.sendQuiet(writer, ProtoJobs.timeline(path.toString()));
         });
     }
 
