@@ -1184,7 +1184,7 @@ public final class JUnitLauncher {
          * wire, SSE, journal, web card — and an {@code assertEquals} diff of two multi-MB strings
          * otherwise puts hundreds of MB of transients through the engine for one bad suite. The
          * copy of the message inside the stack's first line was already bounded; the field itself
-         * was not. {@code StreamingListener} applies the same cap worker-side so the JSONL line is
+         * was not. {@code LauncherPath} applies the same cap worker-side so the JSONL line is
          * bounded on the wire too; this cap covers workers that predate it.
          */
         static final int MAX_MESSAGE_CHARS = 8_192;
