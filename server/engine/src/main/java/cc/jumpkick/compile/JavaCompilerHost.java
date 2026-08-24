@@ -246,10 +246,13 @@ public final class JavaCompilerHost {
             Work w = inflight;
             if (w == null) return;
             if (PluginProtocol.DIAGNOSTIC.equals(t)) {
-                String file = Jsonl.str(json, "file");
-                w.diagnostics.add(new CompileResult.Diagnostic(
-                        CompileResult.Severity.fromName(Jsonl.str(json, "sev")),
-                        file == null ? null : Path.of(file),
+                // Through WorkerDiagnostics, never a bare `new Diagnostic(...)`: downstream
+                // consumers scrape the MESSAGE for the locus (PlannerCompile forwards
+                // describe(), which is message-only), so the worker's file/line has to be
+                // folded into a javac-style header here or the error never names its file.
+                w.diagnostics.add(WorkerDiagnostics.located(
+                        Jsonl.str(json, "sev"),
+                        Jsonl.str(json, "file"),
                         Jsonl.longValue(json, "line", 0),
                         Jsonl.longValue(json, "col", 0),
                         Jsonl.str(json, "msg")));

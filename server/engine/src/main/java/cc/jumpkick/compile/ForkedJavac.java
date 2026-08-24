@@ -189,10 +189,11 @@ public final class ForkedJavac {
                     javaExe, workerCp, jvmFlags, List.of("@" + spec.toAbsolutePath()));
             int exit = new cc.jumpkick.engine.plugin.PluginClient(PREFIX)
                     .on(PluginProtocol.DIAGNOSTIC, json -> {
-                        String file = Jsonl.str(json, "file");
-                        diagnostics.add(new CompileResult.Diagnostic(
-                                CompileResult.Severity.fromName(Jsonl.str(json, "sev")),
-                                file == null ? null : Path.of(file),
+                        // Same contract as the pull-mode host: the locus must live in the
+                        // message text (WorkerDiagnostics), not only in the record fields.
+                        diagnostics.add(WorkerDiagnostics.located(
+                                Jsonl.str(json, "sev"),
+                                Jsonl.str(json, "file"),
                                 Jsonl.longValue(json, "line", 0),
                                 Jsonl.longValue(json, "col", 0),
                                 Jsonl.str(json, "msg")));
