@@ -225,6 +225,12 @@ dependencies { testApksig("com.android.tools.build:apksig:8.7.3") }
 tasks.named<Test>("integrationTest") {
     integrationWorkerJars.forEach { (prop, cfg) ->
         dependsOn(cfg)
+        // inputs.files is what makes the up-to-date check see a rebuilt plugin. dependsOn only
+        // orders the tasks, and a doFirst systemProperty is set at execution time — so without
+        // this, editing a plugin's source left integrationTest UP-TO-DATE and Gradle replayed the
+        // previous run's results. Revert checks against a plugin change came back green as
+        // no-ops until `--rerun` was passed by hand (JK-2404).
+        inputs.files(cfg).withPropertyName(prop).withPathSensitivity(PathSensitivity.NONE)
         doFirst { systemProperty(prop, cfg.singleFile.absolutePath) }
     }
     seedWorkerRepos(
@@ -237,5 +243,6 @@ tasks.named<Test>("integrationTest") {
             ":groovy-compiler",
             ":auditor")
     dependsOn(testApksig)
+    inputs.files(testApksig).withPropertyName("apksigClasspath").withPathSensitivity(PathSensitivity.NONE)
     doFirst { systemProperty("jk.android.apksig.classpath", testApksig.asPath) }
 }
