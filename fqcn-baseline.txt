@@ -126,6 +126,7 @@
 
 
 ## outside-the-recipe
+    2  server/engine/src/test/java/cc/jumpkick/runtime/TaskForecasterPackageKeyTest.java
 # Three kinds of reference `ShortenFullyQualifiedTypeReferences` does not rewrite, in files it
 # otherwise swept clean:
 #
@@ -285,7 +286,6 @@
     1  server/engine/src/test/java/cc/jumpkick/runtime/PinnedWorkerJarTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/RobolectricUnitTest.java
     2  server/engine/src/test/java/cc/jumpkick/runtime/ScheduleBiasTest.java
-    4  server/engine/src/test/java/cc/jumpkick/runtime/TaskForecasterPackageKeyTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/TaskForecasterPresentTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/TestEffortTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/TestEnvTest.java
