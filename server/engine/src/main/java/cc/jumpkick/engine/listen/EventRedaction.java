@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.listen;
 
+import cc.jumpkick.config.Redacted;
 import cc.jumpkick.run.TestFailureInfo;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
@@ -30,6 +32,36 @@ public final class EventRedaction {
         } catch (RuntimeException e) {
             warnFailOpen(e);
             return text;
+        }
+    }
+
+    /**
+     * {@link #redactEnv} over a whole error list, with the redactor hoisted — building one walks
+     * for a workspace root and parses {@code .env}, so a per-row call would repeat that work.
+     *
+     * <p>The result is typed {@link Redacted} because {@code ProtoEvents.workspaceFinish} accepts
+     * nothing else: this method (through {@link cc.jumpkick.config.SecretRedactor#redactAll}) is
+     * the only way an engine verb can produce the terminal's error rows.
+     *
+     * <p>Fail-open, like every other method here: if the redactor cannot be built or throws, the
+     * rows are wrapped unmasked and the once-per-run warning fires. A security control that
+     * silently disables itself must stay discoverable, but it may not fail a build.
+     */
+    public static List<Redacted> redactErrors(@Nullable String dir, @Nullable List<String> errors) {
+        if (errors == null || errors.isEmpty()) return List.of();
+        cc.jumpkick.config.SecretRedactor redactor;
+        try {
+            redactor = redactorFor(dir);
+        } catch (RuntimeException e) {
+            // A blank dir with no session is a routine off-request call, not a broken redactor.
+            if (dir != null && !dir.isBlank()) warnFailOpen(e);
+            redactor = cc.jumpkick.config.SecretRedactor.none();
+        }
+        try {
+            return redactor.redactAll(errors);
+        } catch (RuntimeException e) {
+            warnFailOpen(e);
+            return cc.jumpkick.config.SecretRedactor.none().redactAll(errors);
         }
     }
 

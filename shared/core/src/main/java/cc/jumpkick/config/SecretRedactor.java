@@ -140,6 +140,23 @@ public final class SecretRedactor {
     }
 
     /**
+     * Redact every element and carry the proof in the type: {@link Redacted} has no other mint.
+     *
+     * <p>This is the shape a terminal event wants — {@code ProtoEvents.workspaceFinish} takes
+     * {@code List<Redacted>} precisely so a verb cannot pass raw worker output (JK-2387). A null
+     * row becomes the empty string; error rows are display text and a null on the wire is not a
+     * thing.
+     */
+    public List<Redacted> redactAll(List<String> texts) {
+        if (texts == null || texts.isEmpty()) return List.of();
+        List<Redacted> out = new ArrayList<>(texts.size());
+        for (String t : texts) {
+            out.add(new Redacted(t == null ? "" : redact(t)));
+        }
+        return List.copyOf(out);
+    }
+
+    /**
      * A redactor that additionally matches each secret's JSON-string-escaped rendering.
      *
      * <p>Replay paths re-redact <em>escaped JSON documents</em>: a secret containing {@code "},

@@ -6,7 +6,6 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.JkBuild;
@@ -210,20 +209,7 @@ public final class NativeVerb implements HostedVerb {
             WorkspaceResult result = SessionContext.where(
                     session,
                     () -> BuildService.buildWorkspace(req, host.workspaceListener(writer, entryDir.toString())));
-            host.releaseExclusiveSlot();
-            boolean cancelled = result.cancelled() || host.effectiveCancelled(rid, cancelToken.cancelled());
-            cc.jumpkick.engine.jobs.JobOutcome outcome =
-                    cc.jumpkick.engine.jobs.JobOutcome.of(result.success() && !cancelled, result.exitCode());
-            if (rid > 0) {
-                if (result.success() && !cancelled) host.finishProgress(rid);
-                host.emitWorkspaceProgress(rid, writer, true);
-            }
-            host.flushTimeline(rid, writer);
-            host.sendQuiet(
-                    writer,
-                    ProtoEvents.workspaceFinish(
-                            result.success() && !cancelled, result.exitCode(), result.errors(), cancelled));
-            return outcome;
+            return WorkspaceTerminal.finish(host, writer, entryDir.toString(), result, cancelToken.cancelled());
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(Jsonl.str(requestLine, "dir"), e));
             return null;

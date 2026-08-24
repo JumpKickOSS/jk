@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.protocol;
 
+import cc.jumpkick.config.Redacted;
 import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 
@@ -1006,15 +1007,18 @@ public final class ProtoEvents {
         return sb.append('}').toString();
     }
 
-    public static String workspaceFinish(boolean success, int exitCode, List<String> errors) {
-        return workspaceFinish(success, exitCode, errors, false);
-    }
-
     /**
      * Workspace terminal. {@code cancelled} is additive so clients can settle as
      * "cancelled" rather than treating a user kill as a crash/disconnect.
+     *
+     * <p>{@code errors} is {@link Redacted}, not {@code String}, and that is load-bearing: these
+     * rows are raw worker output, {@code .env} values are secret by source, and this line reaches
+     * the user's terminal verbatim. Three of the four engine verbs that emit this event used to
+     * forget the masking call, which a {@code List<String>} parameter could not distinguish from
+     * the one that remembered (JK-2387). {@link cc.jumpkick.config.SecretRedactor#redactAll} is the
+     * only mint, so forgetting is now a compile error.
      */
-    public static String workspaceFinish(boolean success, int exitCode, List<String> errors, boolean cancelled) {
+    public static String workspaceFinish(boolean success, int exitCode, List<Redacted> errors, boolean cancelled) {
         return "{\"type\":\""
                 + EngineProtocol.WORKSPACE_FINISH
                 + "\",\"success\":"
@@ -1022,7 +1026,7 @@ public final class ProtoEvents {
                 + ",\"exitCode\":"
                 + exitCode
                 + ",\"errors\":"
-                + EngineProtocol.quoteArray(errors)
+                + EngineProtocol.quoteArray(errors.stream().map(Redacted::text).toList())
                 + ",\"cancelled\":"
                 + cancelled
                 + "}";

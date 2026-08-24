@@ -131,20 +131,8 @@ public final class ImageVerb implements HostedVerb {
                                         req,
                                         host.workspaceListener(
                                                 writer, wsRoot.get().toString())));
-                        host.releaseExclusiveSlot();
-                        boolean cancelled = result.cancelled() || host.effectiveCancelled(rid, cancelToken.cancelled());
-                        cc.jumpkick.engine.jobs.JobOutcome outcome = cc.jumpkick.engine.jobs.JobOutcome.of(
-                                result.success() && !cancelled, result.exitCode());
-                        if (rid > 0) {
-                            if (result.success() && !cancelled) host.finishProgress(rid);
-                            host.emitWorkspaceProgress(rid, writer, true);
-                        }
-                        host.flushTimeline(rid, writer);
-                        host.sendQuiet(
-                                writer,
-                                ProtoEvents.workspaceFinish(
-                                        result.success() && !cancelled, result.exitCode(), result.errors(), cancelled));
-                        return outcome;
+                        return WorkspaceTerminal.finish(
+                                host, writer, wsRoot.get().toString(), result, cancelToken.cancelled());
                     }
                 }
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
