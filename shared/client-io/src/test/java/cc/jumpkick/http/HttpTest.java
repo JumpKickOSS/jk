@@ -118,6 +118,42 @@ class HttpTest {
         }
     }
 
+    /**
+     * A repository declared as {@code https://user:token@host/} authenticates through an
+     * {@code Authorization} header — the JDK's client ignores userinfo — but the URI still carries
+     * the credential, and this is the message that reaches the journal when a host is down.
+     */
+    @Test
+    void the_exhausted_retry_message_carries_no_credential() {
+        server.createContext("/dead", exchange -> {
+            exchange.sendResponseHeaders(503, -1);
+            exchange.close();
+        });
+        URI withCredential = URI.create(
+                "http://alice:s3cr3t-token@127.0.0.1:" + server.getAddress().getPort() + "/dead");
+
+        assertThatThrownBy(() -> http().get(withCredential))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("503")
+                .hasMessageNotContaining("s3cr3t-token")
+                .hasMessageNotContaining("alice");
+    }
+
+    /** The offline refusal prints the URI too, and it is printed before any request is built. */
+    @Test
+    void the_offline_refusal_carries_no_credential() {
+        var prev = SessionContext.current().config();
+        SessionContext.installConfig(prev.mergedWith(JkConfig.empty().withOffline(Optional.of(true))));
+        try {
+            assertThatThrownBy(() -> http().get(URI.create("https://alice:s3cr3t-token@nexus.example.com/a.jar")))
+                    .isInstanceOf(OfflineException.class)
+                    .hasMessageContaining("nexus.example.com/a.jar")
+                    .hasMessageNotContaining("s3cr3t-token");
+        } finally {
+            SessionContext.installConfig(prev);
+        }
+    }
+
     @Test
     void get_sends_accept_encoding_gzip_by_default() throws Exception {
         AtomicReference<String> seenAcceptEncoding = new AtomicReference<>();

@@ -108,14 +108,27 @@ class EnvSecretRedactionTest {
         assertThat(EventRedaction.redactFailure(tmp.toString(), clean)).isSameAs(clean);
     }
 
+    /**
+     * Redaction follows the <em>declaration</em>, not the precedence winner. {@code.env} names the
+     * secret; whichever layer supplies its effective value, that value is what reaches the wire and
+     * that value is what gets masked. The reverse rule left the CI shape — {@code.env} default
+     * plus an exported override — as the one case nothing masked.
+     */
     @Test
-    void real_environment_values_are_not_masked_even_when_named_in_dotenv(@TempDir Path tmp) throws Exception {
-        // Source-based masking: a real env var that shadows.env is not a secret.
+    void a_dotenv_named_value_is_masked_even_when_the_shell_supplies_it(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve(".env"), "MODE=from-file\n");
-        // Simulate via SecretRedactor directly (same rule as BuildEnv when the shell wins).
         var env = EnvLookup.forModule(tmp, name -> "MODE".equals(name) ? "from-shell" : null);
         var r = SecretRedactor.from(env);
-        assertThat(r.redact("mode=from-shell")).isEqualTo("mode=from-shell");
+        assertThat(r.redact("mode=from-shell")).isEqualTo("mode=" + SecretRedactor.MASK);
+        // The losing file value never resolves, so nothing prints it and nothing masks it.
         assertThat(r.redact("mode=from-file")).isEqualTo("mode=from-file");
+    }
+
+    /** A name no {@code.env} mentions stays untouched — the redactor cannot enumerate the shell. */
+    @Test
+    void an_undeclared_environment_value_is_left_alone(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve(".env"), "MODE=from-file\n");
+        var env = EnvLookup.forModule(tmp, name -> "HOME".equals(name) ? "/home/developer" : null);
+        assertThat(SecretRedactor.from(env).redact("home=/home/developer")).isEqualTo("home=/home/developer");
     }
 }

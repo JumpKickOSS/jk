@@ -40,6 +40,31 @@ class HttpTransportTest {
         return new HttpTransport(new Http());
     }
 
+    /**
+     * The 4xx/5xx message names the URL it was fetching. A repository whose base URL carries
+     * {@code user:token@} would otherwise publish that credential into every fetch failure —
+     * which is journalled text and is what a user pastes into a bug report.
+     */
+    @Test
+    void a_fetch_failure_message_carries_no_credential() {
+        server.createContext("/a.jar", ex -> {
+            ex.sendResponseHeaders(403, -1);
+            ex.close();
+        });
+        URI withCredential = URI.create(
+                "http://alice:s3cr3t-token@127.0.0.1:" + server.getAddress().getPort() + "/a.jar");
+
+        assertThatThrownBy(() -> transport().fetch(withCredential, RepoCredential.ANONYMOUS))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("HTTP 403")
+                .hasMessageContaining("/a.jar")
+                .hasMessageNotContaining("s3cr3t-token");
+
+        assertThatThrownBy(() -> transport().fetchStream(withCredential, RepoCredential.ANONYMOUS))
+                .isInstanceOf(IOException.class)
+                .hasMessageNotContaining("s3cr3t-token");
+    }
+
     @Test
     void fetch_returns_body_and_sends_auth() throws Exception {
         AtomicReference<String> seenAuth = new AtomicReference<>();
