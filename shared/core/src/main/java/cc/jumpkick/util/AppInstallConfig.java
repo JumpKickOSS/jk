@@ -20,7 +20,8 @@ import java.util.regex.Pattern;
  * {@code $JK_HOME/config/<bin>/config.toml}. Override the config root with {@code JK_CONFIG_DIR}.
  *
  * <p>Values are string TOML keys. Writers merge into any existing file (new keys overwrite). Used by
- * engine materialize and {@code jk install} (template and/or {@code jk-config.*} properties).
+ * {@code jk install} (template and/or {@code jk-config.*} properties). The live engine pointer is
+ * {@code jk-engine.toml} beside the engine jar, not this file.
  */
 public final class AppInstallConfig {
 
@@ -119,7 +120,7 @@ public final class AppInstallConfig {
         return out;
     }
 
-    /** Parse {@code key = "value"} lines from a config.toml body. */
+    /** Parse {@code key = "value"} lines from a TOML-lite body. */
     public static Map<String, String> parse(String body) {
         Map<String, String> out = new LinkedHashMap<>();
         if (body == null || body.isBlank()) return out;
@@ -130,7 +131,8 @@ public final class AppInstallConfig {
         return out;
     }
 
-    static String render(Map<String, String> keys) {
+    /** Render string keys as {@code key = "value"} lines. */
+    public static String render(Map<String, String> keys) {
         StringBuilder sb = new StringBuilder();
         for (Map.Entry<String, String> e : keys.entrySet()) {
             if (e.getKey() == null || e.getKey().isBlank() || e.getValue() == null) continue;

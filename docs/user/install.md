@@ -50,8 +50,10 @@ Product data uses platform-native locations (XDG on Linux/macOS; Windows Known F
 repo for third-party jars) lives under **data** (`…/store`). **Cache CAS** (action outputs)
 lives under **cache**
 (`…/cache/sha256`). The live engine jar is
-`<data>/lib/jk-engine/<jar>` with metadata in `<config>/jk-engine/config.toml`
-(under `JK_HOME`: `$JK_HOME/data/lib/jk-engine/…` + `$JK_HOME/config/jk-engine/config.toml`).
+`<data>/lib/jk-engine/jk-engine-<version>.jar` (or `jk-engine-<version>.<epoch>.jar` when that
+canonical name is already occupied) with the live pointer in
+`<data>/lib/jk-engine/jk-engine.toml`
+(under `JK_HOME`: `$JK_HOME/data/lib/jk-engine/`).
 
 Managed JDKs use the **IntelliJ shared root** so the IDE and JumpKick share runtimes.
 JumpKick records those installs in **`<state>/jk-jdks.toml`** (defaults + fingerprints).
@@ -95,7 +97,7 @@ $JK_HOME/            ~/                        role
   data/                .local/share/jk/        product data
     store/               store/                artifact store (JK_STORE_DIR)
       lib/                 lib/                installed tool jars
-    lib/                 lib/                  live engine jar (jk-engine/)
+    lib/                 lib/                  live engine (jk-engine/*.jar + jk-engine.toml)
     credentials/         credentials/          forge tokens
     repo-credentials/    repo-credentials/     per-repo credentials
   state/               .local/state/jk/        engine socket, AOT, JDK inventory

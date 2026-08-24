@@ -51,7 +51,7 @@ public final class CachePlans {
         Task pruneStep = Task.builder("prune")
                 .ticks(1)
                 .execute(ctx -> {
-                    // Drop parked engine/client files and leftover versions/ trees.
+                    // Drop retired engine jars and parked PATH binaries.
                     try {
                         var pruned = cc.jumpkick.cache.EngineInstall.current().gc();
                         if (!pruned.isEmpty()) {

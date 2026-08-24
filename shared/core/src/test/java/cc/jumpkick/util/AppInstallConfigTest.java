@@ -17,8 +17,7 @@ class AppInstallConfigTest {
     @Test
     void path_under_jk_home_is_config_bin_config_toml(@TempDir Path tmp) {
         JkDirs dirs = JkDirs.of(Map.of("JK_HOME", tmp.resolve("home").toString())::get, tmp.toString());
-        assertThat(AppInstallConfig.path(dirs, "jk-engine"))
-                .isEqualTo(tmp.resolve("home/config/jk-engine/config.toml"));
+        assertThat(AppInstallConfig.path(dirs, "myapp")).isEqualTo(tmp.resolve("home/config/myapp/config.toml"));
     }
 
     @Test

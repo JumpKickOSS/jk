@@ -59,10 +59,13 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   `JK_HOME`s and draining/ghost pids). `jk engine stop --all` stops **this home only** so a
   nested test suite cannot kill the host engine. `--pid` stops one explicitly.
 - **Versioning** — one live engine under `<data>/lib/jk-engine/` (`~/.local/share/jk/lib/jk-engine/`,
-  or `$JK_HOME/data/lib/jk-engine/`), with metadata in `<config>/jk-engine/config.toml`, paired with
-  the PATH `jk`. One engine is hosted at a time, so there is no per-version directory tree. An upgrade parks the previous
-  jar as `<name>.jar.old` and the previous client as `jk.old` (`jk.exe.old` on Windows) until the
-  displaced engine drains; GC deletes the parked files. Handshake detects skew and takes over.
+  or `$JK_HOME/data/lib/jk-engine/`), with the live pointer in `jk-engine.toml` beside the jars, paired with
+  the PATH `jk`. One engine is hosted at a time, so there is no per-version directory tree. An upgrade
+  writes the new jar **beside** the previous one (`jk-engine-<version>.jar`, or
+  `jk-engine-<version>.<epochMillis>.jar` when that name is occupied) and points `jk-engine.toml` at it
+  — never rename or overwrite a jar `java.exe` may have mapped. The previous client is parked as
+  `jk.old` (`jk.exe.old` on Windows). GC deletes retired jars and parked clients once the displaced
+  engine drains. Handshake detects skew and takes over.
   **Newer always wins**: the lock's
   `jk-min` is a *floor*, never a pin — a jk older than the floor refuses artifact jobs with an
   upgrade error (`jk self update`) on every surface, and nothing ever fetches or runs an older
