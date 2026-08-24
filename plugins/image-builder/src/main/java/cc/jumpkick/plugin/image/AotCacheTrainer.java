@@ -100,16 +100,19 @@ final class AotCacheTrainer {
      * Stage the image's layout, train inside the base image, and verify the result loads. Returns
      * the cache file, or throws with the reason it could not be produced.
      *
-     * @param classpath the classpath string the image entrypoint will use — the training run must
-     *     be given the identical string, in the identical order, or the JVM rejects the cache
+     * @param workDir the module's staging root — {@code aot-train/} lives here and {@code jk clean}
+     *     is welcome to it
+     * @param cacheRoot jk's cache root: the extracted base JRE is 50–200 MB and is shared by every
+     *     module that builds on the same base, so it belongs under the bound {@code
+     *     CacheTier.BASE_JRE} declares for it, not in module build output nothing reclaims
      */
-    static Result train(ImageBuilder.Plan plan, Path workDir, Consumer<String> log)
+    static Result train(ImageBuilder.Plan plan, Path workDir, Path cacheRoot, Consumer<String> log)
             throws IOException, InterruptedException {
         String blocked = unsupportedReason(plan);
         if (blocked != null) throw new IOException(blocked);
 
         String base = qualify(plan.config().base());
-        Path localJre = localBaseJre(plan, base, workDir, log);
+        Path localJre = localBaseJre(plan, base, cacheRoot, log);
         Path staging = workDir.resolve("aot-train");
 
         // Boot nests its jars under BOOT-INF and loads them itself, so nothing useful reaches the
@@ -237,10 +240,10 @@ final class AotCacheTrainer {
      * container path produces the same cache, so a base image jk cannot unpack is a slower build
      * rather than a failed one.
      */
-    private static Path localBaseJre(ImageBuilder.Plan plan, String base, Path workDir, Consumer<String> log) {
+    static Path localBaseJre(ImageBuilder.Plan plan, String base, Path cacheRoot, Consumer<String> log) {
         if (!BaseJre.hostCanExecute(plan.config().platforms())) return null;
         try {
-            Path java = BaseJre.javaBinary(base, workDir.resolve("jk-image"));
+            Path java = BaseJre.javaBinary(base, cacheRoot);
             return java != null && Files.isExecutable(java) ? java : null;
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();

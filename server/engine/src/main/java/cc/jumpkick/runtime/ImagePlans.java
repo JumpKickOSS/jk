@@ -36,6 +36,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * {@code jk image} plan: full build plus OCI tail (Jib plugin or docker/podman Dockerfile
@@ -224,32 +225,47 @@ public final class ImagePlans {
                     // side-effect (the remote's state is unknown), so it's never skipped.
                     // The tarball is a pure function of the main jar, the dependency jars,
                     // the main class, the image config, and the image-builder plugin version.
+                    // The base image is an input, not a name. `eclipse-temurin:25-jre` moves, and a
+                    // key carrying the tag string is byte-identical across a republish — it would
+                    // serve a tarball built on layers the registry no longer has. Resolve once,
+                    // key on the digest, and hand the worker the pinned reference so the image
+                    // that ships is the image the key describes.
+                    Optional<String> pinnedBase = BaseImageDigest.pin(config.base());
+                    String base = pinnedBase.orElse(config.base());
+
                     ActionCache ac =
                             new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"), JkStores.storeCas());
+                    // A base that cannot be resolved (offline, or a registry that wants
+                    // credentials) leaves nothing in the key that identifies the layers underneath
+                    // the tarball, so it is not cached at all rather than cached wrongly. Writing
+                    // `base = "…@sha256:…"` needs no registry round trip and always caches.
                     boolean useCache = tarballPath != null
+                            && pinnedBase.isPresent()
                             && !SessionContext.current().config().rebuildOr(false);
+                    // Which worker built it, by content: the artifact id is a compile-time constant
+                    // and the release version does not move between local builds, so neither can
+                    // tell a rebuilt worker from the one whose output is already in the cache.
+                    Path workerJar = PluginJar.IMAGE_BUILDER.locate(JkStores.cas(cache));
                     String imgTask = null, imgKey = null;
-                    if (tarballPath != null) {
-                        List<String> tokens = List.of(
-                                "mainjar:" + ClasspathFingerprint.entry(layout.mainJar()),
-                                "deps:" + ClasspathFingerprint.of(depJars),
-                                "snapshots:" + ClasspathFingerprint.of(snapshotJars),
-                                "classes:" + (classesDir == null ? "" : ClasspathFingerprint.entry(classesDir)),
-                                "main:" + chosen,
-                                "cfg:" + imageConfigToken(config),
-                                "apptree:" + appTreeToken(project, layout),
-                                "worker:" + PluginJar.IMAGE_BUILDER.artifactId() + ":"
-                                        + BuildIdentity.cacheKeyVersion());
+                    if (useCache) {
+                        List<String> tokens = imageTokens(
+                                layout.mainJar(),
+                                depJars,
+                                snapshotJars,
+                                classesDir,
+                                chosen,
+                                base,
+                                config,
+                                appTreeToken(project, layout),
+                                workerJar);
                         imgTask = ActionKey.qualifiedTaskId(TaskNames.WRITE_IMAGE, tarballPath);
                         imgKey = ActionKey.forArtifact(imgTask, BuildIdentity.cacheKeyVersion(), tokens);
-                        if (useCache) {
-                            var hit = ac.lookup(imgKey);
-                            if (hit.isPresent() && ac.restoreArtifacts(hit.get(), tarballPath.getParent())) {
-                                ctx.put(IMAGE_REF, "");
-                                ctx.label(tarballPath.getFileName() + " up-to-date");
-                                ctx.progress(1);
-                                return;
-                            }
+                        var hit = ac.lookup(imgKey);
+                        if (hit.isPresent() && ac.restoreArtifacts(hit.get(), tarballPath.getParent())) {
+                            ctx.put(IMAGE_REF, "");
+                            ctx.label(tarballPath.getFileName() + " up-to-date");
+                            ctx.progress(1);
+                            return;
                         }
                     }
                     boolean daemonMode = tarballPath == null
@@ -268,7 +284,17 @@ public final class ImagePlans {
                     }
                     try {
                         String ref = runImageWorker(
-                                cache, project, layout, config, chosen, depJars, snapshotJars, classesDir, tarballPath);
+                                cache,
+                                workerJar,
+                                project,
+                                layout,
+                                config,
+                                base,
+                                chosen,
+                                depJars,
+                                snapshotJars,
+                                classesDir,
+                                tarballPath);
                         ctx.put(IMAGE_REF, ref);
                     } catch (RuntimeException e) {
                         ctx.error("image", e.getMessage());
@@ -347,87 +373,117 @@ public final class ImagePlans {
                 Boolean.TRUE.equals(data.aotCache()));
     }
 
-    private static String runImageWorker(
+    /**
+     * The worker spec for one image build: every {@code [image]} value the worker needs, plus the
+     * two the engine alone knows — the resolved {@code base} the action key was built from, and the
+     * jk cache root the worker writes its base-JRE tree under.
+     */
+    static SpecWriter imageWorkerSpec(
             Path cache,
             JkBuild project,
             BuildLayout layout,
             ImageConfig config,
+            String base,
+            String chosen,
+            List<Path> depJars,
+            List<Path> snapshotJars,
+            Path classesDir,
+            Path tarballPath)
+            throws IOException {
+        boolean daemonMode = tarballPath == null
+                && (config.registry() == null || config.registry().isBlank());
+        SpecWriter sw = new SpecWriter()
+                .op(PluginProtocol.OP_IMAGE, null, "jk-image-builder")
+                .configString("artifact", project.project().name())
+                .configString("version", project.project().version())
+                .configString("mainClass", chosen)
+                .configString("mode", tarballPath != null ? "tarball" : daemonMode ? "daemon" : "push");
+        if (base != null) sw.configString("base", base);
+        // The jk cache root. The worker extracts a base JRE (50–200 MB) to train an AOT cache
+        // against; that tree belongs under the root CacheTier.BASE_JRE bounds, not in the
+        // module's target/, where nothing reclaims it and `jk clean` throws it away.
+        sw.configString("jkCache", cache.toAbsolutePath().toString());
+        if (config.user() != null) sw.configString("user", config.user());
+        if (config.registry() != null) sw.configString("registry", config.registry());
+        if (config.tag() != null) sw.configString("tag", config.tag());
+        if (tarballPath != null)
+            sw.configString("tarball", tarballPath.toAbsolutePath().toString());
+        if (config.dockerExecutable() != null) sw.configString("dockerExecutable", config.dockerExecutable());
+        if (config.aotCache()) sw.configBool("aotCache", true);
+        if (!config.ports().isEmpty()) {
+            sw.configList("ports", config.ports().stream().map(String::valueOf).toList());
+        }
+        if (!config.env().isEmpty()) {
+            sw.configList(
+                    "env",
+                    config.env().entrySet().stream()
+                            .map(e -> e.getKey() + "=" + e.getValue())
+                            .toList());
+        }
+        if (!config.labels().isEmpty()) {
+            sw.configList(
+                    "labels",
+                    config.labels().entrySet().stream()
+                            .map(e -> e.getKey() + "=" + e.getValue())
+                            .toList());
+        }
+        if (!config.platforms().isEmpty()) sw.configList("platforms", config.platforms());
+        sw.artifact(layout.mainJar());
+        // Name each jar by its coordinate. The path is a CAS digest, so shipping that name
+        // into the image leaves a lib/ directory neither a human nor a scanner can read.
+        java.util.Map<Path, String> names = casJarNames(layout.moduleRoot(), cache);
+        for (Path dep : depJars) sw.entry(jarName(names, dep), dep, false, null);
+        for (Path dep : snapshotJars) sw.entry(jarName(names, dep), dep, true, null);
+        if (classesDir != null) sw.layout(java.util.Map.of("classesDir", classesDir));
+        // A packager that produced a complete runnable tree: ship that, not a lock-derived
+        // classpath. Declared but missing is a hard error — falling back to the lock classpath
+        // is exactly the broken image  fixed (Quarkus needs quarkus-run.jar, not
+        // Application on a 200-jar lock classpath).
+        var shape = PluginBuild.shape(project, layout.moduleRoot());
+        String appDir = shape.map(sh -> sh.appDir()).orElse("");
+        String appJar = shape.map(sh -> sh.appJar()).orElse("");
+        if (!appDir.isBlank() && !appJar.isBlank()) {
+            Path appRoot = layout.moduleTargetDir().resolve(appDir);
+            if (!Files.isDirectory(appRoot)) {
+                throw new RuntimeException("image needs the packager tree at "
+                        + appRoot
+                        + " (plugin packaging.app-dir="
+                        + appDir
+                        + ") — build the module first so "
+                        + appJar
+                        + " exists");
+            }
+            Path jarInTree = appRoot.resolve(appJar);
+            if (!Files.isRegularFile(jarInTree)) {
+                throw new RuntimeException(
+                        "image packager tree is missing " + jarInTree + " (packaging.app-jar=" + appJar + ")");
+            }
+            sw.configString("appDir", appRoot.toAbsolutePath().toString());
+            sw.configString("appJar", appJar);
+        }
+        return sw;
+    }
+
+    /**
+     * Fork the image worker. {@code base} is the resolved (digest-pinned where the registry could
+     * be asked) base reference the action key was built from — not {@code config.base()}, whose tag
+     * may point somewhere else by the time Jib pulls.
+     */
+    private static String runImageWorker(
+            Path cache,
+            Path workerJar,
+            JkBuild project,
+            BuildLayout layout,
+            ImageConfig config,
+            String base,
             String chosen,
             List<Path> depJars,
             List<Path> snapshotJars,
             Path classesDir,
             Path tarballPath) {
         try {
-            Path workerJar = PluginJar.IMAGE_BUILDER.locate(JkStores.cas(cache));
-            boolean daemonMode = tarballPath == null
-                    && (config.registry() == null || config.registry().isBlank());
-            SpecWriter sw = new SpecWriter()
-                    .op(PluginProtocol.OP_IMAGE, null, "jk-image-builder")
-                    .configString("artifact", project.project().name())
-                    .configString("version", project.project().version())
-                    .configString("mainClass", chosen)
-                    .configString("mode", tarballPath != null ? "tarball" : daemonMode ? "daemon" : "push");
-            if (config.base() != null) sw.configString("base", config.base());
-            if (config.user() != null) sw.configString("user", config.user());
-            if (config.registry() != null) sw.configString("registry", config.registry());
-            if (config.tag() != null) sw.configString("tag", config.tag());
-            if (tarballPath != null)
-                sw.configString("tarball", tarballPath.toAbsolutePath().toString());
-            if (config.dockerExecutable() != null) sw.configString("dockerExecutable", config.dockerExecutable());
-            if (config.aotCache()) sw.configBool("aotCache", true);
-            if (!config.ports().isEmpty()) {
-                sw.configList(
-                        "ports", config.ports().stream().map(String::valueOf).toList());
-            }
-            if (!config.env().isEmpty()) {
-                sw.configList(
-                        "env",
-                        config.env().entrySet().stream()
-                                .map(e -> e.getKey() + "=" + e.getValue())
-                                .toList());
-            }
-            if (!config.labels().isEmpty()) {
-                sw.configList(
-                        "labels",
-                        config.labels().entrySet().stream()
-                                .map(e -> e.getKey() + "=" + e.getValue())
-                                .toList());
-            }
-            if (!config.platforms().isEmpty()) sw.configList("platforms", config.platforms());
-            sw.artifact(layout.mainJar());
-            // Name each jar by its coordinate. The path is a CAS digest, so shipping that name
-            // into the image leaves a lib/ directory neither a human nor a scanner can read.
-            java.util.Map<Path, String> names = casJarNames(layout.moduleRoot(), cache);
-            for (Path dep : depJars) sw.entry(jarName(names, dep), dep, false, null);
-            for (Path dep : snapshotJars) sw.entry(jarName(names, dep), dep, true, null);
-            if (classesDir != null) sw.layout(java.util.Map.of("classesDir", classesDir));
-            // A packager that produced a complete runnable tree: ship that, not a lock-derived
-            // classpath. Declared but missing is a hard error — falling back to the lock classpath
-            // is exactly the broken image  fixed (Quarkus needs quarkus-run.jar, not
-            // Application on a 200-jar lock classpath).
-            var shape = PluginBuild.shape(project, layout.moduleRoot());
-            String appDir = shape.map(sh -> sh.appDir()).orElse("");
-            String appJar = shape.map(sh -> sh.appJar()).orElse("");
-            if (!appDir.isBlank() && !appJar.isBlank()) {
-                Path appRoot = layout.moduleTargetDir().resolve(appDir);
-                if (!Files.isDirectory(appRoot)) {
-                    throw new RuntimeException("image needs the packager tree at "
-                            + appRoot
-                            + " (plugin packaging.app-dir="
-                            + appDir
-                            + ") — build the module first so "
-                            + appJar
-                            + " exists");
-                }
-                Path jarInTree = appRoot.resolve(appJar);
-                if (!Files.isRegularFile(jarInTree)) {
-                    throw new RuntimeException(
-                            "image packager tree is missing " + jarInTree + " (packaging.app-jar=" + appJar + ")");
-                }
-                sw.configString("appDir", appRoot.toAbsolutePath().toString());
-                sw.configString("appJar", appJar);
-            }
-
+            SpecWriter sw = imageWorkerSpec(
+                    cache, project, layout, config, base, chosen, depJars, snapshotJars, classesDir, tarballPath);
             Path spec = Files.createTempFile("jk-image-", ".spec");
             try {
                 Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
@@ -535,6 +591,39 @@ public final class ImagePlans {
             }
         }
         return null;
+    }
+
+    /**
+     * Everything the OCI tarball is a function of, one token per input. The list is the definition
+     * of the packaging cache's promise, so it is a named function rather than a literal inside the
+     * task body — an input that is missing here is an image served from a stale cache.
+     *
+     * <p>{@code base} is the <em>resolved</em> base reference (see {@link BaseImageDigest}) and
+     * {@code workerJar} is hashed by content: the plugin's artifact id is a compile-time constant
+     * and the release version does not move between local builds, so neither identifies the worker
+     * that actually produced the tarball. {@code appTree} is {@link #appTreeToken}'s value.
+     */
+    static List<String> imageTokens(
+            Path mainJar,
+            List<Path> depJars,
+            List<Path> snapshotJars,
+            Path classesDir,
+            String mainClass,
+            String base,
+            ImageConfig config,
+            String appTree,
+            Path workerJar)
+            throws IOException {
+        return List.of(
+                "mainjar:" + ClasspathFingerprint.entry(mainJar),
+                "deps:" + ClasspathFingerprint.of(depJars),
+                "snapshots:" + ClasspathFingerprint.of(snapshotJars),
+                "classes:" + (classesDir == null ? "" : ClasspathFingerprint.entry(classesDir)),
+                "main:" + mainClass,
+                "base:" + base,
+                "cfg:" + imageConfigToken(config),
+                "apptree:" + appTree,
+                "worker:" + ClasspathFingerprint.entry(workerJar));
     }
 
     /** Stable serialization of the image config for the packaging cache key. */

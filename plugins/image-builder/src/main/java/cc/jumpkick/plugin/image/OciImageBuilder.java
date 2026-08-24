@@ -113,6 +113,9 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
             if (e.fileName() != null && !e.fileName().isBlank()) jarNames.put(e.jar(), e.fileName());
         }
         Path classesDir = ctx.classesDir().orElse(null);
+        // jk's cache root. Required: an AOT build extracts the base image's JRE here, and the
+        // engine's CacheTier.BASE_JRE is the only thing that bounds that tree.
+        Path cacheRoot = Path.of(c.string("jkCache"));
         String appDir = c.stringOpt("appDir").orElse(null);
         String appJar = c.stringOpt("appJar").orElse(null);
 
@@ -147,18 +150,19 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
             Path tarballPath = Path.of(tarball.get());
             ctx.label("building OCI tarball");
             if (tarballPath.getParent() != null) Files.createDirectories(tarballPath.getParent());
-            ImageBuilder.writeToTarball(plan, tarballPath);
+            ImageBuilder.writeToTarball(plan, tarballPath, cacheRoot);
             return ImageResult.tarball(tarballPath);
         }
         String ref = config.targetReference(artifact, version);
         if ("daemon".equals(c.stringOpt("mode").orElse(null))) {
             String exe = dockerExecutable != null ? dockerExecutable : "docker";
             ctx.label("loading " + ref + " into " + exe);
-            ImageBuilder.loadToLocalDaemon(plan, dockerExecutable != null ? Path.of(dockerExecutable) : null);
+            ImageBuilder.loadToLocalDaemon(
+                    plan, dockerExecutable != null ? Path.of(dockerExecutable) : null, cacheRoot);
             return ImageResult.loaded(ref);
         }
         ctx.label("pushing " + ref);
-        ImageBuilder.pushToRegistry(plan);
+        ImageBuilder.pushToRegistry(plan, cacheRoot);
         return ImageResult.pushed(ref);
     }
 
