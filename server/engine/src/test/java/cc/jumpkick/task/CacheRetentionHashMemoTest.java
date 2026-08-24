@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.CacheTree;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -35,9 +36,9 @@ class CacheRetentionHashMemoTest {
     private static final long PAST_GRACE = Duration.ofHours(6).toMillis();
 
     /** Bind the cap at {@code max} without seeding 32,768 entries to do it. */
-    private static Map<CacheTier, Bound> capAt(int max) {
+    private static Map<CacheTree, Bound> capAt(int max) {
         return Map.of(
-                CacheTier.HASH_MEMO, Bound.files(null, Bound.countCap(max, Bound.VictimRule.SUPERSEDED_THEN_OLDEST)));
+                CacheTree.HASH_MEMO, Bound.files(null, Bound.countCap(max, Bound.VictimRule.SUPERSEDED_THEN_OLDEST)));
     }
 
     @Test

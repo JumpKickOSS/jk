@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jsonl.Jsonl;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -70,7 +67,7 @@ public final class BuildJobFingerprint {
         sb.append("kind=").append(kind == null ? "" : kind).append('\n');
         sb.append("dir=").append(canon).append('\n');
         sb.append("scope=project\n");
-        return sha256Hex(sb.toString());
+        return Hashing.sha256Hex(sb.toString());
     }
 
     public static String of(
@@ -94,7 +91,7 @@ public final class BuildJobFingerprint {
         sb.append("modules=").append(normalizeModules(modules)).append('\n');
         sb.append("variant=").append(nullToEmpty(variant)).append('\n');
         sb.append("assembly=").append(nullToEmpty(assemblyOverride)).append('\n');
-        return sha256Hex(sb.toString());
+        return Hashing.sha256Hex(sb.toString());
     }
 
     /** Real path when the tree exists; otherwise absolute normalized path (worktrees stay distinct). */
@@ -128,16 +125,5 @@ public final class BuildJobFingerprint {
 
     private static String nullToEmpty(String s) {
         return s == null ? "" : s;
-    }
-
-    private static String sha256Hex(String s) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] dig = md.digest(s.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(dig);
-        } catch (NoSuchAlgorithmException e) {
-            // SHA-256 is required on every JDK we run; fall back so admission still works.
-            return Integer.toHexString(s.hashCode());
-        }
     }
 }

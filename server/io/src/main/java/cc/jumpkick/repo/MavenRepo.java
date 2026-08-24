@@ -20,7 +20,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -423,15 +422,15 @@ public final class MavenRepo {
             // doesn't publish one (SHA-1 is chosen-prefix broken, and its match becomes the lock pin
             // for bytes any `mvn install` could have seeded — JK-2321).
             String vouchAlgo;
-            Optional<String> advertised = fetchSha256(uri);
+            Optional<String> advertised = fetchSidecar(uri, ".sha256", 64);
             if (advertised.isPresent()) {
                 vouchAlgo = "sha256";
-                if (!Hashing.fileHex("SHA-256", candidate).equalsIgnoreCase(advertised.get())) {
+                if (!Hashing.sha256Hex(candidate).equalsIgnoreCase(advertised.get())) {
                     return Optional.empty();
                 }
             } else {
                 vouchAlgo = "sha1";
-                advertised = fetchSha1(uri);
+                advertised = fetchSidecar(uri, ".sha1", 40);
                 if (advertised.isEmpty()) return Optional.empty();
                 if (!Hashing.fileHex("SHA-1", candidate).equalsIgnoreCase(advertised.get())) {
                     return Optional.empty();
@@ -450,37 +449,17 @@ public final class MavenRepo {
         }
     }
 
-    /** The {@code .sha256} this repository publishes beside {@code uri}; empty when absent or malformed. */
-    private Optional<String> fetchSha256(URI uri) {
+    /**
+     * The digest this repository publishes in the {@code suffix} sidecar beside {@code uri}; empty
+     * when absent or not a {@code hexLength}-digit digest. Some repositories answer a missing
+     * sidecar with an HTML error page under HTTP 200, which is why the body is validated and not
+     * merely non-empty.
+     */
+    private Optional<String> fetchSidecar(URI uri, String suffix, int hexLength) {
         try {
-            var resp = http.get(URI.create(uri + ".sha256"));
+            var resp = http.get(URI.create(uri + suffix));
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) return Optional.empty();
-            String body = new String(resp.body(), StandardCharsets.UTF_8).strip();
-            if (body.isEmpty()) return Optional.empty();
-            String first = body.split("\\s+")[0];
-            if (first.length() != 64 || !first.chars().allMatch(c -> Character.digit(c, 16) >= 0)) {
-                return Optional.empty();
-            }
-            return Optional.of(first);
-        } catch (IOException | InterruptedException | RuntimeException e) {
-            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            return Optional.empty();
-        }
-    }
-
-    /** The {@code .sha1} this repository publishes beside {@code uri}; empty when absent or malformed. */
-    private Optional<String> fetchSha1(URI uri) {
-        try {
-            var resp = http.get(URI.create(uri + ".sha1"));
-            if (resp.statusCode() < 200 || resp.statusCode() >= 300) return Optional.empty();
-            String body = new String(resp.body(), StandardCharsets.UTF_8).strip();
-            if (body.isEmpty()) return Optional.empty();
-            String first = body.split("\\s+")[0];
-            // 40 hex chars, or it is not a SHA-1 (some repos serve an HTML error page with HTTP 200).
-            if (first.length() != 40 || !first.chars().allMatch(c -> Character.digit(c, 16) >= 0)) {
-                return Optional.empty();
-            }
-            return Optional.of(first);
+            return Hashing.checksumFromSidecar(new String(resp.body(), StandardCharsets.UTF_8), hexLength);
         } catch (IOException | InterruptedException | RuntimeException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             return Optional.empty();
@@ -520,7 +499,7 @@ public final class MavenRepo {
             Files.deleteIfExists(tmp);
             throw e;
         }
-        String hex = HexFormat.of().formatHex(digest.digest());
+        String hex = Hashing.hex(digest.digest());
         Downloaded stored = new Downloaded(tmp, hex, size);
         long ms = (System.nanoTime() - t0) / 1_000_000L;
         if (mirror) {
@@ -614,8 +593,10 @@ public final class MavenRepo {
             throws IOException, InterruptedException {
         Optional<byte[]> sha256Side = transport.fetch(sidecarUri(artifactUri, ".sha256"), credential);
         if (sha256Side.isPresent()) {
-            String expected = normalizeChecksum(new String(sha256Side.get(), StandardCharsets.UTF_8));
-            if (isHexChecksum(expected, 64)) {
+            Optional<String> parsed =
+                    Hashing.checksumFromSidecar(new String(sha256Side.get(), StandardCharsets.UTF_8), 64);
+            if (parsed.isPresent()) {
+                String expected = parsed.get();
                 if (!expected.equalsIgnoreCase(actualSha256)) {
                     throw new ChecksumMismatchException("upstream checksum mismatch for "
                             + coord
@@ -634,8 +615,11 @@ public final class MavenRepo {
         }
         Optional<byte[]> sha1Side = transport.fetch(sidecarUri(artifactUri, ".sha1"), credential);
         if (sha1Side.isPresent()) {
-            String expected = normalizeChecksum(new String(sha1Side.get(), StandardCharsets.UTF_8));
-            if (isHexChecksum(expected, 40)) {
+            Optional<String> parsed =
+                    Hashing.checksumFromSidecar(new String(sha1Side.get(), StandardCharsets.UTF_8), 40);
+            if (parsed.isPresent()) {
+                String expected = parsed.get();
+                // SHA-1 because that is the sidecar Central publishes; the format names the algorithm.
                 String actualSha1 = Hashing.fileHex("SHA-1", blob);
                 if (!expected.equalsIgnoreCase(actualSha1)) {
                     throw new ChecksumMismatchException("upstream checksum mismatch for "
@@ -657,28 +641,6 @@ public final class MavenRepo {
 
     private static URI sidecarUri(URI artifactUri, String suffix) {
         return URI.create(artifactUri.toString() + suffix);
-    }
-
-    /** Sidecar bodies are often {@code <hex>  <filename>} — take the first hex token. */
-    static String normalizeChecksum(String body) {
-        if (body == null) return "";
-        String t = body.trim();
-        if (t.isEmpty()) return "";
-        int sp = t.indexOf(' ');
-        if (sp > 0) t = t.substring(0, sp);
-        int tab = t.indexOf('\t');
-        if (tab > 0) t = t.substring(0, tab);
-        return t.trim();
-    }
-
-    /** True when {@code s} is a lowercase/upper hex digest of length {@code len}. */
-    static boolean isHexChecksum(String s, int len) {
-        if (s == null || s.length() != len) return false;
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return false;
-        }
-        return true;
     }
 
     /**

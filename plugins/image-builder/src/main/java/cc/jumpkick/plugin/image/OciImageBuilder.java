@@ -116,7 +116,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         }
         Path classesDir = ctx.classesDir().orElse(null);
         // jk's cache root. Required: an AOT build extracts the base image's JRE here, and the
-        // engine's CacheTier.BASE_JRE is the only thing that bounds that tree.
+        // engine's bound for CacheTree.BASE_JRE is the only thing that bounds that tree.
         Path cacheRoot = Path.of(c.string("jkCache"));
         String appDir = c.stringOpt("appDir").orElse(null);
         String appJar = c.stringOpt("appJar").orElse(null);

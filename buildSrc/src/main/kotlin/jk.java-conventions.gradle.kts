@@ -484,7 +484,7 @@ tasks.named("check") { dependsOn(checkNoFqcn) }
 tasks.named("jar") { dependsOn(checkNoFqcn) }
 
 // ---------------------------------------------------------------------------
-// Guard plumbing shared by G3 / G5 / G7 / G9 / G12 (JK-2409, JK-2414).
+// Guard plumbing shared by G3 / G5 / G6 / G7 / G9 / G12 / G14 (JK-2409, JK-2414, JK-2416).
 //
 // Two habits inherited from G1 (JK-2393), both load-bearing:
 //   * match against code only — a banned literal named in javadoc is documentation, not a defect;
@@ -830,69 +830,149 @@ tasks.named("check") { dependsOn(checkSingleTruthSet) }
 tasks.named("jar") { dependsOn(checkSingleTruthSet) }
 
 // ---------------------------------------------------------------------------
-// Guard G9 (JK-2409): bytes become hex in one place, `Hashing.hex`.
+// Guard G6 (JK-2416): one MessageDigest lookup in the tree, and it is `Hashing`'s.
 //
-// Defect it prevents: the next per-byte hex loop. `KotlinCompiler:174` allocates roughly 6,400
-// throwaway `Formatter` objects per compile because `String.format("%02x", b)` builds one per
-// byte; `AndroidCommand:131` omits the `& 0xff` mask that its neighbour remembers. Both are
-// `Hashing.hex(byte[])`, which already exists in `shared/host`.
+// Defect it prevents: a second answer to "what does jk hash with". Fifteen production files called
+// `MessageDigest.getInstance` directly and each one re-decided the surrounding questions — three
+// different file-read buffer sizes, four different reactions to `NoSuchAlgorithmException`
+// (rethrow, wrap, return null, and `BuildJobFingerprint`'s silent fall back to
+// `Integer.toHexString(s.hashCode())`, a 32-bit non-digest quietly standing in for a cache key).
+// None of those is a decision a call site should be making, and the fallback was a correctness
+// hazard nobody would have found: it produces a plausible-looking hex string.
 //
-// A ratchet, not a ban: two of the three offenders are plugins, and `shared/plugin-sdk` depends on
-// `:jsonl` alone, so `Hashing` is not on their classpath (round-3 corrections item 18). JK-2416
-// resolves the reachability and clears this list.
+// Two shapes are banned, and the second is the subtle one:
+//
+//   1. `MessageDigest.getInstance(` outside the owner. Every algorithm, not only SHA-256 — the
+//      buffer, the exception policy and the hex spelling are the same problem whatever the digest.
+//   2. jk's own algorithm passed to `Hashing`'s multi-algorithm doors (`newDigest` / `fileHex` /
+//      `hashHex`). Those exist for foreign formats — a Maven `.sha1` sidecar, Central's four
+//      required checksums, Google's Android SDK feed — where the algorithm belongs at the call
+//      site because the *file format* names it, right next to the `.sha1` it pairs with. Routing
+//      jk's own hashing through them would re-spell `"SHA-256"` and put the ban one string away
+//      from meaningless. `newSha256()` / `sha256Hex(..)` are the doors for that.
+//
+// The banned algorithm literal is READ FROM THE OWNER, not re-typed here: it is whatever
+// `Hashing.newSha256()` asks `newDigest` for. Change jk's digest there and the guard follows in
+// the same commit — the same habit as G12/G13, for the same reason.
+//
+// Not in scope, deliberately: `KeyStore.getInstance`, `Signature.getInstance`, `Mac.getInstance`,
+// `KeyFactory.getInstance`. They are other JCA services with other vocabularies, and `Hashing` is
+// a digest surface, not a JCA front door. `Sbom`'s `"SHA-256"` is untouched too — it is an SPDX
+// field *value* jk writes into a document, not an algorithm it looks up.
+//
+// A pure ban, not a ratchet: zero sites remain and there is nothing to allow. Reachability was
+// measured, not assumed — since JK-2407 `Hashing` lives in `:host`, which `:plugin-sdk` re-exports
+// with `api`, so all 16 plugin workers see it; JK-2416 added `:host` to `:jk-api`, the last module
+// that could not reach it.
+//
+// Scope is `src/main/java`. A test that recomputes an expected digest by hand is checking jk's
+// answer against an independent one, which is exactly what a test should do — two of those exist
+// and are the reason this guard does not read test sources.
+// ---------------------------------------------------------------------------
+val checkOneDigestSurface by tasks.registering {
+    group = "verification"
+    description = "Fail the build on a MessageDigest lookup outside cc.jumpkick.host.Hashing"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val owner = rootProject.layout.projectDirectory.file(
+            "shared/host/src/main/java/cc/jumpkick/host/Hashing.java")
+    inputs.file(owner).withPropertyName("hashing")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val stamp = layout.buildDirectory.file("guards/one-digest-surface.ok")
+    outputs.file(stamp)
+    doLast {
+        val ownerFile = owner.asFile
+        // jk's own algorithm, straight out of the owner (see G6 above): what newSha256() asks for.
+        val ownAlgorithm = Regex("""newSha256\(\)\{returnnewDigest\("([^"]+)"\);}""")
+                .find(guardText(ownerFile.readText()))
+                ?.groupValues
+                ?.get(1)
+                ?: throw GradleException("G6 cannot read jk's algorithm out of ${ownerFile.name}:"
+                        + " newSha256() is expected to be `return newDigest(\"<algorithm>\");`")
+
+        val lookup = Regex("""MessageDigest\.getInstance\(""")
+        val ownAlgorithmByName = Regex(
+                """(?:newDigest|fileHex|hashHex)\(""" + Regex.escape('"' + ownAlgorithm + '"'))
+        val hits = mutableListOf<String>()
+        mainJava.files.sorted().forEach { f ->
+            if (f == ownerFile) return@forEach
+            val code = guardText(f.readText())
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            countIn(code, lookup).let {
+                if (it > 0) hits.add("  $rel: $it x MessageDigest.getInstance(..)")
+            }
+            countIn(code, ownAlgorithmByName).let {
+                if (it > 0) hits.add("  $rel: $it x \"$ownAlgorithm\" passed to a Hashing algorithm door")
+            }
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("jk hashes in one place, cc.jumpkick.host.Hashing — a second digest"
+                    + " site re-decides the buffer size, the exception policy and the hex spelling,"
+                    + " and one of them silently substituted String.hashCode() for a cache key"
+                    + " (JK-2416):\n"
+                    + hits.sorted().joinToString("\n")
+                    + "\n  Hashing.sha256Hex(bytes | String | Path) or Hashing.newSha256() for jk's own"
+                    + " hashing. Hashing.newDigest/fileHex/hashHex take an algorithm name only when a"
+                    + " foreign format dictates it — a .sha1 sidecar, an SDK feed — never \""
+                    + ownAlgorithm + "\".")
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkOneDigestSurface) }
+tasks.named("jar") { dependsOn(checkOneDigestSurface) }
+
+// ---------------------------------------------------------------------------
+// Guard G9 (JK-2409, banned by JK-2416): bytes become hex in one place, `Hashing.hex`.
+//
+// Defect it prevents: the next per-byte hex loop. `KotlinCompiler:174` allocated a throwaway
+// `Formatter` for every byte of every classpath entry's digest — `String.format("%02x", b)` builds
+// one per call, so a 200-entry classpath cost ~6,400 of them per compile — and `AndroidCommand:131`
+// omitted the `& 0xff` mask that its neighbour remembered. Both are one call to `Hashing.hex`.
+//
+// This was a ratchet with four entries in JK-2409, because two of the three offenders were plugins
+// and `Hashing` was not on their classpath. JK-2407 put it there and JK-2416 swept them, so the
+// ratchet is now a ban: the count is zero, and a ban with no allowlist is what guards a shape
+// rather than today's instances.
+//
+// THE ONE EXEMPTION IS BY SHAPE, NOT BY FILENAME. `SigV4Signer:168` percent-encodes a URI byte as
+// UPPERCASE hex, which the AWS canonical-request spec requires and `Hashing.hex` deliberately does
+// not produce — it is a different function that happens to spell bytes in base 16. The pattern
+// therefore skips `Character.forDigit` wrapped in `Character.toUpperCase`, which is the shape that
+// says "uppercase on purpose" at the call site. An allowlist entry would have said the same thing
+// about one path, and stopped being true the moment the file moved (JK-2414's precedent).
+//
+// `%02X` stays banned even though it is also uppercase: the Formatter-per-byte allocation is a
+// defect in either case, and `Character.toUpperCase(Character.forDigit(..))` allocates nothing.
 //
 // Scope is `src/main/java`; there are no hex loops in test sources today.
 // ---------------------------------------------------------------------------
-
-/** Files hand-encoding bytes as hex. See G9 above. */
-val hexLoopRatchet = mapOf(
-        // Not a digest: SigV4 percent-encodes a URI byte as UPPERCASE hex, which is what the AWS
-        // canonical-request spec requires and what `Hashing.hex` deliberately does not produce.
-        "server/io/src/main/java/cc/jumpkick/repo/s3/SigV4Signer.java" to 2,
-
-        // Pending JK-2416 — each of these is `Hashing.hex(digest)`.
-        "plugins/android/src/main/java/cc/jumpkick/android/AndroidCommand.java" to 1,
-        "plugins/kotlin-compiler/src/main/java/cc/jumpkick/kotlin/compiler/KotlinCompiler.java" to 1,
-        "shared/jk-api/src/main/java/cc/jumpkick/model/BuildIdentity.java" to 2)
-
 val checkNoHandRolledHex by tasks.registering {
     group = "verification"
     description = "Fail the build on a per-byte hex loop (use Hashing.hex)"
     val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
     inputs.files(mainJava).withPropertyName("mainJava")
     val treeRoot = rootProject.layout.projectDirectory.asFile
-    val here = layout.projectDirectory.asFile.relativeTo(treeRoot).invariantSeparatorsPath + "/"
-    val allowed = hexLoopRatchet
     val stamp = layout.buildDirectory.file("guards/no-hand-rolled-hex.ok")
     outputs.file(stamp)
     doLast {
-        // `%02x` in any format string (format / formatted / printf) and Character.forDigit.
-        val hexLoop = Regex("""%02[xX]|Character\.forDigit\(""")
-        val hits = LinkedHashMap<String, Int>()
+        // `%02x` in any format string (format / formatted / printf), and Character.forDigit unless
+        // it is being upper-cased — see the shape exemption above.
+        val hexLoop = Regex("""%02[xX]|(?<!Character\.toUpperCase\()Character\.forDigit\(""")
+        val hits = mutableListOf<String>()
         mainJava.files.sorted().forEach { f ->
             val n = countIn(guardText(f.readText()), hexLoop)
-            if (n > 0) hits[f.relativeTo(treeRoot).invariantSeparatorsPath] = n
+            if (n > 0) hits.add("  %5d  %s".format(n, f.relativeTo(treeRoot).invariantSeparatorsPath))
         }
-        val (grew, unlisted, loose) = ratchetVerdict(hits, allowed, here)
-
-        val problems = mutableListOf<String>()
-        if (unlisted.isNotEmpty()) {
-            problems.add("Bytes become hex in one place (JK-2409). These hand-encode and are not on"
-                    + " the ratchet:\n"
-                    + unlisted.joinToString("\n")
-                    + "\n  Call cc.jumpkick.host.Hashing.hex(byte[]) — or sha256Hex, which does the"
-                    + " digest too. Uppercase hex for a non-digest encoding is an exemption, and"
-                    + " says so here.")
-        }
-        if (grew.isNotEmpty()) {
-            problems.add("A file on the hex ratchet may only shrink (JK-2409). These grew:\n"
-                    + grew.joinToString("\n"))
-        }
-        if (problems.isNotEmpty()) throw GradleException(problems.joinToString("\n\n"))
-
-        if (loose.isNotEmpty()) {
-            logger.lifecycle("hexLoopRatchet is loose (these shrank — tighten it in this commit):")
-            loose.forEach { logger.lifecycle(it) }
+        if (hits.isNotEmpty()) {
+            throw GradleException("Bytes become hex in one place, cc.jumpkick.host.Hashing.hex"
+                    + " (JK-2409, JK-2416). These hand-encode:\n"
+                    + hits.sorted().joinToString("\n")
+                    + "\n  Call Hashing.hex(byte[]) — or sha256Hex, which does the digest too."
+                    + " String.format(\"%02x\", b) allocates a Formatter per byte. Uppercase hex for a"
+                    + " non-digest encoding is a different function: write it as"
+                    + " Character.toUpperCase(Character.forDigit(..)), which this guard exempts by"
+                    + " shape, and say at the call site which spec demands it.")
         }
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
@@ -1240,3 +1320,96 @@ val checkSingleArchiveInstant by tasks.registering {
 }
 tasks.named("check") { dependsOn(checkSingleArchiveInstant) }
 tasks.named("jar") { dependsOn(checkSingleArchiveInstant) }
+
+// ---------------------------------------------------------------------------
+// Guard G14 (JK-2418): a cache tier's directory is named once, in `CacheTree`.
+//
+// Defect it prevents: the rename that half-lands across a process boundary. A tier under the cache
+// root is written by one process and reclaimed, measured and wiped by others — `base-jre` by the
+// image-builder worker and reclaimed by the engine, `format-stamps` by the formatter worker and
+// measured by the native client, `sha256` by the CAS and bounded by `ActionCachePrune`. While the
+// table lived in `:engine` the client could not reach it, so `jk cache nuke`'s engine-unreachable
+// fallback carried its own three-element array and left ten of the thirteen cached tiers on disk,
+// reporting success. Rename a constant with the producers typing their own copy and the outcome is
+// worse than a stale report: the producer keeps filling a directory the retention sweep now calls
+// residue, or the sweep bounds a directory nothing writes.
+//
+// The ban list is READ FROM THE OWNER, not re-typed here: every enum constant's entry string in
+// `CacheTree.java`. Add a tier and it is banned as a literal the same minute — a guard carrying its
+// own copy of the vocabulary would be the third place to keep in sync, which is the defect it
+// exists to prevent.
+//
+// Three homonyms are deliberately OUT of the list, each because another vocabulary owns the same
+// characters and is free to diverge — the same call G12 makes for its seven single-word steps:
+//   * `sha256` is the digest algorithm (TOML keys, JSON fields, Maven checksum extensions) and the
+//     shard root `Cas` builds under BOTH the cache root and the artifact store's. `Cas` is that
+//     name's owner; `CacheRetentionCoverageTest` pins the two spellings together instead.
+//   * `generated` is also `build/generated`, a module output directory (`BuildLayout`), and a
+//     plugin task's declared output.
+//   * `projects` is also `<state>/builds/projects`, the durable build history (`ProjectBuilds`).
+// `actions` stays banned despite being an ordinary word: nothing else in production spells it, and
+// it was the largest cluster at 27 sites.
+//
+// A pure ban, not a ratchet: zero sites remain and there is nothing to allow. Reachability was
+// measured, not assumed — `CacheTree` is on the host leaf, which every production module reaches
+// (the plugin workers through `:plugin-sdk`, the rest through `:core` or a direct dependency), and
+// the four modules that name a tier today are `:engine`, `:core`, `:cli` and two plugin workers.
+//
+// Scope is `src/main/java`. Test sources keep their literals on purpose, for the same reason G12
+// and G13 do: a fixture that spells `.last-pruned` is a golden pinning the ON-DISK vocabulary, and
+// one that borrowed the constant would follow a rename and still pass. The exception is
+// `CacheRetentionCoverageTest`, which builds its fixtures through `CacheTree.under` deliberately —
+// there the point is that the fixture and the bound move together; see its class javadoc.
+// ---------------------------------------------------------------------------
+
+/** Tier names another vocabulary also spells; see G14 above for who owns each. */
+val tierNameHomonyms = setOf("sha256", "generated", "projects")
+
+val checkNoBareTierName by tasks.registering {
+    group = "verification"
+    description = "Fail the build on a cache-tier directory typed as a literal (use cc.jumpkick.host.CacheTree)"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val owner = rootProject.layout.projectDirectory.file(
+            "shared/host/src/main/java/cc/jumpkick/host/CacheTree.java")
+    inputs.file(owner).withPropertyName("cacheTree")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val stamp = layout.buildDirectory.file("guards/no-bare-tier-name.ok")
+    outputs.file(stamp)
+    doLast {
+        val ownerFile = owner.asFile
+        // value -> constant, straight out of the owner (see G14 above).
+        val named = Regex("""^\s{4}([A-Z][A-Z0-9_]*)\("([^"]+)"""", RegexOption.MULTILINE)
+                .findAll(ownerFile.readText())
+                .associate { it.groupValues[2] to it.groupValues[1] }
+                .filterKeys { it !in tierNameHomonyms }
+        if (named.size < 10) {
+            throw GradleException("cc.jumpkick.host.CacheTree yielded only ${named.size} tier names,"
+                    + " so the bare-tier-name guard has lost the owner it reads. Restore the enum's"
+                    + " shape or retire this guard deliberately.")
+        }
+
+        val hits = mutableListOf<String>()
+        mainJava.files.sorted().forEach { f ->
+            if (f == ownerFile) return@forEach
+            val code = guardText(f.readText())
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            named.forEach { (value, constant) ->
+                val n = countIn(code, Regex(Regex.escape("\"$value\"")))
+                if (n > 0) hits.add("  $rel: $n x \"$value\"  ->  CacheTree.$constant")
+            }
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("A cache tier is named once, in cc.jumpkick.host.CacheTree"
+                    + " (JK-2418). These re-type the name:\n"
+                    + hits.sorted().joinToString("\n")
+                    + "\n  Use CacheTree.<TIER>.under(cacheRoot); it is on every production module's"
+                    + " classpath. A directory that is NOT a cache tier — a module's own"
+                    + " build/generated, say — must not borrow the constant either: give that"
+                    + " vocabulary its own owner.")
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkNoBareTierName) }
+tasks.named("jar") { dependsOn(checkNoBareTierName) }

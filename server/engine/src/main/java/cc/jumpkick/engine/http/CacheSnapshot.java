@@ -5,10 +5,9 @@ import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.engine.JsonOut;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.repo.M2Dirs;
-import cc.jumpkick.task.Bound;
 import cc.jumpkick.task.CachePruneScheduler;
-import cc.jumpkick.task.CacheTier;
 import cc.jumpkick.task.FormatStamps;
 import java.nio.file.Path;
 import java.util.EnumSet;
@@ -66,8 +65,8 @@ public record CacheSnapshot(
     public static final long MEMO_TTL_MILLIS = 30_000L;
 
     /** Tiers the report breaks out by name; everything else in the table sums into {@code derived}. */
-    private static final Set<CacheTier> OWN_ROW =
-            EnumSet.of(CacheTier.ACTIONS, CacheTier.CACHE_CAS, CacheTier.FORMAT_STAMPS);
+    private static final Set<CacheTree> OWN_ROW =
+            EnumSet.of(CacheTree.ACTIONS, CacheTree.CACHE_CAS, CacheTree.FORMAT_STAMPS);
 
     /**
      * Supplier that walks at most once per TTL and coalesces concurrent callers onto a single
@@ -208,9 +207,9 @@ public record CacheSnapshot(
     public static CacheSnapshot capture(Path cacheRoot) {
         Path storeCas = JkStores.resolve(cacheRoot, "sha256");
         Path repos = JkStores.resolve(cacheRoot, "repos");
-        Path actions = cacheRoot.resolve("actions");
-        Path cacheCas = cacheRoot.resolve("sha256");
-        Path stamps = cacheRoot.resolve("format-stamps");
+        Path actions = CacheTree.ACTIONS.under(cacheRoot);
+        Path cacheCas = CacheTree.CACHE_CAS.under(cacheRoot);
+        Path stamps = CacheTree.FORMAT_STAMPS.under(cacheRoot);
         DiskUsage.Stats[] parts;
         try {
             parts = DiskUsage.exclusive(storeCas, repos, actions, stamps);
@@ -258,18 +257,17 @@ public record CacheSnapshot(
 
     /**
      * Every tier under the cache root that has no row of its own — the small derived caches that
-     * carry their own retention rather than the action budget. Driven off {@link
-     * cc.jumpkick.task.CacheTier} rather than a list here, so a tier added to the table shows up in
-     * the report without anyone remembering this file.
+     * carry their own retention rather than the action budget. Driven off {@link CacheTree}
+     * rather than a list here, so a tier added to the table shows up in the report without anyone
+     * remembering this file.
      */
     private static DiskUsage.Stats derivedStats(Path cacheRoot) {
         long files = 0;
         long bytes = 0;
-        for (var tier : CacheTier.values()) {
+        for (CacheTree tier : CacheTree.cached()) {
             if (OWN_ROW.contains(tier)) continue;
-            if (tier.bound().kind() == Bound.Kind.UNBOUNDED) continue;
             try {
-                DiskUsage.Stats stats = DiskUsage.of(cacheRoot.resolve(tier.entry()));
+                DiskUsage.Stats stats = DiskUsage.of(tier.under(cacheRoot));
                 files += stats.files();
                 bytes += stats.bytes();
             } catch (Exception unreadable) {

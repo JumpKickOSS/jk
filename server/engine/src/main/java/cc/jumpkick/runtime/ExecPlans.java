@@ -13,6 +13,7 @@ import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.engine.protocol.ExecPlan;
 import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
@@ -481,7 +482,7 @@ public final class ExecPlans {
      */
     static List<Path> jarAliased(Path cache, List<Path> jars) throws IOException {
         List<Path> out = new ArrayList<>(jars.size());
-        Path aliasDir = cache.resolve("jshell-cp");
+        Path aliasDir = CacheTree.JSHELL_CP.under(cache);
         for (Path jar : jars) {
             if (jar == null) continue;
             String name = jar.getFileName().toString().toLowerCase();

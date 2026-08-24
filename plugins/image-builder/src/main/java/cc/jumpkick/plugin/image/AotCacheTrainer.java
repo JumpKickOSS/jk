@@ -104,7 +104,7 @@ final class AotCacheTrainer {
      *     is welcome to it
      * @param cacheRoot jk's cache root: the extracted base JRE is 50–200 MB and is shared by every
      *     module that builds on the same base, so it belongs under the bound {@code
-     *     CacheTier.BASE_JRE} declares for it, not in module build output nothing reclaims
+     *     CacheTier} declares for CacheTree.BASE_JRE, not in module build output nothing reclaims
      */
     static Result train(ImageBuilder.Plan plan, Path workDir, Path cacheRoot, Consumer<String> log)
             throws IOException, InterruptedException {

@@ -6,6 +6,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
@@ -16,7 +17,6 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.CacheRetention;
 import cc.jumpkick.task.CacheRoots;
-import cc.jumpkick.task.CacheTier;
 import cc.jumpkick.task.CasSweep;
 import cc.jumpkick.task.TmpGc;
 import cc.jumpkick.util.JkDirs;
@@ -76,7 +76,7 @@ public final class CachePlans {
                     long totalBytes = 0;
 
                     // Cache-tier CAS temps under <cacheRoot>/sha256/
-                    TempSweep cacheTemps = sweepCasTemps(root.resolve("sha256"), dryRun);
+                    TempSweep cacheTemps = sweepCasTemps(CacheTree.CACHE_CAS.under(root), dryRun);
                     totalFiles += cacheTemps.files();
                     totalBytes += cacheTemps.bytes();
 
@@ -96,7 +96,7 @@ public final class CachePlans {
                     // Reclaim unreferenced payloads before the budget prune: garbage the sweep frees
                     // is a shortfall the prune then does not have to cover by evicting live entries.
                     var cacheCas = JkStores.cacheCas(root);
-                    var cacheLive = CacheRoots.collect(cacheCas, root.resolve("actions"), root.resolve("tools"));
+                    var cacheLive = CacheRoots.collect(cacheCas, CacheTree.ACTIONS.under(root), root.resolve("tools"));
                     var cacheSweep = CasSweep.sweep(cacheCas, cacheLive, dryRun);
                     totalFiles += cacheSweep.deleted();
                     totalBytes += cacheSweep.freedBytes();
@@ -147,13 +147,13 @@ public final class CachePlans {
     }
 
     /**
-     * Delete every bounded cache tier under {@code root}. Driven off {@link
-     * cc.jumpkick.task.CacheTier} so a new tier cannot be added to the retention table and then
-     * silently survive {@code jk cache nuke}.
+     * Delete every cached tier under {@code root}. Driven off {@link CacheTree} so a new tier
+     * cannot be added to the table and then silently survive {@code jk cache nuke} — the same read
+     * the client's local-wipe fallback makes, so the two paths cannot come to disagree about what a
+     * nuke takes.
      */
     public static void purgeActionCache(Path root) throws IOException {
-        for (var tier : CacheTier.purgeable()) {
-            Path dir = root.resolve(tier.entry());
+        for (Path dir : CacheTree.cachedUnder(root)) {
             if (Files.isDirectory(dir)) deleteContents(dir);
             else Files.deleteIfExists(dir);
         }
@@ -215,7 +215,7 @@ public final class CachePlans {
                     ctx.label(dryRun ? "Inspecting build cache…" : "Clearing build cache…");
                     long[] acc = {0L, 0L}; // {files, bytes}
                     List<Path> allModuleDirs = resolveModuleDirs(projectDir);
-                    Path actionsDir = cacheRoot.resolve("actions");
+                    Path actionsDir = CacheTree.ACTIONS.under(cacheRoot);
                     if (Files.isDirectory(actionsDir)) {
                         List<Path> moduleDirs = allModuleDirs;
                         Set<String> tags = tagsFor(moduleDirs);

@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
@@ -23,7 +24,6 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -79,7 +79,7 @@ public final class PreflightMemo {
 
     static Path durablePreflightDir(Path entryDir) {
         String key = workspaceKey(entryDir);
-        return JkDirs.cache().resolve("projects").resolve(key).resolve("preflight");
+        return CacheTree.PROJECTS.under(JkDirs.cache()).resolve(key).resolve("preflight");
     }
 
     static String workspaceKey(Path entryDir) {
@@ -420,7 +420,7 @@ public final class PreflightMemo {
      */
     static String structureFingerprint(Path entryDir, List<Path> unitDirs) {
         try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            MessageDigest md = Hashing.newSha256();
             Path root = entryDir.toAbsolutePath().normalize();
             // Always pin the entry manifest (workspace module list lives here). Whether the root
             // itself is a buildable unit depends on it having sources, not on any toml — pin that
@@ -445,7 +445,7 @@ public final class PreflightMemo {
                     feedFile(md, lock);
                 }
             }
-            return HexFormat.of().formatHex(md.digest());
+            return Hashing.hex(md.digest());
         } catch (Exception e) {
             return "err-" + System.nanoTime();
         }
@@ -480,13 +480,13 @@ public final class PreflightMemo {
      */
     public static String shapeFingerprint(Path moduleDir, boolean skipTests) {
         try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            MessageDigest md = Hashing.newSha256();
             feed(md, "shape");
             feed(md, "skip=" + (skipTests ? "1" : "0"));
             feed(md, BuildIdentity.cacheKeyVersion());
             feedFile(md, moduleDir.resolve(ManifestPaths.MANIFEST));
             feedFile(md, LockPaths.lockFile(moduleDir));
-            return HexFormat.of().formatHex(md.digest());
+            return Hashing.hex(md.digest());
         } catch (Exception e) {
             return "err-" + System.nanoTime();
         }
@@ -630,7 +630,7 @@ public final class PreflightMemo {
      */
     static String fingerprintModule(Path moduleDir, boolean skipTests) {
         try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            MessageDigest md = Hashing.newSha256();
             feed(md, "skip=" + (skipTests ? "1" : "0"));
             feed(md, "mode=" + fingerprintMode());
             feedFile(md, moduleDir.resolve(ManifestPaths.MANIFEST));
@@ -682,7 +682,7 @@ public final class PreflightMemo {
                     }
                 });
             }
-            return HexFormat.of().formatHex(md.digest());
+            return Hashing.hex(md.digest());
         } catch (Exception e) {
             return "err-" + System.nanoTime();
         }

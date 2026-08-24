@@ -10,7 +10,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
-import java.util.HexFormat;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -55,18 +54,9 @@ public final class Cas {
         if (path == null || path.getNameCount() < 4) return false;
         int n = path.getNameCount();
         return "sha256".equals(path.getName(n - 4).toString())
-                && isHex(path.getName(n - 3).toString(), 2)
-                && isHex(path.getName(n - 2).toString(), 2)
-                && isHex(path.getName(n - 1).toString(), 60);
-    }
-
-    private static boolean isHex(String s, int length) {
-        if (s.length() != length) return false;
-        for (int i = 0; i < length; i++) {
-            char c = s.charAt(i);
-            if ((c < '0' || c > '9') && (c < 'a' || c > 'f')) return false;
-        }
-        return true;
+                && Hashing.isHex(path.getName(n - 3).toString(), 2)
+                && Hashing.isHex(path.getName(n - 2).toString(), 2)
+                && Hashing.isHex(path.getName(n - 1).toString(), 60);
     }
 
     /**
@@ -87,18 +77,8 @@ public final class Cas {
         String rest = rel.getName(2).toString();
         if (aa.length() != 2 || bb.length() != 2) return Optional.empty();
         String hex = aa + bb + rest;
-        if (!isHex(hex)) return Optional.empty();
+        if (!Hashing.isHex(hex)) return Optional.empty();
         return Optional.of(hex);
-    }
-
-    private static boolean isHex(String s) {
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
-                return false;
-            }
-        }
-        return !s.isEmpty();
     }
 
     /**
@@ -150,7 +130,7 @@ public final class Cas {
                     size += n;
                 }
             }
-            String hex = HexFormat.of().formatHex(digest.digest());
+            String hex = Hashing.hex(digest.digest());
             Path target = pathFor(hex);
             if (Files.exists(target)) {
                 Files.deleteIfExists(tmp);

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.model;
 
+import cc.jumpkick.host.Hashing;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 
 /**
  * Running jk identity for cache keys and engine election. Releases use {@link JkVersion#VERSION};
@@ -47,18 +47,7 @@ public final class BuildIdentity {
             if (!Files.isRegularFile(location) || !location.toString().endsWith(".jar")) {
                 return ""; // classes dir (tests) or a native image — no jar identity
             }
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            try (var in = Files.newInputStream(location)) {
-                byte[] buf = new byte[64 * 1024];
-                int n;
-                while ((n = in.read(buf)) > 0) digest.update(buf, 0, n);
-            }
-            StringBuilder hex = new StringBuilder(12);
-            for (byte b : digest.digest()) {
-                hex.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
-                if (hex.length() >= 12) break;
-            }
-            return hex.substring(0, 12);
+            return Hashing.sha256Hex(location).substring(0, 12);
         } catch (Exception e) {
             return ""; // identity is best-effort; the version-string rule still applies
         }

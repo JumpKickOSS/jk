@@ -5,6 +5,7 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkBuild;
@@ -169,8 +170,8 @@ public final class PlannerTest {
                     if (!ktTest.isEmpty()) {
                         ctx.label("compiling " + ktTest.size() + " Kotlin test sources");
                         String ktTaskId = ActionKey.qualifiedTaskId("compile-test-kotlin", testClasses);
-                        Path ktWorkingDir = in.cache()
-                                .resolve("actions")
+                        Path ktWorkingDir = CacheTree.ACTIONS
+                                .under(in.cache())
                                 .resolve("incremental-kotlin")
                                 .resolve(ktTaskId);
                         KotlinCompile.Result kr = compileKotlinSources(

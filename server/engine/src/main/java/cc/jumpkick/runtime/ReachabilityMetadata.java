@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
@@ -26,7 +27,7 @@ public final class ReachabilityMetadata {
     /**
      * Repository release consumed by this jk version — walk forward with jk releases. Also the
      * name of the one tree under {@code <cache>/graal-reachability} that can be read, which is
-     * how {@link cc.jumpkick.task.CacheTier#GRAAL_REACHABILITY} knows what to keep.
+     * how {@link cc.jumpkick.task.CacheTier}'s bound for that tier knows what to keep.
      */
     public static final String VERSION = "1.1.4";
 
@@ -104,7 +105,7 @@ public final class ReachabilityMetadata {
      * extract-to-temp + atomic move, with a marker check for the fast path.
      */
     private static Path ensureExtracted(Path cache, RepoGroup repos) throws IOException, InterruptedException {
-        Path root = cache.resolve("graal-reachability").resolve(VERSION);
+        Path root = CacheTree.GRAAL_REACHABILITY.under(cache).resolve(VERSION);
         Path marker = root.resolve(".complete");
         if (Files.isRegularFile(marker)) return root;
 

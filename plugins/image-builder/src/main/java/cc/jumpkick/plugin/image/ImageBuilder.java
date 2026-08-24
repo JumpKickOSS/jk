@@ -152,7 +152,7 @@ public final class ImageBuilder {
 
     /**
      * Push to a registry. {@code cacheRoot} is jk's cache root — where an AOT build extracts the
-     * base image's JRE, under the bound {@code CacheTier.BASE_JRE} declares for it.
+     * base image's JRE, under the bound the engine declares for {@code CacheTree.BASE_JRE}.
      */
     public static Result pushToRegistry(Plan plan, Path cacheRoot) throws IOException, InterruptedException {
         try {

@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.lock.LockPaths;
@@ -240,7 +241,7 @@ public final class SyncPlans {
                     ctx.label("stamp reachability manifest");
                     try {
                         Lockfile lock = ctx.require(LOCKFILE);
-                        SyncManifest.write(cache.resolve("actions"), lockFile, lock);
+                        SyncManifest.write(CacheTree.ACTIONS.under(cache), lockFile, lock);
                     } catch (IOException e) {
                         ctx.warn("manifest", "could not stamp reachability manifest: " + e.getMessage());
                     }

@@ -15,6 +15,7 @@ import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -27,10 +28,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * {@code jk cache} — manage the <strong>cache tier</strong> under {@code $JK_CACHE_DIR}: action
- * index ({@code actions/}), cache CAS ({@code sha256/}), and format stamps. Downloaded artifacts
- * live under the store ({@code JK_STORE_DIR}) and the Maven local repository; see {@code jk
- * storage} / {@code jk repo search}.
+ * {@code jk cache} — manage the <strong>cache tier</strong> under {@code $JK_CACHE_DIR}: every
+ * entry {@link CacheTree} names, which is every entry the engine's retention pass bounds. What a
+ * nuke takes and what a usage report measures both come off that enum rather than a list here, so
+ * the client cannot come to disagree with the engine about what the cache tier <em>is</em> — it
+ * did, for thirteen tiers, and a local-fallback nuke left ten of them on disk.
+ *
+ * <p>Downloaded artifacts live under the store ({@code JK_STORE_DIR}) and the Maven local
+ * repository; see {@code jk storage} / {@code jk repo search}.
  */
 public final class CacheCommand extends GroupCommand {
 
@@ -88,10 +93,10 @@ public final class CacheCommand extends GroupCommand {
     static SectionStats sectionStats(Path cacheRoot) throws IOException {
         Path storeCas = JkStores.resolve(cacheRoot, "sha256");
         Path repos = JkStores.resolve(cacheRoot, "repos");
-        Path actions = cacheRoot.resolve("actions");
-        Path cacheCas = cacheRoot.resolve("sha256");
+        Path actions = CacheTree.ACTIONS.under(cacheRoot);
+        Path cacheCas = CacheTree.CACHE_CAS.under(cacheRoot);
         Path runs = cacheRoot.resolve("runs");
-        Path stamps = cacheRoot.resolve("format-stamps");
+        Path stamps = CacheTree.FORMAT_STAMPS.under(cacheRoot);
         // Store CAS first so leftover shared inodes with repos/ are not counted twice.
         DiskUsage.Stats[] parts = DiskUsage.exclusive(storeCas, repos, actions, runs, stamps);
         DiskUsage.Stats cacheCasStats = DiskUsage.of(cacheCas);
@@ -104,21 +109,6 @@ public final class CacheCommand extends GroupCommand {
                 Stats.from(parts[3]),
                 Stats.from(parts[4]));
     }
-
-    /**
-     * Cache-tier stats only (action index + cache CAS, format stamps) — no artifact-store walk.
-     * Used by status / dashboard parity; {@code jk cache usage} reads the engine inventory ack.
-     */
-    static CacheTierStats cacheTierStats(Path cacheRoot) throws IOException {
-        DiskUsage.Stats actions = DiskUsage.of(cacheRoot.resolve("actions"));
-        DiskUsage.Stats cacheCas = DiskUsage.of(cacheRoot.resolve("sha256"));
-        DiskUsage.Stats stamps = DiskUsage.of(cacheRoot.resolve("format-stamps"));
-        return new CacheTierStats(
-                new Stats(actions.files() + cacheCas.files(), actions.bytes() + cacheCas.bytes()), Stats.from(stamps));
-    }
-
-    /** Legacy combined cache-tier totals (action index + CAS + stamps). */
-    record CacheTierStats(Stats actions, Stats stamps) {}
 
     /**
      * Rows for {@code jk cache usage}. {@code total} is the action cache (key records plus the
@@ -282,8 +272,8 @@ public final class CacheCommand extends GroupCommand {
 
     /**
      * Full cache-tier nuke. Shared by {@code jk cache nuke} and {@code jk self nuke --cache}.
-     * Deletes {@code actions/}, {@code format-stamps/}, and cache {@code sha256/} (same trees as
-     * the engine purge plan). Artifact store is never touched.
+     * Deletes every tier {@link CacheTree#cached()} names — the same read the engine purge plan
+     * makes. Artifact store is never touched.
      *
      * @param skipConfirm when true, do not prompt (caller already confirmed)
      */
@@ -352,10 +342,14 @@ public final class CacheCommand extends GroupCommand {
         return 0;
     }
 
-    /** Delete cache-tier trees under {@code root} (mirrors engine {@code purgeActionCache}). */
+    /**
+     * Delete cache-tier trees under {@code root} — the engine-unreachable fallback for {@code
+     * CachePlans.purgeActionCache}, and driven off the same {@link CacheTree} read so the two
+     * cannot disagree. Bookkeeping entries are spared: {@code .prune.lock} is held across a
+     * concurrent prune, and deleting it is how two wipes end up running at once.
+     */
     static void wipeCacheTier(Path root) throws IOException {
-        for (String tree : new String[] {"actions", "format-stamps", "sha256"}) {
-            Path dir = root.resolve(tree);
+        for (Path dir : CacheTree.cachedUnder(root)) {
             if (Files.isDirectory(dir)) {
                 cc.jumpkick.host.PathUtil.deleteRecursivelyOrThrow(dir);
                 Files.createDirectories(dir); // keep empty dirs so layout stays familiar
@@ -428,8 +422,8 @@ public final class CacheCommand extends GroupCommand {
         public int run(Invocation in) throws IOException {
             Path root = resolveCacheRoot(
                     in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null));
-            Path actions = root.resolve("actions");
-            Path cacheCas = root.resolve("sha256");
+            Path actions = CacheTree.ACTIONS.under(root);
+            Path cacheCas = CacheTree.CACHE_CAS.under(root);
             if (!Files.isDirectory(root) && !Files.isDirectory(actions) && !Files.isDirectory(cacheCas)) {
                 CliOutput.out("Cache: " + cc.jumpkick.cli.PathDisplay.styledRaw(root) + " (not yet created)");
                 return 0;
@@ -601,15 +595,14 @@ public final class CacheCommand extends GroupCommand {
         }
 
         /**
-         * Cache-tier footprint the purge will delete: {@code actions/}, {@code format-stamps/}, and
-         * cache {@code sha256/} (mirrors {@code CachePlans.purgeActionCache}). Collocated
-         * {@code repos/} and {@code runs/} are excluded — artifact store stays under {@code
+         * Cache-tier footprint the purge will delete: every tier {@link CacheTree#cached()} names,
+         * which is exactly what {@code CachePlans.purgeActionCache} removes. Collocated {@code
+         * repos/} and {@code runs/} are excluded — artifact store stays under {@code
          * JK_STORE_DIR}. Byte sizes are exclusive across those trees (unique inode / fileKey) so
-         * hard links are not counted twice.
+         * hard links are not counted twice: the cache CAS is hard-linked from the action tier.
          */
         static Stats actionCacheStats(Path root) throws IOException {
-            DiskUsage.Stats[] parts =
-                    DiskUsage.exclusive(root.resolve("actions"), root.resolve("format-stamps"), root.resolve("sha256"));
+            DiskUsage.Stats[] parts = DiskUsage.exclusive(CacheTree.cachedUnder(root));
             return new Stats(DiskUsage.totalFiles(parts), DiskUsage.totalBytes(parts));
         }
 
@@ -623,8 +616,10 @@ public final class CacheCommand extends GroupCommand {
             CliOutput.out("  " + root);
             CliOutput.stdout()
                     .printf(
-                            "  %s files, %s — action index, cache CAS (sha256/), and format stamps.%n",
-                            fmtCount(stats.files), fmtBytes(stats.bytes));
+                            "  %s files, %s across %d cache tiers.%n",
+                            fmtCount(stats.files),
+                            fmtBytes(stats.bytes),
+                            CacheTree.cached().size());
             CliOutput.out(
                     "  Artifact store (deps under JK_STORE_DIR) is kept. Rebuildable — the next build re-runs work.");
             return cc.jumpkick.cli.tui.Confirm.of(bang + " Nuke the cache tier?", false)

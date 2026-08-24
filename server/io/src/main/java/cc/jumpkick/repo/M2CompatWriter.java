@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,7 +11,9 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 
 /**
- * Writes Maven-compatible artifacts and sidecars into {@code ~/.m2/repository}. {@link #streamToM2}
+ * Writes Maven-compatible artifacts and sidecars into {@code ~/.m2/repository}. SHA-1 and MD5 are
+ * named here because Maven's sidecar contract names them — they are the {@code .sha1} / {@code .md5}
+ * files Maven clients refuse to read an artifact without, not jk's own content hash. {@link #streamToM2}
  * is atomic (temp-then-rename) and propagates I/O errors; sidecar / {@code _remote.repositories}
  * writes are best-effort and must never fail a successful download.
  */
@@ -28,9 +31,9 @@ public final class M2CompatWriter {
         Files.createDirectories(target.getParent());
         // Unique temp so concurrent writers of the same artifact don't share an inode (JK-2292).
         Path tmp = Files.createTempFile(target.getParent(), "." + target.getFileName() + ".", ".part");
-        MessageDigest sha256 = newDigest("SHA-256");
-        MessageDigest sha1 = newDigest("SHA-1");
-        MessageDigest md5 = newDigest("MD5");
+        MessageDigest sha256 = Hashing.newSha256();
+        MessageDigest sha1 = Hashing.newDigest("SHA-1");
+        MessageDigest md5 = Hashing.newDigest("MD5");
         long size = 0;
         try {
             try (OutputStream out = Files.newOutputStream(tmp)) {
@@ -52,7 +55,8 @@ public final class M2CompatWriter {
             }
             throw e;
         }
-        return new StreamResult(hex(sha256.digest()), hex(sha1.digest()), hex(md5.digest()), size);
+        return new StreamResult(
+                Hashing.hex(sha256.digest()), Hashing.hex(sha1.digest()), Hashing.hex(md5.digest()), size);
     }
 
     /**
@@ -91,12 +95,12 @@ public final class M2CompatWriter {
      * Equivalent to {@link #copyToM2AndHash} but for in-memory content (e.g. a generated POM).
      */
     public static MavenHashes writeBytesToM2(byte[] content, Path target) throws IOException {
-        MessageDigest sha1 = newDigest("SHA-1");
-        MessageDigest md5 = newDigest("MD5");
+        MessageDigest sha1 = Hashing.newDigest("SHA-1");
+        MessageDigest md5 = Hashing.newDigest("MD5");
         sha1.update(content);
         md5.update(content);
         AtomicWrites.replace(target, content);
-        return new MavenHashes(hex(sha1.digest()), hex(md5.digest()));
+        return new MavenHashes(Hashing.hex(sha1.digest()), Hashing.hex(md5.digest()));
     }
 
     /**
@@ -115,8 +119,8 @@ public final class M2CompatWriter {
         Files.createDirectories(target.getParent());
         // Unique temp so concurrent writers of the same artifact don't share an inode (JK-2292).
         Path tmp = Files.createTempFile(target.getParent(), "." + target.getFileName() + ".", ".part");
-        MessageDigest sha1 = newDigest("SHA-1");
-        MessageDigest md5 = newDigest("MD5");
+        MessageDigest sha1 = Hashing.newDigest("SHA-1");
+        MessageDigest md5 = Hashing.newDigest("MD5");
         try {
             try (InputStream in = Files.newInputStream(source);
                     OutputStream out = Files.newOutputStream(tmp)) {
@@ -136,7 +140,7 @@ public final class M2CompatWriter {
             }
             throw e instanceof IOException ie ? ie : new IOException(e);
         }
-        return new MavenHashes(hex(sha1.digest()), hex(md5.digest()));
+        return new MavenHashes(Hashing.hex(sha1.digest()), Hashing.hex(md5.digest()));
     }
 
     // -------------------------------------------------------------------------
@@ -146,13 +150,5 @@ public final class M2CompatWriter {
             AtomicWrites.replace(sidecar, hex);
         } catch (IOException ignored) {
         }
-    }
-
-    private static MessageDigest newDigest(String algorithm) {
-        return cc.jumpkick.host.Hashing.newDigest(algorithm);
-    }
-
-    private static String hex(byte[] digest) {
-        return cc.jumpkick.host.Hashing.hex(digest);
     }
 }

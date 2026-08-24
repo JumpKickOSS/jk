@@ -9,6 +9,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
@@ -234,8 +235,8 @@ public final class ImagePlans {
                     Optional<String> pinnedBase = BaseImageDigest.pin(config.base());
                     String base = pinnedBase.orElse(config.base());
 
-                    ActionCache ac =
-                            new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"), JkStores.storeCas());
+                    ActionCache ac = new ActionCache(
+                            JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
                     // A base that cannot be resolved (offline, or a registry that wants
                     // credentials) leaves nothing in the key that identifies the layers underneath
                     // the tarball, so it is not cached at all rather than cached wrongly. Writing
@@ -401,7 +402,7 @@ public final class ImagePlans {
                 .configString("mode", tarballPath != null ? "tarball" : daemonMode ? "daemon" : "push");
         if (base != null) sw.configString("base", base);
         // The jk cache root. The worker extracts a base JRE (50–200 MB) to train an AOT cache
-        // against; that tree belongs under the root CacheTier.BASE_JRE bounds, not in the
+        // against; that tree belongs under the root BASE_JRE's bound covers, not in the
         // module's target/, where nothing reclaims it and `jk clean` throws it away.
         sw.configString("jkCache", cache.toAbsolutePath().toString());
         if (config.user() != null) sw.configString("user", config.user());

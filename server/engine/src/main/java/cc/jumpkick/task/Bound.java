@@ -4,7 +4,7 @@ package cc.jumpkick.task;
 import java.time.Duration;
 
 /**
- * What holds one {@link CacheTier} down: an optional retention window, plus a cap for when the
+ * What holds one cache tier down: an optional retention window, plus a cap for when the
  * window alone is not enough.
  *
  * <p>The window runs <strong>unconditionally</strong> — a cache that never approaches any limit

@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.host.CacheTree;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
@@ -18,7 +19,8 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * Applies every {@link CacheTier}'s {@link Bound}, then reclaims whatever the table does not name.
+ * Applies the {@link CacheTier} bound of every {@link CacheTree}, then reclaims whatever {@link
+ * CacheTree} does not name.
  *
  * <p>One entry point, called from one place: {@code CachePlans.pruneBuildPlan}, which the engine
  * runs at the idle boundary after a build and on its 12 h maintenance tick. There is no second call
@@ -99,7 +101,7 @@ public final class CacheRetention {
             Set<String> alreadyFreedShas,
             boolean dryRun,
             Probe probe,
-            Map<CacheTier, Bound> caps)
+            Map<CacheTree, Bound> caps)
             throws IOException {
         if (!Files.isDirectory(cacheRoot)) return Report.EMPTY;
         long now = System.currentTimeMillis();
@@ -109,13 +111,13 @@ public final class CacheRetention {
         long bytes = 0L;
         long finalActionBytes = 0L;
 
-        for (CacheTier tier : CacheTier.values()) {
-            Bound bound = caps.getOrDefault(tier, tier.bound());
-            Path root = cacheRoot.resolve(tier.entry());
+        for (CacheTree tier : CacheTree.values()) {
+            Bound bound = caps.getOrDefault(tier, CacheTier.bound(tier));
+            Path root = tier.under(cacheRoot);
             switch (bound.kind()) {
                 case DELEGATED -> {
                     // Both delegated tiers are one pass over one Policy; run it on ACTIONS only.
-                    if (tier != CacheTier.ACTIONS) continue;
+                    if (tier != CacheTree.ACTIONS) continue;
                     var policy = ActionCachePrune.Policy.of(cc.jumpkick.config.JkCacheConfig.resolve());
                     var report = ActionCachePrune.run(cacheRoot, cacheCas, policy, alreadyFreedShas, dryRun);
                     files += (int) report.totalDeletedFiles();
@@ -149,7 +151,7 @@ public final class CacheRetention {
 
         Tally unknown = new Tally(0, 0L);
         List<String> names = new ArrayList<>();
-        Set<String> known = CacheTier.knownEntries();
+        Set<String> known = CacheTree.entries();
         for (Path entry : children(cacheRoot)) {
             String name = entry.getFileName().toString();
             if (known.contains(name)) continue;
@@ -231,7 +233,14 @@ public final class CacheRetention {
             case Bound.Cap.ResetOverBytes(long budget) -> {
                 if (budget > 0 && total > budget) out = out.plus(delete(root, dryRun));
             }
-            default -> {}
+            // Took the whole tier at the top of the method, before paying for the stat walk.
+            case Bound.Cap.ResetAlways ignored -> {}
+            // A tier of files has no child tree to keep, so KeepOnly cannot reach this instrument;
+            // sweepSubtrees is where it means something. Named rather than defaulted so that
+            // adding a sixth Cap stops here and is decided, instead of silently doing nothing.
+            case Bound.Cap.KeepOnly ignored -> {}
+            // The window was the whole policy.
+            case Bound.Cap.None ignored -> {}
         }
         if (!dryRun && out.files() > 0) pruneEmptyDirs(root);
         return out;

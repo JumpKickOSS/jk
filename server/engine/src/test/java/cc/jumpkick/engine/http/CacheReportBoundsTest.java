@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.task.Bound;
 import cc.jumpkick.task.CacheTier;
 import org.junit.jupiter.api.Test;
@@ -23,7 +24,7 @@ class CacheReportBoundsTest {
                 .toJson()
                 .toString();
 
-        for (CacheTier tier : CacheTier.values()) {
+        for (CacheTree tier : CacheTree.values()) {
             if (boundedByBytes(tier)) continue;
             assertThat(json)
                     .as("%s is not bounded by bytes and must not report as though it were", tier)
@@ -39,8 +40,8 @@ class CacheReportBoundsTest {
      * deleted and at 101 % the tier is empty, so a utilization bar against it would describe a
      * gradual pressure that does not exist.
      */
-    private static boolean boundedByBytes(CacheTier tier) {
-        return tier.bound().kind() == Bound.Kind.DELEGATED;
+    private static boolean boundedByBytes(CacheTree tier) {
+        return CacheTier.bound(tier).kind() == Bound.Kind.DELEGATED;
     }
 
     /** {@code hash-memo} → {@code hashMemo}, the field name such a denominator would take. */

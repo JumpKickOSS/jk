@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkCacheConfig;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -169,7 +170,7 @@ public final class ActionCachePrune {
             throws IOException {
         long now = System.currentTimeMillis();
         long grace = Sweep.MIN_AGE_FOR_SWEEP.toMillis();
-        Path actionsDir = cacheRoot.resolve("actions");
+        Path actionsDir = CacheTree.ACTIONS.under(cacheRoot);
         if (!Files.isDirectory(actionsDir)) return Report.EMPTY;
 
         Incremental incremental = pruneIncremental(actionsDir, policy, now, grace, dryRun);

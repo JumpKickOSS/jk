@@ -331,12 +331,6 @@ class MavenRepoTest {
         assertThat(repo.missingUpstreamChecksums()).isEqualTo(1);
     }
 
-    @Test
-    void normalize_checksum_takes_first_token() {
-        assertThat(MavenRepo.normalizeChecksum("abc123  file.jar\n")).isEqualTo("abc123");
-        assertThat(MavenRepo.normalizeChecksum("  deadbeef\t")).isEqualTo("deadbeef");
-    }
-
     private void serve(String path, int status, byte[] body) {
         server.createContext(path, exchange -> {
             exchange.sendResponseHeaders(status, body.length);

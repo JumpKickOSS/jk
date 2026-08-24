@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.plugin.build.PluginCommandExec;
 import java.io.IOException;
 import java.net.URI;
@@ -10,7 +11,6 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -124,11 +124,12 @@ final class AndroidCommand {
         Files.writeString(file, existing + hash + "\n");
     }
 
-    private static String hash(String text) throws Exception {
-        MessageDigest sha1 = MessageDigest.getInstance("SHA-1");
-        byte[] digest = sha1.digest(text.strip().getBytes(StandardCharsets.UTF_8));
-        StringBuilder hex = new StringBuilder(digest.length * 2);
-        for (byte b : digest) hex.append(String.format("%02x", b));
-        return hex.toString();
+    /**
+     * The licence hash sdkmanager writes into {@code licenses/<id>}: SHA-1 of the stripped licence
+     * text. SHA-1 is Google's choice, not jk's — the file is read by the Android SDK tooling, so the
+     * algorithm is part of that format and is named here rather than hidden behind jk's own digest.
+     */
+    private static String hash(String text) {
+        return Hashing.hashHex("SHA-1", text.strip().getBytes(StandardCharsets.UTF_8));
     }
 }

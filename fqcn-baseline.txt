@@ -293,7 +293,6 @@
     1  server/engine/src/test/java/cc/jumpkick/runtime/VariantSwitchTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/WorkspaceExecuteSelectionTest.java
     2  server/engine/src/test/java/cc/jumpkick/task/ClasspathFingerprintTest.java
-    2  server/io/src/main/java/cc/jumpkick/repo/M2CompatWriter.java
     5  server/io/src/test/java/cc/jumpkick/repo/MavenRepoM2LookupTest.java
     1  server/resolver/src/test/java/cc/jumpkick/resolver/MavenPackageSourceExclusionTest.java
     1  server/resolver/src/test/java/cc/jumpkick/resolver/NiaWarmLockTimingTest.java

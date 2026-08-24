@@ -10,6 +10,7 @@ import cc.jumpkick.compile.KotlincDriver;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.KotlincResult;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.HostPlatform;
@@ -307,7 +308,8 @@ public final class ScriptPlans {
                     // it; paired with -no-stdlib).
                     List<Path> compileCp = new ArrayList<>(depsClasspath);
                     compileCp.add(ctx.require(KT_STDLIB));
-                    Path workingDir = cacheDir.resolve("actions")
+                    Path workingDir = CacheTree.ACTIONS
+                            .under(cacheDir)
                             .resolve("incremental-kotlin")
                             .resolve(ActionKey.qualifiedTaskId("script", classesDir));
                     @SuppressWarnings("unchecked")

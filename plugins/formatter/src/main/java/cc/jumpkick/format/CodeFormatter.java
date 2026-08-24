@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.format;
 
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
@@ -74,7 +75,7 @@ public final class CodeFormatter implements Plugin {
         // Per-file stamp cache — skips unchanged files without running the formatter. The host
         // computed and sent the config digest (its FormatKey); no key without it.
         FormatStampCache stampCache = spec.cacheDir != null && spec.configKey != null
-                ? new FormatStampCache(spec.cacheDir.resolve("format-stamps"), spec.configKey)
+                ? new FormatStampCache(CacheTree.FORMAT_STAMPS.under(spec.cacheDir), spec.configKey)
                 : null;
 
         // Build the OpenRewrite recipe once (null when no rewrite is requested).

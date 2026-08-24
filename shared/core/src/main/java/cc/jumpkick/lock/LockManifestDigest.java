@@ -3,6 +3,7 @@ package cc.jumpkick.lock;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import java.io.ByteArrayOutputStream;
@@ -11,10 +12,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -112,18 +111,14 @@ public final class LockManifestDigest {
     static String hashParts(Map<String, byte[]> parts) {
         List<String> keys = new ArrayList<>(parts.keySet());
         keys.sort(Comparator.naturalOrder());
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            for (String key : keys) {
-                md.update(key.getBytes(StandardCharsets.UTF_8));
-                md.update((byte) 0);
-                md.update(parts.get(key));
-                md.update((byte) 0);
-            }
-            return HexFormat.of().formatHex(md.digest());
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 required", e);
+        MessageDigest md = Hashing.newSha256();
+        for (String key : keys) {
+            md.update(key.getBytes(StandardCharsets.UTF_8));
+            md.update((byte) 0);
+            md.update(parts.get(key));
+            md.update((byte) 0);
         }
+        return Hashing.hex(md.digest());
     }
 
     /**

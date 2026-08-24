@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.kotlin.compiler;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
@@ -8,11 +9,8 @@ import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -168,12 +166,8 @@ public final class KotlinCompiler implements Plugin {
     }
 
     /** Stable snapshot filename for a classpath entry (its path is content-unique in the CAS). */
-    private static String snapshotName(File entry) throws NoSuchAlgorithmException {
-        byte[] digest = MessageDigest.getInstance("SHA-256")
-                .digest(entry.getAbsolutePath().getBytes(StandardCharsets.UTF_8));
-        StringBuilder sb = new StringBuilder(digest.length * 2);
-        for (byte b : digest) sb.append(String.format("%02x", b & 0xff));
-        return sb.append(".snapshot").toString();
+    private static String snapshotName(File entry) {
+        return Hashing.sha256Hex(entry.getAbsolutePath()) + ".snapshot";
     }
 
     /**

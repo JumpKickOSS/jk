@@ -8,6 +8,7 @@ import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -188,8 +189,8 @@ public final class PlannerCompile {
                     }
                     CompileRequest request = req.build();
                     String taskId = ActionKey.qualifiedTaskId("compile-main", javaOut);
-                    Path javaStateDir = in.cache()
-                            .resolve("actions")
+                    Path javaStateDir = CacheTree.ACTIONS
+                            .under(in.cache())
                             .resolve("incremental-java")
                             .resolve(taskId);
                     // Reweight the bar slice now that the real request is known: a CAS
@@ -399,8 +400,8 @@ public final class PlannerCompile {
                     // dir with javac's output (it would delete the.class files).
                     Path ktOut = ctx.require(LAYOUT).kotlinClassesDir();
                     String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_KOTLIN, classes);
-                    Path workingDir = in.cache()
-                            .resolve("actions")
+                    Path workingDir = CacheTree.ACTIONS
+                            .under(in.cache())
                             .resolve("incremental-kotlin")
                             .resolve(taskId);
                     // Mixed module: Kotlin reads the Java declarations from source

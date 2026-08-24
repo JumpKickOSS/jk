@@ -54,6 +54,13 @@
 # and the one `Files.move` that named the lock twice on a single line stopped fitting, which put
 # three back. The invariants below are unchanged.
 #
+# JK-2418 moved four of them upward by exactly one line each — the `import` for
+# `cc.jumpkick.host.CacheTree`. `CacheTree.ACTIONS.under(cache)` is two characters shorter than
+# `cache.resolve("actions")`, so three of the four re-wrapped nothing; in `TaskForecaster` the two
+# Zinc state-dir chains got a local for the tier, which cost one line and saved one. `BuildPlanner`
+# is unchanged: its import cost a line and the shorter call let a wrapped constructor fit on one.
+# The invariants below are unchanged.
+#
 # FORMAT. One entry per line: `<lines>  <path from the repo root>`. The comment lines immediately
 # above an entry, with no blank line between, are that entry's invariant. A blank line separates
 # entries. Sorted by path.
@@ -156,15 +163,15 @@
 1203  server/engine/src/main/java/cc/jumpkick/runtime/EffortWeights.java
 
 # T58: one plan per verb, with the shared step bodies next to the plans that compose them.
-1090  server/engine/src/main/java/cc/jumpkick/runtime/ExecPlans.java
+1091  server/engine/src/main/java/cc/jumpkick/runtime/ExecPlans.java
 
 # The Jib path and the docker/podman Dockerfile path must produce the same structured success keys
 # (IMAGE_REF / TARBALL_PATH / ...) — two files means two key sets and a caller that can only handle
 # one of them.
-809  server/engine/src/main/java/cc/jumpkick/runtime/ImagePlans.java
+810  server/engine/src/main/java/cc/jumpkick/runtime/ImagePlans.java
 
 # T58: step bodies shared by the Planner* collaborators. No invariant holds it here — ratchet only.
-950  server/engine/src/main/java/cc/jumpkick/runtime/PlannerSupport.java
+951  server/engine/src/main/java/cc/jumpkick/runtime/PlannerSupport.java
 
 # T58: plugin discovery, the contribution fold and the plugin step bodies. Ratchet only.
 826  server/engine/src/main/java/cc/jumpkick/runtime/PluginBuild.java
@@ -172,7 +179,7 @@
 # T58: the forecast's cache keys must mirror the real build's request field for field — drift makes
 # `jk explain` forecast a phantom rebuild. Dirty-marking of a module and of its consumers is one
 # traversal, so misses stay pessimistic and never become false cache hits.
-1220  server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java
+1221  server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java
 
 # T58: workspace step execution and the target/ write-drain that `jk build` must not return ahead
 # of (JK-2451). Ratchet only.

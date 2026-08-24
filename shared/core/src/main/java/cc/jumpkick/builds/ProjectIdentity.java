@@ -3,6 +3,7 @@ package cc.jumpkick.builds;
 
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -14,10 +15,8 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -135,7 +134,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
     public static String mintId() {
         byte[] bytes = new byte[16];
         RANDOM.nextBytes(bytes);
-        return HexFormat.of().formatHex(bytes);
+        return Hashing.hex(bytes);
     }
 
     /** Normalize / validate an id string; reject path-like values. */
@@ -284,9 +283,8 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
 
     private static String hashId(String material) {
         try {
-            byte[] dig = MessageDigest.getInstance("SHA-256").digest(material.getBytes(StandardCharsets.UTF_8));
             // 32 hex chars (128 bits) — URL-safe, distinct from minted random ids only by content
-            return HexFormat.of().formatHex(dig).substring(0, 32);
+            return Hashing.sha256Hex(material).substring(0, 32);
         } catch (Exception e) {
             return mintId();
         }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.host.CacheTree;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
@@ -65,8 +66,8 @@ public final class CacheMaintenanceLocks {
     private static boolean withPruneFileLock(Path cache, @Nullable Runnable onWaitCross, boolean block, Body body)
             throws Exception {
         Files.createDirectories(cache);
-        try (FileChannel chan =
-                FileChannel.open(cache.resolve(".prune.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+        try (FileChannel chan = FileChannel.open(
+                CacheTree.PRUNE_LOCK.under(cache), StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
             FileLock lock;
             try {
                 lock = chan.tryLock();

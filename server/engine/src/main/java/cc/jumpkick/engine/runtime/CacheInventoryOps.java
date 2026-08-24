@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.protocol.CacheInventoryAck;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.M2Dirs;
@@ -13,8 +14,6 @@ import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.task.Bound;
-import cc.jumpkick.task.CacheTier;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -66,7 +65,7 @@ public final class CacheInventoryOps {
 
         Cas cas = new Cas(cacheRoot);
         Set<String> seenShas = new HashSet<>();
-        Path keysDir = cacheRoot.resolve("actions").resolve("keys");
+        Path keysDir = CacheTree.ACTIONS.under(cacheRoot).resolve("keys");
         if (Files.isDirectory(keysDir)) {
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(keysDir)) {
                 for (Path keyFile : stream) {
@@ -111,14 +110,15 @@ public final class CacheInventoryOps {
             }
         }
 
-        DiskUsage.Stats stamps = DiskUsage.of(cacheRoot.resolve("format-stamps"));
+        DiskUsage.Stats stamps = DiskUsage.of(CacheTree.FORMAT_STAMPS.under(cacheRoot));
         // Total is the action cache — the exact bytes the budget bounds. Every other tier under
         // this root is bounded on its own terms (see CacheTier), so folding them in would measure
         // one tier's usage against another tier's line; they are reported beside the total as
         // `stamps` and `derived`. Zinc analysis sits under actions/ and comes out for the same
         // reason: its own budget, its own row.
-        DiskUsage.Stats[] budgeted = DiskUsage.exclusive(cacheRoot.resolve("actions"), cacheRoot.resolve("sha256"));
-        DiskUsage.Stats incremental = incrementalStats(cacheRoot.resolve("actions"));
+        DiskUsage.Stats[] budgeted =
+                DiskUsage.exclusive(CacheTree.ACTIONS.under(cacheRoot), CacheTree.CACHE_CAS.under(cacheRoot));
+        DiskUsage.Stats incremental = incrementalStats(CacheTree.ACTIONS.under(cacheRoot));
         DiskUsage.Stats derived = derivedStats(cacheRoot);
         List<String> stats = List.of(
                 pack("classFiles", classFiles[0], classFiles[1]),
@@ -140,16 +140,15 @@ public final class CacheInventoryOps {
 
     /**
      * The tiers with no row of their own: small derived caches bounded by count or supersession
-     * rather than by the action budget. Read off {@link CacheTier} so the report cannot fall
+     * rather than by the action budget. Read off {@link CacheTree} so the report cannot fall
      * behind the table.
      */
     private static DiskUsage.Stats derivedStats(Path cacheRoot) throws IOException {
         long files = 0;
         long bytes = 0;
-        for (CacheTier tier : CacheTier.values()) {
-            if (tier == CacheTier.ACTIONS || tier == CacheTier.CACHE_CAS || tier == CacheTier.FORMAT_STAMPS) continue;
-            if (tier.bound().kind() == Bound.Kind.UNBOUNDED) continue;
-            DiskUsage.Stats stats = DiskUsage.of(cacheRoot.resolve(tier.entry()));
+        for (CacheTree tier : CacheTree.cached()) {
+            if (tier == CacheTree.ACTIONS || tier == CacheTree.CACHE_CAS || tier == CacheTree.FORMAT_STAMPS) continue;
+            DiskUsage.Stats stats = DiskUsage.of(tier.under(cacheRoot));
             files += stats.files();
             bytes += stats.bytes();
         }

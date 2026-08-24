@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.tui.Confirm;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.command.Exit;
@@ -70,7 +71,7 @@ final class UrlToolSource {
         }
         String raw = UrlRewriter.rewrite(url);
         URI uri = URI.create(raw);
-        Path dir = cacheDir.resolve("tool-src").resolve(Hashing.sha256Hex(raw.getBytes(StandardCharsets.UTF_8)));
+        Path dir = CacheTree.TOOL_SRC.under(cacheDir).resolve(Hashing.sha256Hex(raw.getBytes(StandardCharsets.UTF_8)));
 
         if (!refresh && Files.isDirectory(dir)) {
             List<Path> cached = topLevelFiles(dir);
@@ -136,7 +137,8 @@ final class UrlToolSource {
      */
     private static Path fetchGist(String id, String pageUrl, Path cacheDir, boolean refresh)
             throws IOException, InterruptedException {
-        Path dir = cacheDir.resolve("tool-src").resolve(Hashing.sha256Hex(pageUrl.getBytes(StandardCharsets.UTF_8)));
+        Path dir =
+                CacheTree.TOOL_SRC.under(cacheDir).resolve(Hashing.sha256Hex(pageUrl.getBytes(StandardCharsets.UTF_8)));
         if (!refresh && Files.isDirectory(dir)) {
             Path cached = pickGistEntry(dir);
             if (cached != null) return cached;

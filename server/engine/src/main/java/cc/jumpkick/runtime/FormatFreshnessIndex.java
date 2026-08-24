@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -45,7 +46,8 @@ public final class FormatFreshnessIndex {
         if (cacheDir == null || configHash == null || configHash.length() < 4) {
             return disabled(projectDir);
         }
-        Path file = cacheDir.resolve("format-freshness")
+        Path file = CacheTree.FORMAT_FRESHNESS
+                .under(cacheDir)
                 .resolve(configHash.substring(0, 2))
                 .resolve(configHash.substring(2) + ".idx");
         Map<String, Entry> entries = new LinkedHashMap<>();

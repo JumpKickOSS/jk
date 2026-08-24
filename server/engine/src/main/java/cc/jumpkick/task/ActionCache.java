@@ -15,12 +15,10 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.FileTime;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -357,12 +355,7 @@ public final class ActionCache {
      * disappeared after the caller's presence check is also false, not a throw.
      */
     private static boolean copyVerified(Path blob, Path target, String expectedSha) throws IOException {
-        MessageDigest md;
-        try {
-            md = MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
+        MessageDigest md = Hashing.newSha256();
         try (var in = Files.newInputStream(blob);
                 var out = new DigestOutputStream(
                         Files.newOutputStream(
@@ -378,7 +371,7 @@ public final class ActionCache {
             Files.deleteIfExists(target);
             return false;
         }
-        if (expectedSha.equalsIgnoreCase(HexFormat.of().formatHex(md.digest()))) {
+        if (expectedSha.equalsIgnoreCase(Hashing.hex(md.digest()))) {
             return true;
         }
         Files.deleteIfExists(target);

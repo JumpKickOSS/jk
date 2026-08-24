@@ -20,6 +20,7 @@ import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.EngineMain;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.groovy.GroovyResolver;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
@@ -408,7 +409,7 @@ public final class PlannerSupport {
 
     /** Action cache with store-CAS fallback for Class-C blobs promoted by release. */
     static ActionCache packagingActionCache(Path cacheRoot) {
-        return new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"), JkStores.storeCas());
+        return new ActionCache(JkStores.cacheCas(cacheRoot), CacheTree.ACTIONS.under(cacheRoot), JkStores.storeCas());
     }
 
     /** Test hook: {@link #storePackaged} under a rebuild session must still persist. */

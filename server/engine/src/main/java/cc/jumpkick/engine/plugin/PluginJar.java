@@ -18,6 +18,7 @@ import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -179,23 +180,23 @@ public enum PluginJar {
         }
         byte[] bytes = jarResp.body();
         String sha = Hashing.sha256Hex(bytes);
-        String published = null;
+        Optional<String> published = Optional.empty();
         try {
             HttpResponse<byte[]> sumResp = http.get(URI.create(jarUri + ".sha256"));
             if (sumResp.statusCode() >= 200 && sumResp.statusCode() < 300) {
-                published = new String(sumResp.body()).strip().split("\\s+")[0];
+                published = Hashing.checksumFromSidecar(new String(sumResp.body(), StandardCharsets.UTF_8), 64);
             }
         } catch (IOException ignored) {
             // The .sha256 sidecar is optional — an absent or unreachable sidecar keeps the hash
             // we computed. The mismatch check below must stay OUTSIDE this catch: swallowing it
             // installed jars whose published checksum disagreed.
         }
-        if (published != null && published.length() == 64) {
-            if (!published.equalsIgnoreCase(sha)) {
+        if (published.isPresent()) {
+            if (!published.get().equals(sha)) {
                 throw new IOException(
-                        "checksum mismatch for " + jarUri + " (expected " + published + ", got " + sha + ")");
+                        "checksum mismatch for " + jarUri + " (expected " + published.get() + ", got " + sha + ")");
             }
-            sha = published.toLowerCase();
+            sha = published.get();
         }
         RepoArtifactStore store = RepoArtifactStore.forRepoName(cas.root(), OFFICIAL_REPO);
         Files.createDirectories(cas.root());

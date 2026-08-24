@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.task.ActionCache;
 import java.io.IOException;
@@ -177,7 +178,7 @@ public final class BuildForecasting {
         }
         try {
             Cas cas = JkStores.cas(cache); // artifact CAS for classpath fingerprints
-            ActionCache ac = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
+            ActionCache ac = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
             List<TaskForecast.Module> modules = TaskForecaster.of(
                     graph, cas, ac, cache, skipTests, t, terminalDirs == null ? Set.of() : terminalDirs);
             Set<Path> dirty = new HashSet<>();
@@ -275,7 +276,7 @@ public final class BuildForecasting {
             }
         }
         Cas cas = JkStores.cas(cache); // artifact CAS for classpath fingerprints
-        ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
+        ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
         List<TaskForecast.Module> modules = TaskForecaster.of(graph, cas, actionCache, cache, skipTests);
         return new ExplainPlan(modules, graph.edges(), graph.maxReadyWidth(), List.of());
     }

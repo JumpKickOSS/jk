@@ -5,6 +5,7 @@ import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.resolve.ResolveProcessCacheControl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -246,8 +247,8 @@ public final class IdleHousekeeping {
             pendingPruneCache.compareAndSet(null, cache);
             return;
         }
-        try (FileChannel lockChan =
-                FileChannel.open(cache.resolve(".prune.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+        try (FileChannel lockChan = FileChannel.open(
+                CacheTree.PRUNE_LOCK.under(cache), StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
             FileLock pruneLock = lockChan.tryLock();
             if (pruneLock == null) return;
             try {

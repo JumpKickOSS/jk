@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
@@ -55,7 +56,7 @@ public final class ModuleOutputRestore {
         if (!packageOutputsMissing(workspaceRoot, moduleDir, build)) return true;
         BuildLayout layout = BuildLayout.of(workspaceRoot, moduleDir, build);
         ActionCache ac =
-                new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"), JkStores.storeCas());
+                new ActionCache(JkStores.cacheCas(cacheRoot), CacheTree.ACTIONS.under(cacheRoot), JkStores.storeCas());
 
         // Compile outputs → classes (and language-private dirs when present).
         restoreCompile(ac, "compile-main", layout.classesDir());

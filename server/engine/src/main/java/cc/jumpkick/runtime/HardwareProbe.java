@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -17,11 +18,11 @@ import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -461,13 +462,10 @@ final class HardwareProbe {
             // never persist unverified bytes. No.sha1, no cache entry.
             byte[] sha1 = httpGet(CENTRAL_BASE + relativeMavenPath + ".sha1");
             if (sha1 == null || sha1.length == 0) return null;
-            String expected = new String(sha1, StandardCharsets.US_ASCII)
-                    .trim()
-                    .split("\\s+")[0]
-                    .toLowerCase(Locale.ROOT);
-            String actual =
-                    HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(body));
-            if (!actual.equals(expected)) return null;
+            // SHA-1 because that is what Central publishes beside the artifact; the sidecar names
+            // the algorithm, so the call site does too.
+            Optional<String> expected = Hashing.checksumFromSidecar(new String(sha1, StandardCharsets.US_ASCII), 40);
+            if (expected.isEmpty() || !expected.get().equals(Hashing.hashHex("SHA-1", body))) return null;
             Path dest = cacheRoot.resolve("repos").resolve("central").resolve(relativeMavenPath);
             Files.createDirectories(dest.getParent());
             Files.write(dest, body);
@@ -551,7 +549,7 @@ final class HardwareProbe {
             List<Long> samples = new ArrayList<>();
             for (int s = 0; s < WARM_SAMPLES + 1; s++) {
                 long t0 = System.nanoTime();
-                MessageDigest md = MessageDigest.getInstance("SHA-256");
+                MessageDigest md = Hashing.newSha256();
                 md.update(data);
                 md.digest();
                 samples.add((System.nanoTime() - t0) / 1_000_000);

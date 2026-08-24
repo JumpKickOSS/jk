@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
@@ -284,7 +285,7 @@ public final class FileHashMemo {
         try {
             Path cache = SessionContext.current().cacheDir();
             String key = Hashing.sha256Hex(abs.toString().getBytes(StandardCharsets.UTF_8));
-            return cache.resolve("hash-memo").resolve(key.substring(0, 2)).resolve(key.substring(2));
+            return CacheTree.HASH_MEMO.under(cache).resolve(key.substring(0, 2)).resolve(key.substring(2));
         } catch (RuntimeException e) {
             return null;
         }

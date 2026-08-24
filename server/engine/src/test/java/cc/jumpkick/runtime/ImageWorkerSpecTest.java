@@ -4,10 +4,10 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.task.CacheTier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -81,7 +81,7 @@ class ImageWorkerSpecTest {
     }
 
     /**
-     * {@code CacheTier.BASE_JRE} bounds {@code <cache>/base-jre}, and this key is the only thing
+     * {@code CacheTree.BASE_JRE} is bounded at {@code <cache>/base-jre}, and this key is the only
      * that tells the worker where that is — a tier whose path production never writes is a bound
      * that governs nothing.
      */
@@ -97,7 +97,7 @@ class ImageWorkerSpecTest {
                 .isEqualTo(cache.toAbsolutePath().toString());
         Path target = BuildLayout.of(module, JkBuildParser.parse(module.resolve("jk.toml")))
                 .targetDir();
-        assertThat(Path.of(jkCache).resolve(CacheTier.BASE_JRE.entry()).startsWith(target))
+        assertThat(Path.of(jkCache).resolve(CacheTree.BASE_JRE.entry()).startsWith(target))
                 .as("%s is module build output — nothing reclaims it and `jk clean` deletes it", target)
                 .isFalse();
     }

@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestSummary;
@@ -664,9 +665,10 @@ public final class TestSupport {
         }
         CompileRequest request = req.build();
         // Action payloads live in the cache CAS; callers may pass the artifact CAS for classpath.
-        ActionCache actionCache = new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
+        ActionCache actionCache = new ActionCache(JkStores.cacheCas(cacheRoot), CacheTree.ACTIONS.under(cacheRoot));
         boolean useCache = !cc.jumpkick.config.SessionContext.current().config().rebuildOr(false);
-        Path stateDir = cacheRoot.resolve("actions").resolve("incremental-java").resolve(cacheTaskId);
+        Path actions = CacheTree.ACTIONS.under(cacheRoot);
+        Path stateDir = actions.resolve("incremental-java").resolve(cacheTaskId);
 
         // Reweight the bar slice from the real request: a CAS hit is a cheap
         // restore (3), else a full compile. Same key JavaCompile uses.
@@ -683,7 +685,7 @@ public final class TestSupport {
         ctx.label(taskId + ": " + sources.size() + " sources");
         Path gen = generatedSourceDir != null
                 ? generatedSourceDir
-                : cacheRoot.resolve("generated").resolve(cacheTaskId);
+                : CacheTree.GENERATED.under(cacheRoot).resolve(cacheTaskId);
         Files.createDirectories(gen);
         Path workerJar = cc.jumpkick.engine.plugin.PluginJar.JAVA_COMPILER.locate(cas);
         cc.jumpkick.task.JavaCompile.Result r = cc.jumpkick.task.JavaCompile.run(

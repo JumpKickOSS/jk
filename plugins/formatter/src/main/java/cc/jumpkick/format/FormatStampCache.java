@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.format;
 
+import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 
 /**
  * CAS-sharded per-file format stamp store under {@code <cache>/format-stamps/}. A hit means the
@@ -34,18 +33,14 @@ final class FormatStampCache {
 
     /**
      * The stamp key for a file whose raw bytes are {@code fileBytes}: SHA-256 over the run's config
-     * digest and the content. Null on failure (fail-open cache miss).
+     * digest and the content. Null for absent bytes (fail-open cache miss).
      */
     String keyFor(byte[] fileBytes) {
         if (fileBytes == null) return null;
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            md.update((configKey + "\n").getBytes(StandardCharsets.UTF_8));
-            md.update(fileBytes);
-            return HexFormat.of().formatHex(md.digest());
-        } catch (NoSuchAlgorithmException e) {
-            return null;
-        }
+        MessageDigest md = Hashing.newSha256();
+        md.update((configKey + "\n").getBytes(StandardCharsets.UTF_8));
+        md.update(fileBytes);
+        return Hashing.hex(md.digest());
     }
 
     /**

@@ -12,6 +12,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceClasspath;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.Lockfile;
@@ -396,8 +397,7 @@ public final class BuildPlanner {
     /** As {@link #coreBuilder(Inputs)} with upstream-dirty {@code forceRebuild} for weight prediction. */
     public static BuildPlan.Builder coreBuilder(Inputs in, boolean forceRebuild) {
         Cas cas = JkStores.cas(in.cache()); // artifact store CAS (deps, workers)
-        ActionCache actionCache =
-                new ActionCache(JkStores.cacheCas(in.cache()), in.cache().resolve("actions"));
+        ActionCache actionCache = new ActionCache(JkStores.cacheCas(in.cache()), CacheTree.ACTIONS.under(in.cache()));
 
         // Compose only the language steps the project uses, so a single-language
         // project never shows a no-op step for the other. Explicit jk.toml

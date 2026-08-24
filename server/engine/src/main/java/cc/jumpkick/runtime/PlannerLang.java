@@ -6,6 +6,7 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincRequest;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Coordinate;
@@ -130,7 +131,7 @@ public final class PlannerLang {
                 .workerClasspath(kt.workerClasspath())
                 .javaHome(ctx.require(JAVA_HOME))
                 .workingDir(icWorkingDir)
-                .snapshotDir(in.cache().resolve("kotlin-cp-snapshots"))
+                .snapshotDir(CacheTree.KOTLIN_CP_SNAPSHOTS.under(in.cache()))
                 .extraArgs(ktArgs)
                 .plugins(ktPlugins)
                 // Lockstep with the KSP round's -module-name: internal-member mangling

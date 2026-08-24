@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.image;
 
+import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Hashing;
 import com.google.cloud.tools.jib.api.Containerizer;
 import com.google.cloud.tools.jib.api.InvalidImageReferenceException;
 import com.google.cloud.tools.jib.api.Jib;
@@ -14,11 +16,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutionException;
@@ -75,7 +74,7 @@ final class BaseJre {
      * {@link #REVALIDATE_MILLIS} (Jib's layer cache makes an unchanged re-pull cheap).
      */
     static Path javaBinary(String base, Path cacheRoot) throws IOException, InterruptedException {
-        Path root = cacheRoot.resolve("base-jre").resolve(digest(base));
+        Path root = CacheTree.BASE_JRE.under(cacheRoot).resolve(Hashing.sha256Hex(base));
         Path marker = root.resolve(".extracted");
         boolean pinned = base.contains("@sha256:");
         if (Files.isRegularFile(marker)) {
@@ -294,15 +293,6 @@ final class BaseJre {
             return p.waitFor(60, TimeUnit.SECONDS) && p.exitValue() == 0 && !out.isBlank();
         } catch (IOException e) {
             return false;
-        }
-    }
-
-    private static String digest(String text) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(md.digest(text.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
         }
     }
 }
