@@ -10,6 +10,7 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.FileSystemException;
@@ -86,6 +87,20 @@ import xsbti.compile.analysis.Stamp;
  * Java↔Scala).
  */
 public final class ZincJavaCompiler {
+
+    /**
+     * The charset every source is read as. Both javac front ends here already reach UTF-8 without
+     * being told — Zinc through sbt.io's hardcoded default, {@link ProvenanceJavac} through the
+     * charset its file manager is built with — so naming it changes no bytes today. What it
+     * changes is who owns the decision: javac's own fallback is the host's
+     * {@link Charset#defaultCharset()}, not a build input jk can reproduce, and a charset that is
+     * two libraries' defaults cannot be moved on purpose. This one can. {@link #javacOptions}
+     * declares it, {@link ProvenanceJavac} pins its file manager to it, and the engine hashes the
+     * same charset into the javac action key — as its own constant, since the engine and this
+     * worker are separate processes — so moving the pin recompiles rather than restoring
+     * artifacts decoded under the old one.
+     */
+    private static final Charset SOURCE_ENCODING = StandardCharsets.UTF_8;
 
     private ZincJavaCompiler() {}
 
@@ -955,6 +970,15 @@ public final class ZincJavaCompiler {
 
     private static String[] javacOptions(int release, List<String> extra, Path sourceOutput, List<Path> processorPath) {
         List<String> opts = new ArrayList<>();
+        // Unconditional: the charset a build decodes its sources with is not negotiable, because
+        // nothing downstream can tell UTF-8 bytecode from Latin-1 bytecode. Neither reader here
+        // actually consults the flag — Zinc hands javac its own VJavaFileObject, decoded by sbt.io's
+        // hardcoded UTF-8, and ProvenanceJavac's file manager outranks it — so this is jk saying out
+        // loud, to javac and to the MiniSetup Zinc persists and diffs the next compile against, what
+        // those two already do silently. It does not reach the action key: that hashes the request's
+        // extraOptions, not this list, and pins the charset with a constant of its own.
+        opts.add("-encoding");
+        opts.add(SOURCE_ENCODING.name());
         if (release > 0 && !containsFlag(extra, "--release")) {
             opts.add("--release");
             opts.add(Integer.toString(release));
@@ -1032,8 +1056,10 @@ public final class ZincJavaCompiler {
             if (javac == null) throw new IllegalStateException("no system javac (run under a JDK)");
             DiagnosticCollector<JavaFileObject> diags = new DiagnosticCollector<>();
             Path classOut = output.getSingleOutputAsPath().orElseThrow();
-            try (StandardJavaFileManager fm =
-                    javac.getStandardFileManager(diags, Locale.ROOT, StandardCharsets.UTF_8)) {
+            // This path reads sources through the file manager, and the charset given here is what
+            // decides: it outranks -encoding, which BaseFileManager.getDecoder only falls back to.
+            // Same constant as the flag, so the two spellings of the charset cannot drift apart.
+            try (StandardJavaFileManager fm = javac.getStandardFileManager(diags, Locale.ROOT, SOURCE_ENCODING)) {
                 Files.createDirectories(classOut);
                 fm.setLocationFromPaths(StandardLocation.CLASS_OUTPUT, List.of(classOut));
                 for (int i = 0; i < options.length - 1; i++) {
