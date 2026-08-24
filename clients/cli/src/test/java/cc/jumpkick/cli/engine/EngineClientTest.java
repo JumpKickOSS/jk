@@ -303,6 +303,39 @@ class EngineClientTest {
     }
 
     @Test
+    void a_cache_prune_registers_its_jid_as_the_ctrl_c_cancel_handle() throws Exception {
+        // jk cache prune's request carries no dir, so the engine journals it against the cache
+        // path: Ctrl-C's dir-scoped cancel can never match it and the jid from job-start is the
+        // only handle that reaches the job. Same for jk tool resolve and jk tool run <script>.
+        EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
+        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, cc.jumpkick.cli.Jk.VERSION, null);
+        startInBackground(server);
+        waitUntil(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
+        EngineClient.ActiveJobs.forgetAll();
+
+        Path cache = Files.createDirectories(shortTempDir().resolve("cache"));
+        List<Long> liveWhileRunning = new ArrayList<>();
+        EngineRequests.CacheMaintSummary[] summary = new EngineRequests.CacheMaintSummary[1];
+        cc.jumpkick.run.BuildPlanResult result = EngineClient.runCacheMaintenance(
+                p,
+                new EngineRequests.CacheMaintRequest("prune", cache, true, false, cache),
+                steps -> {
+                    liveWhileRunning.addAll(EngineClient.ActiveJobs.snapshot());
+                    return new cc.jumpkick.run.BuildPlanListener() {};
+                },
+                (external, plans) -> {},
+                summary);
+
+        assertThat(result.success()).isTrue();
+        assertThat(liveWhileRunning).hasSize(1).allMatch(jid -> jid > 0);
+        // …and the handle is dropped once the stream ends, so the next Ctrl-C does not pay a
+        // cancel RPC for a job that is already over.
+        assertThat(EngineClient.ActiveJobs.snapshot()).isEmpty();
+
+        server.close();
+    }
+
+    @Test
     void ensure_running_returns_immediately_when_a_matching_version_engine_is_already_up() throws Exception {
         EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "3.3.3", null);

@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Drives the hosted worker commands ({@code jk audit} / {@code format} / {@code publish} / {@code
@@ -94,45 +95,45 @@ final class EnginePluginAdapter {
                             session.jvm(),
                             session.config().rebuildOr(false)));
 
-            List<Task> steps = new ArrayList<>();
-            List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
-            BuildPlanListener listener = null;
+            return WireStream.pumpJob(reader, ch, new WireStream.Decoder<HostedFinish>() {
+                private final List<Task> steps = new ArrayList<>();
+                private final List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
+                private @Nullable BuildPlanListener listener;
 
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String type = EngineProtocol.typeOf(line);
-                if (type == null) continue;
-                switch (type) {
-                    case EngineProtocol.PLAN_TASK ->
-                        steps.add(Task.builder(Jsonl.str(line, "name"))
-                                .label(Jsonl.str(line, "label"))
-                                .phase(wireGroup(Jsonl.str(line, "stage")))
-                                .build());
-                    case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
-                    case EngineProtocol.AUDIT_FINDING,
-                            EngineProtocol.FORMAT_FILE,
-                            EngineProtocol.IMPORT_NOTE,
-                            EngineProtocol.PRUNE_WAIT -> onEvent.accept(type, line);
-                    case EngineProtocol.BUILDPLAN_FINISH -> {
-                        BuildPlanResult result = new BuildPlanResult(
-                                planName,
-                                Jsonl.bool(line, "success", false),
-                                Duration.ZERO,
-                                List.of(),
-                                List.of(),
-                                diagnostics,
-                                false,
-                                false);
-                        if (preFinish != null) preFinish.accept(line);
-                        if (listener != null) listener.planFinish(result);
-                        return new HostedFinish(result, line);
+                @Override
+                public @Nullable HostedFinish onLine(String type, String line) throws IOException {
+                    switch (type) {
+                        case EngineProtocol.PLAN_TASK ->
+                            steps.add(Task.builder(Jsonl.str(line, "name"))
+                                    .label(Jsonl.str(line, "label"))
+                                    .phase(wireGroup(Jsonl.str(line, "stage")))
+                                    .build());
+                        case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
+                        case EngineProtocol.AUDIT_FINDING,
+                                EngineProtocol.FORMAT_FILE,
+                                EngineProtocol.IMPORT_NOTE,
+                                EngineProtocol.PRUNE_WAIT -> onEvent.accept(type, line);
+                        case EngineProtocol.BUILDPLAN_FINISH -> {
+                            BuildPlanResult result = new BuildPlanResult(
+                                    planName,
+                                    Jsonl.bool(line, "success", false),
+                                    Duration.ZERO,
+                                    List.of(),
+                                    List.of(),
+                                    diagnostics,
+                                    false,
+                                    false);
+                            if (preFinish != null) preFinish.accept(line);
+                            if (listener != null) listener.planFinish(result);
+                            return new HostedFinish(result, line);
+                        }
+                        case EngineProtocol.ERROR ->
+                            throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
+                        default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
                     }
-                    case EngineProtocol.ERROR ->
-                        throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
-                    default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
+                    return null;
                 }
-            }
-            throw disconnected();
+            });
         }
     }
 
@@ -162,28 +163,19 @@ final class EnginePluginAdapter {
                             session.jvm(),
                             session.config().rebuildOr(false)));
 
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String type = EngineProtocol.typeOf(line);
-                if (type == null) continue;
-                switch (type) {
-                    case EngineProtocol.PROVISION_RESULT -> {
-                        return new cc.jumpkick.runtime.HostedEvents.Provision(
-                                Jsonl.str(line, "bin"),
-                                Jsonl.str(line, "version"),
-                                Jsonl.str(line, "source"),
-                                Jsonl.str(line, "error"),
-                                Jsonl.intValue(line, "exit", 1),
-                                Jsonl.str(line, "diag"));
-                    }
-                    case EngineProtocol.ERROR ->
-                        throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
-                    default -> {
-                        /* forward-compatible no-op */
-                    }
-                }
-            }
-            throw disconnected();
+            return WireStream.pumpJob(reader, ch, (type, line) -> switch (type) {
+                case EngineProtocol.PROVISION_RESULT ->
+                    new cc.jumpkick.runtime.HostedEvents.Provision(
+                            Jsonl.str(line, "bin"),
+                            Jsonl.str(line, "version"),
+                            Jsonl.str(line, "source"),
+                            Jsonl.str(line, "error"),
+                            Jsonl.intValue(line, "exit", 1),
+                            Jsonl.str(line, "diag"));
+                case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
+                // Anything else is a forward-compatible no-op: ask for the next line.
+                default -> null;
+            });
         }
     }
 
@@ -193,7 +185,10 @@ final class EnginePluginAdapter {
      * resolver family. Unknown types are forward-compatible no-ops.
      */
     private static void dispatchBuildPlanEvent(
-            String type, String line, BuildPlanListener listener, List<BuildPlanResult.Diagnostic> diagnostics) {
+            String type,
+            String line,
+            @Nullable BuildPlanListener listener,
+            List<BuildPlanResult.Diagnostic> diagnostics) {
         if (listener == null) {
             // plan-diagnostics can still matter pre-listener; everything else needs one.
             if (EngineProtocol.BUILDPLAN_DIAGNOSTIC.equals(type)) {
@@ -259,12 +254,7 @@ final class EnginePluginAdapter {
         writer.flush();
     }
 
-    private static IOException disconnected() {
-        return new IOException("jk engine: the build engine disconnected unexpectedly before finishing "
-                + "(it may have crashed); run `jk engine status` for details");
-    }
-
-    private static String wireGroup(String raw) {
+    private static @Nullable String wireGroup(@Nullable String raw) {
         return raw == null || raw.isBlank() ? null : raw;
     }
 }

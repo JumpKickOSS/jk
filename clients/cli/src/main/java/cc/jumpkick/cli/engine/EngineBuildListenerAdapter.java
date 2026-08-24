@@ -2,7 +2,6 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cli.Jk;
-import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
@@ -53,17 +52,6 @@ import org.jspecify.annotations.Nullable;
 final class EngineBuildListenerAdapter {
 
     private EngineBuildListenerAdapter() {}
-
-    /** Bind CLI details.jsonl to the engine journal run from a {@code job-start} line. */
-    private static void bindTranscript(String jobStartLine) {
-        CliSessionTranscript s = CliSessionTranscript.active();
-        if (s == null || jobStartLine == null) return;
-        long jid = Jsonl.longValue(jobStartLine, "jid", -1);
-        long buildNumber = Jsonl.longValue(jobStartLine, "buildNumber", 0);
-        String detailsPath = Jsonl.str(jobStartLine, "detailsPath");
-        long etaMs = Jsonl.longValue(jobStartLine, "etaMs", -1);
-        s.bindJob(jid, buildNumber, detailsPath, etaMs);
-    }
 
     /** One module's identity/sizing, accumulated from the {@code plan-module}/{@code plan-step} burst. */
     private static final class ModuleMeta {
@@ -484,84 +472,66 @@ final class EngineBuildListenerAdapter {
             Map<Path, Set<Path>> edges = new LinkedHashMap<>();
             List<String> errors = new ArrayList<>();
 
-            String line;
-            long notedJid = -1;
-            try {
-                while ((line = reader.readLine()) != null) {
-                    String type = EngineProtocol.typeOf(line);
-                    if (type == null) continue;
-                    if (EngineProtocol.JOB_START.equals(type)) {
-                        notedJid = Jsonl.longValue(line, "jid", -1);
-                        cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(notedJid);
-                        bindTranscript(line);
-                        continue;
+            return WireStream.pumpRead(reader, (type, line) -> {
+                switch (type) {
+                    case EngineProtocol.EXPLAIN_MODULE -> {
+                        String dir = Jsonl.str(line, "dir");
+                        order.add(dir);
+                        coordByDir.put(dir, Jsonl.str(line, "coord"));
+                        countsByDir.put(dir, new int[] {
+                            Jsonl.intValue(line, "sourceCount", 0), Jsonl.intValue(line, "testCount", 0)
+                        });
+                        flagsByDir.put(dir, new boolean[] {
+                            Jsonl.bool(line, "producesJar", false), Jsonl.bool(line, "producesImage", false)
+                        });
+                        stepsByDir.put(dir, new ArrayList<>());
                     }
-                    switch (type) {
-                        case EngineProtocol.EXPLAIN_MODULE -> {
-                            String dir = Jsonl.str(line, "dir");
-                            order.add(dir);
-                            coordByDir.put(dir, Jsonl.str(line, "coord"));
-                            countsByDir.put(dir, new int[] {
-                                Jsonl.intValue(line, "sourceCount", 0), Jsonl.intValue(line, "testCount", 0)
-                            });
-                            flagsByDir.put(dir, new boolean[] {
-                                Jsonl.bool(line, "producesJar", false), Jsonl.bool(line, "producesImage", false)
-                            });
-                            stepsByDir.put(dir, new ArrayList<>());
-                        }
-                        case EngineProtocol.EXPLAIN_TASK -> {
-                            String dir = Jsonl.str(line, "dir");
-                            stepsByDir
-                                    .get(dir)
-                                    .add(new cc.jumpkick.runtime.TaskForecast.Task(
-                                            Jsonl.str(line, "name"),
-                                            cc.jumpkick.runtime.TaskForecast.Status.valueOf(Jsonl.str(line, "status")),
-                                            Jsonl.str(line, "text"),
-                                            Jsonl.str(line, "key")));
-                        }
-                        case EngineProtocol.EXPLAIN_EDGE -> {
-                            Path dir = Path.of(Jsonl.str(line, "dir"));
-                            Path dependsOn = Path.of(Jsonl.str(line, "dependsOnDir"));
-                            edges.computeIfAbsent(dir, d -> new LinkedHashSet<>())
-                                    .add(dependsOn);
-                        }
-                        case EngineProtocol.ERROR -> errors.add(Jsonl.str(line, "message"));
-                        case EngineProtocol.ETA -> {
-                            if (etaOut != null) {
-                                etaOut[0] = Jsonl.longValue(line, "millis", 0);
-                                // Optional full-rebuild ETA (explain effort denominator); 0 when absent.
-                                if (etaOut.length > 1) {
-                                    etaOut[1] = Jsonl.longValue(line, "fullMillis", 0);
-                                }
+                    case EngineProtocol.EXPLAIN_TASK -> {
+                        String dir = Jsonl.str(line, "dir");
+                        stepsByDir
+                                .get(dir)
+                                .add(new cc.jumpkick.runtime.TaskForecast.Task(
+                                        Jsonl.str(line, "name"),
+                                        cc.jumpkick.runtime.TaskForecast.Status.valueOf(Jsonl.str(line, "status")),
+                                        Jsonl.str(line, "text"),
+                                        Jsonl.str(line, "key")));
+                    }
+                    case EngineProtocol.EXPLAIN_EDGE -> {
+                        Path dir = Path.of(Jsonl.str(line, "dir"));
+                        Path dependsOn = Path.of(Jsonl.str(line, "dependsOnDir"));
+                        edges.computeIfAbsent(dir, d -> new LinkedHashSet<>()).add(dependsOn);
+                    }
+                    case EngineProtocol.ERROR -> errors.add(Jsonl.str(line, "message"));
+                    case EngineProtocol.ETA -> {
+                        if (etaOut != null) {
+                            etaOut[0] = Jsonl.longValue(line, "millis", 0);
+                            // Optional full-rebuild ETA (explain effort denominator); 0 when absent.
+                            if (etaOut.length > 1) {
+                                etaOut[1] = Jsonl.longValue(line, "fullMillis", 0);
                             }
                         }
-                        case EngineProtocol.EXPLAIN_DONE -> {
-                            for (String dir : order) {
-                                int[] counts = countsByDir.get(dir);
-                                boolean[] flags = flagsByDir.get(dir);
-                                modules.add(cc.jumpkick.runtime.TaskForecast.Module.fromWire(
-                                        Path.of(dir),
-                                        coordByDir.get(dir),
-                                        stepsByDir.get(dir),
-                                        counts[0],
-                                        counts[1],
-                                        flags[0],
-                                        flags[1]));
-                            }
-                            return new ExplainPlan(modules, edges, Jsonl.intValue(line, "maxReadyWidth", 1), errors);
+                    }
+                    case EngineProtocol.EXPLAIN_DONE -> {
+                        for (String dir : order) {
+                            int[] counts = countsByDir.get(dir);
+                            boolean[] flags = flagsByDir.get(dir);
+                            modules.add(cc.jumpkick.runtime.TaskForecast.Module.fromWire(
+                                    Path.of(dir),
+                                    coordByDir.get(dir),
+                                    stepsByDir.get(dir),
+                                    counts[0],
+                                    counts[1],
+                                    flags[0],
+                                    flags[1]));
                         }
-                        default -> {
-                            /* forward-compatible no-op */
-                        }
+                        return new ExplainPlan(modules, edges, Jsonl.intValue(line, "maxReadyWidth", 1), errors);
+                    }
+                    default -> {
+                        /* forward-compatible no-op */
                     }
                 }
-                throw new IOException("jk engine: the build engine disconnected unexpectedly before finishing "
-                        + "(it may have crashed); run `jk engine status` for details");
-            } finally {
-                // The job is over however the stream ended — a stale jid here would add a 2s
-                // cancel RPC to every future Ctrl-C in this process.
-                if (notedJid > 0) cc.jumpkick.cli.engine.EngineClient.ActiveJobs.forget(notedJid);
-            }
+                return null;
+            });
         }
     }
 
@@ -934,26 +904,18 @@ final class EngineBuildListenerAdapter {
             String[] buildOutcomeOut,
             @Nullable SocketChannel ch)
             throws IOException {
-        List<Task> steps = new ArrayList<>();
-        List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
-        BuildPlanListener listener = null;
         // The wire carries no duration; the summary's "took …" is this client-side
         // wall clock over the whole stream (spawn latency excluded — ensureRunning
         // already returned before the request was written).
         long startNanos = System.nanoTime();
 
-        String line;
-        long notedJid = -1;
-        try {
-            while ((line = reader.readLine()) != null) {
-                String type = EngineProtocol.typeOf(line);
-                if (type == null) continue;
-                if (EngineProtocol.JOB_START.equals(type)) {
-                    notedJid = Jsonl.longValue(line, "jid", -1);
-                    cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(notedJid);
-                    bindTranscript(line);
-                    continue;
-                }
+        return WireStream.pumpJob(reader, ch, new WireStream.Decoder<BuildPlanResult>() {
+            private final List<Task> steps = new ArrayList<>();
+            private final List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
+            private @Nullable BuildPlanListener listener;
+
+            @Override
+            public @Nullable BuildPlanResult onLine(String type, String line) throws IOException {
                 // Same pre-listener contract as EnginePluginAdapter/EngineResolveAdapter: until
                 // plan-done constructs the listener, keep diagnostics and drop everything else —
                 // a cancel injected from another thread can land events out of order.
@@ -965,7 +927,7 @@ final class EngineBuildListenerAdapter {
                     if (EngineProtocol.BUILDPLAN_DIAGNOSTIC.equals(type)) {
                         diagnostics.add(diagnosticFromWire(line));
                     }
-                    continue;
+                    return null;
                 }
                 switch (type) {
                     case EngineProtocol.PLAN_TASK ->
@@ -1025,7 +987,6 @@ final class EngineBuildListenerAdapter {
                         // A remote cancel injects this terminal from another thread — it can land
                         // before plan-done ever created the listener.
                         if (listener != null) listener.planFinish(result);
-                        awaitJobFinish(reader, ch);
                         return result;
                     }
                     case EngineProtocol.ERROR ->
@@ -1034,67 +995,9 @@ final class EngineBuildListenerAdapter {
                         /* forward-compatible no-op */
                     }
                 }
+                return null;
             }
-            throw disconnectFailure();
-        } finally {
-            // The job is over however the stream ended.
-            if (notedJid > 0) cc.jumpkick.cli.engine.EngineClient.ActiveJobs.forget(notedJid);
-        }
-    }
-
-    /**
-     * Block until the engine says it has stopped writing under the project's {@code target/}
-     * ({@link EngineProtocol#JOB_FINISH}), or the stream ends.
-     *
-     * <p>The plan terminal is <em>not</em> the end of the engine's work on the tree: the preflight
-     * memos ({@code target/.jk/preflight/}) and the journal's {@code target/jk-results.md} copy are
-     * written after it. Returning on the terminal handed control back mid-write, so
-     * {@code jk build && jk clean} — and any caller that deletes {@code target/} straight after a
-     * build — raced those writers: the delete either tripped over a freshly created temp file
-     * ({@code DirectoryNotEmptyException}) or completed and then had {@code target/} recreated
-     * under it (JK-2451). Waiting here is the ordering fix; the terminal already carried the
-     * outcome, so nothing read past this point can change the result.
-     *
-     * <p>EOF means the same thing from an engine that died or was killed — the tree is not going
-     * to change either way, so it is a normal exit from this wait, not a failure.
-     *
-     * <p>Half-closing our write side first is what keeps this from being a standoff: the engine's
-     * connection thread is parked reading this socket for a late {@code BUILD_CANCEL}, and the
-     * terminal is our last word on it. The half-close hands it the EOF it needs to move on to the
-     * finish tail, while our read side stays open for the line we are waiting for.
-     */
-    private static void awaitJobFinish(BufferedReader reader, @Nullable SocketChannel ch) {
-        if (ch != null) {
-            try {
-                ch.shutdownOutput();
-            } catch (IOException | UnsupportedOperationException ignored) {
-                // Not half-closable (or already gone) — the engine still wakes on its own.
-            }
-        }
-        try {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (EngineProtocol.JOB_FINISH.equals(EngineProtocol.typeOf(line))) return;
-            }
-        } catch (IOException ignored) {
-            // Outcome already decided; a broken stream now tells us nothing new.
-        }
-    }
-
-    /**
-     * Bare EOF without a terminal line: a crash — unless this process already asked for cancel
-     * (Ctrl-C's cooperative token), in which case the disconnect IS the cancel settling.
-     */
-    private static IOException disconnectFailure() {
-        try {
-            if (cc.jumpkick.config.SessionContext.current().cancelled()) {
-                return new JobCancelledException();
-            }
-        } catch (RuntimeException ignored) {
-            // no session installed — fall through to the crash message
-        }
-        return new IOException("jk engine: the build engine disconnected unexpectedly before finishing "
-                + "(it may have crashed); run `jk engine status` for details");
+        });
     }
 
     private static WorkspaceResult streamEvents(
@@ -1104,20 +1007,13 @@ final class EngineBuildListenerAdapter {
         Map<String, BuildPlanListener> planListenersByDir = new LinkedHashMap<>();
         Map<String, List<BuildPlanResult.Diagnostic>> diagnosticsByDir = new LinkedHashMap<>();
         List<ModuleOutcome> outcomes = new ArrayList<>();
-        String pendingPlanDir = null; // the dir most recently opened by plan-module, for plan-step lines
 
-        String line;
-        long notedJid = -1;
-        try {
-            while ((line = reader.readLine()) != null) {
-                String type = EngineProtocol.typeOf(line);
-                if (type == null) continue;
-                if (EngineProtocol.JOB_START.equals(type)) {
-                    notedJid = Jsonl.longValue(line, "jid", -1);
-                    cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(notedJid);
-                    bindTranscript(line);
-                    continue;
-                }
+        return WireStream.pumpJob(reader, ch, new WireStream.Decoder<WorkspaceResult>() {
+            /** The dir most recently opened by {@code plan-module}, for its {@code plan-step} lines. */
+            private @Nullable String pendingPlanDir;
+
+            @Override
+            public @Nullable WorkspaceResult onLine(String type, String line) throws IOException {
                 String dir = Jsonl.str(line, "dir");
                 switch (type) {
                     case EngineProtocol.PLAN_MODULE -> {
@@ -1272,7 +1168,6 @@ final class EngineBuildListenerAdapter {
                                 Jsonl.strArray(line, "errors"),
                                 Jsonl.bool(line, "cancelled", false));
                         listener.onWorkspaceFinish(result);
-                        awaitJobFinish(reader, ch);
                         return result;
                     }
                     case EngineProtocol.ERROR -> {
@@ -1287,7 +1182,6 @@ final class EngineBuildListenerAdapter {
                             String msg = wire.getMessage() == null ? "" : wire.getMessage();
                             WorkspaceResult failed = new WorkspaceResult(false, 2, List.of(), List.of(msg), false);
                             listener.onWorkspaceFinish(failed);
-                            awaitJobFinish(reader, ch);
                             return failed;
                         }
                         throw new EngineWireException(wire.code(), "jk engine: build failed: " + wire.getMessage());
@@ -1296,12 +1190,9 @@ final class EngineBuildListenerAdapter {
                         /* forward-compatible no-op */
                     }
                 }
+                return null;
             }
-            throw disconnectFailure();
-        } finally {
-            // The job is over however the stream ended.
-            if (notedJid > 0) cc.jumpkick.cli.engine.EngineClient.ActiveJobs.forget(notedJid);
-        }
+        });
     }
 
     /** Dispatch a wire error line to the plan listener (enriched test-failure when fields present). */
