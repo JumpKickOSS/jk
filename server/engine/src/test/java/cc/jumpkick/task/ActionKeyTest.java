@@ -118,14 +118,17 @@ class ActionKeyTest {
         // Both javac front ends pin UTF-8, so this token can never separate two of today's keys.
         // It is in the preimage so that the day the pin moves, every artifact decoded under the old
         // charset stops being a cache hit. A source- and classpath-free request keeps the preimage
-        // free of temp-dir paths, so the thing being hashed can be spelled out in full.
+        // free of temp-dir paths, so the thing being hashed can be spelled out in full — which also
+        // pins the `jdk:` token JK-2460 added, and the fact that a JDK-less request spells `none`
+        // rather than dropping the line (a dropped line is a preimage two requests can share).
         CompileRequest request = CompileRequest.builder()
                 .outputDir(tempDir.resolve("out"))
                 .release(25)
                 .build();
 
         assertThat(ActionKey.forJavac("compile-main", request, "0.1.0"))
-                .isEqualTo(Hashing.sha256Hex("task:compile-main\njk:0.1.0\nrelease:25\nencoding:UTF-8\noptions:\n"));
+                .isEqualTo(Hashing.sha256Hex(
+                        "task:compile-main\njk:0.1.0\nrelease:25\nencoding:UTF-8\njdk:none\noptions:\n"));
     }
 
     @Test
@@ -218,6 +221,45 @@ class ActionKeyTest {
     }
 
     @Test
+    void javac_jdk_home_is_part_of_action_key(@TempDir Path tempDir) throws IOException {
+        // The same defect forKotlinc had (JK-2391), one lane over: jk.toml moves `jdk = 17` to
+        // `jdk = 21` and leaves `java = 17` alone, so --release does not move. ForkedJavac launches
+        // javac out of this very home, so the compiler AND the platform classes change under a key
+        // that never did — the build restores 17-compiled bytecode and calls it up to date.
+        Path src = tempDir.resolve("Hello.java");
+        Files.writeString(src, "class Hello {}");
+        Path jdk17 = jdk(tempDir.resolve("temurin-17"), "17.0.12+7");
+        Path jdk21 = jdk(tempDir.resolve("temurin-21"), "21.0.5+11");
+
+        assertThat(ActionKey.forJavac("compile-main", javac(src, tempDir, jdk17), "0.1.0"))
+                .isNotEqualTo(ActionKey.forJavac("compile-main", javac(src, tempDir, jdk21), "0.1.0"));
+        // …and a request that names no JDK is its own value, not whichever home happened to be
+        // resolved last: `none` is a token no real home can produce.
+        assertThat(ActionKey.forJavac("compile-main", javac(src, tempDir, null), "0.1.0"))
+                .isNotEqualTo(ActionKey.forJavac("compile-main", javac(src, tempDir, jdk17), "0.1.0"));
+        assertThat(ActionKey.jdkToken(null)).isEqualTo("none");
+    }
+
+    @Test
+    void javac_jdk_identity_is_content_not_path(@TempDir Path tempDir) throws IOException {
+        // A point release upgraded in place — same JAVA_HOME, different javac. One renderer
+        // (ActionKey.jdkToken) serves forJavac, forKotlinc and both PlannerPlugin arms, so this
+        // property holds for all four or none.
+        Path src = tempDir.resolve("Hello.java");
+        Files.writeString(src, "class Hello {}");
+        Path jdk = jdk(tempDir.resolve("temurin-21"), "21.0.5+11");
+
+        String before = ActionKey.forJavac("compile-main", javac(src, tempDir, jdk), "0.1.0");
+        jdk(jdk, "21.0.6+11"); // same length: the token is the content, not the file size
+        String after = ActionKey.forJavac("compile-main", javac(src, tempDir, jdk), "0.1.0");
+
+        assertThat(after).isNotEqualTo(before);
+        // why-rebuilt must be able to name the reason the key moved, or a JDK switch reads as
+        // "nothing changed, rebuilt anyway".
+        assertThat(ActionKey.snapshotInputs(javac(src, tempDir, jdk))).containsEntry("jdk", ActionKey.jdkToken(jdk));
+    }
+
+    @Test
     void artifact_input_tokens_include_worker_identity(@TempDir Path tempDir) {
         // Packaging / plugin-worker keys must change when the worker content token changes.
         String withWorkerA = ActionKey.forArtifact("package-jar", "0.1.0", List.of("worker-sha:aaa", "classes:bbb"));
@@ -232,6 +274,15 @@ class ActionKeyTest {
                 home.resolve("release"),
                 "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\nOS_ARCH=\"x86_64\"\n");
         return home;
+    }
+
+    private static CompileRequest javac(Path src, Path tempDir, Path javaHome) {
+        return CompileRequest.builder()
+                .sources(List.of(src))
+                .outputDir(tempDir.resolve("out"))
+                .release(17) // held fixed on purpose: only the JDK moves
+                .javaHome(javaHome)
+                .build();
     }
 
     private static KotlincRequest kotlin(Path src, Path worker, Path tempDir, Path javaHome) {

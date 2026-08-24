@@ -7,9 +7,8 @@ import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.JarPackager;
 import cc.jumpkick.compile.JavacRunner;
-import cc.jumpkick.compile.KotlincDriver;
 import cc.jumpkick.compile.KotlincRequest;
-import cc.jumpkick.compile.KotlincResult;
+import cc.jumpkick.compile.WorkerCompileDriver;
 import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.Languages;
@@ -121,7 +120,7 @@ public final class LocalProjectBuilder {
                         .workingDir(layout.buildDir().resolve("kotlin-work"))
                         .extraArgs(ktArgs)
                         .build();
-                KotlincResult r = new KotlincDriver().compile(req);
+                CompileResult r = WorkerCompileDriver.compile(req);
                 if (!r.success()) {
                     throw new IOException("kotlin build failed for " + group + ":" + artifact + ": " + r.output());
                 }

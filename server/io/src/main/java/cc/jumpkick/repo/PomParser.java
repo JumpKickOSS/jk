@@ -1,31 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
-import static cc.jumpkick.repo.DomXml.childElement;
-import static cc.jumpkick.repo.DomXml.childElements;
-import static cc.jumpkick.repo.DomXml.childText;
+import static cc.jumpkick.host.DomXml.childElement;
+import static cc.jumpkick.host.DomXml.childElements;
+import static cc.jumpkick.host.DomXml.childText;
 
-import java.io.ByteArrayInputStream;
+import cc.jumpkick.host.DomXml;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
-import org.xml.sax.InputSource;
-import org.xml.sax.SAXException;
 
 /**
  * Parses a single Maven POM with intra-POM property substitution. Parent/BOM/profiles are
- * resolver-stage concerns. Namespace-unaware; XXE disabled.
+ * resolver-stage concerns. The document comes from {@link DomXml}, which owns jk's XXE posture.
  */
 public final class PomParser {
 
@@ -34,34 +28,46 @@ public final class PomParser {
     private PomParser() {}
 
     public static Pom parse(byte[] xml) {
-        return parseDocument(parseXml(new InputSource(new ByteArrayInputStream(xml))));
+        return parse(parseXml(xml));
     }
 
     public static Pom parse(InputStream xml) {
-        return parseDocument(parseXml(new InputSource(xml)));
+        try {
+            return parse(DomXml.parse(xml));
+        } catch (IOException e) {
+            throw unreadable(e);
+        }
     }
 
     public static Pom parse(String xml) {
-        return parseDocument(parseXml(new InputSource(new StringReader(xml))));
+        try {
+            return parse(DomXml.parse(xml));
+        } catch (IOException e) {
+            throw unreadable(e);
+        }
+    }
+
+    /**
+     * The document behind a POM, for a caller that needs the raw DOM as well — {@code PomImporter}
+     * reads constructs this parser drops (profiles, plugins, {@code <modules>}) and would otherwise
+     * parse every POM twice.
+     */
+    public static Document parseXml(byte[] xml) {
+        try {
+            return DomXml.parse(xml);
+        } catch (IOException e) {
+            throw unreadable(e);
+        }
     }
 
     // --- XML parsing -------------------------------------------------------
 
-    private static Document parseXml(InputSource source) {
-        try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setNamespaceAware(false);
-            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            factory.setFeature("http://javax.xml.XMLConstants/feature/secure-processing", true);
-            factory.setExpandEntityReferences(false);
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            return builder.parse(source);
-        } catch (ParserConfigurationException | SAXException | IOException e) {
-            throw new PomParseException("failed to parse POM: " + e.getMessage(), e);
-        }
+    private static PomParseException unreadable(IOException e) {
+        return new PomParseException("failed to parse POM: " + e.getMessage(), e);
     }
 
-    private static Pom parseDocument(Document doc) {
+    /** The POM in an already-parsed document. */
+    public static Pom parse(Document doc) {
         Element project = doc.getDocumentElement();
         if (project == null || !"project".equals(project.getNodeName())) {
             throw new PomParseException(

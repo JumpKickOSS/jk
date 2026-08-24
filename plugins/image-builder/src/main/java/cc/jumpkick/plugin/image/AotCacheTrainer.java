@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.image;
 
+import cc.jumpkick.host.AotCacheFiles;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.jdk.JdkFingerprint;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -10,7 +14,6 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -105,14 +108,16 @@ final class AotCacheTrainer {
      * @param cacheRoot jk's cache root: the extracted base JRE is 50–200 MB and is shared by every
      *     module that builds on the same base, so it belongs under the bound {@code
      *     CacheTier} declares for CacheTree.BASE_JRE, not in module build output nothing reclaims
+     * @param auth the credential for the base image's registry — the JRE this trains with is
+     *     extracted from that image, so a private base has to authenticate here too
      */
-    static Result train(ImageBuilder.Plan plan, Path workDir, Path cacheRoot, Consumer<String> log)
+    static Result train(ImageBuilder.Plan plan, Path workDir, Path cacheRoot, RegistryAuth auth, Consumer<String> log)
             throws IOException, InterruptedException {
         String blocked = unsupportedReason(plan);
         if (blocked != null) throw new IOException(blocked);
 
         String base = qualify(plan.config().base());
-        Path localJre = localBaseJre(plan, base, cacheRoot, log);
+        Path localJre = localBaseJre(plan, base, cacheRoot, auth, log);
         Path staging = workDir.resolve("aot-train");
 
         // Boot nests its jars under BOOT-INF and loads them itself, so nothing useful reaches the
@@ -201,8 +206,9 @@ final class AotCacheTrainer {
         verify.add("-XX:AOTCache=" + CACHE_FILE);
         verify.addAll(runArgs);
 
-        String refusal = refusal(runUntilSettled(verify, localJre != null ? staging : null, runtime, verifyName, log)
-                .text());
+        String refusal = AotCacheFiles.refusal(
+                runUntilSettled(verify, localJre != null ? staging : null, runtime, verifyName, log)
+                        .text());
         if (refusal != null) {
             throw new IOException("the AOT cache was trained but the JVM refused it:\n  " + refusal);
         }
@@ -232,7 +238,7 @@ final class AotCacheTrainer {
 
     /** The JVM running this worker — good enough to rewrite a jar with Boot's jarmode tool. */
     private static Path hostJava() {
-        return Path.of(System.getProperty("java.home"), "bin", "java");
+        return JdkFingerprint.java(Path.of(System.getProperty("java.home")));
     }
 
     /**
@@ -240,10 +246,11 @@ final class AotCacheTrainer {
      * container path produces the same cache, so a base image jk cannot unpack is a slower build
      * rather than a failed one.
      */
-    static Path localBaseJre(ImageBuilder.Plan plan, String base, Path cacheRoot, Consumer<String> log) {
+    static Path localBaseJre(
+            ImageBuilder.Plan plan, String base, Path cacheRoot, RegistryAuth auth, Consumer<String> log) {
         if (!BaseJre.hostCanExecute(plan.config().platforms())) return null;
         try {
-            Path java = BaseJre.javaBinary(base, cacheRoot);
+            Path java = BaseJre.javaBinary(base, cacheRoot, auth);
             return java != null && Files.isExecutable(java) ? java : null;
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
@@ -378,32 +385,6 @@ final class AotCacheTrainer {
         });
     }
 
-    /** The line explaining why the JVM would not use the cache, or null when it mapped. */
-    /**
-     * A line proving the JVM refused the cache, or null. Matches the specific refusal shapes
-     * {@code -Xlog:aot} emits (cache not loaded/used/mapped, identity mismatches) rather than any
-     * line containing "failed" — AOT logging also narrates non-fatal per-item failures ("failed to
-     * load class ...") on runs where the cache itself mapped fine.
-     */
-    static String refusal(String log) {
-        for (String line : log.split("\n")) {
-            if (!line.contains("[aot")) continue;
-            String lower = line.toLowerCase(Locale.ROOT);
-            // The refusal shapes -Xlog:aot emits — but not per-item noise like "failed to
-            // load class X", which appears on runs where the cache mapped fine.
-            if (lower.contains("mismatch")
-                    || lower.contains("different version")
-                    || lower.contains("unable to map")
-                    || lower.contains("unable to use")
-                    || lower.contains("cannot be used")
-                    || lower.contains("disabled")
-                    || ((lower.contains("archive") || lower.contains("cache")) && lower.contains("failed"))) {
-                return line.trim();
-            }
-        }
-        return null;
-    }
-
     private static boolean isSelinux() {
         return Files.isDirectory(Path.of("/sys/fs/selinux"));
     }
@@ -420,9 +401,8 @@ final class AotCacheTrainer {
     private static boolean onPath(String exe) {
         String path = System.getenv("PATH");
         if (path == null) return false;
-        boolean windows =
-                System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
-        for (String dir : path.split(java.io.File.pathSeparator)) {
+        boolean windows = Os.isWindows();
+        for (String dir : path.split(File.pathSeparator)) {
             Path base = Path.of(dir, exe);
             if (Files.isExecutable(base)) return true;
             // Windows PATHEXT: docker.exe / docker.cmd / docker.bat (chocolatey shims and corp

@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PathSource;
@@ -40,7 +41,7 @@ final class PathSourceMaterializer {
 
     /** Directory names never contributing to the fingerprint (build outputs, VCS/tool metadata). */
     private static final Set<String> IGNORED_DIRS =
-            Set.of("build", "target", "out", ".git", ".gradle", ".idea", "node_modules");
+            Set.of("build", BuildLayout.TARGET, "out", ".git", ".gradle", ".idea", "node_modules");
 
     /** Outcome: the published coordinate and the {@code file://} repo. */
     record Materialized(String group, String artifact, String version, URI repoUrl) {

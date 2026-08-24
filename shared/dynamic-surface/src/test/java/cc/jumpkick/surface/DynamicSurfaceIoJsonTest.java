@@ -7,15 +7,14 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * This module writes its own JSON string literals instead of calling {@code Jsonl.quote}, and that
- * duplication is deliberate: the module exists to be linkable by both the minified worker and the
- * native-image driver, which requires it to stay dependency-free (see the module's build
- * description). The obligation that comes with the exemption is that its escaping agrees with
- * {@code Jsonl.quote} character for character, so a surface written here is readable by everything
- * else. This test is what pins that.
+ * A golden for the bytes {@code dynamic-surface.json} carries. The module used to hold a private
+ * escaper on the grounds that it had to stay dependency-free, and this test existed to pin that
+ * copy against {@code Jsonl.quote}; the copy is gone (JK-2422) and the module links {@code :host}
+ * like everything else, so what is left to pin is the file format itself.
  *
- * <p>The expected forms are restated here rather than imported on purpose — if this module could
- * import the owner it would not need its own writer at all.
+ * <p>The expected forms stay spelled out rather than computed from the owner: a golden that calls
+ * the code under test to decide what it should have produced follows a rename of the format and
+ * still passes.
  */
 class DynamicSurfaceIoJsonTest {
 

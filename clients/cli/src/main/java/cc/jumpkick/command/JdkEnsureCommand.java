@@ -3,12 +3,14 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JdkDownloadBar;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
@@ -55,8 +57,7 @@ public final class JdkEnsureCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<dir>", "Override the install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
-                        .hide(),
+                CommonOpts.jdksDir(),
                 Opt.value("<url>", "Override the JetBrains JDK feed URL (for tests).", "--feed-url")
                         .hide(),
                 Opt.value("<file>", "Override the catalog cache path (for tests).", "--cache-file")
@@ -80,7 +81,7 @@ public final class JdkEnsureCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws Exception {
         this.spec = in.positionals().isEmpty() ? null : in.positionals().get(0);
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.feedUrl = in.value("feed-url").map(URI::create).orElse(null);
         this.cacheFile = in.value("cache-file").map(CliPaths::abs).orElse(null);
 
@@ -271,7 +272,7 @@ public final class JdkEnsureCommand implements CliCommand {
         if (HostPlatform.supported()) return true;
         CommandWedge.printFail(
                 "JDK",
-                "host " + System.getProperty("os.name")
+                "host " + Os.name()
                         + "/"
                         + System.getProperty("os.arch")
                         + " is not covered by the JetBrains JDK feed. Set JAVA_HOME explicitly.");

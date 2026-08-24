@@ -9,6 +9,7 @@ import cc.jumpkick.config.DotEnv;
 import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -16,7 +17,6 @@ import cc.jumpkick.model.command.Opt;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -171,19 +171,18 @@ public final class EnvCommand implements CliCommand {
     }
 
     private static void emitJson(List<Row> rows, boolean verbose) {
-        // Minimal JSON array without pulling a full JSON library — values escaped.
         StringBuilder sb = new StringBuilder();
         sb.append("[\n");
         for (int i = 0; i < rows.size(); i++) {
             Row r = rows.get(i);
             sb.append("  {");
-            sb.append("\"name\":").append(jsonStr(r.name)).append(',');
-            sb.append("\"value\":").append(jsonStr(displayValue(r))).append(',');
-            sb.append("\"source\":").append(jsonStr(r.source)).append(',');
+            sb.append("\"name\":").append(Jsonl.quote(r.name)).append(',');
+            sb.append("\"value\":").append(Jsonl.quote(displayValue(r))).append(',');
+            sb.append("\"source\":").append(Jsonl.quote(r.source)).append(',');
             sb.append("\"secret\":").append(r.secret);
             if (verbose && r.shadowed != null) {
                 String sv = r.shadowed.length() >= SecretRedactor.MIN_SECRET_LENGTH ? SecretRedactor.MASK : r.shadowed;
-                sb.append(",\"shadowed\":").append(jsonStr(sv));
+                sb.append(",\"shadowed\":").append(Jsonl.quote(sv));
             }
             sb.append('}');
             if (i + 1 < rows.size()) sb.append(',');
@@ -203,27 +202,6 @@ public final class EnvCommand implements CliCommand {
     private static String pad(String s, int w) {
         if (s.length() >= w) return s;
         return s + " ".repeat(w - s.length());
-    }
-
-    private static String jsonStr(String s) {
-        if (s == null) return "null";
-        StringBuilder b = new StringBuilder("\"");
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '\\' -> b.append("\\\\");
-                case '"' -> b.append("\\\"");
-                case '\n' -> b.append("\\n");
-                case '\r' -> b.append("\\r");
-                case '\t' -> b.append("\\t");
-                default -> {
-                    if (c < 0x20) b.append(String.format(Locale.ROOT, "\\u%04x", (int) c));
-                    else b.append(c);
-                }
-            }
-        }
-        b.append('"');
-        return b.toString();
     }
 
     /** One printed / JSON row. */

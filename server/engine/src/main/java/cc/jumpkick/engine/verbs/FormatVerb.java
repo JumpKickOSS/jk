@@ -14,6 +14,7 @@ import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.FormatPlans;
 import cc.jumpkick.util.JkDirs;
@@ -83,8 +84,7 @@ public final class FormatVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 boolean check = Jsonl.bool(requestLine, "check", false);
@@ -108,7 +108,7 @@ public final class FormatVerb implements HostedVerb {
                         rewriteConfig != null ? Path.of(rewriteConfig) : null,
                         (path, status, message, index, total) -> host.sendQuiet(
                                 writer, ProtoEvents.formatFile(dir, path, status, message, index, total)));
-                host.streamSinglePlan(
+                return host.streamSinglePlan(
                         plan,
                         session,
                         writer,
@@ -122,11 +122,11 @@ public final class FormatVerb implements HostedVerb {
                                 plan.get(FormatPlans.WORKER_EXIT).orElse(-1)));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
+                return JobOutcome.failed(Exit.FAILURE);
             }
-
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

@@ -21,6 +21,7 @@ import cc.jumpkick.engine.EngineMain;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
@@ -40,7 +41,6 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.util.JkDirs;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -528,10 +528,7 @@ public final class PlannerSupport {
         } catch (Exception ignored) {
             // fall through — exploded test classpath is common under Gradle
         }
-        String cp = System.getProperty("java.class.path", "");
-        for (String entry : cp.split(File.pathSeparator)) {
-            if (entry == null || entry.isBlank()) continue;
-            Path p = Path.of(entry);
+        for (Path p : Classpaths.split(System.getProperty("java.class.path", ""))) {
             String name = p.getFileName() != null ? p.getFileName().toString() : "";
             if (Files.isRegularFile(p)
                     && name.endsWith(".jar")
@@ -589,7 +586,7 @@ public final class PlannerSupport {
      * ({@link #enrichCliTestProps}), not by sharing the host store.
      */
     static Map<String, String> nestedEngineTestEnv(Path moduleDir) throws IOException {
-        Path jkHome = moduleDir.resolve("target").resolve("test-jk-home");
+        Path jkHome = moduleDir.resolve(BuildLayout.TARGET).resolve("test-jk-home");
         Files.createDirectories(jkHome);
         String runId = Long.toString(System.currentTimeMillis(), 36) + "-"
                 + Integer.toHexString(System.identityHashCode(moduleDir) & 0xffff);

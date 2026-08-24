@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkInventory.Finding;
@@ -31,14 +32,13 @@ public final class JdkVerifyCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.flag("Rewrite the inventory from trees on disk (rehash, drop missing).", "--repair"),
-                Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
-                        .hide());
+                CommonOpts.jdksDir());
     }
 
     @Override
     public int run(Invocation in) throws Exception {
         boolean repair = in.isSet("repair");
-        Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        Path jdksDir = CommonOpts.jdksDirValue(in);
         JdkInventory inventory = JdkInventory.of(jdksDir != null ? jdksDir : JkDirs.jdks());
         List<Finding> findings = repair ? inventory.repair() : inventory.verify();
         if (findings.isEmpty()) {

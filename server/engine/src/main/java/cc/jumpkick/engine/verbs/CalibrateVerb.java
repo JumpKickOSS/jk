@@ -7,6 +7,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.Calibration;
 import java.io.BufferedWriter;
 
@@ -42,8 +43,7 @@ public final class CalibrateVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 boolean force = Jsonl.bool(requestLine, "force", false);
@@ -71,6 +71,7 @@ public final class CalibrateVerb implements HostedVerb {
                                 cal.junitPlatformUsed(),
                                 cal.resolveUsed(),
                                 cal.summary()));
+                return JobOutcome.ok();
             } catch (Exception e) {
                 host.sendQuiet(
                         writer,
@@ -90,11 +91,11 @@ public final class CalibrateVerb implements HostedVerb {
                                 false,
                                 false,
                                 "calibration failed: " + e.getMessage()));
+                return JobOutcome.failed(Exit.FAILURE);
             }
-
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

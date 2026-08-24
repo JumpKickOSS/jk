@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Redacted;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.WorkspaceResult;
 import java.io.BufferedWriter;
 import java.util.List;
@@ -15,8 +16,8 @@ import org.jspecify.annotations.Nullable;
  * <p>Four verbs drive a workspace build — {@code build}, {@code native}, {@code image} and a
  * workspace-member {@code compile} — and each used to close it with its own copy of the same
  * epilogue. The copies drifted where it mattered: only {@code build} masked {@code .env} secrets
- * out of the worker error rows, and only {@code build} published them to the dashboard
- * (JK-2387). One emitter, one behaviour.
+ * out of the worker error rows, and only {@code build} published them to the dashboard.
+ * One emitter, one behaviour.
  */
 final class WorkspaceTerminal {
 
@@ -33,7 +34,7 @@ final class WorkspaceTerminal {
      * <p>The terminal goes out with {@link VerbHost#sendQuiet}, never the throwing
      * {@link VerbHost#send}. A client can hang up in the window between the last progress event
      * and this line — a closed terminal window, {@code jk build | head}, a CLI Ctrl-C'd after it
-     * had already read the result — and a broken pipe there is not a build result (JK-1521). With
+     * had already read the result — and a broken pipe there is not a build result. With
      * the throwing form the {@code IOException} unwound past the caller's {@code return} into its
      * catch, which fabricated {@code failed(1)}: a green build was journaled as a failure and
      * published a spurious {@code request-error}. Nothing that happens to the socket after the
@@ -41,7 +42,7 @@ final class WorkspaceTerminal {
      *
      * <p>The error rows are {@link Redacted} the whole way down, because
      * {@link ProtoEvents#workspaceFinish} and {@link VerbHost#publishRequestError} are the wire,
-     * SSE and journal sinks for raw worker output (JK-2387).
+     * SSE and journal sinks for raw worker output.
      *
      * @param dir the progress root this request was registered under
      * @param tokenCancelled the request's cancel token, OR-ed with what the build itself observed
@@ -55,16 +56,22 @@ final class WorkspaceTerminal {
         long rid = host.eventRequestId();
         host.releaseExclusiveSlot();
         boolean cancelled = result.cancelled() || host.effectiveCancelled(rid, tokenCancelled);
-        JobOutcome outcome = JobOutcome.of(result.success() && !cancelled, result.exitCode());
+        boolean succeeded = result.success() && !cancelled;
+        // A cancelled build exits with the engine's cancel code, never with the exit of work that
+        // never ran: a green-so-far run stopped halfway carries exitCode 0, and "did not succeed,
+        // exit 0" is a row no reader can act on.
+        int exitCode = succeeded ? Exit.SUCCESS : (cancelled ? Exit.FAILURE : result.exitCode());
+        JobOutcome outcome =
+                cancelled ? JobOutcome.cancelled() : (succeeded ? JobOutcome.ok() : JobOutcome.failed(exitCode));
         if (rid > 0) {
-            if (outcome.success()) host.finishProgress(rid);
+            if (succeeded) host.finishProgress(rid);
             host.emitWorkspaceProgress(rid, writer, true);
         }
         host.flushTimeline(rid, writer);
 
         List<Redacted> errors = host.redactErrors(dir, result.errors());
-        host.sendQuiet(writer, ProtoEvents.workspaceFinish(outcome.success(), outcome.exitCode(), errors, cancelled));
-        if (!outcome.success() && !cancelled) {
+        host.sendQuiet(writer, ProtoEvents.workspaceFinish(succeeded, exitCode, errors, cancelled));
+        if (!succeeded && !cancelled) {
             for (Redacted error : errors.stream().limit(PUBLISHED_ERROR_ROWS).toList()) {
                 host.publishRequestError(rid, dir, error.text());
             }

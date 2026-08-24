@@ -4,11 +4,9 @@ package cc.jumpkick.mvn;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.DomXml;
 import cc.jumpkick.model.JkBuild;
-import java.io.ByteArrayInputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
-import javax.xml.parsers.DocumentBuilderFactory;
 import org.junit.jupiter.api.Test;
 import org.w3c.dom.Document;
 
@@ -198,9 +196,7 @@ class PomExporterTest {
                 .doesNotContain("<step>", "<pipelines>", "<pipeline>");
 
         // The whole document must be well-formed XML (what mvn's parser sees first).
-        DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
-        dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-        Document doc = dbf.newDocumentBuilder().parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
+        Document doc = DomXml.parse(xml);
         assertThat(doc.getElementsByTagName("goals").getLength()).isGreaterThanOrEqualTo(3);
         assertThat(doc.getElementsByTagName("step").getLength()).isZero();
     }

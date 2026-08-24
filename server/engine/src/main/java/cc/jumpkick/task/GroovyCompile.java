@@ -3,9 +3,8 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileResult;
-import cc.jumpkick.compile.GroovycDriver;
 import cc.jumpkick.compile.GroovycRequest;
-import cc.jumpkick.compile.GroovycResult;
+import cc.jumpkick.compile.WorkerCompileDriver;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
@@ -85,10 +84,10 @@ public final class GroovyCompile {
         // snapshot the whole dir for the record.
         Files.createDirectories(request.outputDir());
         CasPrewriter prewriter = CasPrewriter.watching(cas, request.outputDir());
-        GroovycResult gr;
+        CompileResult gr;
         Map<String, String> outputs;
         try {
-            gr = new GroovycDriver().compile(request);
+            gr = WorkerCompileDriver.compile(request);
         } finally {
             outputs = prewriter.finish();
         }

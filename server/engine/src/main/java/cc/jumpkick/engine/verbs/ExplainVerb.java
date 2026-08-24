@@ -8,6 +8,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
@@ -48,8 +49,7 @@ public final class ExplainVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 String entryDirStr = Jsonl.str(requestLine, "dir");
@@ -81,7 +81,7 @@ public final class ExplainVerb implements HostedVerb {
                         .withWorkingDir(entryDir)
                         .withCacheDir(cache);
                 JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
-                String etaJdksDirStr = Jsonl.str(requestLine, "jdksDir");
+                String etaJdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
                 int workers = Jsonl.intValue(requestLine, "workers", 0); // 0 = auto (bare jk build)
                 int maxModuleConcurrency = Jsonl.intValue(requestLine, "maxModuleConcurrency", 0);
                 if (maxModuleConcurrency <= 0 && Jsonl.bool(requestLine, "serial", false)) {
@@ -107,7 +107,7 @@ public final class ExplainVerb implements HostedVerb {
                         host.sendQuiet(writer, host.requestFailedLine(entryDir.toString(), err));
                     }
                     host.sendQuiet(writer, ProtoReads.explainDone(1, 0));
-                    return null;
+                    return JobOutcome.declined();
                 }
                 for (TaskForecast.Module m : plan.modules()) {
                     String dir = m.dir().toString();
@@ -147,6 +147,6 @@ public final class ExplainVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
-        return null;
+        return JobOutcome.declined();
     }
 }

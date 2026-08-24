@@ -9,8 +9,8 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.http.Http;
-import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
@@ -64,9 +64,31 @@ public final class FormatPlans {
             "--add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED",
             "--add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED");
 
-    /** Receives each file's result as the plugin streams it ({@code status} = {@code changed}/{@code clean}/{@code error}). */
+    /**
+     * Receives each file's result as the plugin streams it: {@code status} is {@code changed},
+     * {@code clean}, {@code skipped}, {@code unparseable} or {@code error}.
+     *
+     * <p>{@code unparseable} — OpenRewrite could not parse the file, so the import-shortening pass
+     * never ran on it — is per-file only. {@link #CHANGED}/{@link #CLEAN}/{@link #ERRORS} are the
+     * plan's published tallies and none of them claims it; the client counts it off this stream.
+     */
     public interface FileObserver {
         void onFile(String path, String status, String message, int index, int total);
+    }
+
+    /**
+     * Whether a per-file result may be recorded in the mtime/size {@link FormatFreshnessIndex}.
+     *
+     * <p>That index is the <em>outer</em> filter: a recorded path is not sent to the worker at all
+     * on the next run, so recording one is a claim that the file is finished. {@code error} was
+     * always excluded. {@code unparseable} is excluded for a sharper reason — recording it would
+     * make the finding vanish on the second run, which is the exact shape of the bug the status
+     * exists to end. The worker keeps its own content stamp for those, so they stay cheap.
+     */
+    static boolean recordsFreshness(String status, boolean check) {
+        if ("error".equals(status) || "unparseable".equals(status)) return false;
+        // Under --check nothing was written, so a "changed" file's bytes are still the unformatted ones.
+        return !check || !"changed".equals(status);
     }
 
     /** Summary counts, populated by the format step (all present once the plan finishes successfully). */
@@ -295,12 +317,13 @@ public final class FormatPlans {
                                     String path = Jsonl.str(json, "path");
                                     if ("changed".equals(status)) {
                                         changed.incrementAndGet();
-                                        if (!check && freshness != null) freshness.record(Path.of(path));
                                     } else if ("error".equals(status)) {
                                         errors.incrementAndGet();
-                                    } else {
+                                    } else if (!"unparseable".equals(status)) {
                                         clean.incrementAndGet();
-                                        if (freshness != null) freshness.record(Path.of(path));
+                                    }
+                                    if (freshness != null && recordsFreshness(status, check)) {
+                                        freshness.record(Path.of(path));
                                     }
                                     observer.onFile(
                                             path, status, Jsonl.str(json, "msg"), index.incrementAndGet(), total);
@@ -471,8 +494,7 @@ public final class FormatPlans {
         jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
         jvmFlags.addAll(JvmOptions.batchFlags(1));
         if (!javaFiles.isEmpty()) jvmFlags.addAll(JAVAC_EXPORTS);
-        boolean win = HostPlatform.isWindows();
-        Path javaExe = hostJavaHome.resolve("bin").resolve(win ? "java.exe" : "java");
+        Path javaExe = JdkFingerprint.java(hostJavaHome);
         return PluginLoader.command(
                 javaExe, workerCp, jvmFlags, List.of(spec.toAbsolutePath().toString()));
     }
@@ -663,7 +685,7 @@ public final class FormatPlans {
      * segment is not excluded — this repo's {@code cc.jumpkick.templates} package is real source.
      */
     static boolean excludedSegment(String s) {
-        if (s.equals("target")
+        if (s.equals(BuildLayout.TARGET)
                 || s.equals("build")
                 || s.equals(".jk")
                 || s.equals(".git")

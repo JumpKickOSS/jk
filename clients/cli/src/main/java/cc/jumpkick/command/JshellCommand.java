@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
@@ -11,6 +12,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ExecPlan;
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -19,7 +21,6 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.terminal.Terminals;
 import cc.jumpkick.util.JkDirs;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -57,8 +58,7 @@ public final class JshellCommand implements CliCommand {
                                 "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.cache/jk.",
                                 "--cache-dir")
                         .hide(),
-                Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                        .hide(),
+                CommonOpts.jdksDir(),
                 Opt.flag("Skip tests during the preparatory build.", "--skip-tests"));
     }
 
@@ -98,9 +98,7 @@ public final class JshellCommand implements CliCommand {
             if (in.value("cache-dir").isPresent()) {
                 bb.putValue("cache-dir", cacheDir.toString());
             }
-            if (in.value("jdks-dir").isPresent()) {
-                bb.putValue("jdks-dir", in.value("jdks-dir").get());
-            }
+            in.value(CommonOpts.JDKS_DIR).ifPresent(v -> bb.putValue(CommonOpts.JDKS_DIR, v));
             int code = new BuildCommand().run(bb.build());
             if (code != 0) {
                 CommandWedge.printFail(
@@ -128,7 +126,7 @@ public final class JshellCommand implements CliCommand {
         }
         List<String> cp =
                 plan.libPaths() == null || plan.libPaths().isEmpty() ? List.of(plan.mainJar()) : plan.libPaths();
-        String classpath = String.join(File.pathSeparator, cp);
+        String classpath = Classpaths.join(cp.stream().map(Path::of).toList());
 
         List<String> cmd = new ArrayList<>();
         cmd.add(jshellBin.toString());

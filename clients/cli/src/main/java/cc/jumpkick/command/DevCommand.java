@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -50,7 +51,7 @@ public final class DevCommand implements CliCommand {
         for (String p : in.positionals()) b.addPositional(p);
         // Flags the user passed on `jk dev` are already on Session/GlobalOptions; WatchCommand
         // re-reads GlobalOptions.from(in) — re-emit known option values from the original invocation.
-        for (String name : List.of("cache-dir", "jdks-dir", "variant", "features")) {
+        for (String name : List.of("cache-dir", CommonOpts.JDKS_DIR, "variant", "features")) {
             in.value(name).ifPresent(v -> b.putValue(name, v));
         }
         return watch.run(b.build());

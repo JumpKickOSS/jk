@@ -43,4 +43,35 @@ class FormatPlansCollectTest {
         Files.writeString(keep, "class Keep {}");
         assertThat(FormatPlans.collectSources(project).javaFiles()).containsExactly(keep);
     }
+
+    /**
+     * The mtime/size freshness index is the outer filter — a recorded path is not sent to the
+     * worker at all next run — so what it records decides what a second run can still see.
+     *
+     * <p>{@code unparseable} must not be recorded. Recording it would hide the finding behind the
+     * index one run after it was first reported, which is the same disappearing act, one layer up,
+     * that {@code applyRewrite} was doing when it read a ParseError as "nothing to change".
+     */
+    @Test
+    void an_unparseable_file_is_never_recorded_fresh() {
+        assertThat(FormatPlans.recordsFreshness("unparseable", false))
+                .as("apply mode: the rewrite pass still has not run on this file")
+                .isFalse();
+        assertThat(FormatPlans.recordsFreshness("unparseable", true)).isFalse();
+        assertThat(FormatPlans.recordsFreshness("error", false)).isFalse();
+    }
+
+    /** …and the statuses that were recorded before still are. */
+    @Test
+    void settled_files_are_still_recorded_fresh() {
+        assertThat(FormatPlans.recordsFreshness("clean", true)).isTrue();
+        assertThat(FormatPlans.recordsFreshness("clean", false)).isTrue();
+        assertThat(FormatPlans.recordsFreshness("skipped", false)).isTrue();
+        assertThat(FormatPlans.recordsFreshness("changed", false))
+                .as("apply mode wrote the formatted bytes, so the file on disk is now clean")
+                .isTrue();
+        assertThat(FormatPlans.recordsFreshness("changed", true))
+                .as("--check wrote nothing, so those bytes are still the unformatted ones")
+                .isFalse();
+    }
 }

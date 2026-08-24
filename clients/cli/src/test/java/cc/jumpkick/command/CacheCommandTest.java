@@ -9,6 +9,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
@@ -102,7 +103,6 @@ class CacheCommandTest {
         writeBlob(
                 cache.resolve("actions/keys/test-key"),
                 "TASK run-tests@mod\nKEY test-key\nOUTPUT 3 tests.total\n".getBytes(StandardCharsets.UTF_8));
-        writeBlob(cache.resolve("runs/build-1.jsonl"), new byte[128]);
         writeBlob(cache.resolve("format-stamps/ab/stamp1"), new byte[0]);
         // Outside the budget denominator: hash-memo has its own retention and the prune cannot
         // touch it, so it must not inflate the Total the Utilization bar is measured against.
@@ -126,6 +126,60 @@ class CacheCommandTest {
         assertThat(plain).doesNotContain("Last Pruned");
         // Total is the action cache: 3 keys + 2 cache-CAS blobs.
         assertThat(plain).containsPattern("Total\\s+│\\s*5\\s");
+    }
+
+    /**
+     * {@code jk status}'s "Size on Disk" is the cache root, so a tier nobody thought to list is in
+     * it. The hand-written list this replaced named the action index, the cache CAS and
+     * {@code format-stamps} and stopped, which dropped {@code hash-memo} and
+     * {@code graal-reachability} — a sixth of the live dogfood cache — out of the one number a
+     * user reads to decide whether to prune.
+     */
+    @Test
+    void cache_size_counts_the_tiers_a_hand_written_list_forgot(@TempDir Path tempDir) throws Exception {
+        Path cache = tempDir.resolve("cache");
+        writeBlob(CacheTree.ACTIONS.under(cache).resolve("keys/task1"), new byte[1024]);
+        writeBlob(CacheTree.CACHE_CAS.under(cache).resolve("ab/cd/deadbeef"), new byte[2048]);
+        writeBlob(CacheTree.HASH_MEMO.under(cache).resolve("aa/memo1"), new byte[4096]);
+        writeBlob(CacheTree.GRAAL_REACHABILITY.under(cache).resolve("v1/metadata.json"), new byte[8192]);
+
+        CacheCommand.SectionStats s = CacheCommand.sectionStats(cache);
+
+        assertThat(s.root().bytes()).isEqualTo(1024 + 2048 + 4096 + 8192);
+        assertThat(s.root().files()).isEqualTo(4);
+        // The two rows printed beside the size still name their own tiers, not the whole root.
+        assertThat(s.cacheCas().files()).isEqualTo(1);
+        assertThat(s.actions().files()).isEqualTo(1);
+    }
+
+    /**
+     * The size {@code jk status} shows and the size {@code jk cache nuke} promises to free are one
+     * walk of one directory. They were two: status summed the artifact store's CAS and {@code
+     * repos/} together with three cache tiers, so the figure under the "Cache" heading counted
+     * bytes a nuke leaves and missed bytes it takes.
+     */
+    @Test
+    void cache_size_is_exactly_what_a_nuke_would_remove(@TempDir Path tempDir) throws Exception {
+        Path cache = tempDir.resolve("cache");
+        writeBlob(CacheTree.ACTIONS.under(cache).resolve("keys/task1"), new byte[1024]);
+        writeBlob(CacheTree.CACHE_CAS.under(cache).resolve("ab/cd/deadbeef"), new byte[2048]);
+        writeBlob(CacheTree.HASH_MEMO.under(cache).resolve("aa/memo1"), new byte[4096]);
+        // Named by no tier constant: the retention sweep reclaims it and the nuke takes the whole
+        // root, so the size the user was shown has to have counted it too.
+        writeBlob(cache.resolve("runs/build-1.jsonl"), new byte[256]);
+        // Store bytes survive a nuke, so they must not be in a number the nuke screen repeats.
+        Path storeBlob = JkStores.store().resolve("sha256/aa/bb/jk2488-store-blob");
+        writeBlob(storeBlob, new byte[65_536]);
+        try {
+            CacheCommand.Stats nuke = CacheCommand.CacheNukeCommand.cacheRootStats(cache);
+            CacheCommand.SectionStats status = CacheCommand.sectionStats(cache);
+
+            assertThat(status.root().bytes()).isEqualTo(nuke.bytes());
+            assertThat(status.root().files()).isEqualTo(nuke.files());
+            assertThat(status.root().bytes()).isEqualTo(1024 + 2048 + 4096 + 256);
+        } finally {
+            Files.deleteIfExists(storeBlob);
+        }
     }
 
     @Test
@@ -168,26 +222,50 @@ class CacheCommandTest {
         assertThat(stdout).contains("Dry run: would remove");
     }
 
+    /**
+     * {@code rm -rf} on the path the confirm screen prints. The root goes, not just the tiers
+     * under it — an empty skeleton, or a surviving root holding what the tier table does not name,
+     * is the directory the user was told would be deleted still sitting there. The artifact store
+     * is unaffected either way: it resolves from {@code JK_STORE_DIR}, never under this root.
+     */
     @Test
-    void purge_wipes_cache_tier_but_keeps_repos_and_runs(@TempDir Path tempDir) throws Exception {
+    void purge_removes_the_cache_root_including_trees_the_tier_table_does_not_name(@TempDir Path tempDir)
+            throws Exception {
         Path cache = tempDir.resolve("cache");
-        // Cache CAS (sha256/) is cache-tier; repos/ and runs/ stay when collocated under --cache-dir.
-        writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), new byte[4096]);
+        Path storeJar = JkStores.store().resolve("repos/central/com/example/kept/1.0/kept-1.0.jar");
+        writeBlob(CacheTree.CACHE_CAS.under(cache).resolve("ab/cd/deadbeef"), new byte[4096]);
+        writeBlob(CacheTree.ACTIONS.under(cache).resolve("keys/task1"), new byte[1024]);
+        writeBlob(CacheTree.FORMAT_STAMPS.under(cache).resolve("ab/stamp1"), new byte[128]);
+        writeBlob(CacheTree.HASH_MEMO.under(cache).resolve("aa/memo1"), new byte[2048]);
+        writeBlob(CacheTree.PROJECTS.under(cache).resolve("proj1"), new byte[64]);
+        // Not in the tier table at all — the old three-tree wipe and the tier-driven one both
+        // walked straight past these, and the stats gate would call a root holding only them empty.
         writeBlob(cache.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar"), new byte[512]);
         writeBlob(cache.resolve("runs/build-1.jsonl"), new byte[256]);
-        writeBlob(cache.resolve("actions/keys/task1"), new byte[1024]);
-        writeBlob(cache.resolve("format-stamps/ab/stamp1"), new byte[128]);
+        writeBlob(cache.resolve(".last-pruned"), new byte[16]);
+        writeBlob(storeJar, new byte[128]);
+        try {
+            String stdout = Capture.stdout(() -> run("cache", "nuke", "--cache-dir", cache.toString(), "--yes"));
+
+            assertThat(stdout).contains("Nuked");
+            assertThat(cache).doesNotExist();
+            assertThat(storeJar).exists();
+        } finally {
+            Files.deleteIfExists(storeJar);
+        }
+    }
+
+    /** A root left holding only empty tier directories is still a directory the nuke promised. */
+    @Test
+    void purge_removes_an_empty_cache_root(@TempDir Path tempDir) throws Exception {
+        Path cache = tempDir.resolve("cache");
+        Files.createDirectories(CacheTree.ACTIONS.under(cache).resolve("keys"));
+        Files.createDirectories(CacheTree.CACHE_CAS.under(cache));
 
         String stdout = Capture.stdout(() -> run("cache", "nuke", "--cache-dir", cache.toString(), "--yes"));
 
-        assertThat(stdout).contains("Nuked");
-        assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isFalse();
-        assertThat(Files.exists(cache.resolve("format-stamps/ab/stamp1"))).isFalse();
-        assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isFalse();
-        assertThat(Files.exists(cache.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar")))
-                .isTrue();
-        assertThat(Files.exists(cache.resolve("runs/build-1.jsonl"))).isTrue();
-        assertThat(Files.exists(cache)).isTrue();
+        assertThat(TestAnsi.strip(stdout)).contains("empty cache directory");
+        assertThat(cache).doesNotExist();
     }
 
     @Test

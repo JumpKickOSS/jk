@@ -11,6 +11,7 @@ import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.PublishPlans;
 import cc.jumpkick.util.JkDirs;
@@ -84,8 +85,7 @@ public final class PublishVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
@@ -120,7 +120,7 @@ public final class PublishVerb implements HostedVerb {
                         .withCancel(cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 BuildPlan plan = PublishPlans.publishBuildPlan(entryDir, cache, req);
-                host.streamSinglePlan(
+                return host.streamSinglePlan(
                         plan,
                         session,
                         writer,
@@ -130,11 +130,11 @@ public final class PublishVerb implements HostedVerb {
                                 plan.get(PublishPlans.FILES).orElse(-1)));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
+                return JobOutcome.failed(Exit.FAILURE);
             }
-
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

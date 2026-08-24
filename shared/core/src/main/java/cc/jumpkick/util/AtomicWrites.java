@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.util;
 
+import cc.jumpkick.host.Os;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
@@ -8,7 +9,6 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.Locale;
 
 /**
  * Atomic write via temp sibling + move ({@code REPLACE_EXISTING} fallback). A crash leaves a
@@ -60,7 +60,7 @@ public final class AtomicWrites {
                 return;
             } catch (AccessDeniedException e) {
                 // A POSIX EACCES is permanent; only Windows' transient sharing denial is worth waiting out.
-                if (!isWindows() || attempt == MOVE_ATTEMPTS) throw e;
+                if (!Os.isWindows() || attempt == MOVE_ATTEMPTS) throw e;
                 sleepBriefly(attempt);
             }
         }
@@ -77,11 +77,6 @@ public final class AtomicWrites {
         } catch (AtomicMoveNotSupportedException e) {
             Files.move(staging, target);
         }
-    }
-
-    /** {@code os.name} read live so a test can spoof it; this module cannot see {@code HostPlatform}. */
-    private static boolean isWindows() {
-        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
     }
 
     private static void sleepBriefly(int attempt) {

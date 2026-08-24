@@ -4,7 +4,6 @@ description = "JumpKick's OSV audit plugin"
 [dependencies]
 jk-core.workspace = true
 jk-plugin-sdk.workspace = true
-jackson3-databind = "latest"
 
 [test-dependencies]
 assertj-core = "latest"

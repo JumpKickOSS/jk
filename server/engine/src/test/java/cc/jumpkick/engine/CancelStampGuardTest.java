@@ -3,7 +3,9 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildAccumulator;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.ModuleOutcome;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -46,12 +48,12 @@ class CancelStampGuardTest {
     @Test
     void no_stamp_of_any_kind_once_the_outcome_is_set() {
         var a = acc();
-        a.setOutcome(true, 0);
+        a.stamp(JobOutcome.ok());
         a.markUserCancelled(true);
         assertThat(a.wasCancelled()).isFalse();
 
         var failed = acc();
-        failed.setOutcome(false, 1);
+        failed.stamp(JobOutcome.failed(Exit.FAILURE));
         failed.markUserCancelled(true);
         assertThat(failed.wasCancelled()).isFalse();
     }

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.kotlin.compiler;
 
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
-import cc.jumpkick.plugin.protocol.PluginSpec;
+import cc.jumpkick.plugin.protocol.CompilerProtocol;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.File;
 import java.io.IOException;
@@ -30,9 +31,9 @@ import org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmCompilationOperatio
  * <p>jk launches this as {@code java -cp <worker.jar>:<kotlin-bta-closure>
  * cc.jumpkick.kotlin.compiler.KotlinCompiler @&lt;spec&gt;}. The plugin reads the {@link
  * CompileSpec}, runs an in-process JVM compile (incremental when the spec carries a {@code
- * WORKDIR}), streams diagnostics back as JSONL, and exits: {@code 0} success, {@code 1}
- * compilation error, {@code 3} OOM/internal compiler error, {@code 2} bad spec / unexpected
- * failure.
+ * WORKDIR}), streams diagnostics back as JSONL, and exits {@link Exit#SUCCESS},
+ * {@link Exit#FAILURE} on a compilation error, {@link CompilerProtocol#COMPILER_FAULT} on an
+ * OOM/internal compiler error, or {@link Exit#SOFTWARE} for a bad spec / unexpected failure.
  *
  * <p>It uses the {@link KotlinToolchains} entry point (the post-2.4 BTA surface; the older {@code
  * CompilationService} flow is deprecated). It depends on nothing but the Build Tools API at compile
@@ -48,23 +49,11 @@ public final class KotlinCompiler implements Plugin {
 
     @Override
     public int run(List<String> args, ProtocolWriter out) {
-        KcProtocol proto = new KcProtocol(out);
-        try {
-            if (args.size() != 1) {
-                System.err.println("usage: jk-kotlin-compiler <spec-file>|@<spec-file>");
-                return Exit.USAGE;
-            }
-            String specArg = args.get(0).startsWith("@") ? args.get(0).substring(1) : args.get(0);
-            CompileSpec spec = CompileSpec.from(PluginSpec.read(Path.of(specArg)));
-            return compile(spec, proto);
-        } catch (Throwable t) {
-            System.err.println("jk-kotlin-compiler: " + t.getClass().getName() + ": " + t.getMessage());
-            t.printStackTrace(System.err);
-            return Exit.SOFTWARE;
-        }
+        return CompilerProtocol.compileFromSpec(
+                manifest().id(), args, out, (spec, proto) -> compile(CompileSpec.from(spec), proto));
     }
 
-    static int compile(CompileSpec spec, KcProtocol proto) throws Exception {
+    static int compile(CompileSpec spec, CompilerProtocol proto) throws Exception {
         spec.outputDir.mkdirs();
 
         KotlinToolchains toolchains = KotlinToolchains.loadImplementation(KotlinCompiler.class.getClassLoader());
@@ -119,14 +108,11 @@ public final class KotlinCompiler implements Plugin {
         }
 
         proto.result(result.name());
-        int exit =
-                switch (result) {
-                    case COMPILATION_SUCCESS -> 0;
-                    case COMPILATION_ERROR -> 1;
-                    default -> 3; // COMPILATION_OOM_ERROR, COMPILER_INTERNAL_ERROR
-                };
-        proto.done(exit);
-        return exit;
+        return switch (result) {
+            case COMPILATION_SUCCESS -> Exit.SUCCESS;
+            case COMPILATION_ERROR -> Exit.FAILURE;
+            default -> CompilerProtocol.COMPILER_FAULT; // COMPILATION_OOM_ERROR, COMPILER_INTERNAL_ERROR
+        };
     }
 
     /**
@@ -193,10 +179,10 @@ public final class KotlinCompiler implements Plugin {
         }
         if (!spec.classpath.isEmpty()) {
             args.add("-classpath");
-            args.add(join(spec.classpath, File.pathSeparator));
+            args.add(Classpaths.join(spec.classpath.stream().map(File::toPath).toList()));
         }
         if (!spec.friendPaths.isEmpty()) {
-            args.add("-Xfriend-paths=" + join(spec.friendPaths, ","));
+            args.add("-Xfriend-paths=" + joinCommas(spec.friendPaths));
         }
         if (spec.incremental()) {
             // Required whenever the FIR (K2) incremental runner is selected.
@@ -223,7 +209,8 @@ public final class KotlinCompiler implements Plugin {
         return suffixed;
     }
 
-    private static String join(List<File> files, String sep) {
-        return files.stream().map(File::getAbsolutePath).collect(Collectors.joining(sep));
+    /** Comma-joined, for {@code -Xfriend-paths}: not a classpath, so not {@link Classpaths}. */
+    private static String joinCommas(List<File> files) {
+        return files.stream().map(File::getAbsolutePath).collect(Collectors.joining(","));
     }
 }

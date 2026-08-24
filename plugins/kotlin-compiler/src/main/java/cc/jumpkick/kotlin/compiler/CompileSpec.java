@@ -37,10 +37,10 @@ final class CompileSpec {
     static CompileSpec from(PluginSpec spec) {
         CompileSpec s = new CompileSpec();
         var c = spec.config();
-        if (spec.classesDir() != null) s.outputDir = spec.classesDir().toFile();
+        s.jvmTarget = spec.requireCompileInputs();
+        s.outputDir = spec.classesDir().toFile();
         if (spec.workdir() != null) s.workingDir = spec.workdir().toFile(); // present ⇒ incremental
         if (spec.snapshotDir() != null) s.snapshotDir = spec.snapshotDir().toFile();
-        s.jvmTarget = c.stringOpt("jvmTarget").orElse(null);
         s.moduleName = c.stringOpt("moduleName").orElse(null);
         s.languageVersion = c.stringOpt("languageVersion").orElse(null);
         s.apiVersion = c.stringOpt("apiVersion").orElse(null);
@@ -51,9 +51,6 @@ final class CompileSpec {
         for (PluginSpec.CompilerPlugin cp : spec.compilerPlugins()) {
             s.plugins.add(new Plugin(cp.id(), cp.jar().toFile(), cp.options()));
         }
-        if (s.outputDir == null) throw new IllegalArgumentException("spec missing layout.classesDir (OUTPUT)");
-        if (s.jvmTarget == null) throw new IllegalArgumentException("spec missing config jvmTarget");
-        if (s.sources.isEmpty()) throw new IllegalArgumentException("spec has no source entries");
         return s;
     }
 }

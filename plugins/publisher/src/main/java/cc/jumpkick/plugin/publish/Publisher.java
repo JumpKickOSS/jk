@@ -5,6 +5,7 @@ import cc.jumpkick.cache.SourcesJar;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.SourceLayout;
 import cc.jumpkick.lock.LockPaths;
@@ -27,7 +28,6 @@ import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import cc.jumpkick.publish.PublishablePom;
-import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -40,7 +40,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 /**
  * The {@code jk-publisher} plugin: the terminal {@link PublishExtension} goal for Maven publishing.
@@ -107,13 +106,8 @@ public final class Publisher implements Plugin, PublishExtension {
         Path jar = ctx.mainArtifact().orElseThrow(() -> new IOException("publish goal needs a built main artifact"));
         URI repoUrl = URI.create(c.string("repoUrl"));
 
-        c.stringOpt("pluginJars").ifPresent(joined -> {
-            for (String p : joined.split(Pattern.quote(File.pathSeparator))) {
-                if (!p.isBlank()) {
-                    PluginTableRegistry.installFromJar(Path.of(p));
-                }
-            }
-        });
+        c.stringOpt("pluginJars")
+                .ifPresent(joined -> Classpaths.split(joined).forEach(PluginTableRegistry::installFromJar));
 
         // Resolve workspace-sibling placeholders before rendering anything: a single-file parse
         // leaves `workspace:<name>`/`LATEST`, which would land in the POM and make the published

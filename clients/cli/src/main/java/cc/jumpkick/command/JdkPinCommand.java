@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -36,9 +37,7 @@ public final class JdkPinCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(
-                Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
-                        .hide());
+        return List.of(CommonOpts.jdksDir());
     }
 
     @Override
@@ -53,7 +52,7 @@ public final class JdkPinCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException {
         String spec = in.positionals().get(0);
-        Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        Path jdksDir = CommonOpts.jdksDirValue(in);
         Path projectDir = GlobalOptions.from(in).workingDir();
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
         Optional<JdkHit> hit = JdkKeywords.isKeyword(spec)

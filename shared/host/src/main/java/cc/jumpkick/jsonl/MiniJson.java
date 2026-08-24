@@ -122,6 +122,33 @@ public final class MiniJson {
         for (int i = 0; i < indent; i++) sb.append("  ");
     }
 
+    // ---- reading a parsed tree ---------------------------------------------------------------
+    //
+    // Spelling `node instanceof Map<?,?> m && m.get(k) instanceof String s` at every field is why
+    // ad-hoc readers kept reappearing: five of them scanned the raw text with indexOf or a regex
+    // instead of parsing it, and each one then had its own idea of what a missing field, a null
+    // and a wrong type mean. That difference is the whole of these three accessors, so they
+    // belong to the codec rather than to its callers. All three are total: a peer may send the
+    // wrong type for any field, and to a reader with a default "wrong type" reads as "absent".
+
+    /** The value at {@code key} when {@code node} is an object; {@code null} otherwise. */
+    public static Object get(Object node, String key) {
+        return node instanceof Map<?, ?> map ? map.get(key) : null;
+    }
+
+    /** {@link #get} as a string; {@code null} when absent or another type. */
+    public static String str(Object node, String key) {
+        return get(node, key) instanceof String s ? s : null;
+    }
+
+    /**
+     * {@link #get} as an array; empty when absent or another type. A JSON array may hold nulls, so
+     * the elements are handed back as they were parsed rather than copied through {@code List.of}.
+     */
+    public static List<?> list(Object node, String key) {
+        return get(node, key) instanceof List<?> l ? l : List.of();
+    }
+
     /**
      * Container nesting cap. Without one, a hostile or merely generated document overflows the
      * stack, and {@code StackOverflowError} is an {@link Error} — it slips straight through every

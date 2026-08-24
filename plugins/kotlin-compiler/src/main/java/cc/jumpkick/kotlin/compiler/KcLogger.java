@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.kotlin.compiler;
 
+import cc.jumpkick.plugin.protocol.CompilerProtocol;
 import org.jetbrains.kotlin.buildtools.api.KotlinLogger;
 
 /**
@@ -10,9 +11,9 @@ import org.jetbrains.kotlin.buildtools.api.KotlinLogger;
  */
 final class KcLogger implements KotlinLogger {
 
-    private final KcProtocol proto;
+    private final CompilerProtocol proto;
 
-    KcLogger(KcProtocol proto) {
+    KcLogger(CompilerProtocol proto) {
         this.proto = proto;
     }
 

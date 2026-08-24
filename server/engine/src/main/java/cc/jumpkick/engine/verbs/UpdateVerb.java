@@ -76,8 +76,7 @@ public final class UpdateVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             List<String> features = Jsonl.strArray(requestLine, "features");
             boolean withDefaults = !Jsonl.bool(requestLine, "noDefaultFeatures", false);
@@ -88,39 +87,37 @@ public final class UpdateVerb implements HostedVerb {
             String platformOverride = Jsonl.str(requestLine, "platform");
             if (platformOverride != null && platformOverride.isBlank()) platformOverride = null;
             String platformFinal = platformOverride;
-            SessionContext.where(session, () -> {
+            return SessionContext.where(session, () -> {
                 Path entryDir = session.workingDir();
                 Path cache = session.cacheDir();
-                if (gitOnly) {
-                    Files.createDirectories(cache);
-                    JkBuild root;
-                    try {
-                        root = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
-                    } catch (RuntimeException e) {
-                        host.sendQuiet(
-                                writer,
-                                ProtoEvents.lockFinish(
-                                        false, Exit.CONFIG, List.of(cc.jumpkick.host.Errors.text(e)), -1));
-                        return null;
-                    }
-                    var outcome =
-                            LockPlans.updateGitOnly(entryDir, root, cache, repoUrl, features, withDefaults, gitTarget);
-                    host.sendQuiet(
-                            writer,
-                            ProtoEvents.lockFinish(
-                                    outcome.exitCode() == 0,
-                                    outcome.exitCode(),
-                                    outcome.error() != null ? List.of(outcome.error()) : List.of(),
-                                    outcome.refreshed()));
-                } else {
-                    LockCascade.run(
+                if (!gitOnly) {
+                    return LockCascade.run(
                             host, entryDir, cache, repoUrl, features, withDefaults, false, true, platformFinal, writer);
                 }
-                return null;
+                Files.createDirectories(cache);
+                JkBuild root;
+                try {
+                    root = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
+                } catch (RuntimeException e) {
+                    host.sendQuiet(
+                            writer,
+                            ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(cc.jumpkick.host.Errors.text(e)), -1));
+                    return JobOutcome.failed(Exit.CONFIG);
+                }
+                var outcome =
+                        LockPlans.updateGitOnly(entryDir, root, cache, repoUrl, features, withDefaults, gitTarget);
+                host.sendQuiet(
+                        writer,
+                        ProtoEvents.lockFinish(
+                                outcome.exitCode() == 0,
+                                outcome.exitCode(),
+                                outcome.error() != null ? List.of(outcome.error()) : List.of(),
+                                outcome.refreshed()));
+                return outcome.exitCode() == Exit.SUCCESS ? JobOutcome.ok() : JobOutcome.failed(outcome.exitCode());
             });
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

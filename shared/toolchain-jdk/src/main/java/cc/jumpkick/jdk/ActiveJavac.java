@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.host.Os;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -22,7 +23,7 @@ public final class ActiveJavac {
 
     private ActiveJavac() {}
 
-    private static final boolean WINDOWS = HostPlatform.isWindows();
+    private static final boolean WINDOWS = Os.isWindows();
 
     /** Resolve the current JDK home from the process {@code PATH}. */
     public static Optional<Path> home() {
@@ -37,7 +38,7 @@ public final class ActiveJavac {
     static Optional<Path> home(Function<String, String> env) {
         String path = env.apply("PATH");
         if (path == null || path.isBlank()) return Optional.empty();
-        String exe = WINDOWS ? "javac.exe" : "javac";
+        String exe = JdkFingerprint.toolName("javac");
         for (String dir : path.split(Pattern.quote(File.pathSeparator))) {
             if (dir.isBlank()) continue;
             Path candidate = Path.of(dir).resolve(exe);

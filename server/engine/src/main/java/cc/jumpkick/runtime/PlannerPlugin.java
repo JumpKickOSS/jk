@@ -6,6 +6,7 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CycloneDxSbom;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.MainClassScanner;
 import cc.jumpkick.lock.Lockfile;
@@ -23,19 +24,16 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.surface.TrainLayout;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.stream.Stream;
 
 /**
@@ -221,6 +219,28 @@ public final class PlannerPlugin {
                 case RUNTIME_CLASSPATH -> tokens.add("cp:" + ClasspathFingerprint.of(src.runtimeClasspath()));
                 case RUNTIME_ENTRIES -> {
                     tokens.add("cp:" + ClasspathFingerprint.of(src.runtimeClasspath()));
+                    // The shape of the entry list, in lock order. `cp:` is content only and
+                    // ClasspathFingerprint.of sorts, so three things a packager writes verbatim
+                    // were invisible to it: the ORDER (a boot jar's classpath.idx IS the launcher's
+                    // classpath order), the SNAPSHOT flag (layers.idx partitions on it, and it is
+                    // lockfile metadata, not bytes), and the FILE NAME and coordinate (the
+                    // BOOT-INF/lib entry name, and what disambiguates a name collision). Reorder
+                    // two dependencies with the identical resolved set and the artifact differs
+                    // while the key did not.
+                    StringBuilder shape = new StringBuilder();
+                    for (PluginBuild.ProdEntry entry : src.runtimeEntries()) {
+                        shape.append(entry.fileName())
+                                .append('|')
+                                .append(entry.snapshot())
+                                .append('|')
+                                .append(entry.group())
+                                .append(':')
+                                .append(entry.artifact())
+                                .append(':')
+                                .append(entry.version())
+                                .append('\n');
+                    }
+                    tokens.add("entry-shape:" + Hashing.sha256Hex(shape.toString()));
                     // Container content (an AAR's res/assets/jni) is input too — an assets-only AAR
                     // bump must re-run even though no classes jar changed.
                     for (PluginBuild.ProdEntry entry : src.runtimeEntries()) {
@@ -334,6 +354,12 @@ public final class PlannerPlugin {
                     tokens.addAll(
                             toolTokens(PluginContributions.stepDependencies(project, in.dir()), toolExtras, sdkPins));
                     tokens.add("facts:" + facts.token());
+                    // The JDK is handed to the body as spec.javaHome and is what its forked tools
+                    // (d8, aapt2, a compiler plugin) run on and compile against — ProjectFacts
+                    // carries `release`, which is a different fact entirely. Without this,
+                    // switching jdk = 17 to 21 moves no plugin step key and every one of the SPI
+                    // plugins restores output built against the old platform (JK-2460).
+                    tokens.add("jdk:" + ActionKey.jdkToken(javaHome));
                     // The step's CODE is an input: a changed plugin jar must re-run the
                     // step, or a plugin upgrade (or first-party dev iteration) silently restores
                     // outputs produced by the old code.
@@ -429,70 +455,35 @@ public final class PlannerPlugin {
         Lockfile lock = ctx.require(LOCKFILE);
         BuildLayout layout = ctx.require(LAYOUT);
         ClasspathResolver resolver = new ClasspathResolver(cas);
-        String startClass = resolvedMain(project, in.dir(), classes);
-        // The same facts the packager body receives below — key and spec cannot diverge.
-        ProjectFacts facts = PluginBuild.facts(project, startClass);
-
-        // Coordinate-named runtime entries: lock artifacts + workspace sibling jars — the SAME
-        // set steps see via In.runtimeEntries(). Packaging from the lock alone drops sibling
-        // module jars and ships a Boot/assembly artifact that cannot start.
-        List<PluginBuild.ProdEntry> entries =
-                PluginBuild.productionEntries(in.dir(), in.cache(), in.lockFile(), project);
+        // Key AND spec from one derivation (PackagingKeys): the facts, runtime entries and tool
+        // artifacts the packager body receives below are the very objects that keyed its output,
+        // so nothing can reach the plugin without reaching its key — and `jk explain` prices this
+        // step by calling the same body, so it can no longer forecast the plain jar's key for a
+        // module the plain packager never touches (JK-2491).
+        PackagingKeys.PackagerKey packaging = PackagingKeys.pluginPackager(new PackagingKeys.Packager(
+                project,
+                in.dir(),
+                in.cache(),
+                in.lockFile(),
+                cas,
+                layout,
+                classes,
+                jarPath,
+                ctx.require(JAVA_HOME),
+                active,
+                decls,
+                secrets));
+        ProjectFacts facts = packaging.facts();
+        List<PluginBuild.ProdEntry> entries = packaging.entries();
+        Map<String, Path> extras = packaging.extras();
         List<CycloneDxSbom.Component> sbomComponents = new ArrayList<>();
         for (ClasspathResolver.Entry entry : resolver.entriesFor(lock, ClasspathResolver.RUNTIME)) {
             Lockfile.Artifact a = entry.artifact();
             sbomComponents.add(
                     new CycloneDxSbom.Component(a.moduleGroup(), a.moduleArtifact(), a.version(), a.checksumHex()));
         }
-        // Packagers get the packager-dependency artifacts AND the step-dependency tools (the
-        // same artifacts commands receive — an AAB packager forks bundletool exactly like a step
-        // forks aapt2). A packager-dependency wins a name collision.
-        Map<String, String> sdkPins = PluginBuild.sdkPins(in.lockFile());
-        Map<String, Path> extras =
-                new LinkedHashMap<>(PluginBuild.fetchStepDependencies(project, in.dir(), cas, sdkPins));
-        extras.putAll(PluginBuild.fetchPackagerDependencies(project, in.dir(), cas));
-
-        // Action key from the declared inputs + facts — any config, classes, dependency-set,
-        // step-output, extra-artifact, or manifest change re-packages; nothing else does. The
-        // packager's runtime view IS its entry jars, so that is what the shared renderer keys.
-        List<Path> entryJars = new ArrayList<>(entries.size());
-        for (PluginBuild.ProdEntry e : entries) {
-            if (e.jar() != null) entryJars.add(e.jar());
-        }
-        List<String> tokens = new ArrayList<>(declaredInputTokens(
-                decls.packager().inputs(),
-                new InputSources(classes, entryJars, entries, active.config(), layout, in.dir())));
-        tokens.addAll(toolTokens(PluginContributions.stepDependencies(project, in.dir()), extras, sdkPins));
-        if (!secrets.isEmpty()) {
-            // A changed signing credential re-signs (the signature is part of the artifact);
-            // the key carries only a digest — a secret value never appears anywhere readable.
-            StringBuilder sb = new StringBuilder();
-            for (var e : new TreeMap<>(secrets).entrySet()) {
-                sb.append(e.getKey()).append('=').append(e.getValue()).append('\n');
-            }
-            tokens.add("secrets:"
-                    + cc.jumpkick.host.Hashing.sha256Hex(sb.toString().getBytes(StandardCharsets.UTF_8)));
-        }
-        // [manifest] attributes ride inside the facts token — they reach the packager, so they key it.
-        tokens.add("facts:" + facts.token());
-        // Packager identity (e.g. shrink vs boot) so CLI packaging overrides cannot cache-collide.
-        tokens.add("packaging:" + decls.packager().name());
-        // The packager's CODE is an input, same as plugin steps (see pluginTask).
-        tokens.add("worker:" + ClasspathFingerprint.entry(PluginBuild.workerJarFor(active, in.cache())));
-        // The minified packager folds `jk train` observations into its keep rules out-of-band
-        // (same path derivation as MinifiedJarPackager.produce). Absence and every content state
-        // must be distinct keys — otherwise a post-train rebuild restores the pre-train jar as
-        // "up-to-date" and training never reaches the shipped artifact.
-        if ("minified-jar".equals(decls.packager().name())) {
-            Path trainSurface = jarPath.getParent()
-                    .resolve(TrainLayout.ROOT)
-                    .resolve("merged")
-                    .resolve(TrainLayout.SURFACE_JSON);
-            tokens.add("train:"
-                    + (Files.isRegularFile(trainSurface) ? ClasspathFingerprint.entry(trainSurface) : "absent"));
-        }
-        String pkgTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, jarPath);
-        String pkgKey = ActionKey.forArtifact(pkgTask, BuildIdentity.cacheKeyVersion(), tokens);
+        String pkgTask = packaging.keyed().taskId();
+        String pkgKey = packaging.keyed().key();
         if (restorePackaged(in.cache(), pkgKey, jarPath.getParent())) {
             ctx.put(JAR_PATH, jarPath);
             ctx.label(jarPath.getFileName() + " up-to-date");
@@ -580,7 +571,14 @@ public final class PlannerPlugin {
                 }
             }
         }
-        storePackaged(in.cache(), pkgTask, pkgKey, tokens, jarPath.getParent(), produced, !in.ephemeralActions());
+        storePackaged(
+                in.cache(),
+                pkgTask,
+                pkgKey,
+                packaging.keyed().tokens(),
+                jarPath.getParent(),
+                produced,
+                !in.ephemeralActions());
         ctx.put(JAR_PATH, jarPath);
         ctx.progress(1);
     }

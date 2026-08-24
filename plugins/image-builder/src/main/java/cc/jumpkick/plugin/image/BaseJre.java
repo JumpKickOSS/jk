@@ -3,11 +3,12 @@ package cc.jumpkick.plugin.image;
 
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.jsonl.MiniJson;
 import com.google.cloud.tools.jib.api.Containerizer;
 import com.google.cloud.tools.jib.api.InvalidImageReferenceException;
 import com.google.cloud.tools.jib.api.Jib;
 import com.google.cloud.tools.jib.api.RegistryException;
-import com.google.cloud.tools.jib.api.RegistryImage;
 import com.google.cloud.tools.jib.api.TarImage;
 import java.io.IOException;
 import java.io.InputStream;
@@ -22,7 +23,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
@@ -45,7 +45,7 @@ final class BaseJre {
 
     /** True when this host can execute a Linux binary of the image's architecture. */
     static boolean hostCanExecute(List<String> platforms) {
-        if (!System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("linux")) return false;
+        if (!Os.isLinux()) return false;
         String hostArch = normalizeArch(System.getProperty("os.arch", ""));
         // The default when nothing is declared is linux/amd64, matching ImageConfig.
         String target = platforms == null || platforms.isEmpty() ? "linux/amd64" : platforms.getFirst();
@@ -73,7 +73,7 @@ final class BaseJre {
      * Digest-pinned references never re-validate; mutable tags re-resolve after
      * {@link #REVALIDATE_MILLIS} (Jib's layer cache makes an unchanged re-pull cheap).
      */
-    static Path javaBinary(String base, Path cacheRoot) throws IOException, InterruptedException {
+    static Path javaBinary(String base, Path cacheRoot, RegistryAuth auth) throws IOException, InterruptedException {
         Path root = CacheTree.BASE_JRE.under(cacheRoot).resolve(Hashing.sha256Hex(base));
         Path marker = root.resolve(".extracted");
         boolean pinned = base.contains("@sha256:");
@@ -90,7 +90,7 @@ final class BaseJre {
             }
             if (age < REVALIDATE_MILLIS) return findJava(root);
         }
-        extractIfChanged(base, root, marker);
+        extractIfChanged(base, root, marker, auth);
         return findJava(root);
     }
 
@@ -100,14 +100,14 @@ final class BaseJre {
      * and swap it in. Skips the unpack when the registry still serves the digest already
      * extracted.
      */
-    private static void extractIfChanged(String base, Path root, Path marker) throws IOException {
+    private static void extractIfChanged(String base, Path root, Path marker, RegistryAuth auth) throws IOException {
         Files.createDirectories(root.getParent());
         Path tar = root.resolveSibling(root.getFileName() + ".tar");
         com.google.cloud.tools.jib.api.JibContainer pulled;
         try {
-            pulled = Jib.from(RegistryImage.named(base))
-                    .setEntrypoint("/bin/sh")
-                    .containerize(Containerizer.to(TarImage.at(tar).named("jk-base-jre")));
+            pulled = auth.containerize(
+                    Jib.from(auth.base(base)).setEntrypoint("/bin/sh"),
+                    Containerizer.to(TarImage.at(tar).named("jk-base-jre")));
         } catch (InvalidImageReferenceException | RegistryException e) {
             throw new IOException("cannot read base image " + base + ": " + e.getMessage(), e);
         } catch (com.google.cloud.tools.jib.api.CacheDirectoryCreationException | ExecutionException e) {
@@ -169,23 +169,35 @@ final class BaseJre {
     }
 
     /**
-     * The {@code Layers} list from the archive's {@code manifest.json}, resolved to files. The
-     * docker-archive manifest is a stable one-object format; the plugin carries no JSON
-     * dependency, so the list is pulled with a scoped regex.
+     * The {@code Layers} list from the archive's {@code manifest.json}, resolved to files. A
+     * docker archive's manifest is a JSON array of image entries; jk pulls one image, so the
+     * first entry that names layers is the one.
+     *
+     * <p>The scan this replaced took the first {@code "Layers": [...]} anywhere in the document
+     * and every quoted run inside it. This is a third party's tarball — a registry-supplied
+     * manifest with a {@code "Layers"} string in a config blob, or a path containing an escaped
+     * quote, chose the wrong layers or the wrong order, and layer order is what decides which
+     * copy of a file the JRE ends up with.
      */
     private static List<Path> manifestLayerOrder(Path layers) throws IOException {
         Path manifest = layers.resolve("manifest.json");
         if (!Files.isRegularFile(manifest)) return List.of();
-        String body = Files.readString(manifest);
-        var m = Pattern.compile("\"Layers\"\\s*:\\s*\\[(.*?)]", Pattern.DOTALL).matcher(body);
-        if (!m.find()) return List.of();
-        List<Path> out = new ArrayList<>();
-        var entry = Pattern.compile("\"([^\"]+)\"").matcher(m.group(1));
-        while (entry.find()) {
-            Path layer = layers.resolve(entry.group(1)).normalize();
-            if (layer.startsWith(layers) && Files.isRegularFile(layer)) out.add(layer);
+        Object root;
+        try {
+            root = MiniJson.parse(Files.readString(manifest));
+        } catch (RuntimeException e) {
+            return List.of(); // not a docker archive; the caller falls back to name order
         }
-        return out;
+        for (Object entry : root instanceof List<?> images ? images : List.of(root)) {
+            List<Path> out = new ArrayList<>();
+            for (Object name : MiniJson.list(entry, "Layers")) {
+                if (!(name instanceof String rel)) continue;
+                Path layer = layers.resolve(rel).normalize();
+                if (layer.startsWith(layers) && Files.isRegularFile(layer)) out.add(layer);
+            }
+            if (!out.isEmpty()) return out;
+        }
+        return List.of();
     }
 
     private static void deleteRecursively(Path root) throws IOException {

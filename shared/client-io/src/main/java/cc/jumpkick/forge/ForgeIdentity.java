@@ -4,6 +4,7 @@ package cc.jumpkick.forge;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.jsonl.MiniJson;
 import java.net.URI;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -61,7 +62,8 @@ public interface ForgeIdentity {
                 HttpResponse<byte[]> resp = http.get(
                         userEndpoint, Map.of("Authorization", "Bearer " + token, "Accept", "application/json"));
                 if (resp.statusCode() / 100 != 2) return Optional.empty();
-                String login = readJsonStr(new String(resp.body(), StandardCharsets.UTF_8), loginField);
+                String body = new String(resp.body(), StandardCharsets.UTF_8);
+                String login = MiniJson.str(MiniJson.parse(body), loginField);
                 if (login == null || login.isBlank()) return Optional.empty();
                 cache.put(cacheKey, login);
                 return Optional.of(login);
@@ -72,30 +74,6 @@ public interface ForgeIdentity {
                 // Offline, network error, malformed JSON — caller falls back.
                 return Optional.empty();
             }
-        }
-
-        /** Extract a top-level string field from a flat JSON object without a JSON library. */
-        private static String readJsonStr(String json, String key) {
-            String needle = "\"" + key + "\":\"";
-            int start = json.indexOf(needle);
-            if (start < 0) return null;
-            start += needle.length();
-            StringBuilder sb = new StringBuilder();
-            for (int i = start; i < json.length(); i++) {
-                char c = json.charAt(i);
-                if (c == '\\' && i + 1 < json.length()) {
-                    char n = json.charAt(++i);
-                    if (n == '"') sb.append('"');
-                    else if (n == '\\') sb.append('\\');
-                    else {
-                        sb.append('\\');
-                        sb.append(n);
-                    }
-                } else if (c == '"') {
-                    break;
-                } else sb.append(c);
-            }
-            return sb.toString();
         }
     }
 }

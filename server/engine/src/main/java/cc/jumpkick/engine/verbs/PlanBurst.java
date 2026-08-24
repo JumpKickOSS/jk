@@ -3,16 +3,18 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.listen.BridgingPlanListener;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import java.io.BufferedWriter;
 import java.util.function.Function;
 
-/** SINGLE_PLAN_DIR-tagged plan-step burst shared by test / single-build. */
+/** SINGLE_PLAN_DIR-tagged plan-step burst, and the verdict a single-plan verb hands back. */
 final class PlanBurst {
 
     private PlanBurst() {}
@@ -32,7 +34,7 @@ final class PlanBurst {
         plan.addListener(host.planListener(dir, writer, plan));
     }
 
-    static void stream(
+    static JobOutcome stream(
             VerbHost host,
             BuildPlan plan,
             Session session,
@@ -51,6 +53,8 @@ final class PlanBurst {
         }
         host.sendQuiet(writer, ProtoEvents.planDone(1));
         plan.addListener(host.planListener(dir, writer, finishEncoder));
-        SessionContext.where(session, plan::run);
+        BuildPlanResult result = SessionContext.where(session, plan::run);
+        if (result.userCancelled()) return JobOutcome.cancelled();
+        return result.success() ? JobOutcome.ok() : JobOutcome.failed(Exit.FAILURE);
     }
 }

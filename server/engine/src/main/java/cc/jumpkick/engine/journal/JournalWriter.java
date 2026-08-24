@@ -8,6 +8,7 @@ import cc.jumpkick.engine.WireWriter;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanResult;
@@ -109,11 +110,6 @@ public final class JournalWriter {
         if (a != null && tests != null) a.addTests(tests);
     }
 
-    public void accOutcome(long requestId, boolean success, int exitCode) {
-        BuildAccumulator a = sessions.accumulator(requestId);
-        if (a != null) a.setOutcome(success, exitCode);
-    }
-
     public void write(long requestId, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
         BuildAccumulator a = sessions.takeAccumulator(requestId);
         if (a == null) {
@@ -184,7 +180,7 @@ public final class JournalWriter {
     static @Nullable Path latestPath(String dir) {
         if (dir == null || dir.isBlank()) return null;
         try {
-            return Path.of(dir).resolve("target").resolve(JkResultsMarkdown.FILE_NAME);
+            return Path.of(dir).resolve(BuildLayout.TARGET).resolve(JkResultsMarkdown.FILE_NAME);
         } catch (RuntimeException e) {
             return null;
         }

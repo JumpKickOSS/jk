@@ -40,8 +40,7 @@ public final class CatalogReadVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             CatalogReadAck ack;
             try {
@@ -67,6 +66,6 @@ public final class CatalogReadVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
-        return null;
+        return JobOutcome.declined();
     }
 }

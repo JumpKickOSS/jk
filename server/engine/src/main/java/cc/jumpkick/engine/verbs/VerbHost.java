@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.Redacted;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.InFlightBuilds;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
@@ -54,13 +55,13 @@ public interface VerbHost {
     /**
      * Write one line and let a dead client's {@code IOException} out.
      *
-     * <p>Only a verb that always returns {@code null} may use this — a read-only query
+     * <p>Only a verb that always declines to rule may use this — a read-only query
      * ({@code jk history}, {@code jk metrics}) whose stream is the whole product, where an aborted
-     * write costs nothing. A verb that returns a {@link cc.jumpkick.engine.jobs.JobOutcome} must
-     * use {@link #sendQuiet} for every line it writes after computing that outcome: the envelope
-     * stamps the outcome on the build journal, and a throw out of the terminal write unwinds past
-     * the {@code return} into the verb's own catch, where the real verdict is replaced by a
-     * fabricated failure. A client that hung up is not a build result (JK-1521, JK-2386).
+     * write costs nothing. A verb that returns a verdict must use {@link #sendQuiet} for every
+     * line it writes after computing that verdict: the envelope stamps it on the build journal,
+     * and a throw out of the terminal write unwinds past the {@code return} into the verb's own
+     * catch, where the real verdict is replaced by a fabricated failure. A client that hung up is
+     * not a build result.
      */
     void send(@Nullable BufferedWriter writer, String line) throws IOException;
 
@@ -103,13 +104,18 @@ public interface VerbHost {
 
     void maybeEnqueuePrune(Path cache);
 
-    default void streamSinglePlan(
+    /**
+     * Announce a single plan's steps, run it, and hand back the verdict it produced — the shape
+     * every single-plan verb settles with, so none of them has to re-derive success from a
+     * {@link BuildPlanResult} it just discarded.
+     */
+    default JobOutcome streamSinglePlan(
             BuildPlan plan,
             Session session,
             @Nullable BufferedWriter writer,
             Function<BuildPlanResult, String> finishEncoder)
             throws Exception {
-        PlanBurst.stream(this, plan, session, writer, finishEncoder);
+        return PlanBurst.stream(this, plan, session, writer, finishEncoder);
     }
 
     default ReentrantReadWriteLock cacheGate() {

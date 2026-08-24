@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Table;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -79,18 +80,17 @@ public final class ToolListCommand implements CliCommand {
         return 0;
     }
 
+    /**
+     * A top-level string field of a tool's {@code env.json}, or empty when the file is missing,
+     * unreadable, not JSON, or carries no such field. The scan this replaced took the first
+     * {@code "field"} anywhere in the document and then the next two quotes after the colon, so a
+     * nested key of the same name won and an escaped quote inside the value truncated it.
+     */
     private static Optional<String> readField(Path envJson, String field) {
         if (!Files.exists(envJson)) return Optional.empty();
         try {
-            String body = Files.readString(envJson);
-            int i = body.indexOf("\"" + field + "\"");
-            if (i < 0) return Optional.empty();
-            int colon = body.indexOf(':', i);
-            int q1 = body.indexOf('"', colon + 1);
-            int q2 = body.indexOf('"', q1 + 1);
-            if (q1 < 0 || q2 < 0) return Optional.empty();
-            return Optional.of(body.substring(q1 + 1, q2));
-        } catch (IOException e) {
+            return Optional.ofNullable(MiniJson.str(MiniJson.parse(Files.readString(envJson)), field));
+        } catch (IOException | RuntimeException e) {
             return Optional.empty();
         }
     }

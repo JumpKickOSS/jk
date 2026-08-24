@@ -13,7 +13,7 @@ import java.util.Locale;
  * the same entry directory.
  *
  * <p>Deliberately a plain value object with no engine dependencies so it round-trips cleanly through
- * {@link Json}. {@code schema} lets a future reader detect and reject/upgrade an older layout.
+ * {@link Json}. {@code schema} is a stamp carried on the written record; no reader branches on it.
  *
  * <p>{@code running=true} marks an in-flight admission written at request-start so the web UI can
  * rehydrate active builds after refresh. Finished records keep {@code running=false}.
@@ -45,11 +45,9 @@ public record BuildRecord(
         long requestId) {
 
     /**
-     * The current on-disk schema version. Bumped to 2 when {@code buildNumber} — the durable,
-     * monotonic per-project run counter (assigned from {@link cc.jumpkick.runtime.BuildMetrics})
-     * was added. {@code trigger}, {@code commit}, {@code benefit}, {@code running}, and {@code io}
-     * (the run's byte counts) were added without a bump — pre-1.0 additive fields simply read back as
-     * defaults on older records.
+     * The on-disk schema version stamped into every {@code record.json}. Purely descriptive: a
+     * record carrying any other value still parses, because additive fields absent from it read
+     * back as their defaults.
      */
     public static final int SCHEMA = 2;
 

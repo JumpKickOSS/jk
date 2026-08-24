@@ -47,8 +47,7 @@ public final class NerdFontDetect {
      */
     public static Result detect(Function<String, String> env, TerminalFonts fonts) {
         // T0 — environments that never want PUA, whatever the font situation is.
-        String ci = env.apply("CI");
-        if ("true".equalsIgnoreCase(ci) || "1".equals(ci)) {
+        if (EnvValues.bool(env, "CI").orElse(false)) {
             return new Result(NerdFontCaps.NONE, "ci", "CI environment");
         }
         if ("dumb".equals(env.apply("TERM"))) {

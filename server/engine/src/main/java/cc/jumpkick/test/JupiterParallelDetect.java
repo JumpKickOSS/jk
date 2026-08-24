@@ -102,10 +102,14 @@ public final class JupiterParallelDetect {
         return false;
     }
 
+    /**
+     * JUnit's truth set, not jk's — deliberately NOT {@code EnvValues.parseBool}. The Platform
+     * reads this property with {@code Boolean.parseBoolean}, so {@code parallel.enabled=1} does
+     * not enable anything; matching jk's wider {@code 1/yes/on} here would print the stacking
+     * warning for a run that is not actually parallel.
+     */
     private static boolean isTrue(String v) {
-        if (v == null) return false;
-        String s = v.trim();
-        return "true".equalsIgnoreCase(s) || "1".equals(s) || "yes".equalsIgnoreCase(s);
+        return v != null && Boolean.parseBoolean(v.trim());
     }
 
     private static boolean nameLooksLikeJar(Path p) {

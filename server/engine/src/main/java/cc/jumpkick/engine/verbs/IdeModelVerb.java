@@ -6,6 +6,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.IdeWireModel;
+import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.IdeOps;
 import java.io.BufferedWriter;
@@ -40,12 +41,11 @@ public final class IdeModelVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             IdeWireModel model;
             try {
-                String jdksDir = Jsonl.str(requestLine, "jdksDir");
+                String jdksDir = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
                 model = IdeOps.ideModel(
                         Path.of(Jsonl.str(requestLine, "dir")),
                         Path.of(Jsonl.str(requestLine, "cache")),
@@ -59,6 +59,6 @@ public final class IdeModelVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
-        return null;
+        return JobOutcome.declined();
     }
 }

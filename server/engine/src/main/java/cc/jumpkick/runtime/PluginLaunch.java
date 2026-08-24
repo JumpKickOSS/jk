@@ -4,8 +4,8 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
-import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -26,8 +26,7 @@ final class PluginLaunch {
 
     /** {@code java [extraJvmArgs] -cp … PluginMain spec}, heap-sized for one requested JVM. */
     static List<String> javaCommand(Path workerJar, List<String> extraJvmArgs, Path spec) {
-        Path javaExe =
-                JavaHomes.runningJavaHome().resolve("bin").resolve(HostPlatform.isWindows() ? "java.exe" : "java");
+        Path javaExe = JdkFingerprint.java(JavaHomes.runningJavaHome());
         String cp = WorkerLaunchClasspath.resolve(workerJar);
         List<String> jvmFlags = new ArrayList<>(extraJvmArgs);
         // batchFlags applied inside JvmOptions.javaCommand via concurrency=1 — but PluginLoader

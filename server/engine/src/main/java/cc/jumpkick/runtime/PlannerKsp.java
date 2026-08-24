@@ -8,6 +8,7 @@ import cc.jumpkick.compile.KspProcessors;
 import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.kotlin.KotlinResolver;
@@ -21,7 +22,6 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.FreshnessStamp;
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -257,7 +257,6 @@ public final class PlannerKsp {
                     for (Path root : srcRoots) {
                         if (Files.isDirectory(root)) ktRoots.add(root);
                     }
-                    String sep = File.pathSeparator;
                     List<Path> libs = new ArrayList<>(classpath);
                     libs.add(stdlib);
 
@@ -271,11 +270,11 @@ public final class PlannerKsp {
                     cmd.add(JdkFingerprint.java(JavaHomes.runningJavaHome()).toString());
                     cmd.addAll(JvmOptions.batchFlags(1));
                     cmd.add("-cp");
-                    cmd.add(joinPaths(kspClasspath, sep));
+                    cmd.add(Classpaths.join(kspClasspath));
                     cmd.add(KspResolver.KSP_MAIN);
                     cmd.add("-module-name=" + project.project().name());
-                    cmd.add("-source-roots=" + joinPaths(ktRoots, sep));
-                    cmd.add("-java-source-roots=" + joinPaths(ktRoots, sep));
+                    cmd.add("-source-roots=" + Classpaths.join(ktRoots));
+                    cmd.add("-java-source-roots=" + Classpaths.join(ktRoots));
                     cmd.add("-project-base-dir=" + in.dir().toAbsolutePath());
                     cmd.add("-output-base-dir=" + outBase.toAbsolutePath());
                     cmd.add("-caches-dir=" + outBase.resolve("caches").toAbsolutePath());
@@ -288,7 +287,7 @@ public final class PlannerKsp {
                     cmd.add("-api-version=" + languageVersion);
                     cmd.add("-jvm-target=" + CompileSupport.kotlinJvmTarget(ctx.require(RELEASE)));
                     cmd.add("-jdk-home=" + javaHome.toAbsolutePath());
-                    cmd.add("-libraries=" + joinPaths(libs, sep));
+                    cmd.add("-libraries=" + Classpaths.join(libs));
                     // Processor options: plugin-contributed ([[contribute.compiler-args]] ksp
                     // Hilt's superclass-validation toggle) plus project-declared ([build]
                     // ksp-options — Room's schemaLocation; last wins, so the project overrides).
@@ -299,11 +298,11 @@ public final class PlannerKsp {
                             PluginContributions.kspOptions(project, in.dir(), lockModules(ctx.require(LOCKFILE))));
                     kspOptions.addAll(project.build().kspOptions());
                     if (!kspOptions.isEmpty()) {
-                        cmd.add("-processor-options=" + String.join(sep, kspOptions));
+                        cmd.add("-processor-options=" + String.join(Classpaths.SEPARATOR, kspOptions));
                     }
                     // The trailing processor classpath is the WHOLE [processor-dependencies]
                     // closure — a provider jar (room-compiler) loads its own deps from it.
-                    cmd.add(joinPaths(processorCp, sep));
+                    cmd.add(Classpaths.join(processorCp));
 
                     ProcessBuilder pb =
                             new ProcessBuilder(cmd).directory(in.dir().toFile()).redirectErrorStream(true);
@@ -390,14 +389,5 @@ public final class PlannerKsp {
         int first = version.indexOf('.');
         int second = version.indexOf('.', first + 1);
         return second > 0 ? version.substring(0, second) : version;
-    }
-
-    static String joinPaths(List<Path> paths, String sep) {
-        StringBuilder b = new StringBuilder();
-        for (Path pth : paths) {
-            if (b.length() > 0) b.append(sep);
-            b.append(pth.toAbsolutePath());
-        }
-        return b.toString();
     }
 }

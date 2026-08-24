@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.discovery;
 
-import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.host.Os;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -22,7 +22,7 @@ public final class SymlinkProvisioner {
 
     /** False on Windows (junction handling is too quirky). True elsewhere. */
     public static boolean canSymlink() {
-        return !HostPlatform.isWindows();
+        return !Os.isWindows();
     }
 
     /**

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.discovery;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.IntellijJdkDir;
 import cc.jumpkick.jdk.JdkHit;
 import java.io.IOException;
@@ -33,7 +34,7 @@ public final class IntellijProbe implements LocalToolProbe {
     private final Path jdksRoot;
 
     public IntellijProbe() {
-        this(defaultRoot(System.getProperty("os.name", ""), System.getProperty("user.home", "")));
+        this(defaultRoot(Os.name(), System.getProperty("user.home", "")));
     }
 
     public IntellijProbe(Path jdksRoot) {

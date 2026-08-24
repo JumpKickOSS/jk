@@ -6,6 +6,7 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.RepositoryToml;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.RepositorySpec;
@@ -21,6 +22,8 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.UnaryOperator;
 
 /**
@@ -99,7 +102,8 @@ public final class RepoGroupBuilder {
         boolean mirrorToM2 = project.project().m2integration();
         if (overrideUrl != null) {
             // Tests pin one URL; project-declared repos are ignored.
-            repos.add(new MavenRepo("central", overrideUrl, http, cas, RepoCredential.ANONYMOUS, mirrorToM2));
+            repos.add(new MavenRepo(
+                    RepositorySpec.CENTRAL, overrideUrl, http, cas, RepoCredential.ANONYMOUS, mirrorToM2));
         } else {
             // Merge: project repos > global repos > built-in public baseline.
             // Deduplicate by name: first declaration wins (project beats global,
@@ -121,6 +125,7 @@ public final class RepoGroupBuilder {
             List<List<String>> exclusiveGroups = new ArrayList<>(effective.size());
             for (RepositorySpec spec : effective) {
                 RepoCredential cred = creds.resolve(spec.name(), spec.url(), spec.credential());
+                maybeWarnUrlUserInfo(spec, cred);
                 // Per-repo object-store config (region/endpoint/keys) flows to the
                 // transport; HTTP credentials still ride the MavenRepo credential.
                 // Object-store keys carry raw ${VAR} out of the parse for the same reason
@@ -180,6 +185,58 @@ public final class RepoGroupBuilder {
                 + "[repositories.internal] groups = [\"com.acme\", \"com.acme.*\"]. "
                 + "Google Android groups are bound by default when the Google Maven remote is present. "
                 + "See the guide § Auth and repositories.");
+    }
+
+    /**
+     * Repositories already warned about, so a lock that rebuilds this group once per module prints
+     * the note once and not once per module. Bounded and dropped whole when it fills — a machine
+     * with more than a few dozen credential-bearing repository URLs has a different problem.
+     */
+    private static final Set<String> WARNED_USER_INFO = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Warn when a declared repository URL carries {@code user:password@}. jk removes it before the
+     * URL is used for anything — the JDK's HTTP client never authenticates from userinfo, and the
+     * base URL is interpolated into every artifact's lockfile {@code source}, so keeping it would
+     * commit a credential to version control. Removing it silently, though, leaves the user at a
+     * {@code 401} from a URL that as they typed it holds a perfectly good credential.
+     */
+    static void maybeWarnUrlUserInfo(RepositorySpec spec, RepoCredential resolved) {
+        if (spec == null || spec.url() == null || spec.url().getRawUserInfo() == null) return;
+        String safeUrl = SafeUri.forMessage(spec.url());
+        if (WARNED_USER_INFO.size() > 64) WARNED_USER_INFO.clear();
+        if (!WARNED_USER_INFO.add(spec.name() + " " + safeUrl)) return;
+        System.err.println(urlUserInfoWarning(spec.name(), safeUrl, resolved));
+    }
+
+    /**
+     * The two messages. A repository that authenticates from another source is told its URL
+     * credential is redundant and nothing more; one with no other source is told it will be
+     * anonymous and given every spelling that would fix it.
+     *
+     * <p>{@code safeUrl} comes from {@link SafeUri#forMessage} — a warning about a credential in a
+     * URL that printed the credential would be the original defect wearing a hat.
+     */
+    static String urlUserInfoWarning(String repoId, String safeUrl, RepoCredential resolved) {
+        String head = "jk: warning: repository `" + repoId + "` declares a credential in its URL (" + safeUrl
+                + "), which jk ignores: it authenticates nothing, and the base URL is written into "
+                + "jk-lock.toml's `source` field. ";
+        if (resolved != null && !resolved.isAnonymous()) {
+            return head + "A credential resolved for `" + repoId
+                    + "` from another source is being used instead, so the one in the URL is redundant — "
+                    + "remove it.";
+        }
+        String prefix = RepoCredentialResolver.envVarPrefix(repoId);
+        return head + "No other credential resolved for `" + repoId
+                + "`, so it will be accessed anonymously and a private repository will answer 401. Supply the "
+                + "credential as " + prefix + "TOKEN (or " + prefix + "USERNAME + " + prefix + "PASSWORD), "
+                + "`jk repo login " + repoId + "`, an inline ${VAR} credential in the [repositories." + repoId
+                + "] table, or a <server> in ~/.m2/settings.xml.";
+    }
+
+    /** Test seam: re-arm the once-per-repository warning. */
+    static void resetUserInfoWarnings() {
+        WARNED_USER_INFO.clear();
     }
 
     /**

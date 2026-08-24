@@ -16,6 +16,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.NativePreflight;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildService;
 import cc.jumpkick.runtime.WorkspaceRequest;
@@ -167,12 +168,11 @@ public final class NativeVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
             Path cache = Path.of(Jsonl.str(requestLine, "cache"));
-            String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
+            String jdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
             String mainClass = Jsonl.str(requestLine, "mainClass");
             boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
@@ -219,7 +219,7 @@ public final class NativeVerb implements HostedVerb {
             return WorkspaceTerminal.finish(host, writer, entryDir.toString(), result, cancelToken.cancelled());
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(Jsonl.str(requestLine, "dir"), e));
-            return null;
+            return JobOutcome.failed(Exit.FAILURE);
         }
     }
 }

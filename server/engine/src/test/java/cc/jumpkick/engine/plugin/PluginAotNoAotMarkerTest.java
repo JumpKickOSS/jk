@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.AotCacheFiles;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,16 +24,16 @@ class PluginAotNoAotMarkerTest {
     @Test
     void a_fresh_marker_blocks_training() throws IOException {
         Path cache = tmp.resolve("kotlinc-0123456789abcdef.aot");
-        Files.createFile(PluginAot.noaotMarker(cache));
+        Files.createFile(AotCacheFiles.marker(cache));
 
         assertThat(PluginAot.noAotBlocked(cache)).isTrue();
-        assertThat(PluginAot.noaotMarker(cache)).exists(); // still backing off
+        assertThat(AotCacheFiles.marker(cache)).exists(); // still backing off
     }
 
     @Test
     void a_marker_older_than_the_ttl_is_expired_and_removed_at_read_time() throws IOException {
         Path cache = tmp.resolve("kotlinc-0123456789abcdef.aot");
-        Path marker = Files.createFile(PluginAot.noaotMarker(cache));
+        Path marker = Files.createFile(AotCacheFiles.marker(cache));
         Files.setLastModifiedTime(
                 marker, FileTime.fromMillis(System.currentTimeMillis() - PluginAot.NOAOT_RETRY_MILLIS - 60_000));
 

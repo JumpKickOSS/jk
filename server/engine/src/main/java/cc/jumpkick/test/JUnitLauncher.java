@@ -7,8 +7,10 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
-import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
@@ -154,7 +156,7 @@ public final class JUnitLauncher {
         p = p.getParent(); // classes
         if (p == null || !"classes".equals(name(p))) return null;
         p = p.getParent(); // target
-        if (p == null || !"target".equals(name(p))) return null;
+        if (p == null || !BuildLayout.TARGET.equals(name(p))) return null;
         return p.getParent();
     }
 
@@ -468,7 +470,7 @@ public final class JUnitLauncher {
         // Thin workers: jar + Maven runtime closure from the POM. Gradle-vendored runners
         // already contain PluginMain; extra entries are harmless.
         classpathBase.addAll(WorkerLaunchClasspath.paths(runnerJar));
-        String classpath = joinClasspath(classpathBase);
+        String classpath = Classpaths.join(classpathBase);
         Path javaBinary = javaBinary(javaHome);
 
         int resolvedWorkers = workers;
@@ -911,17 +913,8 @@ public final class JUnitLauncher {
         }
     }
 
-    private static String joinClasspath(Iterable<Path> entries) {
-        var sb = new StringBuilder();
-        for (Path p : entries) {
-            if (sb.length() > 0) sb.append(File.pathSeparator);
-            sb.append(p);
-        }
-        return sb.toString();
-    }
-
     private static Path javaBinary(Path javaHome) {
-        return javaHome.resolve("bin").resolve(HostPlatform.isWindows() ? "java.exe" : "java");
+        return JdkFingerprint.java(javaHome);
     }
 
     // -------- event aggregation -----------------------------------------

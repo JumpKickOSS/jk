@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.util;
 
-import java.util.Locale;
+import cc.jumpkick.host.Os;
 
 /**
  * One place for the backslash-to-slash rewrites behind journal/metrics/bind keys and display
@@ -15,11 +15,6 @@ public final class DirKeys {
 
     private DirKeys() {}
 
-    /** {@code os.name} read live so a test can spoof it; this module cannot see {@code HostPlatform}. */
-    private static boolean isWindows() {
-        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
-    }
-
     private static boolean looksWindowsAbsolute(String s) {
         if (s.startsWith("\\\\")) return true; // UNC
         return s.length() >= 3
@@ -31,7 +26,7 @@ public final class DirKeys {
     /** Forward-slash form for display and key building; POSIX backslash names pass through verbatim. */
     public static String slashes(String s) {
         if (s == null) return null;
-        return isWindows() || looksWindowsAbsolute(s) ? s.replace('\\', '/') : s;
+        return Os.isWindows() || looksWindowsAbsolute(s) ? s.replace('\\', '/') : s;
     }
 
     /**

@@ -7,6 +7,8 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -29,8 +31,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -287,12 +287,18 @@ public final class SelectiveCommand implements CliCommand {
     private record Plan(String since, String modulesSpec, List<String> modules, Map<String, String> contentHashes) {}
 
     private static Plan readPlan(Path planPath) throws Exception {
-        String text = Files.readString(planPath, StandardCharsets.UTF_8);
-        String since = extractJsonString(text, "since");
-        String modulesSpec = extractJsonString(text, "modulesSpec");
-        List<String> modules = extractJsonStringArray(text, "modules");
-        Map<String, String> hashes = extractJsonStringMap(text, "contentHashes");
-        return new Plan(since, modulesSpec, modules, hashes);
+        Object root = MiniJson.parse(Files.readString(planPath, StandardCharsets.UTF_8));
+        List<String> modules = new ArrayList<>();
+        for (Object m : MiniJson.list(root, "modules")) {
+            if (m instanceof String rel) modules.add(rel);
+        }
+        Map<String, String> hashes = new LinkedHashMap<>();
+        if (MiniJson.get(root, "contentHashes") instanceof Map<?, ?> table) {
+            for (Map.Entry<?, ?> e : table.entrySet()) {
+                if (e.getValue() instanceof String hash) hashes.put(String.valueOf(e.getKey()), hash);
+            }
+        }
+        return new Plan(MiniJson.str(root, "since"), MiniJson.str(root, "modulesSpec"), modules, hashes);
     }
 
     /**
@@ -303,9 +309,6 @@ public final class SelectiveCommand implements CliCommand {
      * <p><b>Transitive blind spot</b> fingerprints do not yet include dependency
      * siblings. An unchanged module can be skipped even when an upstream it depends on changed.
      * Prefer full rebuilds when in doubt; see guide selective section.
-     *
-     * <p>Plan JSON is intentionally minimal hand-parsed today (paths must not contain unescaped
-     * {@code "} / structural braces); switch to a shared JSON util before enriching the schema.
      */
     static Map<String, String> contentHashes(Path workspaceRoot, List<String> moduleRels) throws Exception {
         Map<String, String> out = new LinkedHashMap<>();
@@ -336,31 +339,6 @@ public final class SelectiveCommand implements CliCommand {
             md.update((byte) 0);
         }
         return "sha256:" + Hashing.hex(md.digest());
-    }
-
-    private static Map<String, String> extractJsonStringMap(String json, String field) {
-        Matcher m = Pattern.compile("\"" + field + "\"\\s*:\\s*\\{(.*?)}", Pattern.DOTALL)
-                .matcher(json);
-        if (!m.find()) return Map.of();
-        Map<String, String> out = new LinkedHashMap<>();
-        Matcher pair = Pattern.compile("\"([^\"]+)\"\\s*:\\s*\"([^\"]*)\"").matcher(m.group(1));
-        while (pair.find()) out.put(pair.group(1), pair.group(2));
-        return out;
-    }
-
-    private static String extractJsonString(String json, String field) {
-        Matcher m = Pattern.compile("\"" + field + "\"\\s*:\\s*\"([^\"]*)\"").matcher(json);
-        return m.find() ? m.group(1) : null;
-    }
-
-    private static List<String> extractJsonStringArray(String json, String field) {
-        Matcher m = Pattern.compile("\"" + field + "\"\\s*:\\s*\\[(.*?)]", Pattern.DOTALL)
-                .matcher(json);
-        if (!m.find()) return List.of();
-        List<String> out = new ArrayList<>();
-        Matcher s = Pattern.compile("\"([^\"]*)\"").matcher(m.group(1));
-        while (s.find()) out.add(s.group(1));
-        return out;
     }
 
     private static List<String> toRelPaths(Path root, Set<Path> dirs) {
@@ -401,6 +379,6 @@ public final class SelectiveCommand implements CliCommand {
      * character in a module name or git head produced invalid JSON.
      */
     private static String q(String s) {
-        return cc.jumpkick.jsonl.Jsonl.quote(s == null ? "" : s);
+        return Jsonl.quote(s == null ? "" : s);
     }
 }

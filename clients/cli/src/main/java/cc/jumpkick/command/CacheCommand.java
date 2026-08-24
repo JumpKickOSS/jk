@@ -2,7 +2,6 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cache.DiskUsage;
-import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.run.BuildPlanConsole;
@@ -29,10 +28,14 @@ import java.util.List;
 
 /**
  * {@code jk cache} — manage the <strong>cache tier</strong> under {@code $JK_CACHE_DIR}: every
- * entry {@link CacheTree} names, which is every entry the engine's retention pass bounds. What a
- * nuke takes and what a usage report measures both come off that enum rather than a list here, so
- * the client cannot come to disagree with the engine about what the cache tier <em>is</em> — it
- * did, for thirteen tiers, and a local-fallback nuke left ten of them on disk.
+ * entry {@link CacheTree} names, which is every entry the engine's retention pass bounds. A usage
+ * report measures off that enum rather than a list here, so the client cannot come to disagree
+ * with the engine about what the cache tier <em>is</em> — it did, for thirteen tiers, and a
+ * local-fallback nuke left ten of them on disk.
+ *
+ * <p>A <em>nuke</em> is scoped to the root instead, which is the one description that cannot drift
+ * from either the table or the sweep that reclaims what the table omits: it removes
+ * {@code $JK_CACHE_DIR}, which is the path it printed under "Path to Delete".
  *
  * <p>Downloaded artifacts live under the store ({@code JK_STORE_DIR}) and the Maven local
  * repository; see {@code jk storage} / {@code jk repo search}.
@@ -71,43 +74,33 @@ public final class CacheCommand extends GroupCommand {
         }
     }
 
-    /**
-     * Unique-byte size of one tree (hard links within the tree counted once). Prefer
-     * {@link #sectionStats} when summing CAS + repos so cross-tree hard links are not double-counted.
-     */
+    /** Unique-byte size of one tree (hard links within the tree counted once). */
     static Stats statsOf(Path dir) throws IOException {
         return Stats.from(DiskUsage.of(dir));
     }
 
     /**
-     * Cache/store section sizes for {@code jk cache usage}, {@code jk storage usage}, {@code jk
-     * status}, and dashboard parity.
+     * The Cache section of {@code jk status}: one footprint and two tier counts.
      *
-     * <p>Artifact CAS + {@code repos/} resolve via {@link JkStores} (store). Cache CAS ({@code
-     * <cacheRoot>/sha256/}), action index, runs, and stamps stay under the cache root.
+     * <p>The footprint is the cache root walked as a single tree — the same measurement
+     * {@link CacheNukeCommand#cacheRootStats} puts on the nuke confirm screen, so the size a user
+     * reads before deciding to prune is the size {@code jk cache nuke} then frees. Naming the
+     * tiers to add up instead is what made this number omit {@code hash-memo} and
+     * {@code graal-reachability} outright; even {@link CacheTree#cached()} is total only for as
+     * long as the enum stays total, and the directory is total by construction.
      *
-     * <p>Byte sizes are exclusive across store sections (store CAS first) so a leftover hard link
-     * between {@code sha256/} and {@code repos/} is not counted twice. Cache-tier {@code actions}
-     * stats include the cache CAS blob tree; the cache CAS is copy-only.
+     * <p>The store is deliberately not in it. {@code sha256/} and {@code repos/} resolve under
+     * {@code JK_STORE_DIR} and survive a nuke, so adding them to a figure printed under a heading
+     * that says "Cache" is how a 235&nbsp;MB reading preceded a nuke that freed 115.
+     *
+     * <p>Bytes are unique-inode within the walk: a cache-CAS blob hard-linked into
+     * {@code actions/} is counted once, exactly as the nuke's own measurement counts it.
      */
     static SectionStats sectionStats(Path cacheRoot) throws IOException {
-        Path storeCas = JkStores.resolve(cacheRoot, "sha256");
-        Path repos = JkStores.resolve(cacheRoot, "repos");
-        Path actions = CacheTree.ACTIONS.under(cacheRoot);
-        Path cacheCas = CacheTree.CACHE_CAS.under(cacheRoot);
-        Path runs = cacheRoot.resolve("runs");
-        Path stamps = CacheTree.FORMAT_STAMPS.under(cacheRoot);
-        // Store CAS first so leftover shared inodes with repos/ are not counted twice.
-        DiskUsage.Stats[] parts = DiskUsage.exclusive(storeCas, repos, actions, runs, stamps);
-        DiskUsage.Stats cacheCasStats = DiskUsage.of(cacheCas);
-        Stats actionsPlusCacheCas =
-                new Stats(parts[2].files() + cacheCasStats.files(), parts[2].bytes() + cacheCasStats.bytes());
         return new SectionStats(
-                Stats.from(parts[0]),
-                actionsPlusCacheCas,
-                Stats.from(parts[1]),
-                Stats.from(parts[3]),
-                Stats.from(parts[4]));
+                statsOf(CacheTree.CACHE_CAS.under(cacheRoot)),
+                statsOf(CacheTree.ACTIONS.under(cacheRoot)),
+                statsOf(cacheRoot));
     }
 
     /**
@@ -176,25 +169,15 @@ public final class CacheCommand extends GroupCommand {
         return new Stats(0, 0);
     }
 
-    /** Breakdown used by storage / status — fields ordered for the reports. */
-    record SectionStats(Stats cas, Stats actions, Stats repos, Stats runs, Stats stamps) {
-        long totalFiles() {
-            return cas.files + actions.files + repos.files + runs.files + stamps.files;
-        }
-
-        long totalBytes() {
-            return cas.bytes + actions.bytes + repos.bytes + runs.bytes + stamps.bytes;
-        }
-
-        /** Store-side footprint for {@code jk storage usage} (CAS + repos; run logs are state). */
-        long repoFiles() {
-            return cas.files + repos.files;
-        }
-
-        long repoBytes() {
-            return cas.bytes + repos.bytes;
-        }
-    }
+    /**
+     * The three numbers {@code jk status} prints under "Cache", in row order.
+     *
+     * <p>{@code root} is not the sum of the two above it and is not meant to be: those name the
+     * two tiers the section reports a count for, and the root holds every other tier plus whatever
+     * the retention sweep has yet to reclaim. Summing rows is the shape this record had when it
+     * silently dropped a tier.
+     */
+    record SectionStats(Stats cacheCas, Stats actions, Stats root) {}
 
     /** Rows for {@code jk storage usage} (store-tier only). */
     record StoreUsageStats(Stats jars, Stats executables, Stats oci, Stats workers, Stats mavenLocal) {
@@ -271,9 +254,12 @@ public final class CacheCommand extends GroupCommand {
     }
 
     /**
-     * Full cache-tier nuke. Shared by {@code jk cache nuke} and {@code jk self nuke --cache}.
-     * Deletes every tier {@link CacheTree#cached()} names — the same read the engine purge plan
-     * makes. Artifact store is never touched.
+     * Full cache nuke. Shared by {@code jk cache nuke} and {@code jk self nuke --cache}, and the
+     * one place that makes the promise both of their confirm screens print: {@code root} is
+     * <strong>gone</strong> afterwards, the way {@code rm -rf} on the path under "Path to Delete"
+     * would leave it. Not an empty tier skeleton, not a surviving directory holding whatever the
+     * tier table does not name. The artifact store is never touched — {@code JkStores} resolves it
+     * from {@code JK_STORE_DIR} and never under the cache root.
      *
      * @param skipConfirm when true, do not prompt (caller already confirmed)
      */
@@ -294,15 +280,19 @@ public final class CacheCommand extends GroupCommand {
             CommandWedge.printOk("Cache", "Nothing to nuke — cache directory does not exist.");
             return 0;
         }
-        Stats stats = CacheNukeCommand.actionCacheStats(root);
-        if (stats.files() == 0) {
-            CommandWedge.printOk("Cache", "Nothing to nuke — the cache tier is empty.");
-            return 0;
-        }
+        Stats stats = CacheNukeCommand.cacheRootStats(root);
         if (dryRun) {
             CommandWedge.printOk(
                     "Cache",
-                    "Dry run: would remove " + fmtCount(stats.files()) + " files, " + fmtBytes(stats.bytes()) + ".");
+                    "Dry run: would remove " + fmtCount(stats.files()) + " files, " + fmtBytes(stats.bytes())
+                            + ", and the cache directory itself.");
+            return 0;
+        }
+        if (stats.files() == 0) {
+            // An empty skeleton is still the directory the nuke promised to remove, and there is
+            // nothing left in it worth a confirm or an idle boundary.
+            removeCacheRoot(root);
+            CommandWedge.printOk("Cache", "Nuked an empty cache directory — nothing to reclaim.");
             return 0;
         }
         if (!skipConfirm && !CacheNukeCommand.confirmNuke(root, stats)) {
@@ -329,32 +319,36 @@ public final class CacheCommand extends GroupCommand {
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                         CacheCommand::printWait,
                         new cc.jumpkick.cli.engine.EngineRequests.CacheMaintSummary[1]);
-                if (planResult.success()) return 0;
+                if (planResult.success()) {
+                    // The engine emptied the tier at its idle boundary; the root and the
+                    // .prune.lock it held there are ours to take now that the pass has finished.
+                    removeCacheRoot(root);
+                    return 0;
+                }
                 CommandWedge.printFail("Cache", "The engine's purge failed — not racing it with a local wipe.");
                 return 1;
             } catch (IOException | RuntimeException ignored) {
                 // engine unreachable — fall through to local wipe
             }
         }
-        wipeCacheTier(root);
+        removeCacheRoot(root);
         CommandWedge.printOk(
                 "Cache", "Nuked " + fmtCount(stats.files()) + " files, " + fmtBytes(stats.bytes()) + " freed.");
         return 0;
     }
 
     /**
-     * Delete cache-tier trees under {@code root} — the engine-unreachable fallback for {@code
-     * CachePlans.purgeActionCache}, and driven off the same {@link CacheTree} read so the two
-     * cannot disagree. Bookkeeping entries are spared: {@code .prune.lock} is held across a
-     * concurrent prune, and deleting it is how two wipes end up running at once.
+     * {@code rm -rf} the cache root. The whole root, not a tier list: the engine's purge plan is
+     * driven off {@link CacheTree} and the retention sweep reclaims what that table does not name,
+     * so the only description of "everything jk caches" that cannot drift from either is the
+     * directory itself. It is also the engine-unreachable fallback for
+     * {@code CachePlans.purgeActionCache} — the last delete of a nuke either way.
+     *
+     * <p>Recreating the tier directories empty was the old shape, and it is what made a nuke that
+     * printed {@code ~/.cache/jk} under "Path to Delete" leave {@code ~/.cache/jk} standing.
      */
-    static void wipeCacheTier(Path root) throws IOException {
-        for (Path dir : CacheTree.cachedUnder(root)) {
-            if (Files.isDirectory(dir)) {
-                cc.jumpkick.host.PathUtil.deleteRecursivelyOrThrow(dir);
-                Files.createDirectories(dir); // keep empty dirs so layout stays familiar
-            }
-        }
+    static void removeCacheRoot(Path root) throws IOException {
+        cc.jumpkick.host.PathUtil.deleteRecursivelyOrThrow(root);
     }
 
     // --- subcommands defined here to access private helpers ----------------------
@@ -595,18 +589,18 @@ public final class CacheCommand extends GroupCommand {
         }
 
         /**
-         * Cache-tier footprint the purge will delete: every tier {@link CacheTree#cached()} names,
-         * which is exactly what {@code CachePlans.purgeActionCache} removes. Collocated {@code
-         * repos/} and {@code runs/} are excluded — artifact store stays under {@code
-         * JK_STORE_DIR}. Byte sizes are exclusive across those trees (unique inode / fileKey) so
+         * Footprint of what the nuke will delete — the whole cache root, measured as one tree
+         * because that is exactly the unit {@link CacheCommand#removeCacheRoot} removes. Measuring
+         * a tier list instead is how a root holding only entries the table does not name reported
+         * "nothing to nuke" and survived. Byte sizes are exclusive (unique inode / fileKey) so
          * hard links are not counted twice: the cache CAS is hard-linked from the action tier.
          */
-        static Stats actionCacheStats(Path root) throws IOException {
-            DiskUsage.Stats[] parts = DiskUsage.exclusive(CacheTree.cachedUnder(root));
-            return new Stats(DiskUsage.totalFiles(parts), DiskUsage.totalBytes(parts));
+        static Stats cacheRootStats(Path root) throws IOException {
+            DiskUsage.Stats stats = DiskUsage.of(root);
+            return new Stats(stats.files(), stats.bytes());
         }
 
-        /** Stern, default-to-no confirmation before wiping the cache tier. */
+        /** Stern, default-to-no confirmation before removing the cache root. */
         static boolean confirmNuke(Path root, Stats stats) {
             Theme t = Theme.active();
             String bang = Theme.colorize(Glyphs.BANG, t.warning());
@@ -614,12 +608,8 @@ public final class CacheCommand extends GroupCommand {
             CliOutput.out(
                     bang + " " + Theme.colorize("This permanently deletes the ENTIRE cache tier.", t.errorLabel()));
             CliOutput.out("  " + root);
-            CliOutput.stdout()
-                    .printf(
-                            "  %s files, %s across %d cache tiers.%n",
-                            fmtCount(stats.files),
-                            fmtBytes(stats.bytes),
-                            CacheTree.cached().size());
+            CliOutput.stdout().printf("  %s files, %s.%n", fmtCount(stats.files), fmtBytes(stats.bytes));
+            CliOutput.out("  The directory itself goes, not only its contents.");
             CliOutput.out(
                     "  Artifact store (deps under JK_STORE_DIR) is kept. Rebuildable — the next build re-runs work.");
             return cc.jumpkick.cli.tui.Confirm.of(bang + " Nuke the cache tier?", false)

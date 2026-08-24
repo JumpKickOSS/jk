@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
@@ -131,10 +132,9 @@ public final class CachePlans {
     }
 
     /**
-     * Build the purge plan: wipe the entire cache tier under {@code root} ({@code actions/},
-     * {@code format-stamps/}, cache {@code sha256/}). Artifact store trees ({@code repos/}, store
-     * CAS) are never under this root in the ambient layout; hermetic collocated {@code repos/} is
-     * kept.
+     * Build the purge plan: empty the cache root at an idle boundary. The artifact store is never
+     * a child of this root — {@code JkStores} resolves it from {@code JK_STORE_DIR} whatever the
+     * cache dir is — so there is nothing under here a nuke has to step around.
      */
     public static BuildPlan purgeBuildPlan(Path root) {
         Task purgeStep = Task.builder("purge")
@@ -147,15 +147,24 @@ public final class CachePlans {
     }
 
     /**
-     * Delete every cached tier under {@code root}. Driven off {@link CacheTree} so a new tier
-     * cannot be added to the table and then silently survive {@code jk cache nuke} — the same read
-     * the client's local-wipe fallback makes, so the two paths cannot come to disagree about what a
-     * nuke takes.
+     * Empty the cache root: every entry, whether or not {@link CacheTree} names it. Totality is
+     * the point — the retention sweep already reclaims unrecognised top-level entries, so a nuke
+     * that spared what a prune takes would be the weaker of the two commands.
+     *
+     * <p>Two things survive here and neither is an exception to that: {@code root} itself, and the
+     * {@link CacheTree#PRUNE_LOCK} file the caller holds open for the length of this pass
+     * ({@code CacheMaintenanceLocks}) — a directory containing an open file cannot be removed on
+     * every platform jk targets. Removing the root is the client's last step, once no process
+     * holds anything under it; see {@code CacheCommand.removeCacheRoot}.
      */
     public static void purgeActionCache(Path root) throws IOException {
-        for (Path dir : CacheTree.cachedUnder(root)) {
-            if (Files.isDirectory(dir)) deleteContents(dir);
-            else Files.deleteIfExists(dir);
+        if (!Files.isDirectory(root)) return;
+        Path held = CacheTree.PRUNE_LOCK.under(root);
+        try (var entries = Files.list(root)) {
+            for (Path entry : entries.toList()) {
+                if (entry.equals(held)) continue;
+                PathUtil.deleteRecursivelyOrThrow(entry);
+            }
         }
     }
 
@@ -250,7 +259,8 @@ public final class CachePlans {
                     // 3) preflight memos — their "clean" conclusions were derived from the
                     // action keys just deleted; a surviving memo turns clear into a no-op.
                     for (Path m : allModuleDirs) {
-                        Path preflight = m.resolve("target").resolve(".jk").resolve("preflight");
+                        Path preflight =
+                                m.resolve(BuildLayout.TARGET).resolve(".jk").resolve("preflight");
                         if (!Files.isDirectory(preflight)) continue;
                         try (var files = Files.list(preflight)) {
                             for (Path f : (Iterable<Path>) files::iterator) {
@@ -404,20 +414,6 @@ public final class CachePlans {
                     acc[0]++;
                 }
             }
-        }
-    }
-
-    /** Recursively delete everything under {@code root}, keeping {@code root} itself. */
-    public static void deleteContents(Path root) throws IOException {
-        try (var stream = Files.walk(root)) {
-            stream.sorted(Comparator.reverseOrder())
-                    .filter(p -> !p.equals(root))
-                    .forEach(p -> {
-                        try {
-                            Files.deleteIfExists(p);
-                        } catch (IOException ignored) {
-                        }
-                    });
         }
     }
 

@@ -66,6 +66,68 @@ class PluginActionKeyTokensTest {
                 .anySatisfy(token -> assertThat(token).startsWith("container:dep-1.0.aar:"));
     }
 
+    /**
+     * A packager writes its entry list out verbatim — a boot jar's {@code classpath.idx} IS the
+     * launcher's classpath order — but {@code cp:} is a content hash whose parts are sorted. So
+     * reordering two dependencies with the identical resolved set produced the identical key and
+     * restored a jar whose index still encoded the old order.
+     */
+    @Test
+    void reordering_two_runtime_entries_changes_the_key(@TempDir Path tmp) throws Exception {
+        List<PluginBuild.ProdEntry> entries = twoEntries(tmp);
+        List<PluginBuild.ProdEntry> swapped = List.of(entries.get(1), entries.get(0));
+
+        assertThat(entryTokens(tmp, swapped))
+                .as("lib order is part of the artifact")
+                .isNotEqualTo(entryTokens(tmp, entries));
+        assertThat(entryTokens(tmp, entries)).isEqualTo(entryTokens(tmp, entries));
+    }
+
+    /**
+     * The other two facts the content hash cannot see. {@code snapshot} is lockfile metadata that
+     * decides which {@code layers.idx} layer an entry lands in; {@code fileName} and the coordinate
+     * are written into the entry name and both index files. All three are identical bytes on disk.
+     */
+    @Test
+    void snapshot_flag_file_name_and_coordinate_are_all_in_the_key(@TempDir Path tmp) throws Exception {
+        PluginBuild.ProdEntry base = twoEntries(tmp).get(0);
+        Path jar = base.jar();
+
+        List<String> reference = entryTokens(tmp, List.of(base));
+        assertThat(entryTokens(tmp, List.of(new PluginBuild.ProdEntry("a-1.0.jar", jar, true, null, "g", "a", "1.0"))))
+                .as("release -> snapshot moves the entry between layers.idx layers")
+                .isNotEqualTo(reference);
+        assertThat(entryTokens(tmp, List.of(new PluginBuild.ProdEntry("z-1.0.jar", jar, false, null, "g", "a", "1.0"))))
+                .as("the file name IS the BOOT-INF/lib entry name")
+                .isNotEqualTo(reference);
+        assertThat(entryTokens(tmp, List.of(new PluginBuild.ProdEntry("a-1.0.jar", jar, false, null, "h", "a", "1.0"))))
+                .as("the group disambiguates a colliding entry name")
+                .isNotEqualTo(reference);
+    }
+
+    /** Two release entries with distinct content, in lock order. */
+    private static List<PluginBuild.ProdEntry> twoEntries(Path tmp) throws Exception {
+        Path a = Files.writeString(tmp.resolve("a-1.0.jar"), "a");
+        Path b = Files.writeString(tmp.resolve("b-1.0.jar"), "b");
+        return List.of(
+                new PluginBuild.ProdEntry("a-1.0.jar", a, false, null, "g", "a", "1.0"),
+                new PluginBuild.ProdEntry("b-1.0.jar", b, false, null, "g", "b", "1.0"));
+    }
+
+    /** The declared-input tokens for {@code runtime-entries} over exactly these entries. */
+    private static List<String> entryTokens(Path tmp, List<PluginBuild.ProdEntry> entries) throws Exception {
+        JkBuild project = JkBuildParser.parse(TOML);
+        List<Path> jars = entries.stream().map(PluginBuild.ProdEntry::jar).toList();
+        PlannerPlugin.InputSources src = new PlannerPlugin.InputSources(
+                Files.createDirectories(tmp.resolve("classes")),
+                jars,
+                entries,
+                new PluginConfig("fake", Map.of()),
+                BuildLayout.of(tmp, project),
+                tmp);
+        return PlannerPlugin.declaredInputTokens(List.of(In.runtimeEntries().wireName()), src);
+    }
+
     /** An input the engine cannot fingerprint is refused, not skipped — skipping it is a stale key. */
     @Test
     void an_input_the_engine_cannot_fingerprint_is_refused(@TempDir Path tmp) throws Exception {

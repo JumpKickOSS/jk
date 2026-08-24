@@ -8,8 +8,8 @@ import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.PluginSlots;
-import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import java.io.IOException;
@@ -195,8 +195,7 @@ public final class JavaCompilerHost {
         private void run(ForkedJavac.Request template) {
             try {
                 Path hostJavaHome = JavaHomes.runningJavaHome();
-                boolean win = HostPlatform.isWindows();
-                Path javaExe = hostJavaHome.resolve("bin").resolve(win ? "java.exe" : "java");
+                Path javaExe = JdkFingerprint.java(hostJavaHome);
                 String workerCp = ForkedJavac.workerClasspath(template);
                 List<String> jvmFlags = new ArrayList<>(PluginAot.javaCompilerFlags(
                         hostJavaHome,

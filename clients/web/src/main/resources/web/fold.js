@@ -156,7 +156,7 @@ export function foldEvent(cards, event) {
     case 'task-start': {
       const card = resolveCard(cards, d);
       if (card) {
-        const row = stepRow(card, d.dir, (d.task || d.step), d.stage, event.at);
+        const row = stepRow(card, d.dir, d.task, d.stage, event.at);
         row.state = 'running';
         row.message = ''; // new step — clear previous tick text
         row.startedAt = event.at ?? row.startedAt ?? null; // wall receipt for duration fallback
@@ -166,7 +166,7 @@ export function foldEvent(cards, event) {
     case 'task-finish': {
       const card = resolveCard(cards, d);
       if (card) {
-        const row = stepRow(card, d.dir, (d.task || d.step), d.stage, event.at);
+        const row = stepRow(card, d.dir, d.task, d.stage, event.at);
         // Engine carries millis (additive); duration_ms is the CLI jsonl alias; else receipt delta.
         row.millis = stepMillisOf(d, row, event.at);
         row.state = stepState(d.status, row.millis);
@@ -178,7 +178,7 @@ export function foldEvent(cards, event) {
     case 'label': {
       // Live step detail (test class.method, "shrinking jar", …) — CLI tree-row parity.
       const card = resolveCard(cards, d);
-      if (card) stepRow(card, d.dir, (d.task || d.step), d.stage, event.at).message = d.label || '';
+      if (card) stepRow(card, d.dir, d.task, d.stage, event.at).message = d.label || '';
       break;
     }
     case 'plan': {
@@ -391,7 +391,6 @@ function applyRunSnapshot(cards, d, at) {
     startedAt: card.startedAt,
     modules: d.modules,
     tasks: d.tasks,
-    steps: d.steps,
     diagnostics: d.diagnostics,
   });
   if (mods.length > 0) card.modules = mergeSnapshotModules(card.modules, mods);
@@ -713,16 +712,16 @@ export function normalizeDiagnostic(d) {
     ? d.snippet.map((s) => String(s))
     : [];
   return {
-    step: d.task || d.step || '',
+    step: d.task || '',
     code: d.code || '',
     message: d.message || '',
     test: d.test || '',
     exceptionClass: d.exceptionClass || '',
     module: d.module || '',
     engine: d.engine || '',
-    className: d.testClass || d.class || d.className || '',
+    className: d.testClass || d.class || '',
     method: d.method || '',
-    stack: d.stack || (d.throwable && d.throwable.stack) || '',
+    stack: d.stack || '',
     file: d.file || '',
     line: typeof d.line === 'number' ? d.line : 0,
     col: typeof d.col === 'number' ? d.col : typeof d.column === 'number' ? d.column : 0,
@@ -734,8 +733,8 @@ export function normalizeDiagnostic(d) {
 
 /**
  * Module rows for a persisted record, matching the live card shape (each with its own step chain).
- * A workspace record has `modules[]` each carrying `steps`; a single-project record has no modules
- * and its steps at the top level — synthesize one row from them so backfilled cards match live.
+ * A workspace record has `modules[]` each carrying `tasks`; a single-project record has no modules
+ * and its tasks at the top level — synthesize one row from them so backfilled cards match live.
  * In-flight enriched rows may include {@code RUN} tasks and unfinished modules (no success yet).
  */
 function historyModules(rec) {
@@ -748,8 +747,7 @@ function historyModules(rec) {
       return {
         name: p.name || '?',
         state: stepState(p.status, millis),
-        phase: p.stage || p.group || p.phase || '',
-        
+        phase: p.stage || '',
         millis,
         message: '',
       };
@@ -758,7 +756,7 @@ function historyModules(rec) {
   const activity = rec.finishedAt || rec.startedAt || 0;
   if ((rec.modules || []).length > 0) {
     return rec.modules.map((m, i) => {
-      const steps = toSteps(m.tasks || m.steps);
+      const steps = toSteps(m.tasks);
       let state;
       if (typeof m.finished === 'boolean') {
         // Engine's explicit lifecycle bit (JK-1846): success=false alone was ambiguous between
@@ -813,9 +811,9 @@ function historyModules(rec) {
       return row;
     });
   }
-  // Single-project: no modules, steps at top level. Its diagnostics live in the "" bucket, so take
+  // Single-project: no modules, tasks at top level. Its diagnostics live in the "" bucket, so take
   // every error the record carries (there is only one module to own them).
-  const steps = toSteps(rec.tasks || rec.steps);
+  const steps = toSteps(rec.tasks);
   if (steps.length === 0 && running) return []; // empty stub — wait for SSE / rehydrate phases
   let state;
   if (running) {
@@ -1381,7 +1379,7 @@ export function looksLikeJavaishLabel(body) {
 
 /** {@code SimpleClass.method()} / {@code SimpleClass.method(Path)} — package stripped, params simplified. */
 export function shortTestLabel(d) {
-  let cls = simpleTypeName(d.className || d.class || '');
+  let cls = simpleTypeName(d.className || '');
   let method = (d.method || d.test || '').trim();
   const gt = method.lastIndexOf(' > ');
   if (gt >= 0) method = method.slice(gt + 3).trim();

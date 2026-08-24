@@ -75,6 +75,17 @@ jobs = 0
 
 ## Other env
 
+Every boolean jk reads — from a `JK_*` variable, from `CI`, or from a quoted value in
+`jk.toml` — accepts the same set, trimmed and case-insensitive:
+
+| true | false |
+|---|---|
+| `1` `true` `yes` `on` | `0` `false` `no` `off` |
+
+Anything else means "unset", so the next layer down decides; a malformed value is never a
+hard failure. There is one reader behind all of it, so `CI=yes` and `CI=1` mean exactly what
+`CI=true` means everywhere.
+
 Install / dirs: [Install](install.md). Format: [Format](format.md). Cache budgets:
 [Cache](cache.md). `.env` layering: `jk env` on the install page.
 

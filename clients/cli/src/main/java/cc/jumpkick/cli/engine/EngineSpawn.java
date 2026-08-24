@@ -11,9 +11,10 @@ import cc.jumpkick.discovery.ProbeSupport;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
-import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
@@ -245,7 +246,7 @@ public final class EngineSpawn {
         }
         EngineJdk jdk = resolveEngineJdk();
         Path aot = aotCachePath(paths, Path.of(engine.path()), jdk);
-        boolean marker = Files.exists(noAotMarkerPath(aot));
+        boolean marker = Files.exists(AotCacheFiles.marker(aot));
         return new EngineTarget(engine, jdk.home(), isHotSpot(jdk.vendor()), aot, marker);
     }
 
@@ -253,37 +254,18 @@ public final class EngineSpawn {
      * AOT mode for a target: only a JAR engine on a HotSpot JDK with no {@code.noaot} marker uses
      * AOT. Train-on-miss is skipped when {@link cc.jumpkick.util.AotSettings#trainingEnabled} is
      * false ({@code JK_AOT_TRAIN=off}) — still maps an existing cache. USE requires a
-     * <em>non-empty</em> cache (mirror of {@code PluginAot.usableCache}): a zero-byte leftover from
-     * a crashed trainer would otherwise map "forever" while never accelerating anything — it is
-     * deleted here so the key can retrain.
+     * <em>non-empty</em> cache ({@link AotCacheFiles#usable}): a zero-byte leftover from a crashed
+     * trainer would otherwise map "forever" while never accelerating anything — it is deleted here
+     * so the key can retrain.
      */
     static AotMode chooseAotMode(EngineTarget t) {
         if (t.engine().kind() != EngineArtifact.Kind.JAR) return AotMode.NONE;
         if (!t.hotspot()) return AotMode.NONE; // GraalVM host: its Graal JIT breaks the cache — skip cleanly
         if (t.noAotMarker()) return AotMode.NONE;
-        if (usableAotCache(t.aotCache())) return AotMode.USE;
-        deleteIfEmptyCache(t.aotCache()); // torn/zero-byte leftover: treat as missing so it retrains
+        if (AotCacheFiles.usable(t.aotCache())) return AotMode.USE;
+        AotCacheFiles.deleteIfEmpty(t.aotCache()); // torn/zero-byte leftover: treat as missing so it retrains
         if (!AotSettings.trainingEnabled()) return AotMode.NONE;
         return AotMode.TRAIN;
-    }
-
-    /** The one definition of "engine cache present": a non-empty regular file. */
-    private static boolean usableAotCache(Path cache) {
-        try {
-            return cache != null && Files.isRegularFile(cache) && Files.size(cache) > 0;
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
-    private static void deleteIfEmptyCache(Path cache) {
-        try {
-            if (cache != null && Files.isRegularFile(cache) && Files.size(cache) == 0) {
-                Files.deleteIfExists(cache);
-            }
-        } catch (IOException ignored) {
-            // best-effort
-        }
     }
 
     /**
@@ -300,7 +282,7 @@ public final class EngineSpawn {
      */
     public static Path engineJava() throws IOException {
         Path home = resolveEngineJdk().home();
-        return home.resolve("bin").resolve(HostPlatform.isWindows() ? "java.exe" : "java");
+        return JdkFingerprint.java(home);
     }
 
     private static EngineJdk resolveEngineJdk() throws IOException {
@@ -485,11 +467,8 @@ public final class EngineSpawn {
                         && !name.startsWith(stem)
                         && name.substring(versionPrefix.length()).matches("[0-9a-f]{16}\\..*")) {
                     // Map sidecar names back to the primary .aot file key for aot.toml.
-                    if (name.endsWith(".aot")) swept.add(name);
-                    else if (name.endsWith(".noaot") && name.length() > ".noaot".length()) {
-                        String primary = name.substring(0, name.length() - ".noaot".length()) + ".aot";
-                        swept.add(primary);
-                    }
+                    if (AotCacheFiles.isMarker(name)) swept.add(AotCacheFiles.cacheOf(name));
+                    else if (name.endsWith(AotCacheFiles.CACHE)) swept.add(name);
                     Files.deleteIfExists(p);
                 }
             }
@@ -520,7 +499,7 @@ public final class EngineSpawn {
         try {
             String name = cache.getFileName().toString();
             boolean ready = Files.isRegularFile(cache) && Files.size(cache) > 0;
-            boolean noaot = Files.exists(noAotMarkerPath(cache));
+            boolean noaot = Files.exists(AotCacheFiles.marker(cache));
             String status = ready ? "ready" : (noaot ? "noaot" : "pending");
             var b = AotManifest.Entry.builder(name)
                     .tool("engine")
@@ -567,12 +546,6 @@ public final class EngineSpawn {
         }
     }
 
-    /** The sibling "this key can't AOT here" marker for an {@code engine-<version>-<key>.aot} path. */
-    private static Path noAotMarkerPath(Path aotCache) {
-        String name = aotCache.getFileName().toString();
-        return aotCache.resolveSibling(name.substring(0, name.length() - ".aot".length()) + ".noaot");
-    }
-
     /** Spawn a fresh engine, detached — mirrors {@link CachePruneScheduler}'s spawn-and-forget pattern. */
     private static Spawned spawn(EnginePaths.Paths paths, EngineTarget target, AotMode mode) throws IOException {
         EngineArtifact engine = target.engine();
@@ -598,10 +571,7 @@ public final class EngineSpawn {
                 // intrinsics want; there is no native engine image. --enable-native-access:
                 // PosixDetach's setsid(2) FFM downcall without the JDK's restricted-method
                 // warning.
-                command.add(target.javaHome()
-                        .resolve("bin")
-                        .resolve(HostPlatform.isWindows() ? "java.exe" : "java")
-                        .toString());
+                command.add(JdkFingerprint.java(target.javaHome()).toString());
                 command.add("-XX:+UseSerialGC");
                 // Heap-return ergonomics: SerialGC's defaults (MaxHeapFreeRatio=70,
                 // ShrinkHeapInSteps) keep committed ≈ 3.3× live and shrink one slice per full GC —
@@ -805,8 +775,9 @@ public final class EngineSpawn {
 
     /**
      * Did the JVM ignore the AOT cache on this start? {@code AOTMode=auto} logs and boots cold on a
-     * mismatch instead of failing — scan the fresh per-start log for those markers so the caller can
-     * drop the cache and retrain next time. Best-effort and bounded (AOT diagnostics appear at boot).
+     * mismatch instead of failing, so ask {@link AotCacheFiles#refused} about the fresh per-start
+     * log and the caller can drop the cache and retrain next time. Bounded: AOT diagnostics land at
+     * boot, so only the head of the log can hold them.
      */
     static boolean scanLogForAotError(Path log) {
         if (log == null) return false;
@@ -814,9 +785,7 @@ public final class EngineSpawn {
             if (!Files.exists(log)) return false;
             String head = Files.readString(log);
             if (head.length() > 8192) head = head.substring(0, 8192);
-            return head.contains("[error][aot]")
-                    || head.contains("Mismatched values for property")
-                    || head.contains("Disabling optimized module handling");
+            return AotCacheFiles.refused(head);
         } catch (IOException e) {
             return false;
         }
@@ -835,7 +804,7 @@ public final class EngineSpawn {
     private static void writeNoAotMarker(Path aotCache) {
         if (aotCache == null) return;
         try {
-            Files.writeString(noAotMarkerPath(aotCache), "");
+            Files.writeString(AotCacheFiles.marker(aotCache), "");
         } catch (IOException ignored) {
             // best-effort — worst case we retry AOT more often, never a failure
         }

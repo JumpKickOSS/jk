@@ -196,8 +196,7 @@ public record JkCacheConfig(
     }
 
     static boolean isCi(Function<String, String> env) {
-        String ci = env.apply("CI");
-        return "1".equals(ci) || (ci != null && "true".equalsIgnoreCase(ci));
+        return EnvValues.bool(env, "CI").orElse(false);
     }
 
     private static Optional<Integer> envNonNegativeInt(Function<String, String> env, String name) {

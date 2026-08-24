@@ -41,7 +41,7 @@ public final class TestSuites {
             "src",
             "test",
             "resources",
-            "target",
+            BuildLayout.TARGET,
             "build",
             "docs",
             "doc",

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.host.Os;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -23,7 +24,7 @@ public final class DirLinks {
     public static void replace(Path link, Path target) throws IOException {
         Files.createDirectories(link.getParent());
         Files.deleteIfExists(link);
-        if (HostPlatform.isWindows()) {
+        if (Os.isWindows()) {
             createJunction(link, target);
         } else {
             Files.createSymbolicLink(link, target);

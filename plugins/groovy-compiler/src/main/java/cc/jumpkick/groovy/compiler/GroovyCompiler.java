@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.groovy.compiler;
 
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
-import cc.jumpkick.plugin.protocol.PluginSpec;
+import cc.jumpkick.plugin.protocol.CompilerProtocol;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.File;
 import java.io.IOException;
@@ -19,7 +20,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.codehaus.groovy.GroovyBugError;
 import org.codehaus.groovy.control.CompilationFailedException;
@@ -38,8 +38,9 @@ import org.codehaus.groovy.tools.javac.JavaAwareCompilationUnit;
  * cc.jumpkick.plugin.process.PluginMain @&lt;spec&gt;}. The plugin reads the {@link CompileSpec},
  * runs a full JVM compile ({@link CompilationUnit}, or {@link JavaAwareCompilationUnit} when the
  * source set carries {@code.java} files — joint mode), streams diagnostics back as JSONL, and
- * exits: {@code 0} success, {@code 1} compilation error, {@code 3} OOM/internal compiler error,
- * {@code 2} bad spec / unexpected failure.
+ * exits {@link Exit#SUCCESS}, {@link Exit#FAILURE} on a compilation error,
+ * {@link CompilerProtocol#COMPILER_FAULT} on an OOM/internal compiler error, or
+ * {@link Exit#SOFTWARE} for a bad spec / unexpected failure.
  *
  * <p>Joint mode uses the Java sources for resolution only: Groovy-class stubs are written to
  * {@code stubsOut} (kept only when the spec names one) and javac's {@code.class} output is
@@ -57,23 +58,11 @@ public final class GroovyCompiler implements Plugin {
 
     @Override
     public int run(List<String> args, ProtocolWriter out) {
-        GcProtocol proto = new GcProtocol(out);
-        try {
-            if (args.size() != 1) {
-                System.err.println("usage: jk-groovy-compiler <spec-file>|@<spec-file>");
-                return Exit.USAGE;
-            }
-            String specArg = args.get(0).startsWith("@") ? args.get(0).substring(1) : args.get(0);
-            CompileSpec spec = CompileSpec.from(PluginSpec.read(Path.of(specArg)));
-            return compile(spec, proto);
-        } catch (Throwable t) {
-            System.err.println("jk-groovy-compiler: " + t.getClass().getName() + ": " + t.getMessage());
-            t.printStackTrace(System.err);
-            return Exit.SOFTWARE;
-        }
+        return CompilerProtocol.compileFromSpec(
+                manifest().id(), args, out, (spec, proto) -> compile(CompileSpec.from(spec), proto));
     }
 
-    static int compile(CompileSpec spec, GcProtocol proto) throws Exception {
+    static int compile(CompileSpec spec, CompilerProtocol proto) throws Exception {
         spec.outputDir.mkdirs();
 
         List<File> files = allSources(spec);
@@ -110,9 +99,8 @@ public final class GroovyCompiler implements Plugin {
                 generated.mkdirs();
                 named.addAll(List.of(
                         "processorpath",
-                        spec.processorPath.stream()
-                                .map(File::getAbsolutePath)
-                                .collect(Collectors.joining(File.pathSeparator)),
+                        Classpaths.join(
+                                spec.processorPath.stream().map(File::toPath).toList()),
                         "s",
                         generated.getAbsolutePath()));
             }
@@ -131,23 +119,20 @@ public final class GroovyCompiler implements Plugin {
         try {
             unit.compile();
         } catch (OutOfMemoryError | GroovyBugError e) {
-            proto.diagnostic("ERROR", null, 0, 0, "internal compiler error: " + e);
+            proto.diagnostic("ERROR", "internal compiler error: " + e);
             proto.result("COMPILER_INTERNAL_ERROR");
-            proto.done(3);
-            return 3;
+            return CompilerProtocol.COMPILER_FAULT;
         } catch (CompilationFailedException e) {
             if (!emitDiagnostics(unit.getErrorCollector(), proto)) {
-                proto.diagnostic("ERROR", null, 0, 0, e.getMessage());
+                proto.diagnostic("ERROR", e.getMessage());
             }
             proto.result("COMPILATION_ERROR");
-            proto.done(1);
-            return 1;
+            return Exit.FAILURE;
         }
 
         emitDiagnostics(unit.getErrorCollector(), proto);
         proto.result("COMPILATION_SUCCESS");
-        proto.done(0);
-        return 0;
+        return Exit.SUCCESS;
     }
 
     /**
@@ -175,7 +160,7 @@ public final class GroovyCompiler implements Plugin {
      * describes; unknown {@code ARG} entries are reported and skipped (groovyc has no raw
      * passthrough into an in-process {@code CompilerConfiguration}).
      */
-    static CompilerConfiguration configure(CompileSpec spec, GcProtocol proto) {
+    static CompilerConfiguration configure(CompileSpec spec, CompilerProtocol proto) {
         CompilerConfiguration cfg = new CompilerConfiguration();
         cfg.setTargetDirectory(spec.outputDir);
         cfg.setTargetBytecode(spec.jvmTarget);
@@ -187,14 +172,14 @@ public final class GroovyCompiler implements Plugin {
             switch (arg) {
                 case "--parameters", "-parameters" -> cfg.setParameters(true);
                 case "--enable-preview" -> cfg.setPreviewFeatures(true);
-                default -> proto.diagnostic("WARNING", null, 0, 0, "ignoring unsupported groovyc arg: " + arg);
+                default -> proto.diagnostic("WARNING", "ignoring unsupported groovyc arg: " + arg);
             }
         }
         return cfg;
     }
 
     /** Emit every collected error + warning as protocol diagnostics; true when any error emitted. */
-    private static boolean emitDiagnostics(ErrorCollector collector, GcProtocol proto) {
+    private static boolean emitDiagnostics(ErrorCollector collector, CompilerProtocol proto) {
         boolean any = false;
         for (int i = 0; i < collector.getErrorCount(); i++) {
             var message = collector.getError(i);
@@ -207,13 +192,13 @@ public final class GroovyCompiler implements Plugin {
                         cause.getStartColumn(),
                         cause.getOriginalMessage());
             } else {
-                proto.diagnostic("ERROR", null, 0, 0, render(message::write));
+                proto.diagnostic("ERROR", render(message::write));
             }
             any = true;
         }
         for (int i = 0; i < collector.getWarningCount(); i++) {
             WarningMessage warning = collector.getWarning(i);
-            proto.diagnostic("WARNING", null, 0, 0, render(warning::write));
+            proto.diagnostic("WARNING", render(warning::write));
         }
         return any;
     }

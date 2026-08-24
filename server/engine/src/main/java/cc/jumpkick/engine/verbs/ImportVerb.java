@@ -11,6 +11,7 @@ import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.CompatPlans;
 import cc.jumpkick.util.JkDirs;
@@ -81,8 +82,7 @@ public final class ImportVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 Path baseDir = Path.of(Jsonl.str(requestLine, "baseDir"));
@@ -102,7 +102,7 @@ public final class ImportVerb implements HostedVerb {
                         report != null ? Path.of(report) : null,
                         cache,
                         (kind, text) -> host.sendQuiet(writer, ProtoEvents.importNote(dir, kind, text)));
-                host.streamSinglePlan(
+                return host.streamSinglePlan(
                         plan,
                         session,
                         writer,
@@ -115,11 +115,11 @@ public final class ImportVerb implements HostedVerb {
                                 plan.get(CompatPlans.DIAG).orElse(null)));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
+                return JobOutcome.failed(Exit.FAILURE);
             }
-
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

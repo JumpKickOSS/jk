@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.plugin.build.TaskExec;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,14 +45,14 @@ final class ManifestStep {
         // manifests into a library trips cross-library conflicts like androidx.startup's
         // per-package InitializationProvider authorities).
         boolean library = exec.config().bool("library", false);
-        StringBuilder libs = new StringBuilder();
+        List<Path> libManifests = new ArrayList<>();
         if (!library) {
             for (AndroidDeps.Aar aar : AndroidDeps.aars(exec.runtimeEntries())) {
-                if (!Files.isRegularFile(aar.manifest())) continue;
-                if (libs.length() > 0) libs.append(File.pathSeparatorChar);
-                libs.append(aar.manifest().toAbsolutePath());
+                if (Files.isRegularFile(aar.manifest())) libManifests.add(aar.manifest());
             }
         }
+        // The merger's --libs takes the platform path separator, same wire format as a -cp.
+        String libs = Classpaths.join(libManifests);
 
         exec.label("merge manifest");
         TaskExec.ToolRun merger = exec.java()

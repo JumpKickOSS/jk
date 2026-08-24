@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.TomlValues;
 import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
@@ -104,7 +105,10 @@ final class BuildLogicTaskScan {
                 String logic = build.getString("logic");
                 if (logic != null && !logic.isBlank()) {
                     String n = logic.trim().toLowerCase(Locale.ROOT);
-                    if (n.equals("off") || n.equals("false") || n.equals("none") || n.equals("disable")) {
+                    // `none`/`disable` are this key's own extra spellings for off.
+                    if (EnvValues.parseBool(n).filter(on -> !on).isPresent()
+                            || n.equals("none")
+                            || n.equals("disable")) {
                         return null;
                     }
                     logicRel = logic.trim();

@@ -2,7 +2,10 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.TrainConfig;
+import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.layout.BuildLayout;
@@ -19,6 +22,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -250,10 +254,12 @@ public final class TrainRunner {
     }
 
     private static boolean looksLikeGraal(Path home) {
-        if (Files.isExecutable(home.resolve("bin/native-image"))
-                || Files.isRegularFile(home.resolve("bin/native-image.cmd"))) {
-            return true;
-        }
+        // Where the launcher lives is GraalLauncher's answer. This site used to probe
+        // bin/native-image and bin/native-image.cmd only, so an .exe-only Windows GraalVM was not
+        // recognised as GraalVM at all — and, spelling the name path-joined, it evaded guard G12.
+        if (GraalLauncher.in(home).isPresent()) return true;
+        // The agent is a shared library, not a launcher: a different vocabulary, deliberately not
+        // GraalLauncher's business.
         for (String rel : List.of(
                 "lib/libnative-image-agent.so",
                 "lib/server/libnative-image-agent.so",
@@ -273,7 +279,7 @@ public final class TrainRunner {
     }
 
     private static List<String> shell(String command) {
-        String os = System.getProperty("os.name", "").toLowerCase();
+        String os = Os.name().toLowerCase(Locale.ROOT);
         if (os.contains("win")) {
             return List.of("cmd", "/c", command);
         }
@@ -302,16 +308,15 @@ public final class TrainRunner {
         if (cache != null && mainClass != null && Files.isRegularFile(lockFile)) {
             var resolver = new cc.jumpkick.compile.ClasspathResolver(cc.jumpkick.cache.JkStores.cas(cache));
             var lock = cc.jumpkick.lock.LockfileReader.read(lockFile);
-            StringBuilder cp = new StringBuilder(mainJar.toAbsolutePath().toString());
-            int deps = 0;
+            List<Path> cp = new ArrayList<>();
+            cp.add(mainJar);
             for (var entry : resolver.entriesFor(lock, cc.jumpkick.compile.ClasspathResolver.RUNTIME)) {
-                if (!Files.exists(entry.jar())) continue;
-                cp.append(java.io.File.pathSeparatorChar).append(entry.jar().toAbsolutePath());
-                deps++;
+                if (Files.exists(entry.jar())) cp.add(entry.jar());
             }
+            int deps = cp.size() - 1;
             if (deps > 0) {
                 log.accept("training with the lock's runtime classpath (" + deps + " jars)");
-                return List.of("-cp", cp.toString(), mainClass);
+                return List.of("-cp", Classpaths.join(cp), mainClass);
             }
         }
         return List.of("-jar", mainJar.toAbsolutePath().toString());

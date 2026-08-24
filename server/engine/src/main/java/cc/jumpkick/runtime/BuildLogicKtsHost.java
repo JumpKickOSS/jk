@@ -2,7 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.engine.JobWorkers;
-import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -35,7 +35,7 @@ final class BuildLogicKtsHost {
         Path kotlinHome = CompileToolchain.resolveKotlinHome(JkDirs.cache(), null, msg -> {
             /* silent — engine labels surface the task, not toolchain chatter */
         });
-        String kotlincName = HostPlatform.isWindows() ? "kotlinc.bat" : "kotlinc";
+        String kotlincName = Os.isWindows() ? "kotlinc.bat" : "kotlinc";
         Path kotlinc = kotlinHome.resolve("bin").resolve(kotlincName);
         if (!Files.isRegularFile(kotlinc)) {
             throw new IllegalStateException("[build] logic: kotlinc not found at " + kotlinc);

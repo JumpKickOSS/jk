@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.util.DirKeys;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
@@ -107,17 +107,13 @@ public final class McpHistoryViews {
     }
 
     public static boolean bool(Map<String, Object> m, String k) {
-        Object v = m.get(k);
-        if (v instanceof Boolean b) return b;
-        return v != null && "true".equalsIgnoreCase(String.valueOf(v));
+        return Boolean.TRUE.equals(parseBool(m.get(k)));
     }
 
+    /** A JSON tool argument as a boolean: a real JSON {@code true}, or a string in jk's truth set. */
     public static @Nullable Boolean parseBool(Object raw) {
         if (raw == null) return null;
         if (raw instanceof Boolean b) return b;
-        String s = String.valueOf(raw).trim().toLowerCase(Locale.ROOT);
-        if (s.equals("true") || s.equals("1") || s.equals("yes")) return true;
-        if (s.equals("false") || s.equals("0") || s.equals("no")) return false;
-        return null;
+        return EnvValues.parseBool(String.valueOf(raw)).orElse(null);
     }
 }

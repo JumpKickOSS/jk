@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.DomXml;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.build.PluginCommandExec;
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -13,8 +15,6 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.ZipFile;
-import javax.xml.XMLConstants;
-import javax.xml.parsers.DocumentBuilderFactory;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
@@ -63,14 +63,10 @@ final class DeployCommand {
         Path keystore = DebugKeystore.ensure(DebugKeystore.stableDir(), Path.of(System.getProperty("java.home")));
         exec.label("bundletool build-apks");
         List<String> command = new ArrayList<>();
-        command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+        command.add(
+                JdkFingerprint.java(Path.of(System.getProperty("java.home"))).toString());
         command.add("-cp");
-        StringBuilder cp = new StringBuilder();
-        for (Path jar : ManifestStep.jarsIn(bundletool)) {
-            if (cp.length() > 0) cp.append(File.pathSeparatorChar);
-            cp.append(jar.toAbsolutePath());
-        }
-        command.add(cp.toString());
+        command.add(Classpaths.join(ManifestStep.jarsIn(bundletool)));
         command.add("com.android.tools.build.bundletool.BundleToolMain");
         command.add("build-apks");
         command.add("--bundle=" + aab.toAbsolutePath());
@@ -153,10 +149,7 @@ final class DeployCommand {
         if (!Files.isRegularFile(manifest)) {
             throw new IllegalStateException("no AndroidManifest.xml at " + manifest);
         }
-        var dbf = DocumentBuilderFactory.newInstance();
-        dbf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-        var doc = dbf.newDocumentBuilder().parse(manifest.toFile());
-        NodeList activities = doc.getElementsByTagName("activity");
+        NodeList activities = DomXml.parse(manifest).getElementsByTagName("activity");
         for (int i = 0; i < activities.getLength(); i++) {
             Element activity = (Element) activities.item(i);
             NodeList actions = activity.getElementsByTagName("action");

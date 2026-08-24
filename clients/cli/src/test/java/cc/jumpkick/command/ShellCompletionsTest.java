@@ -18,7 +18,7 @@ class ShellCompletionsTest {
 
     @Test
     void write_all_creates_scripts_under_data(@TempDir Path data) throws Exception {
-        // jk.env.JK_DATA_DIR overlay (same seam as IsolatedStoreExtension): keep the write out
+        // jk.env.JK_DATA_DIR overlay (same seam as IsolatedRootsExtension): keep the write out
         // of the suite-shared JK_HOME so parallel workers never race on data/ (JK-2184).
         String prev = System.getProperty("jk.env.JK_DATA_DIR");
         System.setProperty("jk.env.JK_DATA_DIR", data.toString());

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli;
 
+import cc.jumpkick.host.Os;
 import java.io.IOException;
 import java.lang.ProcessBuilder.Redirect;
 import java.util.ArrayList;
@@ -26,7 +27,7 @@ public final class OpenBrowser {
     /** Testable variant: {@code env} supplies {@code BROWSER} (and any future vars). */
     static boolean open(String url, Function<String, String> env) {
         if (url == null || url.isBlank()) return false;
-        List<String> cmd = command(url, env, System.getProperty("os.name", ""));
+        List<String> cmd = command(url, env, Os.name());
         if (cmd.isEmpty()) return false;
         try {
             new ProcessBuilder(cmd)

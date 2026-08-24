@@ -3,7 +3,7 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.plugin.PluginAot;
+import cc.jumpkick.host.AotCacheFiles;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -40,7 +40,7 @@ class HostWarmupTest {
         // Missing cache, no marker: train.
         assertThat(HostWarmup.missingKeyNeedsTrain(cache)).isTrue();
         // Prior train failed (sticky marker): do not re-queue warmup every cycle.
-        Files.createFile(PluginAot.noaotMarker(cache));
+        Files.createFile(AotCacheFiles.marker(cache));
         assertThat(HostWarmup.missingKeyNeedsTrain(cache)).isFalse();
         // Unresolvable key: conservative, still ask for work.
         assertThat(HostWarmup.missingKeyNeedsTrain(null)).isTrue();

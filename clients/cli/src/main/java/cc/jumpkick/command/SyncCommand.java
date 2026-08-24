@@ -53,8 +53,7 @@ public final class SyncCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 CommonOpts.cacheDir(),
-                Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
-                        .hide(),
+                CommonOpts.jdksDir(),
                 Opt.value("<url>", "Override declared repos with a single URL (for tests).", "--repo-url")
                         .hide(),
                 Opt.flag("Prepare for an offline build.", "--offline-prepare"),
@@ -64,7 +63,7 @@ public final class SyncCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws Exception {
         this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.offlinePrepare = in.isSet("offline-prepare");
         this.sources = in.isSet("sources");

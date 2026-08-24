@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.micronaut;
 
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;
@@ -289,18 +290,15 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
     }
 
     static String joinCp(List<Path> paths) throws IOException {
-        String sep = System.getProperty("path.separator", ":");
-        StringBuilder sb = new StringBuilder();
         for (Path p : paths) {
             // A missing entry silently shortening the classpath is how you get an AOT run that
-            // "succeeds" with half its optimizers unavailable.
+            // "succeeds" with half its optimizers unavailable. That check is Micronaut's policy,
+            // not the joiner's — Classpaths.join stays total, and this decides what to reject.
             if (!Files.exists(p)) {
                 throw new IOException("Micronaut AOT classpath entry does not exist: " + p.toAbsolutePath());
             }
-            if (sb.length() > 0) sb.append(sep);
-            sb.append(p.toAbsolutePath().normalize());
         }
-        return sb.toString();
+        return Classpaths.join(paths);
     }
 
     private static void copyTree(Path from, Path to) throws IOException {

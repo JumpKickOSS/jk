@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.command.ide.IdeChrome;
 import cc.jumpkick.command.ide.IdeGeneration;
@@ -64,8 +65,7 @@ public final class IdeCommand implements CliCommand {
                         "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.cache/jk.",
                         "--cache-dir")
                 .hide());
-        opts.add(Opt.value("<dir>", "Override the JDK install root (for tests).", "--jdks-dir")
-                .hide());
+        opts.add(CommonOpts.jdksDir());
         opts.add(
                 Opt.value("<dir>", "Override the IDE config root for SDK registration (for tests).", "--ide-config-dir")
                         .hide());

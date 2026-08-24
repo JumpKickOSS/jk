@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
@@ -252,15 +251,16 @@ public final class StatusCommand implements CliCommand {
     private static CacheSnapshot loadCacheSnapshot() {
         Path root = JkDirs.cache();
         try {
-            Path storeRoot = JkStores.storeRootFor(root);
-            if (!Files.isDirectory(root) && !Files.isDirectory(storeRoot)) {
+            if (!Files.isDirectory(root)) {
                 return new CacheSnapshot("—", "0", "0");
             }
-            // Exclusive sizes: leftover shared inodes under repos/ + sha256/ counted once.
+            // Cache only. The artifact store lives under JK_STORE_DIR, survives a nuke, and has
+            // its own report in `jk storage usage`; folding it in here made "Size on Disk" name a
+            // number no cache command can act on. Shared inodes inside the root count once.
             CacheCommand.SectionStats s = CacheCommand.sectionStats(root);
             return new CacheSnapshot(
-                    CacheCommand.fmtBytes(s.totalBytes()),
-                    formatCount(s.cas().files()),
+                    CacheCommand.fmtBytes(s.root().bytes()),
+                    formatCount(s.cacheCas().files()),
                     formatCount(s.actions().files()));
         } catch (IOException e) {
             return new CacheSnapshot("—", "—", "—");

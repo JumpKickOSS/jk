@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.tool;
 
-import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JdkFingerprint;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -61,12 +62,12 @@ public final class AppLauncher {
 
     /** The launcher file name for {@code binName} on this platform. */
     public static String launcherFileName(String binName) {
-        return binName + (HostPlatform.isWindows() ? ".cmd" : "");
+        return binName + (Os.isWindows() ? ".cmd" : "");
     }
 
     /** Script content for a classpath launcher — what {@link #install} writes. */
     public static String renderScript(Path javaHome, String mainClass, List<Path> classpathJars) {
-        return HostPlatform.isWindows()
+        return Os.isWindows()
                 ? renderWindows(javaHome, mainClass, classpathJars)
                 : renderPosix(javaHome, mainClass, classpathJars);
     }
@@ -74,7 +75,7 @@ public final class AppLauncher {
     /** Script content for a self-contained-jar launcher — what {@link #installJar} writes. */
     public static String renderJarScript(Path javaHome, Path jar) {
         String java = JdkFingerprint.java(javaHome).toString();
-        return HostPlatform.isWindows()
+        return Os.isWindows()
                 ? "@echo off\r\n\"" + java + "\" -jar \"" + jar.toAbsolutePath() + "\" %*\r\n"
                 : "#!/usr/bin/env bash\nexec "
                         + shellQuote(java)
@@ -87,7 +88,7 @@ public final class AppLauncher {
         return "#!/usr/bin/env bash\nexec "
                 + shellQuote(JdkFingerprint.java(javaHome).toString())
                 + " -cp "
-                + shellQuote(joinClasspath(cp))
+                + shellQuote(Classpaths.join(cp))
                 + " "
                 + mainClass
                 + " \"$@\"\n";
@@ -97,20 +98,10 @@ public final class AppLauncher {
         return "@echo off\r\n\""
                 + JdkFingerprint.java(javaHome)
                 + "\" -cp \""
-                + joinClasspath(cp)
+                + Classpaths.join(cp)
                 + "\" "
                 + mainClass
                 + " %*\r\n";
-    }
-
-    private static String joinClasspath(List<Path> classpath) {
-        String sep = HostPlatform.isWindows() ? ";" : ":";
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < classpath.size(); i++) {
-            if (i > 0) sb.append(sep);
-            sb.append(classpath.get(i).toAbsolutePath());
-        }
-        return sb.toString();
     }
 
     private static String shellQuote(String value) {
@@ -124,7 +115,7 @@ public final class AppLauncher {
     }
 
     private static void markExecutable(Path file) {
-        if (HostPlatform.isWindows()) return;
+        if (Os.isWindows()) return;
         try {
             Set<PosixFilePermission> perms = EnumSet.copyOf(Files.getPosixFilePermissions(file));
             perms.add(PosixFilePermission.OWNER_EXECUTE);

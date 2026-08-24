@@ -47,6 +47,7 @@ import org.openrewrite.java.JavaParser;
 import org.openrewrite.java.ShortenFullyQualifiedTypeReferences;
 import org.openrewrite.java.style.ImportLayoutStyle;
 import org.openrewrite.style.NamedStyles;
+import org.openrewrite.tree.ParseError;
 
 /**
  * {@code jk-formatter} plugin: optional OpenRewrite import pass, then Spotless. Host forks with a
@@ -56,8 +57,39 @@ import org.openrewrite.style.NamedStyles;
  * Palantir / Google / AOSP style. Matches the usual Spotless recipe; FQCN shortening is the
  * separate OpenRewrite {@code optimizeImports} pass, which resolves names against the compile
  * classpath the host sends ({@code cp} lines, compile role) and can shorten nothing without one.
+ *
+ * <p>Per-file status is one of {@code changed} / {@code clean} / {@code skipped} / {@code
+ * unparseable} / {@code error}, in that precedence — see {@link Rewrite#UNPARSEABLE} for why the
+ * fourth exists and why it sits below {@code changed}.
  */
 public final class CodeFormatter implements Plugin {
+
+    /**
+     * What the OpenRewrite pass did to one file.
+     *
+     * <p>{@link #UNPARSEABLE} is the state that used to be invisible. OpenRewrite reports a file it
+     * cannot handle <em>in band</em>: the parser returns a {@code ParseError} — most often because
+     * its Javadoc printer cannot round-trip the continuation line of a wrapped {@code @param} and
+     * its own print-idempotence check refuses the result — so the recipe has nothing to visit and
+     * produces no edit. That is byte-for-byte what "parsed fine, nothing to shorten" looks like, so
+     * the whole rewrite pass could be skipped for a file and the run would call it already clean.
+     * On jk's own tree that was 111 of 2,088 Java files reported as needing no work.
+     */
+    enum Rewrite {
+        /** The recipe produced an edit (written back in apply mode). */
+        CHANGED,
+        /** Parsed cleanly; the recipe had nothing to change. */
+        UNCHANGED,
+        /** OpenRewrite could not parse the file, so the rewrite pass did not run at all. */
+        UNPARSEABLE
+    }
+
+    /**
+     * The {@code msg} on an {@code unparseable} result. Deliberately constant: OpenRewrite's own
+     * text is a multi-kilobyte reprint diff, and a stamp replay could not reproduce it, so a run
+     * served from cache would say something different about the same file.
+     */
+    static final String UNPARSEABLE_MSG = "OpenRewrite could not parse this file; import shortening was skipped";
 
     @Override
     public PluginManifest manifest() {
@@ -117,6 +149,18 @@ public final class CodeFormatter implements Plugin {
                         continue;
                     }
 
+                    // A file OpenRewrite cannot parse is settled too — Spotless is done with it and
+                    // the parser will reject it again for the same reason — so it gets a stamp of
+                    // its own kind. Skipping the work while replaying the finding is the point: a
+                    // single "settled" stamp would erase the finding on the second run.
+                    String unparseableKey = stampCache != null
+                            ? stampCache.keyFor(originalBytes, FormatStampCache.Outcome.UNPARSEABLE)
+                            : null;
+                    if (unparseableKey != null && stampCache.contains(unparseableKey)) {
+                        emitFile(out, ref.file, "unparseable", UNPARSEABLE_MSG);
+                        continue;
+                    }
+
                     // Java 21+ unnamed classes (no type declaration) can't be parsed by
                     // palantir/google-java-format — skip them silently (after the stamp miss).
                     if (!ref.kotlin && isUnnamedClass(originalBytes)) {
@@ -127,9 +171,9 @@ public final class CodeFormatter implements Plugin {
                     }
 
                     // --- OpenRewrite pass (Java only) --------------------------------
-                    boolean rewriteChanged = false;
+                    Rewrite rewrite = Rewrite.UNCHANGED;
                     if (!ref.kotlin && rewriteRecipe != null) {
-                        rewriteChanged = applyRewrite(rewriteRecipe, ref.file, spec.apply, spec.compileClasspath);
+                        rewrite = applyRewrite(rewriteRecipe, ref.file, spec.apply, spec.compileClasspath);
                     }
 
                     // --- Spotless pass -----------------------------------------------
@@ -139,7 +183,12 @@ public final class CodeFormatter implements Plugin {
                     if (state.didNotConverge()) {
                         errors++;
                         emitFile(out, ref.file, "error", "formatter did not converge");
-                    } else if (rewriteChanged || spotlessChanged) {
+                    } else if (rewrite == Rewrite.CHANGED || spotlessChanged) {
+                        // `changed` outranks `unparseable`: --check exits non-zero on drift, and a
+                        // file that is BOTH unformatted and unparseable is still unformatted.
+                        // Demoting it would be a fresh way to pass a check that should fail. The
+                        // stamp below carries the unparseability forward, so the next run — after
+                        // an apply has settled the formatting — reports it.
                         changed++;
                         if (spec.apply && spotlessChanged) state.writeCanonicalTo(ref.file);
                         emitFile(out, ref.file, "changed", null);
@@ -147,9 +196,14 @@ public final class CodeFormatter implements Plugin {
                         // skips it. (In check mode the file wasn't written, so no stamp.)
                         if (spec.apply && stampCache != null) {
                             byte[] finalBytes = Files.readAllBytes(ref.file.toPath());
-                            String finalKey = stampCache.keyFor(finalBytes);
+                            String finalKey = stampCache.keyFor(finalBytes, outcomeOf(rewrite));
                             if (finalKey != null) stampCache.record(finalKey);
                         }
+                    } else if (rewrite == Rewrite.UNPARSEABLE) {
+                        // Spotless-clean but never rewritten. Reporting this as `clean` is the bug
+                        // this status exists to end.
+                        emitFile(out, ref.file, "unparseable", UNPARSEABLE_MSG);
+                        if (unparseableKey != null) stampCache.record(unparseableKey);
                     } else {
                         // File is already clean — stamp current content to skip next time.
                         clean++;
@@ -168,6 +222,14 @@ public final class CodeFormatter implements Plugin {
 
         // In --check mode, an unformatted (changed) file is a failure; errors always are. The engine
         // recomputes the changed/clean/error tallies from the per-file events, so `done` carries only exit.
+        //
+        // `unparseable` deliberately does NOT fail --check. It is a defect in OpenRewrite's Javadoc
+        // printer, not in the source under the cursor: no edit a contributor can make to the file
+        // clears it, so failing would be a red build with no fix. Silence was the bug; the per-file
+        // event and the summary count are the answer to it. Whether a *growing* count should fail
+        // is a per-project ratchet, and jk's own tree already has one — `checkNoFqcn` rejects any
+        // unlisted file carrying an FQCN, so a newly unparseable file that costs a shortening
+        // surfaces there, as a reviewable baseline diff.
         int exit = errors > 0 || (!spec.apply && changed > 0) ? 1 : 0;
         return exit;
     }
@@ -197,10 +259,11 @@ public final class CodeFormatter implements Plugin {
         return recipes.size() == 1 ? recipes.get(0) : new CompositeRecipe(recipes);
     }
 
-    /**
-     * Run the recipe against a single Java file. In apply mode the file is written back if the recipe
-     * produced changes. Returns whether the file was (or would be) changed.
-     */
+    /** The stamp kind that records {@code rewrite}: everything except a skipped pass is settled clean. */
+    private static FormatStampCache.Outcome outcomeOf(Rewrite rewrite) {
+        return rewrite == Rewrite.UNPARSEABLE ? FormatStampCache.Outcome.UNPARSEABLE : FormatStampCache.Outcome.CLEAN;
+    }
+
     /**
      * Import layout with the star-collapse thresholds effectively disabled. OpenRewrite's default
      * layout folds a package to {@code .*} at five imports, so the FQCN-shorten pass silently
@@ -221,9 +284,14 @@ public final class CodeFormatter implements Plugin {
                     .importStaticAllOthers()
                     .build())));
 
-    // Package-private: CodeFormatterRewriteTest drives it directly, so the classpath's effect on
-    // shortening is asserted without resolving the Spotless formatter jars.
-    static boolean applyRewrite(Recipe recipe, File file, boolean apply, List<Path> classpath) throws IOException {
+    /**
+     * Run the recipe against a single Java file. In apply mode the file is written back if the
+     * recipe produced changes.
+     *
+     * <p>Package-private: CodeFormatterRewriteTest drives it directly, so the classpath's effect on
+     * shortening is asserted without resolving the Spotless formatter jars.
+     */
+    static Rewrite applyRewrite(Recipe recipe, File file, boolean apply, List<Path> classpath) throws IOException {
         ExecutionContext ctx = new InMemoryExecutionContext(e -> {});
         List<SourceFile> parsed;
         try {
@@ -240,14 +308,21 @@ public final class CodeFormatter implements Plugin {
                     .parse(List.of(file.toPath()), file.toPath().getParent(), ctx)
                     .toList();
         } catch (Exception e) {
-            // Unparseable file (unnamed class, syntax error, …) — skip silently.
-            return false;
+            // The parser threw outright (unnamed class, I/O, …). Same visible outcome as the
+            // in-band ParseError below: the rewrite pass did not run on this file.
+            return Rewrite.UNPARSEABLE;
         }
-        if (parsed.isEmpty()) return false;
+        // OpenRewrite reports a file it could not parse *in band* — a ParseError is itself a
+        // SourceFile — so the list is non-empty, the recipe finds nothing to visit, and the
+        // changeset comes back empty. Reading that emptiness as "nothing to shorten" is exactly
+        // how a skipped pass came to be reported as an already-clean file.
+        if (parsed.isEmpty() || parsed.stream().anyMatch(sf -> sf instanceof ParseError)) {
+            return Rewrite.UNPARSEABLE;
+        }
 
         RecipeRun run = recipe.run(new InMemoryLargeSourceSet(parsed), ctx);
         List<Result> results = run.getChangeset().getAllResults();
-        if (results.isEmpty()) return false;
+        if (results.isEmpty()) return Rewrite.UNCHANGED;
 
         if (apply) {
             for (Result result : results) {
@@ -256,7 +331,7 @@ public final class CodeFormatter implements Plugin {
                 }
             }
         }
-        return true;
+        return Rewrite.CHANGED;
     }
 
     // -------------------------------------------------------------------------

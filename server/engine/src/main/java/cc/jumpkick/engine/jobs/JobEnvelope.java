@@ -258,12 +258,10 @@ public final class JobEnvelope {
                 // the shared pools all land in one place (see IoLedger).
                 IoLedger.open(host.runIo(eventRequestId));
                 JobOutcome outcome = runner.run(requestLine, cancelToken, writer);
-                // The one success law: the body's verdict is stamped here, nowhere else. A null
-                // verdict leaves the journal to the accumulated facts (failures, cancel stamps).
-                if (outcome != null) {
-                    BuildAccumulator acc = host.accumulatorOf(eventRequestId);
-                    if (acc != null) acc.setOutcome(outcome.success(), outcome.exitCode());
-                }
+                // The one success law: the body's verdict is stamped here, nowhere else. A
+                // declined verdict leaves the journal to the accumulated facts.
+                BuildAccumulator acc = host.accumulatorOf(eventRequestId);
+                if (acc != null) acc.stamp(outcome);
             } finally {
                 IoLedger.close();
                 // Kill leftovers first, THEN drain the Zinc session: if the worker is mid-compile

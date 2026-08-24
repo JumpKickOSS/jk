@@ -13,6 +13,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.BuildPlanner;
@@ -52,12 +53,11 @@ public final class TestVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String entryDirStr = Jsonl.str(requestLine, "dir");
             String cacheStr = Jsonl.str(requestLine, "cache");
-            String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
+            String jdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
             int workers = Jsonl.intValue(requestLine, "workers", 0);
             String profile = Jsonl.str(requestLine, "profile");
             boolean verbose = Jsonl.bool(requestLine, "verbose", false);
@@ -125,10 +125,13 @@ public final class TestVerb implements HostedVerb {
             host.releaseExclusiveSlot();
             host.accTests(
                     host.eventRequestId(), plan.get(BuildPlanner.TEST_RESULT).orElse(null));
-            return JobOutcome.of(result.success(), result.success() ? 0 : 1);
+            return result.success() ? JobOutcome.ok() : JobOutcome.failed(Exit.FAILURE);
         } catch (Exception e) {
+            // The run threw before it could rule. Declining here would hand the journal a run
+            // with no failure rows, which derives green — a test run that never finished,
+            // recorded as a success.
             host.sendQuiet(writer, host.requestFailedLine(null, e));
-            return null;
+            return JobOutcome.failed(Exit.FAILURE);
         }
     }
 }

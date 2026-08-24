@@ -14,6 +14,7 @@ import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.BuildGraph;
@@ -56,12 +57,11 @@ public final class SingleBuildVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String entryDirStr = Jsonl.str(requestLine, "dir");
             String cacheStr = Jsonl.str(requestLine, "cache");
-            String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
+            String jdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
             int workers = Jsonl.intValue(requestLine, "workers", 0);
             String profile = Jsonl.str(requestLine, "profile");
             boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
@@ -128,7 +128,7 @@ public final class SingleBuildVerb implements HostedVerb {
             host.releaseExclusiveSlot();
             host.accTests(
                     host.eventRequestId(), plan.get(BuildPlanner.TEST_RESULT).orElse(null));
-            JobOutcome outcome = JobOutcome.of(result.success(), result.success() ? 0 : 1);
+            JobOutcome outcome = result.success() ? JobOutcome.ok() : JobOutcome.failed(Exit.FAILURE);
             if (result.success() && barWeight > 0) {
                 long moduleMs = (System.nanoTime() - startNanos) / 1_000_000;
                 if (moduleMs > 0) {
@@ -142,8 +142,11 @@ public final class SingleBuildVerb implements HostedVerb {
             }
             return outcome;
         } catch (Exception e) {
+            // The build threw before it could rule. Declining here would hand the journal a run
+            // with no failure rows, which derives green — a build that never finished, recorded
+            // as a success.
             host.sendQuiet(writer, host.requestFailedLine(null, e));
-            return null;
+            return JobOutcome.failed(Exit.FAILURE);
         }
     }
 }

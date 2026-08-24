@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.quarkus;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.model.command.Exit;
 import io.quarkus.bootstrap.app.AugmentResult;
 import io.quarkus.bootstrap.app.CuratedApplication;
@@ -66,7 +67,8 @@ public final class QuarkusAugmentMain {
         // startup environment, so one `JK_OFFLINE=1 jk build` would silently pin every later build
         // in that session offline. The engine cannot set it yet — TaskExec exposes no offline()
         // accessor, so `--offline` stops at the engine's JkConfig (JK-2450 follow-up).
-        boolean offline = truthy(System.getProperty("jk.quarkus.offline"));
+        boolean offline =
+                EnvValues.parseBool(System.getProperty("jk.quarkus.offline")).orElse(false);
         System.err.println("jk-quarkus-augment: locked runtime closure="
                 + locked.artifacts().size() + (offline ? " offline" : "") + " pure-bootstrap");
 
@@ -215,16 +217,6 @@ public final class QuarkusAugmentMain {
         copyTree(layoutRoot, destApp);
         Files.copy(runJar, targetDir.resolve("quarkus-run.jar"), StandardCopyOption.REPLACE_EXISTING);
         System.out.println("jk-quarkus-augment: " + targetDir.resolve("quarkus-run.jar"));
-    }
-
-    /**
-     * jk's env/flag truth set ({@code 1/true/yes/on}), re-spelled here because {@code
-     * cc.jumpkick.config.EnvValues} lives in {@code shared/core} and no plugin can reach it.
-     */
-    private static boolean truthy(String raw) {
-        if (raw == null) return false;
-        String v = raw.trim().toLowerCase(Locale.ROOT);
-        return v.equals("1") || v.equals("true") || v.equals("yes") || v.equals("on");
     }
 
     private static String normalizePackageType(String raw) {

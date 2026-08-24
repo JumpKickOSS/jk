@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.ide;
 
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
@@ -73,7 +74,7 @@ public final class IdeSupport {
      */
     public static IdeModel build(Invocation in, IdeChrome chrome) throws IOException {
         Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
-        Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        Path jdksDir = CommonOpts.jdksDirValue(in);
         Path ideConfigDir = in.value("ide-config-dir").map(Path::of).orElse(null);
         return reconstruct(wireModel(in, chrome), cacheDir, jdksDir, ideConfigDir);
     }
@@ -94,7 +95,7 @@ public final class IdeSupport {
     public static IdeWireModel wireModel(Invocation in, IdeChrome chrome) throws IOException {
         GlobalOptions global = GlobalOptions.from(in);
         Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
-        Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        Path jdksDir = CommonOpts.jdksDirValue(in);
 
         Path startDir = global.workingDir();
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();

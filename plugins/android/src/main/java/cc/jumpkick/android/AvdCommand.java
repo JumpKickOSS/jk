@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.build.PluginCommandExec;
 import java.io.BufferedReader;
@@ -10,7 +11,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * {@code avd create|list|boot} — managed AVDs under the jk SDK root ({@code ANDROID_AVD_HOME}).
@@ -133,8 +133,7 @@ final class AvdCommand {
             exec.out("jk avd boot: the emulator component is not installed — " + "run `jk android sdk emulator` first");
             return 1;
         }
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (os.contains("linux") && !Files.exists(Path.of("/dev/kvm"))) {
+        if (Os.isLinux() && !Files.exists(Path.of("/dev/kvm"))) {
             exec.out("jk avd boot: /dev/kvm is unavailable — hardware acceleration is required "
                     + "for a usable emulator");
             return 1;

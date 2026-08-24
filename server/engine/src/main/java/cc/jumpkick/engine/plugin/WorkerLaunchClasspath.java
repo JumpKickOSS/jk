@@ -2,6 +2,8 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -10,7 +12,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Classpath used to fork a thin plugin worker: the worker jar plus the Maven runtime closure from
@@ -41,8 +42,7 @@ public final class WorkerLaunchClasspath {
     }
 
     public static String resolve(Path workerJar) {
-        String sep = System.getProperty("path.separator", ":");
-        return paths(workerJar).stream().map(Path::toString).collect(Collectors.joining(sep));
+        return Classpaths.join(paths(workerJar));
     }
 
     /**
@@ -62,7 +62,9 @@ public final class WorkerLaunchClasspath {
         Path cur = workerJar.toAbsolutePath().normalize().getParent();
         while (cur != null) {
             Path name = cur.getFileName();
-            if (name != null && "target".equals(name.toString()) && Files.isDirectory(cur.resolve("shared"))) {
+            if (name != null
+                    && BuildLayout.TARGET.equals(name.toString())
+                    && Files.isDirectory(cur.resolve("shared"))) {
                 return cur;
             }
             cur = cur.getParent();

@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.http.Http;
-import cc.jumpkick.jdk.HostPlatform;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -73,7 +73,7 @@ class ToolInstallerTest {
         assertThat(installed.home()).isEqualTo(tempDir.resolve("tools/maven/3.9.9"));
         assertThat(installed.home().resolve("bin/mvn")).exists();
         assertThat(installed.home().resolve("conf/settings.xml")).exists();
-        Path expectedBin = installed.home().resolve("bin").resolve(HostPlatform.isWindows() ? "mvn.cmd" : "mvn");
+        Path expectedBin = installed.home().resolve("bin").resolve(Os.isWindows() ? "mvn.cmd" : "mvn");
         assertThat(installed.binary()).isEqualTo(expectedBin);
     }
 

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.discovery;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JdkHit;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -28,8 +28,7 @@ public final class SystemProbe implements LocalToolProbe {
     private final boolean macOs;
 
     public SystemProbe() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        this.macOs = os.contains("mac");
+        this.macOs = Os.isDarwin();
         this.roots = macOs
                 ? List.of(Path.of("/Library/Java/JavaVirtualMachines"))
                 : List.of(Path.of("/usr/lib/jvm"), Path.of("/usr/java"));

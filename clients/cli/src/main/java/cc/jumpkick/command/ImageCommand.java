@@ -69,8 +69,7 @@ public final class ImageCommand implements CliCommand {
                                 "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.cache/jk.",
                                 "--cache-dir")
                         .hide(),
-                Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                        .hide(),
+                CommonOpts.jdksDir(),
                 CommonOpts.skipTests()));
         opts.addAll(CommonOpts.moduleSelection());
         opts.addAll(VariantSelection.options());
@@ -95,7 +94,7 @@ public final class ImageCommand implements CliCommand {
         this.tarballArg = in.value("tarball").orElse(null);
         this.dockerExecutableArg = in.value("docker-executable").orElse(null);
         this.cacheDirOverride = in.value("cache-dir").map(CliPaths::abs).orElse(null);
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.buildOpts = new BuildOptions();
         this.buildOpts.skipTests = in.isSet("skip-tests");
         this.global = GlobalOptions.from(in);

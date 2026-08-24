@@ -10,7 +10,6 @@ commons-compress = "1.28.0"
 cyclonedx-core = "12.2.0"
 graalvm-native = "0.10.4"
 graalvm-sdk = "25.0.0"
-jackson = "3.2.0"
 jgit = "7.6.0.202603022253-r"
 jline = "4.1.2"
 jib-core = "0.28.1"
@@ -38,7 +37,6 @@ lombok                 = { module = "org.projectlombok:lombok",                 
 tomlj                  = { module = "org.tomlj:tomlj",                              version.ref = "tomlj" }
 # Giter8 apply (engine-only; StringTemplate 4 is the Giter8 renderer)
 st4                    = { module = "org.antlr:ST4",                                version.ref = "st4" }
-jackson-databind       = { module = "tools.jackson.core:jackson-databind",          version.ref = "jackson" }
 
 # resolver
 maven-artifact         = { module = "org.apache.maven:maven-artifact",              version.ref = "maven-artifact" }

@@ -86,6 +86,51 @@ val checkCliNoParseTypes by tasks.registering {
 tasks.named("check") { dependsOn(checkCliRuntimeClasspath); dependsOn(checkCliNoParseTypes) }
 tasks.named("jar") { dependsOn(checkCliRuntimeClasspath); dependsOn(checkCliNoParseTypes) }
 
+// ---------------------------------------------------------------------------
+// JK-2453: a test that names the ambient state root must declare it throwaway.
+//
+// `clients/cli/build/test-jk-home` is ONE JK_HOME shared by all of the tier's parallel forks and by
+// every run before this one — no task cleans it, so `state/` is ambient input. A test that resolves
+// `JkDirs.state()` and then asserts on what it finds is asserting against the last run, not against
+// itself: `EngineAotCommandTest` planted an `engine-<version>-<16hex>.aot` fixture in the shared
+// `state/aot`, and a sibling fork's engine-AOT key sweep deleted it mid-assertion — three greens and
+// a red from the same bytes, for as long as the tier has existed.
+//
+// The rule is not "never touch the root", it is "name the root, declare the isolation":
+// `@IsolatedState` hands the class a per-method temp root through the `jk.env.*` seam in JkDirs.
+// File granularity is deliberate — the annotation is class-level, so a file that mentions the root
+// and not the annotation is exactly the violation.
+//
+// Scope is the STATE root only. The artifact store has a second spelling (`JkStores.store()`) and
+// two suites that deliberately prime the shared store rather than isolate it (JK-2451); ratcheting
+// that root needs those declared first, so this guard does not pretend to cover it.
+// ---------------------------------------------------------------------------
+val checkTestRootsDeclared by tasks.registering {
+    group = "verification"
+    description = "Fail when a :cli test reads the ambient state root without @IsolatedState"
+    val testJava = fileTree(layout.projectDirectory.dir("src/test/java")) { include("**/*.java") }
+    inputs.files(testJava).withPropertyName("testJava")
+    val stamp = layout.buildDirectory.file("guards/test-roots-declared.ok")
+    outputs.file(stamp)
+    doLast {
+        val accessors = listOf("JkDirs.state()", "JkDirs.builds()")
+        val hits = testJava.files.sorted().flatMap { f ->
+            val text = f.readText()
+            if (text.contains("@IsolatedState")) emptyList()
+            else accessors.filter { text.contains(it) }.map { "${f.name}: $it" }
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException(
+                    "The tier's JK_HOME is shared across forks and across runs, so a test that reads the "
+                            + "ambient state root inherits state instead of establishing it (JK-2453). "
+                            + "Annotate the class with @IsolatedState: " + hits)
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkTestRootsDeclared) }
+tasks.named("test") { dependsOn(checkTestRootsDeclared) }
+
 // Thin JVM client (installDist) — no engine on the classpath. Spawns jk-engine.jar via EngineInstall
 // / JK_ENGINE_EXE. Prefer the native image for production dist; this path is for Temurin-only CI.
 application {

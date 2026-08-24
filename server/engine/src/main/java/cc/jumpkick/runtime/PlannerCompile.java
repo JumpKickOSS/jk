@@ -9,10 +9,12 @@ import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
@@ -23,6 +25,7 @@ import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.GroovyCompile;
 import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.task.KotlinCompile;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -36,6 +39,159 @@ import java.util.function.Supplier;
 public final class PlannerCompile {
 
     private PlannerCompile() {}
+
+    // ---- compile-main's one derivation, shared with the forecast -------------------------
+    //
+    // `jk explain` prices compile-main by recomputing ActionKey.forJavac over a CompileRequest it
+    // builds itself. Every field of that request the build sets and the forecast does not is a key
+    // the two sides can never agree on — a phantom rebuild reported forever, or (running the other
+    // way) a stale artifact blessed. Six such drifts were live at once, and three of them were in
+    // this one request: scalaVersion, compilerClasspath and the Groovy stubs --source-path
+    // (JK-2479), joined by javaHome the moment forJavac started hashing it (JK-2460).
+    //
+    // A text guard can compare which FIELDS each side sets (checkForecastKeyParity arm B) but not
+    // which VALUES it puts in them, so the field list is only half the problem. These four methods
+    // are the other half: both sides call them, so the request is derived once and the question of
+    // whether the copies agree stops existing.
+
+    /**
+     * The {@code [build] extra-src} overlay roots plus plugin-contributed source roots
+     * ({@code [[contribute.source-roots]]} — grails-app/…). Variant overlays are folded in by
+     * {@code VariantApply} before this runs.
+     */
+    public static List<Path> extraSourceDirs(JkBuild project, Path moduleDir) {
+        List<Path> dirs = new ArrayList<>(CompileSupport.extraSrcDirs(project, moduleDir));
+        for (var root : PluginContributions.sourceRoots(project, moduleDir)) {
+            if (!root.resource()) dirs.add(moduleDir.resolve(root.dir()));
+        }
+        return dirs;
+    }
+
+    /**
+     * What {@code BuildPlanner.JAVA_SOURCES} holds: the module's {@code .java} plus the extra-src
+     * overlay, plus <em>every</em> {@code .scala} (a mixed Java+Scala module compiles through one
+     * Zinc session, so the Scala sources are javac's inputs too — JK-2320). {@code javaSeed} is the
+     * caller's already-walked {@code .java} list, so the common path does not walk twice.
+     */
+    public static List<Path> javaAndScalaSources(JkBuild project, Path moduleDir, boolean compact, List<Path> javaSeed)
+            throws IOException {
+        List<Path> extraSrcDirs = extraSourceDirs(project, moduleDir);
+        List<Path> java = javaSeed;
+        List<Path> scala = CompileSupport.collectScalaSources(moduleDir, compact);
+        if (!extraSrcDirs.isEmpty()) {
+            java = CompileSupport.withExtraSources(java, extraSrcDirs, ".java");
+            scala = CompileSupport.withExtraSources(scala, extraSrcDirs, ".scala");
+        }
+        if (scala.isEmpty()) return java;
+        List<Path> withScala = new ArrayList<>(java);
+        withScala.addAll(scala);
+        return withScala;
+    }
+
+    /**
+     * {@link #javaAndScalaSources} plus the generated roots compile-main folds in at execute time:
+     * plugin {@code contributesSources}, KSP output, and build-logic output. The build re-publishes
+     * this union as {@code JAVA_SOURCES} so write-stamp records the set the compile checked.
+     */
+    public static List<Path> mainJavaSources(
+            List<Path> javaAndScala, BuildLayout layout, PluginBuild.Declarations decls) throws IOException {
+        List<Path> generated = pluginContributedSources(layout, decls, ".java");
+        List<Path> kspGenerated = kspGeneratedSources(layout, ".java");
+        List<Path> logicGenerated = BuildLogicSupport.generatedSources(layout, ".java");
+        if (generated.isEmpty() && kspGenerated.isEmpty() && logicGenerated.isEmpty()) return javaAndScala;
+        List<Path> all = new ArrayList<>(javaAndScala);
+        all.addAll(generated);
+        all.addAll(kspGenerated);
+        all.addAll(logicGenerated);
+        return all;
+    }
+
+    /**
+     * Every fact compile-main's {@link CompileRequest} is derived from. {@code classpath} is the
+     * <em>base</em> compile classpath (lock + workspace siblings); {@link #mainCompileRequest}
+     * adds the sibling-language outputs, because which of those belong on it is part of the
+     * derivation and not a caller's decision.
+     */
+    public record MainCompile(
+            List<Path> sources,
+            List<Path> classpath,
+            List<Path> processorPath,
+            BuildLayout layout,
+            Path outputDir,
+            int release,
+            List<String> javacArgs,
+            Path javaHome,
+            boolean mixedKotlin,
+            boolean mixedGroovy,
+            Path groovyJar,
+            ScalaCompile.Setup scala) {}
+
+    /** compile-main's request — the build's javac invocation and the forecast's key, from one body. */
+    public static CompileRequest mainCompileRequest(MainCompile in) {
+        List<Path> classpath = new ArrayList<>(in.classpath());
+        // See Kotlin's output so Java can reference Kotlin types.
+        if (in.mixedKotlin()) classpath.add(in.layout().kotlinClassesDir());
+        if (in.mixedGroovy()) {
+            // Groovy's output, plus the version-matched groovy jar: every Groovy class implements
+            // groovy.lang.GroovyObject, which javac must resolve.
+            classpath.add(in.layout().groovyClassesDir());
+            if (in.groovyJar() != null) classpath.add(in.groovyJar());
+        }
+        if (in.scala() != null) {
+            for (Path lib : in.scala().libraryJars()) {
+                if (!classpath.contains(lib)) classpath.add(lib);
+            }
+        }
+        List<String> options = in.javacArgs();
+        if (in.mixedGroovy()) {
+            // The joint Groovy compile retained Java-visible stubs — put them on javac's
+            // sourcepath so Java→Groovy references resolve even before the real Groovy classes are
+            // visible; the assemble merge overwrites any stub-compiled .class with the real Groovy
+            // output afterwards.
+            Path stubs = in.layout().groovyStubsDir();
+            if (Files.isDirectory(stubs)) {
+                options = new ArrayList<>(options);
+                options.add("--source-path");
+                options.add(stubs.toAbsolutePath().toString());
+            }
+        }
+        CompileRequest.CompileRequestBuilder req = CompileRequest.builder()
+                .sources(in.sources())
+                .classpath(classpath)
+                .outputDir(in.outputDir())
+                .release(in.release())
+                .extraOptions(options)
+                .javaHome(in.javaHome())
+                .processorPath(in.processorPath());
+        if (in.scala() != null) {
+            req.scalaVersion(in.scala().version())
+                    .compilerClasspath(in.scala().compilerClasspath())
+                    .scalaLibraryJar(in.scala().libraryJar())
+                    .scalaCompilerJar(in.scala().compilerJar())
+                    .scalaBridgeJar(in.scala().bridgeJar());
+        }
+        return req.build();
+    }
+
+    /**
+     * compile-main's freshness-stamp inputs. The stamp is the cheap gate in front of the action
+     * key, so it has to move on the same facts: a scala-version bump must invalidate the stat-only
+     * fast path (JK-2295), which it only does if the resolved stdlib jars are in here.
+     */
+    public static List<Path> mainStampInputs(
+            List<Path> compileCp,
+            List<Path> processorCp,
+            boolean mixedKotlin,
+            boolean mixedGroovy,
+            BuildLayout layout,
+            Path groovyJar,
+            ScalaCompile.Setup scala) {
+        List<Path> inputs = mainStampClasspath(compileCp, processorCp, mixedKotlin, mixedGroovy, layout, groovyJar);
+        if (scala == null) return inputs;
+        List<Path> withScala = new ArrayList<>(inputs);
+        withScala.addAll(scala.libraryJars());
+        return withScala;
+    }
 
     static Task compileJavaStep(BuildPlanner.Ctx cx, PluginBuild.Declarations pluginDecls) {
         BuildPlanner.Inputs in = cx.in();
@@ -84,15 +240,9 @@ public final class PlannerCompile {
                     // JAVA_SOURCES already carries the java+scala union (incl. extra-src/plugin-root
                     // .scala) that PlannerSetup published — no need to re-walk the tree for .scala here
                     // (JK-2320). hasScala below reads it directly.
-                    List<Path> sources = javaSources(ctx);
-                    List<Path> generated = pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".java");
-                    List<Path> kspGenerated = kspGeneratedSources(ctx.require(LAYOUT), ".java");
-                    List<Path> logicGenerated = BuildLogicSupport.generatedSources(ctx.require(LAYOUT), ".java");
-                    if (!generated.isEmpty() || !kspGenerated.isEmpty() || !logicGenerated.isEmpty()) {
-                        sources = new ArrayList<>(sources);
-                        sources.addAll(generated);
-                        sources.addAll(kspGenerated);
-                        sources.addAll(logicGenerated);
+                    List<Path> declared = javaSources(ctx);
+                    List<Path> sources = mainJavaSources(declared, ctx.require(LAYOUT), pluginDecls);
+                    if (sources != declared) {
                         // Re-publish the union so write-stamp records the same input set
                         // this compile checked (else the fast freshness path never holds).
                         ctx.put(JAVA_SOURCES, sources);
@@ -105,22 +255,7 @@ public final class PlannerCompile {
                     }
                     @SuppressWarnings("unchecked")
                     List<Path> baseClasspath = (List<Path>) ctx.require(CLASSPATH);
-                    List<Path> classpath = baseClasspath;
-                    Path groovyJar = null;
-                    if (mixed) {
-                        // See Kotlin's output so Java can reference Kotlin types.
-                        classpath = new ArrayList<>(classpath);
-                        classpath.add(ctx.require(LAYOUT).kotlinClassesDir());
-                    }
-                    if (cx.mixedGroovy()) {
-                        // See Groovy's output so Java can reference Groovy types — plus the
-                        // version-matched groovy jar: every Groovy class implements
-                        // groovy.lang.GroovyObject, which javac must resolve.
-                        groovyJar = groovyCompileJar(ctx, cas);
-                        classpath = new ArrayList<>(classpath);
-                        classpath.add(ctx.require(LAYOUT).groovyClassesDir());
-                        classpath.add(groovyJar);
-                    }
+                    Path groovyJar = cx.mixedGroovy() ? groovyCompileJar(ctx, cas) : null;
                     @SuppressWarnings("unchecked")
                     List<Path> processorCp =
                             (List<Path>) ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
@@ -135,13 +270,15 @@ public final class PlannerCompile {
                             sources.stream().anyMatch(p -> p.toString().endsWith(".scala"));
                     ScalaCompile.Setup scalaSetup =
                             hasScala ? ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas) : null;
-                    // The shared stamp recipeforecast and write-stamp use it too.
-                    List<Path> stampInputs = mainStampClasspath(
-                            baseClasspath, processorCp, mixed, cx.mixedGroovy(), ctx.require(LAYOUT), groovyJar);
-                    if (scalaSetup != null) {
-                        stampInputs = new ArrayList<>(stampInputs);
-                        stampInputs.addAll(scalaSetup.libraryJars());
-                    }
+                    // The shared stamp recipe — the forecast and write-stamp use it too.
+                    List<Path> stampInputs = mainStampInputs(
+                            baseClasspath,
+                            processorCp,
+                            mixed,
+                            cx.mixedGroovy(),
+                            ctx.require(LAYOUT),
+                            groovyJar,
+                            scalaSetup);
                     if (!rerun
                             && FreshnessStamp.isFresh(
                                     javaOut, BuildStamps.JAVA, sources, stampInputs, ctx.require(RELEASE))) {
@@ -154,40 +291,19 @@ public final class PlannerCompile {
                     }
                     @SuppressWarnings("unchecked")
                     List<String> javacArgs = (List<String>) ctx.require(JAVAC_ARGS);
-                    if (cx.mixedGroovy()) {
-                        // The joint Groovy compile retained Java-visible stubs — put them on
-                        // javac's sourcepath so Java→Groovy references resolve even before the
-                        // real Groovy classes are visible; the assemble merge overwrites any
-                        // stub-compiled.class with the real Groovy output afterwards.
-                        Path stubs = ctx.require(LAYOUT).groovyStubsDir();
-                        if (Files.isDirectory(stubs)) {
-                            javacArgs = new ArrayList<>(javacArgs);
-                            javacArgs.add("--source-path");
-                            javacArgs.add(stubs.toAbsolutePath().toString());
-                        }
-                    }
-                    if (scalaSetup != null) {
-                        classpath = new ArrayList<>(classpath);
-                        for (Path lib : scalaSetup.libraryJars()) {
-                            if (!classpath.contains(lib)) classpath.add(lib);
-                        }
-                    }
-                    CompileRequest.CompileRequestBuilder req = CompileRequest.builder()
-                            .sources(sources)
-                            .classpath(classpath)
-                            .outputDir(javaOut)
-                            .release(ctx.require(RELEASE))
-                            .extraOptions(javacArgs)
-                            .javaHome(ctx.require(JAVA_HOME))
-                            .processorPath(processorCp);
-                    if (scalaSetup != null) {
-                        req.scalaVersion(scalaSetup.version())
-                                .compilerClasspath(scalaSetup.compilerClasspath())
-                                .scalaLibraryJar(scalaSetup.libraryJar())
-                                .scalaCompilerJar(scalaSetup.compilerJar())
-                                .scalaBridgeJar(scalaSetup.bridgeJar());
-                    }
-                    CompileRequest request = req.build();
+                    CompileRequest request = mainCompileRequest(new MainCompile(
+                            sources,
+                            baseClasspath,
+                            processorCp,
+                            ctx.require(LAYOUT),
+                            javaOut,
+                            ctx.require(RELEASE),
+                            javacArgs,
+                            ctx.require(JAVA_HOME),
+                            mixed,
+                            cx.mixedGroovy(),
+                            groovyJar,
+                            scalaSetup));
                     String taskId = ActionKey.qualifiedTaskId("compile-main", javaOut);
                     Path javaStateDir = CacheTree.ACTIONS
                             .under(in.cache())

@@ -15,10 +15,36 @@ tasks.register("integrationTest") {
     dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "integrationTest" } })
 }
 
+// JK-2498: `check`, not just `test`. Measured 2026-08-24: every build-failing guard in
+// jk.java-conventions is wired to both `check` and `jar`, and depending on `test` alone reached them
+// only *transitively* — a module's test classpath pulls its dependencies' jars, which pull their
+// guards. Nothing depends on `:cli`, `:formatter` or `:micronaut`, so nothing built their jars and
+// their guards never ran under the documented pre-merge bar. `:cli:checkNoFqcn` was red through a
+// green `checkAll` when this was written. Depend on `check` and the coupling stops being incidental.
 tasks.register("checkAll") {
     group = "verification"
-    description = "Unit test + integrationTest for the whole repo"
-    dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "test" } }, "integrationTest")
+    description = "check (unit test + every guard) + integrationTest for the whole repo"
+    dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "check" } }, "integrationTest")
+    dependsOn("checkGateCoverage")
+}
+
+// The gate's own coverage is a fact about the build, so it is checked rather than assumed: a module
+// that registers guards but has no `check` task is unreachable and would sit out the gate silently.
+tasks.register("checkGateCoverage") {
+    group = "verification"
+    description = "Fail when a module's guards are not reachable from checkAll"
+    doLast {
+        val guarded = subprojects.filter { p ->
+            p.tasks.names.any { it == "checkFileSizeCaps" || it.startsWith("checkNo")
+                    || it.startsWith("checkSingle") || it.startsWith("checkOne") }
+        }
+        val missing = guarded.filterNot { it.tasks.names.contains("check") }.map { it.path }
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                    "These modules register guards that checkAll cannot reach (JK-2498): " + missing)
+        }
+        logger.lifecycle("checkAll reaches the guards of " + guarded.size + " guarded modules")
+    }
 }
 
 // The shippable native-dist layout (docs/architecture.md "Ship layout"): the size-tuned native jk

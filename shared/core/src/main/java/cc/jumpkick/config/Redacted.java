@@ -12,14 +12,17 @@ import java.util.Objects;
  * A sink declared in terms of {@code Redacted} therefore cannot be handed unredacted worker
  * output — the omission is a compile error rather than a review comment.
  *
- * <p>That is the whole point (JK-2387). Three of the four emitters of the {@code workspace-finish}
- * event had simply forgotten the redaction call, and a {@code List<String>} parameter could not
- * tell them apart from the one that remembered.
+ * <p>That is the whole point. Three of the four emitters of the {@code workspace-finish} event had
+ * simply forgotten the redaction call, and a {@code List<String>} parameter could not tell them
+ * apart from the one that remembered.
  *
- * <p><b>Scope of the promise.</b> What this proves is exactly what {@link SecretRedactor} masks:
- * values whose effective resolution came from a {@code .env} file. Forge tokens, repository
- * credentials and other side-channel secrets have no redaction owner yet; widening the redactor is
- * JK-2406's job, and when it lands this type inherits the wider promise for free.
+ * <p><b>Scope of the promise.</b> This proves exactly what the {@link SecretRedactor} that minted
+ * it was told about: the effective value of every name a {@code .env} declares, plus — on the
+ * engine's event paths — the repository credentials the request resolved ({@link
+ * ResolvedSecrets}). It proves nothing about a secret nobody declared, because masking here is by
+ * declaration and never by name heuristic. A credential inside a URL and a credential on a process
+ * command line are separate concerns with separate owners: {@code SafeUri} for the first, a secret
+ * read from a file rather than passed as an argument for the second.
  */
 public final class Redacted {
 

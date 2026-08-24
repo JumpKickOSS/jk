@@ -3,6 +3,7 @@ package cc.jumpkick.engine.listen;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.Redacted;
+import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.TestFailureInfo;
@@ -14,8 +15,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Mask {@code .env}-sourced values in free-form text that leaves the engine. Failures fall
- * through to the original text — redaction must never break a build.
+ * Mask known secret values in free-form text that leaves the engine — the {@code .env}-declared
+ * ones and the repository credentials the request resolved, composed in {@link #redactorFor}.
+ * Failures fall through to the original text — redaction must never break a build.
  */
 public final class EventRedaction {
 
@@ -81,7 +83,7 @@ public final class EventRedaction {
             System.err.println("jk engine: secret redaction failed open ("
                     + e.getClass().getSimpleName()
                     + (e.getMessage() == null ? "" : ": " + e.getMessage())
-                    + ") — output may contain unmasked .env values for this run");
+                    + ") — output may contain unmasked secrets for this run");
         }
     }
 
@@ -91,9 +93,13 @@ public final class EventRedaction {
     }
 
     /**
-     * The redactor for work rooted at {@code dir} (session working dir when blank). Building one
-     * re-derives the env lookup — a workspace-root walk plus {@code .env} parsing — so per-line
-     * callers must hoist the result instead of calling {@link #redactEnv} per line.
+     * The redactor for work rooted at {@code dir} (session working dir when blank): the
+     * {@code .env}-declared secrets of that tree, plus the repository credentials this workspace's
+     * build resolved. Two sources, two owners, merged only here — a resolved credential is never
+     * pushed into {@link cc.jumpkick.config.EnvLookup} to make it visible.
+     *
+     * <p>Building one re-derives the env lookup — a workspace-root walk plus {@code .env} parsing —
+     * so per-line callers must hoist the result instead of calling {@link #redactEnv} per line.
      * Never null; throws only what {@link #redactEnv} already swallows.
      */
     public static SecretRedactor redactorFor(@Nullable String dir) {
@@ -104,7 +110,7 @@ public final class EventRedaction {
             root = SessionContext.current().workingDir();
         }
         if (root == null) return SecretRedactor.none();
-        return BuildEnv.secretsFor(root);
+        return ResolvedSecrets.plus(root, BuildEnv.secretsFor(root));
     }
 
     /**

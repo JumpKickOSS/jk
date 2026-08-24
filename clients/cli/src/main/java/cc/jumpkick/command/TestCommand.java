@@ -92,8 +92,7 @@ public final class TestCommand implements CliCommand {
                 Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers")));
         opts.addAll(ParallelTestsOpts.options());
         opts.add(CommonOpts.cacheDir());
-        opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                .hide());
+        opts.add(CommonOpts.jdksDir());
         opts.addAll(CommonOpts.moduleSelection());
         opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
                 .repeat());
@@ -123,7 +122,7 @@ public final class TestCommand implements CliCommand {
         this.profileName = in.value("profile").orElse(null);
         this.workers = in.value("workers").map(Integer::parseInt).orElse(null);
         this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.affectedSince = in.value("affected-since").orElse(null);
         this.modulesSpec = in.value("modules").orElse(null);
         this.global = GlobalOptions.from(in);

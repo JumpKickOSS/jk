@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.tool;
 
-import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.GraalLauncher;
+import cc.jumpkick.host.Os;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -145,9 +147,7 @@ public final class NativeImageDriver {
             // a CreateProcess (~8191 chars) we never assemble and an outer @argfile cannot shorten.
             // That inner command line is not measurable from here, which is why this is not
             // length-gated the way needsArgFile is: any multi-entry classpath collapses.
-            if (HostPlatform.isWindows()
-                    && !request.verbatim()
-                    && request.classpath().size() > 1) {
+            if (Os.isWindows() && !request.verbatim() && request.classpath().size() > 1) {
                 pathingJar = writePathingJar(tempDir(request), request.classpath());
                 if (pathingJar != null) {
                     effective = new Request(
@@ -196,7 +196,7 @@ public final class NativeImageDriver {
      * keeps a command line the user can copy out of a log and re-run.
      */
     static boolean needsArgFile(List<String> command) {
-        return HostPlatform.isWindows() && commandLineChars(command) > ARG_FILE_THRESHOLD;
+        return Os.isWindows() && commandLineChars(command) > ARG_FILE_THRESHOLD;
     }
 
     /** Rough CreateProcess command-line length (quoted the way the JVM typically does). */
@@ -244,7 +244,7 @@ public final class NativeImageDriver {
             return command;
         }
         command.add("-cp");
-        command.add(joinClasspath(request.classpath()));
+        command.add(Classpaths.join(request.classpath()));
         if (request.shared()) {
             command.add("--shared");
         }
@@ -303,99 +303,55 @@ public final class NativeImageDriver {
     }
 
     /**
-     * Locate the {@code native-image} binary, trying in order:
+     * Locate the {@code native-image} binary, searching in order:
      *
      * <ol>
-     *   <li>Windows: {@code <javaHome>/lib/svm/bin/native-image.exe} (avoids {@code cmd.exe} length limits)
-     *   <li>{@code <javaHome>/bin/native-image[.cmd]} — the project-pinned JDK
-     *   <li>{@code $GRAALVM_HOME} equivalents
-     *   <li>{@code native-image} on {@code $PATH}
+     *   <li>{@code javaHome} — the project-pinned JDK
+     *   <li>{@code $GRAALVM_HOME}
+     *   <li>every {@code $PATH} entry
      * </ol>
      *
-     * Returns the first candidate that exists as a regular file.
+     * <p>Which paths a home is searched at is {@link GraalLauncher}'s answer, not this class's: this
+     * method owns the search POLICY (which homes, in what order) and {@code GraalLauncher} owns the
+     * LAYOUT ({@code bin} vs {@code lib/svm/bin}, and the three filenames). Returns the first
+     * candidate that exists as a regular file.
      */
     public static Optional<Path> resolve(Path javaHome) {
-        boolean win = HostPlatform.isWindows();
-        String exe = win ? "native-image.cmd" : "native-image";
-
         // 1. Project-pinned JDK
-        if (javaHome != null) {
-            Optional<Path> pinned = resolveInHome(javaHome, win, exe);
-            if (pinned.isPresent()) return pinned;
-        }
+        Optional<Path> pinned = GraalLauncher.in(javaHome);
+        if (pinned.isPresent()) return pinned;
 
         // 2. $GRAALVM_HOME
         String graalHome = System.getenv("GRAALVM_HOME");
         if (graalHome != null && !graalHome.isBlank()) {
-            Optional<Path> fromEnv = resolveInHome(Path.of(graalHome), win, exe);
+            Optional<Path> fromEnv = GraalLauncher.in(Path.of(graalHome));
             if (fromEnv.isPresent()) return fromEnv;
         }
 
-        // 3. $PATH
+        // 3. $PATH — splitting it is this class's job; where the launcher sits under an entry is not.
         String pathEnv = System.getenv("PATH");
         if (pathEnv != null) {
             String sep = System.getProperty("path.separator", ":");
             for (String dir : pathEnv.split(sep, -1)) {
                 if (dir.isBlank()) continue;
-                Path p = Path.of(dir).resolve(exe);
-                if (Files.isRegularFile(p)) return Optional.of(p);
-                if (win) {
-                    // PATH entry may be bin/; also try sibling lib/svm/bin/native-image.exe
-                    Path svm = Path.of(dir)
-                            .resolveSibling("lib")
-                            .resolve("svm")
-                            .resolve("bin")
-                            .resolve("native-image.exe");
-                    if (Files.isRegularFile(svm)) return Optional.of(svm);
-                }
+                Optional<Path> onPath = GraalLauncher.onPathEntry(Path.of(dir));
+                if (onPath.isPresent()) return onPath;
             }
         }
 
         return Optional.empty();
     }
 
-    private static Optional<Path> resolveInHome(Path home, boolean win, String exe) {
-        if (win) {
-            Path svmExe = home.resolve("lib").resolve("svm").resolve("bin").resolve("native-image.exe");
-            if (Files.isRegularFile(svmExe)) return Optional.of(svmExe);
-        }
-        Path p = home.resolve("bin").resolve(exe);
-        return Files.isRegularFile(p) ? Optional.of(p) : Optional.empty();
-    }
-
-    /**
-     * The {@code native-image} launcher inside {@code javaHome} alone — no {@code $GRAALVM_HOME} or
-     * {@code $PATH} fallback (see {@link #resolve}). On Windows an existing {@code
-     * lib/svm/bin/native-image.exe} wins over the {@code bin} entry, which is a {@code .cmd} shim
-     * bound by {@code cmd.exe}'s own command-line limit.
-     */
-    public static Path nativeImageBinary(Path javaHome) {
-        boolean win = HostPlatform.isWindows();
-        if (win) {
-            Path svmExe = javaHome.resolve("lib").resolve("svm").resolve("bin").resolve("native-image.exe");
-            if (Files.isRegularFile(svmExe)) return svmExe;
-        }
-        return javaHome.resolve("bin").resolve(win ? "native-image.cmd" : "native-image");
-    }
-
     public static IOException notFoundError(Path javaHome) {
-        return new IOException("native-image binary not found.\n"
-                + "  Checked: "
-                + (javaHome != null ? javaHome.resolve("bin/native-image") + ", " : "")
-                + "$GRAALVM_HOME/bin/native-image, PATH\n"
+        return new IOException(GraalLauncher.NAME + " binary not found.\n"
+                + "  Checked ("
+                + GraalLauncher.searchedDirs()
+                + "): "
+                + (javaHome != null ? javaHome + ", " : "")
+                + "$GRAALVM_HOME, PATH\n"
                 + "  Install a GraalVM JDK and pin it:\n"
                 + "    jk jdk install graalvm-25\n"
                 + "    (or set $GRAALVM_HOME to your GraalVM installation)");
-    }
-
-    private static String joinClasspath(List<Path> classpath) {
-        String sep = System.getProperty("path.separator");
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < classpath.size(); i++) {
-            if (i > 0) sb.append(sep);
-            sb.append(classpath.get(i).toAbsolutePath());
-        }
-        return sb.toString();
     }
 
     /**

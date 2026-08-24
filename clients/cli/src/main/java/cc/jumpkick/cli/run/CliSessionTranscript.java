@@ -2,7 +2,9 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanResult;
 import java.io.ByteArrayOutputStream;
@@ -107,7 +109,9 @@ public final class CliSessionTranscript {
 
     static boolean disabled() {
         String env = System.getenv(ENV);
-        return env != null && (env.isBlank() || "off".equalsIgnoreCase(env) || "0".equals(env));
+        // Blank is this switch's own "off"; otherwise the jk-wide truth set decides.
+        return env != null
+                && (env.isBlank() || EnvValues.parseBool(env).filter(on -> !on).isPresent());
     }
 
     public Path file() {
@@ -361,7 +365,7 @@ public final class CliSessionTranscript {
                 announceWritten(p);
                 Path results = session.projectDir() == null
                         ? null
-                        : session.projectDir().resolve("target").resolve("jk-results.md");
+                        : session.projectDir().resolve(BuildLayout.TARGET).resolve("jk-results.md");
                 if (results != null && Files.isRegularFile(results)) {
                     System.err.println("Results: " + results);
                 }

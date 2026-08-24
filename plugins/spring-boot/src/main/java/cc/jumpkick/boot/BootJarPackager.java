@@ -209,14 +209,16 @@ public final class BootJarPackager {
 
     /**
      * One nested jar: its {@code BOOT-INF/lib} file name (original {@code artifact-version.jar},
-     * never a CAS hash), the file to copy, and whether it lands in the {@code
-     * snapshot-dependencies} layer.
+     * never a CAS hash), the file to copy, whether it lands in the {@code snapshot-dependencies}
+     * layer, and the coordinate group that disambiguates it from a same-named artifact in another
+     * group ({@code ""} for a workspace sibling, which has no coordinate).
      */
-    public record Lib(String fileName, Path jar, boolean snapshot) {
+    public record Lib(String fileName, Path jar, boolean snapshot, String group) {
 
         public Lib {
             Objects.requireNonNull(fileName, "fileName");
             Objects.requireNonNull(jar, "jar");
+            group = group == null ? "" : group;
         }
     }
 
@@ -247,66 +249,44 @@ public final class BootJarPackager {
             Objects.requireNonNull(loaderJar, "loaderJar");
             Objects.requireNonNull(outputJar, "outputJar");
             Objects.requireNonNull(startClass, "startClass");
-            Objects.requireNonNull(bootVersion, "bootVersion");
+            requireResolvedVersion(bootVersion);
             libs = libs == null ? List.of() : dedupeFileNames(libs);
             attributes = attributes == null ? Map.of() : Map.copyOf(attributes);
             buildInfo = buildInfo == null ? Map.of() : Map.copyOf(buildInfo);
             aotDirs = aotDirs == null ? List.of() : List.copyOf(aotDirs);
         }
 
-        /** Back-compat constructor: no build-info, no SBOM, no AOT output. */
-        public BootJarRequest(
-                Path classesDir,
-                List<Lib> libs,
-                Path loaderJar,
-                Path outputJar,
-                String startClass,
-                String bootVersion,
-                Map<String, String> attributes,
-                long timestampEpochSeconds) {
-            this(
-                    classesDir,
-                    libs,
-                    loaderJar,
-                    outputJar,
-                    startClass,
-                    bootVersion,
-                    attributes,
-                    Map.of(),
-                    null,
-                    List.of(),
-                    timestampEpochSeconds);
-        }
-
-        /** Back-compat constructor: build-info + SBOM, no AOT output. */
-        public BootJarRequest(
-                Path classesDir,
-                List<Lib> libs,
-                Path loaderJar,
-                Path outputJar,
-                String startClass,
-                String bootVersion,
-                Map<String, String> attributes,
-                Map<String, String> buildInfo,
-                byte[] sbom,
-                long timestampEpochSeconds) {
-            this(
-                    classesDir,
-                    libs,
-                    loaderJar,
-                    outputJar,
-                    startClass,
-                    bootVersion,
-                    attributes,
-                    buildInfo,
-                    sbom,
-                    List.of(),
-                    timestampEpochSeconds);
+        /**
+         * {@code Spring-Boot-Version} is a version a consumer reads, so a selector may not reach
+         * it. The declared {@code version} key is a selector — {@code latest}, {@code ^4},
+         * {@code =4.1.0} — and writing it verbatim shipped jars announcing
+         * {@code Spring-Boot-Version: latest}. The resolved closure is the only admissible source
+         * ({@link BootJarInputs}); this refuses the spellings that are unambiguously selectors.
+         *
+         * <p>It cannot refuse all of them: a bare major line ({@code 4}) is a caret floor to the
+         * resolver and a legal Maven version to everyone else, and no shape check can separate the
+         * two. That is precisely why the value must be resolved rather than validated.
+         */
+        private static void requireResolvedVersion(String bootVersion) {
+            Objects.requireNonNull(bootVersion, "bootVersion");
+            if (bootVersion.isBlank() || bootVersion.equals("latest") || !bootVersion.matches("[\\w.+-]+")) {
+                throw new IllegalArgumentException("Spring-Boot-Version must be a resolved version, not the selector \""
+                        + bootVersion + "\" — read it off the runtime closure");
+            }
         }
 
         /**
          * Two coordinates can share an {@code artifact-version.jar} name across groups; nested
-         * entries must be unique, so later collisions get their group prepended.
+         * entries must be unique, so later collisions get their coordinate group prepended —
+         * {@code com.example.b-util-1.0.jar}. The group is the fact that actually distinguishes
+         * them and the only one a reader can act on. A workspace sibling has no coordinate, and a
+         * group can in principle repeat a file name (two classifiers of one artifact), so an
+         * ordinal follows as the last resort: a counter that reads like a counter.
+         *
+         * <p>Never the jar's parent directory. Entries are served out of the content-addressed
+         * store, so that directory is two hex characters of a SHA-256 — unique enough by accident,
+         * meaningless to a reader, and content-derived, so bumping either colliding dependency
+         * renamed a nested entry and churned both index files.
          */
         private static List<Lib> dedupeFileNames(List<Lib> libs) {
             Set<String> seen = new LinkedHashSet<>();
@@ -314,13 +294,12 @@ public final class BootJarPackager {
             for (Lib lib : libs) {
                 Lib effective = lib;
                 if (!seen.add(lib.fileName())) {
-                    String prefixed = lib.jar().getParent() != null
-                            ? lib.jar().getParent().getFileName() + "-" + lib.fileName()
-                            : "dup-" + lib.fileName();
+                    String prefixed =
+                            lib.group().isEmpty() ? "dup-" + lib.fileName() : lib.group() + "-" + lib.fileName();
                     int n = 2;
                     String candidate = prefixed;
                     while (!seen.add(candidate)) candidate = prefixed + "." + n++;
-                    effective = new Lib(candidate, lib.jar(), lib.snapshot());
+                    effective = new Lib(candidate, lib.jar(), lib.snapshot(), lib.group());
                 }
                 out.add(effective);
             }

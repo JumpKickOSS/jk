@@ -8,6 +8,7 @@ import cc.jumpkick.engine.jobs.JobSession;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.listen.EventRedaction;
+import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanResult;
@@ -278,7 +279,7 @@ public final class SsePublisher {
             if (eventsWanted()) {
                 var body = JsonOut.object()
                         .put("schema", 1)
-                        .put("type", "workspace-progress")
+                        .put("type", EngineProtocol.WORKSPACE_PROGRESS)
                         .put("jid", requestId)
                         .put("dir", dir)
                         .put("numerator", num)
@@ -289,7 +290,7 @@ public final class SsePublisher {
                         .put("remainingMs", rem)
                         .put("R0", r0);
                 if (!Double.isNaN(pct)) body.put("progress", pct);
-                publishEvent("workspace-progress", withProgress(body, requestId), dashboardOnly);
+                publishEvent(EngineProtocol.WORKSPACE_PROGRESS, withProgress(body, requestId), dashboardOnly);
             }
             Double held = lastProgress(requestId);
             long pctMillis = held != null
@@ -372,11 +373,11 @@ public final class SsePublisher {
         if (!eventsWanted()) return;
         // Field names align with CLI JsonlShape (schema + type + task + group).
         publishEvent(
-                "task-start",
+                EngineProtocol.TASK_START,
                 withProgress(
                         JsonOut.object()
                                 .put("schema", 1)
-                                .put("type", "task-start")
+                                .put("type", EngineProtocol.TASK_START)
                                 .put("jid", requestId)
                                 .put("dir", dir)
                                 .put("task", step)
@@ -393,11 +394,11 @@ public final class SsePublisher {
             long requestId, String dir, String step, String phase, String status, long millis, boolean dashboardOnly) {
         if (!eventsWanted()) return;
         publishEvent(
-                "task-finish",
+                EngineProtocol.TASK_FINISH,
                 withProgress(
                         JsonOut.object()
                                 .put("schema", 1)
-                                .put("type", "task-finish")
+                                .put("type", EngineProtocol.TASK_FINISH)
                                 .put("jid", requestId)
                                 .put("dir", dir)
                                 .put("task", step)
@@ -415,11 +416,11 @@ public final class SsePublisher {
     public void publishLabel(long requestId, String dir, String step, String label) {
         if (!eventsWanted()) return;
         publishEvent(
-                "label",
+                EngineProtocol.LABEL,
                 withProgress(
                         JsonOut.object()
                                 .put("schema", 1)
-                                .put("type", "label")
+                                .put("type", EngineProtocol.LABEL)
                                 .put("jid", requestId)
                                 .put("dir", dir)
                                 .put("task", step)
@@ -435,11 +436,11 @@ public final class SsePublisher {
         // SSE stream is readable token-free on loopback. Idempotent for callers that
         // already masked.
         publishEvent(
-                "output",
+                EngineProtocol.OUTPUT,
                 withProgress(
                         JsonOut.object()
                                 .put("schema", 1)
-                                .put("type", "output")
+                                .put("type", EngineProtocol.OUTPUT)
                                 .put("jid", requestId)
                                 .put("dir", dir)
                                 .put("task", step)
@@ -571,11 +572,11 @@ public final class SsePublisher {
         }
         if (!eventsWanted()) return;
         publishEvent(
-                "progress",
+                EngineProtocol.PROGRESS,
                 withProgress(
                         JsonOut.object()
                                 .put("schema", 1)
-                                .put("type", "progress")
+                                .put("type", EngineProtocol.PROGRESS)
                                 .put("jid", requestId)
                                 .put("dir", dir)
                                 .put("numerator", numerator)
@@ -591,11 +592,11 @@ public final class SsePublisher {
     public void publishEta(long requestId, long millis) {
         if (!eventsWanted()) return;
         publishEvent(
-                "eta",
+                EngineProtocol.ETA,
                 withProgress(
                         JsonOut.object()
                                 .put("schema", 1)
-                                .put("type", "eta")
+                                .put("type", EngineProtocol.ETA)
                                 .put("jid", requestId)
                                 .put("millis", millis),
                         requestId));
@@ -617,11 +618,11 @@ public final class SsePublisher {
     public void publishModuleStart(long requestId, String dir, String coord, boolean dashboardOnly) {
         if (!eventsWanted()) return;
         publishEvent(
-                "module-start",
+                EngineProtocol.MODULE_START,
                 withProgress(
                         JsonOut.object()
                                 .put("schema", 1)
-                                .put("type", "module-start")
+                                .put("type", EngineProtocol.MODULE_START)
                                 .put("jid", requestId)
                                 .put("dir", dir)
                                 .put("coord", coord),
@@ -656,11 +657,11 @@ public final class SsePublisher {
             boolean dashboardOnly) {
         if (!eventsWanted()) return;
         publishEvent(
-                "module-finish",
+                EngineProtocol.MODULE_FINISH,
                 withProgress(
                         JsonOut.object()
                                 .put("schema", 1)
-                                .put("type", "module-finish")
+                                .put("type", EngineProtocol.MODULE_FINISH)
                                 .put("jid", requestId)
                                 .put("dir", dir)
                                 .put("coord", coord)
@@ -677,11 +678,11 @@ public final class SsePublisher {
         // Do not clear the workspace tracker here — modules finish many times per request.
         // Request teardown / finish owns final 100% and clearProgress.
         publishEvent(
-                "buildplan-finish",
+                EngineProtocol.BUILDPLAN_FINISH,
                 withProgress(
                         JsonOut.object()
                                 .put("schema", 1)
-                                .put("type", "buildplan-finish")
+                                .put("type", EngineProtocol.BUILDPLAN_FINISH)
                                 .put("jid", requestId)
                                 .put("dir", dir)
                                 .put("success", success),

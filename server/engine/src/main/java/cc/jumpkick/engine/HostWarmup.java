@@ -2,10 +2,12 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.compile.WorkerAotBootstrap;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
+import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.model.JkVersion;
@@ -15,6 +17,7 @@ import cc.jumpkick.util.AotSettings;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -47,17 +50,16 @@ public final class HostWarmup {
     }
 
     static boolean enabled(Path userConfig, Function<String, String> env, BooleanSupplier aot) {
-        String e = env != null ? env.apply("JK_AUTO_WARMUP") : null;
-        if (e != null && !e.isBlank()) {
-            String t = e.trim();
-            if (isOff(t)) return false;
-            if (isOn(t)) return true;
-        }
+        Optional<Boolean> fromEnv = env != null ? EnvValues.bool(env, "JK_AUTO_WARMUP") : Optional.empty();
+        if (fromEnv.isPresent()) return fromEnv.get();
         // [engine] auto-warmup = false
         try {
             var scan = TomlScan.scan(userConfig, "engine.auto-warmup");
-            String v = scan.get("engine.auto-warmup");
-            if (v != null && isOff(v.trim())) return false;
+            if (EnvValues.parseBool(scan.get("engine.auto-warmup"))
+                    .filter(on -> !on)
+                    .isPresent()) {
+                return false;
+            }
         } catch (RuntimeException ignored) {
         }
         // Kill-switch also covers worker train (mapping of existing caches still OK elsewhere).
@@ -86,7 +88,7 @@ public final class HostWarmup {
 
     /** Pure decision: a missing cache still needs train unless a sticky noaot marker blocks it. */
     static boolean missingKeyNeedsTrain(Path cache) {
-        return cache == null || !Files.exists(PluginAot.noaotMarker(cache));
+        return cache == null || !Files.exists(AotCacheFiles.marker(cache));
     }
 
     private static Path cachePath(String tool, Path host, PluginJar jar) {
@@ -101,7 +103,7 @@ public final class HostWarmup {
 
     private static boolean workerCachePresent(String tool, Path host, PluginJar jar) {
         try {
-            return PluginAot.usableCache(cachePath(tool, host, jar));
+            return AotCacheFiles.usable(cachePath(tool, host, jar));
         } catch (Exception e) {
             return false;
         }
@@ -183,19 +185,5 @@ public final class HostWarmup {
         } catch (RuntimeException e) {
             return null;
         }
-    }
-
-    private static boolean isOff(String raw) {
-        return "off".equalsIgnoreCase(raw)
-                || "false".equalsIgnoreCase(raw)
-                || "0".equals(raw)
-                || "no".equalsIgnoreCase(raw);
-    }
-
-    private static boolean isOn(String raw) {
-        return "on".equalsIgnoreCase(raw)
-                || "true".equalsIgnoreCase(raw)
-                || "1".equals(raw)
-                || "yes".equalsIgnoreCase(raw);
     }
 }

@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
@@ -82,9 +83,7 @@ public final class JdkUninstallCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(
-                Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
-                        .hide());
+        return List.of(CommonOpts.jdksDir());
     }
 
     @Override
@@ -136,7 +135,7 @@ public final class JdkUninstallCommand implements CliCommand {
     public int run(Invocation in) throws Exception {
         this.argument = in.positionals().isEmpty() ? null : in.positionals().get(0);
         this.assumeYes = in.isSet("yes");
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.global = GlobalOptions.from(in);
 
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();

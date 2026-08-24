@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.DomXml;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.nio.file.Files;
@@ -10,9 +11,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import javax.xml.XMLConstants;
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.transform.OutputKeys;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerFactory;
@@ -42,19 +40,6 @@ final class ResourceMerger {
         Map<String, String> xmlns = new TreeMap<>();
         boolean any = false;
 
-        DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
-        dbf.setNamespaceAware(false);
-        // Attacker-influenceable XML: an AAR comes from a downloaded third-party library, so a
-        // DOCTYPE is rejected outright rather than merely declining to fetch external entities —
-        // same posture as AndroidRepoFeed / PomParser / MavenMetadata / PomImporter.
-        dbf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-        dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-        dbf.setFeature("http://xml.org/sax/features/external-general-entities", false);
-        dbf.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-        dbf.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-        dbf.setExpandEntityReferences(false);
-        DocumentBuilder db = dbf.newDocumentBuilder();
-
         for (AndroidDeps.Aar aar : aars) {
             if (!aar.hasRes()) continue;
             any = true;
@@ -64,10 +49,7 @@ final class ResourceMerger {
                     String config = configDir.getFileName().toString();
                     if (config.equals("values") || config.startsWith("values-")) {
                         mergeValuesDir(
-                                db,
-                                configDir,
-                                valuesByConfig.computeIfAbsent(config, k -> new LinkedHashMap<>()),
-                                xmlns);
+                                configDir, valuesByConfig.computeIfAbsent(config, k -> new LinkedHashMap<>()), xmlns);
                     } else {
                         copyFirstWins(configDir, out.resolve(config));
                     }
@@ -78,7 +60,7 @@ final class ResourceMerger {
 
         for (var config : valuesByConfig.entrySet()) {
             writeMergedValues(
-                    db, config.getValue(), xmlns, out.resolve(config.getKey()).resolve("values.xml"));
+                    config.getValue(), xmlns, out.resolve(config.getKey()).resolve("values.xml"));
         }
         Files.createDirectories(out); // an all-values closure still needs the tree root to exist
         return out;
@@ -96,13 +78,13 @@ final class ResourceMerger {
         }
     }
 
-    private static void mergeValuesDir(
-            DocumentBuilder db, Path valuesDir, Map<String, Element> merged, Map<String, String> xmlns)
+    /** An AAR is a downloaded third-party library, so {@link DomXml} rejects a DOCTYPE in its resources. */
+    private static void mergeValuesDir(Path valuesDir, Map<String, Element> merged, Map<String, String> xmlns)
             throws Exception {
         try (var files = Files.list(valuesDir)) {
             for (Path file : (Iterable<Path>) files.sorted()::iterator) {
                 if (!Files.isRegularFile(file) || !file.toString().endsWith(".xml")) continue;
-                Document doc = db.parse(file.toFile());
+                Document doc = DomXml.parse(file);
                 Element root = doc.getDocumentElement();
                 if (!"resources".equals(root.getTagName())) continue;
                 var attrs = root.getAttributes();
@@ -126,9 +108,9 @@ final class ResourceMerger {
         return el.getTagName() + '/' + el.getAttribute("type") + '/' + el.getAttribute("name");
     }
 
-    private static void writeMergedValues(
-            DocumentBuilder db, Map<String, Element> entries, Map<String, String> xmlns, Path out) throws Exception {
-        Document doc = db.newDocument();
+    private static void writeMergedValues(Map<String, Element> entries, Map<String, String> xmlns, Path out)
+            throws Exception {
+        Document doc = DomXml.newDocument();
         Element root = doc.createElement("resources");
         for (var decl : xmlns.entrySet()) {
             root.setAttribute(decl.getKey(), decl.getValue());

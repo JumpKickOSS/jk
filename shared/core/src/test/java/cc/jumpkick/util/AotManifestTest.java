@@ -306,7 +306,7 @@ class AotManifestTest {
                         .gc("serial")
                         .build());
         // Sticky marker present, .aot file absent — the exact state after a failed engine train.
-        Files.writeString(dir.resolve("engine-0.12.0-ab12.noaot"), "");
+        Files.writeString(dir.resolve("engine-0.12.0-ab12.aot.noaot"), "");
 
         var listed = AotManifest.list(dir);
         AotManifest.Entry e = listed.stream()

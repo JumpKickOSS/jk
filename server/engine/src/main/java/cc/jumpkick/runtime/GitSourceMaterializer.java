@@ -11,6 +11,7 @@ import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.GitVersion;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.repo.MavenMetadata;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.util.GitUrl;
 import cc.jumpkick.util.JkDirs;
@@ -168,10 +169,15 @@ public final class GitSourceMaterializer {
         Files.writeString(pomPath, pomXml);
 
         // maven-metadata.xml lets the resolver enumerate this artifact's versions through the
-        // file:// repo (one version per source dir).
+        // file:// repo (one version per source dir). MavenMetadata is the one writer: a git tag is
+        // free-form text and reaches the version string verbatim (GitVersion.fromTag returns a
+        // non-version-like tag unchanged, and keeps a coercible tag's suffix), so a tag carrying
+        // `&` or `<` must be escaped here or the resolver cannot parse what we just wrote.
         Path metaPath = repo.resolve(group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml");
         Files.createDirectories(metaPath.getParent());
-        Files.writeString(metaPath, metadataXml(group, artifact, version));
+        Files.write(
+                metaPath,
+                MavenMetadata.empty(group, artifact).withVersion(version).render());
     }
 
     private static String deriveVersion(GitFetcher fetcher, GitSource source, String sha) throws IOException {
@@ -188,22 +194,5 @@ public final class GitSourceMaterializer {
 
     private static String shortSha(String sha) {
         return sha.length() > 12 ? sha.substring(0, 12) : sha;
-    }
-
-    private static String metadataXml(String group, String artifact, String version) {
-        return """
-                <?xml version="1.0" encoding="UTF-8"?>
-                <metadata>
-                  <groupId>%s</groupId>
-                  <artifactId>%s</artifactId>
-                  <versioning>
-                    <latest>%s</latest>
-                    <release>%s</release>
-                    <versions>
-                      <version>%s</version>
-                    </versions>
-                  </versioning>
-                </metadata>
-                """.formatted(group, artifact, version, version, version);
     }
 }

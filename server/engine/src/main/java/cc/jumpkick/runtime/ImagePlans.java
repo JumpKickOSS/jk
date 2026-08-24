@@ -401,6 +401,7 @@ public final class ImagePlans {
                 .configString("mainClass", chosen)
                 .configString("mode", tarballPath != null ? "tarball" : daemonMode ? "daemon" : "push");
         if (base != null) sw.configString("base", base);
+        ImageCredentials.write(sw, base, config, project, tarballPath == null && !daemonMode, layout.moduleRoot());
         // The jk cache root. The worker extracts a base JRE (50–200 MB) to train an AOT cache
         // against; that tree belongs under the root BASE_JRE's bound covers, not in the
         // module's target/, where nothing reclaims it and `jk clean` throws it away.
@@ -486,7 +487,7 @@ public final class ImagePlans {
         try {
             SpecWriter sw = imageWorkerSpec(
                     cache, project, layout, config, base, chosen, depJars, snapshotJars, classesDir, tarballPath);
-            Path spec = Files.createTempFile("jk-image-", ".spec");
+            Path spec = ImageCredentials.newSpecFile();
             try {
                 Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
                 String[] ref = {null};
@@ -737,9 +738,8 @@ public final class ImagePlans {
      * Colliding names are qualified with the group; a residual collision fails the build.
      */
     private static Map<Path, String> casJarNames(Path projectDir, Path cache) throws IOException {
-        Map<Path, String> names = new java.util.LinkedHashMap<>();
         Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
-        if (!Files.exists(lockPath)) return names;
+        if (!Files.exists(lockPath)) return Map.of();
         Cas cas = JkStores.cas(cache);
         Map<Path, Lockfile.Artifact> rows = new java.util.LinkedHashMap<>();
         for (Lockfile.Artifact pkg : LockfileReader.read(lockPath).artifacts()) {
@@ -749,8 +749,7 @@ public final class ImagePlans {
                     : pkg.checksum();
             rows.put(cas.pathFor(hex), pkg);
         }
-        names.putAll(jarNames(rows));
-        return names;
+        return jarNames(rows);
     }
 
     /** Pure naming half of {@link #casJarNames}. Package-visible for tests. */

@@ -8,6 +8,7 @@ import cc.jumpkick.engine.protocol.CacheInventoryAck;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactResolver;
@@ -293,16 +294,16 @@ public final class CacheInventoryOps {
 
     private static List<String> repoNames(Path reposRoot) {
         if (!Files.isDirectory(reposRoot)) {
-            return List.of("central", RepoArtifactResolver.JK_LOCAL);
+            return List.of(RepositorySpec.CENTRAL, RepoArtifactResolver.JK_LOCAL);
         }
         try (var s = Files.list(reposRoot)) {
             List<String> names = s.filter(Files::isDirectory)
                     .map(p -> p.getFileName().toString())
                     .sorted()
                     .toList();
-            return names.isEmpty() ? List.of("central", RepoArtifactResolver.JK_LOCAL) : names;
+            return names.isEmpty() ? List.of(RepositorySpec.CENTRAL, RepoArtifactResolver.JK_LOCAL) : names;
         } catch (IOException e) {
-            return List.of("central", RepoArtifactResolver.JK_LOCAL);
+            return List.of(RepositorySpec.CENTRAL, RepoArtifactResolver.JK_LOCAL);
         }
     }
 

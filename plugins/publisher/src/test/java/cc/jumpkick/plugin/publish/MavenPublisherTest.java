@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.publish.testkit.GpgTestFixture;
+import cc.jumpkick.repo.MavenMetadata;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -75,6 +76,12 @@ class MavenPublisherTest {
     private String metadataOnServer() {
         byte[] body = received.get("/repo/com/example/widget/maven-metadata.xml");
         return body == null ? null : new String(body, StandardCharsets.UTF_8);
+    }
+
+    /** The version list read back the way the resolver reads it — through the one owner. */
+    private List<String> versionsOnServer() {
+        return MavenMetadata.parse(received.get("/repo/com/example/widget/maven-metadata.xml"))
+                .versions();
     }
 
     private void publishVersion(String version) throws Exception {
@@ -210,7 +217,7 @@ class MavenPublisherTest {
         publishVersion("0.1.0");
 
         // The GET 404'd — absent metadata, so a single-version document is exactly right.
-        assertThat(MavenPublisher.parseVersions(metadataOnServer())).containsExactly("0.1.0");
+        assertThat(versionsOnServer()).containsExactly("0.1.0");
     }
 
     @Test
@@ -219,8 +226,34 @@ class MavenPublisherTest {
         publishVersion("0.2.0");
         publishVersion("0.3.0");
 
-        assertThat(MavenPublisher.parseVersions(metadataOnServer())).containsExactly("0.1.0", "0.2.0", "0.3.0");
+        assertThat(versionsOnServer()).containsExactly("0.1.0", "0.2.0", "0.3.0");
         assertThat(metadataOnServer()).contains("<latest>0.3.0</latest>");
+    }
+
+    /**
+     * The version list is read with a real parser, so what merely looks like a {@code <version>}
+     * is not one. A regex over the document text could not tell the difference, and a republish
+     * would resurrect a withdrawn version into the list it writes back.
+     */
+    @Test
+    void a_commented_out_version_is_not_republished_as_a_real_one() throws Exception {
+        received.put("/repo/com/example/widget/maven-metadata.xml", ("""
+                <?xml version="1.0" encoding="UTF-8"?>
+                <metadata>
+                  <groupId>com.example</groupId>
+                  <artifactId>widget</artifactId>
+                  <versioning>
+                    <versions>
+                      <version>0.1.0</version>
+                      <!-- withdrawn: <version>0.2.0</version> -->
+                    </versions>
+                  </versioning>
+                </metadata>
+                """).getBytes(StandardCharsets.UTF_8));
+
+        publishVersion("0.3.0");
+
+        assertThat(versionsOnServer()).containsExactly("0.1.0", "0.3.0");
     }
 
     /**
@@ -244,14 +277,35 @@ class MavenPublisherTest {
                 .hasMessageContaining("503");
 
         assertThat(metadataOnServer()).isEqualTo(before);
-        assertThat(MavenPublisher.parseVersions(metadataOnServer())).containsExactly("0.1.0", "0.2.0");
+        assertThat(versionsOnServer()).containsExactly("0.1.0", "0.2.0");
 
         // The 0.3.0 artifacts are up and immutable, so re-running once the blip clears is the whole
         // recovery — and it lands the merged list, not a truncated one.
         assertThat(received).containsKey("/repo/com/example/widget/0.3.0/widget-0.3.0.jar");
         getFailureStatus = 0;
         publishVersion("0.3.0");
-        assertThat(MavenPublisher.parseVersions(metadataOnServer())).containsExactly("0.1.0", "0.2.0", "0.3.0");
+        assertThat(versionsOnServer()).containsExactly("0.1.0", "0.2.0", "0.3.0");
+    }
+
+    /**
+     * A document that arrives but will not parse is the same state of ignorance as one that never
+     * arrived: we do not know the version list. Reading it with a real parser is what makes that
+     * knowable at all — the old regex found no matches in a corrupt document and could not tell it
+     * apart from an empty one, so it wrote the truncated list the abort exists to prevent.
+     */
+    @Test
+    void an_unparseable_existing_document_aborts_instead_of_being_overwritten() throws Exception {
+        publishVersion("0.1.0");
+        publishVersion("0.2.0");
+        byte[] corrupt = "<metadata><versioning><versions><version>0.1.0</vers".getBytes(StandardCharsets.UTF_8);
+        received.put("/repo/com/example/widget/maven-metadata.xml", corrupt);
+
+        assertThatThrownBy(() -> publishVersion("0.3.0"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("maven-metadata.xml")
+                .hasMessageContaining("re-run publish");
+
+        assertThat(received.get("/repo/com/example/widget/maven-metadata.xml")).isEqualTo(corrupt);
     }
 
     /**

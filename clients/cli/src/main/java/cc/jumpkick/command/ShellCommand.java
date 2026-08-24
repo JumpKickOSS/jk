@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -39,9 +40,7 @@ public final class ShellCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(
-                Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
-                        .hide());
+        return List.of(CommonOpts.jdksDir());
     }
 
     @Override
@@ -57,7 +56,7 @@ public final class ShellCommand implements CliCommand {
                     "requires an interactive terminal " + "(run it directly from your shell, not piped or scripted)");
             return Exit.CONFIG;
         }
-        Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        Path jdksDir = CommonOpts.jdksDirValue(in);
         Path dir = new GlobalOptions().workingDir();
         var origPath = System.getenv().getOrDefault("PATH", "");
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();

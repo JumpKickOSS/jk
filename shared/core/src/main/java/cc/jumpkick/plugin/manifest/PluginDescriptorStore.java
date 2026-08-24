@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.manifest;
 
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -28,7 +29,7 @@ public final class PluginDescriptorStore {
     private static final Map<String, PluginDescriptor> BY_SHA = new ConcurrentHashMap<>();
 
     public static Path storeDir(Path moduleDir) {
-        return moduleDir.resolve("target").resolve("plugin-manifests");
+        return moduleDir.resolve(BuildLayout.TARGET).resolve("plugin-manifests");
     }
 
     public static Path fileFor(Path moduleDir, String sha256Hex) {

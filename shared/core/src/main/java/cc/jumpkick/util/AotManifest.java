@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.util;
 
-import java.io.File;
+import cc.jumpkick.host.AotCacheFiles;
+import cc.jumpkick.host.Classpaths;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
@@ -21,7 +22,6 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.regex.Pattern;
 import lombok.Builder;
 
 /**
@@ -85,16 +85,8 @@ public final class AotManifest {
 
             /** Split a platform classpath string into entries. */
             public Builder classpathString(String cp) {
-                if (cp == null || cp.isBlank()) {
-                    this.classpath = List.of();
-                    return this;
-                }
-                String sep = File.pathSeparator;
-                List<String> parts = new ArrayList<>();
-                for (String p : cp.split(Pattern.quote(sep), -1)) {
-                    if (!p.isBlank()) parts.add(p);
-                }
-                this.classpath = List.copyOf(parts);
+                this.classpath =
+                        Classpaths.split(cp).stream().map(Path::toString).toList();
                 return this;
             }
         }
@@ -173,11 +165,7 @@ public final class AotManifest {
                 if ("pending".equals(me.getValue().status())) continue;
                 String file = me.getKey();
                 Path p = aotDir.resolve(file);
-                Path noaotSibling = aotDir.resolve(file + ".noaot");
-                Path noaotAlt = stemNoaot(aotDir, file);
-                if (!Files.exists(p) && !Files.exists(noaotSibling) && (noaotAlt == null || !Files.exists(noaotAlt))) {
-                    gone.add(file);
-                }
+                if (!Files.exists(p) && !Files.exists(AotCacheFiles.marker(p))) gone.add(file);
             }
             if (gone.isEmpty()) return;
             for (String g : gone) map.remove(g);
@@ -227,22 +215,12 @@ public final class AotManifest {
                         }
                     }
                     map.put(name, b.build());
-                } else if (name.endsWith(".aot.noaot") && Files.isRegularFile(p)) {
-                    // worker sticky marker: <file>.aot.noaot
-                    String primary = name.substring(0, name.length() - ".noaot".length());
+                } else if (AotCacheFiles.isMarker(name) && Files.isRegularFile(p)) {
+                    // Sticky refusal marker — engine and worker keys alike.
+                    String primary = AotCacheFiles.cacheOf(name);
                     if (!map.containsKey(primary)
                             || "pending".equals(map.get(primary).status())
                             || !Files.exists(aotDir.resolve(primary))) {
-                        map.put(primary, noaotRow(map.get(primary), primary));
-                    }
-                } else if (name.endsWith(".noaot")
-                        && !name.endsWith(".aot.noaot")
-                        && Files.isRegularFile(p)
-                        && name.startsWith("engine-")) {
-                    // engine sticky: engine-<ver>-<key>.noaot
-                    String stem = name.substring(0, name.length() - ".noaot".length());
-                    String primary = stem.endsWith(".aot") ? stem : stem + ".aot";
-                    if (!map.containsKey(primary) || !Files.exists(aotDir.resolve(primary))) {
                         map.put(primary, noaotRow(map.get(primary), primary));
                     }
                 }
@@ -275,14 +253,6 @@ public final class AotManifest {
     }
 
     // ---- internals --------------------------------------------------------------------------
-
-    private static Path stemNoaot(Path aotDir, String file) {
-        // engine uses engine-<ver>-<key>.noaot (strip .aot); workers use file.aot.noaot
-        if (file.endsWith(".aot")) {
-            return aotDir.resolve(file.substring(0, file.length() - ".aot".length()) + ".noaot");
-        }
-        return null;
-    }
 
     private static boolean blank(String s) {
         return s == null || s.isBlank();

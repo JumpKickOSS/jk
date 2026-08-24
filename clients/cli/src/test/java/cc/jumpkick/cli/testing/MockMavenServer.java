@@ -93,7 +93,16 @@ public final class MockMavenServer implements BeforeEachCallback, AfterEachCallb
         served.put(mavenPath(group, artifact, version, "jar"), bytes);
     }
 
-    /** Serve a compact {@code maven-metadata.xml} listing {@code versions} for the artifact. */
+    /**
+     * Serve a compact {@code maven-metadata.xml} listing {@code versions} for the artifact.
+     *
+     * <p>Hand-written on purpose, and not routed through {@code MavenMetadata}:
+     * this class impersonates a third-party Maven repository, which does not use jk's writer. The
+     * shape here — no XML prolog, no {@code <latest>}/{@code <release>} — is deliberately unlike
+     * what jk emits, and that is what makes it independent coverage of jk's reader. Generating the
+     * fixture from the code under test would let a broken writer produce a document its own broken
+     * reader accepts.
+     */
     public void registerMetadata(String group, String artifact, String... versions) {
         StringBuilder xml = new StringBuilder("<metadata><groupId>")
                 .append(group)

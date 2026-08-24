@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.io.InputStream;
@@ -345,7 +346,7 @@ final class WorkspaceFileAccess {
      */
     private static boolean isTargetOutputDir(Path dir) {
         Path name = dir.getFileName();
-        if (name == null || !name.toString().equals("target")) return false;
+        if (name == null || !name.toString().equals(BuildLayout.TARGET)) return false;
         Path parent = dir.getParent();
         if (parent == null) return false;
         return isModuleRoot(parent) && !isModuleRoot(dir);

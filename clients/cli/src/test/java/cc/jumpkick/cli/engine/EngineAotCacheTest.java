@@ -9,6 +9,7 @@ import cc.jumpkick.cli.engine.EngineSpawn.EngineArtifact;
 import cc.jumpkick.cli.engine.EngineSpawn.EngineJdk;
 import cc.jumpkick.cli.engine.EngineSpawn.EngineTarget;
 import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.util.AotManifest;
 import java.io.IOException;
@@ -17,7 +18,17 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** The pure AOT-cache decision logic: key derivation, mode selection, and log-scan detection. */
+/**
+ * The pure AOT-cache decision logic: key derivation, mode selection, and log-scan detection.
+ *
+ * <p>{@link IsolatedState} because {@code aotCachePath} keys off the @TempDir {@code paths} but
+ * resolves the cache dir from the ambient {@code JkDirs.state()} — by design, one AOT home per
+ * machine — and then sweeps every {@code engine-<version>-<16hex>} key that is not the one it just
+ * derived. Against the tier's shared {@code test-jk-home} that meant each run leaked a manifest row
+ * per synthetic jar (268 by the time JK-2453 was filed), deleted the tier's real 29&nbsp;MB engine
+ * AOT cache, and raced sibling forks that had planted a fixture of the same shape.
+ */
+@IsolatedState
 class EngineAotCacheTest {
 
     private static EngineJdk temurin(String version) {
@@ -74,8 +85,7 @@ class EngineAotCacheTest {
         Path jar = jar(dir, "jk-engine-1.jar", "aaa");
 
         Path current = EngineClient.aotCachePath(paths, jar, temurin("25.0.3"));
-        Path currentMarker =
-                current.resolveSibling(current.getFileName().toString().replaceAll("\\.aot$", "") + ".noaot");
+        Path currentMarker = AotCacheFiles.marker(current);
         // A marker for the CURRENT key must survive; pre-create it and confirm.
         Files.writeString(currentMarker, "");
         EngineClient.aotCachePath(paths, jar, temurin("25.0.3")); // second call performs the sweep again
@@ -192,6 +202,12 @@ class EngineAotCacheTest {
     @Test
     void log_scan_detects_aot_markers(@TempDir Path dir) throws IOException {
         assertThat(EngineClient.scanLogForAotError(write(dir, "a.log", "[0.0s][error][aot] boom\n")))
+                .isTrue();
+        // -Xlog pads the level field to the widest enabled level, so a real error arrives as
+        // "[error  ]" whenever warnings are on too. Testing for a literal "[error][aot]" missed
+        // the common shape: the trainer saw the refusal and the engine did not.
+        assertThat(EngineClient.scanLogForAotError(
+                        write(dir, "e.log", "[0.004s][error  ][aot] Unable to map shared spaces\n")))
                 .isTrue();
         assertThat(EngineClient.scanLogForAotError(
                         write(dir, "b.log", "Mismatched values for property jdk.module.addmods: ...\n")))

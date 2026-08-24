@@ -8,6 +8,14 @@ import java.util.function.Function;
 /**
  * Lenient {@code JK_*} env coercion. Booleans: {@code 1/true/yes/on} vs {@code 0/false/no/off}
  * (case-insensitive); anything else including blank → empty. Sits above file layers, below CLI flags.
+ *
+ * <p>It lives in {@code :host} rather than beside the rest of {@code cc.jumpkick.config}, which is
+ * in {@code :core}, because a truth set only works if <em>every</em> reader can reach it. In
+ * {@code :core} it was invisible to {@code :jk-api} (which {@code :core} depends on, so the edge
+ * cannot be reversed) and to all sixteen forked plugin workers, and both re-spelled it by hand —
+ * which is how {@code CI=yes} came to select a profile in one reader and not the next. {@code
+ * :host} is the one module below everything, so nothing is out of reach of it. JDK-only, no I/O:
+ * it meets that module's bar.
  */
 public final class EnvValues {
 

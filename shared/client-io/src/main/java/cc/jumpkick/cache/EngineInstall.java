@@ -2,6 +2,7 @@
 package cc.jumpkick.cache;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.util.AppInstallConfig;
@@ -199,7 +200,7 @@ public final class EngineInstall {
     }
 
     public static void installBinaries(Path clientSource, Path binDir) throws IOException {
-        installBinaries(clientSource, binDir, windowsOs());
+        installBinaries(clientSource, binDir, Os.isWindows());
     }
 
     static void installBinaries(Path clientSource, Path binDir, boolean windows) throws IOException {
@@ -589,10 +590,6 @@ public final class EngineInstall {
         } catch (IOException e) {
             return 0L;
         }
-    }
-
-    private static boolean windowsOs() {
-        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
     }
 
     private static void makeExecutable(Path p) {

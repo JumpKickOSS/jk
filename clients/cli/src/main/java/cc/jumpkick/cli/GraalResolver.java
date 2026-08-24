@@ -5,6 +5,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
@@ -24,10 +25,11 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Resolves {@code bin/native-image}'s GraalVM home for {@code jk native} / native {@code jk
+ * Resolves the GraalVM home that owns {@code native-image} for {@code jk native} / native {@code jk
  * install}: explicit {@code [native].graal} pin (auto-install), else project JDK /
  * {@code $GRAALVM_HOME} / {@code PATH}, else prompt or install. Run before the progress UI; memoized
- * by spec.
+ * by spec. Where the launcher sits under a home — and which home a launcher belongs to — is
+ * {@link GraalLauncher}'s answer, not this class's.
  */
 public final class GraalResolver {
 
@@ -111,16 +113,31 @@ public final class GraalResolver {
             if (javaHome != null && !javaHome.isBlank()) projectJavaHome = Path.of(javaHome);
         }
         Optional<Path> binary = NativeImageDriver.resolve(projectJavaHome);
-        if (binary.isPresent()) {
-            // Hand the step the GraalVM home that owns native-image (.../bin/native-image).
-            Path bin = binary.get();
-            return bin.getParent() != null && bin.getParent().getParent() != null
-                    ? bin.getParent().getParent()
-                    : projectJavaHome;
-        }
+        if (binary.isPresent()) return graalHomeOf(binary.get(), projectJavaHome);
 
         // 3. Missing — offer Oracle GraalVM (prompt / --yes / non-TTY fail).
         return offerOracleGraalVm(projectJavaHome, registry);
+    }
+
+    /**
+     * The GraalVM home that OWNS {@code launcher} — {@code BuildPlanner.nativeStep} wants the home,
+     * and {@link NativeImageDriver#resolve} found the launcher.
+     *
+     * <p>This used to be a parent-of-parent at the call site, which is right for {@code
+     * <home>/bin/native-image} and wrong for {@code <home>/lib/svm/bin/native-image.exe} — a path the
+     * driver can and does return on Windows, and which the fixed depth turned into {@code
+     * <home>/lib/svm}, a directory that is not a home. {@link GraalLauncher#homeOf} is the declared
+     * inverse of the search that produced the path, so it knows both layouts and neither call site
+     * has to.
+     *
+     * <p>{@code fallback} — the pinned JDK — is used when the launcher sits somewhere {@code
+     * GraalLauncher} does not recognise, e.g. a bare {@code $PATH} directory that is not a GraalVM
+     * {@code bin}. There is no home to name in that case, and {@code PlannerNative} re-searches
+     * {@code $GRAALVM_HOME} and {@code $PATH} when the home it is handed turns out not to hold a
+     * launcher.
+     */
+    static Path graalHomeOf(Path launcher, Path fallback) {
+        return GraalLauncher.homeOf(launcher).orElse(fallback);
     }
 
     private Path offerOracleGraalVm(Path searchedJavaHome, JdkRegistry registry) {

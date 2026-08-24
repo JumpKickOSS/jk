@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.compile.KotlincDriver;
+import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.KotlincRequest;
-import cc.jumpkick.compile.KotlincResult;
+import cc.jumpkick.compile.WorkerCompileDriver;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TomlValues;
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
@@ -82,7 +85,7 @@ public final class BuildLogicSupport {
             String logic = b.getString("logic");
             if (logic != null && !logic.isBlank()) {
                 String n = logic.trim().toLowerCase(Locale.ROOT);
-                if (n.equals("off") || n.equals("false") || n.equals("none") || n.equals("disable")) {
+                if (EnvValues.parseBool(n).filter(on -> !on).isPresent() || n.equals("none") || n.equals("disable")) {
                     return Optional.empty();
                 }
                 logicRel = logic.trim();
@@ -636,7 +639,7 @@ public final class BuildLogicSupport {
                 .extraArgs(List.of("-no-stdlib"))
                 .moduleName("jk-build-logic")
                 .build();
-        KotlincResult result = new KotlincDriver().compile(req);
+        CompileResult result = WorkerCompileDriver.compile(req);
         if (!result.success()) {
             String out = result.output() == null ? "" : result.output().strip();
             throw new IllegalStateException("[build] logic: kotlinc failed" + (out.isEmpty() ? "" : ":\n" + out));
@@ -675,17 +678,20 @@ public final class BuildLogicSupport {
 
     private static int runMain(Path classes, Path apiCp, Path kotlinStdlib, String main, Path projectDir, Path outDir)
             throws IOException, InterruptedException {
-        String javaBin = Path.of(System.getProperty("java.home"), "bin", "java").toString();
-        String sep = java.io.File.pathSeparator;
-        StringBuilder cp = new StringBuilder(classes.toString());
-        if (apiCp != null && Files.exists(apiCp)) {
-            cp.append(sep).append(apiCp);
-        }
-        if (kotlinStdlib != null && Files.exists(kotlinStdlib)) {
-            cp.append(sep).append(kotlinStdlib);
-        }
+        String javaBin = JdkFingerprint.java(JavaHomes.runningJavaHome()).toString();
+        List<Path> cp = new ArrayList<>();
+        cp.add(classes);
+        if (apiCp != null && Files.exists(apiCp)) cp.add(apiCp);
+        if (kotlinStdlib != null && Files.exists(kotlinStdlib)) cp.add(kotlinStdlib);
         ProcessBuilder pb = new ProcessBuilder(
-                javaBin, "-cp", cp.toString(), main, "--project", projectDir.toString(), "--out", outDir.toString());
+                javaBin,
+                "-cp",
+                Classpaths.join(cp),
+                main,
+                "--project",
+                projectDir.toString(),
+                "--out",
+                outDir.toString());
         pb.redirectErrorStream(true);
         Process p = cc.jumpkick.engine.JobWorkers.start(pb);
         String log = new String(p.getInputStream().readAllBytes());

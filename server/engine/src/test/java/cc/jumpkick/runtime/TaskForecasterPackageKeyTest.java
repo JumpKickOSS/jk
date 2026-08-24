@@ -42,7 +42,7 @@ class TaskForecasterPackageKeyTest {
         actionCache.cas().put(bytes, sha);
 
         Path wiped = tmp.resolve("target/sibling.jar"); // does not exist (post-clean)
-        String recovered = TaskForecaster.fingerprintJarOrCached(
+        String recovered = PackagingKeys.fingerprintJarOrCached(
                 wiped, actionCache, Map.of(wiped.toAbsolutePath().normalize(), sha));
 
         // Live-build form: the same content on disk.
@@ -90,7 +90,7 @@ class TaskForecasterPackageKeyTest {
         Path b = Files.writeString(tmp.resolve("b.jar"), "b-bytes");
         List<Path> depJars = List.of(b, a); // declaration order, not sorted: both sides must sort
 
-        assertThat(TaskForecaster.fingerprintDepJars(depJars, null, Map.of()))
+        assertThat(PackagingKeys.fingerprintDepJars(depJars, null, Map.of()))
                 .isEqualTo(ClasspathFingerprint.of(depJars));
     }
 }

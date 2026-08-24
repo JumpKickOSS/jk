@@ -78,12 +78,9 @@ public final class JkConfigLoader {
                 scanBool(scan, "config.build-output"));
     }
 
-    /** A scanned TOML boolean: strictly {@code true}/{@code false}, anything else = absent. */
+    /** A scanned {@code jk.toml} boolean, per the jk-wide truth set; anything else = absent. */
     private static Optional<Boolean> scanBool(TomlScan scan, String key) {
-        String v = scan.get(key);
-        if ("true".equalsIgnoreCase(v)) return Optional.of(true);
-        if ("false".equalsIgnoreCase(v)) return Optional.of(false);
-        return Optional.empty();
+        return EnvValues.parseBool(scan.get(key));
     }
 
     /** Build a config layer from environment variables. */

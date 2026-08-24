@@ -17,6 +17,7 @@ import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildService;
@@ -87,8 +88,7 @@ public final class CompileVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 String profile = Jsonl.str(requestLine, "profile");
@@ -164,14 +164,15 @@ public final class CompileVerb implements HostedVerb {
                         session,
                         () -> CompilePlans.compileBuildPlan(
                                 session.workingDir(), session.cacheDir(), profile, verbose));
-                host.streamSinglePlan(plan, session, writer, result -> ProtoEvents.planFinish(dir, result.success()));
+                return host.streamSinglePlan(
+                        plan, session, writer, result -> ProtoEvents.planFinish(dir, result.success()));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
+                return JobOutcome.failed(Exit.FAILURE);
             }
-
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

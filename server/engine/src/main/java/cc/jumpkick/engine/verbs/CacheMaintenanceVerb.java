@@ -8,12 +8,14 @@ import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.CachePlans;
 import cc.jumpkick.util.JkDirs;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class CacheMaintenanceVerb implements HostedVerb {
 
@@ -55,8 +57,10 @@ public final class CacheMaintenanceVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+        // The maintenance body runs under two locks and cannot hand its verdict back through a
+        // void Runnable; this is where it lands.
+        AtomicReference<JobOutcome> verdict = new AtomicReference<>(JobOutcome.declined());
         try {
             String op = String.valueOf(Jsonl.str(requestLine, "op"));
             Path cache = Path.of(Jsonl.str(requestLine, "cache"));
@@ -81,7 +85,7 @@ public final class CacheMaintenanceVerb implements HostedVerb {
                                 };
                         Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);
                         String dir = EngineProtocol.SINGLE_PLAN_DIR;
-                        host.streamSinglePlan(plan, session, writer, result -> {
+                        verdict.set(host.streamSinglePlan(plan, session, writer, result -> {
                             // An explicit clean IS a prune — stamp it, or `usage` keeps warning
                             // "Last cleaned: never" right after a successful clean and the idle
                             // scheduler re-runs work the user just did. Same file for
@@ -97,11 +101,12 @@ public final class CacheMaintenanceVerb implements HostedVerb {
                                     result.success(),
                                     plan.get(CachePlans.FILES).orElse(-1L),
                                     plan.get(CachePlans.BYTES).orElse(-1L));
-                        });
+                        }));
                     });
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
+        return verdict.get();
     }
 }

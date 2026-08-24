@@ -4,6 +4,7 @@ package cc.jumpkick.compile;
 import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
+import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.jdk.JavaHomes;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -58,7 +59,7 @@ public final class WorkerAotBootstrap {
         // cache no real compile will map.
         skipped.add("kotlinc (train-on-miss on first Kotlin compile)");
         skipped.add("formatter (train-on-miss on first jk format)");
-        skipped.add("groovy (not AOT-cached; GroovycDriver has no cache integration)");
+        skipped.add("groovy (not AOT-cached; WorkerCompileDriver's Groovy arm passes no AOT flags)");
         // test-runner: suite -cp always includes the module's test classes + runtime deps, so every
         // project would need its own AOT key; caches would not transfer and would thrash disk.
         skipped.add("test-runner (per-project classpath; AOT not reusable)");
@@ -71,17 +72,17 @@ public final class WorkerAotBootstrap {
             Path workerJar = PluginJar.JAVA_COMPILER.locate();
             String cp = WorkerLaunchClasspath.resolve(workerJar);
             Path cache = PluginAot.cachePath("java-compiler", host, cp);
-            if (!force && PluginAot.usableCache(cache)) {
+            if (!force && AotCacheFiles.usable(cache)) {
                 trained.add("java-compiler (cached)");
                 return;
             }
             if (force && cache != null) {
                 try {
-                    Files.deleteIfExists(PluginAot.noaotMarker(cache));
+                    Files.deleteIfExists(AotCacheFiles.marker(cache));
                 } catch (Exception ignored) {
                 }
             }
-            if (!force && cache != null && Files.exists(PluginAot.noaotMarker(cache))) {
+            if (!force && cache != null && Files.exists(AotCacheFiles.marker(cache))) {
                 skipped.add("java-compiler (prior train failed; will not retry until force)");
                 return;
             }

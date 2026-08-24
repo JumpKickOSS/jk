@@ -42,7 +42,7 @@ class JsonOutTest {
         var m = new LinkedHashMap<String, Object>();
         m.put("e", "started");
         m.put("id", "x");
-        assertEquals("{\"e\":\"started\",\"id\":\"x\"}", JsonOut.object(m));
+        assertEquals("{\"e\":\"started\",\"id\":\"x\"}", JsonOut.string(m));
     }
 
     @Test

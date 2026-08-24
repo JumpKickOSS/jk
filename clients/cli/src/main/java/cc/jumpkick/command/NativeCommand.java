@@ -21,6 +21,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Coord;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.ModuleScopeHint;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.engine.EnginePaths;
@@ -74,8 +75,7 @@ public final class NativeCommand implements CliCommand {
         var opts = new ArrayList<Opt>();
         opts.add(Opt.value("<class>", "Main class (jk.toml image.main / main)", "--main"));
         opts.add(CommonOpts.cacheDirHidden());
-        opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                .hide());
+        opts.add(CommonOpts.jdksDir());
         opts.add(CommonOpts.skipTests());
         opts.addAll(CommonOpts.moduleSelection());
         opts.addAll(VariantSelection.options());
@@ -105,7 +105,7 @@ public final class NativeCommand implements CliCommand {
     public int run(Invocation in) throws Exception {
         this.mainClass = in.value("main").orElse(null);
         this.cacheDirOverride = in.value("cache-dir").map(CliPaths::abs).orElse(null);
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.extra = in.positionals();
         this.buildOpts = new BuildOptions();
         this.buildOpts.skipTests = in.isSet("skip-tests");
@@ -269,7 +269,10 @@ public final class NativeCommand implements CliCommand {
             } else {
                 // Unit tests / engine-down: bootstrap [native] scan, not a plugin-schema parse.
                 var scan = TomlScan.scan(moduleDir.resolve(ManifestPaths.MANIFEST), "native.enabled");
-                explicitlyDisabled = scan.hasSection("native") && "false".equalsIgnoreCase(scan.get("native.enabled"));
+                explicitlyDisabled = scan.hasSection("native")
+                        && EnvValues.parseBool(scan.get("native.enabled"))
+                                .filter(on -> !on)
+                                .isPresent();
                 hasNativeTable = scan.hasSection("native") && !explicitlyDisabled;
             }
             // enabled = false keeps the table but opts the module out of native builds — it must

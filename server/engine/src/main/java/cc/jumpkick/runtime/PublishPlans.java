@@ -8,6 +8,7 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -22,7 +23,6 @@ import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
-import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -203,10 +203,7 @@ public final class PublishPlans {
         if (req.endpoint() != null && !req.endpoint().isBlank()) sw.configString("objectStoreEndpoint", req.endpoint());
         sw.artifact(jar);
         sw.layout(Map.of("moduleDir", projectDir));
-        String pluginJars = BuiltInPluginJars.tablePluginJars().stream()
-                .map(Path::toString)
-                .reduce((a, b) -> a + File.pathSeparator + b)
-                .orElse("");
+        String pluginJars = Classpaths.join(BuiltInPluginJars.tablePluginJars());
         if (!pluginJars.isEmpty()) sw.configString("pluginJars", pluginJars);
 
         // Use a 0600 temp file so credentials aren't world-readable.

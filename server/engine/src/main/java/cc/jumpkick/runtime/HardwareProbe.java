@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.http.Http;
+import cc.jumpkick.jdk.JdkFingerprint;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -15,12 +17,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -55,7 +55,9 @@ final class HardwareProbe {
     /** Known small Central artifact for the optional resolve probe (~5 KB). */
     static final String RESOLVE_PROBE_PATH = "org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar";
 
-    static final String CENTRAL_BASE = "https://repo1.maven.org/maven2/";
+    static final String CENTRAL_BASE = RepositorySpec.MAVEN_CENTRAL.url().toString();
+
+    private static final Http HTTP = new Http();
 
     /** Pinned Jupiter set for the optional real-JUnit probe (matches first-party jk.toml pins ~6.x). */
     private static final String JUNIT_VER = "5.11.4";
@@ -95,8 +97,8 @@ final class HardwareProbe {
     static Result run(Path javaHome, Options opts) {
         try {
             if (javaHome == null) return null;
-            Path javaExe = javaHome.resolve("bin").resolve(isWindows() ? "java.exe" : "java");
-            Path javacExe = javaHome.resolve("bin").resolve(isWindows() ? "javac.exe" : "javac");
+            Path javaExe = JdkFingerprint.java(javaHome);
+            Path javacExe = JdkFingerprint.javac(javaHome);
             if (!Files.isRegularFile(javaExe) || !Files.isRegularFile(javacExe)) return null;
             Options o = opts == null ? Options.offline() : opts;
 
@@ -344,7 +346,7 @@ final class HardwareProbe {
                         }
                         """.formatted(PLATFORM_METHODS), StandardCharsets.UTF_8);
 
-                String cp = joinCp(jars);
+                String cp = Classpaths.join(jars);
                 List<String> compile = new ArrayList<>();
                 compile.add(javacExe.toString());
                 compile.add("-cp");
@@ -355,7 +357,7 @@ final class HardwareProbe {
                 compile.add(mainSrc.toString());
                 if (timeProcess(new ProcessBuilder(compile)) < 0) return null;
 
-                String runCp = out + pathSep() + cp;
+                String runCp = out + Classpaths.SEPARATOR + cp;
                 List<Long> samples = new ArrayList<>();
                 for (int i = 0; i < WARM_SAMPLES + 1; i++) {
                     long ms = timeProcess(new ProcessBuilder(javaExe.toString(), "-cp", runCp, "ProbeJunitMain"));
@@ -466,7 +468,8 @@ final class HardwareProbe {
             // the algorithm, so the call site does too.
             Optional<String> expected = Hashing.checksumFromSidecar(new String(sha1, StandardCharsets.US_ASCII), 40);
             if (expected.isEmpty() || !expected.get().equals(Hashing.hashHex("SHA-1", body))) return null;
-            Path dest = cacheRoot.resolve("repos").resolve("central").resolve(relativeMavenPath);
+            Path dest =
+                    cacheRoot.resolve("repos").resolve(RepositorySpec.CENTRAL).resolve(relativeMavenPath);
             Files.createDirectories(dest.getParent());
             Files.write(dest, body);
             return dest;
@@ -496,16 +499,15 @@ final class HardwareProbe {
         }
     }
 
+    /**
+     * Through {@link Http}, not a private client. Calibration issues four Central GETs with a
+     * cache-buster, which is exactly the traffic a rate-limit window has to see: a private client
+     * missed the mirror and the per-host cooldown, so a probe could spend a 429 the resolver then
+     * hit again without warning. When the host is already cooling, {@link Http} refuses and the
+     * probe reports "unavailable" rather than adding to the pile.
+     */
     private static byte[] httpGet(String url) throws IOException, InterruptedException {
-        HttpClient client = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
-        HttpRequest req = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofSeconds(30))
-                .GET()
-                .build();
-        HttpResponse<byte[]> resp = client.send(req, HttpResponse.BodyHandlers.ofByteArray());
+        HttpResponse<byte[]> resp = HTTP.get(URI.create(url));
         if (resp.statusCode() >= 400) return null;
         return resp.body();
     }
@@ -573,23 +575,6 @@ final class HardwareProbe {
         }
         long ms = (System.nanoTime() - t0) / 1_000_000;
         return p.exitValue() == 0 ? ms : -1;
-    }
-
-    private static String pathSep() {
-        return System.getProperty("path.separator", ":");
-    }
-
-    private static String joinCp(List<Path> jars) {
-        StringBuilder sb = new StringBuilder();
-        for (Path j : jars) {
-            if (sb.length() > 0) sb.append(pathSep());
-            sb.append(j);
-        }
-        return sb.toString();
-    }
-
-    private static boolean isWindows() {
-        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
     }
 
     private static void deleteContents(Path dir) throws IOException {

@@ -2,6 +2,8 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.engine.JsonOut;
+import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.jsonl.Jsonl;
 import java.util.ArrayDeque;
 import java.util.Iterator;
 import java.util.List;
@@ -154,13 +156,28 @@ public final class HttpEvents {
         String params;
         if (data != null && data.startsWith("{") && data.endsWith("}")) {
             // Insert "event":"<type>" after the opening brace (and schema if present stays).
-            params = "{\"event\":" + jsonString(type) + "," + data.substring(1);
+            params = "{\"event\":" + Jsonl.quote(type) + "," + data.substring(1);
         } else {
-            params = "{\"event\":" + jsonString(type) + ",\"data\":" + data + "}";
+            params = "{\"event\":" + Jsonl.quote(type) + ",\"data\":" + data + "}";
         }
         String rpc = "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/jk/event\",\"params\":" + params + "}";
         return "id: " + id + "\nevent: message\ndata: " + rpc + "\n\n";
     }
+
+    /** See {@link #isCritical}. */
+    private static final Set<String> CRITICAL_TYPES = Set.of(
+            EngineProtocol.WORKSPACE_PROGRESS,
+            EngineProtocol.ETA,
+            "request-start",
+            "request-finish",
+            "run-snapshot",
+            EngineProtocol.TASK_START,
+            EngineProtocol.TASK_FINISH,
+            EngineProtocol.MODULE_START,
+            EngineProtocol.MODULE_FINISH,
+            EngineProtocol.BUILDPLAN_FINISH,
+            "plan",
+            "error");
 
     /**
      * Critical for live dashboard UX — never shed these for an {@code output} flood. Everything
@@ -168,64 +185,19 @@ public final class HttpEvents {
      */
     static boolean isCritical(String type) {
         if (type == null) return false;
-        return switch (type) {
-            case "workspace-progress",
-                    "eta",
-                    "request-start",
-                    "request-finish",
-                    "run-snapshot",
-                    "task-start",
-                    "task-finish",
-                    "module-start",
-                    "module-finish",
-                    "buildplan-finish",
-                    "plan",
-                    "error" -> true;
-            default -> false;
-        };
+        // "request-start"/"request-finish"/"run-snapshot"/"plan" are the dashboard's own SSE
+        // vocabulary — no socket-protocol token spells them, so they stay literals here.
+        return CRITICAL_TYPES.contains(type);
     }
 
     /**
-     * Best-effort parse of {@code "jid": <number>} from a JsonOut object string. Returns
-     * {@code null} when absent or unparseable.
+     * The {@code jid} of a JsonOut event object, or {@code null} when it carries none. Absence is
+     * a real answer — an event with no request id fans out to every subscriber rather than to one
+     * — so it cannot ride on a numeric default, which is why this is a presence check and a read
+     * rather than one call.
      */
     static Long extractRequestId(String data) {
-        if (data == null || data.isEmpty()) return null;
-        int key = data.indexOf("\"jid\"");
-        if (key < 0) return null;
-        int colon = data.indexOf(':', key + 5);
-        if (colon < 0) return null;
-        int i = colon + 1;
-        while (i < data.length() && data.charAt(i) <= ' ') i++;
-        int start = i;
-        if (i < data.length() && data.charAt(i) == '-') i++;
-        while (i < data.length() && data.charAt(i) >= '0' && data.charAt(i) <= '9') i++;
-        if (i == start || (i == start + 1 && data.charAt(start) == '-')) return null;
-        try {
-            return Long.parseLong(data.substring(start, i));
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    private static String jsonString(String s) {
-        if (s == null) return "null";
-        StringBuilder b = new StringBuilder(s.length() + 2).append('"');
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '"' -> b.append("\\\"");
-                case '\\' -> b.append("\\\\");
-                case '\n' -> b.append("\\n");
-                case '\r' -> b.append("\\r");
-                case '\t' -> b.append("\\t");
-                default -> {
-                    if (c < 0x20) b.append(String.format("\\u%04x", (int) c));
-                    else b.append(c);
-                }
-            }
-        }
-        return b.append('"').toString();
+        return Jsonl.has(data, "jid") ? Jsonl.longValue(data, "jid", 0L) : null;
     }
 
     /** One client's view of the stream. Closing unregisters; frames after close are dropped. */

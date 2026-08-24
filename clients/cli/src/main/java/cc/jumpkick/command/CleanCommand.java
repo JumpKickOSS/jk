@@ -109,7 +109,7 @@ public final class CleanCommand implements CliCommand {
             throws IOException {
         for (Path projectDir : projectDirs) {
             Path layoutTarget = BuildLayout.moduleTargetDir(workspaceRoot, projectDir);
-            Path legacyTarget = projectDir.resolve("target");
+            Path legacyTarget = projectDir.resolve(BuildLayout.TARGET);
             boolean distinct = !layoutTarget.equals(legacyTarget);
             if (!keepArtifacts) {
                 deleteRecursively(layoutTarget, stats);

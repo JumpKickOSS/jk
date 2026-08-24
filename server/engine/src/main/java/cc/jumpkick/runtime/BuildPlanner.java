@@ -1086,10 +1086,6 @@ public final class BuildPlanner {
         return PlannerKsp.kotlinJavaSourceRoots(mixedWithJava, compact, dir, layout, decls);
     }
 
-    static String joinPaths(List<Path> paths, String sep) {
-        return PlannerKsp.joinPaths(paths, sep);
-    }
-
     static String[] kotlinCompileRequires(PluginBuild.Declarations decls, boolean ksp) {
         return PlannerCompile.kotlinCompileRequires(decls, ksp);
     }

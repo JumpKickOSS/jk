@@ -2,6 +2,7 @@
 package cc.jumpkick.jdk;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
@@ -186,7 +187,7 @@ public final class JdkEnsure {
             throws IOException, InterruptedException {
         if (!HostPlatform.supported()) {
             throw new IOException("host "
-                    + System.getProperty("os.name")
+                    + Os.name()
                     + "/"
                     + System.getProperty("os.arch")
                     + " is not covered by the JetBrains JDK feed (set JAVA_HOME explicitly)");

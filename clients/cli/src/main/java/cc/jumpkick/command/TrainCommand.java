@@ -47,8 +47,7 @@ public final class TrainCommand implements CliCommand {
         var opts = new ArrayList<Opt>();
         opts.add(Opt.value("<name>", "Train profile name (default: all profiles)", "--profile"));
         opts.add(CommonOpts.cacheDir());
-        opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                .hide());
+        opts.add(CommonOpts.jdksDir());
         opts.add(CommonOpts.skipTests());
         opts.addAll(VariantSelection.options());
         return opts;
@@ -58,7 +57,7 @@ public final class TrainCommand implements CliCommand {
     public int run(Invocation in) throws IOException, InterruptedException {
         String profile = in.value("profile").orElse(null);
         Path cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
-        Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        Path jdksDir = CommonOpts.jdksDirValue(in);
         GlobalOptions global = GlobalOptions.from(in);
         Path dir = global.workingDir();
         VariantSelection.install(in, dir);

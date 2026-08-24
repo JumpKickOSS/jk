@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.util;
 
+import cc.jumpkick.config.EnvValues;
+
 /**
  * Process-wide switches for JEP 514 AOT caches (engine JVM + short-lived {@code PluginMain}
  * workers).
@@ -73,10 +75,6 @@ public final class AotSettings {
     }
 
     private static boolean isOff(String raw) {
-        if (raw == null || raw.isBlank()) return false;
-        return "off".equalsIgnoreCase(raw)
-                || "false".equalsIgnoreCase(raw)
-                || "0".equals(raw)
-                || "no".equalsIgnoreCase(raw);
+        return EnvValues.parseBool(raw).filter(on -> !on).isPresent();
     }
 }

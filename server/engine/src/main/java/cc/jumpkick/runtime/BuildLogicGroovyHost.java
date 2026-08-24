@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.http.Http;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.JkDirs;
 import java.io.File;
 import java.io.IOException;
@@ -9,6 +11,7 @@ import java.lang.reflect.Method;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -75,12 +78,13 @@ final class BuildLogicGroovyHost {
     static Path[] ensureJars() throws IOException {
         Path cache = toolCache();
         Files.createDirectories(cache);
+        Http http = new Http();
         return new Path[] {
-            fetch(cache, "org/apache/groovy/groovy/" + GROOVY_VER + "/groovy-" + GROOVY_VER + ".jar"),
-            fetch(cache, "org/apache/groovy/groovy-ant/" + GROOVY_VER + "/groovy-ant-" + GROOVY_VER + ".jar"),
-            fetch(cache, "org/apache/ant/ant/" + ANT_VER + "/ant-" + ANT_VER + ".jar"),
-            fetch(cache, "org/apache/ant/ant-launcher/" + ANT_VER + "/ant-launcher-" + ANT_VER + ".jar"),
-            fetch(cache, "ant/ant-optional/" + ANT_OPTIONAL_VER + "/ant-optional-" + ANT_OPTIONAL_VER + ".jar"),
+            fetch(http, cache, "org/apache/groovy/groovy/" + GROOVY_VER + "/groovy-" + GROOVY_VER + ".jar"),
+            fetch(http, cache, "org/apache/groovy/groovy-ant/" + GROOVY_VER + "/groovy-ant-" + GROOVY_VER + ".jar"),
+            fetch(http, cache, "org/apache/ant/ant/" + ANT_VER + "/ant-" + ANT_VER + ".jar"),
+            fetch(http, cache, "org/apache/ant/ant-launcher/" + ANT_VER + "/ant-launcher-" + ANT_VER + ".jar"),
+            fetch(http, cache, "ant/ant-optional/" + ANT_OPTIONAL_VER + "/ant-optional-" + ANT_OPTIONAL_VER + ".jar"),
         };
     }
 
@@ -92,12 +96,27 @@ final class BuildLogicGroovyHost {
         return JkDirs.current().cacheDir().resolve("tools").resolve("build-logic-groovy");
     }
 
-    private static Path fetch(Path cache, String mavenPath) throws IOException {
+    /**
+     * Through {@link Http}, not {@code URL.openStream}: a raw stream reached Central without the
+     * mirror, without the per-host cooldown, and without opening the rate-limit window, so five
+     * jar fetches could spend a 429 the rest of the build never learned about.
+     */
+    private static Path fetch(Http http, Path cache, String mavenPath) throws IOException {
         String fileName = mavenPath.substring(mavenPath.lastIndexOf('/') + 1);
         Path out = cache.resolve(fileName);
         if (Files.isRegularFile(out) && Files.size(out) > 0) return out;
-        URI uri = URI.create("https://repo1.maven.org/maven2/" + mavenPath);
-        try (InputStream in = uri.toURL().openStream()) {
+        URI uri = RepositorySpec.MAVEN_CENTRAL.url().resolve(mavenPath);
+        HttpResponse<InputStream> res;
+        try {
+            res = http.getStream(uri);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("interrupted fetching " + fileName, e);
+        }
+        if (res.statusCode() != 200) {
+            throw new IOException("GET " + uri + " returned HTTP " + res.statusCode());
+        }
+        try (InputStream in = res.body()) {
             Files.copy(in, out, StandardCopyOption.REPLACE_EXISTING);
         }
         return out;

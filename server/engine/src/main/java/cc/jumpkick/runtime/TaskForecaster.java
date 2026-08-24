@@ -13,9 +13,11 @@ import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.jdk.InstalledJdk;
+import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
-import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -24,20 +26,17 @@ import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
-import cc.jumpkick.plugin.PluginModule;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
-import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -350,6 +349,11 @@ public final class TaskForecaster {
             boolean compact = CompileSupport.isSimpleLayout(project.project(), dir);
             BuildLayout layout = BuildLayout.of(dir, project);
             int release = project.project().javaRelease();
+            // ActionKey.forJavac hashes the project JDK, so the forecast has to resolve the same
+            // one the build will compile with (JK-2460). Never installs: a forecast that could
+            // download a JDK is not read-only, and an unresolvable JDK throws out of this block
+            // and is reported as a step that will run, which is the pessimistic answer.
+            Path javaHome = forecastJavaHome(dir, project, lock);
             // Same contributed-args evaluation as the real compile step, against the same
             // lock — forecast action keys must match the keys the build will actually use.
             List<String> javacArgs = JavacLint.effectiveArgs(
@@ -372,15 +376,31 @@ public final class TaskForecaster {
             String compileMainKey = null;
 
             // ---- compile-main (Java) ----
+            // Resolved once: the declarations decide both the generated source roots compile-main
+            // folds in and, at package time below, whether jk packs the jar or a plugin does.
+            PackagingKeys.Owner plugin = PackagingKeys.pluginFor(project, layout, cache);
+            PluginBuild.Declarations pkgDecls = plugin == null ? null : plugin.decls();
             Path mainSrcDir = compact ? dir.resolve("src") : dir.resolve("src/main/java");
-            List<Path> mainSrc = CompileSupport.collectJavaSources(mainSrcDir);
+            // The source set the build compiles, derived by its owner: the src walk plus the
+            // [build] extra-src overlay, plugin source roots, every .scala (one Zinc session
+            // compiles both languages) and the generated roots. Walking src/main/java alone keyed
+            // a request the build never makes, so every Scala module and every extra-src module
+            // forecast a rebuild that was not due (JK-2479).
+            List<Path> mainSrc = PlannerCompile.mainJavaSources(
+                    PlannerCompile.javaAndScalaSources(
+                            project, dir, compact, CompileSupport.collectJavaSources(mainSrcDir)),
+                    layout,
+                    pkgDecls);
             // Collected early: mixed-language modules fold the sibling compiler's outputs into the
             // compile-main stamp inputs (shared recipe below); the kotlin/groovy forecast sections
             // reuse these lists.
             List<Path> ktSrc = CompileSupport.collectKotlinSources(dir, compact);
             List<Path> gvSrc = CompileSupport.collectGroovySources(dir, compact);
-            boolean mixedKotlin = !mainSrc.isEmpty() && !ktSrc.isEmpty();
-            boolean mixedGroovy = !mainSrc.isEmpty() && !gvSrc.isEmpty();
+            // The same predicate BuildPlanner composes the plan from — a source-list emptiness
+            // test is a different question and answers differently for a Scala module.
+            var langs = CompileSupport.resolveLanguages(project.project(), dir);
+            boolean mixedKotlin = (langs.java() || langs.scala()) && langs.kotlin();
+            boolean mixedGroovy = (langs.java() || langs.scala()) && langs.groovy();
             if (!mainSrc.isEmpty()) {
                 WorkspaceClasspath.Result sib =
                         WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN));
@@ -405,8 +425,16 @@ public final class TaskForecaster {
                         groovyJarUnavailable = true;
                     }
                 }
-                List<Path> stampInputs =
-                        BuildPlanner.mainStampClasspath(cp, processorCp, mixedKotlin, mixedGroovy, layout, groovyJar);
+                // The Scala toolchain is a compile-main input on both sides: its stdlib jars are
+                // freshness-stamp inputs (JK-2295) and its version and compiler closure are hashed
+                // by ActionKey.forJavac. Resolving it here is what stops a Scala module keying a
+                // request with no Scala in it at all.
+                ScalaCompile.Setup scalaSetup =
+                        mainSrc.stream().anyMatch(pth -> pth.toString().endsWith(".scala"))
+                                ? ScalaCompile.prepare(project, lock, cas)
+                                : null;
+                List<Path> stampInputs = PlannerCompile.mainStampInputs(
+                        cp, processorCp, mixedKotlin, mixedGroovy, layout, groovyJar, scalaSetup);
                 boolean stampFresh = false;
                 if (!compileDepDirty && !force && !groovyJarUnavailable) {
                     try {
@@ -418,14 +446,19 @@ public final class TaskForecaster {
                 if (stampFresh) {
                     steps.add(new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", null));
                 } else {
-                    CompileRequest req = CompileRequest.builder()
-                            .sources(mainSrc)
-                            .classpath(cp)
-                            .outputDir(out)
-                            .release(release)
-                            .extraOptions(javacArgs)
-                            .processorPath(processorCp)
-                            .build();
+                    CompileRequest req = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+                            mainSrc,
+                            cp,
+                            processorCp,
+                            layout,
+                            out,
+                            release,
+                            javacArgs,
+                            javaHome,
+                            mixedKotlin,
+                            mixedGroovy,
+                            groovyJar,
+                            scalaSetup));
                     String taskId = ActionKey.qualifiedTaskId("compile-main", out);
                     Path actions = CacheTree.ACTIONS.under(cache);
                     Path stateDir = actions.resolve("incremental-java").resolve(taskId);
@@ -518,6 +551,12 @@ public final class TaskForecaster {
             List<Path> ktTest = allTestSrc.stream()
                     .filter(p -> p.getFileName().toString().endsWith(".kt"))
                     .toList();
+            // Scala test sources ride the same javac/Zinc session as the Java ones (PlannerTest
+            // hands them to TestSupport as extraSources), so they are part of compile-test's
+            // request — not a separate step.
+            List<Path> scTest = allTestSrc.stream()
+                    .filter(p -> p.getFileName().toString().endsWith(".scala"))
+                    .toList();
             boolean haveTests = !allTestSrc.isEmpty();
             sourceCount = mainSrc.size() + ktSrc.size() + gvSrc.size() + allTestSrc.size();
             boolean testDirty = false;
@@ -528,24 +567,41 @@ public final class TaskForecaster {
                     steps.add(new TaskForecast.Task(
                             TaskNames.COMPILE_TEST, TaskForecast.Status.RUN, "recompile · main changed", null));
                     testDirty = true;
-                } else if (!javaTest.isEmpty()) {
+                } else if (!javaTest.isEmpty() || !scTest.isEmpty()) {
                     List<Path> baseCp = new ArrayList<>();
                     baseCp.add(layout.classesDir());
                     baseCp.addAll(testCompileClasspath(dir, project, lock, resolver));
                     Path testOut = layout.testClassesDir();
-                    // Mirror TestSupport.compileWithCache EXACTLY, including the
-                    // processor path it now passes — the build runs declared
-                    // annotation processors over test sources, so the action key
-                    // hashes the same `pp:` lines. Omitting it here would compute a
-                    // different key, miss the cache, and falsely forecast a rebuild.
-                    CompileRequest req = CompileRequest.builder()
-                            .sources(javaTest)
+                    ScalaCompile.Setup testScala = scTest.isEmpty() ? null : ScalaCompile.prepare(project, lock, cas);
+                    if (testScala != null) {
+                        for (Path lib : testScala.libraryJars()) {
+                            if (!baseCp.contains(lib)) baseCp.add(lib);
+                        }
+                    }
+                    List<Path> testSrc = new ArrayList<>(javaTest);
+                    testSrc.addAll(scTest);
+                    // Mirror TestSupport.compileWithCache EXACTLY: the processor path (the build
+                    // runs declared annotation processors over test sources, so the key hashes the
+                    // same `pp:` lines), the project JDK, and the Scala toolchain. Any field
+                    // forJavac reads that only one side sets is a key the two can never match —
+                    // checkForecastKeyParity arm B compares this chain against TestSupport's,
+                    // continuations included.
+                    CompileRequest.CompileRequestBuilder builder = CompileRequest.builder()
+                            .sources(testSrc)
                             .classpath(baseCp)
                             .outputDir(testOut)
                             .release(release)
                             .extraOptions(javacArgs)
-                            .processorPath(processorCp)
-                            .build();
+                            .javaHome(javaHome)
+                            .processorPath(processorCp);
+                    if (testScala != null) {
+                        builder.scalaVersion(testScala.version())
+                                .compilerClasspath(testScala.compilerClasspath())
+                                .scalaLibraryJar(testScala.libraryJar())
+                                .scalaCompilerJar(testScala.compilerJar())
+                                .scalaBridgeJar(testScala.bridgeJar());
+                    }
+                    CompileRequest req = builder.build();
                     String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST, testOut);
                     Path actions = CacheTree.ACTIONS.under(cache);
                     Path stateDir = actions.resolve("incremental-java").resolve(taskId);
@@ -588,7 +644,7 @@ public final class TaskForecaster {
                     if (!classesDirHasContent(layout.classesDir())) {
                         // Resource-drift flag is computed later; empty classes uses compile
                         // outputs + resource roots (same merge as package post-clean).
-                        mainFp = classesTokenForPackage(
+                        mainFp = PackagingKeys.classesTokenForPackage(
                                 dir, compact, layout, project, actionCache, compileMainKey, null);
                         if (mainFp != null && mainFp.startsWith("missing:")) mainFp = null;
                     }
@@ -650,9 +706,18 @@ public final class TaskForecaster {
             } else if (compileDirty) {
                 steps.add(new TaskForecast.Task(
                         TaskNames.PACKAGE_JAR, TaskForecast.Status.RUN, "repackage · compile changed", null));
+            } else if (PackagingKeys.ownsPackaging(plugin)) {
+                // Packaging owned by a plugin (spring-boot, grails, quarkus, minified, android).
+                // The build runs the packager, not JarPackager, under a token bag that has nothing
+                // in common with the plain jar's — so forecasting the plain-jar key here described
+                // a step the build never runs and reported "repackage" forever (JK-2491). The key
+                // comes from the same body the build calls; anything that stops us reproducing it
+                // (an unfetchable packager tool, an untrusted worker) forecasts RUN, never a hit.
+                steps.add(PackagingKeys.pluginPackagerStep(
+                        project, dir, layout, cache, lockFile, cas, javaHome, plugin, actionCache));
             } else {
                 Path jar = layout.mainJar();
-                String mainClass = PluginModule.mainClass(dir, project);
+                String mainClass = PackagingKeys.mainClass(dir, project);
                 long tp = Perf.start();
                 byte[] sbom = null;
                 if (project.isApplication()) {
@@ -664,12 +729,11 @@ public final class TaskForecaster {
                 }
                 // classesTokenForPackage projects post-copy content when resources drifted so
                 // package CACHED/RUN matches the live step after copy-resources.
-                String classesTok = classesTokenForPackage(
+                String classesTok = PackagingKeys.classesTokenForPackage(
                         dir, compact, layout, project, actionCache, compileMainKey, knownResourceDrift);
                 // Must match BuildPlanner.packageJarStep tokens exactly — omitting contrib: made
                 // every module forecast permanent "repackage", cascade depDirty, and price a full
                 // monorepo rebuild (~3.5m) while live builds hit the package cache and SKIPPED.
-                PluginBuild.Declarations pkgDecls = BuildPlanner.pluginDeclarationsFor(project, layout, cache);
                 List<Path> contributed = new ArrayList<>(BuildPlanner.existingContributedDirs(pkgDecls, layout));
                 contributed.addAll(PlannerSupport.workerCodecClassDirs(dir, project));
                 String contribTok = BuildPlanner.contributionsToken(contributed);
@@ -712,7 +776,7 @@ public final class TaskForecaster {
                     steps.add(new TaskForecast.Task(
                             TaskNames.PACKAGE_ASSEMBLY, TaskForecast.Status.RUN, "repackage · compile changed", null));
                 } else {
-                    boolean hit = assemblyActionCached(
+                    boolean hit = PackagingKeys.assemblyActionCached(
                             dir,
                             project,
                             layout,
@@ -809,7 +873,7 @@ public final class TaskForecaster {
                     outputsAbsent = !Files.isRegularFile(layout.mainJar())
                             || !classesDirHasContent(layout.classesDir())
                             || (project.assembly() && !Files.isRegularFile(layout.assemblyJar()));
-                } else if (!packageResourceRoots(dir, compact).isEmpty()) {
+                } else if (!PackagingKeys.packageResourceRoots(dir, compact).isEmpty()) {
                     // Resources-only module: its classes tree (copied resources) is consumed
                     // straight off sibling classpaths, so an empty tree is a missing output too.
                     outputsAbsent = !classesDirHasContent(layout.classesDir());
@@ -841,48 +905,16 @@ public final class TaskForecaster {
     }
 
     /**
-     * {@code classes:} fingerprint for package/assembly keys — live tree when present, else the
-     * record of the CURRENT compile key ({@code compileMainKey}) merged with current resource
-     * roots (post-{@code jk clean} restore path). Never {@code lastFor}: after an edit → build →
-     * revert → clean, the last record names the other edit's outputs while the live build would
-     * restore the reverted ones — reconstruction must match the live restore or the forecast
-     * flips to false CACHED/RUN.
-     *
-     * <p>When the live classes tree is present but main/extra resources have drifted, projects the
-     * post-{@code copy-resources} tree (class files + source resource roots) so package CACHED/RUN
-     * matches the live package step after the copy — not the stale pre-copy classes dir.
+     * The JDK compile-main will run on, resolved exactly as {@code PlannerSetup.ensureJdkStep}
+     * resolves it and with the same fallback — but with installs refused. {@code jk explain} is
+     * read-only, so a pin that is not on disk raises here and the module forecasts a step that
+     * will run rather than a key computed against whichever JDK happens to be on PATH.
      */
-    static String classesTokenForPackage(
-            Path dir,
-            boolean compact,
-            BuildLayout layout,
-            JkBuild project,
-            ActionCache actionCache,
-            String compileMainKey,
-            Boolean knownResourceDrift)
-            throws IOException {
-        Path classesDir = layout.classesDir();
-        if (classesDirHasContent(classesDir)) {
-            // Reuse the forecast's single drift detection when it ran — a re-walk here
-            // could disagree with it and project the token from a different tree state.
-            boolean drifted =
-                    knownResourceDrift != null ? knownResourceDrift : mainResourcesOutOfSync(dir, compact, classesDir);
-            if (drifted) {
-                return classesTokenProjectedAfterResourceCopy(dir, compact, layout, project);
-            }
-            return ClasspathFingerprint.entry(classesDir);
-        }
-        Map<String, String> compileOut = compileMainKey == null
-                ? Map.of()
-                : actionCache
-                        .lookup(compileMainKey)
-                        .map(ActionCache.ActionRecord::outputs)
-                        .orElse(Map.of());
-        List<Path> resRoots = packageResourceRoots(dir, compact);
-        if (compileOut.isEmpty() && resRoots.isEmpty()) {
-            return ClasspathFingerprint.entry(classesDir); // missing:… — package key will miss
-        }
-        return ClasspathFingerprint.entryFromCompileAndResources(compileOut, resRoots);
+    static Path forecastJavaHome(Path dir, JkBuild project, Lockfile lock) throws IOException, InterruptedException {
+        return JdkEnsure.ensure(dir, null, project, lock, m -> {}, false)
+                .jdk()
+                .map(InstalledJdk::home)
+                .orElseGet(() -> JavaHomes.resolveJavaHome(dir));
     }
 
     /** Main resource roots (or a module-root {@code jk-plugin.toml}) differ from copies under {@code classesDir}. */
@@ -913,31 +945,6 @@ public final class TaskForecaster {
         }
     }
 
-    /**
-     * Projected {@code classes:} token after {@code copy-resources} would merge source resource
-     * roots over the current classes tree. Matches the live package-jar fingerprint once the
-     * copy step has run — used when main resources are out of sync so package CACHED/RUN does not
-     * lie about a pre-copy tree.
-     */
-    static String classesTokenProjectedAfterResourceCopy(Path dir, boolean compact, BuildLayout layout, JkBuild project)
-            throws IOException {
-        return ClasspathFingerprint.entryProjectedAfterResourceCopy(
-                layout.classesDir(), packageResourceRoots(dir, compact));
-    }
-
-    /** Resource roots that {@code copy-resources} merges into {@code classes/} (main + plugin). */
-    static List<Path> packageResourceRoots(Path dir, boolean compact) {
-        List<Path> resDirs = new ArrayList<>();
-        Path resMain = ModuleLayout.mainResourcesDir(dir, compact);
-        if (Files.isDirectory(resMain)) resDirs.add(resMain);
-        for (var root : ModuleLayoutPlugins.pluginContributedRoots(dir)) {
-            if (!root.resource()) continue;
-            Path r = dir.resolve(root.relative());
-            if (Files.isDirectory(r)) resDirs.add(r);
-        }
-        return resDirs;
-    }
-
     static boolean classesDirHasContent(Path classesDir) throws IOException {
         if (!Files.isDirectory(classesDir)) return false;
         try (var walk = Files.walk(classesDir)) {
@@ -946,98 +953,6 @@ public final class TaskForecaster {
                 return !BuildStamps.isStampFile(p.getFileName().toString());
             });
         }
-    }
-
-    /**
-     * Whether {@code package-assembly}'s action cache holds a hit for the same key the live step
-     * computes (classes + module runtime-closure deps + main + manifest + packaging:fat). Dep jars
-     * must come from {@link BuildPlanner#assemblyDependencyJars} — never the whole
-     * workspace lock RUNTIME set, or explain permanently shows "repackage" after a warm assembly.
-     * Sibling jars missing after clean are fingerprinted via CAS shas recovered from each sibling's
-     * package record.
-     */
-    static boolean assemblyActionCached(
-            Path dir,
-            JkBuild project,
-            BuildLayout layout,
-            Path lockFile,
-            ActionCache actionCache,
-            Path cache,
-            String compileMainKey,
-            Map<Path, String> restoredJarShas,
-            Boolean knownResourceDrift)
-            throws IOException {
-        Path assemblyJar = layout.assemblyJar();
-        String classesTok = classesTokenForPackage(
-                dir,
-                CompileSupport.isSimpleLayout(project.project(), dir),
-                layout,
-                project,
-                actionCache,
-                compileMainKey,
-                knownResourceDrift);
-        // Same jar set as BuildPlanner.assemblyStep (ModuleRuntimeClasspath / ).
-        List<Path> depJars = BuildPlanner.assemblyDependencyJars(dir, project, lockFile, cache);
-        String depsTok = fingerprintDepJars(depJars, actionCache, restoredJarShas);
-        // contrib: must match live assemblyStep tokens (same bug class as package-jar).
-        PluginBuild.Declarations pkgDecls;
-        try {
-            pkgDecls = BuildPlanner.pluginDeclarationsFor(project, layout, cache);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return false;
-        }
-        List<Path> contributed = BuildPlanner.existingContributedDirs(pkgDecls, layout);
-        String contribTok = BuildPlanner.contributionsToken(contributed);
-        String mainClass = PluginModule.mainClass(dir, project);
-        List<String> tokens = List.of(
-                "classes:" + classesTok,
-                "contrib:" + contribTok,
-                "deps:" + depsTok,
-                "main:" + (mainClass == null ? "" : mainClass),
-                "manifest:" + project.manifest(),
-                "packaging:fat");
-        String shTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_ASSEMBLY, assemblyJar);
-        String shKey = ActionKey.forArtifact(shTask, BuildIdentity.cacheKeyVersion(), tokens);
-        return present(actionCache, shKey);
-    }
-
-    /**
-     * Content fingerprint of dep jars matching {@link ClasspathFingerprint#of}, recovering sibling
-     * jars wiped by {@code jk clean} from the CAS shas the walk pinned off each sibling's current
-     * package record.
-     */
-    static String fingerprintDepJars(List<Path> depJars, ActionCache actionCache, Map<Path, String> restoredJarShas)
-            throws IOException {
-        List<String> parts = new ArrayList<>(depJars.size());
-        for (Path jar : depJars) {
-            parts.add(fingerprintJarOrCached(jar, actionCache, restoredJarShas));
-        }
-        parts.sort(Comparator.naturalOrder());
-        return cc.jumpkick.host.Hashing.sha256Hex(String.join("\n", parts));
-    }
-
-    static String fingerprintJarOrCached(Path jar, ActionCache actionCache, Map<Path, String> restoredJarShas)
-            throws IOException {
-        if (Files.isRegularFile(jar)) {
-            return ClasspathFingerprint.entry(jar);
-        }
-        // After clean: sibling jars live under target/ — recover content from the sha the walk
-        // pinned when the sibling's CURRENT package key hit. The pinned sha names a payload blob
-        // in the ACTION-CACHE pool (cache tier), not the artifact store. An unpinned wiped jar
-        // stays missing:… (assembly forecasts RUN — pessimistic, never a false hit): an
-        // unvalidated last-record pointer could name a different edit of the sibling.
-        String sha = restoredJarShas.get(jar.toAbsolutePath().normalize());
-        if (sha != null) {
-            Path blob = actionCache.cas().pathFor(sha);
-            if (Files.isRegularFile(blob)) {
-                // The blob path would classify as "cas:<abs>", but the live step fingerprinted the
-                // on-disk sibling as "file:<content sha>" — return that form so a post-clean
-                // assembly forecast can match the stored key.
-                return "file:" + sha;
-            }
-        }
-        return ClasspathFingerprint.entry(jar); // missing:…
     }
 
     /** True when a module-root {@code jk-plugin.toml} differs from its copy at the classes root. */
@@ -1198,7 +1113,7 @@ public final class TaskForecaster {
         return true;
     }
 
-    private static String key8(String key) {
+    static String key8(String key) {
         return key != null && key.length() >= 8 ? key.substring(0, 8) : key;
     }
 

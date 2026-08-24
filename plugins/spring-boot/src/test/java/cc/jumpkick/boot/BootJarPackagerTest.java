@@ -2,6 +2,7 @@
 package cc.jumpkick.boot;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.BuildStamps;
 import java.io.IOException;
@@ -38,13 +39,16 @@ class BootJarPackagerTest {
                 .packageBootJar(new BootJarPackager.BootJarRequest(
                         classes,
                         List.of(
-                                new BootJarPackager.Lib("spring-core-7.0.1.jar", dep, false),
-                                new BootJarPackager.Lib("acme-1.0-SNAPSHOT.jar", snap, true)),
+                                new BootJarPackager.Lib("spring-core-7.0.1.jar", dep, false, "org.springframework"),
+                                new BootJarPackager.Lib("acme-1.0-SNAPSHOT.jar", snap, true, "com.acme")),
                         loader,
                         out,
                         "com.example.App",
                         "4.0.0",
                         Map.of("Implementation-Title", "app"),
+                        Map.of(),
+                        null,
+                        List.of(),
                         0L));
 
         try (JarFile jar = new JarFile(out.toFile())) {
@@ -108,7 +112,17 @@ class BootJarPackagerTest {
         Path out = tmp.resolve("app.jar");
         new BootJarPackager()
                 .packageBootJar(new BootJarPackager.BootJarRequest(
-                        tmp.resolve("classes"), List.of(), loader, out, "com.example.App", "4.0.0", Map.of(), 0L));
+                        tmp.resolve("classes"),
+                        List.of(),
+                        loader,
+                        out,
+                        "com.example.App",
+                        "4.0.0",
+                        Map.of(),
+                        Map.of(),
+                        null,
+                        List.of(),
+                        0L));
 
         try (JarFile jar = new JarFile(out.toFile())) {
             assertThat(jar.getEntry("BOOT-INF/classes/com/example/App.class")).isNotNull();
@@ -119,18 +133,20 @@ class BootJarPackagerTest {
     }
 
     /**
-     * Runtime entries arrive as CAS blobs — {@code <store>/sha256/AB/CD/<60 hex>} — never as
-     * {@code <group>/<artifact>-<version>.jar}. The disambiguator prepends
-     * {@code jar().getParent().getFileName()}, which on that layout is the second hex pair, so the
-     * name it mints is {@code CD-util-1.0.jar}. The old fixture used group directories and pinned
-     * {@code group-b-util-1.0.jar}, a name production cannot produce.
+     * Two coordinates can ship the same {@code artifact-version.jar}, and the nested entry names
+     * must differ. The group is what differs, and a reader can act on it. The disambiguator used to
+     * prepend {@code jar().getParent().getFileName()} instead — on the CAS layout production
+     * actually serves ({@code <store>/sha256/AB/CD/<60 hex>}) that is two hex characters, so a real
+     * collision produced {@code CD-util-1.0.jar}: unique by accident, meaningless to a reader, and
+     * content-derived, so bumping either dependency renamed the entry.
      */
     @Test
-    void colliding_lib_file_names_get_disambiguated(@TempDir Path tmp) throws Exception {
+    void colliding_lib_file_names_are_disambiguated_by_coordinate_group(@TempDir Path tmp) throws Exception {
         Path classes = Files.createDirectories(tmp.resolve("classes"));
         Path a = writeJar(casBlob(tmp, "aa", "bb"), "a/A.class");
         Path b = writeJar(casBlob(tmp, "cc", "dd"), "b/B.class");
-        Path c = writeJar(casBlob(tmp, "ee", "dd"), "c/C.class"); // same second pair as b
+        Path c = writeJar(casBlob(tmp, "ee", "dd"), "c/C.class"); // same second shard pair as b
+        Path sibling = writeJar(tmp.resolve("util-1.0.jar"), "d/D.class"); // workspace: no coordinate
         Path loader = writeJar(tmp.resolve("loader.jar"), "org/springframework/boot/loader/launch/JarLauncher.class");
 
         Path out = tmp.resolve("app.jar");
@@ -138,27 +154,65 @@ class BootJarPackagerTest {
                 .packageBootJar(new BootJarPackager.BootJarRequest(
                         classes,
                         List.of(
-                                new BootJarPackager.Lib("util-1.0.jar", a, false),
-                                new BootJarPackager.Lib("util-1.0.jar", b, false),
-                                new BootJarPackager.Lib("util-1.0.jar", c, false)),
+                                new BootJarPackager.Lib("util-1.0.jar", a, false, "com.example.a"),
+                                new BootJarPackager.Lib("util-1.0.jar", b, false, "com.example.b"),
+                                new BootJarPackager.Lib("util-1.0.jar", c, false, "com.example.b"),
+                                new BootJarPackager.Lib("util-1.0.jar", sibling, false, "")),
                         loader,
                         out,
                         "com.example.App",
                         "4.0.0",
                         Map.of(),
+                        Map.of(),
+                        null,
+                        List.of(),
                         0L));
 
         try (JarFile jar = new JarFile(out.toFile())) {
             assertThat(jar.getEntry("BOOT-INF/lib/util-1.0.jar")).isNotNull(); // first keeps the plain name
-            assertThat(jar.getEntry("BOOT-INF/lib/dd-util-1.0.jar")).isNotNull();
-            // Two blobs sharing a shard directory name must still not collide.
-            assertThat(jar.getEntry("BOOT-INF/lib/dd-util-1.0.jar.2")).isNotNull();
-            // …and every lib is listed exactly once in the layer index the launcher reads.
-            String idx = entryText(jar, "BOOT-INF/classpath.idx");
-            assertThat(idx)
-                    .contains("BOOT-INF/lib/util-1.0.jar")
-                    .contains("BOOT-INF/lib/dd-util-1.0.jar")
-                    .contains("BOOT-INF/lib/dd-util-1.0.jar.2");
+            assertThat(jar.getEntry("BOOT-INF/lib/com.example.b-util-1.0.jar")).isNotNull();
+            // Same group twice: the group cannot separate them, so an ordinal says so out loud.
+            assertThat(jar.getEntry("BOOT-INF/lib/com.example.b-util-1.0.jar.2"))
+                    .isNotNull();
+            // A workspace sibling has no coordinate to borrow.
+            assertThat(jar.getEntry("BOOT-INF/lib/dup-util-1.0.jar")).isNotNull();
+            // No entry name may carry a CAS shard — that is what this replaced.
+            assertThat(jar.stream().map(JarEntry::getName).filter(n -> n.startsWith("BOOT-INF/lib/")))
+                    .noneMatch(n -> n.contains("/dd-") || n.contains("/bb-"));
+            // …and every lib is listed exactly once in the index the launcher reads.
+            assertThat(entryText(jar, "BOOT-INF/classpath.idx"))
+                    .isEqualTo("- \"BOOT-INF/lib/util-1.0.jar\"\n"
+                            + "- \"BOOT-INF/lib/com.example.b-util-1.0.jar\"\n"
+                            + "- \"BOOT-INF/lib/com.example.b-util-1.0.jar.2\"\n"
+                            + "- \"BOOT-INF/lib/dup-util-1.0.jar\"\n");
+        }
+    }
+
+    /**
+     * The manifest attribute is a version a consumer reads. Writing the declared selector into it
+     * shipped jars announcing {@code Spring-Boot-Version: latest}; the packager now refuses the
+     * value rather than publishing it.
+     */
+    @Test
+    void a_selector_is_refused_as_the_boot_version(@TempDir Path tmp) throws Exception {
+        Path classes = Files.createDirectories(tmp.resolve("classes"));
+        Path loader = writeJar(tmp.resolve("loader.jar"), "org/springframework/boot/loader/launch/JarLauncher.class");
+        for (String selector : List.of("latest", "^4", "=4.1.0", "~4.1", "")) {
+            assertThatThrownBy(() -> new BootJarPackager.BootJarRequest(
+                            classes,
+                            List.of(),
+                            loader,
+                            tmp.resolve("app.jar"),
+                            "com.example.App",
+                            selector,
+                            Map.of(),
+                            Map.of(),
+                            null,
+                            List.of(),
+                            0L))
+                    .as("selector %s", selector)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("resolved version");
         }
     }
 
@@ -191,6 +245,7 @@ class BootJarPackagerTest {
                         Map.of(),
                         Map.of("group", "com.example", "artifact", "shop", "name", "shop", "version", "1.0.0"),
                         sbom,
+                        List.of(),
                         0L));
 
         try (JarFile jar = new JarFile(out.toFile())) {

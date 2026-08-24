@@ -154,7 +154,7 @@ public final class Size {
     }
 
     static long tiocgwinszConstant() {
-        String os = System.getProperty("os.name", "");
+        String os = Os.name();
         String arch = System.getProperty("os.arch", "");
         if (os.startsWith("Linux")) {
             boolean isMipsPpcOrSparc = arch.equals("mips")

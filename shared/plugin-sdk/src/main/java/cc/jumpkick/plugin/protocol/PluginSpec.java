@@ -180,6 +180,22 @@ public final class PluginSpec {
         return classesDir;
     }
 
+    /**
+     * The invariant every {@code compile} op shares: the spec must name a classes dir, a
+     * {@code jvmTarget}, and at least one source. Returns the jvmTarget so a language worker
+     * validates and reads it in one call, and so the three messages are written once instead of
+     * once per language. What each worker decodes <em>after</em> this genuinely differs — kotlinc
+     * takes friend paths, a module name and a {@code -jdk-home}; groovyc takes joint-mode stubs and
+     * Java source roots and no project JDK at all — and stays in the worker's own spec type.
+     */
+    public String requireCompileInputs() {
+        if (classesDir == null) throw new IllegalArgumentException("spec missing layout.classesDir (OUTPUT)");
+        String jvmTarget = config().stringOpt("jvmTarget").orElse(null);
+        if (jvmTarget == null) throw new IllegalArgumentException("spec missing config jvmTarget");
+        if (sources.isEmpty()) throw new IllegalArgumentException("spec has no source entries");
+        return jvmTarget;
+    }
+
     public Path sourceOutput() {
         return sourceOutput;
     }

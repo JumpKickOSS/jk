@@ -9,6 +9,7 @@ import cc.jumpkick.engine.InFlightBuilds;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
@@ -43,7 +44,7 @@ class JobEnvelopeTest {
                 "{\"type\":\"build-request\",\"dir\":\"/p\"}",
                 JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                     ran.set(true);
-                    return null;
+                    return JobOutcome.declined();
                 }),
                 new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
         assertThat(ran).isFalse();
@@ -61,7 +62,7 @@ class JobEnvelopeTest {
                 "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
                 JobRequest.plan("lock", "jk-test-", (line, tok, w) -> {
                     ran.set(true);
-                    return null;
+                    return JobOutcome.declined();
                 }),
                 new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
         assertThat(ran).isTrue();
@@ -81,14 +82,14 @@ class JobEnvelopeTest {
         StringWriter out = new StringWriter();
         env.submit(
                 "{\"type\":\"cache-prune-request\",\"op\":\"clear\",\"dir\":\"/tmp/job-env\"}",
-                JobRequest.maintenance("cache", "jk-test-", (line, tok, w) -> null),
+                JobRequest.maintenance("cache", "jk-test-", (line, tok, w) -> JobOutcome.declined()),
                 new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
         // A clean that leaves a fresh target/jk-profile.json behind un-cleans itself.
         assertThat(host.lastNoTimeline).isTrue();
 
         env.submit(
                 "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
-                JobRequest.plan("build", "jk-test-", (line, tok, w) -> null),
+                JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.declined()),
                 new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
         assertThat(host.lastNoTimeline).isFalse();
     }
@@ -102,7 +103,7 @@ class JobEnvelopeTest {
                 "{\"type\":\"lock-request\",\"dir\":\"/tmp/job-env\"}",
                 JobRequest.plan("lock", "jk-test-", (line, tok, w) -> {
                     ran.countDown();
-                    return null;
+                    return JobOutcome.declined();
                 }),
                 new JobTransport.FireAndForget());
         assertThat(jid).isPositive();
@@ -139,14 +140,14 @@ class JobEnvelopeTest {
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
-                    return null;
+                    return JobOutcome.declined();
                 }),
                 new JobTransport.FireAndForget());
         assertThat(started.await(30, TimeUnit.SECONDS)).isTrue();
         try {
             org.assertj.core.api.Assertions.assertThatThrownBy(() -> env.submit(
                             line,
-                            JobRequest.workspace("build", "jk-test-", (l, tok, w) -> null),
+                            JobRequest.workspace("build", "jk-test-", (l, tok, w) -> JobOutcome.declined()),
                             new JobTransport.FireAndForget()))
                     .isInstanceOf(JobEnvelope.AlreadyRunning.class);
         } finally {
@@ -170,6 +171,64 @@ class JobEnvelopeTest {
                 .isEqualTo(EngineProtocol.WORKSPACE_FINISH);
         assertThat(EngineProtocol.typeOf(JobEnvelope.cancelledTerminalLine(false, "/p")))
                 .isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
+    }
+
+    /**
+     * The end-of-request EOF is not a cancel. The engine half-closes the client's read to wake its
+     * own connection thread the moment the runner is done, and that EOF arrives on the same path a
+     * real hang-up does — so a body that has already ruled success must not be re-labelled.
+     */
+    @Test
+    void a_body_that_ruled_success_is_not_relabelled_cancelled_by_the_end_of_request_eof() {
+        FakeHost host = new FakeHost();
+        host.accumulator = new BuildAccumulator("cache", "/tmp/job-env", null, "cli");
+        JobEnvelope env = new JobEnvelope(host);
+        StringWriter out = new StringWriter();
+
+        env.submit(
+                "{\"type\":\"cache-prune-request\",\"op\":\"prune\",\"dir\":\"/tmp/job-env\"}",
+                JobRequest.maintenance("cache", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
+                new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
+
+        assertThat(host.journalWritten).isTrue();
+        BuildRecord record = host.journalRecord();
+        assertThat(record.cancelled()).isFalse();
+        assertThat(record.success()).isTrue();
+        assertThat(record.exitCode()).isZero();
+    }
+
+    /**
+     * A runner that dies without ruling leaves no rows behind, and no rows is not evidence of
+     * success — the journal records a failure the user can act on rather than a green run.
+     *
+     * <p>Detached on purpose: a socket job's dead runner is caught by the cancel stamps, because
+     * the connection thread reads EOF. A dashboard/MCP job has no reader and no cancel, so the
+     * only thing standing between a dead runner and a green history row is the derivation itself.
+     */
+    @Test
+    void a_detached_runner_that_dies_without_ruling_journals_a_failure() throws Exception {
+        FakeHost host = new FakeHost();
+        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
+        JobEnvelope env = new JobEnvelope(host);
+
+        env.submit(
+                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
+                    throw new IllegalStateException("runner died");
+                }),
+                new JobTransport.FireAndForget());
+
+        long deadline = System.currentTimeMillis() + 30_000;
+        while (!host.journalWritten && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+        assertThat(host.journalWritten).isTrue();
+        assertThat(host.journalCancelled)
+                .as("no reader, no cancel — nothing but the derivation is holding this row")
+                .isFalse();
+        BuildRecord record = host.journalRecord();
+        assertThat(record.success()).isFalse();
+        assertThat(record.exitCode()).isNotZero();
     }
 
     private static final class FakeHost implements JobEnvelope.Host {
@@ -290,9 +349,22 @@ class JobEnvelopeTest {
             cleared.add(id);
         }
 
+        volatile boolean journalWritten;
+        volatile boolean journalCancelled;
+        volatile long journalMillis;
+
         @Override
         public void writeJournal(long id, boolean cancelled, long millis, BufferedWriter writer) {
             teardownOrder.add("writeJournal");
+            journalCancelled = cancelled;
+            journalMillis = millis;
+            journalWritten = true;
+        }
+
+        /** The row JournalWriter would persist for this run, built the same way it builds it. */
+        BuildRecord journalRecord() {
+            return accumulator.toRecord(
+                    2_000L, journalCancelled || accumulator.wasCancelled(), journalMillis, version(), null);
         }
 
         @Override

@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.command.SelfNukeCommand.Target;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -28,7 +30,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Runs against a per-test {@code JK_HOME}/{@code JK_STATE_DIR} overlay ({@code jk.env.*} seam,
- * same as {@link cc.jumpkick.cli.engine.IsolatedStoreExtension}) — NOT the suite-shared home.
+ * same as {@link cc.jumpkick.cli.engine.IsolatedRootsExtension}) — NOT the suite-shared home.
  * These tests genuinely nuke the store and stub a nested engine under {@code lib/jk-engine/};
  * against the shared home that wiped the CAS/worker libs and poisoned every later class's nested
  * engine spawn with a stub jar (mass exit-70s across the integration phase).
@@ -169,6 +171,31 @@ class SelfNukeCommandTest {
         assertThat(foreign).exists();
     }
 
+    /**
+     * The STATE rows delete the sockets and AOT cache an engine holds open, so a stopped fleet is
+     * a precondition of that delete, not a courtesy performed once at the top. {@code jk storage
+     * nuke} does its wipe engine-side: the {@code wipe-store} request calls {@code ensureRunning}
+     * and the engine it boots outlives the call. That engine was still there when the STATE rows
+     * went, and it wrote the state dir straight back under a command that had reported it deleted.
+     */
+    @Test
+    @Tag("integration")
+    void data_and_state_nuke_leaves_no_engine_to_write_the_state_dir_back() throws Exception {
+        JkDirs dirs = JkDirs.current();
+        Path cas = dirs.storeDir().resolve("sha256");
+        Files.createDirectories(dirs.productLibDir().resolve("jk-engine"));
+        Files.createDirectories(cas.resolve("ab"));
+        Files.writeString(cas.resolve("ab/blob"), "cas");
+        Files.createDirectories(dirs.stateDir().resolve("aot"));
+        Files.writeString(dirs.stateDir().resolve("aot/marker"), "aot");
+
+        int exit = capture(() -> Jk.execute("self", "nuke", "--data", "--state", "-y"));
+
+        assertThat(exit).isZero();
+        assertThat(EngineFleet.listThisHome()).isEmpty();
+        assertThat(dirs.stateDir()).doesNotExist();
+    }
+
     @Test
     void data_flag_keeps_store_as_a_hidden_alias_on_the_same_key() {
         var opt = new SelfNukeCommand()
@@ -207,6 +234,31 @@ class SelfNukeCommandTest {
         assertThat(Files.exists(state.resolve("aot/marker"))).isFalse();
         assertThat(Files.exists(jkBin)).isTrue();
         assertThat(Files.exists(foreign)).isTrue();
+    }
+
+    /**
+     * The confirm table lists {@code cacheDir()} under "Path to Delete". After the nuke that path
+     * is gone — no empty tier skeleton left behind by a wipe that recreated what it deleted, and
+     * no survivors among the trees the tier table does not name.
+     */
+    @Test
+    void cache_nuke_removes_the_cache_root_not_just_the_tiers_under_it() throws Exception {
+        JkDirs dirs = JkDirs.current();
+        Path cache = dirs.cacheDir();
+        Files.createDirectories(CacheTree.ACTIONS.under(cache));
+        Files.writeString(CacheTree.ACTIONS.under(cache).resolve("marker"), "x");
+        Files.createDirectories(CacheTree.HASH_MEMO.under(cache).resolve("aa"));
+        Files.writeString(CacheTree.HASH_MEMO.under(cache).resolve("aa/memo"), "y");
+        Files.createDirectories(cache.resolve("repos/central")); // not a tier — must not survive
+        Files.writeString(cache.resolve("repos/central/lib.jar"), "z");
+        Files.createDirectories(dirs.stateDir());
+
+        // --cache --state takes the in-process wipe (the fleet is stopped first), which is the
+        // leg default --all uses; the hosted purge is covered by CacheCommandTest.
+        int exit = capture(() -> Jk.execute("self", "nuke", "--cache", "--state", "-y"));
+
+        assertThat(exit).isZero();
+        assertThat(cache).doesNotExist();
     }
 
     @Test

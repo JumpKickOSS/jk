@@ -29,7 +29,7 @@ class BaseJreMarkerTest {
     void using_a_pinned_tree_records_that_it_was_used(@TempDir Path cache) throws Exception {
         Path marker = seed(cache, PINNED, Duration.ofDays(40));
 
-        BaseJre.javaBinary(PINNED, cache);
+        BaseJre.javaBinary(PINNED, cache, RegistryAuth.NONE);
 
         assertThat(age(marker))
                 .as("a pinned reference never re-extracts, so nothing else records the use")
@@ -40,7 +40,7 @@ class BaseJreMarkerTest {
     void using_a_tagged_tree_leaves_the_revalidation_clock_alone(@TempDir Path cache) throws Exception {
         Path marker = seed(cache, TAG, Duration.ofHours(20));
 
-        BaseJre.javaBinary(TAG, cache);
+        BaseJre.javaBinary(TAG, cache, RegistryAuth.NONE);
 
         assertThat(age(marker))
                 .as("touching this would defer the 24 h re-resolve forever, and a republished tag "

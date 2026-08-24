@@ -3,6 +3,10 @@ package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.ResolvedSecrets;
+import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.forge.ForgeIdentity;
@@ -223,5 +227,71 @@ class RepoCredentialResolverTest {
                 Optional.of(new RepoCredential.Basic("plain", "pass")));
 
         assertThat(((RepoCredential.Basic) resolved).username()).isEqualTo("plain");
+    }
+
+    /**
+     * The resolver is the one place that holds a repository credential before anything can print
+     * it, so it is where the redactor is told. No {@code .env} names {@code JK_REPO_NEXUS_TOKEN} —
+     * in CI nothing does — and masking it is still not a guess about the name.
+     */
+    @Test
+    void a_resolved_token_is_filed_for_the_workspace_that_resolved_it(@TempDir Path dir) throws Exception {
+        ResolvedSecrets.clear();
+        var r = resolver(
+                env(Map.of("JK_REPO_NEXUS_TOKEN", "ci-only-nexus-token")),
+                MavenSettings.empty(),
+                new RepoCredentialStore(dir),
+                forge(new TokenStore(dir.resolve("tokens"))));
+
+        SessionContext.where(
+                Session.defaults().withWorkingDir(dir),
+                () -> r.resolve("nexus", URI.create("https://nexus.corp/repo"), Optional.empty()));
+
+        assertThat(ResolvedSecrets.plus(dir, SecretRedactor.none()).redact("401 for Bearer ci-only-nexus-token"))
+                .isEqualTo("401 for Bearer " + SecretRedactor.MASK);
+        ResolvedSecrets.clear();
+    }
+
+    /** Basic's password is the secret half; its username is a name, and masking names blanks output. */
+    @Test
+    void a_basic_password_is_filed_and_its_username_is_not(@TempDir Path dir) throws Exception {
+        ResolvedSecrets.clear();
+        var r = resolver(
+                env(Map.of("JK_REPO_NEXUS_USERNAME", "alice-the-user", "JK_REPO_NEXUS_PASSWORD", "p4ssw0rd-secret")),
+                MavenSettings.empty(),
+                new RepoCredentialStore(dir),
+                forge(new TokenStore(dir.resolve("tokens"))));
+
+        SessionContext.where(
+                Session.defaults().withWorkingDir(dir),
+                () -> r.resolve("nexus", URI.create("https://nexus.corp/repo"), Optional.empty()));
+
+        assertThat(ResolvedSecrets.plus(dir, SecretRedactor.none()).redact("alice-the-user:p4ssw0rd-secret"))
+                .isEqualTo("alice-the-user:" + SecretRedactor.MASK);
+        ResolvedSecrets.clear();
+    }
+
+    /** Anonymous access has nothing to mask, and an empty redactor is what proves it. */
+    @Test
+    void an_anonymous_resolution_files_nothing(@TempDir Path dir) throws Exception {
+        ResolvedSecrets.clear();
+        var r = resolver(
+                env(Map.of()),
+                MavenSettings.empty(),
+                new RepoCredentialStore(dir),
+                forge(new TokenStore(dir.resolve("tokens"))));
+
+        SessionContext.where(
+                Session.defaults().withWorkingDir(dir),
+                () -> r.resolve("central", URI.create("https://repo.maven.apache.org/maven2/"), Optional.empty()));
+
+        assertThat(ResolvedSecrets.plus(dir, SecretRedactor.none()).isEmpty()).isTrue();
+        ResolvedSecrets.clear();
+    }
+
+    /** The env prefix a message quotes is the one the lookup uses — one spelling, one owner. */
+    @Test
+    void the_env_prefix_is_published_for_diagnostics() {
+        assertThat(RepoCredentialResolver.envVarPrefix("my-nexus")).isEqualTo("JK_REPO_MY_NEXUS_");
     }
 }

@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
@@ -71,8 +72,7 @@ public final class ExplainCommand implements CliCommand {
         opts.add(Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers"));
         opts.add(cc.jumpkick.cli.CommonOpts.skipTests());
         // -r/--redo is a global flag (same as `jk build --redo`); see GlobalOptions.
-        opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                .hide());
+        opts.add(CommonOpts.jdksDir());
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
         opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
         opts.add(Opt.value("<fmt>", "Emit module DAG as dot or mermaid", "--graph"));
@@ -146,7 +146,7 @@ public final class ExplainCommand implements CliCommand {
         // Global --redo / --force: forecast full work + rebuild ETA priors.
         boolean rebuild = global.rebuild || global.force;
         String profile = in.value("profile").orElse(null);
-        Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        Path jdksDir = CommonOpts.jdksDirValue(in);
         String affectedSince = affectedSinceEarly;
 
         // Client-side module filter listing (before engine forecast) when selectors are set.

@@ -41,8 +41,7 @@ public final class ExecPlanVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             ExecPlan plan;
             try {
@@ -66,6 +65,6 @@ public final class ExecPlanVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
-        return null;
+        return JobOutcome.declined();
     }
 }

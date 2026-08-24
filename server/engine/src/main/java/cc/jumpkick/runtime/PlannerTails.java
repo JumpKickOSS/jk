@@ -194,18 +194,19 @@ public final class PlannerTails {
                     Path assemblyJar = layout.assemblyJar();
                     // Module-scoped runtime closure (not the whole workspace lock).
                     List<Path> depJars = assemblyDependencyJars(layout.moduleRoot(), project, lockFile, cache);
-                    // Packaging cache: the fat jar is a pure function of the main
-                    // classes, the plugin-contributed dirs merged over them, the bundled
-                    // dependency jars' content, the main-class, and the manifest.
-                    List<String> tokens = List.of(
-                            "classes:" + ClasspathFingerprint.entry(classes),
-                            "contrib:" + contributionsToken(contributed),
-                            "deps:" + ClasspathFingerprint.of(depJars),
-                            "main:" + (project.mainClass() == null ? "" : project.mainClass()),
-                            "manifest:" + project.manifest(),
-                            "packaging:fat"); // distinct from shrink / thin package-jar
-                    String shTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_ASSEMBLY, assemblyJar);
-                    String shKey = ActionKey.forArtifact(shTask, BuildIdentity.cacheKeyVersion(), tokens);
+                    // Packaging cache: the fat jar's key comes from PackagingKeys, the one body
+                    // the forecast also calls — the `main:` token used to be derived from a
+                    // different source on each side, so a worker module could never forecast
+                    // up-to-date (JK-2480).
+                    PackagingKeys.Keyed keyed = PackagingKeys.assembly(
+                            assemblyJar,
+                            layout.moduleRoot(),
+                            project,
+                            ClasspathFingerprint.entry(classes),
+                            contributionsToken(contributed),
+                            ClasspathFingerprint.of(depJars));
+                    String shTask = keyed.taskId();
+                    String shKey = keyed.key();
                     if (restorePackaged(cache, shKey, assemblyJar.getParent())) {
                         ctx.label(assemblyJar.getFileName() + " up-to-date");
                         ctx.cached();
@@ -226,11 +227,18 @@ public final class PlannerTails {
                                     classes,
                                     depJars,
                                     assemblyJar,
-                                    project.mainClass(),
+                                    PackagingKeys.mainClass(layout.moduleRoot(), project),
                                     assemblyAttrs,
                                     assemblySbom == null ? Map.of() : Map.of(SBOM_JAR_ENTRY, assemblySbom),
                                     0L));
-                    storePackaged(cache, shTask, shKey, tokens, assemblyJar.getParent(), List.of(assemblyJar), persist);
+                    storePackaged(
+                            cache,
+                            shTask,
+                            shKey,
+                            keyed.tokens(),
+                            assemblyJar.getParent(),
+                            List.of(assemblyJar),
+                            persist);
                     ctx.progress(1);
                 })
                 .build();

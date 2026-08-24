@@ -5,20 +5,15 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.ObjectStoreConfig;
-import cc.jumpkick.pom.PomXml;
+import cc.jumpkick.repo.MavenMetadata;
 import cc.jumpkick.repo.RepoTransport;
 import cc.jumpkick.repo.RepoTransports;
-import cc.jumpkick.resolver.Versions;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Uploads jar/pom/sources + checksums to a Maven HTTP repository via PUT. Auth via {@link
@@ -27,8 +22,6 @@ import java.util.regex.Pattern;
 public final class MavenPublisher {
 
     private final URI repoBase;
-    private static final Pattern VERSION_ENTRY = Pattern.compile("<version>([^<]*)</version>");
-
     private final RepoTransport transport;
     private final RepoCredential credential;
 
@@ -135,90 +128,31 @@ public final class MavenPublisher {
      *
      * <p><b>Absent and unreadable are opposite cases.</b> {@link RepoTransport#fetch} already models
      * "no metadata yet" as an empty {@link java.util.Optional} and throws only on a genuine
-     * transport failure, so a thrown read means we do <em>not</em> know the existing version list.
-     * Writing one anyway would erase every previously published version from a repository that
-     * cannot un-publish, so the read is allowed to abort the publish <em>before</em> the destructive
-     * PUT. The per-version artifacts are already uploaded and immutable, so re-running publish is
-     * the whole recovery.
+     * transport failure, so a thrown read means we do <em>not</em> know the existing version list —
+     * and a document that arrives but will not parse says exactly the same thing. Writing one
+     * anyway would erase every previously published version from a repository that cannot
+     * un-publish, so either failure aborts the publish <em>before</em> the destructive PUT. The
+     * per-version artifacts are already uploaded and immutable, so re-running publish is the whole
+     * recovery.
      */
     private void publishMetadata(JkBuild.Project project, String groupPath, Map<String, Integer> results, long[] bytes)
             throws IOException, InterruptedException {
         String relPath = groupPath + "/" + project.name() + "/maven-metadata.xml";
         URI uri = repoBase.resolve(relPath);
-        List<String> versions;
+        MavenMetadata existing;
         try {
-            versions = new ArrayList<>(transport
+            existing = transport
                     .fetch(uri, credential)
-                    .map(b -> parseVersions(new String(b, StandardCharsets.UTF_8)))
-                    .orElseGet(List::of));
-        } catch (IOException e) {
+                    .map(MavenMetadata::parse)
+                    .orElseGet(() -> MavenMetadata.empty(project.group(), project.name()));
+        } catch (IOException | IllegalArgumentException e) {
             throw new IOException(
                     "could not read " + uri + " (" + e.getMessage()
                             + ") — refusing to replace it with a single-version document. The "
                             + project.version() + " artifacts are uploaded; re-run publish to update the version list.",
                     e);
         }
-        if (!versions.contains(project.version())) versions.add(project.version());
-        versions.sort(Versions::compare);
-        byte[] body = metadataXml(project.group(), project.name(), versions).getBytes(StandardCharsets.UTF_8);
-        putWithChecksums(relPath, body, "application/xml", results, bytes);
-    }
-
-    /**
-     * The {@code <version>} entries of an existing maven-metadata.xml, in document order, entity
-     * references resolved. Exactly inverts {@link #metadataXml}: read and write must round-trip or
-     * every republish re-escapes what the last one wrote.
-     */
-    static List<String> parseVersions(String xml) {
-        List<String> out = new ArrayList<>();
-        Matcher m = VERSION_ENTRY.matcher(xml);
-        while (m.find()) {
-            String v = unescape(m.group(1).trim());
-            if (!v.isEmpty() && !out.contains(v)) out.add(v);
-        }
-        return out;
-    }
-
-    /** Inverse of {@link PomXml#escape}: the five predefined entities, {@code &amp;} resolved last. */
-    private static String unescape(String s) {
-        if (s.indexOf('&') < 0) return s;
-        return s.replace("&lt;", "<")
-                .replace("&gt;", ">")
-                .replace("&quot;", "\"")
-                .replace("&apos;", "'")
-                .replace("&amp;", "&");
-    }
-
-    /**
-     * {@code <release>} is the newest non-SNAPSHOT version; {@code <latest>} is the newest of any
-     * kind. Maven's convention, and the resolver relies on it for floating selectors.
-     *
-     * <p>Every value goes through {@link PomXml#escape}, the same escaper the POM uploaded alongside
-     * this document uses — an unescaped {@code &} or {@code <} in a coordinate would publish XML no
-     * resolver can parse.
-     */
-    static String metadataXml(String group, String artifact, List<String> versions) {
-        String latest = versions.isEmpty() ? "" : versions.get(versions.size() - 1);
-        String release = versions.stream()
-                .filter(v -> !v.endsWith("-SNAPSHOT"))
-                .reduce((a, b) -> b)
-                .orElse("");
-        StringBuilder sb = new StringBuilder(256);
-        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<metadata>\n");
-        sb.append("  <groupId>").append(PomXml.escape(group)).append("</groupId>\n");
-        sb.append("  <artifactId>").append(PomXml.escape(artifact)).append("</artifactId>\n");
-        sb.append("  <versioning>\n");
-        sb.append("    <latest>").append(PomXml.escape(latest)).append("</latest>\n");
-        if (!release.isEmpty()) {
-            sb.append("    <release>").append(PomXml.escape(release)).append("</release>\n");
-        }
-        sb.append("    <versions>\n");
-        for (String v : versions) {
-            sb.append("      <version>").append(PomXml.escape(v)).append("</version>\n");
-        }
-        sb.append("    </versions>\n");
-        sb.append("  </versioning>\n</metadata>\n");
-        return sb.toString();
+        putWithChecksums(relPath, existing.withVersion(project.version()).render(), "application/xml", results, bytes);
     }
 
     private void putWithChecksums(

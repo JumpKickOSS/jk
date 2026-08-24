@@ -7,6 +7,7 @@ import cc.jumpkick.discovery.DiscoveredTool;
 import cc.jumpkick.discovery.JkProbe;
 import cc.jumpkick.discovery.LocalToolProbe;
 import cc.jumpkick.discovery.ToolSpec;
+import cc.jumpkick.host.Os;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -304,7 +305,7 @@ class JdkRegistryTest {
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(JdkFingerprint.java(home), "#!/fake");
         Files.writeString(JdkFingerprint.javac(home), "#!/fake");
-        String nativeImage = HostPlatform.isWindows() ? "native-image.cmd" : "native-image";
+        String nativeImage = Os.isWindows() ? "native-image.cmd" : "native-image";
         Files.writeString(home.resolve("bin").resolve(nativeImage), "#!/fake");
         Files.writeString(
                 home.resolve("release"),

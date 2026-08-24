@@ -26,6 +26,19 @@ import java.util.Objects;
  */
 public final class BuildLayout {
 
+    /**
+     * The one directory name jk writes build output under, and the one name every "is this a build
+     * output tree?" test compares against. Ignore sets, {@code jk clean}, the preflight memo and
+     * the workspace file server all have to agree with {@link #moduleTargetDir}; when they spelled
+     * it themselves, agreement was a coincidence that a rename would have quietly ended — a
+     * scanner still walking {@code target/} while the builder wrote somewhere else.
+     *
+     * <p>Not every {@code "target"} in the tree is this one: a CLI parameter named {@code target},
+     * javac's {@code -target}, a BSP request field and the {@code ${target}} interpolation variable
+     * are separate vocabularies and must not borrow it.
+     */
+    public static final String TARGET = "target";
+
     private final Path workspaceRoot;
     private final Path moduleRoot;
     private final String artifact;
@@ -155,22 +168,22 @@ public final class BuildLayout {
         Path wsOut = workspaceRoot.toAbsolutePath().normalize();
         Path modAbs = moduleRoot.toAbsolutePath().normalize();
         if (modAbs.equals(wsOut)) {
-            return wsOut.resolve("target");
+            return wsOut.resolve(TARGET);
         }
         if (modAbs.startsWith(wsOut)) {
-            return wsOut.resolve("target").resolve(wsOut.relativize(modAbs));
+            return wsOut.resolve(TARGET).resolve(wsOut.relativize(modAbs));
         }
         // Lexical miss: an alias pair can still name the same tree — compare realpath keys.
         Path modKey = absoluteKey(moduleRoot);
         Path wsKey = absoluteKey(workspaceRoot);
         if (modKey.equals(wsKey)) {
-            return wsOut.resolve("target");
+            return wsOut.resolve(TARGET);
         }
         if (!modKey.startsWith(wsKey)) {
             // Genuinely outside the workspace tree — fall back to module-local target/.
-            return modAbs.resolve("target");
+            return modAbs.resolve(TARGET);
         }
-        return wsOut.resolve("target").resolve(wsKey.relativize(modKey));
+        return wsOut.resolve(TARGET).resolve(wsKey.relativize(modKey));
     }
 
     /**
@@ -235,12 +248,12 @@ public final class BuildLayout {
         // requires output folders inside the project, and a workspace member's central dir would
         // render as an invalid "../target/…" entry in .classpath. jk's own outputs
         // never live here, so the isolation contract holds either way.
-        return moduleRoot().resolve("target").resolve("jdt").resolve("classes").resolve("main");
+        return moduleRoot().resolve(TARGET).resolve("jdt").resolve("classes").resolve("main");
     }
 
     /** {@code target/jdt/classes/test/} — test class output for an external IDE language server. */
     public Path jdtTestClassesDir() {
-        return moduleRoot().resolve("target").resolve("jdt").resolve("classes").resolve("test");
+        return moduleRoot().resolve(TARGET).resolve("jdt").resolve("classes").resolve("test");
     }
 
     /**

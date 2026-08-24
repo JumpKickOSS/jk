@@ -134,8 +134,14 @@ Optimize-imports also never rewrites Javadoc: `{@link com.example.Widget}` is le
 - **Any file whose Javadoc does not survive a parse/print round trip.** OpenRewrite checks that
   it can reprint a file byte-for-byte before it will rewrite it, and its Javadoc printer mangles
   the continuation line of a wrapped `@param`. When that check fails the file is skipped by the
-  OpenRewrite pass entirely — Spotless still formats it. On jk's own tree that is 108 of 2,063
+  OpenRewrite pass entirely — Spotless still formats it. On jk's own tree that is 111 of 2,088
   files. The check is the reason a mangled reprint is never written over your source.
+
+  `jk format` reports each one as `! unparseable: <path>` and counts them in the closing
+  summary. It does **not** fail `--check` on them: nothing you can write in the file clears it,
+  so a red build there would have no fix. Silence was the older behaviour and the worse one —
+  those files were counted as already clean, which is how a tree can be reported fully
+  import-shortened while 111 files were never rewritten at all.
 
 **Precedence:** CLI flag → env var → `[format]` → default `true`.
 

@@ -126,36 +126,96 @@ tasks.register("checkAll") {
 }
 
 // ---------------------------------------------------------------------------
-// Guard G1 (JK-2393): one owner for a JDK's launcher path.
+// Guard G1 (JK-2393, re-measured and widened by JK-2457): one owner for a JDK's launcher path.
 //
-// `cc.jumpkick.jdk.JdkFingerprint.java(javaHome)` / `.javac(javaHome)` are the only sanctioned way
-// to name a JDK's `bin/java` — they append `.exe` on Windows. Hand-building the path as
-// `<javaHome>/bin/java` silently drops that suffix and the fork is simply dead on Windows; five
-// worker launches (Groovy, Kotlin, KSP, and `jk train`) shipped that way. Banned outright in
-// production sources: there is no allowlist and no legitimate reason to open one.
+// `cc.jumpkick.jdk.JdkFingerprint.java(javaHome)` / `.javac(javaHome)` / `.tool(javaHome, name)`
+// are the only sanctioned way to name a JDK's `bin/java` — they append `.exe` on Windows.
+// Hand-building the path silently drops that suffix and the fork is simply dead on Windows.
 //
-// Scope is `src/main/java`. Test fixtures that lay down a POSIX-only fake JDK tree are writing
-// files, not launching processes, so they are not in scope.
+// WHAT THIS GUARD WAS MEASURED AGAINST — 2026-08-24, whole tree, `src/main/java` only:
+//
+//   * the two spellings it banned until now, `resolve("bin/java")` and
+//     `resolve("bin").resolve("java")`:                                   0 files, 0 sites
+//   * the shapes it bans as of this commit:                              17 files, 22 sites
+//     of which `Path.of(<home>, "bin", "java")` — no `.exe`, shipped broken on Windows:  4
+//   * after JK-2457's sweep:                                              0 files, 0 sites
+//
+// Read the first two numbers together. G1 was green for two months while 22 hand-rolled sites and
+// four live Windows bugs sat in the tree, because its ban list described a spelling nobody used.
+// A green guard is evidence about the guard, not about the tree — so every guard states the count
+// it was measured against, and this one is proved to fail before it is believed (JK-2457 re-added
+// a `Path.of(System.getProperty("java.home"), "bin", "java")` and watched `check` go red).
+//
+// The ban list is DERIVED, not re-typed: the launcher names come from the owner's own
+// `public static Path <name>(Path javaHome)` shorthands and the Windows suffix from its
+// `toolName`, so teaching the owner a third launcher bans hand-building that one the same minute.
+// Five shapes per name — `bin/<n>`, `resolve("bin").resolve("<n>")` with and without the suffix,
+// the `Path.of(…, "bin", "<n>")` positional form, and the `win ? "<n>.exe" : "<n>"` ternary that
+// re-derives the suffix rule wherever it is written. There is no allowlist: the owner is on the
+// host leaf, so every module in the tree can reach it.
+//
+// Scope is `src/main/java`, read through `guardText` — a `bin/java` in a javadoc line is prose.
+// Test fixtures that lay down a POSIX-only fake JDK tree are writing files, not launching
+// processes, so they are not in scope either.
 // ---------------------------------------------------------------------------
 val checkNoHandBuiltJavaBinary by tasks.registering {
     group = "verification"
     description = "Fail the build on a hand-built <javaHome>/bin/java (use JdkFingerprint.java)"
     val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
     inputs.files(mainJava).withPropertyName("mainJava")
+    val launcherOwner = rootProject.layout.projectDirectory.file(
+            "shared/host/src/main/java/cc/jumpkick/jdk/JdkFingerprint.java")
+    inputs.file(launcherOwner).withPropertyName("launcherOwner")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
     val stamp = layout.buildDirectory.file("guards/no-hand-built-java-binary.ok")
     outputs.file(stamp)
     doLast {
-        val banned = listOf("""resolve("bin/java")""", """resolve("bin").resolve("java")""")
-        // Whitespace-insensitive: the formatter wraps long resolve() chains across lines.
-        val hits = mainJava.files.sorted().flatMap { f ->
-            val squashed = f.readText().replace(Regex("\\s+"), "")
-            banned.filter { squashed.contains(it) }.map { "${f.name}: $it" }
+        val ownerFile = launcherOwner.asFile
+        val ownerText = ownerFile.readText()
+        // The launcher vocabulary, straight out of the owner's named shorthands.
+        val names = Regex("""public static Path (\w+)\(Path javaHome\)""")
+                .findAll(ownerText)
+                .map { it.groupValues[1] }
+                .toList()
+        if (names.isEmpty()) {
+            throw GradleException("cc.jumpkick.jdk.JdkFingerprint declares no `public static Path"
+                    + " <name>(Path javaHome)` shorthand, so the launcher guard has lost the ban"
+                    + " list it reads. Restore one or retire this guard deliberately.")
+        }
+        // …and the Windows suffix, straight out of the owner's toolName.
+        val suffix = Regex("""tool \+ "([^"]+)"""").find(ownerText)?.groupValues?.get(1)
+                ?: throw GradleException("cc.jumpkick.jdk.JdkFingerprint.toolName no longer appends a"
+                        + " literal suffix, so the launcher guard cannot see the rule it enforces."
+                        + " Restore it or retire this guard deliberately.")
+        val banned = names.flatMap { n ->
+            listOf(
+                    """resolve("bin/$n")""",
+                    """resolve("bin").resolve("$n")""",
+                    """resolve("bin").resolve("$n$suffix")""",
+                    ""","bin","$n"""",
+                    ""","bin","$n$suffix"""",
+                    """"$n$suffix":"$n"""",
+                    """"$n":"$n$suffix"""")
+        }
+
+        val hits = mainJava.files.sorted().filter { it != ownerFile }.flatMap { f ->
+            // guardText squashes whitespace between literals (the formatter wraps long resolve()
+            // chains) and blanks comments (a javadoc that spells the path is documentation).
+            val code = guardText(f.readText())
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            banned.filter { code.contains(it) }.map { "  $rel: $it" }
         }
         if (hits.isNotEmpty()) {
             throw GradleException(
-                    "A hand-built <javaHome>/bin/java drops the Windows `.exe` (JK-2393). "
-                            + "Call cc.jumpkick.jdk.JdkFingerprint.java(javaHome) instead: "
-                            + hits)
+                    "A hand-built <javaHome>/bin/java drops the Windows `.exe` and the fork is dead"
+                            + " there (JK-2393, JK-2457). ${hits.size} site(s):\n"
+                            + hits.joinToString("\n")
+                            + "\n  Call cc.jumpkick.jdk.JdkFingerprint.java(javaHome),"
+                            + " .javac(javaHome), or .tool(javaHome, name) for any other JDK"
+                            + " launcher. It is on the :host leaf, so every module reaches it —"
+                            + " including a plugin worker, which is why the primitive moved there."
+                            + " A launcher that is NOT a JDK tool under <home>/bin (mvn, gradle,"
+                            + " kotlinc, native-image) is a different vocabulary and is not in scope.")
         }
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
@@ -201,12 +261,82 @@ val checkFileSizeCaps by tasks.registering {
     inputs.files(sources).withPropertyName("productionSources")
     val baseline = rootProject.layout.projectDirectory.file("size-baseline.txt")
     inputs.file(baseline).withPropertyName("sizeBaseline")
+    // The caps are a house rule before they are a task, and the rule is written down in
+    // code-as-art.md. Both are read here so the doc and the guard cannot drift (JK-2473).
+    val charter = rootProject.layout.projectDirectory.file("docs/contributors/code-as-art.md")
+    inputs.file(charter).withPropertyName("charter")
     val treeRoot = rootProject.layout.projectDirectory.asFile
     val here = layout.projectDirectory.asFile.relativeTo(treeRoot).invariantSeparatorsPath + "/"
     val caps = fileSizeHardCaps
     val stamp = layout.buildDirectory.file("guards/file-size-caps.ok")
     outputs.file(stamp)
     doLast {
+        // Doc/guard parity first: a cap the charter states and the task does not enforce is worse
+        // than no cap at all, because a reader trusts the table. The charter's Size table declares
+        // its own extensions, so this reads ext -> hard cap straight out of it; an em dash means
+        // "exempt", i.e. the extension must be absent from `caps` entirely.
+        val row = Regex("^\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|")
+        val docCaps = LinkedHashMap<String, Int?>()
+        var inTable = false
+        charter.asFile.readLines().forEach { raw ->
+            val line = raw.trim()
+            when {
+                line.startsWith("| Language | Extensions |") -> inTable = true
+                inTable && !line.startsWith("|") -> inTable = false
+                inTable && !line.startsWith("|---") -> {
+                    val m = row.find(line)
+                    if (m != null) {
+                        val hardCell = m.groupValues[4].trim()
+                        val hard = if (hardCell == "\u2014") null
+                                else hardCell.replace(",", "").toIntOrNull()
+                        Regex("`\\.([a-z]+)`").findAll(m.groupValues[2])
+                                .forEach { docCaps[it.groupValues[1]] = hard }
+                    }
+                }
+            }
+        }
+        // Same contract for the charter's own Contents list: a heading added without its entry, or
+        // an entry whose heading is gone, fails here. Navigation is a fact about the file, so it is
+        // derived and checked rather than maintained by hand (JK-2473).
+        val charterLines = charter.asFile.readLines()
+        val slug = { t: String ->
+            t.replace("`", "").lowercase().filter { it.isLetterOrDigit() || it == ' ' || it == '-' }
+                    .trim().replace(' ', '-')
+        }
+        val tocSlugs = charterLines.mapNotNull {
+            Regex("^ *- \\[(.+)]\\(#([a-z0-9-]+)\\)$").find(it.trimEnd())?.groupValues?.get(2)
+        }
+        val headings = charterLines.mapNotNull {
+            Regex("^(##|###) (.+)$").find(it)?.groupValues?.get(2)
+        }.filter { it != "Contents" }.map(slug)
+        val tocDrift = mutableListOf<String>()
+        headings.filterNot { it in tocSlugs }.forEach { tocDrift.add("  missing from Contents: #$it") }
+        tocSlugs.filterNot { it in headings }.forEach { tocDrift.add("  in Contents, no such heading: #$it") }
+        if (tocDrift.isEmpty() && tocSlugs != headings) {
+            tocDrift.add("  Contents lists every heading but in a different order")
+        }
+        if (tocDrift.isNotEmpty()) {
+            throw GradleException("docs/contributors/code-as-art.md's Contents list and its headings"
+                    + " disagree (JK-2473):\n" + tocDrift.joinToString("\n"))
+        }
+
+        val drift = mutableListOf<String>()
+        if (docCaps.isEmpty()) {
+            drift.add("  the Size table in docs/contributors/code-as-art.md was not found;"
+                    + " it must have a `| Language | Extensions | Soft | Hard | Exception |` header"
+                    + " and one backticked extension per language")
+        }
+        (docCaps.keys + caps.keys).toSortedSet().forEach { ext ->
+            val doc = if (ext in docCaps) docCaps[ext]?.toString() ?: "exempt" else "absent"
+            val task = caps[ext]?.toString() ?: "exempt"
+            if (doc != task) drift.add("  .$ext: charter says $doc, build enforces $task")
+        }
+        if (drift.isNotEmpty()) {
+            throw GradleException("The size caps in docs/contributors/code-as-art.md and"
+                    + " `fileSizeHardCaps` disagree (JK-2473). A cap the charter states and the"
+                    + " build does not enforce is worse than no cap:\n" + drift.joinToString("\n"))
+        }
+
         // An entry is `<lines>  <path>`; its invariant is the comment block directly above it, with
         // no blank line between. Whitespace-insensitive so the columns can stay aligned by eye.
         val listed = LinkedHashMap<String, Int>()
@@ -484,7 +614,8 @@ tasks.named("check") { dependsOn(checkNoFqcn) }
 tasks.named("jar") { dependsOn(checkNoFqcn) }
 
 // ---------------------------------------------------------------------------
-// Guard plumbing shared by G3 / G5 / G6 / G7 / G9 / G12 / G14 (JK-2409, JK-2414, JK-2416).
+// Guard plumbing shared by G3 / G5 / G6 / G7 / G9 / G12 / G13 / G15
+// (JK-2409, JK-2413, JK-2414, JK-2416, JK-2418).
 //
 // Two habits inherited from G1 (JK-2393), both load-bearing:
 //   * match against code only — a banned literal named in javadoc is documentation, not a defect;
@@ -578,61 +709,75 @@ fun ratchetVerdict(
 }
 
 // ---------------------------------------------------------------------------
-// Guard G3 (JK-2409): one XML parser, one hardening posture.
+// Guard G3 (JK-2409, banned by JK-2421): one XML parser, one hardening posture.
 //
 // Defect it prevents: a new `DocumentBuilderFactory` that forgets an XXE flag and then parses
 // third-party XML — an AAR's `res/values/*.xml` from any Maven artifact, a git dependency's
 // `pom.xml` inside the resident engine. Round 3 found seven production sites at five hardening
-// levels, two of them with no XXE flags at all; JK-2381 has since hardened those two, so the
-// spread today is four levels, from one flag (`DeployCommand`) to six (`AndroidRepoFeed`).
+// levels, two of them with no XXE flags at all; JK-2381 hardened those two and JK-2421 swept all
+// eight sites (seven production, one test) onto `cc.jumpkick.host.DomXml`.
 //
-// Two arms:
+// Three arms:
 //   1. The other JAXP parser entry points are banned outright — zero sites today, no allowlist.
 //      Without this arm the guard is one `SAXParserFactory` away from decoration.
-//      `TransformerFactory` is deliberately absent: `ResourceMerger:141` uses it to *write* a DOM
-//      out, which is not a parse.
-//   2. `DocumentBuilderFactory` is a ratchet, because the owner it must funnel into does not exist
-//      yet. JK-2421 adds `DomXml.parse` in `server/io` carrying `AndroidRepoFeed`'s six flags and
-//      takes this list from seven files to one; until then a file not on it fails, and a file that
-//      stops parsing has to come off it. Ownership, not site count, is the unit: a file either
-//      builds its own parser or it does not, and reformatting one must not move the number.
+//      `TransformerFactory` is deliberately absent: `ResourceMerger` uses it to *write* a DOM out,
+//      which is not a parse.
+//   2. `DocumentBuilderFactory` is banned everywhere but the owner. This was a ratchet over seven
+//      files in JK-2409, because the owner did not exist yet to point a ban at; JK-2421 created it,
+//      so the allowlist is one entry long and it is the owner's own path, not a concession.
+//   3. Inside the owner, the six flags are required by name. Across files that check is worthless —
+//      a scan cannot tell which factory instance a `setFeature` call configures, which is the whole
+//      reason arm 2 exists. Inside one file holding exactly one factory it is exact, so deleting a
+//      flag from `DomXml.hardened` fails the build instead of silently weakening every caller.
 //
-// Checking the six flags instead of naming an owner is the obvious alternative and it is not
-// enforceable: a text scan cannot tell which factory instance a `setFeature` call configures, so
-// it would pass on six flags set on the wrong object. Ownership is checkable; posture is not.
+// The owner is in `shared/host`, not `server/io` as the ticket first said. `:android` sees only
+// `:plugin-sdk` and `:toolchain-jdk` sees only `:core` + `:client-io`, so neither can reach
+// `server/io`; `:host` is the JDK-only floor all 31 modules already link (JK-2407), and JAXP is JDK.
 //
-// Scope is `src/main/java`: `PomExporterTest` parses a POM the test itself just wrote.
+// Scope is `src/main/java` *and* `src/test/java`. A test parsing XML has the same posture to get
+// wrong, and the one that did — `PomExporterTest`, checking a POM it had just written — is one call
+// to the owner, so exempting tests would buy nothing and leave the shape unguarded.
 // ---------------------------------------------------------------------------
 
-/** Production files still building their own `DocumentBuilderFactory`. Cleared by JK-2421. */
-val xmlParserRatchet = setOf(
-        "plugins/android/src/main/java/cc/jumpkick/android/DeployCommand.java",
-        "plugins/android/src/main/java/cc/jumpkick/android/ResourceMerger.java",
-        "server/engine/src/main/java/cc/jumpkick/runtime/SourceProjectBuilder.java",
-        "server/io/src/main/java/cc/jumpkick/repo/MavenMetadata.java",
-        "server/io/src/main/java/cc/jumpkick/repo/PomParser.java",
-        "server/toolchain/src/main/java/cc/jumpkick/mvn/PomImporter.java",
-        "shared/toolchain-jdk/src/main/java/cc/jumpkick/androidsdk/AndroidRepoFeed.java")
+/** The one file allowed to construct an XML parser. */
+val xmlParserOwner = "shared/host/src/main/java/cc/jumpkick/host/DomXml.java"
+
+/**
+ * jk's XXE posture, as it must read inside the owner. Whitespace-squashed (see `guardText`), so
+ * these are the exact tokens `DomXml.hardened` writes with `jk format`'s wrapping removed.
+ */
+val xxeHardening = listOf(
+        "setFeature(XMLConstants.FEATURE_SECURE_PROCESSING,true)",
+        "setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\",true)",
+        "setFeature(\"http://xml.org/sax/features/external-general-entities\",false)",
+        "setFeature(\"http://xml.org/sax/features/external-parameter-entities\",false)",
+        "setFeature(\"http://apache.org/xml/features/nonvalidating/load-external-dtd\",false)",
+        "setExpandEntityReferences(false)")
 
 val checkSingleXmlParserOwner by tasks.registering {
     group = "verification"
-    description = "Fail the build on an XML parser outside the declared owner (XXE posture)"
-    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
-    inputs.files(mainJava).withPropertyName("mainJava")
+    description = "Fail the build on an XML parser outside cc.jumpkick.host.DomXml (XXE posture)"
+    val java = fileTree(layout.projectDirectory) {
+        include("src/main/java/**/*.java")
+        include("src/test/java/**/*.java")
+    }
+    inputs.files(java).withPropertyName("java")
+    val owner = rootProject.layout.projectDirectory.file(xmlParserOwner)
+    inputs.file(owner).withPropertyName("domXml")
     val treeRoot = rootProject.layout.projectDirectory.asFile
-    val here = layout.projectDirectory.asFile.relativeTo(treeRoot).invariantSeparatorsPath + "/"
-    val allowed = xmlParserRatchet
+    val allowed = xmlParserOwner
+    val required = xxeHardening
     val stamp = layout.buildDirectory.file("guards/single-xml-parser-owner.ok")
     outputs.file(stamp)
     doLast {
         val bannedFactories = listOf("SAXParserFactory", "XMLInputFactory", "XMLReaderFactory")
         val banned = mutableListOf<String>()
         val parsers = mutableListOf<String>()
-        mainJava.files.sorted().forEach { f ->
+        java.files.sorted().forEach { f ->
             val code = guardText(f.readText())
             val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
             bannedFactories.filter { code.contains(it) }.forEach { banned.add("  $rel: $it") }
-            if (code.contains("DocumentBuilderFactory")) parsers.add(rel)
+            if (rel != allowed && code.contains("DocumentBuilderFactory")) parsers.add("  $rel")
         }
 
         val problems = mutableListOf<String>()
@@ -641,26 +786,32 @@ val checkSingleXmlParserOwner by tasks.registering {
                     + " These name a JAXP parser that has no owner and no XXE flags at all:\n"
                     + banned.joinToString("\n"))
         }
-        val unlisted = parsers.filterNot { it in allowed }
-        if (unlisted.isNotEmpty()) {
-            problems.add("A new DocumentBuilderFactory is a new XXE posture to get wrong"
-                    + " (JK-2409). These are not on the ratchet:\n"
-                    + unlisted.joinToString("\n") { "  $it" }
-                    + "\n  Parse through the owner. Until JK-2421 lands `DomXml.parse`, copy"
-                    + " AndroidRepoFeed's six flags verbatim and add the file here in the same"
-                    + " commit, with the reason.")
+        if (parsers.isNotEmpty()) {
+            problems.add("A second DocumentBuilderFactory is a second XXE posture to get wrong, and"
+                    + " the seven that existed sat at four different hardening levels (JK-2421):\n"
+                    + parsers.joinToString("\n")
+                    + "\n  Parse through cc.jumpkick.host.DomXml — parse(byte[] | String | Path |"
+                    + " InputStream) to read, newDocument() to build one. It hands out documents,"
+                    + " never a factory or a builder, so there is no unhardened parser to obtain.")
+        }
+        // Arm 3 runs from every module's copy of the task, like G6's read of `Hashing`: the owner is
+        // one file at a fixed path, and reading it here is what keeps the posture and the guard from
+        // drifting apart in separate commits.
+        val ownerCode = guardText(owner.asFile.readText())
+        val missing = required.filterNot { ownerCode.contains(it) }
+        if (missing.isNotEmpty()) {
+            problems.add("cc.jumpkick.host.DomXml is the only parser jk builds, so its flags are the"
+                    + " only XXE posture jk has (JK-2421). These are gone:\n"
+                    + missing.joinToString("\n") { "  $it" }
+                    + "\n  Restore them in DomXml.hardened, or change this list in the same commit"
+                    + " and say in the message what jk now accepts from a hostile document.")
         }
         if (problems.isNotEmpty()) throw GradleException(problems.joinToString("\n\n"))
 
-        val cleared = allowed.filter { it.startsWith(here) && it !in parsers }.sorted()
-        if (cleared.isNotEmpty()) {
-            logger.lifecycle("xmlParserRatchet is loose (these no longer parse — drop them in this"
-                    + " commit):")
-            cleared.forEach { logger.lifecycle("  $it") }
-        }
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
 }
+
 tasks.named("check") { dependsOn(checkSingleXmlParserOwner) }
 tasks.named("jar") { dependsOn(checkSingleXmlParserOwner) }
 
@@ -728,59 +879,60 @@ tasks.named("check") { dependsOn(checkWireProtocolPrefixPairs) }
 tasks.named("jar") { dependsOn(checkWireProtocolPrefixPairs) }
 
 // ---------------------------------------------------------------------------
-// Guard G7 (JK-2409): one truth set, and it lives in `EnvValues.parseBool`.
+// Guard G7 (JK-2409, swept and widened by JK-2419): one truth set, and it lives in
+// `EnvValues.parseBool`.
 //
 // Defect it prevents: `JK_FOO=yes` working in one reader and not the next. `EnvValues.parseBool`
 // is the jk-wide truth set — `1/true/yes/on` against `0/false/no/off`, case-insensitively, trimmed
-// — and every hand-rolled comparison below it accepts a different subset. `HttpProjectApi:611`
-// takes four spellings, `FormatStamps:34` takes two, `JkConfigLoader:84` is case-insensitive where
-// `JdkCatalogClient:268` is not. Users cannot see which reader they are talking to.
+// — and every hand-rolled comparison below it accepted a different subset. Before the sweep
+// `HttpProjectApi` took four spellings, `FormatStamps` took two, `JkConfigLoader` was
+// case-insensitive where `JdkCatalogClient` is not, and `Profiles.autoSelect` took only `true`, so
+// `CI=yes` selected the `ci` profile in no reader at all. Users could not see which one they were
+// talking to.
 //
-// The pattern covers `"true"`/`"1"` on either side of `equals` and `equalsIgnoreCase`. The narrow
-// form the audit measured (17 sites, receiver-position, `equalsIgnoreCase` only) is defeated by
-// flipping the argument order, which is not a defence; widening it costs four more allowlist
-// entries and finds five more real duplications. The other truth-set members (`yes`/`on`/`off`)
-// are out of scope until JK-2419's sweep lands, because banning them today would need a 30-file
-// allowlist rather than a 22-file one.
+// The pattern is the whole truth set — `true|1|yes|on|false|0|no|off` on either side of `equals`
+// and `equalsIgnoreCase` — and both halves of that width were earned, not guessed:
+//   * The audit's form (receiver position, `equalsIgnoreCase`, `true`/`1` only) is defeated by
+//     flipping the argument order, which is not a defence. Fixing that took 15 files to 22.
+//   * `true`/`1` alone cannot see the FALSE side, and the false side is where the bypasses were
+//     hiding: `AotSettings.isOff`, `CentralMirror.enabledByEnv`, `HostWarmup.isOff`,
+//     `ChromeTimeline` and `CliSessionTranscript` each spelled their own `off/false/0/no`, and
+//     none of them was on this ratchet. A guard's count is bounded by its pattern, not by the
+//     defect (the lesson G9 learned the expensive way).
 //
-// A ratchet, not a ban: the owner exists and is reachable, but 22 files still call past it and
-// this ticket does not touch product source. JK-2419 clears the second section to nothing.
+// The widened pattern does cost false positives, because `"0"` and `"1"` are also just numbers:
+// two version-string comparisons and two wizard menu ids are on the list below for that reason,
+// and say so. That is the right trade — a guard that cannot see `JK_AOT_TRAIN=no` is decoration.
+//
+// A ratchet whose only remaining entries are permanent exemptions: readers of someone else's
+// format, and comparisons that are not booleans at all. There is no pending section left. The
+// owner moved to `:host` in the same sweep so that `:jk-api` and the forked plugin workers — the
+// two places that had no way to reach it — can call it.
 //
 // Scope is `src/main/java`. A test asserting on the string `"true"` is a fixture, not a reader.
 // ---------------------------------------------------------------------------
 
-/** Files comparing against a boolean literal by hand. See G7 above for the two sections. */
+/** Files comparing against a truth-set literal by hand. Every entry is permanent; see G7 above. */
 val truthSetRatchet = mapOf(
-        // Someone else's format, someone else's truth set — correct as written, permanent.
+        // --- Someone else's format, someone else's truth set. Correct as written. ---
         // Maven POM XML: `<optional>` and `<activeByDefault>` are xs:boolean, `true` only.
         "server/io/src/main/java/cc/jumpkick/repo/PomParser.java" to 1,
         "server/toolchain/src/main/java/cc/jumpkick/mvn/PomImporter.java" to 1,
         // The disco JDK catalog is JSON: `true`/`false`, never `yes`.
         "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/JdkCatalogClient.java" to 2,
         // giter8 template booleans are `y`/`yes`/`true` — a different set on purpose.
-        "server/engine/src/main/java/cc/jumpkick/giter8/Giter8Value.java" to 1,
-        // jk's own on-disk memo row stores the bit as literal `1`, so `parts[2]` is not user input.
-        // Its other two sites (`PreflightMemo:698`, one env read spelled twice) are JK-2419's.
-        "server/engine/src/main/java/cc/jumpkick/runtime/PreflightMemo.java" to 3,
+        "server/engine/src/main/java/cc/jumpkick/giter8/Giter8Value.java" to 2,
 
-        // Pending JK-2419 — every one of these must become `EnvValues.parseBool(...)`.
-        "clients/cli/src/main/java/cc/jumpkick/cli/theme/JkDarkTheme.java" to 2,
-        "clients/cli/src/main/java/cc/jumpkick/cli/theme/Theme.java" to 2,
-        "plugins/quarkus/src/main/java/cc/jumpkick/quarkus/QuarkusAugmentMain.java" to 2,
-        "server/engine/src/main/java/cc/jumpkick/engine/HostWarmup.java" to 2,
-        "server/engine/src/main/java/cc/jumpkick/engine/http/HttpProjectApi.java" to 2,
-        "server/engine/src/main/java/cc/jumpkick/engine/http/mcp/McpHistoryViews.java" to 3,
-        "server/engine/src/main/java/cc/jumpkick/runtime/BuildEta.java" to 2,
-        "server/engine/src/main/java/cc/jumpkick/task/FormatStamps.java" to 2,
-        "server/engine/src/main/java/cc/jumpkick/test/JupiterParallelDetect.java" to 2,
-        "shared/core/src/main/java/cc/jumpkick/config/GlobalConfig.java" to 2,
-        "shared/core/src/main/java/cc/jumpkick/config/JkCacheConfig.java" to 2,
-        "shared/core/src/main/java/cc/jumpkick/config/JkConfigLoader.java" to 1,
-        "shared/core/src/main/java/cc/jumpkick/config/JkEngineConfig.java" to 2,
-        "shared/core/src/main/java/cc/jumpkick/config/ManifestTables.java" to 1,
-        "shared/core/src/main/java/cc/jumpkick/config/NerdFontDetect.java" to 2,
-        "shared/core/src/main/java/cc/jumpkick/resolve/ResolveProfile.java" to 2,
-        "shared/jk-api/src/main/java/cc/jumpkick/model/Profiles.java" to 1)
+        // --- Not a boolean. The characters collide; the vocabulary does not. ---
+        // jk's own on-disk memo row stores the bit as literal `1`, so `parts[2]` is not user input.
+        "server/engine/src/main/java/cc/jumpkick/runtime/PreflightMemo.java" to 1,
+        // A version string that is literally "0", and a version segment that is literally "0".
+        "plugins/quarkus/src/main/java/cc/jumpkick/quarkus/LockedClosure.java" to 1,
+        "server/resolver/src/main/java/cc/jumpkick/resolver/VersionSelectors.java" to 1,
+        // Wizard menu ids. The prompt offers exactly two, jk wrote both, and a lenient parse would
+        // silently accept an answer the menu never showed.
+        "clients/cli/src/main/java/cc/jumpkick/command/ActivateCommand.java" to 1,
+        "clients/cli/src/main/java/cc/jumpkick/command/JdkInstallWizard.java" to 1)
 
 val checkSingleTruthSet by tasks.registering {
     group = "verification"
@@ -793,9 +945,10 @@ val checkSingleTruthSet by tasks.registering {
     val stamp = layout.buildDirectory.file("guards/single-truth-set.ok")
     outputs.file(stamp)
     doLast {
-        // `"true".equals[IgnoreCase](x)` and `x.equals[IgnoreCase]("true")`, same for `"1"`.
+        // Every truth-set member, on either side of equals/equalsIgnoreCase (see G7 above).
+        val truthy = "true|1|yes|on|false|0|no|off"
         val handRolled = Regex(
-                """"(?:true|1)"\.equals(?:IgnoreCase)?\(|\.equals(?:IgnoreCase)?\("(?:true|1)"\)""")
+                """"(?:$truthy)"\.equals(?:IgnoreCase)?\(|\.equals(?:IgnoreCase)?\("(?:$truthy)"\)""")
         val hits = LinkedHashMap<String, Int>()
         mainJava.files.sorted().forEach { f ->
             val n = countIn(guardText(f.readText()), handRolled)
@@ -810,8 +963,9 @@ val checkSingleTruthSet by tasks.registering {
                     + " by hand and are not on the ratchet:\n"
                     + unlisted.joinToString("\n")
                     + "\n  Call cc.jumpkick.config.EnvValues.parseBool(raw) (or .bool(env, name)"
-                    + " for a JK_* variable). A reader of someone else's format — Maven's"
-                    + " xs:boolean, giter8's y/yes — is an exemption, and says so here.")
+                    + " for a JK_* variable); it is in :host, so every module can reach it. A"
+                    + " reader of someone else's format — Maven's xs:boolean, giter8's y/yes — or a"
+                    + " comparison that is not a boolean at all is an exemption, and says so here.")
         }
         if (grew.isNotEmpty()) {
             problems.add("A file on the truth-set ratchet may only shrink (JK-2409). These grew:\n"
@@ -923,55 +1077,117 @@ tasks.named("check") { dependsOn(checkOneDigestSurface) }
 tasks.named("jar") { dependsOn(checkOneDigestSurface) }
 
 // ---------------------------------------------------------------------------
-// Guard G9 (JK-2409, banned by JK-2416): bytes become hex in one place, `Hashing.hex`.
+// Guard G9 (JK-2409, banned by JK-2416, widened by JK-2487): bytes become hex in one place,
+// `Hashing.hex`.
 //
-// Defect it prevents: the next per-byte hex loop. `KotlinCompiler:174` allocated a throwaway
-// `Formatter` for every byte of every classpath entry's digest — `String.format("%02x", b)` builds
-// one per call, so a 200-entry classpath cost ~6,400 of them per compile — and `AndroidCommand:131`
-// omitted the `& 0xff` mask that its neighbour remembered. Both are one call to `Hashing.hex`.
+// Defect it prevents: a second answer to "how does jk spell bytes". Two shapes, and the second one
+// is 84% of the history.
 //
-// This was a ratchet with four entries in JK-2409, because two of the three offenders were plugins
-// and `Hashing` was not on their classpath. JK-2407 put it there and JK-2416 swept them, so the
-// ratchet is now a ban: the count is zero, and a ban with no allowlist is what guards a shape
-// rather than today's instances.
+//   1. A PER-BYTE HEX LOOP. `KotlinCompiler:174` allocated a throwaway `Formatter` for every byte
+//      of every classpath entry's digest — `String.format("%02x", b)` builds one per call, so a
+//      200-entry classpath cost ~6,400 of them per compile — and `AndroidCommand:131` omitted the
+//      `& 0xff` mask that its neighbour remembered. Both are one call to `Hashing.hex`.
+//   2. `java.util.HexFormat` ANYWHERE BUT THE OWNER. `HexFormat.of().formatHex(digest)` is not a
+//      loop, allocates no `Formatter`, and is a perfectly reasonable line of Java — which is
+//      exactly why it was written SIXTEEN times before JK-2416 swept it. It is still a second
+//      spelling of the owner's one answer, and the sweep left nothing stopping the seventeenth.
+//      `parseHex` is banned by the same arm: decode has no in-tree caller today, so there is no
+//      door to point at, and adding `Hashing.unhex(String)` is the change the next caller makes
+//      rather than dead API added on speculation.
 //
-// THE ONE EXEMPTION IS BY SHAPE, NOT BY FILENAME. `SigV4Signer:168` percent-encodes a URI byte as
-// UPPERCASE hex, which the AWS canonical-request spec requires and `Hashing.hex` deliberately does
-// not produce — it is a different function that happens to spell bytes in base 16. The pattern
-// therefore skips `Character.forDigit` wrapped in `Character.toUpperCase`, which is the shape that
-// says "uppercase on purpose" at the call site. An allowlist entry would have said the same thing
-// about one path, and stopped being true the moment the file moved (JK-2414's precedent).
+// MEASURED COUNTS, so a future reader can tell a green result from a blind one (a green guard is
+// evidence about the guard, not about the tree). At JK-2487, against `src/main/java` tree-wide:
+// arm 1 = 0 (`%02x`/`%02X`: 0 files; `Character.forDigit`: 1 file, `SigV4Signer`, exempt by shape);
+// arm 2 = 0 (`HexFormat` appears in exactly 1 production file, `Hashing.java`, the owner). Arm 2's
+// count was zero BY HISTORY, not by construction — that is the condition this ban converts.
+//
+// Arm 1 was the whole guard when it reported zero in JK-2409, and it covered under a third of the
+// problem: `HexFormat.of()` is invisible to a hex-loop regex. Widening the existing guard rather
+// than allocating a letter is deliberate — same rule, same owner, same error message; a second
+// guard would be a second thing to keep in sync.
+//
+// THE ONE EXEMPTION IN ARM 1 IS BY SHAPE, NOT BY FILENAME. `SigV4Signer:168` percent-encodes a URI
+// byte as UPPERCASE hex, which the AWS canonical-request spec requires and `Hashing.hex`
+// deliberately does not produce — it is a different function that happens to spell bytes in base
+// 16. The pattern therefore skips `Character.forDigit` wrapped in `Character.toUpperCase`, which is
+// the shape that says "uppercase on purpose" at the call site. An allowlist entry would have said
+// the same thing about one path, and stopped being true the moment the file moved (JK-2414's
+// precedent).
 //
 // `%02X` stays banned even though it is also uppercase: the Formatter-per-byte allocation is a
 // defect in either case, and `Character.toUpperCase(Character.forDigit(..))` allocates nothing.
 //
-// Scope is `src/main/java`; there are no hex loops in test sources today.
+// ARM 2'S ONLY EXEMPTION IS THE OWNER, and its path is READ FROM `inputs.file(owner)` rather than
+// typed into the scan — G6's shape. A filename string in the scan expires silently when the class
+// moves; a declared input fails the build instead.
+//
+// Arm 2 matches the TYPE, not a method, and it is scanned over text that still carries the
+// `import` lines — the complement of the usual `guardText`. Both choices are the "check every shape
+// the bypass takes" rule: `HexFormat.of()`, `HexFormat.ofDelimiter(..)`, a `HexFormat` field, the
+// fully-qualified `java.util.HexFormat.of()` and `import static java.util.HexFormat.of` are five
+// spellings of one bypass, and the last of them is invisible to any pattern that drops imports.
+//
+// DELIBERATELY NOT COVERED, measured before deciding: `Integer.toHexString` (`PlannerSupport:592`,
+// `ExecPlans:496`) and `Long.toHexString` (`StaticContent:92`) render an int/long identity or mtime
+// as a short key — not bytes becoming hex, and not the owner's job. `RichText.parseHex` (`:217`,
+// `:227`) parses a `#rrggbb` colour token: a different vocabulary, free to diverge, exactly like
+// GraalVM's `native-image` filename under G12. A pattern wider than the defect is as wrong as one
+// narrower.
+//
+// Scope is `src/main/java`. Two tests recompute an expected digest by hand with
+// `HexFormat.of().formatHex(..)` (`AotCacheTrainerTest:139`, `BaseJreMarkerTest:63`), and that is
+// what a test should do — checking jk's answer against an independent one. Widening this guard to
+// test sources would break exactly those two and buy nothing; see G6, which records the same
+// reasoning for the same two files.
 // ---------------------------------------------------------------------------
 val checkNoHandRolledHex by tasks.registering {
     group = "verification"
-    description = "Fail the build on a per-byte hex loop (use Hashing.hex)"
+    description = "Fail the build on a per-byte hex loop, or java.util.HexFormat outside Hashing"
     val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
     inputs.files(mainJava).withPropertyName("mainJava")
+    val owner = rootProject.layout.projectDirectory.file(
+            "shared/host/src/main/java/cc/jumpkick/host/Hashing.java")
+    inputs.file(owner).withPropertyName("hashing")
     val treeRoot = rootProject.layout.projectDirectory.asFile
     val stamp = layout.buildDirectory.file("guards/no-hand-rolled-hex.ok")
     outputs.file(stamp)
     doLast {
-        // `%02x` in any format string (format / formatted / printf), and Character.forDigit unless
-        // it is being upper-cased — see the shape exemption above.
+        val ownerFile = owner.asFile
+        // Arm 1: `%02x` in any format string (format / formatted / printf), and Character.forDigit
+        // unless it is being upper-cased — see the shape exemption above.
         val hexLoop = Regex("""%02[xX]|(?<!Character\.toUpperCase\()Character\.forDigit\(""")
+        // Arm 2: the type, in any spelling — call, field, FQCN, plain or static import.
+        val hexFormat = Regex("""\bHexFormat\b""")
         val hits = mutableListOf<String>()
         mainJava.files.sorted().forEach { f ->
-            val n = countIn(guardText(f.readText()), hexLoop)
-            if (n > 0) hits.add("  %5d  %s".format(n, f.relativeTo(treeRoot).invariantSeparatorsPath))
+            val src = f.readText()
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            countIn(guardText(src), hexLoop).let {
+                if (it > 0) hits.add("  %5d  %s  per-byte hex loop".format(it, rel))
+            }
+            if (f == ownerFile) return@forEach
+            // guardText drops imports; this arm must see them (see above), so blank the comments
+            // and squash the whitespace without the import filter.
+            val withImports = squashBetweenLiterals(blankNonCode(src, blankStrings = false))
+            countIn(withImports, hexFormat).let {
+                if (it > 0) hits.add("  %5d  %s  java.util.HexFormat".format(it, rel))
+            }
         }
         if (hits.isNotEmpty()) {
             throw GradleException("Bytes become hex in one place, cc.jumpkick.host.Hashing.hex"
-                    + " (JK-2409, JK-2416). These hand-encode:\n"
+                    + " (JK-2409, JK-2416, JK-2487). These spell it themselves:\n"
                     + hits.sorted().joinToString("\n")
                     + "\n  Call Hashing.hex(byte[]) — or sha256Hex, which does the digest too."
-                    + " String.format(\"%02x\", b) allocates a Formatter per byte. Uppercase hex for a"
-                    + " non-digest encoding is a different function: write it as"
-                    + " Character.toUpperCase(Character.forDigit(..)), which this guard exempts by"
+                    + " String.format(\"%02x\", b) allocates a Formatter per byte."
+                    + "\n  HexFormat.of().formatHex(digest) looks fine and is not slow; it is banned"
+                    + " because it is a SECOND ANSWER to \"how does jk spell bytes\", and sixteen"
+                    + " call sites had each answered it separately before JK-2416 swept them."
+                    + " Hashing.hex is the door, and its lowercase-always contract is the point."
+                    + "\n  Going the other way (HexFormat.of().parseHex) has no owner yet: add"
+                    + " Hashing.unhex(String) next to hex(byte[]) and call that, rather than"
+                    + " reopening the shape here."
+                    + "\n  Uppercase hex for a non-digest encoding is a different function: write it"
+                    + " as Character.toUpperCase(Character.forDigit(..)), which this guard exempts by"
                     + " shape, and say at the call site which spec demands it.")
         }
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
@@ -999,11 +1215,22 @@ tasks.named("jar") { dependsOn(checkNoHandRolledHex) }
 // paths, help text and Maven scopes — so banning them by text scan would be false positives all
 // the way down. The hyphenated 51 are unambiguous: nothing else in the tree spells `write-stamp`.
 //
-// One structural exemption, no allowlist: GraalVM's launcher is `native-image` on POSIX and
-// `native-image.cmd` on Windows, so `NativeImageDriver` and `NativePreflight` spell the same
-// characters to mean a FILE, not a step. That is a different vocabulary and it is free to diverge,
-// so it must not borrow `TaskNames.NATIVE_IMAGE`. The exemption is the shape, not the file: a bare
-// literal sitting directly beside its own `.cmd`/`.exe` sibling is a filename. Three sites today.
+// TWO OWNERS, NO EXEMPTION AND NO ALLOWLIST. `native-image` is two vocabularies that happen to
+// spell the same characters: a step name (`TaskNames.NATIVE_IMAGE`) and GraalVM's launcher FILE
+// (`cc.jumpkick.host.GraalLauncher.NAME`). They are free to diverge and neither may borrow the
+// other's constant, so both files are guard inputs and both are skipped; the literal is banned
+// everywhere else, in either meaning.
+//
+// This replaces JK-2414's shape exemption, which blanked "a bare literal sitting directly beside
+// its own `.cmd`/`.exe` sibling" before scanning. That exemption was sound but it was hiding
+// something: it blanked three sites in two files, and there were FOUR encodings of the launcher
+// path in the tree. The fourth, `TrainRunner`, spelled the name path-joined as `"bin/native-image"`
+// and so was never a candidate for the exemption or for this guard — it evaded G12 entirely while
+// the guard reported green. JK-2484 folded all four into one owner; with one owner there is one
+// site, an owner skip covers it, and the shape exemption is gone rather than dormant.
+//
+// Measured at the fold (JK-2484): 0 violations. Before it, the same scan without the exemption saw
+// 3 (`NativePreflight:90`, `NativeImageDriver:320`, `:379`) — all filename spellings, none a step.
 //
 // A pure ban, not a ratchet: zero sites remain and there is nothing to allow. Reachability was
 // measured, not assumed — 14 of the 31 modules carry `:jk-api` on their compile classpath (it is
@@ -1020,10 +1247,6 @@ tasks.named("jar") { dependsOn(checkNoHandRolledHex) }
 // would follow the rename and still pass. 519 test-side literals are therefore left alone.
 // ---------------------------------------------------------------------------
 
-/** A launcher filename, not a step name: the bare spelling sits beside its `.cmd`/`.exe` sibling. */
-val launcherFilename =
-        Regex("\"([a-z][a-z0-9-]*)\\.(?:cmd|exe)\"[:,]\"\\1\"|\"([a-z][a-z0-9-]*)\"[,:]\"\\2\\.(?:cmd|exe)\"")
-
 val checkNoBareTaskName by tasks.registering {
     group = "verification"
     description = "Fail the build on a step name typed as a literal (use cc.jumpkick.run.TaskNames)"
@@ -1032,11 +1255,18 @@ val checkNoBareTaskName by tasks.registering {
     val owner = rootProject.layout.projectDirectory.file(
             "shared/jk-api/src/main/java/cc/jumpkick/run/TaskNames.java")
     inputs.file(owner).withPropertyName("taskNames")
+    // The other owner of `native-image`, the launcher filename (see G12 above). Declared as an
+    // input, not typed into the scan: a filename string would expire silently if the class moved,
+    // and this fails the build loudly instead.
+    val launcherOwner = rootProject.layout.projectDirectory.file(
+            "shared/host/src/main/java/cc/jumpkick/host/GraalLauncher.java")
+    inputs.file(launcherOwner).withPropertyName("graalLauncher")
     val treeRoot = rootProject.layout.projectDirectory.asFile
     val stamp = layout.buildDirectory.file("guards/no-bare-task-name.ok")
     outputs.file(stamp)
     doLast {
         val ownerFile = owner.asFile
+        val launcherFile = launcherOwner.asFile
         // value -> constant, for the hyphenated names only (see G12 above).
         val named = Regex("""public static final String (\w+) = "([^"]+)";""")
                 .findAll(ownerFile.readText())
@@ -1046,8 +1276,8 @@ val checkNoBareTaskName by tasks.registering {
 
         val hits = mutableListOf<String>()
         mainJava.files.sorted().forEach { f ->
-            if (f == ownerFile) return@forEach
-            val code = guardText(f.readText()).replace(launcherFilename, "")
+            if (f == ownerFile || f == launcherFile) return@forEach
+            val code = guardText(f.readText())
             val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
             named.forEach { (value, constant) ->
                 val n = countIn(code, Regex(Regex.escape("\"$value\"")))
@@ -1061,8 +1291,9 @@ val checkNoBareTaskName by tasks.registering {
                     + hits.sorted().joinToString("\n")
                     + "\n  Reference cc.jumpkick.run.TaskNames instead; it is on every production"
                     + " module's classpath. A string that is NOT a step name — GraalVM's"
-                    + " native-image launcher file, say — must not borrow the constant either:"
-                    + " give that vocabulary its own owner.")
+                    + " native-image launcher file, say — must not borrow the constant either: it"
+                    + " has its own owner, cc.jumpkick.host.GraalLauncher, and a third vocabulary"
+                    + " spelling the same characters needs a fourth owner, not a literal.")
         }
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
@@ -1322,7 +1553,7 @@ tasks.named("check") { dependsOn(checkSingleArchiveInstant) }
 tasks.named("jar") { dependsOn(checkSingleArchiveInstant) }
 
 // ---------------------------------------------------------------------------
-// Guard G14 (JK-2418): a cache tier's directory is named once, in `CacheTree`.
+// Guard G15 (JK-2418): a cache tier's directory is named once, in `CacheTree`.
 //
 // Defect it prevents: the rename that half-lands across a process boundary. A tier under the cache
 // root is written by one process and reclaimed, measured and wiped by others — `base-jre` by the
@@ -1362,7 +1593,7 @@ tasks.named("jar") { dependsOn(checkSingleArchiveInstant) }
 // there the point is that the fixture and the bound move together; see its class javadoc.
 // ---------------------------------------------------------------------------
 
-/** Tier names another vocabulary also spells; see G14 above for who owns each. */
+/** Tier names another vocabulary also spells; see G15 above for who owns each. */
 val tierNameHomonyms = setOf("sha256", "generated", "projects")
 
 val checkNoBareTierName by tasks.registering {
@@ -1378,7 +1609,7 @@ val checkNoBareTierName by tasks.registering {
     outputs.file(stamp)
     doLast {
         val ownerFile = owner.asFile
-        // value -> constant, straight out of the owner (see G14 above).
+        // value -> constant, straight out of the owner (see G15 above).
         val named = Regex("""^\s{4}([A-Z][A-Z0-9_]*)\("([^"]+)"""", RegexOption.MULTILINE)
                 .findAll(ownerFile.readText())
                 .associate { it.groupValues[2] to it.groupValues[1] }
@@ -1413,3 +1644,789 @@ val checkNoBareTierName by tasks.registering {
 }
 tasks.named("check") { dependsOn(checkNoBareTierName) }
 tasks.named("jar") { dependsOn(checkNoBareTierName) }
+
+// ---------------------------------------------------------------------------
+// Guard G20 (JK-2420): the host is read in one place, and paths join in one place.
+//
+// Defect it prevents: a predicate that is nearly right. `isWindows` had an owner and fourteen
+// private copies, and the copies tested `os.name.contains("win")` where the owner tested
+// `contains("windows")` — but "win" is a substring of **Darwin**, so every short copy called a Mac
+// a Windows box. That was not theoretical: `BuildTool.binaryName()` handed `jk mvn` the string
+// `mvn.cmd` on any JVM reporting `os.name=Darwin`, and the passthrough failed with "no such file"
+// on a machine that had Maven installed. The mirror-image copies (`contains("mac")`) had the
+// opposite hole — they miss `Darwin` — and `MemoryProbe` used one to decide whether to read macOS's
+// `host_statistics64`, so a Darwin-reporting JVM silently fell back to the bean's idle-page figure
+// and undersized every worker heap. Fourteen copies is fourteen chances to get the substring wrong,
+// and none of them is visible from the others.
+//
+// Two arms, and they are deliberately different shapes.
+//
+//   1. `os.name` — a PURE BAN outside `cc.jumpkick.host.Os`, with no allowlist. This arm is on the
+//      **property read**, not on the predicate derived from it, and that is the whole point.
+//      JK-2416's G9 reported zero while missing 16 of 19 hand-rolled hex sites, because it matched
+//      one derivation shape (`String.format("%02x")`) and could not see `HexFormat.of()`. The
+//      derivations here are worse: `contains("win")`, `startsWith("Windows")`, `contains("mac")
+//      || contains("darwin")`, and — in eight files — a `String os = ...` local read three
+//      statements later, which no single-expression pattern can follow. There is exactly one thing
+//      every copy must do first, and it is ask the JVM for the property. Ban that and the count is
+//      bounded by the defect rather than by the pattern.
+//
+//      The test seams survive: `JkDirs`, `IntellijProbe`, `HomebrewProbe`, `IntellijSdkRegistrar`,
+//      `IntellijJdkTable` and `OpenBrowser` all hand the host to a pure function so a test can pass
+//      a synthetic one. They now hand it `Os.name()`, which is the same seam with an owner, so the
+//      arm needs no exemption for them. `os.arch` is deliberately absent: `HostPlatform.mapArch` is
+//      its only reader and there is nothing to converge.
+//
+//      The property name is READ FROM THE OWNER, not re-typed here — every `*_PROPERTY` constant in
+//      `Os.java`. A second property this class starts owning is banned tree-wide the same minute,
+//      which a copy in this script would not be. Same habit as G8/G12/G13.
+//
+//   2. The classpath separator — a RATCHET outside `cc.jumpkick.host.Classpaths`, because the
+//      vocabulary genuinely overlaps. `File.pathSeparator` is also `PATH`'s separator, and `PATH`
+//      is an executable search path, not a class search path: it is joined by prepending a bin dir
+//      and split against the filesystem, never handed to `-cp`. The six sites below are all `PATH`
+//      and all correct; they are on the list, not exempted silently, so a seventh has to argue for
+//      itself. Giving `PATH` its own owner would retire this arm — filed separately rather than
+//      smuggled in here.
+//
+//      The banned spelling is READ FROM THE OWNER: `Classpaths.SEPARATOR`'s initialiser, plus the
+//      `…Char` variant of it. `System.getProperty("path.separator")` is re-typed, and safely so —
+//      it is the property `File.pathSeparator` is itself initialised from, so the two cannot drift.
+//      Three spellings, because the copies used all three — and the property spelling is why the
+//      first sweep counted eleven joiners and the second found twenty-five.
+//
+// Scope is `src/main/java`. Test sources are out for the reason G1 gives, and here it is load-
+// bearing in both directions: `BuildToolTest`, `AtomicWritesTest`, `MacPrefsTest`,
+// `NativeImageDriverTest`, `JdkFingerprintTest`, `EngineClientTest` and `EngineServerTest` all
+// **spoof** `os.name` with `System.setProperty`, which is the only way to exercise the other host's
+// branch, and a guard that banned the property in tests would delete the coverage that proves the
+// predicate right.
+// ---------------------------------------------------------------------------
+
+/**
+ * `PATH` is the same character and a different vocabulary; see G20 arm 2. Two joins (prepend a bin
+ * dir) and four splits (walk the search path) — none of them builds a `-cp`.
+ */
+val pathSeparatorRatchet = mapOf(
+        "clients/cli/src/main/java/cc/jumpkick/command/JkEnv.java" to 1,
+        "plugins/image-builder/src/main/java/cc/jumpkick/plugin/image/AotCacheTrainer.java" to 1,
+        "server/engine/src/main/java/cc/jumpkick/runtime/SourceProjectBuilder.java" to 1,
+        "shared/toolchain-jdk/src/main/java/cc/jumpkick/compat/PassthroughEnv.java" to 1,
+        "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/ActiveJavac.java" to 1,
+        "shared/toolchain-jdk/src/main/java/cc/jumpkick/tool/NativeImageDriver.java" to 1)
+
+val checkSingleHostSurface by tasks.registering {
+    group = "verification"
+    description = "Fail the build on an unowned os.name read or classpath separator (use Os / Classpaths)"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val osOwner = rootProject.layout.projectDirectory.file(
+            "shared/host/src/main/java/cc/jumpkick/host/Os.java")
+    val cpOwner = rootProject.layout.projectDirectory.file(
+            "shared/host/src/main/java/cc/jumpkick/host/Classpaths.java")
+    inputs.file(osOwner).withPropertyName("osOwner")
+    inputs.file(cpOwner).withPropertyName("classpathsOwner")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val here = layout.projectDirectory.asFile.relativeTo(treeRoot).invariantSeparatorsPath + "/"
+    val allowed = pathSeparatorRatchet
+    val stamp = layout.buildDirectory.file("guards/single-host-surface.ok")
+    outputs.file(stamp)
+    doLast {
+        val osOwnerFile = osOwner.asFile
+        val cpOwnerFile = cpOwner.asFile
+
+        // Arm 1's ban list, straight out of Os (see G20 above).
+        val properties = Regex("""public static final String \w*_?PROPERTY = "([^"]+)";""")
+                .findAll(osOwnerFile.readText())
+                .map { it.groupValues[1] }
+                .toList()
+        if (properties.isEmpty()) {
+            throw GradleException("cc.jumpkick.host.Os declares no *_PROPERTY constant, so the"
+                    + " host-surface guard has lost the owner it reads. Restore the constant or"
+                    + " retire this guard deliberately.")
+        }
+
+        // Arm 2's banned spelling, straight out of Classpaths.
+        val sepConstant = Regex("""public static final String SEPARATOR = ([\w.]+);""")
+                .find(cpOwnerFile.readText())
+                ?.groupValues
+                ?.get(1)
+                ?: throw GradleException("cc.jumpkick.host.Classpaths no longer initialises SEPARATOR"
+                        + " from a named constant, so the host-surface guard has lost the spelling it"
+                        + " reads. Restore it or retire this guard deliberately.")
+        val separators = listOf(
+                Regex(Regex.escape(sepConstant) + """\b"""),
+                Regex(Regex.escape(sepConstant) + """Char\b"""),
+                // Not read from the owner, and it cannot drift from it: this is the JDK property
+                // File.pathSeparator is itself initialised from.
+                Regex("""System\.getProperty\("path\.separator""""))
+
+        val unownedOsReads = mutableListOf<String>()
+        val sepHits = LinkedHashMap<String, Int>()
+        mainJava.files.sorted().forEach { f ->
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            val code = guardText(f.readText())
+            if (f != osOwnerFile) {
+                properties.forEach { prop ->
+                    val pattern = Regex("""System\.getProperty\(""" + Regex.escape("\"$prop\""))
+                    val n = countIn(code, pattern)
+                    if (n > 0) unownedOsReads.add("  $rel: $n x System.getProperty(\"$prop\")")
+                }
+            }
+            if (f != cpOwnerFile) {
+                val n = separators.sumOf { countIn(code, it) }
+                if (n > 0) sepHits[rel] = n
+            }
+        }
+        val (grew, unlisted, loose) = ratchetVerdict(sepHits, allowed, here)
+
+        val problems = mutableListOf<String>()
+        if (unownedOsReads.isNotEmpty()) {
+            problems.add("The host is read in one place, cc.jumpkick.host.Os (JK-2420). These read"
+                    + " the property themselves:\n"
+                    + unownedOsReads.sorted().joinToString("\n")
+                    + "\n  Ask Os.isWindows() / isDarwin() / isLinux(), or Os.name() when you need"
+                    + " the raw string for a message or a test seam. Os is on the host leaf, which"
+                    + " every production module reaches. Do NOT re-derive the predicate: a copy that"
+                    + " tests contains(\"win\") calls Darwin a Windows box, which is the bug this"
+                    + " guard exists to keep out.")
+        }
+        if (unlisted.isNotEmpty()) {
+            problems.add("A classpath is joined and split in one place, cc.jumpkick.host.Classpaths"
+                    + " (JK-2420). These name the separator themselves and are not on the ratchet:\n"
+                    + unlisted.joinToString("\n")
+                    + "\n  Call Classpaths.join(entries) / Classpaths.split(cp). If this is PATH —"
+                    + " an executable search path, not a class search path — it is an exemption, and"
+                    + " it says so in pathSeparatorRatchet above.")
+        }
+        if (grew.isNotEmpty()) {
+            problems.add("A file on the path-separator ratchet may only shrink (JK-2420). These grew:\n"
+                    + grew.joinToString("\n"))
+        }
+        if (problems.isNotEmpty()) throw GradleException(problems.joinToString("\n\n"))
+
+        if (loose.isNotEmpty()) {
+            logger.lifecycle("pathSeparatorRatchet is loose (these shrank — tighten it in this commit):")
+            loose.forEach { logger.lifecycle(it) }
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkSingleHostSurface) }
+tasks.named("jar") { dependsOn(checkSingleHostSurface) }
+
+// ---------------------------------------------------------------------------
+// Guard G16 (JK-2419): Maven Central is addressed one way, and it is `RepositorySpec`'s.
+//
+// Defect it prevents: traffic to Central that the rate-limit machinery cannot see. `repo1.maven.org`
+// is a CNAME for `repo.maven.apache.org`, so it fetches the same bytes — but `CentralMirror` and
+// `HostCooldown` both key on the canonical host, and a request addressed to the alias matches
+// neither. Three engine paths did exactly that (`Giter8Maven`, `HardwareProbe`, `BuildLogicGroovyHost`,
+// the last two issuing four and five GETs a run), each through its own `HttpClient`, so a 429 they
+// provoked opened no window, tripped no cooldown, and rerouted nothing. The resolver then hit a quota
+// it had not spent. Swapping the constant alone would not have fixed it: the alias and the private
+// transport are one defect with two halves, and this guard covers the half a text scan can see.
+//
+// The name is the other half. `central` is the `repos/<name>/` store directory, the lockfile
+// `source` prefix and the repo-group entry all at once, so a store written under one spelling and
+// read under another is a cache that silently never hits.
+//
+// The ban list is READ FROM THE OWNER, not re-typed here: every `public static final String` in
+// `RepositorySpec.java`, plus the URL inside `MAVEN_CENTRAL`'s initializer. Add a constant there
+// and it is banned as a literal the same minute. The alias is the one string that is NOT in the
+// owner and is banned anyway — it has to be, because the whole point is that it must never appear.
+//
+// `"jumpkick"` and `"google"` are deliberately absent: they are still literals inside their own
+// `RepositorySpec` initializers rather than named constants, and `google` collides with a
+// formatter style (`FormatStyles.JAVA_STYLES`). Giving those two names owners is a separate change.
+//
+// One exemption, and it is a whole shape rather than a list of lines: a reader of someone else's
+// build file. `GradleImporter`, `PomImporter` and `GradleExporter` recognise the repository a
+// Maven or Gradle user declared, and that user may well have typed the alias — so those three must
+// keep matching every spelling, including the one jk itself must never emit. That is a different
+// vocabulary and it is free to diverge, exactly like GraalVM's `native-image` launcher under G12.
+//
+// Scope is `src/main/java`. Test sources keep their literals on purpose: a fixture that stands up a
+// fake Central and asserts on the URL is pinning the OUTBOUND value, and borrowing the constant
+// would make a change to it invisible to the suite.
+// ---------------------------------------------------------------------------
+
+/** Files that recognise a foreign build file's declared repository. See G16 above. */
+val foreignRepoReaders = setOf(
+        "server/toolchain/src/main/java/cc/jumpkick/gradle/GradleImporter.java",
+        "server/toolchain/src/main/java/cc/jumpkick/mvn/PomImporter.java",
+        "shared/toolchain-jdk/src/main/java/cc/jumpkick/gradle/GradleExporter.java")
+
+/** The host that resolves to Central but matches neither the mirror nor the cooldown. */
+val centralAliasHost = "repo1.maven.org"
+
+val checkSingleCentralAddress by tasks.registering {
+    group = "verification"
+    description = "Fail the build on a Central URL or repo name typed as a literal (use RepositorySpec)"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val owner = rootProject.layout.projectDirectory.file(
+            "shared/jk-api/src/main/java/cc/jumpkick/model/RepositorySpec.java")
+    inputs.file(owner).withPropertyName("repositorySpec")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val exempt = foreignRepoReaders
+    val alias = centralAliasHost
+    val stamp = layout.buildDirectory.file("guards/single-central-address.ok")
+    outputs.file(stamp)
+    doLast {
+        val ownerText = owner.asFile.readText()
+        // value -> constant, straight out of the owner (see G16 above).
+        val named = Regex("""public static final String (\w+) = "([^"]+)";""")
+                .findAll(ownerText)
+                .associate { it.groupValues[2] to it.groupValues[1] }
+                .toMutableMap()
+        val centralUrl = Regex("""MAVEN_CENTRAL\s*=\s*new RepositorySpec\([^;]*?URI\.create\("([^"]+)"\)""")
+                .find(ownerText)
+                ?.groupValues
+                ?.get(1)
+                ?: throw GradleException("cc.jumpkick.model.RepositorySpec no longer builds"
+                        + " MAVEN_CENTRAL from a URI literal, so the Central-address guard has lost"
+                        + " the owner it reads. Restore it or retire this guard deliberately.")
+        named[centralUrl] = "MAVEN_CENTRAL.url()"
+
+        val hits = mutableListOf<String>()
+        mainJava.files.sorted().forEach { f ->
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            if (f == owner.asFile || rel in exempt) return@forEach
+            val code = guardText(f.readText())
+            val aliased = countIn(code, Regex(Regex.escape(alias)))
+            if (aliased > 0) {
+                hits.add("  $rel: $aliased x $alias  ->  RepositorySpec.MAVEN_CENTRAL.url()")
+            }
+            named.forEach { (value, constant) ->
+                val n = countIn(code, Regex(Regex.escape("\"$value\"")))
+                if (n > 0) hits.add("  $rel: $n x \"$value\"  ->  RepositorySpec.$constant")
+            }
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("Maven Central is addressed once, through"
+                    + " cc.jumpkick.model.RepositorySpec.MAVEN_CENTRAL (JK-2419). These spell it"
+                    + " themselves:\n"
+                    + hits.sorted().joinToString("\n")
+                    + "\n  " + alias + " is a CNAME for the canonical host, so CentralMirror and"
+                    + " HostCooldown match neither it nor the traffic sent to it — and reaching"
+                    + " Central at all outside cc.jumpkick.http.Http misses both regardless of the"
+                    + " hostname. Use the constant AND the shared transport. A reader of someone"
+                    + " else's build file, which must recognise every spelling a user might have"
+                    + " typed, is the one exemption; add it to foreignRepoReaders with a reason.")
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkSingleCentralAddress) }
+tasks.named("jar") { dependsOn(checkSingleCentralAddress) }
+
+// ---------------------------------------------------------------------------
+// Guard G17 (JK-2419): a wire message type is named once, in `EngineProtocol`.
+//
+// Defect it prevents: the silent unhandled message. A JSONL `"type"` discriminator is a
+// producer/consumer contract with no compiler behind it — the engine writes `task-finish`, the CLI
+// and the dashboard switch on it — and when both ends type the string, a typo is not a build error,
+// it is an event nobody handles and nobody reports. `EngineProtocol` has owned these tokens all
+// along and 482 references already went through it; five files typed 35 of them anyway, and the
+// SSE/JSONL renderers were the worst of it because their strings are read by a browser rather than
+// by a Java `switch`, so a mismatch produces a dashboard row that quietly never updates.
+//
+// The ban list is READ FROM THE OWNER, not re-typed here: every `public static final String` in
+// `EngineProtocol.java` whose value contains a hyphen. Add a token and it is banned as a literal
+// the same minute — a guard carrying its own copy of the vocabulary would be the second place to
+// keep in sync, which is the defect it exists to prevent.
+//
+// The single-word values are deliberately OUT of the list, for the reason G12 leaves `install` and
+// `train` out: `type`, `status`, `error`, `output`, `warn`, `label`, `progress`, `auth`, `ping`,
+// `eta` and `heartbeat` are ordinary English that appears in field names, help text and log lines,
+// and banning them by text scan would be false positives all the way down. `SINGLE_PLAN_DIR` is the
+// empty string and is excluded by the same filter. The 110 hyphenated tokens are unambiguous:
+// nothing else in the tree spells `freshen-catalog-ack`.
+//
+// Two neighbouring vocabularies are free to diverge and must not borrow these constants. The
+// dashboard's SSE stream has four frame names of its own (`request-start`, `request-finish`,
+// `run-snapshot`, `plan`) and the CLI transcript has three (`session-start`, `session-finish`,
+// `workspace-start`); none is a socket-protocol token, so none is on the list. The guard says
+// nothing about them, which is the correct outcome, not a gap.
+//
+// One divergence the sweep found and deliberately did not close: a plan diagnostic is
+// `EngineProtocol.ERROR_LINE` (`error-line`) on the socket and plain `error` in the CLI's `--json`
+// stream and on SSE. Those are two names for one event, but reconciling them changes a documented
+// output contract, so `"error"` stays a literal at those sites rather than borrowing whichever
+// constant happens to match by value.
+//
+// A pure ban, not a ratchet: zero sites remain and there is nothing to allow.
+//
+// Scope is `src/main/java`. Test sources keep their literals on purpose, for the same reason G12
+// and G13 leave theirs: an assertion that the stream carried `workspace-finish` is a golden pinning
+// the WIRE vocabulary, and rewriting it to the constant would make a rename of the value invisible
+// to the whole suite — every test would follow the rename and still pass.
+// ---------------------------------------------------------------------------
+val checkNoBareWireType by tasks.registering {
+    group = "verification"
+    description = "Fail the build on a wire message type typed as a literal (use EngineProtocol)"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val owner = rootProject.layout.projectDirectory.file(
+            "shared/wire/src/main/java/cc/jumpkick/engine/protocol/EngineProtocol.java")
+    inputs.file(owner).withPropertyName("engineProtocol")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val stamp = layout.buildDirectory.file("guards/no-bare-wire-type.ok")
+    outputs.file(stamp)
+    doLast {
+        val ownerFile = owner.asFile
+        // value -> constant, for the hyphenated tokens only (see G17 above).
+        val named = Regex("""public static final String (\w+) = "([^"]*)";""")
+                .findAll(ownerFile.readText())
+                .map { it.groupValues[2] to it.groupValues[1] }
+                .filter { (value, _) -> value.contains('-') }
+                .toMap()
+        if (named.isEmpty()) {
+            throw GradleException("cc.jumpkick.engine.protocol.EngineProtocol no longer declares any"
+                    + " hyphenated token, so the wire-type guard has lost the owner it reads."
+                    + " Restore it or retire this guard deliberately.")
+        }
+
+        val hits = mutableListOf<String>()
+        mainJava.files.sorted().forEach { f ->
+            if (f == ownerFile) return@forEach
+            val code = guardText(f.readText())
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            named.forEach { (value, constant) ->
+                val n = countIn(code, Regex(Regex.escape("\"$value\"")))
+                if (n > 0) hits.add("  $rel: $n x \"$value\"  ->  EngineProtocol.$constant")
+            }
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("A wire message type typed as a literal is a producer/consumer"
+                    + " contract with no compiler behind it — a typo becomes an event nobody"
+                    + " handles, not a build error (JK-2419). These name one by hand:\n"
+                    + hits.sorted().joinToString("\n")
+                    + "\n  Reference cc.jumpkick.engine.protocol.EngineProtocol instead. A string"
+                    + " that is NOT a socket-protocol type — a dashboard-only SSE frame, a CLI"
+                    + " transcript envelope — must not borrow the constant either: that vocabulary"
+                    + " is free to diverge and keeps its own literal.")
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkNoBareWireType) }
+tasks.named("jar") { dependsOn(checkNoBareWireType) }
+
+// ---------------------------------------------------------------------------
+// Guard G18 (JK-2419): jk's build output directory is named once, in `BuildLayout.TARGET`.
+//
+// Defect it prevents: a scanner and a builder disagreeing about where output lives. `target/` is
+// not only where jk writes — it is what nine separate "skip this directory" tests compare against
+// (`GlobSet`, `TestSuites`, `PathSourceMaterializer`, `FormatPlans`, `WorkspaceFileAccess`,
+// `NewParentDirGuess`, `JUnitLauncher`, `PomRuntimeClasspath`, `WorkerLaunchClasspath`), plus what
+// `jk clean` deletes and what the preflight memo stats. Twenty-six sites spelled it themselves,
+// including `NativePreflight`, which sat in `BuildLayout`'s own package and re-derived the whole
+// workspace-member rule — the central-out-tree branch and all — rather than calling
+// `moduleTargetDir`. Two copies of a layout rule is one rename away from a formatter walking a
+// tree the compiler no longer writes to, or `jk clean` leaving the outputs behind.
+//
+// A name constant, not just the accessors: `moduleTargetDir` answers "where does this module write"
+// and most of the bypasses were asking "is this directory named target", which no accessor can
+// answer. Both now come from the same string.
+//
+// Five exemptions, each a different vocabulary that happens to spell the same seven characters —
+// the same call G12 makes for GraalVM's `native-image` launcher:
+//   * `ToolInstallCommand` / `ToolRunCommand` — the CLI parameter named `target` (a coordinate, a
+//     file, a directory or a git URL). It is a user-facing argument name, not a path segment.
+//   * `GroovyCompiler` — groovyc's `target` option (a bytecode level). Doubly exempt: it is a
+//     forked plugin worker and cannot reach `:core` at all.
+//   * `PomImporter` — Maven's `<target>` compiler configuration key, in someone else's file.
+//   * `BspServer` — the `target` field of a BSP request, in someone else's protocol.
+//   * `TestEnvValues` — the `${target}` interpolation variable name. It expands TO the output
+//     directory, but the token is a variable name in `jk.toml`, and renaming the directory must
+//     not silently rename the variable users wrote.
+//
+// Scope is `src/main/java`. Test sources keep their literals on purpose, for the same reason G13's
+// do: a fixture that writes `target/classes/main` and asserts the compiler found it is pinning the
+// ON-DISK layout, and borrowing the constant would make a move of that layout invisible.
+// ---------------------------------------------------------------------------
+
+/** Files where `target` means something other than jk's output directory. See G18 above. */
+val targetHomonyms = setOf(
+        "clients/cli/src/main/java/cc/jumpkick/cli/bsp/BspServer.java",
+        "clients/cli/src/main/java/cc/jumpkick/command/ToolInstallCommand.java",
+        "clients/cli/src/main/java/cc/jumpkick/command/ToolRunCommand.java",
+        "plugins/groovy-compiler/src/main/java/cc/jumpkick/groovy/compiler/GroovyCompiler.java",
+        "server/toolchain/src/main/java/cc/jumpkick/mvn/PomImporter.java",
+        "shared/core/src/main/java/cc/jumpkick/config/TestEnvValues.java")
+
+val checkNoBareTargetDir by tasks.registering {
+    group = "verification"
+    description = "Fail the build on jk's output directory typed as a literal (use BuildLayout.TARGET)"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val owner = rootProject.layout.projectDirectory.file(
+            "shared/core/src/main/java/cc/jumpkick/layout/BuildLayout.java")
+    inputs.file(owner).withPropertyName("buildLayout")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val exempt = targetHomonyms
+    val stamp = layout.buildDirectory.file("guards/no-bare-target-dir.ok")
+    outputs.file(stamp)
+    doLast {
+        // The banned name, straight out of the owner (see G18 above).
+        val value = Regex("""public static final String TARGET = "([^"]+)";""")
+                .find(owner.asFile.readText())
+                ?.groupValues
+                ?.get(1)
+                ?: throw GradleException("cc.jumpkick.layout.BuildLayout no longer declares TARGET,"
+                        + " so the output-directory guard has lost the owner it reads. Restore the"
+                        + " constant or retire this guard deliberately.")
+
+        val hits = mutableListOf<String>()
+        mainJava.files.sorted().forEach { f ->
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            if (f == owner.asFile || rel in exempt) return@forEach
+            val n = countIn(guardText(f.readText()), Regex(Regex.escape("\"$value\"")))
+            if (n > 0) hits.add("  $rel: $n x \"$value\"")
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("jk's build output directory is named once, in"
+                    + " cc.jumpkick.layout.BuildLayout.TARGET (JK-2419). These re-type it:\n"
+                    + hits.sorted().joinToString("\n")
+                    + "\n  Reference the constant — or better, BuildLayout.moduleTargetDir(ws, mod),"
+                    + " which also knows about the workspace central out tree. A `target` that is"
+                    + " NOT this directory — a CLI parameter, javac's -target, a BSP field — must"
+                    + " not borrow it either: add it to targetHomonyms with a reason.")
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkNoBareTargetDir) }
+tasks.named("jar") { dependsOn(checkNoBareTargetDir) }
+
+// ---------------------------------------------------------------------------
+// The tree-local Maven repository (JK-2466).
+//
+// Every module that publishes gains one extra repository, `build/local-maven-repo` at the repo
+// root, shared by all of them. It is a real Maven layout on disk written by the real publication,
+// which is what `:plugin-sdk`'s consumer-resolution test resolves the SDK out of: asserting on POM
+// text proves the string changed, resolving the closure proves a consumer can actually use it.
+// Declared once, here, so no module re-types the path — a module that wants it reads it back off
+// `publishing.repositories`.
+// ---------------------------------------------------------------------------
+val treeLocalRepoName = "treeLocal"
+
+// ---------------------------------------------------------------------------
+// Guard G19 (JK-2466): a published POM may not name a coordinate this build does not publish.
+//
+// Defect it prevents: the artifact that cannot be resolved at all. `cc.jumpkick:jk-plugin-sdk` —
+// the one library a third-party plugin author compiles against — shipped a POM whose only
+// dependency was `jk:host:unspecified`, because `:host` set no `group` and no `version` and Gradle
+// rendered the project dependency from its own defaults. `jk` is not a group we own, `host` is not
+// an artifactId we publish and `unspecified` is not a version, so every consumer failed in
+// dependency resolution before compiling a line. A text scan catches that in milliseconds and it
+// still shipped, which is the whole argument for this file.
+//
+// Three arms, all read from the build, none re-typed:
+//   1. `Project.DEFAULT_VERSION` — Gradle's own constant for "this project set no version". Its
+//      appearance in a POM means a coordinate was rendered from a default, never from a decision.
+//   2. `rootProject.name` — the group Gradle falls back to for a module that sets none (the parent
+//      path, which is the root project's name for a one-level module). Same tell, other axis.
+//   3. Any dependency in one of THIS BUILD's own published groups must name an artifact this build
+//      actually publishes. That is the arm that catches the fake fix: pinning a groupId and a
+//      version onto a project dependency whose target has no publication produces a POM that looks
+//      resolvable and still is not. The published set is collected from every `MavenPublication` in
+//      the tree, so adding or removing a publication moves the guard the same minute.
+//
+// A ratchet, not a ban, for exactly one reason: five worker publications still name `:core`,
+// `:io`, `:toolchain` and `:dynamic-surface`, which JK-2466 deliberately keeps internal
+// (publishing them is a stated non-goal). Those nine coordinates are listed below and nothing else
+// is allowed — a tenth, or a different coordinate in one of those five, fails the build. Delete an
+// entry when the module stops naming an unpublished sibling; the guard prints the stale ones.
+//
+// Scope is `build/publications/**/pom-default.xml`, i.e. every POM `maven-publish` generates in
+// this module. The flattened worker POM written next to the jar by `writeWorkerPom` is a different
+// producer with a different rule (it resolves the whole runtime classpath and installs every
+// coordinate it names into the local store) and is not in scope.
+// ---------------------------------------------------------------------------
+
+/**
+ * POM dependencies on an internal module this build does not publish, one per line as
+ * `<module> <group>:<artifact>`.
+ *
+ * Every entry is a worker publication naming `:core` / `:io` / `:toolchain` / `:dynamic-surface`.
+ * Making them honest means publishing those modules, which JK-2466 lists as a non-goal — they are
+ * engine internals, not a consumer surface. The worker install path does not use these POMs:
+ * `writeWorkerPom` flattens the runtime classpath itself and stages every jar it names, so the
+ * coordinates below are unreachable in practice as well as unpublished.
+ */
+val unpublishedPomDeps = setOf(
+        ":auditor jk:core",
+        ":compat-bridge jk:core",
+        ":compat-bridge jk:io",
+        ":compat-bridge jk:toolchain",
+        ":image-builder jk:core",
+        ":image-builder jk:io",
+        ":minified jk:dynamic-surface",
+        ":publisher jk:core",
+        ":publisher jk:io")
+
+/** One `<tag>value</tag>` out of a POM fragment. */
+fun pomTag(fragment: String, tag: String): String? =
+        Regex("<$tag>([^<]*)</$tag>").find(fragment)?.groupValues?.get(1)?.trim()
+
+pluginManager.withPlugin("maven-publish") {
+    extensions.configure<PublishingExtension> {
+        repositories {
+            maven {
+                name = treeLocalRepoName
+                url = uri(rootProject.layout.buildDirectory.dir("local-maven-repo"))
+            }
+        }
+    }
+
+    val checkPublishedPomCoordinates by tasks.registering {
+        group = "verification"
+        description = "Fail the build on a generated POM naming a coordinate this build does not publish"
+        val generatedPoms = fileTree(layout.buildDirectory.dir("publications").get()) {
+            include("**/pom-default.xml")
+        }
+        inputs.files(generatedPoms).withPropertyName("generatedPoms")
+        dependsOn(tasks.withType(GenerateMavenPom::class.java))
+        // Arm 3's allowed set, read off the build's own publications rather than re-typed.
+        val publishedCoordinates = provider {
+            rootProject.allprojects
+                    .mapNotNull { it.extensions.findByType(PublishingExtension::class.java) }
+                    .flatMap { it.publications.withType(MavenPublication::class.java) }
+                    .map { "${it.groupId}:${it.artifactId}" }
+                    .toSortedSet()
+        }
+        inputs.property("publishedCoordinates", publishedCoordinates)
+        val fallbackGroup = rootProject.name
+        val fallbackVersion = Project.DEFAULT_VERSION
+        val here = project.path
+        val ratchet = unpublishedPomDeps
+        val treeRoot = rootProject.layout.projectDirectory.asFile
+        val stamp = layout.buildDirectory.file("guards/published-pom-coordinates.ok")
+        outputs.file(stamp)
+        doLast {
+            val published = publishedCoordinates.get()
+            val publishedGroups = published.map { it.substringBefore(':') }.toSet()
+            val poms = generatedPoms.files.sorted()
+            if (poms.isEmpty()) {
+                throw GradleException("$here applies maven-publish but generated no POM, so the"
+                        + " published-coordinate guard verified nothing (JK-2466). A guard a dead"
+                        + " call satisfies is worse than no guard: fix the wiring or drop the"
+                        + " plugin.")
+            }
+
+            val hits = mutableListOf<String>()
+            val seen = mutableSetOf<String>()
+            fun fault(group: String?, artifact: String?, version: String?): String? = when {
+                version == fallbackVersion ->
+                        "version is Gradle's $fallbackVersion default — the target module sets none"
+                group == fallbackGroup || group.orEmpty().startsWith("$fallbackGroup.") ->
+                        "groupId is the $fallbackGroup fallback — the target module sets no group"
+                group in publishedGroups && "$group:$artifact" !in published ->
+                        "$group is a group this build publishes, but it publishes no $artifact"
+                else -> null
+            }
+
+            poms.forEach { f ->
+                val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+                val text = f.readText()
+                val head = text.substringBefore("<dependencies>")
+                fault(pomTag(head, "groupId"), pomTag(head, "artifactId"), pomTag(head, "version"))
+                        ?.let { hits.add("  $rel: its own coordinates — $it") }
+                Regex("<dependency>(.*?)</dependency>", RegexOption.DOT_MATCHES_ALL)
+                        .findAll(text)
+                        .forEach { m ->
+                            val block = m.groupValues[1]
+                            val g = pomTag(block, "groupId")
+                            val a = pomTag(block, "artifactId")
+                            val v = pomTag(block, "version")
+                            val reason = fault(g, a, v) ?: return@forEach
+                            val key = "$here $g:$a"
+                            seen.add(key)
+                            if (key !in ratchet) hits.add("  $rel: $g:$a:$v — $reason")
+                        }
+            }
+            if (hits.isNotEmpty()) {
+                throw GradleException("A published POM that names a coordinate no repository can"
+                        + " serve makes the artifact unresolvable before a consumer compiles a line"
+                        + " (JK-2466):\n"
+                        + hits.sorted().joinToString("\n")
+                        + "\n  Give the target module a group, a version and a publication, or stop"
+                        + " depending on it from a published module. Pinning a groupId and a"
+                        + " version onto a dependency whose target nobody publishes produces a POM"
+                        + " that looks resolvable and still is not.")
+            }
+
+            val stale = ratchet.filter { it.startsWith("$here ") && it !in seen }
+            if (stale.isNotEmpty()) {
+                logger.lifecycle("unpublishedPomDeps is loose (these no longer violate — delete"
+                        + " them from jk.java-conventions.gradle.kts in this commit):")
+                stale.sorted().forEach { logger.lifecycle("  $it") }
+            }
+            stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+        }
+    }
+    // `jar` as well as `check`, like the rest of the registry: the root `checkAll` reaches every
+    // module's `jar` through the test runtime classpath but never its `check`, so a guard wired
+    // only to `check` sits out the merge gate.
+    tasks.named("check") { dependsOn(checkPublishedPomCoordinates) }
+    tasks.named("jar") { dependsOn(checkPublishedPomCoordinates) }
+}
+
+// ---------------------------------------------------------------------------
+// Guard G21 (JK-2422): JSON is escaped in one place and parsed in one place.
+//
+// Defect it prevents: the codec that is nearly right. Five files assembled JSON with their own
+// escaper. Every copy handled `\ " \n \r \t` and stopped there or reimplemented the `\uXXXX`
+// fallback beside it, so the tree carried five chances to drop a control character onto a wire
+// whose peer is an IDE, a browser or an OSV endpoint — and one of them, `plugins/auditor`, was
+// paying 2.65 MB and three jars for a second tree reader while `MiniJson` sat on its classpath.
+// A second *parser* is worse than a second writer: `shared/dynamic-surface`'s copy had no nesting
+// cap, and a third party's `reflect-config.json` could overflow the stack with a `StackOverflowError`
+// — an `Error`, so the `catch (RuntimeException)` that makes a broken metadata file a no-op let it
+// through and killed the package step.
+//
+// Both arms read their alphabet FROM THE OWNER, `Jsonl.java`, at task time:
+//   * the `\uXXXX` control-escape format token, out of `Jsonl.quote`;
+//   * the escape letters `Jsonl.appendEscape` decodes, out of its `case` labels.
+// A guard that re-typed `"\\u%04x"` here would be the ninth copy of the thing it is hunting.
+//
+// EXEMPTION IS BY SPEC, NOT BY FILENAME, because `code-as-art.md` is explicit that two escapers
+// can both be correct, and this tree holds the exact pair it warns about: `MinimalToml.quote` is
+// character-for-character the same method as `Jsonl.quote`. Merging them would be a regression.
+// So each arm carries the discriminator its direction actually has:
+//
+//   * WRITE. There is none in the emitted alphabet — a JSON writer need not emit `\/`, and
+//     `MinimalToml` emits neither `\/` nor TOML's own `\U`. The discriminator is what the file
+//     does with the escaped string: a JSON *object* literal, `\"key\":`, which no TOML, DOT,
+//     `.properties`, shell or Kotlin emitter in this tree writes. So the write arm fires on
+//     "escapes the quote char, emits the owner's `\uXXXX` fallback, AND assembles a JSON object",
+//     and `MinimalToml` — which does the first two and never the third — is out by shape.
+//   * READ. Here the spec does discriminate: `\/` is legal in JSON and illegal in a TOML basic
+//     string, so an escape switch with a `'/'` label beside the owner's letters is reading JSON
+//     and nothing else. `MinimalToml.unquote` and `AotManifest.unquote` decode `n r t b f u` and
+//     have no `'/'`; `DotEnv` has neither `'/'` nor `'u'`. All three are out on the same rule.
+//
+// Verified against every escaper shape in the tree before landing, not just the one this started
+// from — the recorded lesson from G9, whose count was bounded by its pattern rather than by the
+// defect. At HEAD the two arms flagged exactly the six files JK-2422 deleted or rewrote
+// (`EnvCommand`, `HttpEvents`, `ChromeTimeline`, `DynamicSurfaceIo`, `ReachabilityMetadataEmitter`,
+// `surface/Json`) and none of the nine correct non-JSON escapers and unescapers beside them
+// (`MinimalToml`, `AotManifest`, `MicronautPlugin`'s `.properties`, `ShellPathExpr`'s two shell
+// dialects, `DotEnv`, `JavacRunner`'s argfile, `BuildLogicKtsHost`'s Kotlin literal,
+// `ModuleDotGraph`'s DOT, `NativeImageDriver`'s argfile). A pure ban with an empty allowlist:
+// after the sweep there is nothing left to allow.
+//
+// Reachability was measured, not assumed: `:host` is an `api` dependency of both `:core` and
+// `:plugin-sdk`, so `Jsonl` and `MiniJson` are on every production module's classpath and inside
+// the native image. `shared/dynamic-surface` was the one module that could not see them, because
+// it declared no dependency at all; JK-2422 gave it `api(project(":host"))` and its two copies
+// went with it.
+//
+// Scope is `src/main/java`. A test that spells an escape by hand is a golden pinning the on-disk
+// or on-wire bytes — the same reason G12, G13 and G15 leave test sources alone — and a fixture
+// rewritten to call the owner would follow a change of the format and still pass.
+// ---------------------------------------------------------------------------
+
+/** The two files that ARE the JSON codec; the first is also where both arms read their alphabet. */
+val jsonCodecOwners = listOf(
+        "shared/host/src/main/java/cc/jumpkick/jsonl/Jsonl.java",
+        "shared/host/src/main/java/cc/jumpkick/jsonl/MiniJson.java")
+
+/** A Java char literal, escaped or not. */
+private val charLiteral = """'(?:\\.|[^\\'])'"""
+
+/**
+ * Every char that appears as a `case` label in [code] — multi-label arms included. Written for
+ * [guardText]-squashed input, where `case '"' ->` has already become `case'"'->`.
+ */
+fun caseLabelChars(code: String): Set<String> =
+        Regex("""(?<![\w$])case\s*((?:$charLiteral\s*,\s*)*$charLiteral)\s*(?:->|:)""")
+                .findAll(code)
+                .flatMap { arm -> Regex(charLiteral).findAll(arm.groupValues[1]) }
+                .map { it.value.removeSurrounding("'") }
+                .toSet()
+
+/** A JSON object literal written into Java source: `"…\"key\":…"`. Nothing else spells that. */
+val jsonObjectLiteral = Regex("""\\"[A-Za-z_][A-Za-z0-9_.\-]*\\"\s*:""")
+
+val checkOneJsonCodec by tasks.registering {
+    group = "verification"
+    description = "Fail the build on a JSON escaper or parser outside cc.jumpkick.jsonl"
+    val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
+    inputs.files(mainJava).withPropertyName("mainJava")
+    val owner = rootProject.layout.projectDirectory.file(jsonCodecOwners.first())
+    inputs.file(owner).withPropertyName("jsonl")
+    val treeRoot = rootProject.layout.projectDirectory.asFile
+    val owners = jsonCodecOwners
+    val stamp = layout.buildDirectory.file("guards/one-json-codec.ok")
+    outputs.file(stamp)
+    doLast {
+        val ownerCode = guardText(owner.asFile.readText())
+        // `String.format("\uXXXX", …)` — the control-char fallback, taken verbatim out of the
+        // owner so this file never spells it.
+        val unicodeEscape = Regex("""String\.format\(("[^"]*u%04[xX]")""")
+                .find(ownerCode)
+                ?.groupValues
+                ?.get(1)
+        // The letters `Jsonl.appendEscape` decodes: " \ / n r t b f u.
+        val ownerEscapes = caseLabelChars(ownerCode)
+        if (unicodeEscape == null || !ownerEscapes.containsAll(listOf("/", "u", "n"))) {
+            throw GradleException("cc.jumpkick.jsonl.Jsonl no longer yields the escape alphabet the"
+                    + " one-JSON-codec guard reads from it (JK-2422): unicode fallback"
+                    + " ${unicodeEscape ?: "MISSING"}, decoded escapes $ownerEscapes. Restore the"
+                    + " codec's shape or retire this guard deliberately — do not re-type the"
+                    + " alphabet here, which is the defect the guard exists to prevent.")
+        }
+        // Case-insensitive on the hex conversion only: `%04X` is the same escaper, shouting.
+        val unicodePattern = Regex(Regex.escape(unicodeEscape), RegexOption.IGNORE_CASE)
+        val decodesJson = ownerEscapes.filter { it != "/" }
+
+        val writers = mutableListOf<String>()
+        val readers = mutableListOf<String>()
+        mainJava.files.sorted().forEach { f ->
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            if (rel in owners) return@forEach
+            val code = guardText(f.readText())
+            val labels = caseLabelChars(code)
+            if (unicodePattern.containsMatchIn(code)
+                    && "\"" in labels
+                    && jsonObjectLiteral.containsMatchIn(code)) {
+                writers.add("  $rel")
+            }
+            // `\/` is JSON's and no other jk format's; four more of the owner's letters beside it
+            // is an escape switch, not a coincidence of a character-dispatch table.
+            if ("/" in labels && labels.count { it in decodesJson } >= 4) readers.add("  $rel")
+        }
+
+        val problems = mutableListOf<String>()
+        if (writers.isNotEmpty()) {
+            problems.add("jk escapes a JSON string in one place, `Jsonl.quote` (JK-2422). These"
+                    + " assemble a JSON object with an escaper of their own:\n"
+                    + writers.joinToString("\n")
+                    + "\n  Call cc.jumpkick.jsonl.Jsonl.quote for one string, or hand the whole"
+                    + " document to MiniJson.write / writePretty. Both are in :host, which every"
+                    + " production module already links. An escaper for a DIFFERENT format is not"
+                    + " in scope and must not borrow Jsonl either: TOML basic strings go through"
+                    + " MinimalToml.quote, XML through MinimalXml, and a new format gets its own"
+                    + " owner beside them.")
+        }
+        if (readers.isNotEmpty()) {
+            problems.add("jk parses JSON in one place, `MiniJson` (JK-2422). These decode JSON's"
+                    + " escape alphabet themselves:\n"
+                    + readers.joinToString("\n")
+                    + "\n  MiniJson.parse gives you Map/List/String/Double/Boolean, with a nesting"
+                    + " cap a hand-rolled recursive descent does not have — and a"
+                    + " StackOverflowError is an Error, so the catch that was meant to make a bad"
+                    + " document a no-op will not catch it. MiniJson.get / str / list read the"
+                    + " result without an instanceof ladder at every field.")
+        }
+        if (problems.isNotEmpty()) throw GradleException(problems.joinToString("\n\n"))
+
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+tasks.named("check") { dependsOn(checkOneJsonCodec) }
+tasks.named("jar") { dependsOn(checkOneJsonCodec) }

@@ -54,21 +54,22 @@ class CodeFormatterRewriteTest {
         Path classes = compileLibrary(tmp);
 
         Path withoutCp = caller(tmp.resolve("nocp"));
-        boolean changedWithoutCp = CodeFormatter.applyRewrite(
+        CodeFormatter.Rewrite withoutCpOutcome = CodeFormatter.applyRewrite(
                 new ShortenFullyQualifiedTypeReferences(), withoutCp.toFile(), true, List.of());
 
-        assertThat(changedWithoutCp)
-                .as("with no classpath the type cannot be resolved, so there is nothing to shorten")
-                .isFalse();
+        assertThat(withoutCpOutcome)
+                .as("with no classpath the type cannot be resolved, so there is nothing to shorten"
+                        + " — and the file parsed, so this is UNCHANGED, not UNPARSEABLE")
+                .isEqualTo(CodeFormatter.Rewrite.UNCHANGED);
         assertThat(Files.readString(withoutCp))
                 .contains("cc.jumpkick.foo.Bar.hi()")
                 .doesNotContain("import ");
 
         Path withCp = caller(tmp.resolve("cp"));
-        boolean changedWithCp = CodeFormatter.applyRewrite(
+        CodeFormatter.Rewrite withCpOutcome = CodeFormatter.applyRewrite(
                 new ShortenFullyQualifiedTypeReferences(), withCp.toFile(), true, List.of(classes));
 
-        assertThat(changedWithCp).isTrue();
+        assertThat(withCpOutcome).isEqualTo(CodeFormatter.Rewrite.CHANGED);
         assertThat(Files.readString(withCp))
                 .as("the Done criterion: cc.jumpkick.foo.Bar in a method body becomes Bar + an import")
                 .contains("import cc.jumpkick.foo.Bar;")
@@ -83,10 +84,10 @@ class CodeFormatterRewriteTest {
         Path caller = caller(tmp.resolve("check"));
         String before = Files.readString(caller);
 
-        boolean changed = CodeFormatter.applyRewrite(
+        CodeFormatter.Rewrite outcome = CodeFormatter.applyRewrite(
                 new ShortenFullyQualifiedTypeReferences(), caller.toFile(), false, List.of(classes));
 
-        assertThat(changed).isTrue();
+        assertThat(outcome).isEqualTo(CodeFormatter.Rewrite.CHANGED);
         assertThat(Files.readString(caller)).isEqualTo(before);
     }
 

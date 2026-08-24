@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.builds.ProjectIdentity;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
@@ -20,7 +21,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -236,7 +236,8 @@ final class HttpProjectApi {
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
-        boolean transitive = parseTruthy(HttpEngineServer.queryParamLenient(query, "transitive"));
+        boolean transitive = EnvValues.parseBool(HttpEngineServer.queryParamLenient(query, "transitive"))
+                .orElse(false);
         DependencyGraphModel.Graph data;
         try {
             data = DependencyGraphModel.forProjectDir(projectDir, scopes, transitive);
@@ -603,12 +604,5 @@ final class HttpProjectApi {
                 HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.jsonl.MiniJson.write(resp));
             }
         }
-    }
-
-    /** Query flag: true for {@code 1}/{@code true}/{@code yes}/{@code on} (case-insensitive). */
-    private static boolean parseTruthy(String raw) {
-        if (raw == null || raw.isBlank()) return false;
-        String t = raw.trim().toLowerCase(Locale.ROOT);
-        return t.equals("1") || t.equals("true") || t.equals("yes") || t.equals("on");
     }
 }

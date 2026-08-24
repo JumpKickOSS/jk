@@ -16,6 +16,7 @@ import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
@@ -394,7 +395,7 @@ public final class VerifyBuildCommand implements CliCommand {
     private static boolean skip(Path d) {
         String name = d.getFileName() == null ? "" : d.getFileName().toString();
         if (name.equals(".git")) return true;
-        return name.equals("target")
+        return name.equals(BuildLayout.TARGET)
                 && d.getParent() != null
                 && Files.exists(d.getParent().resolve(ManifestPaths.MANIFEST));
     }

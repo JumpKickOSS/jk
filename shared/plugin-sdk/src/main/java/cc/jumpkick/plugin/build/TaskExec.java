@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.build;
 
+import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.jdk.JdkFingerprint;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -112,13 +114,8 @@ public interface TaskExec {
         }
 
         public ToolRun classpath(List<Path> entries) {
-            StringBuilder cp = new StringBuilder();
-            for (int i = 0; i < entries.size(); i++) {
-                if (i > 0) cp.append(System.getProperty("path.separator"));
-                cp.append(entries.get(i).toAbsolutePath());
-            }
             args.add("-cp");
-            args.add(cp.toString());
+            args.add(Classpaths.join(entries));
             return this;
         }
 
@@ -144,14 +141,11 @@ public interface TaskExec {
 
         /** Fork and drain: exit code + combined stdout/stderr. */
         public Result run() throws IOException, InterruptedException {
-            boolean windows = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win");
             List<String> command = new ArrayList<>();
             command.add(
                     executable != null
                             ? executable.toAbsolutePath().toString()
-                            : javaHome.resolve("bin")
-                                    .resolve(windows ? bin + ".exe" : bin)
-                                    .toString());
+                            : JdkFingerprint.tool(javaHome, bin).toString());
             command.addAll(args);
             ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
             if (cwd != null) pb.directory(cwd.toFile());

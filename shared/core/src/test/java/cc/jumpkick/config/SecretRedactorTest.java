@@ -175,4 +175,27 @@ class SecretRedactorTest {
 
         assertThat(SecretRedactor.from(env).redact("auth: ghp_same-token-both")).isEqualTo("auth: ***");
     }
+
+    /**
+     * A secret from a source no {@code .env} declares joins by composition, not by widening the
+     * declaration rule: the caller holds the value and says so, and the {@code .env} half of the
+     * redactor is unchanged by its arrival.
+     */
+    @Test
+    void and_folds_in_a_told_secret_without_touching_the_declared_ones(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve(".env"), "DECLARED=declared-secret-value\n");
+        SecretRedactor declared = SecretRedactor.from(EnvLookup.forModule(tmp, name -> null));
+
+        SecretRedactor both = declared.and(List.of("resolved-credential-value"));
+
+        assertThat(both.redact("a=declared-secret-value b=resolved-credential-value"))
+                .isEqualTo("a=" + SecretRedactor.MASK + " b=" + SecretRedactor.MASK);
+        assertThat(declared.redact("b=resolved-credential-value"))
+                .as("the original is immutable — composition returns a new redactor")
+                .isEqualTo("b=resolved-credential-value");
+        assertThat(declared.and(List.of())).isSameAs(declared);
+        assertThat(declared.and(List.of("declared-secret-value")))
+                .as("nothing new to say")
+                .isSameAs(declared);
+    }
 }

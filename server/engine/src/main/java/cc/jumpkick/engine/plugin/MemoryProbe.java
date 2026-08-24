@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import cc.jumpkick.host.Os;
 import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -11,7 +12,6 @@ import java.lang.invoke.MethodHandle;
 import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Locale;
 
 /**
  * Container-aware host memory from the OS (not a JVM bean), so native and hosted jk agree.
@@ -119,7 +119,7 @@ public final class MemoryProbe {
         }
 
         if (total <= 0 || available <= 0) {
-            Memory fallback = isMac() ? fromMachHostStatistics64() : null;
+            Memory fallback = Os.isDarwin() ? fromMachHostStatistics64() : null;
             if (fallback == null) fallback = fromBean();
             if (total <= 0) total = fallback.totalBytes();
             if (available <= 0) available = fallback.availableBytes();
@@ -129,10 +129,6 @@ public final class MemoryProbe {
         if (available <= 0) available = total;
         if (available > total) available = total;
         return new Memory(total, available);
-    }
-
-    private static boolean isMac() {
-        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac");
     }
 
     /** {@code mach/host_info.h}: the {@code HOST_VM_INFO64} flavor selector for {@code host_statistics64}. */

@@ -73,10 +73,7 @@ final class Json {
             if (d.test() != null && !d.test().isEmpty()) dm.put("test", d.test());
             if (d.module() != null && !d.module().isEmpty()) dm.put("module", d.module());
             if (d.engine() != null && !d.engine().isEmpty()) dm.put("engine", d.engine());
-            if (d.className() != null && !d.className().isEmpty()) {
-                dm.put("testClass", d.className());
-                dm.put("class", d.className());
-            }
+            if (d.className() != null && !d.className().isEmpty()) dm.put("testClass", d.className());
             if (d.method() != null && !d.method().isEmpty()) dm.put("method", d.method());
             if (d.exceptionClass() != null && !d.exceptionClass().isEmpty())
                 dm.put("exceptionClass", d.exceptionClass());
@@ -86,14 +83,7 @@ final class Json {
             if (d.snippetStart() > 0) dm.put("snippetStart", d.snippetStart());
             if (d.snippet() != null && !d.snippet().isEmpty()) dm.put("snippet", d.snippet());
             if (d.worker() > 0) dm.put("worker", d.worker());
-            if (d.stack() != null && !d.stack().isEmpty()) {
-                dm.put("stack", d.stack());
-                Map<String, Object> th = new LinkedHashMap<>();
-                th.put("class", d.exceptionClass() == null ? "" : d.exceptionClass());
-                th.put("message", d.message() == null ? "" : d.message());
-                th.put("stack", d.stack());
-                dm.put("throwable", th);
-            }
+            if (d.stack() != null && !d.stack().isEmpty()) dm.put("stack", d.stack());
             diagnostics.add(dm);
         }
         o.put("diagnostics", diagnostics);
@@ -193,14 +183,14 @@ final class Json {
             diagnostics.add(new BuildRecord.Diag(
                     str(dm, "severity"),
                     str(dm, "dir"),
-                    strOr(dm, "task", "step"),
+                    str(dm, "task"),
                     str(dm, "code"),
                     str(dm, "message"),
                     str(dm, "test"),
                     str(dm, "exceptionClass"),
                     str(dm, "module"),
                     str(dm, "engine"),
-                    firstStr(dm, "testClass", "class", "className"),
+                    str(dm, "testClass"),
                     str(dm, "method"),
                     str(dm, "stack"),
                     str(dm, "file"),
@@ -255,20 +245,6 @@ final class Json {
         return o.get(key) instanceof List<?> l ? (List<Object>) l : List.of();
     }
 
-    /** First key present wins — dual-read for journal records written before the task/group rename. */
-    private static String strOr(Map<String, Object> o, String key, String legacy) {
-        String v = str(o, key);
-        return v != null ? v : str(o, legacy);
-    }
-
-    private static String firstStr(Map<String, Object> o, String... keys) {
-        for (String k : keys) {
-            String v = str(o, k);
-            if (v != null) return v;
-        }
-        return null;
-    }
-
     private static List<String> strList(Map<String, Object> o, String key) {
         if (!(o.get(key) instanceof List<?> l) || l.isEmpty()) return List.of();
         List<String> out = new ArrayList<>(l.size());
@@ -278,22 +254,17 @@ final class Json {
         return out;
     }
 
-    /** Read a {@code "tasks"} array from a record or a module object ({@code "steps"} pre-rename). */
+    /** Read the {@code "tasks"} array of a record or of a module object. */
     @SuppressWarnings("unchecked")
     private static List<BuildRecord.Task> readSteps(Map<String, Object> o) {
         List<BuildRecord.Task> steps = new ArrayList<>();
-        List<Object> rows = arr(o, "tasks");
-        if (rows.isEmpty()) rows = arr(o, "steps");
-        for (Object e : rows) {
+        for (Object e : arr(o, "tasks")) {
             Map<String, Object> pm = (Map<String, Object>) e;
-            // Journals on disk predate the rename; read the old keys so history stays readable.
-            String stage = strOr(pm, "stage", "group");
-            if (stage == null || stage.isBlank()) stage = str(pm, "phase");
             // Missing millis = unknown duration, kept as -1 — NOT 0, which is the true-no-op
             // signal the dashboard renders dashed.
             steps.add(new BuildRecord.Task(
                     str(pm, "name"),
-                    stage,
+                    str(pm, "stage"),
                     str(pm, "status"),
                     pm.get("millis") instanceof Number n ? n.longValue() : -1L));
         }

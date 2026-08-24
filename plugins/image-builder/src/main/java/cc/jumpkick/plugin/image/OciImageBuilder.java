@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.image;
 
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
@@ -147,25 +148,55 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
                 appDir == null ? null : Path.of(appDir),
                 appJar);
 
+        String ref = config.targetReference(artifact, version);
         Optional<String> tarball = c.stringOpt("tarball");
+        boolean pushing =
+                tarball.isEmpty() && !"daemon".equals(c.stringOpt("mode").orElse(null));
+        // Every mode pulls the base image, so every mode needs the pull credential; only a push
+        // needs the second one. Handing `ref` over in tarball/daemon mode would claim a registry
+        // is contacted when none is.
+        RegistryAuth auth =
+                RegistryAuth.of(credential(ctx, "base"), credential(ctx, "push"), base, pushing ? ref : null);
+
         if (tarball.isPresent()) {
             Path tarballPath = Path.of(tarball.get());
             ctx.label("building OCI tarball");
             if (tarballPath.getParent() != null) Files.createDirectories(tarballPath.getParent());
-            ImageBuilder.writeToTarball(plan, tarballPath, cacheRoot);
+            ImageBuilder.writeToTarball(plan, tarballPath, cacheRoot, auth);
             return ImageResult.tarball(tarballPath);
         }
-        String ref = config.targetReference(artifact, version);
-        if ("daemon".equals(c.stringOpt("mode").orElse(null))) {
+        if (!pushing) {
             String exe = dockerExecutable != null ? dockerExecutable : "docker";
             ctx.label("loading " + ref + " into " + exe);
             ImageBuilder.loadToLocalDaemon(
-                    plan, dockerExecutable != null ? Path.of(dockerExecutable) : null, cacheRoot);
+                    plan, dockerExecutable != null ? Path.of(dockerExecutable) : null, cacheRoot, auth);
             return ImageResult.loaded(ref);
         }
         ctx.label("pushing " + ref);
-        ImageBuilder.pushToRegistry(plan, cacheRoot);
+        ImageBuilder.pushToRegistry(plan, cacheRoot, auth);
         return ImageResult.pushed(ref);
+    }
+
+    /**
+     * The credential the engine resolved for one registry, rebuilt from the spec's {@code secret}
+     * lines under {@code prefix} ({@code base} for the pull, {@code push} for the target). Same
+     * shape {@code jk-publisher} reads its repository credential in — one credential vocabulary,
+     * one resolution order, and the value never appears on this worker's command line.
+     */
+    static RepoCredential credential(ImageContext ctx, String prefix) {
+        String kind = ctx.config().stringOpt(prefix + "AuthType").orElse("anonymous");
+        return switch (kind) {
+            case "basic" ->
+                new RepoCredential.Basic(
+                        ctx.secret(prefix + "User").orElse(""),
+                        ctx.secret(prefix + "Pass").orElse(""));
+            case "bearer" ->
+                ctx.secret(prefix + "Token")
+                        .filter(t -> !t.isBlank())
+                        .<RepoCredential>map(RepoCredential.Bearer::new)
+                        .orElse(RepoCredential.ANONYMOUS);
+            default -> RepoCredential.ANONYMOUS;
+        };
     }
 
     private static Map<String, String> splitPairs(List<String> pairs) {
@@ -212,6 +243,11 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         @Override
         public Optional<Path> classesDir() {
             return Optional.ofNullable(spec.classesDir());
+        }
+
+        @Override
+        public Optional<String> secret(String key) {
+            return spec.secret(key);
         }
 
         @Override

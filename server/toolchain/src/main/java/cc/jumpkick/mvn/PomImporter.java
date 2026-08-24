@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.mvn;
 
-import static cc.jumpkick.repo.DomXml.childElement;
-import static cc.jumpkick.repo.DomXml.childElements;
-import static cc.jumpkick.repo.DomXml.childText;
+import static cc.jumpkick.host.DomXml.childElement;
+import static cc.jumpkick.host.DomXml.childElements;
+import static cc.jumpkick.host.DomXml.childText;
 
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.kotlin.KotlinResolver;
@@ -17,7 +17,6 @@ import cc.jumpkick.model.Workspace;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.PomParseException;
 import cc.jumpkick.repo.PomParser;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -32,13 +31,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
-import org.xml.sax.InputSource;
-import org.xml.sax.SAXException;
 
 /**
  * Converts a Maven {@code pom.xml} into a {@link JkBuild} plus an {@link ImportReport} of
@@ -67,8 +62,8 @@ public final class PomImporter {
     }
 
     private static Result importFromBytes(byte[] xml, Pom.Parent suppressParentMatching) {
-        Pom pom = PomParser.parse(xml);
-        Document doc = parseXml(xml);
+        Document doc = PomParser.parseXml(xml);
+        Pom pom = PomParser.parse(doc);
         ImportReport.Builder report = ImportReport.builder();
 
         JkBuild.Project project = mapProject(pom, doc, report, suppressParentMatching);
@@ -119,7 +114,7 @@ public final class PomImporter {
      */
     public static WorkspaceImportResult importWorkspace(Path rootPom) throws IOException {
         byte[] rootXml = Files.readAllBytes(rootPom);
-        Document rootDoc = parseXml(rootXml);
+        Document rootDoc = PomParser.parseXml(rootXml);
         List<String> modules = readModules(rootDoc);
         if (modules.isEmpty()) {
             Result single = importFromBytes(rootXml);
@@ -127,7 +122,7 @@ public final class PomImporter {
         }
 
         ImportReport.Builder report = ImportReport.builder();
-        Pom rootPomParsed = PomParser.parse(rootXml);
+        Pom rootPomParsed = PomParser.parse(rootDoc);
         JkBuild.Project rootProject = mapProject(rootPomParsed, rootDoc, report, null);
         // Root coords serve as the "expected parent" for children.
         Pom.Parent expectedParent =
@@ -709,20 +704,5 @@ public final class PomImporter {
             kinds.add("file-existence (jk has no equivalent — refactor to a jk profile)");
         }
         return kinds.isEmpty() ? null : "activation=" + String.join("+", kinds);
-    }
-
-    // --- XML helpers --------------------------------------------------------
-
-    private static Document parseXml(byte[] xml) {
-        try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setNamespaceAware(false);
-            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            factory.setFeature("http://javax.xml.XMLConstants/feature/secure-processing", true);
-            factory.setExpandEntityReferences(false);
-            return factory.newDocumentBuilder().parse(new InputSource(new ByteArrayInputStream(xml)));
-        } catch (ParserConfigurationException | SAXException | IOException e) {
-            throw new PomParseException("failed to parse POM: " + e.getMessage(), e);
-        }
     }
 }

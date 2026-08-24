@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
+import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -32,40 +33,40 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
 
     @Override
     public void planStart(BuildPlanView v) {
-        line(JsonlShape.planStart(v), "buildplan-start");
+        line(JsonlShape.planStart(v), EngineProtocol.BUILDPLAN_START);
     }
 
     @Override
     public void stepStart(String step, String group, int ticks) {
-        line(JsonlShape.stepStart(step, wire(group), ticks), "task-start");
+        line(JsonlShape.stepStart(step, wire(group), ticks), EngineProtocol.TASK_START);
     }
 
     @Override
     public void progress(String step, int delta, BuildPlanView v) {
         // Per-step numerator/denominator on the event; aggregate % via LiveProgress rider.
         if (aggregateRider) LiveProgress.get().update(v.numerator(), v.denominator());
-        line(JsonlShape.progress(step, delta, v), "progress");
+        line(JsonlShape.progress(step, delta, v), EngineProtocol.PROGRESS);
     }
 
     @Override
     public void tickUpdate(String step, int delta, BuildPlanView v) {
         if (aggregateRider) LiveProgress.get().update(v.numerator(), v.denominator());
-        line(JsonlShape.tickUpdate(step, delta, v), "tick-update");
+        line(JsonlShape.tickUpdate(step, delta, v), EngineProtocol.TICK_UPDATE);
     }
 
     @Override
     public void label(String step, String label) {
-        line(JsonlShape.label(step, label), "label");
+        line(JsonlShape.label(step, label), EngineProtocol.LABEL);
     }
 
     @Override
     public void output(String step, String out) {
-        line(JsonlShape.output(step, out), "output");
+        line(JsonlShape.output(step, out), EngineProtocol.OUTPUT);
     }
 
     @Override
     public void warn(String step, String code, String msg) {
-        line(JsonlShape.warn(step, code, msg), "warn");
+        line(JsonlShape.warn(step, code, msg), EngineProtocol.WARN);
     }
 
     @Override
@@ -85,12 +86,12 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
 
     @Override
     public void stepFinish(String step, String group, TaskStatus s, Duration d) {
-        line(JsonlShape.stepFinish(step, wire(group), s, d), "task-finish");
+        line(JsonlShape.stepFinish(step, wire(group), s, d), EngineProtocol.TASK_FINISH);
     }
 
     @Override
     public void planFinish(BuildPlanResult r) {
-        line(JsonlShape.planFinish(r), "buildplan-finish");
+        line(JsonlShape.planFinish(r), EngineProtocol.BUILDPLAN_FINISH);
     }
 
     private void line(String raw, String type) {

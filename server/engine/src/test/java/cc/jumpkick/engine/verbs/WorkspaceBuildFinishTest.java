@@ -78,7 +78,7 @@ class WorkspaceBuildFinishTest {
     @Test
     void a_green_build_whose_client_hung_up_journals_success() throws Exception {
         RecordingHost host = new RecordingHost();
-        JobOutcome green = JobOutcome.of(true, 0);
+        JobOutcome green = JobOutcome.ok();
 
         JobOutcome returned = WorkspaceTerminal.finish(host, hungUpClient(), "/w", result(true, 0, List.of()), false);
 
@@ -100,7 +100,7 @@ class WorkspaceBuildFinishTest {
     @Test
     void a_failed_build_whose_client_hung_up_keeps_its_own_exit_code() throws Exception {
         RecordingHost host = new RecordingHost();
-        JobOutcome red = JobOutcome.of(false, 3);
+        JobOutcome red = JobOutcome.failed(3);
 
         JobOutcome returned =
                 WorkspaceTerminal.finish(host, hungUpClient(), "/w", result(false, 3, List.of("boom", "bang")), false);
@@ -194,7 +194,7 @@ class WorkspaceBuildFinishTest {
 
     private static BuildRecord journal(JobOutcome outcome) {
         BuildAccumulator acc = new BuildAccumulator("build", "/w", "g:w", "cli");
-        acc.setOutcome(outcome.success(), outcome.exitCode());
+        acc.stamp(outcome);
         return acc.toRecord(1_000L, false, 10L, "test", null);
     }
 

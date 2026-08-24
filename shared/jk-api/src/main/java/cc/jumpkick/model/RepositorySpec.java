@@ -20,8 +20,21 @@ public record RepositorySpec(
          * that also bind the same group). Patterns: exact, {@code prefix.*} (group or subpackages). */
         List<String> groups) {
 
+    /**
+     * The one name Maven Central answers to inside jk — the {@code repos/<name>/} store directory,
+     * the lockfile {@code source} prefix, and the repo-group entry are all this string. Spelled
+     * once for the same reason {@link #JK_LOCAL} is: a store written under one spelling and read
+     * under another is a cache that silently never hits.
+     */
+    public static final String CENTRAL = "central";
+
+    /**
+     * Maven Central. {@code repo1.maven.org} is a CNAME for the same service and must not be used:
+     * {@code CentralMirror} and {@code HostCooldown} both key on the canonical host, so traffic
+     * addressed to the alias is invisible to the rate-limit window and to the failover mirror.
+     */
     public static final RepositorySpec MAVEN_CENTRAL =
-            new RepositorySpec("central", URI.create("https://repo.maven.apache.org/maven2/"));
+            new RepositorySpec(CENTRAL, URI.create("https://repo.maven.apache.org/maven2/"));
 
     /**
      * Synthetic first-party install store under {@code repos/jk-local/} (workers, {@code jk

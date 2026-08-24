@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -75,8 +76,7 @@ public final class JdkListCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.flag("Also list downloadable JDKs from the feed", "--all"),
-                Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
-                        .hide(),
+                CommonOpts.jdksDir(),
                 Opt.value("<url>", "Override the JetBrains JDK feed URL (for tests).", "--feed-url")
                         .hide(),
                 Opt.value("<file>", "Override the catalog cache path (for tests).", "--cache-file")
@@ -135,7 +135,7 @@ public final class JdkListCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws Exception {
         this.all = in.isSet("all");
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.feedUrl = in.value("feed-url").map(URI::create).orElse(null);
         this.cacheFile = in.value("cache-file").map(CliPaths::abs).orElse(null);
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();

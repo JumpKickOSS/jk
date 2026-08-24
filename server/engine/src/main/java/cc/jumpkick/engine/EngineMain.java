@@ -4,6 +4,8 @@ package cc.jumpkick.engine;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
+import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.util.AtomicWrites;
@@ -122,8 +124,8 @@ public final class EngineMain {
             Path finalPath = Path.of(aotOut);
             Path tmp = trainerTmpPath(finalPath);
             cleanStaleTrainerTmps(finalPath);
-            String javaExe = ProcessHandle.current().info().command().orElseGet(() -> Path.of(
-                            System.getProperty("java.home"), "bin", "java")
+            String javaExe = ProcessHandle.current().info().command().orElseGet(() -> JdkFingerprint.java(
+                            JavaHomes.runningJavaHome())
                     .toString());
             ProcessBuilder pb =
                     new ProcessBuilder(aotTrainerCommand(javaExe, System.getProperty("java.class.path"), tmp));

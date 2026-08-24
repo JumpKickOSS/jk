@@ -34,6 +34,9 @@ import java.util.concurrent.ExecutionException;
 /**
  * Jib-core OCI image builder: base image, layered jars under {@code /app/}, {@link ImageConfig}
  * metadata, registry push or local tarball, deterministic timestamps.
+ *
+ * <p>Every registry is reached through {@link RegistryAuth} — the base-image pull included, which
+ * is a registry read in tarball and daemon mode just as much as in push mode.
  */
 public final class ImageBuilder {
 
@@ -154,9 +157,10 @@ public final class ImageBuilder {
      * Push to a registry. {@code cacheRoot} is jk's cache root — where an AOT build extracts the
      * base image's JRE, under the bound the engine declares for {@code CacheTree.BASE_JRE}.
      */
-    public static Result pushToRegistry(Plan plan, Path cacheRoot) throws IOException, InterruptedException {
+    public static Result pushToRegistry(Plan plan, Path cacheRoot, RegistryAuth auth)
+            throws IOException, InterruptedException {
         try {
-            JibContainer container = run(plan, Containerizer.to(registryTarget(plan)), cacheRoot);
+            JibContainer container = run(plan, Containerizer.to(registryTarget(plan, auth)), cacheRoot, auth);
             return new Result(
                     plan.config().targetReference(plan.artifact(), plan.version()),
                     container.getDigest().toString());
@@ -170,13 +174,13 @@ public final class ImageBuilder {
      * resolved CLI path (e.g. {@code "docker"} or {@code "podman"}, or an absolute path); pass
      * {@code null} to let Jib auto-detect via {@code PATH}.
      */
-    public static Result loadToLocalDaemon(Plan plan, Path dockerExecutable, Path cacheRoot)
+    public static Result loadToLocalDaemon(Plan plan, Path dockerExecutable, Path cacheRoot, RegistryAuth auth)
             throws IOException, InterruptedException {
         try {
             DockerDaemonImage target =
                     DockerDaemonImage.named(plan.config().targetReference(plan.artifact(), plan.version()));
             if (dockerExecutable != null) target = target.setDockerExecutable(dockerExecutable);
-            JibContainer container = run(plan, Containerizer.to(target), cacheRoot);
+            JibContainer container = run(plan, Containerizer.to(target), cacheRoot, auth);
             return new Result(
                     plan.config().targetReference(plan.artifact(), plan.version()),
                     container.getDigest().toString());
@@ -186,14 +190,15 @@ public final class ImageBuilder {
     }
 
     /** Build to a local OCI tarball ({@code --tarball} mode). */
-    public static Result writeToTarball(Plan plan, Path tarball, Path cacheRoot)
+    public static Result writeToTarball(Plan plan, Path tarball, Path cacheRoot, RegistryAuth auth)
             throws IOException, InterruptedException {
         try {
             JibContainer container = run(
                     plan,
                     Containerizer.to(
                             TarImage.at(tarball).named(plan.config().targetReference(plan.artifact(), plan.version()))),
-                    cacheRoot);
+                    cacheRoot,
+                    auth);
             return new Result(
                     plan.config().targetReference(plan.artifact(), plan.version()),
                     container.getDigest().toString());
@@ -279,12 +284,12 @@ public final class ImageBuilder {
         return layer.build();
     }
 
-    private static JibContainer run(Plan plan, Containerizer containerizer, Path cacheRoot)
+    private static JibContainer run(Plan plan, Containerizer containerizer, Path cacheRoot, RegistryAuth auth)
             throws IOException, InterruptedException, InvalidImageReferenceException {
         ImageConfig cfg = plan.config();
         JibContainerBuilder builder;
         try {
-            builder = Jib.from(RegistryImage.named(cfg.base()));
+            builder = Jib.from(auth.base(cfg.base()));
         } catch (InvalidImageReferenceException e) {
             throw new IOException("invalid base image: " + cfg.base(), e);
         }
@@ -298,11 +303,11 @@ public final class ImageBuilder {
             boolean aot = cfg.aotCache();
             if (aot) {
                 AotCacheTrainer.Result trained = AotCacheTrainer.train(
-                        plan, plan.mainJar().getParent(), cacheRoot, msg -> System.err.println("jk: " + msg));
+                        plan, plan.mainJar().getParent(), cacheRoot, auth, msg -> System.err.println("jk: " + msg));
                 builder = builder.addFileEntriesLayer(treeLayer(trained.cache(), AotCacheTrainer.CACHE_FILE));
             }
             builder = builder.setEntrypoint(appTreeEntrypoint(plan, aot));
-            return finish(builder, plan, containerizer);
+            return finish(builder, plan, containerizer, auth);
         }
 
         // AOT cache: the trainer stages the runnable layout at /app, trains, and hands back the
@@ -317,7 +322,7 @@ public final class ImageBuilder {
                 throw new IOException("[image] aot-cache = true, but " + blocked);
             }
             aot = AotCacheTrainer.train(
-                    plan, plan.mainJar().getParent(), cacheRoot, msg -> System.err.println("jk: " + msg));
+                    plan, plan.mainJar().getParent(), cacheRoot, auth, msg -> System.err.println("jk: " + msg));
             builder = builder.addFileEntriesLayer(stagedTreeLayer(aot));
             builder = builder.addFileEntriesLayer(treeLayer(aot.cache(), AotCacheTrainer.CACHE_FILE));
             builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR));
@@ -361,11 +366,12 @@ public final class ImageBuilder {
             entrypoint.add(plan.mainClass());
         }
         builder = builder.setEntrypoint(entrypoint);
-        return finish(builder, plan, containerizer);
+        return finish(builder, plan, containerizer, auth);
     }
 
     /** Everything after the entrypoint: identity, ports, env, labels, platforms, and the build. */
-    private static JibContainer finish(JibContainerBuilder builder, Plan plan, Containerizer containerizer)
+    private static JibContainer finish(
+            JibContainerBuilder builder, Plan plan, Containerizer containerizer, RegistryAuth auth)
             throws IOException, InterruptedException, InvalidImageReferenceException {
         ImageConfig cfg = plan.config();
 
@@ -402,7 +408,7 @@ public final class ImageBuilder {
         builder = builder.setCreationTime(AotCacheTrainer.LAYER_TIME.toInstant());
 
         try {
-            return builder.containerize(containerizer);
+            return auth.containerize(builder, containerizer);
         } catch (RegistryException | ExecutionException | CacheDirectoryCreationException e) {
             throw new IOException("image build failed: " + e.getMessage(), e);
         }
@@ -429,8 +435,8 @@ public final class ImageBuilder {
         return layer.build();
     }
 
-    private static RegistryImage registryTarget(Plan plan) throws InvalidImageReferenceException {
-        return RegistryImage.named(plan.config().targetReference(plan.artifact(), plan.version()));
+    private static RegistryImage registryTarget(Plan plan, RegistryAuth auth) throws InvalidImageReferenceException {
+        return auth.target(plan.config().targetReference(plan.artifact(), plan.version()));
     }
 
     /** Convert parsed HOCON data into an {@link ImageConfig}. */

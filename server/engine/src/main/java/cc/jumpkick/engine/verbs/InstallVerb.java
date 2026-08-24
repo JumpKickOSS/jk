@@ -11,6 +11,7 @@ import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildPlanner;
@@ -64,8 +65,7 @@ public final class InstallVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
@@ -84,7 +84,7 @@ public final class InstallVerb implements HostedVerb {
                                 skipTests,
                                 verbose,
                                 graalHomeStr != null ? Path.of(graalHomeStr) : null));
-                host.streamSinglePlan(plan, session, writer, result -> {
+                return host.streamSinglePlan(plan, session, writer, result -> {
                     TestSummary testResult = plan.get(BuildPlanner.TEST_RESULT).orElse(null);
                     return testResult == null
                             ? ProtoEvents.planFinish(dir, result.success())
@@ -98,11 +98,11 @@ public final class InstallVerb implements HostedVerb {
                 });
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
+                return JobOutcome.failed(Exit.FAILURE);
             }
-
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

@@ -11,12 +11,28 @@ import java.security.MessageDigest;
 
 /**
  * CAS-sharded per-file format stamp store under {@code <cache>/format-stamps/}. A hit means the
- * file is already clean for the config in the key. Fail-open on I/O errors.
+ * file is settled for the config in the key — see {@link Outcome} for what "settled" resolved to.
+ * Fail-open on I/O errors.
  *
  * <p>Hits are existence-only (no mtime touch). Age-TTL GC still evicts cold entries; a lost stamp
  * costs one extra format pass.
  */
 final class FormatStampCache {
+
+    /**
+     * How a settled file settled. The store holds empty marker files, so the outcome rides in the
+     * key rather than in the file: one extra {@code Files.exists} for the rare kind, no read.
+     *
+     * <p>A single "settled" bit is what let an unparseable file be replayed as clean forever — the
+     * run that discovered OpenRewrite could not parse it stamped it like any other finished file,
+     * and every run after that answered from the stamp.
+     */
+    enum Outcome {
+        /** Formatted and rewritten; nothing left to do. */
+        CLEAN,
+        /** Spotless is done with it, but OpenRewrite could not parse it, so the rewrite pass never ran. */
+        UNPARSEABLE
+    }
 
     private final Path root;
     private final String configKey;
@@ -31,14 +47,20 @@ final class FormatStampCache {
         this.configKey = configKey;
     }
 
+    /** {@link #keyFor(byte[], Outcome)} for the ordinary {@link Outcome#CLEAN} stamp. */
+    String keyFor(byte[] fileBytes) {
+        return keyFor(fileBytes, Outcome.CLEAN);
+    }
+
     /**
      * The stamp key for a file whose raw bytes are {@code fileBytes}: SHA-256 over the run's config
-     * digest and the content. Null for absent bytes (fail-open cache miss).
+     * digest, the outcome being recorded, and the content. Null for absent bytes (fail-open cache
+     * miss).
      */
-    String keyFor(byte[] fileBytes) {
+    String keyFor(byte[] fileBytes, Outcome outcome) {
         if (fileBytes == null) return null;
         MessageDigest md = Hashing.newSha256();
-        md.update((configKey + "\n").getBytes(StandardCharsets.UTF_8));
+        md.update((configKey + "\n" + outcome + "\n").getBytes(StandardCharsets.UTF_8));
         md.update(fileBytes);
         return Hashing.hex(md.digest());
     }

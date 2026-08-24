@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.LockPaths;
@@ -58,15 +60,24 @@ public final class PreflightMemo {
     private PreflightMemo() {}
 
     public static Path memoFile(Path entryDir) {
-        return entryDir.resolve("target").resolve(".jk").resolve("preflight").resolve(DIRTY_FILE);
+        return entryDir.resolve(BuildLayout.TARGET)
+                .resolve(".jk")
+                .resolve("preflight")
+                .resolve(DIRTY_FILE);
     }
 
     public static Path graphMemoFile(Path entryDir) {
-        return entryDir.resolve("target").resolve(".jk").resolve("preflight").resolve(GRAPH_FILE);
+        return entryDir.resolve(BuildLayout.TARGET)
+                .resolve(".jk")
+                .resolve("preflight")
+                .resolve(GRAPH_FILE);
     }
 
     public static Path shapeMemoFile(Path entryDir) {
-        return entryDir.resolve("target").resolve(".jk").resolve("preflight").resolve(SHAPE_FILE);
+        return entryDir.resolve(BuildLayout.TARGET)
+                .resolve(".jk")
+                .resolve("preflight")
+                .resolve(SHAPE_FILE);
     }
 
     /**
@@ -246,7 +257,7 @@ public final class PreflightMemo {
      * durable copy is authoritative; the in-tree copy is inspection-only.
      */
     private static void writeInTree(Path file, Path entryDir, String body) throws IOException {
-        if (!Files.isDirectory(entryDir.resolve("target"))) return;
+        if (!Files.isDirectory(entryDir.resolve(BuildLayout.TARGET))) return;
         Files.createDirectories(file.getParent());
         AtomicWrites.replace(file, body);
     }
@@ -263,7 +274,7 @@ public final class PreflightMemo {
             Path root = entryDir.toAbsolutePath().normalize();
             Path file = graphMemoFile(entryDir);
             // Same clean-race guard as the dirty memo (JK-2205): never resurrect target/.
-            if (!Files.isDirectory(entryDir.resolve("target"))) return;
+            if (!Files.isDirectory(entryDir.resolve(BuildLayout.TARGET))) return;
             Files.createDirectories(file.getParent());
             List<Path> unitDirs = new ArrayList<>();
             for (BuildGraph.BuildUnit u : graph.topoOrder()) {
@@ -696,8 +707,7 @@ public final class PreflightMemo {
     }
 
     static boolean useMtimeMode() {
-        String v = System.getenv("JK_PREFLIGHT_MEMO_MTIME");
-        return v != null && (v.equals("1") || v.equalsIgnoreCase("true"));
+        return EnvValues.bool(System::getenv, "JK_PREFLIGHT_MEMO_MTIME").orElse(false);
     }
 
     private static Path absFromRel(Path root, String rel) {

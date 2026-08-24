@@ -4,6 +4,7 @@ package cc.jumpkick.repo;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.JkDirs;
@@ -33,7 +34,8 @@ import java.util.stream.Collectors;
  */
 public final class PomRuntimeClasspath {
 
-    private static final List<String> REPOS = List.of(RepoArtifactResolver.JK_LOCAL, "jumpkick", "central");
+    private static final List<String> REPOS =
+            List.of(RepoArtifactResolver.JK_LOCAL, RepositorySpec.JUMPKICK.name(), RepositorySpec.CENTRAL);
     private static final Pattern VERSION = Pattern.compile("\\d+(?:[._-][A-Za-z0-9]+)*");
 
     /**
@@ -211,7 +213,7 @@ public final class PomRuntimeClasspath {
         MavenRepo jumpkickStore =
                 storeOnlyRepo("jumpkick", storeRoot.resolve("repos/jumpkick").toUri(), http, cas);
         MavenRepo jumpkick = storeOnlyRepo("jumpkick", RepositorySpec.officialUrl(), http, cas);
-        MavenRepo central = storeOnlyRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
+        MavenRepo central = storeOnlyRepo(RepositorySpec.CENTRAL, RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
         RepoGroup remotes =
                 new RepoGroup(List.of(jumpkick, central), List.of(RepositorySpec.JUMPKICK.groups(), List.of()));
         List<MavenRepo> leading = new ArrayList<>();
@@ -300,7 +302,7 @@ public final class PomRuntimeClasspath {
         Path cur = worker.toAbsolutePath().normalize().getParent();
         while (cur != null) {
             Path name = cur.getFileName();
-            if (name != null && "target".equals(name.toString())) return true;
+            if (name != null && BuildLayout.TARGET.equals(name.toString())) return true;
             cur = cur.getParent();
         }
         return false;
@@ -339,7 +341,7 @@ public final class PomRuntimeClasspath {
                             && "repos".equals(fileName(parent))
                             && (RepoArtifactResolver.isFirstPartyStoreName(n)
                                     || n.equals("jumpkick")
-                                    || n.equals("central"))) {
+                                    || n.equals(RepositorySpec.CENTRAL))) {
                         break;
                     }
                     if (!n.isEmpty()) groupSegs.add(0, n);

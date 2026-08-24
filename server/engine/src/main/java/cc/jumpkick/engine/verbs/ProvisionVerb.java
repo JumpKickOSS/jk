@@ -7,6 +7,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.CompatPlans;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -40,8 +41,7 @@ public final class ProvisionVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 var outcome = CompatPlans.provision(
@@ -59,13 +59,14 @@ public final class ProvisionVerb implements HostedVerb {
                                 outcome.error(),
                                 outcome.exit(),
                                 outcome.diag()));
+                return outcome.exit() == Exit.SUCCESS ? JobOutcome.ok() : JobOutcome.failed(outcome.exit());
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
+                return JobOutcome.failed(Exit.FAILURE);
             }
-
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.lock.ManifestPaths;
@@ -537,9 +538,7 @@ public final class BuildEta {
         if (seedMs <= 0 || actualExecuteMs <= 0) return;
         double ratio = (double) seedMs / (double) actualExecuteMs;
         double relErr = Math.abs(seedMs - actualExecuteMs) / (double) actualExecuteMs;
-        boolean verbose = "1".equals(System.getenv("JK_ETA_SEED_LOG"))
-                || "true".equalsIgnoreCase(System.getenv("JK_ETA_SEED_LOG"))
-                || Perf.ENABLED;
+        boolean verbose = EnvValues.bool(System::getenv, "JK_ETA_SEED_LOG").orElse(false) || Perf.ENABLED;
         // Always note serious misses so they show up in engine logs without env.
         boolean serious = relErr >= 0.35 && actualExecuteMs >= 5_000L;
         if (!verbose && !serious) return;

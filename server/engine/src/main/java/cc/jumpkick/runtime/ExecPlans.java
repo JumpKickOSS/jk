@@ -14,9 +14,10 @@ import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.engine.protocol.ExecPlan;
 import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.host.CacheTree;
-import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jdk.JdkResolver;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.MainClassScanner;
@@ -693,7 +694,7 @@ public final class ExecPlans {
             boolean hasDeps = classpath.size() > 1;
             Path first = classpath.get(0);
             argv.add("-cp");
-            argv.add(joinPaths(classpath));
+            argv.add(Classpaths.join(classpath));
             argv.add(mainClass);
             display = (hasDeps ? "java -cp … " : "java -cp " + dir.relativize(first) + " ") + mainClass;
         }
@@ -1070,19 +1071,7 @@ public final class ExecPlans {
     }
 
     private static String javaBin(Path javaHome) {
-        return javaHome.resolve("bin")
-                .resolve(HostPlatform.isWindows() ? "java.exe" : "java")
-                .toString();
-    }
-
-    private static String joinPaths(List<Path> paths) {
-        String sep = System.getProperty("path.separator");
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < paths.size(); i++) {
-            if (i > 0) sb.append(sep);
-            sb.append(paths.get(i).toAbsolutePath());
-        }
-        return sb.toString();
+        return JdkFingerprint.java(javaHome).toString();
     }
 
     private static String orEmpty(String s) {

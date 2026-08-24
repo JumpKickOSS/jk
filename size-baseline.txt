@@ -24,6 +24,10 @@
 #      deleting the invariant that justified the old one and writing one that justifies the new
 #      one — in the same diff, right here.
 #
+# The band is not a second ceiling, and this file does not pretend otherwise: a handful of entries
+# below sit ABOVE the 1,200 exception band. They are named debt with peel tickets (JK-2433..2440),
+# not a band that moved. The ratchet is what holds them — each can only shrink from here.
+#
 # The count is `wc -l`: newline characters, the same number the scoreboard and commit messages
 # cite. Recount one file with `wc -l <path>`.
 #
@@ -76,9 +80,10 @@
 1010  clients/cli/src/main/java/cc/jumpkick/cli/engine/EngineClient.java
 
 # Mode, artifact and `awaitStartup` stay together so a torn AOT cache cannot be mapped without the
-# self-heal retry that repairs it — the file's own javadoc names this and the AOT key/manifest
-# comments are most of the excess.
-864  clients/cli/src/main/java/cc/jumpkick/cli/engine/EngineSpawn.java
+# self-heal retry that repairs it — the file's own javadoc names this. The AOT marker and refusal
+# vocabulary that used to be most of the excess now live in `cc.jumpkick.host.AotCacheFiles`; what is
+# left is the spawn decision itself.
+833  clients/cli/src/main/java/cc/jumpkick/cli/engine/EngineSpawn.java
 
 # One painter owns the whole failure block: the OSC-8 deep link, the gutter, the source snippet and
 # the box drawing are aligned against each other column by column, and a split desynchronises them.
@@ -102,7 +107,7 @@
 # T57: the lock -> sync -> compile -> test -> package order is the command's contract, and every
 # early-exit arm has to leave the workspace in a state the next verb can resume from. T57 peels
 # ProjectPeek / BuildTails / WorkspaceRunView / BuildSelection off the edges, not the order.
-1207  clients/cli/src/main/java/cc/jumpkick/command/BuildCommand.java
+1206  clients/cli/src/main/java/cc/jumpkick/command/BuildCommand.java
 
 # T57: 91 forwarders and CURATED_IDS are deleted, and the wizard chrome peels to NewChrome /
 # NewPlans. The template-apply step and its rollback must stay in one place: a half-applied
@@ -122,11 +127,11 @@
 # T60: pure folds of (cards, event) with no browser globals — that purity is what makes the
 # activity feed testable headlessly under `node --test`, and the per-card bounds (MAX_CARDS,
 # MAX_OUTPUT_LINES, MAX_DIAGNOSTICS) only hold if one fold applies all of them.
-1736  clients/web/src/main/resources/web/fold.js
+1734  clients/web/src/main/resources/web/fold.js
 
 # T59: the four positional overloads become one JavaCompileJob record. The incremental analysis
 # store and the compile invocation that writes it must agree on the key, so they stay together.
-1195  plugins/java-compiler/src/main/java/cc/jumpkick/java/compiler/ZincJavaCompiler.java
+1186  plugins/java-compiler/src/main/java/cc/jumpkick/java/compiler/ZincJavaCompiler.java
 
 # `lifecycleLock` covers election, accept, drain and close as one lifecycle (JK-1470), and
 # `tryStartBuildPlan` IS that invariant — the proposal to peel it was withdrawn on purpose, because
@@ -151,7 +156,7 @@
 
 # T58: `coreBuilder` and `appendDeclaredTails` have to agree on DAG edge order — a tail appended
 # against a stale edge set is a step that runs before its input exists.
-1255  server/engine/src/main/java/cc/jumpkick/runtime/BuildPlanner.java
+1251  server/engine/src/main/java/cc/jumpkick/runtime/BuildPlanner.java
 
 # T58: the probe bootstrap, the continuous learned-rate fold and the cold-ETA model are one model.
 # Micro-probes must never become absolute method costs (empty @Tests run in ~5 ms and would
@@ -163,23 +168,29 @@
 1203  server/engine/src/main/java/cc/jumpkick/runtime/EffortWeights.java
 
 # T58: one plan per verb, with the shared step bodies next to the plans that compose them.
-1091  server/engine/src/main/java/cc/jumpkick/runtime/ExecPlans.java
+1080  server/engine/src/main/java/cc/jumpkick/runtime/ExecPlans.java
 
 # The Jib path and the docker/podman Dockerfile path must produce the same structured success keys
 # (IMAGE_REF / TARBALL_PATH / ...) — two files means two key sets and a caller that can only handle
-# one of them.
-810  server/engine/src/main/java/cc/jumpkick/runtime/ImagePlans.java
+# one of them. Registry credentials are NOT part of that invariant and live in ImageCredentials:
+# resolving a secret is not a plan, and keeping it out is what holds this number down.
+809  server/engine/src/main/java/cc/jumpkick/runtime/ImagePlans.java
 
 # T58: step bodies shared by the Planner* collaborators. No invariant holds it here — ratchet only.
-951  server/engine/src/main/java/cc/jumpkick/runtime/PlannerSupport.java
+948  server/engine/src/main/java/cc/jumpkick/runtime/PlannerSupport.java
 
 # T58: plugin discovery, the contribution fold and the plugin step bodies. Ratchet only.
 826  server/engine/src/main/java/cc/jumpkick/runtime/PluginBuild.java
 
-# T58: the forecast's cache keys must mirror the real build's request field for field — drift makes
-# `jk explain` forecast a phantom rebuild. Dirty-marking of a module and of its consumers is one
-# traversal, so misses stay pessimistic and never become false cache hits.
-1221  server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java
+# T58: what is left here is the WALK — dirty-marking a module and its consumers in one traversal, so
+# misses stay pessimistic and never become false cache hits, and the per-step decisions that ordering
+# feeds. The key derivations it used to carry are gone: compile-main's CompileRequest now comes from
+# `PlannerCompile.mainCompileRequest` and every packaging key (the `classes:` token, the assembly bag,
+# the plugin-packager arm) from `PackagingKeys`, both called by the build too. That is the invariant
+# behind the new number — a forecast key derived here rather than shared with the build is the defect
+# class this file kept reintroducing (JK-2460/2479/2480/2491), so the ratchet is now also a rule about
+# what may live here.
+1136  server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java
 
 # T58: workspace step execution and the target/ write-drain that `jk build` must not return ahead
 # of (JK-2451). Ratchet only.
@@ -187,12 +198,16 @@
 
 # T58: the `##JKT:` fork protocol has exactly one writer and one reader, and they are the two ends
 # of the same wire format. The one-shot and pull-queue worker modes share it.
-1374  server/engine/src/main/java/cc/jumpkick/test/JUnitLauncher.java
+1367  server/engine/src/main/java/cc/jumpkick/test/JUnitLauncher.java
 
-# T59: the three scope solves (main / test / processor) must stay independent of each other and
-# produce one lockfile — a shared mutable universe between them is how a test-only version leaks
-# into the main classpath.
-1216  server/resolver/src/main/java/cc/jumpkick/resolver/LockOrchestrator.java
+# T59 + JK-2419: the three scope solves (main / test / processor) must stay independent of each
+# other and produce one lockfile — a shared mutable universe between them is how a test-only
+# version leaks into the main classpath, and splitting the solves apart to save lines is how that
+# universe gets shared. The one line over the previous 1,216 is the `RepositorySpec` import:
+# `attachSources` recognises a Central-sourced package by the owner's constant instead of a
+# re-typed `"central"`, and paying an import to delete a second spelling of a repository name is
+# the trade this ratchet is meant to allow.
+1217  server/resolver/src/main/java/cc/jumpkick/resolver/LockOrchestrator.java
 
 # The per-solve version/dependency cache, the transitive prefetch and the preferred-version seeding
 # are one PubGrub PackageSource contract; the solver's determinism depends on all three answering
@@ -213,5 +228,10 @@
 # worse than two in one.
 1029  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoEvents.java
 
-# T51 / T59: same pairing as ProtoEvents, for the job verbs.
-1020  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoJobs.java
+# T51 / T59: same pairing as ProtoEvents, for the job verbs — and, since JK-2420, the place the
+# job verbs' shared field names are declared. `jdksDir` was typed by hand in sixteen places (seven
+# writers here and in ProtoReads, nine readers in server/engine/verbs) and a typo on either side
+# would have dropped the JDK override silently, against an engine that answered normally. The
+# constant plus the paragraph explaining which vocabulary it belongs to is the +10; splitting it
+# out would put the name in a third file and re-open the gap the pairing exists to close.
+1030  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoJobs.java

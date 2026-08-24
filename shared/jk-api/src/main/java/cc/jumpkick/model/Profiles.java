@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.model;
 
+import cc.jumpkick.config.EnvValues;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -61,7 +62,7 @@ public record Profiles(Map<String, Profile> byName) {
 
     /** Picks the auto-selected profile name based on env, or {@code null}. */
     public static String autoSelect(Map<String, String> env) {
-        return env.getOrDefault("CI", "").equalsIgnoreCase("true")
+        return EnvValues.bool(env::get, "CI").orElse(false)
                         || env.containsKey("GITHUB_ACTIONS")
                         || env.containsKey("GITLAB_CI")
                 ? "ci"

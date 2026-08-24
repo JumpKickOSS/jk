@@ -17,6 +17,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * assert store-mediated behavior end-to-end (install → resolve, journals, checksums); everything
  * else should prefer unique fixture coordinates and keep the shared-store speed.
  *
+ * <p>The state root has its own twin, {@link IsolatedState}; a class may carry both.
+ *
  * <p>Mechanics: sets the {@code jk.env.JK_STORE_DIR} overlay ({@link cc.jumpkick.util.JkDirs}
  * test seam) to a per-method temp dir. Engine identity is keyed by (state, store), so commands
  * spawn a dedicated engine; it is force-stopped after each test before the overlay is cleared
@@ -24,5 +26,5 @@ import org.junit.jupiter.api.extension.ExtendWith;
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-@ExtendWith(IsolatedStoreExtension.class)
+@ExtendWith(IsolatedRootsExtension.class)
 public @interface IsolatedStore {}

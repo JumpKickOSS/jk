@@ -3,8 +3,10 @@ package cc.jumpkick.compile;
 
 import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.jdk.JdkFingerprint;
+import cc.jumpkick.task.ActionKey;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -38,7 +40,7 @@ public final class JavacRunner {
         }
 
         Path javaHome = request.javaHome() != null ? request.javaHome() : Path.of(System.getProperty("java.home"));
-        Path javac = javaHome.resolve("bin").resolve(HostPlatform.isWindows() ? "javac.exe" : "javac");
+        Path javac = JdkFingerprint.javac(javaHome);
         if (!Files.exists(javac)) {
             throw new IOException(
                     "javac not found at " + javac + " — project.jdk needs to point at a JDK (not a JRE).");
@@ -99,30 +101,18 @@ public final class JavacRunner {
         lines.add("-d");
         lines.add(quote(outDir.toAbsolutePath().toString()));
         lines.add("-encoding");
-        lines.add("UTF-8");
+        lines.add(ActionKey.SOURCE_ENCODING);
         lines.add("--release");
         lines.add(Integer.toString(request.release()));
         if (!request.classpath().isEmpty()) {
             lines.add("-cp");
-            StringBuilder cp = new StringBuilder();
-            String sep = System.getProperty("path.separator");
-            for (int i = 0; i < request.classpath().size(); i++) {
-                if (i > 0) cp.append(sep);
-                cp.append(request.classpath().get(i).toAbsolutePath());
-            }
-            lines.add(quote(cp.toString()));
+            lines.add(quote(Classpaths.join(request.classpath())));
         }
         if (!request.processorPath().isEmpty()) {
             // An explicit -processorpath both runs the processors and keeps them off
             // the compile classpath; modern javac won't auto-run classpath processors.
             lines.add("-processorpath");
-            StringBuilder pp = new StringBuilder();
-            String sep = System.getProperty("path.separator");
-            for (int i = 0; i < request.processorPath().size(); i++) {
-                if (i > 0) pp.append(sep);
-                pp.append(request.processorPath().get(i).toAbsolutePath());
-            }
-            lines.add(quote(pp.toString()));
+            lines.add(quote(Classpaths.join(request.processorPath())));
         }
         for (String opt : request.extraOptions()) {
             lines.add(opt);

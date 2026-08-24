@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.Os;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -8,7 +9,6 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -54,7 +54,7 @@ public final class MacPrefs {
      */
     static Optional<String> itermFontName(Function<String, String> env) {
         try {
-            if (!isMac()) return Optional.empty();
+            if (!Os.isDarwin()) return Optional.empty();
             return readItermFont(env);
         } catch (Throwable t) {
             // Missing symbol, denied native access, unexpected plist shape — stay silent.
@@ -68,11 +68,6 @@ public final class MacPrefs {
      */
     static boolean nativeInitAttempted() {
         return cfInitAttempted;
-    }
-
-    /** Same probe as {@code MemoryProbe}: {@code os.name} read live, so tests can spoof it. */
-    private static boolean isMac() {
-        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac");
     }
 
     // --- iTerm2 preferences shape -------------------------------------------------------------

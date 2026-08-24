@@ -88,8 +88,7 @@ public final class BuildCommand implements CliCommand {
         opts.add(Opt.value("<name>", "Build profile (default auto)", "--profile"));
         opts.add(Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers"));
         opts.add(CommonOpts.cacheDir());
-        opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                .hide());
+        opts.add(CommonOpts.jdksDir());
         opts.add(CommonOpts.skipTests());
         // Suite/tag widening, same vocabulary as `jk test` (JK-2182): --all = every suite
         // AND no config tag excludes — the "build + run everything" gate.
@@ -143,7 +142,7 @@ public final class BuildCommand implements CliCommand {
         this.profileName = in.value("profile").orElse(null);
         this.workers = in.value("workers").map(Integer::parseInt).orElse(null);
         this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.buildOpts = new BuildOptions();
         this.buildOpts.skipTests = in.isSet("skip-tests");
         this.aotCache = in.isSet("aot-cache");

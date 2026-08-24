@@ -11,6 +11,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginDeclaration;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactResolver;
@@ -129,7 +130,7 @@ public final class PluginDescriptorOps {
 
     /** First-party / official / Central — the stores that answer nearly every pinned lookup. */
     private static final List<String> FIXED_PROBE_ORDER =
-            List.of(RepoArtifactResolver.JK_LOCAL, PluginJar.OFFICIAL_REPO, "central");
+            List.of(RepoArtifactResolver.JK_LOCAL, PluginJar.OFFICIAL_REPO, RepositorySpec.CENTRAL);
 
     /**
      * Every other {@code repos/<name>/} directory, so a user-declared remote (e.g. {@code local})

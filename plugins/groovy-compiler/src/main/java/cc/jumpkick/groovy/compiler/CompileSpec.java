@@ -44,18 +44,15 @@ final class CompileSpec {
     static CompileSpec from(PluginSpec spec) {
         CompileSpec s = new CompileSpec();
         var c = spec.config();
-        if (spec.classesDir() != null) s.outputDir = spec.classesDir().toFile();
+        s.jvmTarget = spec.requireCompileInputs();
+        s.outputDir = spec.classesDir().toFile();
         if (spec.workdir() != null) s.workDir = spec.workdir().toFile();
         spec.extra("stubsOut").ifPresent(p -> s.stubsOut = p.toFile());
-        s.jvmTarget = c.stringOpt("jvmTarget").orElse(null);
         for (String root : c.stringList("javaSourceRoots")) s.javaSourceRoots.add(new File(root));
         for (Path p : spec.sources()) s.sources.add(p.toFile());
         for (Path p : spec.compileClasspath()) s.classpath.add(p.toFile());
         for (Path p : spec.processorClasspath()) s.processorPath.add(p.toFile());
         s.extraArgs.addAll(spec.args());
-        if (s.outputDir == null) throw new IllegalArgumentException("spec missing layout.classesDir (OUTPUT)");
-        if (s.jvmTarget == null) throw new IllegalArgumentException("spec missing config jvmTarget");
-        if (s.sources.isEmpty()) throw new IllegalArgumentException("spec has no source entries");
         return s;
     }
 }

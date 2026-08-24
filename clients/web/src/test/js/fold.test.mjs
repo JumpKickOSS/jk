@@ -50,7 +50,7 @@ const historyRecord = (id, dir, extra = {}) => ({
   cancelled: false,
   success: true,
   modules: [],
-  steps: [],
+  tasks: [],
   diagnostics: [],
   ...extra,
 });
@@ -289,7 +289,7 @@ test('finished live cards reconcile by (dir, buildNumber) despite clock skew (JK
   // The journal record carries ENGINE time — 10s of clock skew vs the browser receipt stamps.
   seedFromHistory(cards, [
     { id: 'r6', dir: '/w', buildNumber: 6, kind: 'build', finishedAt: 110_400, startedAt: 110_000,
-      success: true, millis: 400, modules: [], steps: [], diagnostics: [] },
+      success: true, millis: 400, modules: [], tasks: [], diagnostics: [] },
   ]);
   assert.equal(cards.length, 1); // no duplicate h:r6 card
   assert.equal(cards[0].historyId, 'r6');
@@ -303,7 +303,7 @@ test('a stale running stub does not flip a finished live card back to running (J
   // Reconcile raced the journal write: the record still says running.
   seedFromHistory(cards, [
     { id: 'r6', dir: '/w', buildNumber: 6, kind: 'build', running: true, startedAt: 110_000,
-      modules: [], steps: [], diagnostics: [] },
+      modules: [], tasks: [], diagnostics: [] },
   ]);
   const live = cards.find((c) => c.id === 1);
   assert.equal(live.state, 'finished'); // untouched by the stale stub
@@ -318,13 +318,13 @@ test('history backfill maps per-module steps; single-project synthesizes one mod
   seedFromHistory(ws, [{
     id: 'w1', kind: 'build', dir: '/w', coord: 'g:w', finishedAt: 5000, success: false,
     modules: [
-      { coord: 'g:core', dir: '/w/core', success: true, millis: 100, steps: [{ name: 'compile', status: 'SUCCESS' }] },
-      { coord: 'g:api', dir: '/w/api', success: false, millis: 90, steps: [{ name: 'test', status: 'FAIL' }] },
+      { coord: 'g:core', dir: '/w/core', success: true, millis: 100, tasks: [{ name: 'compile', status: 'SUCCESS' }] },
+      { coord: 'g:api', dir: '/w/api', success: false, millis: 90, tasks: [{ name: 'test', status: 'FAIL' }] },
     ],
-    steps: [],
+    tasks: [],
     diagnostics: [
-      { severity: 'error', dir: '/w/api', step: 'test', message: 'boom', test: 'it()', exceptionClass: '' },
-      { severity: 'warning', dir: '/w/core', step: 'lint', message: 'unused import' },
+      { severity: 'error', dir: '/w/api', task: 'test', message: 'boom', test: 'it()', exceptionClass: '' },
+      { severity: 'warning', dir: '/w/core', task: 'lint', message: 'unused import' },
     ],
   }]);
   assert.equal(ws[0].modules.length, 2);
@@ -334,17 +334,63 @@ test('history backfill maps per-module steps; single-project synthesizes one mod
   assert.equal(wcore.diagnostics.length, 0); // the warning is dropped, not shown as failure output
   assert.equal(wapi.diagnostics.length, 1);
   assert.equal(wapi.diagnostics[0].message, 'boom');
-  // single-project record: no modules, steps at top level → synthesize one module owning the errors
+  // single-project record: no modules, tasks at top level → synthesize one module owning the errors
   const sp = [];
   seedFromHistory(sp, [{
     id: 's1', kind: 'build', dir: '/p', coord: 'g:p', finishedAt: 6000, success: false,
-    modules: [], steps: [{ name: 'compile-java', status: 'FAIL' }],
-    diagnostics: [{ severity: 'error', dir: '', step: 'compile-java', message: 'cannot find symbol' }],
+    modules: [], tasks: [{ name: 'compile-java', status: 'FAIL' }],
+    diagnostics: [{ severity: 'error', dir: '', task: 'compile-java', message: 'cannot find symbol' }],
   }]);
   assert.equal(sp[0].modules.length, 1);
   assert.deepEqual(sp[0].modules[0].steps.map((p) => p.name + ':' + p.state), ['compile-java:failed']);
   assert.equal(sp[0].modules[0].diagnostics.length, 1);
   assert.equal(sp[0].modules[0].diagnostics[0].message, 'cannot find symbol');
+});
+
+test('history seeding reads the journal vocabulary: tasks / stage / task / testClass / stack', () => {
+  const cards = [];
+  seedFromHistory(cards, [historyRecord('h-vocab', '/w', {
+    success: false,
+    modules: [{
+      coord: 'g:core', dir: '/w/core', finished: true, success: false, millis: 90,
+      tasks: [{ name: 'run-tests', stage: 'test', status: 'FAIL', millis: 90 }],
+    }],
+    diagnostics: [{
+      severity: 'error', dir: '/w/core', task: 'run-tests', code: 'test-failure',
+      message: 'expected 1 but was 2', testClass: 'core.T', method: 'adds()',
+      stack: 'at core.T.adds(T.java:3)',
+    }],
+  })]);
+  const mod = cards[0].modules[0];
+  assert.deepEqual(mod.steps.map((s) => s.name + '/' + s.phase + '/' + s.state), ['run-tests/test/failed']);
+  assert.equal(mod.state, 'failed');
+  assert.equal(mod.diagnostics[0].step, 'run-tests');
+  assert.equal(mod.diagnostics[0].className, 'core.T');
+  assert.equal(mod.diagnostics[0].stack, 'at core.T.adds(T.java:3)');
+});
+
+test('one name per journal field: the retired spellings are not read back', () => {
+  // The engine writes tasks/stage/task/testClass/stack and nothing else, so the fold keeps exactly
+  // one reader per journal field. A record spelled the other way yields nothing rather than being
+  // tolerated — re-adding a fallback in fold.js turns this red.
+  const cards = [];
+  seedFromHistory(cards, [historyRecord('h-retired', '/w', {
+    success: false,
+    modules: [{
+      coord: 'g:core', dir: '/w/core', finished: true, success: false, millis: 90,
+      steps: [{ name: 'run-tests', group: 'test', phase: 'test', status: 'FAIL', millis: 90 }],
+    }],
+    diagnostics: [{
+      severity: 'error', dir: '/w/core', step: 'run-tests', code: 'test-failure',
+      message: 'expected 1 but was 2', className: 'core.T',
+      throwable: { stack: 'at core.T.adds(T.java:3)' },
+    }],
+  })]);
+  const mod = cards[0].modules[0];
+  assert.deepEqual(mod.steps, []);
+  assert.equal(mod.diagnostics[0].step, '');
+  assert.equal(mod.diagnostics[0].className, '');
+  assert.equal(mod.diagnostics[0].stack, '');
 });
 
 test('history seeding keeps a FAILED-step module failed inside a cancelled record', async () => {
@@ -359,11 +405,11 @@ test('history seeding keeps a FAILED-step module failed inside a cancelled recor
     cancelled: true,
     modules: [
       { coord: 'g:a', dir: '/w/a', finished: true, success: false, millis: 90,
-        steps: [{ name: 'compile-java', status: 'FAIL' }] },
+        tasks: [{ name: 'compile-java', status: 'FAIL' }] },
       { coord: 'g:b', dir: '/w/b', finished: true, success: false, cancelled: true, millis: 10,
-        steps: [{ name: 'compile-java', status: 'CANCELLED' }] },
+        tasks: [{ name: 'compile-java', status: 'CANCELLED' }] },
     ],
-    steps: [], diagnostics: [],
+    tasks: [], diagnostics: [],
   }]);
   const a = cards[0].modules.find((m) => m.dir === '/w/a');
   const b = cards[0].modules.find((m) => m.dir === '/w/b');
@@ -379,20 +425,20 @@ test('workspace history replay applies the per-kind diagnostic ceilings', async 
   const diagnostics = [];
   for (let i = 0; i < MAX_TEST_FAILURE_DIAGNOSTICS + 40; i++) {
     diagnostics.push({
-      severity: 'error', dir: '/w/api', step: 'test', code: 'test-failure', message: 'assert ' + i,
+      severity: 'error', dir: '/w/api', task: 'test', code: 'test-failure', message: 'assert ' + i,
       test: 'case' + i + '()', exceptionClass: 'org.opentest4j.AssertionFailedError',
     });
   }
   for (let i = 0; i < MAX_DIAGNOSTICS + 5; i++) {
-    diagnostics.push({ severity: 'error', dir: '/w/api', step: 'compile-java', message: 'err ' + i });
+    diagnostics.push({ severity: 'error', dir: '/w/api', task: 'compile-java', message: 'err ' + i });
   }
   const ws = [];
   seedFromHistory(ws, [{
     id: 'w2', kind: 'build', dir: '/w', coord: 'g:w', finishedAt: 7000, success: false,
     modules: [
-      { coord: 'g:api', dir: '/w/api', success: false, millis: 90, steps: [{ name: 'test', status: 'FAIL' }] },
+      { coord: 'g:api', dir: '/w/api', success: false, millis: 90, tasks: [{ name: 'test', status: 'FAIL' }] },
     ],
-    steps: [],
+    tasks: [],
     diagnostics,
   }]);
   const api = ws[0].modules.find((m) => m.dir === '/w/api');
@@ -897,7 +943,7 @@ test('mid-build refresh: history stub rebinds on workspace-progress and finishes
 
   foldEvent(cards, {
     type: 'task-start',
-    data: { jid: 99, dir: '/w/a', task: 'compile-java', phase: 'compile' },
+    data: { jid: 99, dir: '/w/a', task: 'compile-java', stage: 'compile' },
   });
   assert.equal(cards[0].modules[0].steps[0].name, 'compile-java');
   assert.equal(cards[0].modules[0].steps[0].state, 'running');
@@ -1134,7 +1180,7 @@ test('history seed preserves per-step millis for tooltips', () => {
   const cards = [];
   seedFromHistory(cards, [
     historyRecord('h1', '/w', {
-      steps: [
+      tasks: [
         { name: 'ensure-jdk', stage: 'resolve', status: 'SUCCESS', millis: 360 },
         { name: 'resolve-deps', stage: 'resolve', status: 'SUCCESS', millis: 1200 },
       ],
@@ -1323,9 +1369,9 @@ test('FAIL steps beat a cancelled bit on the card (test failure must not read as
           success: false,
           exitCode: 4,
           millis: 100,
-          steps: [
-            { name: 'compile-java', status: 'SUCCESS', phase: 'compile' },
-            { name: 'run-tests', status: 'FAIL', phase: 'test' },
+          tasks: [
+            { name: 'compile-java', status: 'SUCCESS', stage: 'compile' },
+            { name: 'run-tests', status: 'FAIL', stage: 'test' },
           ],
         },
       ],
@@ -1333,7 +1379,7 @@ test('FAIL steps beat a cancelled bit on the card (test failure must not read as
         {
           severity: 'error',
           dir: '/w/core',
-          step: 'run-tests',
+          task: 'run-tests',
           code: 'test-failure',
           message: 'expected 1 but was 90',
         },
@@ -1372,9 +1418,9 @@ test('cancelled without FAIL steps still reads as cancelled', () => {
           success: false,
           exitCode: 1,
           millis: 50,
-          steps: [
-            { name: 'compile-java', status: 'SUCCESS', phase: 'compile' },
-            { name: 'run-tests', status: 'CANCELLED', phase: 'test' },
+          tasks: [
+            { name: 'compile-java', status: 'SUCCESS', stage: 'compile' },
+            { name: 'run-tests', status: 'CANCELLED', stage: 'test' },
           ],
         },
       ],
@@ -1598,7 +1644,7 @@ test('history seed keeps test-failure snippet for Activity backfill', () => {
           success: false,
           exitCode: 4,
           millis: 100,
-          steps: [{ name: 'run-tests', status: 'FAIL', phase: 'test' }],
+          tasks: [{ name: 'run-tests', status: 'FAIL', stage: 'test' }],
         },
       ],
       diagnostics: [

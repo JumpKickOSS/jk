@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Linking;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.SessionContext;
@@ -89,7 +90,7 @@ public final class WorkspaceExecute {
             for (Path art : arts) filenameCounts.merge(art.getFileName().toString(), 1L, Long::sum);
         }
         // Build the final src→linkDest map.
-        Path wsTarget = wsRoot.resolve("target");
+        Path wsTarget = wsRoot.resolve(BuildLayout.TARGET);
         Map<Path, Path> links = new LinkedHashMap<>();
         for (var entry : moduleArtifacts.entrySet()) {
             Path normalDir = entry.getKey();
@@ -553,8 +554,7 @@ public final class WorkspaceExecute {
 
     /** Parallel prepare is on by default; set {@code JK_PREPARE_PARALLEL=false} to force serial. */
     private static boolean prepareParallelEnabled() {
-        String v = System.getenv("JK_PREPARE_PARALLEL");
-        return v == null || !v.equalsIgnoreCase("false");
+        return EnvValues.bool(System::getenv, "JK_PREPARE_PARALLEL").orElse(true);
     }
 
     /** Failed {@link #prepareModule} for a dirty unit — surfaces as exit 2 to the workspace caller. */

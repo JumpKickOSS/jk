@@ -8,9 +8,11 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.TrainPlans;
 import java.io.BufferedWriter;
@@ -45,8 +47,7 @@ public final class TrainVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 boolean verbose = Jsonl.bool(requestLine, "verbose", false);
@@ -54,7 +55,7 @@ public final class TrainVerb implements HostedVerb {
                 boolean force = Jsonl.bool(requestLine, "force", false);
                 String profile = Jsonl.str(requestLine, "profile");
                 String graalHomeStr = Jsonl.str(requestLine, "graalHome");
-                String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
+                String jdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
                 Session session = host.resolveSession(requestLine, cancelToken, false);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 Path graalHome = graalHomeStr != null && !graalHomeStr.isBlank() ? Path.of(graalHomeStr) : null;
@@ -74,14 +75,15 @@ public final class TrainVerb implements HostedVerb {
                             skipTests,
                             verbose);
                 });
-                host.streamSinglePlan(plan, session, writer, result -> ProtoEvents.planFinish(dir, result.success()));
+                return host.streamSinglePlan(
+                        plan, session, writer, result -> ProtoEvents.planFinish(dir, result.success()));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
+                return JobOutcome.failed(Exit.FAILURE);
             }
-
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

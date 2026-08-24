@@ -9,6 +9,7 @@ import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.AuditPlans;
 import java.io.BufferedWriter;
@@ -44,8 +45,7 @@ public final class AuditVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
@@ -67,14 +67,15 @@ public final class AuditVerb implements HostedVerb {
                         vulns != null ? URI.create(vulns) : null,
                         (module, version, vulnId, sev, summary) -> host.sendQuiet(
                                 writer, ProtoEvents.auditFinding(dir, module, version, vulnId, sev, summary)));
-                host.streamSinglePlan(plan, session, writer, result -> ProtoEvents.planFinish(dir, result.success()));
+                return host.streamSinglePlan(
+                        plan, session, writer, result -> ProtoEvents.planFinish(dir, result.success()));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
+                return JobOutcome.failed(Exit.FAILURE);
             }
-
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

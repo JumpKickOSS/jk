@@ -28,7 +28,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>The reach is still bounded by what {@link EnvLookup} can enumerate. A credential that appears
  * only in the real environment, with no {@code.env} line naming it, is invisible here — nothing
  * can list the host environment's secrets, and guessing by name is the heuristic this class exists
- * to avoid.
+ * to avoid. The way in for such a value is to hold it and say so: jk's repository-credential
+ * resolution declares what it resolved through {@link ResolvedSecrets}, which {@link #and} folds
+ * in. Told, never guessed.
  *
  * <p>Two surfaces share one instinct:
  *
@@ -121,6 +123,22 @@ public final class SecretRedactor {
         // Longest first: replacing a shorter substring first can leave pieces of a longer secret.
         list.sort(Comparator.comparingInt(String::length).reversed().thenComparing(s -> s));
         return new SecretRedactor(list);
+    }
+
+    /**
+     * This redactor plus {@code extra} secret values — the composition point for a secret that no
+     * {@code.env} declares because it came from somewhere else entirely, such as a repository
+     * credential jk resolved from {@code JK_REPO_<ID>_TOKEN} (see {@link ResolvedSecrets}).
+     *
+     * <p>Masking stays by declaration either way: {@code extra} is values a caller <em>states</em>
+     * are secret because it holds them, never values guessed from a name.
+     */
+    public SecretRedactor and(Collection<String> extra) {
+        if (extra == null || extra.isEmpty()) return this;
+        if (secrets.isEmpty()) return of(extra);
+        Set<String> all = new LinkedHashSet<>(secrets);
+        all.addAll(extra);
+        return all.size() == secrets.size() ? this : of(all);
     }
 
     /** True when this redactor has nothing to mask. */

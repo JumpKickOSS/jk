@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.jsonl.MiniJson;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -134,7 +135,7 @@ public interface TerminalFonts {
             } else {
                 return null;
             }
-            return isMac()
+            return Os.isDarwin()
                     ? home.resolve("Library/Application Support/" + appDir + "/User/settings.json")
                     : home.resolve(".config/" + appDir + "/User/settings.json");
         }
@@ -161,10 +162,6 @@ public interface TerminalFonts {
             if (x == null || x.isBlank()) return null;
             Path p = Path.of(x);
             return p.isAbsolute() ? p : null;
-        }
-
-        private static boolean isMac() {
-            return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac");
         }
 
         private static String lower(String s) {

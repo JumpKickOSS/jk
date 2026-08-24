@@ -28,6 +28,9 @@ tasks.compileJava {
     options.release.set(17)
 }
 
+// `api`, not `implementation`: the codec and the Exit vocabulary are reachable from the SPI a
+// plugin author writes against, so they belong on the consumer's compile classpath. Which is why
+// :host publishes as `cc.jumpkick:jk-host` — see shared/host/build.gradle.kts (JK-2466).
 dependencies {
     api(project(":host"))
 }
@@ -65,4 +68,21 @@ publishing {
             }
         }
     }
+}
+
+// PublishedSdkConsumerTest resolves the SDK the way a Maven consumer does — out of a real
+// repository, through the published POM — so `test` needs both halves of the closure staged first.
+// The repository itself is declared once in jk.java-conventions (`treeLocal`); its location is read
+// back off the build here rather than re-typed.
+val treeLocal = publishing.repositories.getByName<MavenArtifactRepository>("treeLocal")
+
+tasks.named<Test>("test") {
+    dependsOn(
+            "publishSdkPublicationToTreeLocalRepository",
+            ":host:publishHostPublicationToTreeLocalRepository")
+    // The staged repository is a test INPUT, not just a dependency: a publish task declares no
+    // outputs, so without this the suite stays up-to-date across a coordinate change and reports
+    // green having re-run nothing — which is how a broken POM ships past a test that covers it.
+    inputs.dir(treeLocal.url).withPropertyName("treeLocalRepo")
+    systemProperty("jk.tree.local.repo", File(treeLocal.url).absolutePath)
 }

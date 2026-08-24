@@ -250,66 +250,108 @@ tasks.named<Test>("integrationTest") {
 // ---------------------------------------------------------------------------
 // Guard G14 (JK-2410): a forecast key must hash the same facts as the build key.
 //
-// `jk explain` re-derives, in a second hand-written copy, every cache key the build computes. When
-// the copies disagree the forecast either reports a phantom rebuild (the visible symptom) or blesses
-// a stale artifact (the dangerous one). Six such drifts were live at once. The two tests that claimed
-// to guard this asserted two hand-typed `List.of(...)` literals in the *test file* against each other
-// instead of reading the real bags, which is exactly why they stayed green through all six.
+// `jk explain` re-derives every cache key the build computes. When the two derivations disagree the
+// forecast either reports a phantom rebuild (the visible symptom) or blesses a stale artifact (the
+// dangerous one). Six such drifts were live at once. The two tests that claimed to guard this
+// asserted two hand-typed `List.of(...)` literals in the *test file* against each other instead of
+// reading the real bags, which is exactly why they stayed green through all six.
 //
-// Two arms, both plain text scans over this module's `src/main/java`:
+// Three arms, all plain text scans over this module's `src/main/java`:
 //
-//   A. `ActionKey.forArtifact` token bags. Whole keys legitimately differ — the two sides run at
-//      different times over different inputs. The *set of `"<prefix>:"` literals* may not: a prefix
-//      on one side only means one side hashes a fact the other ignores. Every `forArtifact` site in
-//      the module must appear below, either as half of a pair or as unpaired with the reason stated,
-//      so a new site cannot be added without deciding which it is.
+//   A. `ActionKey.forArtifact` token bags. Every site in the module must appear below in exactly
+//      one of three tables, so a new key cannot be added without deciding how it is forecast:
+//
+//        - `forArtifactPairs`   two bodies, compared. Whole keys legitimately differ (the two sides
+//                               run at different times over different inputs); the set of
+//                               `"<prefix>:"` literals may not, because a prefix on one side only
+//                               means one side hashes a fact the other ignores.
+//        - `forArtifactShared`  ONE body, called by the build and by the forecast. A prefix set
+//                               cannot see a value drift behind an agreed prefix — JK-2480 was
+//                               exactly that, two sites both emitting `main:` from different
+//                               sources — and extending the scan to values is not possible, since
+//                               values legitimately differ per module. So the durable answer is one
+//                               owner, and what the guard checks is that the owner really has both
+//                               callers. A "shared" key with one caller is an unpaired key wearing
+//                               the word.
+//        - `forArtifactUnpaired` no forecast key, with the reason — AND whether the forecast emits a
+//                               *step* for that task at all. Those are different claims, and the
+//                               difference is where JK-2491 lived: `PlannerPlugin|pkgKey` was
+//                               exempted as "plugin packager: not forecast", which was true of the
+//                               key and false of the step. explain emitted `package-jar` for every
+//                               Boot/Grails/Quarkus/minified module and priced it against the plain
+//                               jar's key, which those builds never compute. An exemption that is
+//                               accurate about today is how a gap hides, so the flag is now checked
+//                               against what TaskForecaster actually constructs.
 //
 //   B. `CompileRequest` builder chains, restricted to the fields `ActionKey.forJavac` actually
-//      reads. forJavac hashes release/extraOptions/sources/classpath/processorPath today and the
-//      four keyed chains agree on those (JK-2392 measured byte-identical keys, with `release 24` as
-//      the sensitivity control). `javaHome` is set by the build and not by the forecast, and that is
-//      harmless only because forJavac ignores it — luck, not design. JK-2460 will start hashing it;
-//      the moment `request.javaHome()` appears in forJavac this guard goes red until both
-//      TaskForecaster chains set it too. That is the point of the arm: it prices the next change.
+//      reads — now including `javaHome`, which it hashes since JK-2460. The scan follows the WHOLE
+//      chain: the fluent primary chain plus every later statement on the same builder variable, up
+//      to its `build()`. It used to stop at the first `;`, which hid the conditional Scala
+//      continuation both keyed build sites carry and the forecast set on neither (JK-2479).
 //
-// What a prefix set cannot see, stated so nobody mistakes green for parity: value drift behind an
-// agreed prefix. Both assembly sites emit `main:`, but the build derives it from
-// `project.mainClass()` while the forecast uses `PluginModule.mainClass(dir, project)`, which
-// answers WORKER_MAIN for a plugin worker. The same blind spot covers the mixed-Scala and
-// mixed-Groovy inputs the forecast's CompileRequest never sets at all. Both are real and both need
-// one shared key owner rather than a text scan (round3 forecast audit F1/F2).
+//   C. `compileRequestShared` — the compile-main request has one body (`PlannerCompile
+//      .mainCompileRequest`) that the build step and the forecast both call, for the same reason
+//      `forArtifactShared` exists: its classpath, its javac options and its Scala fields are
+//      derived values, and arm B can only see which fields are set, not what is in them.
 // ---------------------------------------------------------------------------
 
 // A build site and its forecast twin, addressed as `<file>|<key variable>`: every bag site is
 // written `String <var> = ActionKey.forArtifact(...)` and the variable is unique within its file.
 val forArtifactPairs = listOf(
-        "package-jar" to ("PlannerPackage.java|pkgKey" to "TaskForecaster.java|pkgKey"),
-        "package-assembly" to ("PlannerTails.java|shKey" to "TaskForecaster.java|shKey"))
+        "package-jar" to ("PlannerPackage.java|pkgKey" to "TaskForecaster.java|pkgKey"))
 
-// forArtifact sites with no forecast twin, and why there is nothing to compare them against.
+// One body, both callers. Value: the label, and the `<file>|<literal>` reach points that prove each
+// side goes through the owner rather than round it.
+val forArtifactShared = mapOf(
+        "PackagingKeys.java|asmKey" to ("package-assembly" to listOf(
+                "PlannerTails.java|PackagingKeys.assembly(",
+                "TaskForecaster.java|PackagingKeys.assemblyActionCached(")),
+        "PackagingKeys.java|pkgKey" to ("plugin packager" to listOf(
+                "PlannerPlugin.java|PackagingKeys.pluginPackager(",
+                "TaskForecaster.java|PackagingKeys.pluginPackagerStep(")))
+
+// forArtifact sites with no forecast twin. Triple(task name, does the forecast emit a step for that
+// task, why there is nothing to compare). The boolean is checked against TaskForecaster: claiming
+// "not forecast" for a task the forecast does step is what hid JK-2491 for a whole release.
 val forArtifactUnpaired = mapOf(
-        "PlannerTails.java|key" to "package-sources: explain does not forecast the sources jar at all",
-        "PlannerNative.java|nKey" to "native-image: the forecast probes the task pointer, not a token bag",
-        "PlannerPlugin.java|actionKey" to "plugin step: not forecast",
-        "PlannerPlugin.java|pkgKey" to "plugin packager: not forecast",
-        "ImagePlans.java|imgKey" to "OCI tarball: jk image is not forecast",
-        "BuildLogicSupport.java|key" to "build-logic compile: not forecast")
+        "PlannerTails.java|key" to Triple(
+                "package-sources", false, "explain does not forecast the sources jar at all"),
+        "PlannerNative.java|nKey" to Triple(
+                "native-image", true, "the forecast probes the task pointer, not a token bag"),
+        "PlannerPlugin.java|actionKey" to Triple(
+                "plugin-<step>", false, "plugin steps are not forecast (no step, no key)"),
+        "ImagePlans.java|imgKey" to Triple(
+                "write-image",
+                true,
+                "the image tail is an unconditional side-effect step — always RUN, never keyed"),
+        "BuildLogicSupport.java|key" to Triple(
+                "build-logic", false, "build-logic compile is not forecast"))
+
+// `compileStep` is the one forecast helper that names its step from a parameter; both call sites
+// pass a literal, and those literals are scanned. Any OTHER unresolvable step name is a step the
+// scan cannot see — the exact blind spot arm A3 exists to close — so it fails the build.
+val forecastStepIndirections = setOf("String name", "name")
 
 // A keyed CompileRequest chain, addressed as `<file>|<marker>`. The marker must occur exactly once
-// in its file; the chain is the `CompileRequest.builder()` nearest to it.
+// in its file; the chain is the `CompileRequest.builder()` nearest to it, followed to its build().
 val compileRequestPairs = listOf(
-        "compile-main" to
-                ("PlannerCompile.java|\"compile-main\", javaOut" to "TaskForecaster.java|\"compile-main\", out)"),
         "compile-test" to
                 ("TestSupport.java|qualifiedTaskId(taskId, outputDir)"
                         to "TaskForecaster.java|TaskNames.COMPILE_TEST, testOut)"))
 
+// A CompileRequest with ONE body that both sides call: `<owner file>|<owner marker>` to the
+// `<file>|<literal>` reach points.
+val compileRequestShared = mapOf(
+        "compile-main" to ("PlannerCompile.java|public static CompileRequest mainCompileRequest(" to listOf(
+                "PlannerCompile.java|mainCompileRequest(new MainCompile(",
+                "TaskForecaster.java|PlannerCompile.mainCompileRequest(")))
+
 // Every `CompileRequest.builder()` site in the module and how many times it appears, so a new chain
 // has to be declared as keyed (above) or unkeyed (here) before the build will run.
 val compileRequestSites = mapOf(
-        "PlannerCompile.java" to 1, // keyed: compile-main build
+        "PlannerCompile.java" to 1, // shared: the one compile-main body, build + forecast
         "TestSupport.java" to 1, // keyed: compile-test build
-        "TaskForecaster.java" to 2, // keyed: both forecasts
+        "TaskForecaster.java" to 1, // keyed: compile-test forecast
         "LocalProjectBuilder.java" to 1, // unkeyed: source-dependency build calls JavacRunner directly
         "ScriptPlans.java" to 1) // unkeyed: jk run <script> calls JavacRunner directly
 
@@ -318,22 +360,80 @@ val checkForecastKeyParity by tasks.registering {
     description = "Fail the build when a forecast key hashes a different fact set than the build key"
     val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
     inputs.files(mainJava).withPropertyName("mainJava")
+    // TaskNames lives in :jk-api. Arm A3 resolves a `TaskNames.X` step name to the string the
+    // forecast really emits rather than guessing it from the constant's spelling.
+    val taskNamesFile =
+            project(":jk-api").layout.projectDirectory.file("src/main/java/cc/jumpkick/run/TaskNames.java")
+    inputs.file(taskNamesFile).withPropertyName("taskNames")
     val pairs = forArtifactPairs
+    val shared = forArtifactShared
     val unpaired = forArtifactUnpaired
+    val indirections = forecastStepIndirections
     val requestPairs = compileRequestPairs
+    val requestShared = compileRequestShared
     val requestSites = compileRequestSites
     // The declarations above are inputs too: editing a table without touching a source file still
     // has to re-run the check, or the ratchet can be loosened by an up-to-date task.
-    inputs.property("declarations", listOf(pairs, unpaired, requestPairs, requestSites).toString())
+    inputs.property(
+            "declarations",
+            listOf(pairs, shared, unpaired, indirections, requestPairs, requestShared, requestSites).toString())
     val stamp = layout.buildDirectory.file("guards/forecast-key-parity.ok")
     outputs.file(stamp)
     doLast {
+        val taskNamesSource = taskNamesFile.asFile.readText()
         val sources = mainJava.files.sorted()
         val byName = sources.groupBy { it.name }
+
+        // Comments are blanked (to spaces, so every offset below still lines up) before any scan
+        // runs. The scanners honour string and char literals, and an apostrophe in English prose —
+        // "forKotlinc's jdk: token" — reads as a char literal that never closes, which made the
+        // brace walk report an unbalanced method. A probe's answer is bounded by what the probe can
+        // see, and a comment is not code.
+        fun stripComments(text: String): String {
+            val out = StringBuilder(text.length)
+            var i = 0
+            var inStr = false
+            var inChar = false
+            var esc = false
+            while (i < text.length) {
+                val c = text[i]
+                val next = if (i + 1 < text.length) text[i + 1] else ' '
+                if (esc) {
+                    esc = false
+                    out.append(c)
+                } else if (inStr || inChar) {
+                    if (c == '\\') esc = true
+                    else if (inStr && c == '"') inStr = false
+                    else if (inChar && c == '\'') inChar = false
+                    out.append(c)
+                } else if (c == '/' && next == '/') {
+                    while (i < text.length && text[i] != '\n') {
+                        out.append(' ')
+                        i++
+                    }
+                    continue
+                } else if (c == '/' && next == '*') {
+                    while (i < text.length && !(text[i] == '*' && i + 1 < text.length && text[i + 1] == '/')) {
+                        out.append(if (text[i] == '\n') '\n' else ' ')
+                        i++
+                    }
+                    out.append("  ")
+                    i += 2
+                    continue
+                } else {
+                    if (c == '"') inStr = true
+                    if (c == '\'') inChar = true
+                    out.append(c)
+                }
+                i++
+            }
+            return out.toString()
+        }
+
         fun read(file: String): String {
             val hits = byName[file] ?: throw GradleException("G14: no $file under src/main/java")
             if (hits.size != 1) throw GradleException("G14: $file is ambiguous: $hits")
-            return hits[0].readText()
+            return stripComments(hits[0].readText())
         }
 
         // --- scanners --------------------------------------------------------
@@ -442,12 +542,13 @@ val checkForecastKeyParity by tasks.registering {
             siteRegex.findAll(f.readText()).map { "${f.name}|${it.groupValues[1]}" }
         }.toSortedSet()
         val declaredSites =
-                (pairs.flatMap { listOf(it.second.first, it.second.second) } + unpaired.keys).toSortedSet()
+                (pairs.flatMap { listOf(it.second.first, it.second.second) } + shared.keys + unpaired.keys)
+                        .toSortedSet()
         if (foundSites != declaredSites) {
             problems.add("Every ActionKey.forArtifact site must be declared in"
-                    + " server/engine/build.gradle.kts, as half of a build/forecast pair or as"
-                    + " unpaired with the reason there is no twin. An undeclared site is a key"
-                    + " nobody has decided how to forecast.\n"
+                    + " server/engine/build.gradle.kts, as half of a build/forecast pair, as a"
+                    + " shared owner both sides call, or as unpaired with the reason there is no"
+                    + " twin. An undeclared site is a key nobody has decided how to forecast.\n"
                     + "  undeclared: ${(foundSites - declaredSites).ifEmpty { "none" }}\n"
                     + "  declared but gone: ${(declaredSites - foundSites).ifEmpty { "none" }}")
         } else {
@@ -463,6 +564,75 @@ val checkForecastKeyParity by tasks.registering {
                             + "  only in the build:    ${(build - forecast).sorted()}\n"
                             + "  only in the forecast: ${(forecast - build).sorted()}")
                 }
+            }
+        }
+
+        // --- arm A2: a shared key owner must really have both callers ----------
+        // Reach points are literal, so a caller that forks the derivation instead of calling it
+        // either shows up here (the literal is gone) or lands as a new undeclared forArtifact site.
+        fun reaches(reach: String, label: String, kind: String) {
+            val file = reach.substringBefore('|')
+            val literal = reach.substringAfter('|')
+            if (!read(file).contains(literal)) {
+                problems.add("$label is declared a shared $kind owner, but $file no longer reaches it"
+                        + " (`$literal` is gone). A shared owner with one caller is a second body"
+                        + " waiting to drift: either restore the call, or declare the two sites"
+                        + " explicitly so this guard compares them instead.")
+            }
+        }
+        shared.forEach { (site, spec) ->
+            val (label, reachPoints) = spec
+            if (reachPoints.size < 2) {
+                problems.add("$label ($site) is declared shared but names ${reachPoints.size} caller;"
+                        + " shared means the build AND the forecast go through one body.")
+            }
+            reachPoints.forEach { reaches(it, "$label ($site)", "key") }
+        }
+
+        // --- arm A3: an unpaired key must be honest about the forecast STEP -----
+        // The exemption that hid JK-2491 said "not forecast", which was true of the key and false
+        // of the step: explain emitted package-jar for every plugin-packaged module and keyed it
+        // against the plain jar. So the claim is checked against what TaskForecaster constructs.
+        val forecaster = read("TaskForecaster.java")
+        val stepArgs = (Regex("""new TaskForecast\.Task\(\s*([^,]+),""").findAll(forecaster)
+                + Regex("""\bcompileStep\(\s*([^,]+),""").findAll(forecaster))
+                .map { it.groupValues[1].trim().replace(Regex("""\s+"""), " ") }
+                .toList()
+                .toSortedSet()
+        val unresolved = stepArgs.filterNot {
+            it.startsWith("\"") || it.startsWith("TaskNames.") || indirections.contains(it)
+        }
+        if (unresolved.isNotEmpty()) {
+            problems.add("TaskForecaster names a step through something this scan cannot resolve:"
+                    + " $unresolved. A step the scan cannot see is a step an unpaired key can hide"
+                    + " behind — give it a literal or a TaskNames constant, or declare the"
+                    + " indirection in forecastStepIndirections and say why it is safe.")
+        }
+        val taskNames = Regex("""String\s+([A-Z][A-Z_0-9]*)\s*=\s*"([^"]+)"""")
+                .findAll(taskNamesSource)
+                .associate { it.groupValues[1] to it.groupValues[2] }
+        val forecastSteps = stepArgs.mapNotNull { arg ->
+            when {
+                arg.startsWith("\"") -> arg.trim('"')
+                arg.startsWith("TaskNames.") -> taskNames[arg.removePrefix("TaskNames.")]
+                        ?: throw GradleException("G14: TaskNames has no constant $arg")
+                else -> null
+            }
+        }.toSortedSet()
+        unpaired.forEach { (site, spec) ->
+            val (taskName, claimsStep, why) = spec
+            val stepped = forecastSteps.contains(taskName)
+            if (stepped != claimsStep) {
+                problems.add(if (stepped)
+                    "$site is exempt as \"$why\", but TaskForecaster DOES emit a `$taskName` step —"
+                            + " so explain shows that step priced against no key of its own, or"
+                            + " against another step's. Pair the site, move it onto a shared owner,"
+                            + " or (if the step is genuinely keyless) set the flag to true and say"
+                            + " what decides it instead."
+                else
+                    "$site claims the forecast emits a `$taskName` step, and it does not. Set the"
+                            + " flag to false and state that there is no step, so the next reader"
+                            + " is not told a forecast exists that does not.")
             }
         }
 
@@ -520,6 +690,57 @@ val checkForecastKeyParity by tasks.registering {
                 }
                 i++
             }
+            // Past the primary chain. The fluent chain ends at the first `;`, but a builder held in
+            // a local keeps taking setters afterwards — both keyed build sites add the Scala fields
+            // in a following `if`, and stopping at the `;` is why the guard could not see the
+            // forecast setting none of them (JK-2479). Follow the variable to its build().
+            if (!setters.contains("build")) {
+                val assignedTo = Regex("""([A-Za-z_][A-Za-z0-9_]*)\s*=\s*$""")
+                        .find(src.substring(maxOf(0, start - 200), start))
+                        ?.groupValues?.get(1)
+                        ?: throw GradleException("G14: the CompileRequest chain in $file is not"
+                                + " terminated by .build() and is not assigned to a variable, so"
+                                + " this scan cannot tell where it ends. Chain it, or assign it.")
+                val rest = src.substring(i)
+                val buildAt = Regex("""\b${Regex.escape(assignedTo)}\s*\.\s*build\s*\(""").find(rest)
+                        ?: throw GradleException("G14: `$assignedTo` in $file never reaches .build();"
+                                + " the continuation scan has no end and would read the rest of the"
+                                + " file as part of the chain.")
+                // Each `<var>.` statement is itself a fluent chain
+                // (`req.scalaVersion(..).compilerClasspath(..);`), so the same character walk runs
+                // from each one — it is what makes the tail visible, not just the first setter.
+                val tail = rest.substring(0, buildAt.range.first)
+                val contStarts = Regex("""\b${Regex.escape(assignedTo)}\s*\.""").findAll(tail)
+                        .map { it.range.last }.toList()
+                for (cs in contStarts) {
+                    var j = cs
+                    var d = 0
+                    var str = false
+                    var chr = false
+                    var e2 = false
+                    while (j < tail.length) {
+                        val c = tail[j]
+                        if (e2) {
+                            e2 = false
+                        } else if (str || chr) {
+                            if (c == '\\') e2 = true else if (str && c == '"') str = false
+                            else if (chr && c == '\'') chr = false
+                        } else when (c) {
+                            '"' -> str = true
+                            '\'' -> chr = true
+                            '(' -> d++
+                            ')' -> d--
+                            ';' -> if (d == 0) break
+                            '.' -> if (d == 0) {
+                                Regex("""^\.([a-zA-Z][A-Za-z0-9]*)\s*\(""")
+                                        .find(tail.substring(j, minOf(tail.length, j + 64)))
+                                        ?.let { setters.add(it.groupValues[1]) }
+                            }
+                        }
+                        j++
+                    }
+                }
+            }
             setters.removeAll(setOf("builder", "build"))
             return setters
         }
@@ -549,6 +770,22 @@ val checkForecastKeyParity by tasks.registering {
                             + "  only in the forecast: ${(forecast - build).sorted()}")
                 }
             }
+        }
+
+        // --- arm C: a shared CompileRequest owner must really have both callers ---
+        requestShared.forEach { (label, spec) ->
+            val (owner, reachPoints) = spec
+            val ownerFile = owner.substringBefore('|')
+            if (!read(ownerFile).contains(owner.substringAfter('|'))) {
+                problems.add("$label's shared CompileRequest owner is gone from $ownerFile. Either"
+                        + " restore it, or declare the two chains as a pair so arm B compares them.")
+            }
+            if (reachPoints.size < 2) {
+                problems.add("$label is declared a shared CompileRequest but names"
+                        + " ${reachPoints.size} caller; shared means the build AND the forecast"
+                        + " derive the request from one body.")
+            }
+            reachPoints.forEach { reaches(it, "$label ($owner)", "CompileRequest") }
         }
 
         if (problems.isNotEmpty()) {

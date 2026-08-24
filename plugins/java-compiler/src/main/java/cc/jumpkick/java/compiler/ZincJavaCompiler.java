@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.java.compiler;
 
+import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.Os;
 import com.sun.source.util.JavacTask;
 import java.io.File;
 import java.io.IOException;
@@ -412,7 +414,7 @@ public final class ZincJavaCompiler {
                 store.set(contents);
                 return;
             } catch (Exception e) {
-                if (!isWindows() || !isSharingViolation(e) || attempt == LOCK_ATTEMPTS) {
+                if (!Os.isWindows() || !isSharingViolation(e) || attempt == LOCK_ATTEMPTS) {
                     if (e instanceof RuntimeException re) throw re;
                     throw e instanceof IOException io ? io : new IOException(e);
                 }
@@ -446,7 +448,7 @@ public final class ZincJavaCompiler {
                 Files.deleteIfExists(analysisFile);
                 return;
             } catch (IOException e) {
-                if (!isWindows() || !isSharingViolation(e) || attempt == LOCK_ATTEMPTS) return;
+                if (!Os.isWindows() || !isSharingViolation(e) || attempt == LOCK_ATTEMPTS) return;
                 if (renameAside(analysisFile)) return;
                 sleepBriefly(attempt);
             }
@@ -467,11 +469,6 @@ public final class ZincJavaCompiler {
             junk.toFile().deleteOnExit();
         }
         return true;
-    }
-
-    /** {@code os.name} read live so a test can spoof it; this module cannot see {@code HostPlatform}. */
-    private static boolean isWindows() {
-        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
     }
 
     private static void sleepBriefly(int attempt) {
@@ -989,13 +986,7 @@ public final class ZincJavaCompiler {
         }
         if (processorPath != null && !processorPath.isEmpty() && !containsFlag(extra, "-processorpath")) {
             opts.add("-processorpath");
-            String sep = File.pathSeparator;
-            StringBuilder pp = new StringBuilder();
-            for (int i = 0; i < processorPath.size(); i++) {
-                if (i > 0) pp.append(sep);
-                pp.append(processorPath.get(i).toAbsolutePath());
-            }
-            opts.add(pp.toString());
+            opts.add(Classpaths.join(processorPath));
         }
         if (extra != null) opts.addAll(extra);
         return opts.toArray(String[]::new);

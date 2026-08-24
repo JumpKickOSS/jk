@@ -58,7 +58,7 @@ class TaskForecasterCleanPackageTest {
         // The helper reconstructs against layout.classesDir(); pin that it is the tree we
         // stored the compile record for, so the equality below cannot silently test nothing.
         assertThat(layout.classesDir()).isEqualTo(classes.toAbsolutePath().normalize());
-        String tok = TaskForecaster.classesTokenForPackage(module, true, layout, project, ac, "key-compile", null);
+        String tok = PackagingKeys.classesTokenForPackage(module, true, layout, project, ac, "key-compile", null);
         // Reconstruct must equal the pre-clean live fingerprint (class + resource).
         assertThat(tok).isEqualTo(live);
     }
@@ -127,7 +127,7 @@ class TaskForecasterCleanPackageTest {
 
         // Reconstruction keyed by the CURRENT (v1) key must produce v1's fingerprint —
         // the live build restores v1 and computes v1's package key, not v2's.
-        String tok = TaskForecaster.classesTokenForPackage(module, true, layout, project, ac, "key-v1", null);
+        String tok = PackagingKeys.classesTokenForPackage(module, true, layout, project, ac, "key-v1", null);
         assertThat(tok).isEqualTo(v1Live);
     }
 

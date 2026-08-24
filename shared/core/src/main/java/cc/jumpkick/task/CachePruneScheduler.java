@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Classpaths;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -10,7 +11,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.regex.Pattern;
 
 /**
  * Cache-prune cadence: {@code .last-pruned} bookkeeping consulted by the engine's idle-boundary
@@ -145,13 +145,10 @@ public final class CachePruneScheduler {
      * Package-visible for tests.
      */
     static Optional<String> resolveFromJvmInstallLayout(String classPath) {
-        if (classPath == null || classPath.isBlank()) return Optional.empty();
-        String sep = System.getProperty("path.separator", ":");
-        for (String entry : classPath.split(Pattern.quote(sep))) {
-            if (entry.isBlank()) continue;
+        for (Path entry : Classpaths.split(classPath)) {
             Path p;
             try {
-                p = Path.of(entry).toAbsolutePath().normalize();
+                p = entry.toAbsolutePath().normalize();
             } catch (RuntimeException ignored) {
                 continue;
             }

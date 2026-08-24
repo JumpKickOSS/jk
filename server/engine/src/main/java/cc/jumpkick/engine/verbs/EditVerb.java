@@ -40,8 +40,7 @@ public final class EditVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             EditOps.Result result;
             try {
@@ -57,6 +56,6 @@ public final class EditVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
-        return null;
+        return JobOutcome.declined();
     }
 }

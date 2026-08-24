@@ -4,6 +4,7 @@ package cc.jumpkick.groovy.compiler;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -12,7 +13,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -23,8 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class CompileSpecTest {
 
-    private static final boolean WINDOWS =
-            System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+    private static final boolean WINDOWS = Os.isWindows();
 
     /**
      * Synthetic path root for specs. {@code SpecWriter} serializes {@link Path#toAbsolutePath()};

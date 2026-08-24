@@ -8,6 +8,7 @@ import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.ScriptPlans;
 import cc.jumpkick.script.ScriptHeaderParser;
@@ -47,8 +48,7 @@ public final class ScriptPrepareVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 String mode = String.valueOf(Jsonl.str(requestLine, "mode"));
@@ -79,7 +79,7 @@ public final class ScriptPrepareVerb implements HostedVerb {
                             default -> throw new IllegalArgumentException("unknown script mode: " + mode);
                         };
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
-                host.streamSinglePlan(plan, session, writer, result -> {
+                return host.streamSinglePlan(plan, session, writer, result -> {
                     Path classesDir = plan.get(ScriptPlans.CLASSES_DIR).orElse(null);
                     Path kotlincBin = plan.get(ScriptPlans.KOTLINC_BIN).orElse(null);
                     Path stdlib = plan.get(ScriptPlans.KT_STDLIB).orElse(null);
@@ -96,11 +96,11 @@ public final class ScriptPrepareVerb implements HostedVerb {
                 });
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
+                return JobOutcome.failed(Exit.FAILURE);
             }
-
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

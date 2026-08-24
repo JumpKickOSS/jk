@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.BuildOptions;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
@@ -75,8 +76,7 @@ public final class ToolRunCommand implements CliCommand {
                         .hide(),
                 Opt.value("<dir>", "Override the jk state directory.", "--state-dir")
                         .hide(),
-                Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                        .hide(),
+                CommonOpts.jdksDir(),
                 Opt.value("<url>", "Override the Maven repository URL (for tests).", "--repo-url")
                         .hide());
         var all = new ArrayList<>(opts);
@@ -382,7 +382,7 @@ public final class ToolRunCommand implements CliCommand {
         this.mainClass = in.value("main").orElse(null);
         this.cacheDirOverride = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.stateDirOverride = in.value("state-dir").map(Path::of).orElse(null);
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.forceRecompile = in.isSet("force");
         this.global = GlobalOptions.from(in);

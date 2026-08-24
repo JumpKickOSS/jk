@@ -172,25 +172,17 @@ public final class PlannerSetup {
                     // [build] extra-src roots (variant overlays folded in by VariantApply) and
                     // plugin-contributed source roots ([[contribute.source-roots]] — grails-app/…)
                     // join the source set here — the tick suppliers' pre-walk never saw them.
-                    List<Path> extraSrcDirs = new ArrayList<>(CompileSupport.extraSrcDirs(project, in.dir()));
-                    for (var root : PluginContributions.sourceRoots(project, in.dir())) {
-                        if (!root.resource()) extraSrcDirs.add(in.dir().resolve(root.dir()));
-                    }
-                    List<Path> scalaMainSrcs = CompileSupport.collectScalaSources(in.dir(), compact);
+                    List<Path> extraSrcDirs = PlannerCompile.extraSourceDirs(project, in.dir());
+                    // The java+scala union is derived by PlannerCompile, not here: `jk explain`
+                    // has to reproduce JAVA_SOURCES exactly to key compile-main, and a second
+                    // copy of this fold is a drift the parity guard cannot see (JK-2479).
+                    javaMainSrcs = PlannerCompile.javaAndScalaSources(project, in.dir(), compact, javaMainSrcs);
+                    javaMainSrcRef.set(javaMainSrcs);
                     if (!extraSrcDirs.isEmpty()) {
-                        javaMainSrcs = CompileSupport.withExtraSources(javaMainSrcs, extraSrcDirs, ".java");
                         kotlinMainSrcs = CompileSupport.withExtraSources(kotlinMainSrcs, extraSrcDirs, ".kt");
                         groovyMainSrcs = CompileSupport.withExtraSources(groovyMainSrcs, extraSrcDirs, ".groovy");
-                        scalaMainSrcs = CompileSupport.withExtraSources(scalaMainSrcs, extraSrcDirs, ".scala");
-                        javaMainSrcRef.set(javaMainSrcs);
                         kotlinMainSrcRef.set(kotlinMainSrcs);
                         groovyMainSrcRef.set(groovyMainSrcs);
-                    }
-                    if (!scalaMainSrcs.isEmpty()) {
-                        List<Path> withScala = new ArrayList<>(javaMainSrcs);
-                        withScala.addAll(scalaMainSrcs);
-                        javaMainSrcs = withScala;
-                        javaMainSrcRef.set(javaMainSrcs);
                     }
                     ctx.put(JAVA_SOURCES, javaMainSrcs);
                     ctx.put(KOTLIN_SOURCES, kotlinMainSrcs);

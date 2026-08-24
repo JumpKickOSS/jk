@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
@@ -9,6 +10,7 @@ import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkCatalog;
@@ -72,8 +74,7 @@ public final class JdkInstallCommand implements CliCommand {
                 Opt.flag("Mark this JDK as the system-wide default", "-d", "--make-default"),
                 Opt.flag("In the interactive wizard, list every vendor from the JetBrains feed.", "--show-all")
                         .hide(),
-                Opt.value("<dir>", "Override the install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
-                        .hide(),
+                CommonOpts.jdksDir(),
                 Opt.value("<url>", "Override the JetBrains JDK feed URL (for tests).", "--feed-url")
                         .hide(),
                 Opt.value("<file>", "Override the catalog cache path (for tests).", "--cache-file")
@@ -111,7 +112,7 @@ public final class JdkInstallCommand implements CliCommand {
         this.makeDefault = in.isSet("make-default");
         this.global = GlobalOptions.from(in);
         this.showAll = in.isSet("show-all");
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.feedUrl = in.value("feed-url").map(URI::create).orElse(null);
         this.cacheFile =
                 in.value("cache-file").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
@@ -119,7 +120,7 @@ public final class JdkInstallCommand implements CliCommand {
         if (!HostPlatform.supported()) {
             cc.jumpkick.cli.tui.CommandWedge.printFail(
                     "JDK",
-                    "host " + System.getProperty("os.name")
+                    "host " + Os.name()
                             + "/"
                             + System.getProperty("os.arch")
                             + " is not covered by the JetBrains JDK feed. Set JAVA_HOME explicitly.");

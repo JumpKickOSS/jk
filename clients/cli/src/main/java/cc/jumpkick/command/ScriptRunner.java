@@ -8,8 +8,9 @@ import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.script.ScriptHeader;
@@ -151,7 +152,7 @@ final class ScriptRunner {
         // engine-side through jk's CAS, handed to kotlinc instead of main-kts's Ivy.
         if (!prep.classpath().isEmpty()) {
             command.add("-classpath");
-            command.add(joinClasspath(prep.classpath()));
+            command.add(Classpaths.join(prep.classpath()));
         }
         command.add(execScript.toString());
         if (!args.isEmpty()) {
@@ -182,7 +183,7 @@ final class ScriptRunner {
         }
 
         List<Path> classpath = prep.classpath();
-        Path java = JavaHomes.runningJavaHome().resolve("bin").resolve(HostPlatform.isWindows() ? "java.exe" : "java");
+        Path java = JdkFingerprint.java(JavaHomes.runningJavaHome());
         List<String> command = new ArrayList<>();
         command.add(java.toString());
         command.addAll(extraJavaOptions);
@@ -192,7 +193,7 @@ final class ScriptRunner {
             command.add(jar.toAbsolutePath().toString());
         } else {
             command.add("-cp");
-            command.add(joinClasspath(classpath));
+            command.add(Classpaths.join(classpath));
             command.add(prep.mainClass());
         }
         command.addAll(args);
@@ -245,7 +246,7 @@ final class ScriptRunner {
     private int execJava(
             Path classesDir, List<Path> classpath, List<String> jvmArgs, String mainClass, List<String> args)
             throws IOException, InterruptedException {
-        Path java = JavaHomes.runningJavaHome().resolve("bin").resolve(HostPlatform.isWindows() ? "java.exe" : "java");
+        Path java = JdkFingerprint.java(JavaHomes.runningJavaHome());
         List<Path> full = new ArrayList<>();
         if (classesDir != null) full.add(classesDir);
         full.addAll(classpath);
@@ -255,7 +256,7 @@ final class ScriptRunner {
         command.addAll(jvmArgs);
         command.addAll(extraJavaOptions);
         command.add("-cp");
-        command.add(joinClasspath(full));
+        command.add(Classpaths.join(full));
         command.add(mainClass);
         command.addAll(args);
         Terminals.restoreForChild();
@@ -264,15 +265,5 @@ final class ScriptRunner {
         // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();
         return p.waitFor();
-    }
-
-    private static String joinClasspath(List<Path> paths) {
-        String sep = System.getProperty("path.separator");
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < paths.size(); i++) {
-            if (i > 0) sb.append(sep);
-            sb.append(paths.get(i).toAbsolutePath());
-        }
-        return sb.toString();
     }
 }

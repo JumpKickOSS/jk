@@ -13,7 +13,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-class KotlincDriverTest {
+class KotlincSpecTest {
 
     /**
      * the AOT trainer runs on the PROJECT's kotlinc worker classpath, and older Kotlin
@@ -26,7 +26,7 @@ class KotlincDriverTest {
         Path scratch = Files.createDirectories(tempDir.resolve("scratch"));
         KotlincRequest request = requestWithJvmTarget(tempDir, 17); // oldest supported line
 
-        List<String> cmd = KotlincDriver.trainerCommand(
+        List<String> cmd = KotlincSpec.trainerCommand(
                 request, "worker.jar", tempDir.resolve("java-home"), tempDir.resolve("out.aot"), scratch);
 
         assertThat(cmd).isNotEmpty();
@@ -40,15 +40,15 @@ class KotlincDriverTest {
             throws IOException {
         Path scratch = Files.createDirectories(tempDir.resolve("scratch"));
 
-        KotlincDriver.trainerCommandForOptimize(
+        KotlincSpec.trainerCommandForOptimize(
                 tempDir.resolve("java-home"), "worker.jar", tempDir.resolve("out.aot"), scratch);
 
         String spec = Files.readString(scratch.resolve("train.spec"), StandardCharsets.UTF_8);
-        assertThat(jvmTargetIn(spec)).isEqualTo(String.valueOf(KotlincDriver.TRAINER_FALLBACK_JVM_TARGET));
+        assertThat(jvmTargetIn(spec)).isEqualTo(String.valueOf(KotlincSpec.TRAINER_FALLBACK_JVM_TARGET));
         // Intent pin: 21 is the newest target every supported Kotlin line accepts. Do not bump
         // this alongside the host JDK — pre-2.2.20 Kotlin rejects newer targets and the AOT
         // cache silently never trains.
-        assertThat(KotlincDriver.TRAINER_FALLBACK_JVM_TARGET).isEqualTo(21);
+        assertThat(KotlincSpec.TRAINER_FALLBACK_JVM_TARGET).isEqualTo(21);
     }
 
     /**
@@ -75,7 +75,7 @@ class KotlincDriverTest {
 
     /** The value the spec hands the compiler after {@code -jdk-home}. */
     private static String jdkHomeArg(KotlincRequest request) throws IOException {
-        Path spec = KotlincDriver.writeSpec(request);
+        Path spec = KotlincSpec.write(request);
         try {
             List<String> args = PluginSpec.read(spec).args();
             int at = args.indexOf("-jdk-home");

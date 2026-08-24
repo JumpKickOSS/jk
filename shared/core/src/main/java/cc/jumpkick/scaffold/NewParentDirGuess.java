@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.scaffold;
 
+import cc.jumpkick.layout.BuildLayout;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -180,7 +181,7 @@ public final class NewParentDirGuess {
                         || lower.equals("appdata")
                         || lower.equals("applications")
                         || lower.equals("node_modules")
-                        || lower.equals("target")
+                        || lower.equals(BuildLayout.TARGET)
                         || lower.equals("build")
                         || lower.equals(".cache")) {
                     continue;

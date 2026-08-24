@@ -3,9 +3,8 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileResult;
-import cc.jumpkick.compile.KotlincDriver;
 import cc.jumpkick.compile.KotlincRequest;
-import cc.jumpkick.compile.KotlincResult;
+import cc.jumpkick.compile.WorkerCompileDriver;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -87,10 +86,10 @@ public final class KotlinCompile {
             cc.jumpkick.host.PathUtil.deleteRecursively(request.workingDir());
         }
         CasPrewriter prewriter = CasPrewriter.watching(cas, request.outputDir());
-        KotlincResult kr;
+        CompileResult kr;
         Map<String, String> outputs;
         try {
-            kr = new KotlincDriver().compile(request);
+            kr = WorkerCompileDriver.compile(request);
         } finally {
             outputs = prewriter.finish();
         }

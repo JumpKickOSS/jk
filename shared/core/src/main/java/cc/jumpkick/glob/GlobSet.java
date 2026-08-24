@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.glob;
 
+import cc.jumpkick.layout.BuildLayout;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
@@ -43,7 +44,7 @@ public final class GlobSet {
 
     /** Directories never descended into: build outputs, VCS metadata, IDE and tool state. */
     public static final Set<String> DEFAULT_EXCLUDES =
-            Set.of("target", "build", "out", ".git", ".jk", ".gradle", ".idea", "node_modules");
+            Set.of(BuildLayout.TARGET, "build", "out", ".git", ".jk", ".gradle", ".idea", "node_modules");
 
     private static final Set<Character> WILDCARDS = Set.of('*', '?', '[', '{');
 

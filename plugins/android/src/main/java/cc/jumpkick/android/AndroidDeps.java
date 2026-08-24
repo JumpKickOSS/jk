@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.plugin.build.PackageIo;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -9,7 +10,6 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -111,9 +111,7 @@ final class AndroidDeps {
 
     /** Extract the per-OS aapt2 binary from its Maven wrapper jar into {@code destDir}. */
     static Path extractAapt2(Path aapt2Jar, Path destDir) throws IOException {
-        boolean windows =
-                System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
-        String binaryName = windows ? "aapt2.exe" : "aapt2";
+        String binaryName = Os.isWindows() ? "aapt2.exe" : "aapt2";
         Path out = Files.createDirectories(destDir).resolve(binaryName);
         try (ZipFile zip = new ZipFile(aapt2Jar.toFile())) {
             var entry = zip.getEntry(binaryName);

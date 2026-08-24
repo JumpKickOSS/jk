@@ -17,6 +17,7 @@ import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildGraph;
@@ -87,13 +88,12 @@ public final class ImageVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
                 Path cache = Path.of(Jsonl.str(requestLine, "cache"));
-                String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
+                String jdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
                 Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
                 boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
                 boolean verbose = Jsonl.bool(requestLine, "verbose", false);
@@ -163,7 +163,7 @@ public final class ImageVerb implements HostedVerb {
                                 Jsonl.str(requestLine, "tag"),
                                 Jsonl.str(requestLine, "tarball"),
                                 Jsonl.str(requestLine, "dockerExecutable")));
-                host.streamSinglePlan(plan, session, writer, result -> {
+                return host.streamSinglePlan(plan, session, writer, result -> {
                     TestSummary testResult = plan.get(BuildPlanner.TEST_RESULT).orElse(null);
                     ImageConfig cfg = plan.get(ImagePlans.CONFIG).orElse(null);
                     Path tarball = plan.get(ImagePlans.TARBALL_PATH).orElse(null);
@@ -190,11 +190,11 @@ public final class ImageVerb implements HostedVerb {
                 });
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
+                return JobOutcome.failed(Exit.FAILURE);
             }
-
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

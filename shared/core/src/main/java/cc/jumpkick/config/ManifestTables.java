@@ -450,8 +450,10 @@ public final class ManifestTables {
         if (application.isBoolean(key)) return Boolean.TRUE.equals(application.getBoolean(key));
         String raw = application.isString(key) ? application.getString(key) : null;
         String value = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
-        if (value.equals("true") || value.equals("on")) return true;
-        if (value.equals("false") || value.equals("off") || value.equals("none")) return false;
+        // "none" is this key's own extra spelling for off; everything else is the jk-wide truth set.
+        if (value.equals("none")) return false;
+        Optional<Boolean> flag = EnvValues.parseBool(value);
+        if (flag.isPresent()) return flag.get();
         if (value.equals("shrink") || value.equals("shrunk") || value.equals("r8")) {
             throw new JkBuildParseException("[application]." + key + " is a boolean, not \"" + raw
                     + "\" — artifacts are additive: set `minified = true` for an R8 jar (it builds"

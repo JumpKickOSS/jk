@@ -8,6 +8,7 @@ import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.ToolCoordSpec;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.ToolPlans;
 import cc.jumpkick.tool.ToolEnv;
@@ -46,8 +47,7 @@ public final class ToolResolveVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 Path cache = Path.of(Jsonl.str(requestLine, "cache"));
@@ -64,7 +64,7 @@ public final class ToolResolveVerb implements HostedVerb {
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 // Plain g:a[:v] label — coordinate colorization is a client-side concern.
                 BuildPlan plan = ToolPlans.resolveBuildPlan(spec, with, bin, mainClass, repoUrl, cache, coord);
-                host.streamSinglePlan(plan, session, writer, result -> {
+                return host.streamSinglePlan(plan, session, writer, result -> {
                     ToolEnv env = plan.get(ToolPlans.TOOL_ENV).orElse(null);
                     return ProtoSession.planFinishTool(
                             dir,
@@ -79,11 +79,11 @@ public final class ToolResolveVerb implements HostedVerb {
                 });
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
+                return JobOutcome.failed(Exit.FAILURE);
             }
-
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

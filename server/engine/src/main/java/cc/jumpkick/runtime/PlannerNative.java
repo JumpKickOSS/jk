@@ -5,6 +5,7 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
@@ -431,7 +432,7 @@ public final class PlannerNative {
     /** The plugin's build step name — the scratch dir its declared outputs live under. */
     static String stepNameOf(PluginBuild.Active active, JkBuild project, Path dir, Path cache)
             throws IOException, InterruptedException {
-        var decls = PluginBuild.declarations(active, project, dir, cache, dir.resolve("target"));
+        var decls = PluginBuild.declarations(active, project, dir, cache, dir.resolve(BuildLayout.TARGET));
         for (var task : decls.steps()) {
             for (String outDir : task.outputs()) {
                 if (!outDir.isBlank()) return task.name();
@@ -460,7 +461,7 @@ public final class PlannerNative {
         if (out == null || out.getFileName() == null) return "native";
         String name = out.getFileName().toString();
         if (shared) return name;
-        String os = System.getProperty("os.name", "");
+        String os = Os.name();
         if (os.toLowerCase(java.util.Locale.ROOT).contains("win") && !name.endsWith(".exe") && !name.endsWith(".EXE")) {
             return name + ".exe";
         }

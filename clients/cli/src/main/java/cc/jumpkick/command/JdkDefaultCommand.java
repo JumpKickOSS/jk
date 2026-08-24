@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -44,9 +45,7 @@ public final class JdkDefaultCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Pick the latest installed LTS JDK (Temurin preferred).", "--lts"),
-                Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
-                        .hide());
+                Opt.flag("Pick the latest installed LTS JDK (Temurin preferred).", "--lts"), CommonOpts.jdksDir());
     }
 
     @Override
@@ -62,7 +61,7 @@ public final class JdkDefaultCommand implements CliCommand {
     public int run(Invocation in) throws IOException {
         String spec = in.positionals().isEmpty() ? null : in.positionals().get(0);
         boolean lts = in.isSet("lts");
-        Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        Path jdksDir = CommonOpts.jdksDirValue(in);
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
         JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
 

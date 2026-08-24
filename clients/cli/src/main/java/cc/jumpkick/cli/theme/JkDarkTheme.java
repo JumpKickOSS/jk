@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.theme;
 
 import cc.jumpkick.cli.tui.Rail;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Style;
@@ -122,8 +123,7 @@ public final class JkDarkTheme implements Theme {
         // it does not disable Unicode glyphs, animations, or other ANSI sequences.
         if (SessionContext.current().config().noAnsiOr(false)) return false;
         if ("dumb".equals(System.getenv("TERM"))) return false;
-        String ci = System.getenv("CI");
-        if ("true".equalsIgnoreCase(ci) || "1".equals(ci)) return false;
+        if (EnvValues.bool(System::getenv, "CI").orElse(false)) return false;
         return true;
     }
 

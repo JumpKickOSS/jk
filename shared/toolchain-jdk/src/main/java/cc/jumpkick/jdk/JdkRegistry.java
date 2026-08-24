@@ -4,6 +4,7 @@ package cc.jumpkick.jdk;
 import cc.jumpkick.discovery.JkProbe;
 import cc.jumpkick.discovery.LocalToolProbe;
 import cc.jumpkick.discovery.Probes;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -300,7 +301,7 @@ public final class JdkRegistry {
         // to give IntelliJ a stable vendor+major path; they become dangling after
         // the install dir is removed. Windows junctions are cleaned up by the
         // owning tools or left for the OS; only POSIX symlinks are removed here.
-        if (!HostPlatform.isWindows() && Files.isDirectory(jdksRoot)) {
+        if (!Os.isWindows() && Files.isDirectory(jdksRoot)) {
             Path canonical = installDir.toAbsolutePath().normalize();
             try (Stream<Path> entries = Files.list(jdksRoot)) {
                 entries.filter(Files::isSymbolicLink).forEach(link -> {

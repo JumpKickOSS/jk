@@ -50,10 +50,9 @@ public interface HostedVerb {
 
     /**
      * {@code writer} is {@code null} for a detached (HTTP/MCP) job — sinks and hooks still run.
-     * A job verb returns its {@link cc.jumpkick.engine.jobs.JobOutcome}; the envelope stamps it
-     * (the one success law). Sync reads return {@code null}.
+     * A job verb returns its {@link JobOutcome} and the envelope stamps it (the one success law).
+     * An inline read journals nothing, so it returns {@link JobOutcome#declined()}.
      */
-    @Nullable
     JobOutcome run(String requestLine, Session.CancelToken cancel, @Nullable BufferedWriter writer);
 
     /** The submission for one decoded request; the line may refine the kind (workspace test). */

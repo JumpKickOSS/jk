@@ -15,6 +15,16 @@ public final class ProtoJobs {
 
     private ProtoJobs() {}
 
+    /**
+     * The wire field carrying {@code --jdks-dir}. Written by seven request builders here and in
+     * {@link ProtoReads}, read by nine engine verbs; before it had a name, sixteen sites typed
+     * {@code "jdksDir"} by hand and a client that shipped a typo would simply have had its JDK
+     * override ignored, silently, on a resident engine that answered normally. CLI-side the same
+     * option is {@code cc.jumpkick.cli.CommonOpts.JDKS_DIR} — a different vocabulary (a flag name,
+     * not a JSON field), so each owns its own spelling.
+     */
+    public static final String JDKS_DIR = "jdksDir";
+
     public static String buildRequest(
             String dir,
             String cache,
@@ -195,7 +205,7 @@ public final class ProtoJobs {
                 + Jsonl.quote(dir)
                 + ",\"cache\":"
                 + Jsonl.quote(cache)
-                + ",\"jdksDir\":"
+                + ",\"" + JDKS_DIR + "\":"
                 + Jsonl.quote(jdksDir)
                 + ",\"workers\":"
                 + workers
@@ -322,7 +332,7 @@ public final class ProtoJobs {
                 + Jsonl.quote(dir)
                 + ",\"cache\":"
                 + Jsonl.quote(cache)
-                + ",\"jdksDir\":"
+                + ",\"" + JDKS_DIR + "\":"
                 + Jsonl.quote(jdksDir)
                 + ",\"workers\":"
                 + workers
@@ -418,7 +428,7 @@ public final class ProtoJobs {
                 + Jsonl.quote(dir)
                 + ",\"cache\":"
                 + Jsonl.quote(cache)
-                + ",\"jdksDir\":"
+                + ",\"" + JDKS_DIR + "\":"
                 + Jsonl.quote(jdksDir)
                 + ",\"workers\":"
                 + workers
@@ -569,7 +579,7 @@ public final class ProtoJobs {
                 + Jsonl.quote(dir)
                 + ",\"cache\":"
                 + Jsonl.quote(cache)
-                + ",\"jdksDir\":"
+                + ",\"" + JDKS_DIR + "\":"
                 + Jsonl.quote(jdksDir)
                 + ",\"repoUrl\":"
                 + Jsonl.quote(repoUrl)
@@ -744,7 +754,7 @@ public final class ProtoJobs {
                 + Jsonl.quote(dir)
                 + ",\"cache\":"
                 + Jsonl.quote(cache)
-                + ",\"jdksDir\":"
+                + ",\"" + JDKS_DIR + "\":"
                 + Jsonl.quote(jdksDir)
                 + ",\"mainClass\":"
                 + Jsonl.quote(mainClass)
@@ -876,7 +886,7 @@ public final class ProtoJobs {
                 + Jsonl.quote(dir)
                 + ",\"cache\":"
                 + Jsonl.quote(cache)
-                + ",\"jdksDir\":"
+                + ",\"" + JDKS_DIR + "\":"
                 + Jsonl.quote(jdksDir)
                 + ",\"graalHome\":"
                 + Jsonl.quote(graalHome)
@@ -938,7 +948,7 @@ public final class ProtoJobs {
                 + Jsonl.quote(dir)
                 + ",\"cache\":"
                 + Jsonl.quote(cache)
-                + ",\"jdksDir\":"
+                + ",\"" + JDKS_DIR + "\":"
                 + Jsonl.quote(jdksDir)
                 + ",\"mainClass\":"
                 + Jsonl.quote(mainClass)

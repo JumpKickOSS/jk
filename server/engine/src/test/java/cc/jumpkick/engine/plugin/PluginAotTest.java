@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.jdk.JdkVendor;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -82,18 +83,6 @@ class PluginAotTest {
     }
 
     @Test
-    void usableCache_requires_a_non_empty_regular_file() throws IOException {
-        Path cache = tmp.resolve("kotlinc-0123456789abcdef.aot");
-        assertThat(PluginAot.usableCache(cache)).isFalse(); // missing
-        Files.createFile(cache);
-        assertThat(PluginAot.usableCache(cache)).isFalse(); // zero-byte truncation leftover
-        Files.writeString(cache, "aot");
-        assertThat(PluginAot.usableCache(cache)).isTrue();
-        assertThat(PluginAot.usableCache(null)).isFalse();
-        assertThat(PluginAot.usableCache(tmp)).isFalse(); // directory
-    }
-
-    @Test
     void sweep_prefix_is_the_full_tool_tag_not_up_to_the_first_hyphen() throws Exception {
         Path dir = Files.createDirectories(tmp.resolve("aot-prefix"));
         long day = 24L * 60 * 60 * 1_000;
@@ -168,7 +157,7 @@ class PluginAotTest {
     void failed_training_leaves_a_sticky_noaot_marker_instead_of_a_cache() throws Exception {
         Path cache = Files.createDirectories(tmp.resolve("aot2")).resolve("javac-failkey000000000.aot");
         PluginAot.trainAsync("test", cache, (aotOutput, scratch) -> List.of("bash", "-c", "exit 1"));
-        waitUntil(Duration.ofSeconds(10), () -> Files.exists(PluginAot.noaotMarker(cache)));
+        waitUntil(Duration.ofSeconds(10), () -> Files.exists(AotCacheFiles.marker(cache)));
         assertThat(cache).doesNotExist();
     }
 
@@ -191,7 +180,7 @@ class PluginAotTest {
             });
             // One transient overrun must NOT permanently disable AOT for the key: no sticky
             // .noaot — only the (staleness-bounded) claim file paces the retry.
-            assertThat(PluginAot.noaotMarker(cache)).doesNotExist();
+            assertThat(AotCacheFiles.marker(cache)).doesNotExist();
             assertThat(cache).doesNotExist();
             assertThat(claim).exists();
         } finally {

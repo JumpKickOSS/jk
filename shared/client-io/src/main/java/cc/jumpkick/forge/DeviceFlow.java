@@ -2,6 +2,7 @@
 package cc.jumpkick.forge;
 
 import cc.jumpkick.http.Http;
+import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;
@@ -65,12 +66,12 @@ public final class DeviceFlow {
     }
 
     private DeviceCode requestCode() {
-        String body = parseBody(post(deviceCodeUri, Map.of("client_id", clientId, "scope", scope)));
+        Object body = parseBody(post(deviceCodeUri, Map.of("client_id", clientId, "scope", scope)));
         return new DeviceCode(
-                str(body, "device_code"),
-                str(body, "user_code"),
-                str(body, "verification_uri"),
-                str(body, "verification_uri_complete"),
+                MiniJson.str(body, "device_code"),
+                MiniJson.str(body, "user_code"),
+                MiniJson.str(body, "verification_uri"),
+                MiniJson.str(body, "verification_uri_complete"),
                 intVal(body, "interval", 5),
                 intVal(body, "expires_in", 900));
     }
@@ -80,7 +81,7 @@ public final class DeviceFlow {
         int interval = Math.max(1, dc.interval());
         while (System.nanoTime() < deadline) {
             sleep(interval);
-            String body = parseBody(post(
+            Object body = parseBody(post(
                     tokenUri,
                     Map.of(
                             "client_id",
@@ -90,9 +91,9 @@ public final class DeviceFlow {
                             "grant_type",
                             "urn:ietf:params:oauth:grant-type:device_code")));
 
-            String token = str(body, "access_token");
+            String token = MiniJson.str(body, "access_token");
             if (token != null) return token;
-            String error = str(body, "error");
+            String error = MiniJson.str(body, "error");
             switch (error != null ? error : "") {
                 case "authorization_pending" -> {
                     /* keep polling */
@@ -119,49 +120,27 @@ public final class DeviceFlow {
         }
     }
 
-    /** Return the response body as a UTF-8 string (2xx and 4xx alike). */
-    private String parseBody(HttpResponse<byte[]> resp) {
+    /**
+     * The response body as a parsed JSON tree (2xx and 4xx alike — the device-flow error codes
+     * this switches on arrive with a 4xx). A body that is not JSON reads as {@code null}, which
+     * every accessor below treats as "no such field": a provider answering with an HTML error
+     * page must surface as the flow's own "Unexpected response" arm, not as a parse crash.
+     */
+    private Object parseBody(HttpResponse<byte[]> resp) {
         int status = resp.statusCode();
         if (status >= 500) {
             throw new AuthException(providerName + " returned HTTP " + status + ".");
         }
-        return new String(resp.body(), StandardCharsets.UTF_8);
-    }
-
-    private static String str(String json, String key) {
-        String needle = "\"" + key + "\":\"";
-        int s = json.indexOf(needle);
-        if (s < 0) return null;
-        s += needle.length();
-        StringBuilder sb = new StringBuilder();
-        for (int i = s; i < json.length(); i++) {
-            char c = json.charAt(i);
-            if (c == '\\' && i + 1 < json.length()) {
-                char n = json.charAt(++i);
-                if (n == '"') sb.append('"');
-                else {
-                    sb.append('\\');
-                    sb.append(n);
-                }
-            } else if (c == '"') break;
-            else sb.append(c);
-        }
-        return sb.toString();
-    }
-
-    private static int intVal(String json, String key, int def) {
-        String needle = "\"" + key + "\":";
-        int s = json.indexOf(needle);
-        if (s < 0) return def;
-        s += needle.length();
-        while (s < json.length() && json.charAt(s) == ' ') s++;
-        int e = s;
-        while (e < json.length() && Character.isDigit(json.charAt(e))) e++;
         try {
-            return e > s ? Integer.parseInt(json.substring(s, e)) : def;
-        } catch (NumberFormatException x) {
-            return def;
+            return MiniJson.parse(new String(resp.body(), StandardCharsets.UTF_8));
+        } catch (RuntimeException e) {
+            return null;
         }
+    }
+
+    /** A JSON number field as an int; {@code def} when absent or not a number. */
+    private static int intVal(Object body, String key, int def) {
+        return MiniJson.get(body, key) instanceof Number n ? n.intValue() : def;
     }
 
     private void sleep(int seconds) {

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.host.Os;
 import java.security.SecureRandom;
 import java.util.Base64;
-import java.util.Locale;
 
 /**
  * Engine transport seam: Unix domain socket on macOS/Linux, loopback TCP + shared-secret token on
@@ -22,7 +22,7 @@ public final class EngineTransport {
         String forced = System.getProperty("jk.engine.transport", "");
         if ("tcp".equals(forced)) return true;
         if ("unix".equals(forced)) return false;
-        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+        return Os.isWindows();
     }
 
     /** A fresh per-engine secret, URL-safe base64 — written to {@code paths.token()}, never logged. */

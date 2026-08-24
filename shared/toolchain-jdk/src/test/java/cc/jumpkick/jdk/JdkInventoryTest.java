@@ -4,6 +4,7 @@ package cc.jumpkick.jdk;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -102,7 +103,7 @@ class JdkInventoryTest {
 
     @Test
     void migrate_skips_stable_pointer_aliases(@TempDir Path tmp) throws IOException {
-        assumeFalse(HostPlatform.isWindows());
+        assumeFalse(Os.isWindows());
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Path real = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium");
         Files.createSymbolicLink(jdks.resolve("temurin-25"), real);

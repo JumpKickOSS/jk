@@ -7,9 +7,11 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.ExecPlan;
+import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.DeterministicZip;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.command.Exit;
 import java.io.IOException;
@@ -20,7 +22,6 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
@@ -75,9 +76,7 @@ final class AotCachePackage {
         Files.createDirectories(outDir);
 
         Path javaHome = Path.of(plan.javaHome());
-        String java = javaHome.resolve("bin")
-                .resolve(HostPlatform.isWindows() ? "java.exe" : "java")
-                .toString();
+        String java = JdkFingerprint.java(javaHome).toString();
         boolean aotTier = "aot".equals(plan.tier());
         String cacheFile = aotTier ? "app.aot" : "app.jsa";
         boolean springBoot = plan.boot();
@@ -204,22 +203,7 @@ final class AotCachePackage {
             return "verification run did not exit within " + TRAINING_TIMEOUT_SECONDS + "s — cache not verified";
         }
         reader.join(5_000);
-        for (String line : out.toString().split("\n")) {
-            if (!line.contains("[aot]")) continue;
-            String lower = line.toLowerCase(Locale.ROOT);
-            // The refusal shapes -Xlog:aot emits — but not per-item noise like "failed to
-            // load class X", which appears on runs where the cache mapped fine.
-            if (lower.contains("mismatch")
-                    || lower.contains("different version")
-                    || lower.contains("unable to map")
-                    || lower.contains("unable to use")
-                    || lower.contains("cannot be used")
-                    || lower.contains("disabled")
-                    || ((lower.contains("archive") || lower.contains("cache")) && lower.contains("failed"))) {
-                return line.trim();
-            }
-        }
-        return null;
+        return AotCacheFiles.refusal(out.toString());
     }
 
     /** {@code java -version}'s VM line — the identity the cache is keyed to. */
@@ -335,11 +319,11 @@ final class AotCachePackage {
 
     /** A launcher that pins the JVM and the working directory, since both are part of the key. */
     private static Path writeLauncher(Path outDir, String java, String runFlag, String appJarName) throws IOException {
-        Path launcher = outDir.resolve(HostPlatform.isWindows() ? "run.cmd" : "run.sh");
+        Path launcher = outDir.resolve(Os.isWindows() ? "run.cmd" : "run.sh");
         // JVM options ride JK_JAVA_OPTS rather than "$@", which lands after -jar and would reach
         // the application as arguments. Flags that change heap shape or the collector can cost the
         // cache; the JVM falls back to a cold start rather than misbehaving.
-        String body = HostPlatform.isWindows()
+        String body = Os.isWindows()
                 ? "@echo off\r\ncd /d \"%~dp0\"\r\n\"" + java + "\" %JK_JAVA_OPTS% " + runFlag + " -jar " + appJarName
                         + " %*\r\n"
                 : "#!/bin/sh\n"

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.watch.AppWatchLoop;
@@ -46,8 +47,7 @@ public final class WatchCommand implements CliCommand {
     public List<Opt> options() {
         var opts = new ArrayList<>(List.of(
                 cc.jumpkick.cli.CommonOpts.cacheDir(),
-                Opt.value("<dir>", "Override the JDK install directory.", "--jdks-dir")
-                        .hide(),
+                CommonOpts.jdksDir(),
                 Opt.value(
                         "<ms>",
                         "Debounce source changes (default " + SourceWatch.DEBOUNCE_MILLIS + " ms)",
@@ -69,7 +69,7 @@ public final class WatchCommand implements CliCommand {
         GlobalOptions global = GlobalOptions.from(in);
         Path cacheOverride =
                 in.value("cache-dir").map(cc.jumpkick.cli.CliPaths::abs).orElse(null);
-        Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        Path jdksDir = CommonOpts.jdksDirValue(in);
         VariantSelection.install(in, global.workingDir());
 
         List<String> positionals = in.positionals();

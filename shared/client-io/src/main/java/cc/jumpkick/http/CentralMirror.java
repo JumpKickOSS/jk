@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.http;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -9,7 +10,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Locale;
 import java.util.function.UnaryOperator;
 
 /**
@@ -113,10 +113,7 @@ public final class CentralMirror {
     }
 
     static boolean enabledByEnv(UnaryOperator<String> env) {
-        String raw = env.apply(ENV_DISABLE);
-        if (raw == null || raw.isBlank()) return true;
-        String v = raw.strip().toLowerCase(Locale.ROOT);
-        return !(v.equals("off") || v.equals("false") || v.equals("0") || v.equals("no"));
+        return EnvValues.parseBool(env.apply(ENV_DISABLE)).orElse(true);
     }
 
     /** True when {@code uri} targets the host this instance treats as Central. */

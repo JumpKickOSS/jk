@@ -8,7 +8,9 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.listen.BridgingPlanListener;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
@@ -49,17 +51,16 @@ public final class SyncVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             boolean sources = Jsonl.bool(requestLine, "sources", false);
             boolean refresh = Jsonl.bool(requestLine, "refresh", false);
-            String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
+            String jdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
             Session session =
                     host.resolveSession(requestLine, cancelToken, refresh).withJdksDir(jdksDir);
             URI repoUrl = LockVerb.repoUrlOf(requestLine);
-            SessionContext.where(session, () -> {
+            return SessionContext.where(session, () -> {
                 Path entryDir = session.workingDir();
                 Path cache = session.cacheDir();
                 Files.createDirectories(cache);
@@ -85,11 +86,12 @@ public final class SyncVerb implements HostedVerb {
                                 ProtoEvents.planFinishSync(dir, result.success(), fetched.get(), upToDate.get())));
                 BuildPlanResult result = plan.run();
                 if (result.success()) host.maybeEnqueuePrune(cache);
-                return null;
+                if (result.userCancelled()) return JobOutcome.cancelled();
+                return result.success() ? JobOutcome.ok() : JobOutcome.failed(Exit.FAILURE);
             });
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

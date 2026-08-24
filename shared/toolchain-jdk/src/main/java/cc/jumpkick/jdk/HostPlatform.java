@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.host.Os;
 import java.util.Locale;
 
 /**
@@ -11,6 +12,12 @@ import java.util.Locale;
  * <p>Hosts the feed doesn't cover (AIX, FreeBSD, 32-bit x86, arm32, Alpine/musl) return {@link
  * #UNSUPPORTED} so callers can surface a clean "set JAVA_HOME explicitly" message instead of
  * silently downloading the wrong binary.
+ *
+ * <p>This is a <em>naming</em> table, not a host predicate: it answers "what does the feed call
+ * this machine?". "Is this Windows?" is {@link Os#isWindows()}, on the {@code :host} leaf every
+ * module can reach — {@code :core}, the workers and most plugins cannot see this class, and that
+ * unreachability is why fourteen private copies of the predicate existed. {@link #mapOs} classifies
+ * through {@code Os} so the two cannot drift.
  */
 public final class HostPlatform {
 
@@ -19,7 +26,7 @@ public final class HostPlatform {
     private HostPlatform() {}
 
     public static String currentOs() {
-        return mapOs(System.getProperty("os.name"));
+        return mapOs(Os.name());
     }
 
     public static String currentArch() {
@@ -28,18 +35,6 @@ public final class HostPlatform {
 
     public static boolean supported() {
         return !UNSUPPORTED.equals(currentOs()) && !UNSUPPORTED.equals(currentArch());
-    }
-
-    /**
-     * Returns {@code true} when the current JVM is running on Windows.
-     *
-     * <p>Every module that can see {@code :toolchain-jdk} should ask here rather than inline its own
-     * {@code os.name} test. Those that cannot — {@code :core}, and the deliberately dependency-free
-     * worker jars ({@code :java-compiler}, {@code :image-builder}, …) — read {@code os.name} live
-     * just as this does, so a test that spoofs the property flips them and this together.
-     */
-    public static boolean isWindows() {
-        return "windows".equals(currentOs());
     }
 
     /** Friendly display name for an OS (feed vocabulary → user-facing). */
@@ -62,11 +57,10 @@ public final class HostPlatform {
     }
 
     static String mapOs(String osName) {
-        if (osName == null) return UNSUPPORTED;
-        String lower = osName.toLowerCase(Locale.ROOT);
-        if (lower.contains("linux")) return "linux";
-        if (lower.contains("mac") || lower.contains("darwin")) return "macOS";
-        if (lower.contains("windows")) return "windows";
+        if (osName == null || osName.isBlank()) return UNSUPPORTED;
+        if (Os.isLinux(osName)) return "linux";
+        if (Os.isDarwin(osName)) return "macOS";
+        if (Os.isWindows(osName)) return "windows";
         return UNSUPPORTED;
     }
 

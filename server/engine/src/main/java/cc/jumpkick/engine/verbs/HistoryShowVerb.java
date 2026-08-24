@@ -44,8 +44,7 @@ public final class HistoryShowVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String id = Jsonl.str(requestLine, "id");
             Optional<BuildRecord> found =
@@ -58,7 +57,7 @@ public final class HistoryShowVerb implements HostedVerb {
                                 .put("code", EngineProtocol.ERR_REQUEST_FAILED)
                                 .put("message", "no such build: " + id)
                                 .toString());
-                return null;
+                return JobOutcome.declined();
             }
             BuildRecord r = found.get();
             BuildRecord.Tests t = r.tests();
@@ -132,7 +131,7 @@ public final class HistoryShowVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
-        return null;
+        return JobOutcome.declined();
     }
 
     private static String stepLine(SecretRedactor r, BuildRecord.Task p, String module) {

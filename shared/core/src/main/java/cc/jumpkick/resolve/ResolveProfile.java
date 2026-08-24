@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolve;
 
+import cc.jumpkick.config.EnvValues;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -44,9 +45,8 @@ public final class ResolveProfile {
     }
 
     private static boolean readOn() {
-        if (Boolean.getBoolean("jk.resolve.profile")) return true;
-        String env = System.getenv("JK_RESOLVE_PROFILE");
-        return env != null && (env.equals("1") || env.equalsIgnoreCase("true"));
+        return Boolean.getBoolean("jk.resolve.profile")
+                || EnvValues.bool(System::getenv, "JK_RESOLVE_PROFILE").orElse(false);
     }
 
     public static void reset() {

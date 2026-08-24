@@ -105,7 +105,7 @@ public enum PluginJar {
         String coordinate = "cc.jumpkick:" + artifactId + ":" + JkVersion.VERSION;
         List<Path> checked = new ArrayList<>();
 
-        for (String repoName : List.of(RepoArtifactResolver.JK_LOCAL, OFFICIAL_REPO, "central")) {
+        for (String repoName : List.of(RepoArtifactResolver.JK_LOCAL, OFFICIAL_REPO, RepositorySpec.CENTRAL)) {
             RepoArtifactStore store = new RepoArtifactStore(cacheRoot, repoName);
             var result = store.locate(relPath);
             if (result.isPresent()) return result.get();
@@ -137,7 +137,7 @@ public enum PluginJar {
             Path jar = Path.of(override);
             return Files.isRegularFile(jar) ? jar : null;
         }
-        for (String repoName : List.of(RepoArtifactResolver.JK_LOCAL, OFFICIAL_REPO, "central")) {
+        for (String repoName : List.of(RepoArtifactResolver.JK_LOCAL, OFFICIAL_REPO, RepositorySpec.CENTRAL)) {
             var result = new RepoArtifactStore(cas.root(), repoName).locate(relativePath());
             if (result.isPresent()) return result.get();
         }
@@ -232,7 +232,7 @@ public enum PluginJar {
         // Worker closures stay under JK_STORE_DIR (repos/jumpkick, repos/central) — not ~/.m2.
         MavenRepo official = new MavenRepo(OFFICIAL_REPO, base, http, cas, RepoCredential.ANONYMOUS, false);
         MavenRepo central = new MavenRepo(
-                "central", RepositorySpec.MAVEN_CENTRAL.url(), http, cas, RepoCredential.ANONYMOUS, false);
+                RepositorySpec.CENTRAL, RepositorySpec.MAVEN_CENTRAL.url(), http, cas, RepoCredential.ANONYMOUS, false);
         RepoGroup repos = RepoGroup.of(central).withReposPrepended(List.of(official));
         PomRuntimeClasspath.fetchRuntimeClosure(coord, repos);
     }

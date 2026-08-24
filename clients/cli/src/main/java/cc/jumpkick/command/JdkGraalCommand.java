@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.jdk.InstalledJdk;
@@ -42,8 +43,7 @@ public final class JdkGraalCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                .hide());
+        return List.of(CommonOpts.jdksDir());
     }
 
     @Override
@@ -58,7 +58,7 @@ public final class JdkGraalCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException {
         String spec = in.positionals().isEmpty() ? null : in.positionals().get(0);
-        Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        Path jdksDir = CommonOpts.jdksDirValue(in);
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
         JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
 

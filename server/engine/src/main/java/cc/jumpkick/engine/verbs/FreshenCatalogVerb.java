@@ -48,8 +48,7 @@ public final class FreshenCatalogVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String catalog = Jsonl.str(requestLine, "catalog");
             boolean offline = Jsonl.bool(requestLine, "offline", false);
@@ -97,6 +96,6 @@ public final class FreshenCatalogVerb implements HostedVerb {
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
-        return null;
+        return JobOutcome.declined();
     }
 }

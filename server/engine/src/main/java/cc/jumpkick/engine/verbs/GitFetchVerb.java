@@ -8,6 +8,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.InstallPlans;
 import java.io.BufferedWriter;
@@ -43,8 +44,7 @@ public final class GitFetchVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             try {
                 Path cache = Path.of(Jsonl.str(requestLine, "cache"));
@@ -74,7 +74,7 @@ public final class GitFetchVerb implements HostedVerb {
                         cache,
                         refresh,
                         Jsonl.bool(requestLine, "requireJkToml", true));
-                host.streamSinglePlan(plan, session, writer, result -> {
+                return host.streamSinglePlan(plan, session, writer, result -> {
                     Path checkout = plan.get(InstallPlans.CHECKOUT).orElse(null);
                     String sha = plan.get(InstallPlans.FETCHED_SHA).orElse(null);
                     return ProtoEvents.planFinishGitFetch(
@@ -82,11 +82,11 @@ public final class GitFetchVerb implements HostedVerb {
                 });
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
+                return JobOutcome.failed(Exit.FAILURE);
             }
-
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
+            return JobOutcome.failed(Exit.FAILURE);
         }
-        return null;
     }
 }

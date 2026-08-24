@@ -152,21 +152,8 @@ public final class SelfNukeCommand implements CliCommand {
             return 1;
         }
 
-        if (!dryRun && (selected.contains(Target.STATE) || wantData)) {
-            try {
-                for (EngineFleet.StopResult r : EngineFleet.stopAll(true)) {
-                    if (r.outcome() == EngineFleet.Outcome.SURVIVED) {
-                        Theme t = Theme.active();
-                        CliOutput.err(Theme.colorize(Glyphs.BANG, t.warning())
-                                + " Engine pid "
-                                + r.member().pid()
-                                + " did not stop; nuking around it may leave it orphaned.");
-                    }
-                }
-            } catch (RuntimeException ignored) {
-                // best-effort
-            }
-        }
+        boolean enginesStopped = !dryRun && (selected.contains(Target.STATE) || wantData);
+        if (enginesStopped) stopFleet();
 
         int exit = Exit.SUCCESS;
         // Settle order: Storage → Cache → Self, with a blank between back-to-back wedges so
@@ -176,10 +163,15 @@ public final class SelfNukeCommand implements CliCommand {
             int s = StorageCommand.runNuke(dryRun, true);
             if (s != 0) exit = s;
         }
+        // `jk storage nuke` performs its delete engine-side: the wipe-store request calls
+        // ensureRunning and the engine it boots is still there when it returns. Everything below
+        // this line assumes a stopped fleet — the cache wipe skips the hosted purge on that
+        // assumption, and the STATE rows are about to delete the sockets and AOT cache that
+        // engine holds open, which it would then write straight back. Take it down again.
+        if (enginesStopped && wantData) stopFleet();
         if (wantCache) {
             // Engines were stopped above for STATE/STORE — the hosted purge would boot a fresh
             // one only for the STATE rows below to delete its state dir out from under it.
-            boolean enginesStopped = !dryRun && (selected.contains(Target.STATE) || wantData);
             settleGap();
             int c = CacheCommand.runNuke(dirs.cacheDir(), dryRun, global, true, enginesStopped);
             if (c != 0) exit = c;
@@ -233,6 +225,27 @@ public final class SelfNukeCommand implements CliCommand {
     /** Blank line before a settle when this command prints wedges back-to-back. */
     private static void settleGap() {
         CliOutput.out();
+    }
+
+    /**
+     * Stop every engine of this home, naming any that refuses. Best-effort — a nuke does not fail
+     * because process enumeration did — but it is called at <em>every</em> point where a running
+     * engine would undo work this command is about to report as done, not only once up front.
+     */
+    private static void stopFleet() {
+        try {
+            for (EngineFleet.StopResult r : EngineFleet.stopAll(true)) {
+                if (r.outcome() == EngineFleet.Outcome.SURVIVED) {
+                    Theme t = Theme.active();
+                    CliOutput.err(Theme.colorize(Glyphs.BANG, t.warning())
+                            + " Engine pid "
+                            + r.member().pid()
+                            + " did not stop; nuking around it may leave it orphaned.");
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // best-effort
+        }
     }
 
     /** Parse stackable target flags; default {@code --all} when none named. */

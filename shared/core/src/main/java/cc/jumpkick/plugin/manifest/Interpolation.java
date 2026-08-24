@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.JkBuildParseException;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import java.util.Locale;
@@ -50,9 +51,8 @@ final class Interpolation {
 
     /** Host OS classifier: {@code linux} / {@code osx} / {@code windows}. */
     static String hostOs() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (os.contains("mac") || os.contains("darwin")) return "osx";
-        if (os.contains("win")) return "windows";
+        if (Os.isDarwin()) return "osx";
+        if (Os.isWindows()) return "windows";
         return "linux";
     }
 

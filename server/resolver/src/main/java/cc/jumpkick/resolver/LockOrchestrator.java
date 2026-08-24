@@ -10,6 +10,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PlatformPolicy;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
@@ -1149,7 +1150,7 @@ public final class LockOrchestrator {
     public Lockfile attachSources(Lockfile lock) throws InterruptedException {
         List<Lockfile.Artifact> updated = new ArrayList<>();
         for (Lockfile.Artifact pkg : lock.artifacts()) {
-            if (!pkg.source().contains("maven") && !pkg.source().startsWith("central")
+            if (!pkg.source().contains("maven") && !pkg.source().startsWith(RepositorySpec.CENTRAL)
                     || pkg.sourcesChecksum() != null) {
                 updated.add(pkg);
                 continue;

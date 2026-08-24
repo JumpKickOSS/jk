@@ -3,6 +3,7 @@ package cc.jumpkick.layout;
 
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -19,7 +20,16 @@ import java.util.stream.Stream;
 public final class NativePreflight {
 
     public static final String GRAAL_UNSET = "GRAALVM_HOME is not set.";
-    public static final String NATIVE_IMAGE_MISSING = "native-image not found in $GRAALVM_HOME/bin.";
+    /**
+     * Reads the launcher name and the searched directories out of {@link GraalLauncher} rather than
+     * restating them: this message previously named {@code $GRAALVM_HOME/bin} while the search it
+     * described could not see {@code lib/svm/bin} at all. Stays under 78 characters
+     * ({@code NativePreflightTest.messages_are_terse}) — a second searched directory would have to
+     * be short, or the message would have to stop enumerating them.
+     */
+    public static final String NATIVE_IMAGE_MISSING =
+            GraalLauncher.NAME + " not found in $GRAALVM_HOME (" + GraalLauncher.searchedDirs() + ").";
+
     public static final String NO_MAIN = "no main class — set [application] main or pass --main.";
     public static final String MANY_MAINS = "multiple main classes — set [application] main or pass --main.";
 
@@ -28,7 +38,7 @@ public final class NativePreflight {
 
     private NativePreflight() {}
 
-    /** {@code $GRAALVM_HOME} is set and contains {@code bin/native-image}. */
+    /** {@code $GRAALVM_HOME} is set and holds a {@code native-image} launcher ({@link GraalLauncher}). */
     public sealed interface Graal permits Graal.Ok, Graal.Fail {
         record Ok(Path home) implements Graal {}
 
@@ -47,7 +57,7 @@ public final class NativePreflight {
     public static Graal graal(String graalHomeEnv) {
         if (graalHomeEnv == null || graalHomeEnv.isBlank()) return new Graal.Fail(GRAAL_UNSET);
         Path home = Path.of(graalHomeEnv);
-        return nativeImageBinary(home) != null ? new Graal.Ok(home) : new Graal.Fail(NATIVE_IMAGE_MISSING);
+        return GraalLauncher.in(home).isPresent() ? new Graal.Ok(home) : new Graal.Fail(NATIVE_IMAGE_MISSING);
     }
 
     /**
@@ -85,15 +95,6 @@ public final class NativePreflight {
         return notBlank(fromApp) ? fromApp : null;
     }
 
-    static Path nativeImageBinary(Path graalHome) {
-        Path bin = graalHome.resolve("bin");
-        for (String name : List.of("native-image", "native-image.cmd", "native-image.exe")) {
-            Path p = bin.resolve(name);
-            if (Files.isRegularFile(p)) return p;
-        }
-        return null;
-    }
-
     private static Main discoverMain(Path moduleDir) {
         Path classes = classesDir(moduleDir);
         if (Files.isDirectory(classes)) {
@@ -118,9 +119,7 @@ public final class NativePreflight {
             ws = WorkspaceLocator.findRoot(abs).orElse(abs);
         } catch (IOException ignored) {
         }
-        Path target =
-                ws.equals(abs) ? abs.resolve("target") : ws.resolve("target").resolve(ws.relativize(abs));
-        return target.resolve("classes").resolve("main");
+        return BuildLayout.moduleTargetDir(ws, abs).resolve("classes").resolve("main");
     }
 
     static List<String> scanSourceMains(Path moduleDir) {

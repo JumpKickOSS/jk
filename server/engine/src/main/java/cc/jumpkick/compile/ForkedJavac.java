@@ -6,8 +6,8 @@ import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
-import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -180,9 +180,8 @@ public final class ForkedJavac {
             // Zinc worker (there is no in-engine javac path); --release supplies the project's
             // target semantics. It's a thin, JDK-only plugin (the compile classpath travels in
             // the spec, not on the plugin's classpath), so its own jar is the whole classpath.
-            boolean win = HostPlatform.isWindows();
             Path hostJavaHome = JavaHomes.runningJavaHome();
-            Path javaExe = hostJavaHome.resolve("bin").resolve(win ? "java.exe" : "java");
+            Path javaExe = JdkFingerprint.java(hostJavaHome);
             // Thin worker + Maven runtime closure from its POM.
             String workerCp = workerClasspath(req);
             // AOT for this *java* process (ToolProvider host) — not bare `javac` launcher AOT.
@@ -298,8 +297,7 @@ public final class ForkedJavac {
         List<String> jvmFlags = new ArrayList<>();
         jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
         jvmFlags.addAll(JvmOptions.batchFlags(1));
-        boolean win = HostPlatform.isWindows();
-        Path javaExe = hostJavaHome.resolve("bin").resolve(win ? "java.exe" : "java");
+        Path javaExe = JdkFingerprint.java(hostJavaHome);
         // Same classpath as the real fork: the classpath is part of the AOT key, and a
         // thin worker jar alone would CNFE on PluginMain, silently never training.
         return PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("@" + trainSpec.toAbsolutePath()));

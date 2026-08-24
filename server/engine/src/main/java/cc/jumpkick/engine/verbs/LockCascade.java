@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.engine.CoalescingLockPackages;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.listen.BridgingPlanListener;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.lock.LockFreshness;
@@ -29,7 +30,7 @@ final class LockCascade {
 
     private LockCascade() {}
 
-    static void run(
+    static JobOutcome run(
             VerbHost host,
             Path entryDir,
             Path cache,
@@ -41,10 +42,21 @@ final class LockCascade {
             @Nullable String platformOverride,
             BufferedWriter writer)
             throws Exception {
-        run(host, entryDir, cache, repoUrl, features, withDefaults, sources, update, platformOverride, false, writer);
+        return run(
+                host,
+                entryDir,
+                cache,
+                repoUrl,
+                features,
+                withDefaults,
+                sources,
+                update,
+                platformOverride,
+                false,
+                writer);
     }
 
-    static void run(
+    static JobOutcome run(
             VerbHost host,
             Path entryDir,
             Path cache,
@@ -69,7 +81,7 @@ final class LockCascade {
         } catch (RuntimeException e) {
             host.sendQuiet(
                     writer, ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(cc.jumpkick.host.Errors.text(e)), -1));
-            return;
+            return JobOutcome.failed(Exit.CONFIG);
         }
 
         synchronized (LockGate.monitorFor(lockDir)) {
@@ -77,7 +89,7 @@ final class LockCascade {
             // but an invisible freshen must still write one (jk tree / explain / status).
             if (conservative && !LockFreshness.needsRefresh(lockDir)) {
                 host.sendQuiet(writer, ProtoEvents.lockFinish(true, 0, List.of(), -1));
-                return;
+                return JobOutcome.ok();
             }
             Path dir = lockDir;
             String dirTag = dir.toString();
@@ -137,10 +149,12 @@ final class LockCascade {
             BuildPlanResult result = plan.run();
             lockPkgs.close();
             if (!result.success()) {
-                host.sendQuiet(writer, ProtoEvents.lockFinish(false, LockPlans.failureExitCode(result), List.of(), -1));
-                return;
+                int exit = LockPlans.failureExitCode(result);
+                host.sendQuiet(writer, ProtoEvents.lockFinish(false, exit, List.of(), -1));
+                return result.userCancelled() ? JobOutcome.cancelled() : JobOutcome.failed(exit);
             }
         }
         host.sendQuiet(writer, ProtoEvents.lockFinish(true, 0, List.of(), -1));
+        return JobOutcome.ok();
     }
 }

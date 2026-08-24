@@ -19,6 +19,7 @@ import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildService;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
@@ -127,12 +128,11 @@ public final class WorkspaceBuildVerb implements HostedVerb {
     }
 
     @Override
-    public @org.jspecify.annotations.Nullable JobOutcome run(
-            String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
             String entryDirStr = Jsonl.str(requestLine, "dir");
             String cacheStr = Jsonl.str(requestLine, "cache");
-            String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
+            String jdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
             int workers = Jsonl.intValue(requestLine, "workers", 0);
             String profile = Jsonl.str(requestLine, "profile");
             boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
@@ -166,7 +166,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                 if (hit != null && !hit.ok()) {
                     host.sendQuiet(
                             writer, host.requestFailedLine(null, new IllegalArgumentException(hit.errorMessage())));
-                    return JobOutcome.failed(2);
+                    return JobOutcome.failed(Exit.CONFIG);
                 }
                 if (hit != null) {
                     dirty = hit.moduleDirs().stream()
@@ -236,13 +236,15 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             long rid = host.eventRequestId();
             boolean cancelled = host.effectiveCancelled(rid, cancelToken.cancelled());
             if (cancelled) {
-                host.sendQuiet(writer, ProtoEvents.workspaceFinish(false, 1, List.of(), true));
-                return null;
+                // Declined, not cancelled: the cancel stamps on the accumulator already carry
+                // which kind of cancel this was, and a verdict here would overrule them.
+                host.sendQuiet(writer, ProtoEvents.workspaceFinish(false, Exit.FAILURE, List.of(), true));
+                return JobOutcome.declined();
             }
             String msg = host.redactEnv(dir, cc.jumpkick.host.Errors.text(e));
             host.sendQuiet(writer, host.requestFailedLine(dir, e));
             host.publishRequestError(rid, dir, msg);
-            return JobOutcome.failed(1);
+            return JobOutcome.failed(Exit.FAILURE);
         }
     }
 }

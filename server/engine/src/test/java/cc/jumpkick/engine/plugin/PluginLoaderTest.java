@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Os;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,8 +27,7 @@ class PluginLoaderTest {
     }
 
     private static Path javaExe() {
-        boolean win = System.getProperty("os.name", "").toLowerCase().contains("win");
-        return Path.of(System.getProperty("java.home"), "bin", win ? "java.exe" : "java");
+        return Path.of(System.getProperty("java.home"), "bin", Os.isWindows() ? "java.exe" : "java");
     }
 
     @Test
